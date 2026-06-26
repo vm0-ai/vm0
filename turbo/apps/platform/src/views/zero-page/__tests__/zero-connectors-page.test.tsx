@@ -5,6 +5,9 @@ import {
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
   CONNECTOR_TYPES,
@@ -51,6 +54,22 @@ function buttonByText(
   return button;
 }
 
+function queryMenuItemByText(text: string): HTMLElement | null {
+  return (
+    queryAllByRoleFast("menuitem").find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+    }) ?? null
+  );
+}
+
+function menuItemByText(text: string): HTMLElement {
+  const menuItem = queryMenuItemByText(text);
+  if (!menuItem) {
+    throw new Error(`${text} menu item not found`);
+  }
+  return menuItem;
+}
+
 function connectorCardByLabel(label: string): HTMLElement {
   const labelElement = screen
     .getAllByTestId("connector-card-label")
@@ -72,6 +91,20 @@ function reconnectReasonHelpButton(container: ParentNode): HTMLElement | null {
       );
     }) ?? null
   );
+}
+
+function teamAgent(id: string, displayName: string): TeamComposeItem {
+  return {
+    id,
+    ownerId: "test-user-123",
+    displayName,
+    description: null,
+    sound: null,
+    avatarUrl: null,
+    visibility: "public",
+    headVersionId: "version_1",
+    updatedAt: "2024-01-01T00:00:00Z",
+  };
 }
 
 function mockConnectors(
@@ -429,6 +462,100 @@ describe("connectors page", () => {
       expect(screen.getByText(/No connectors matching/)).toBeInTheDocument();
     });
     expect(screen.queryByLabelText("Connect AWS")).not.toBeInTheDocument();
+  });
+
+  it("hides connector access management when its switch is disabled", async () => {
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccessManagement]: false,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    });
+    click(
+      within(connectorCardByLabel("GitHub")).getByLabelText("More options"),
+    );
+
+    await waitFor(() => {
+      expect(menuItemByText("Disconnect")).toBeInTheDocument();
+    });
+    expect(queryMenuItemByText("Manage")).not.toBeInTheDocument();
+  });
+
+  it("manages connector access for agents when its switch is enabled", async () => {
+    const researchAgentId = "c0000000-0000-4000-a000-000000000001";
+    const supportAgentId = "c0000000-0000-4000-a000-000000000002";
+    const enabledByAgent = new Map<string, string[]>([
+      [researchAgentId, ["github"]],
+      [supportAgentId, []],
+    ]);
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    context.mocks.data.team([
+      teamAgent(researchAgentId, "Research Agent"),
+      teamAgent(supportAgentId, "Support Agent"),
+    ]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+      return respond(200, {
+        enabledTypes: enabledByAgent.get(params.id) ?? [],
+      });
+    });
+    context.mocks.api(
+      zeroUserConnectorsContract.update,
+      ({ params, body, respond }) => {
+        enabledByAgent.set(params.id, body.enabledTypes);
+        return respond(200, { enabledTypes: body.enabledTypes });
+      },
+    );
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccessManagement]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    });
+    click(
+      within(connectorCardByLabel("GitHub")).getByLabelText("More options"),
+    );
+    await waitFor(() => {
+      expect(menuItemByText("Manage")).toBeInTheDocument();
+    });
+    click(menuItemByText("Manage"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub access",
+    });
+    expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
+    expect(within(dialog).getByText("Support Agent")).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText("Revoke GitHub access for Research Agent"),
+    ).toBeInTheDocument();
+
+    click(
+      within(dialog).getByLabelText(
+        "Authorize GitHub access for Support Agent",
+      ),
+    );
+
+    await waitFor(() => {
+      expect(enabledByAgent.get(supportAgentId)).toStrictEqual(["github"]);
+      expect(
+        within(dialog).getByLabelText("Revoke GitHub access for Support Agent"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("shows Google Maps approval guidance before OAuth", async () => {

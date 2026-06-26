@@ -320,6 +320,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.ConnectorAccessManagement]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show the Manage entry on connected connector cards for per-agent connector access and permission management.",
+    enabled: false,
+  },
 };
 
 interface ResolvedHashes {

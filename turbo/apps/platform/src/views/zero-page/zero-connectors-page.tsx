@@ -7,6 +7,7 @@ import {
   useLastLoadable,
   useLastResolved,
 } from "ccstate-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconSearch,
@@ -68,9 +69,16 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ConnectModal } from "./components/settings/add-connection-dialog.tsx";
 import { ScopeReviewModal } from "./components/settings/scope-review-modal.tsx";
 import { ConnectorPermissionDialog } from "./components/settings/connector-permission-dialog.tsx";
+import { ConnectorAccessManagementDialog } from "./components/settings/connector-access-management-dialog.tsx";
+import {
+  closeConnectorAccessManagement$,
+  managedConnectorAccessType$,
+  setManagedConnectorAccessType$,
+} from "../../signals/zero-page/settings/connector-access-management.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { noConnectorImg } from "./platform-assets.ts";
 import { detach, onDomEventFn, Reason } from "../../signals/utils.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   Button,
   DropdownMenu,
@@ -307,15 +315,19 @@ function GlobalConnectorCard({
   isPolling,
   onConnect,
   onDisconnect,
+  onManageAccess,
   onReviewScopes,
   isDisconnecting,
+  showManageAccess,
 }: {
   connector: ConnectorTypeWithStatus;
   isPolling: boolean;
   onConnect: () => void;
   onDisconnect: () => void;
+  onManageAccess: () => void;
   onReviewScopes?: () => void;
   isDisconnecting: boolean;
+  showManageAccess: boolean;
 }) {
   const status = (() => {
     const connectionStatus = connectorCurrentConnectionStatus(connector);
@@ -445,6 +457,11 @@ function GlobalConnectorCard({
               </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
+              {showManageAccess && (
+                <DropdownMenuItem onClick={onManageAccess}>
+                  Manage
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onClick={onDisconnect}
                 disabled={isDisconnecting}
@@ -629,6 +646,9 @@ export function ZeroConnectorsPage() {
   const setScopeReviewType = useSet(setScopeReviewType$);
   const permissionDialogType = useGet(permissionDialogType$);
   const setPermissionDialogType = useSet(setPermissionDialogType$);
+  const managedConnectorType = useGet(managedConnectorAccessType$);
+  const setManagedConnectorType = useSet(setManagedConnectorAccessType$);
+  const closeManagedConnector = useSet(closeConnectorAccessManagement$);
   const optimisticConnected = useGet(justConnectedTypes$);
   const activeTab = useGet(connectorsPageTab$);
   const setActiveTab = useSet(setConnectorsPageTab$);
@@ -653,6 +673,9 @@ export function ZeroConnectorsPage() {
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
   const disconnecting = disconnectLoadable.state === "loading";
+  const features = useLastResolved(featureSwitch$);
+  const showConnectorAccessManagement =
+    features?.[FeatureSwitchKey.ConnectorAccessManagement] ?? false;
 
   const connectHandler = (type: ConnectorType) => {
     const ct = filteredConnectors.find((c) => {
@@ -719,11 +742,15 @@ export function ZeroConnectorsPage() {
         connector={optimisticConnector}
         isPolling={isPolling}
         isDisconnecting={disconnecting}
+        showManageAccess={showConnectorAccessManagement}
         onConnect={() => {
           return connectHandler(c.type);
         }}
         onDisconnect={() => {
           return disconnectHandler(c.type);
+        }}
+        onManageAccess={() => {
+          setManagedConnectorType(c.type);
         }}
         onReviewScopes={() => {
           return setScopeReviewType(c.type);
@@ -874,6 +901,13 @@ export function ZeroConnectorsPage() {
           onClose={() => {
             setPermissionDialogType(null);
           }}
+        />
+      )}
+
+      {managedConnectorType && (
+        <ConnectorAccessManagementDialog
+          connectorType={managedConnectorType}
+          onClose={closeManagedConnector}
         />
       )}
     </div>
