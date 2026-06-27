@@ -26,6 +26,7 @@ import {
 } from "../../services/zero-image-io-generate.service";
 import { builtInGenerationUsageIdempotencyKey } from "../../services/built-in-generation-usage-idempotency";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
+import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import { zeroImageIoGenerateRoutes } from "../zero-image-io-generate";
 import {
   deleteOrgMembership$,
@@ -124,7 +125,11 @@ function authHeaders() {
 function createImageIoTestApp() {
   return createAppWithRoutes({
     signal: context.signal,
-    routes: [...zeroImageIoGenerateRoutes, ...webhooksBuiltInGenerationRoutes],
+    routes: [
+      ...zeroBuiltInGenerationRoutes,
+      ...zeroImageIoGenerateRoutes,
+      ...webhooksBuiltInGenerationRoutes,
+    ],
   });
 }
 

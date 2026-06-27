@@ -25,6 +25,7 @@ import {
 } from "../../services/zero-video-io-generate.service";
 import { builtInGenerationUsageIdempotencyKey } from "../../services/built-in-generation-usage-idempotency";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
+import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import { zeroVideoIoGenerateRoutes } from "../zero-video-io-generate";
 import {
   deleteOrgMembership$,
@@ -173,7 +174,11 @@ function authHeaders() {
 function createVideoIoTestApp() {
   return createAppWithRoutes({
     signal: context.signal,
-    routes: [...zeroVideoIoGenerateRoutes, ...webhooksBuiltInGenerationRoutes],
+    routes: [
+      ...zeroBuiltInGenerationRoutes,
+      ...zeroVideoIoGenerateRoutes,
+      ...webhooksBuiltInGenerationRoutes,
+    ],
   });
 }
 
