@@ -18,6 +18,7 @@ import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
 import { workflowUserPermissionGrants } from "@vm0/db/schema/workflow-user-permission-grant";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
+  workflowUserTriggerThreads,
   zeroWorkflowTriggers,
   zeroWorkflows,
   type ZeroWorkflowScheduleType,
@@ -145,6 +146,12 @@ async function seedTrigger(
       title: "trigger thread",
     })
     .returning({ id: chatThreads.id });
+  await db.insert(workflowUserTriggerThreads).values({
+    orgId: scenario.fixture.orgId,
+    userId: scenario.fixture.userId,
+    workflowId: scenario.workflowId,
+    chatThreadId: thread!.id,
+  });
   const [trigger] = await db
     .insert(zeroWorkflowTriggers)
     .values({
@@ -157,13 +164,40 @@ async function seedTrigger(
       atTime: opts.scheduleType === "once" ? opts.nextRunAt : null,
       timezone: "UTC",
       enabled: opts.enabled ?? true,
-      chatThreadId: thread!.id,
       nextRunAt: opts.nextRunAt,
       consecutiveFailures: opts.consecutiveFailures ?? 0,
       lastRunId: opts.lastRunId ?? null,
     })
     .returning({ id: zeroWorkflowTriggers.id });
   return { triggerId: trigger!.id, threadId: thread!.id };
+}
+
+async function seedTriggerWithoutThread(
+  scenario: Scenario,
+  opts: {
+    readonly scheduleType: ZeroWorkflowScheduleType;
+    readonly cronExpression?: string;
+    readonly intervalSeconds?: number;
+    readonly nextRunAt: Date | null;
+  },
+): Promise<{ triggerId: string }> {
+  const db = store.set(writeDb$);
+  const [trigger] = await db
+    .insert(zeroWorkflowTriggers)
+    .values({
+      orgId: scenario.fixture.orgId,
+      workflowId: scenario.workflowId,
+      ownerUserId: scenario.fixture.userId,
+      scheduleType: opts.scheduleType,
+      cronExpression: opts.cronExpression ?? null,
+      intervalSeconds: opts.intervalSeconds ?? null,
+      atTime: opts.scheduleType === "once" ? opts.nextRunAt : null,
+      timezone: "UTC",
+      enabled: true,
+      nextRunAt: opts.nextRunAt,
+    })
+    .returning({ id: zeroWorkflowTriggers.id });
+  return { triggerId: trigger!.id };
 }
 
 async function loadTrigger(db: Db, triggerId: string) {
@@ -411,6 +445,44 @@ describe("zero workflow trigger scheduler", () => {
     });
     expect(kinds).toContain("workflow-trigger:cron");
     expect(kinds).toContain("chat");
+  });
+
+  it("creates the shared workflow-user thread when a due trigger has no binding yet", async () => {
+    const scenario = await setup();
+    const { triggerId } = await seedTriggerWithoutThread(scenario, {
+      scheduleType: "cron",
+      cronExpression: "0 9 * * *",
+      nextRunAt: pastDate(),
+    });
+
+    const result = await store.set(executeDueWorkflowTriggers$, context.signal);
+    expect(result.executed).toBe(1);
+
+    const db = store.set(writeDb$);
+    const [binding] = await db
+      .select({ chatThreadId: workflowUserTriggerThreads.chatThreadId })
+      .from(workflowUserTriggerThreads)
+      .where(
+        and(
+          eq(workflowUserTriggerThreads.orgId, scenario.fixture.orgId),
+          eq(workflowUserTriggerThreads.userId, scenario.fixture.userId),
+          eq(workflowUserTriggerThreads.workflowId, scenario.workflowId),
+        ),
+      );
+    expect(binding?.chatThreadId).toStrictEqual(expect.any(String));
+
+    const messages = await db
+      .select({ role: chatMessages.role, content: chatMessages.content })
+      .from(chatMessages)
+      .where(eq(chatMessages.chatThreadId, binding!.chatThreadId!));
+    expect(
+      messages.some((m) => {
+        return m.role === "user" && m.content === `/${WORKFLOW_NAME}`;
+      }),
+    ).toBeTruthy();
+
+    const trigger = await loadTrigger(db, triggerId);
+    expect(trigger?.lastRunId).not.toBeNull();
   });
 
   it("disables a one-time trigger when it fires", async () => {

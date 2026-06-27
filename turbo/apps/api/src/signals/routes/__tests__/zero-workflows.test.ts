@@ -6,7 +6,11 @@ import {
   zeroWorkflowVisibilityContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { getCustomSkillStorageName } from "@vm0/core/storage-names";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import {
+  workflowUserTriggerThreads,
+  zeroWorkflows,
+} from "@vm0/db/schema/zero-workflow";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
@@ -685,6 +689,80 @@ describe("zero workflows", () => {
     expect(copyableAgentIds).toStrictEqual(
       [sourceAgent.agentId, targetAgent.agentId].sort(),
     );
+  });
+
+  it("gets or creates the shared workflow chat thread with a slash prompt", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Chat Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    const workflowId = await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: "chat-workflow",
+        displayName: "Chat Workflow",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const first = await accept(
+      detailClient().chatThread({
+        headers: authHeaders(),
+        params: { workflowId },
+      }),
+      [200],
+    );
+    const second = await accept(
+      detailClient().chatThread({
+        headers: authHeaders(),
+        params: { workflowId },
+      }),
+      [200],
+    );
+
+    expect(second.body).toStrictEqual(first.body);
+    expect(first.body.prompt).toBe("/chat-workflow");
+
+    const db = store.set(writeDb$);
+    const [binding] = await db
+      .select({ chatThreadId: workflowUserTriggerThreads.chatThreadId })
+      .from(workflowUserTriggerThreads)
+      .where(
+        and(
+          eq(workflowUserTriggerThreads.orgId, fixture.orgId),
+          eq(workflowUserTriggerThreads.userId, fixture.userId),
+          eq(workflowUserTriggerThreads.workflowId, workflowId),
+        ),
+      );
+    expect(binding?.chatThreadId).toBe(first.body.chatThreadId);
+
+    const [thread] = await db
+      .select({
+        userId: chatThreads.userId,
+        agentComposeId: chatThreads.agentComposeId,
+        title: chatThreads.title,
+      })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, first.body.chatThreadId));
+    expect(thread).toStrictEqual({
+      userId: fixture.userId,
+      agentComposeId: agent.agentId,
+      title: "Chat Workflow",
+    });
   });
 
   it("reads workflow content from the existing skill volume storage", async () => {

@@ -14,7 +14,6 @@ import {
 import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
 import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
@@ -33,6 +32,7 @@ import { postAutomationUserMessage } from "../services/zero-chat-automation-mess
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { deleteZeroWorkflow$ } from "../services/zero-workflow-delete.service";
 import { zeroWorkflowDetail } from "../services/zero-workflow-detail.service";
+import { ensureWorkflowUserTriggerThread } from "../services/zero-workflow-user-trigger-thread.service";
 import { updateZeroWorkflow$ } from "../services/zero-workflow-update.service";
 import { loadWorkflowVolumeFiles } from "../services/zero-workflow-volume.service";
 import {
@@ -692,6 +692,55 @@ function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
+function workflowSlashPrompt(workflow: Pick<WorkflowRow, "name">): string {
+  return `/${workflow.name}`;
+}
+
+const prepareWorkflowChatThreadInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const member = memberFromAuth(auth);
+    const params = get(pathParamsOf(zeroWorkflowsDetailContract.chatThread));
+
+    const writeDb = set(writeDb$);
+    const visible = await loadVisibleWorkflowById(writeDb, {
+      orgId: auth.orgId,
+      member,
+      workflowId: params.workflowId,
+    });
+    signal.throwIfAborted();
+    if (!visible) {
+      return workflowNotFound(params.workflowId);
+    }
+    const { workflow, agent } = visible;
+
+    if (agent.visibility === "private" && agent.owner !== auth.userId) {
+      return forbidden("Only the private agent owner can chat with this agent");
+    }
+
+    const currentTime = nowDate();
+    const chatThreadId = await writeDb.transaction(async (tx) => {
+      return await ensureWorkflowUserTriggerThread(tx, {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        workflowId: workflow.id,
+        agentId: agent.id,
+        workflowTitle: workflow.displayName ?? workflow.name,
+        currentTime,
+      });
+    });
+    signal.throwIfAborted();
+
+    return {
+      status: 200 as const,
+      body: {
+        chatThreadId,
+        prompt: workflowSlashPrompt(workflow),
+      },
+    };
+  },
+);
+
 const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const member = memberFromAuth(auth);
@@ -717,24 +766,20 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const now = nowDate();
-  const [thread] = await writeDb
-    .insert(chatThreads)
-    .values({
+  const chatThreadId = await writeDb.transaction(async (tx) => {
+    return await ensureWorkflowUserTriggerThread(tx, {
+      orgId: auth.orgId,
       userId: auth.userId,
-      agentComposeId: agent.id,
-      title: workflow.displayName ?? workflow.name,
-      lastMessageAt: now,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning({ id: chatThreads.id });
+      workflowId: workflow.id,
+      agentId: agent.id,
+      workflowTitle: workflow.displayName ?? workflow.name,
+      currentTime: now,
+    });
+  });
   signal.throwIfAborted();
-  if (!thread) {
-    throw new Error("Failed to create workflow run chat thread");
-  }
 
   // Invoking a workflow is exactly typing its slash command in chat.
-  const prompt = `/${workflow.name}`;
+  const prompt = workflowSlashPrompt(workflow);
   const result = await set(
     createZeroRun$,
     {
@@ -747,12 +792,12 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       body: { prompt, agentId: agent.id },
       apiStartTime: now.getTime(),
       triggerSource: "web",
-      chatThreadId: thread.id,
+      chatThreadId,
       callbacks: [
         {
           internalKind: "chat",
           secret: generateCallbackSecret(),
-          payload: { threadId: thread.id, agentId: agent.id },
+          payload: { threadId: chatThreadId, agentId: agent.id },
         },
       ],
       dispatchFailedCallbacks: dispatchFailedRunCallbacks,
@@ -767,7 +812,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   await postAutomationUserMessage({
     db: writeDb,
-    threadId: thread.id,
+    threadId: chatThreadId,
     userId: auth.userId,
     runId: result.body.runId,
     prompt,
@@ -777,7 +822,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   return {
     status: 200 as const,
-    body: { chatThreadId: thread.id, runId: result.body.runId },
+    body: { chatThreadId, runId: result.body.runId },
   };
 });
 
@@ -1136,6 +1181,10 @@ export const zeroWorkflowsRoutes: readonly RouteEntry[] = [
   {
     route: zeroWorkflowsDetailContract.copy,
     handler: authRoute(workflowWriteAuth, copyWorkflowInner$),
+  },
+  {
+    route: zeroWorkflowsDetailContract.chatThread,
+    handler: authRoute(workflowReadAuth, prepareWorkflowChatThreadInner$),
   },
   {
     route: zeroWorkflowsDetailContract.run,

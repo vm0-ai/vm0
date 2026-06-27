@@ -464,6 +464,11 @@ export const zeroWorkflowRunResponseSchema = z.object({
   runId: z.string(),
 });
 
+export const zeroWorkflowChatThreadResponseSchema = z.object({
+  chatThreadId: z.string().uuid(),
+  prompt: z.string(),
+});
+
 const workflowIdParams = z.object({ workflowId: z.string().uuid() });
 
 export const zeroWorkflowsCollectionContract = c.router({
@@ -555,6 +560,20 @@ export const zeroWorkflowsDetailContract = c.router({
     },
     summary: "Copy (fork) a workflow onto another agent",
   },
+  chatThread: {
+    method: "POST",
+    path: "/api/zero/workflows/:workflowId/chat-thread",
+    headers: authHeadersSchema,
+    pathParams: workflowIdParams,
+    body: c.noBody(),
+    responses: {
+      200: zeroWorkflowChatThreadResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get or create the shared chat thread for a workflow",
+  },
   run: {
     method: "POST",
     path: "/api/zero/workflows/:workflowId/run",
@@ -568,7 +587,8 @@ export const zeroWorkflowsDetailContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Run the workflow once in a new chat thread (equivalent to /slug)",
+    summary:
+      "Run the workflow once in its shared chat thread (equivalent to /slug)",
   },
 });
 
@@ -777,6 +797,22 @@ export const zeroWorkflowTriggersContract = c.router({
     },
     summary: "Disable a workflow trigger",
   },
+  run: {
+    method: "POST",
+    path: "/api/zero/workflow-triggers/:id/run",
+    headers: authHeadersSchema,
+    pathParams: triggerIdParams,
+    body: c.noBody(),
+    responses: {
+      201: zeroWorkflowRunResponseSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Run a workflow trigger immediately in its bound chat thread",
+  },
 });
 
 export type WorkflowFileEntry = z.infer<typeof workflowFileEntrySchema>;
@@ -793,6 +829,9 @@ export type ZeroWorkflowUpdateRequest = z.infer<
 >;
 export type ZeroWorkflowCopyRequest = z.infer<
   typeof zeroWorkflowCopyRequestSchema
+>;
+export type ZeroWorkflowChatThreadResponse = z.infer<
+  typeof zeroWorkflowChatThreadResponseSchema
 >;
 export type ZeroWorkflowRunResponse = z.infer<
   typeof zeroWorkflowRunResponseSchema

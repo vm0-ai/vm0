@@ -23,7 +23,10 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { pathname, search } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { PLACEHOLDER } from "../../zero-page/__tests__/chat-test-helpers.ts";
+import {
+  mockChatLifecycle,
+  PLACEHOLDER,
+} from "../../zero-page/__tests__/chat-test-helpers.ts";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
@@ -36,6 +39,8 @@ const OTHER_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000203";
 const PENDING_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000204";
 const GMAIL_TRIGGER_ID = "workflow-trigger-gmail-new-message";
 const GMAIL_LABEL_TRIGGER_ID = "workflow-trigger-gmail-label-applied";
+const WORKFLOW_CHAT_THREAD_ID = "00000000-0000-4000-a000-000000000300";
+const TRIGGER_RUN_THREAD_ID = "00000000-0000-4000-a000-000000000301";
 
 type WorkflowDetailTestTab =
   | "authorization"
@@ -509,6 +514,29 @@ function mockUpdateWorkflowTrigger(
   );
 }
 
+function mockRunWorkflowTrigger(onRun: (triggerId: string) => void): void {
+  context.mocks.api(zeroWorkflowTriggersContract.run, ({ params, respond }) => {
+    onRun(params.id);
+    return respond(201, {
+      runId: "workflow-trigger-run-now",
+      chatThreadId: TRIGGER_RUN_THREAD_ID,
+    });
+  });
+}
+
+function mockOpenWorkflowChat(onOpen: (workflowId: string) => void): void {
+  context.mocks.api(
+    zeroWorkflowsDetailContract.chatThread,
+    ({ params, respond }) => {
+      onOpen(params.workflowId);
+      return respond(200, {
+        chatThreadId: WORKFLOW_CHAT_THREAD_ID,
+        prompt: "/sales-research",
+      });
+    },
+  );
+}
+
 type RoleTextMatch = RegExp | string;
 
 function textFor(element: Element): string {
@@ -693,9 +721,13 @@ describe("workflow detail page", () => {
     expect(search()).toBe("?tab=instructions&file=config%2Fsettings.json");
   });
 
-  it("prefills a new agent chat with the workflow slash command", async () => {
-    mockAgentPageApis();
+  it("opens the shared workflow chat thread with the workflow slash command", async () => {
+    const openedWorkflowIds: string[] = [];
+    mockChatLifecycle(context, { threadId: WORKFLOW_CHAT_THREAD_ID });
     mockWorkflowApis([salesResearch()]);
+    mockOpenWorkflowChat((workflowId) => {
+      openedWorkflowIds.push(workflowId);
+    });
 
     detachedSetupPage({
       context,
@@ -710,10 +742,13 @@ describe("workflow detail page", () => {
 
     click(buttonByText("Chat with Research Bot"));
 
+    await waitFor(() => {
+      expect(openedWorkflowIds).toStrictEqual([SALES_WORKFLOW_ID]);
+    });
     const textarea = await waitFor(() => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });
-    expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+    expect(pathname()).toBe(`/chats/${WORKFLOW_CHAT_THREAD_ID}`);
     expect(search()).toBe("");
     expect(textarea).toHaveValue("/sales-research");
   });
@@ -853,6 +888,33 @@ describe("workflow detail page", () => {
     expect(
       screen.getByText(/subject does not contain "newsletter"/),
     ).toBeInTheDocument();
+  });
+
+  it("runs a trigger immediately and navigates to the bound chat thread", async () => {
+    const runTriggerIds: string[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockChatLifecycle(context, { threadId: TRIGGER_RUN_THREAD_ID });
+    mockRunWorkflowTrigger((triggerId) => {
+      runTriggerIds.push(triggerId);
+    });
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("triggers"),
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Trigger now")).toBeInTheDocument();
+    });
+    click(buttonByText("Trigger now"));
+
+    await waitFor(() => {
+      expect(runTriggerIds).toStrictEqual(["workflow-trigger-weekday-brief"]);
+    });
+    await waitFor(() => {
+      expect(pathname()).toBe(`/chats/${TRIGGER_RUN_THREAD_ID}`);
+    });
+    expect(search()).toBe("");
   });
 
   it("creates a Gmail new message trigger with text match rules", async () => {

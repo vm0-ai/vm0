@@ -29,6 +29,7 @@ export interface DueWorkflowTrigger {
   // longer carry an agentId column, so callers resolve it and pass it here.
   readonly agentId: string;
   readonly workflowName: string;
+  readonly chatThreadId: string;
 }
 
 type RunErrorResponse = {
@@ -83,6 +84,7 @@ function workflowTriggerRunMetadata(trigger: TriggerRow) {
 function buildWorkflowTriggerCallbacks(
   trigger: TriggerRow,
   agentId: string,
+  chatThreadId: string,
 ): InternalRunCallbackInput[] {
   const callbacks: InternalRunCallbackInput[] = [];
   if (trigger.scheduleType === "loop") {
@@ -104,13 +106,11 @@ function buildWorkflowTriggerCallbacks(
       },
     });
   }
-  if (trigger.chatThreadId) {
-    callbacks.push({
-      internalKind: "chat",
-      secret: generateCallbackSecret(),
-      payload: { threadId: trigger.chatThreadId, agentId },
-    });
-  }
+  callbacks.push({
+    internalKind: "chat",
+    secret: generateCallbackSecret(),
+    payload: { threadId: chatThreadId, agentId },
+  });
   return callbacks;
 }
 
@@ -125,18 +125,15 @@ function buildAppendSystemPrompt(workflowName: string): string {
 }
 
 export function buildChatOnlyWorkflowTriggerCallbacks(
-  trigger: TriggerRow,
+  chatThreadId: string,
   agentId: string,
 ): InternalRunCallbackInput[] {
-  if (!trigger.chatThreadId) {
-    return [];
-  }
   return [
     {
       internalKind: "chat",
       secret: generateCallbackSecret(),
       payload: {
-        threadId: trigger.chatThreadId,
+        threadId: chatThreadId,
         agentId,
       },
     },
@@ -208,23 +205,7 @@ export const runWorkflowTriggerNow$ = command(
     signal: AbortSignal,
   ): Promise<RunWorkflowTriggerResult> => {
     const db = set(writeDb$);
-    const { trigger, agentId, workflowName } = args.due;
-
-    if (!trigger.chatThreadId) {
-      return {
-        kind: "run_error",
-        response: {
-          status: 400,
-          body: {
-            error: {
-              message: "Workflow trigger is missing its thread",
-              code: "INVALID_TRIGGER",
-            },
-          },
-        },
-      };
-    }
-    const chatThreadId = trigger.chatThreadId;
+    const { trigger, agentId, workflowName, chatThreadId } = args.due;
 
     if (trigger.lastRunId) {
       const [lastRun] = await db
@@ -278,7 +259,8 @@ export const runWorkflowTriggerNow$ = command(
         appendSystemPrompt:
           args.appendSystemPrompt ?? buildAppendSystemPrompt(workflowName),
         callbacks:
-          args.callbacks ?? buildWorkflowTriggerCallbacks(trigger, agentId),
+          args.callbacks ??
+          buildWorkflowTriggerCallbacks(trigger, agentId, chatThreadId),
         zeroRunMetadata: workflowTriggerRunMetadata(trigger),
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
