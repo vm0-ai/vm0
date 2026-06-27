@@ -2462,7 +2462,7 @@ function builtinFirewallEntry(
   for (const name of names) {
     const value = vars?.[name];
     if (!value) {
-      throw new Error(
+      throw new FirewallBaseUrlResolutionError(
         `Firewall "${firewall.name}" base URL requires variable "${name}" but it was not provided`,
       );
     }
@@ -2496,7 +2496,7 @@ function builtinFirewallEntryForMetadata(
   for (const name of metadata.baseUrlVarNames) {
     const value = vars?.[name];
     if (!value) {
-      throw new Error(
+      throw new FirewallBaseUrlResolutionError(
         `Firewall "${metadata.type}" base URL requires variable "${name}" but it was not provided`,
       );
     }

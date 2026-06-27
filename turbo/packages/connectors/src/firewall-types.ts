@@ -75,6 +75,7 @@ function hostPolicyHostHasFixedOwnership(
     : normalized;
   if (
     withoutTrailingDot === "" ||
+    !isAscii(value) ||
     hasRawWhitespace(value) ||
     hasUnsafeUrlCodepoint(value) ||
     HOST_POLICY_HOST_FORBIDDEN_PATTERN.test(withoutTrailingDot)

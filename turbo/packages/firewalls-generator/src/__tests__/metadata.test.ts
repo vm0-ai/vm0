@@ -392,6 +392,11 @@ describe("firewall metadata generator", () => {
             "providerOwned host policy exactHosts must be fixed hostnames with at least two labels",
         },
         {
+          hostPolicy: '{ kind: "providerOwned", exactHosts: ["api.例子.com"] }',
+          message:
+            "providerOwned host policy exactHosts must be fixed hostnames with at least two labels",
+        },
+        {
           hostPolicy: '{ kind: "providerOwned", suffixes: ["*.github.com"] }',
           message:
             "providerOwned host policy suffixes must be fixed hostnames with at least two labels",

@@ -730,6 +730,7 @@ def _host_policy_host_has_fixed_ownership(
     normalized = _normalize_host_policy_hostname(raw_hostname)
     if (
         not normalized
+        or not hostname.isascii()
         or has_raw_whitespace(hostname)
         or has_unsafe_url_codepoint(hostname)
         or any(char in normalized for char in _HOST_POLICY_HOST_FORBIDDEN_CHARS)

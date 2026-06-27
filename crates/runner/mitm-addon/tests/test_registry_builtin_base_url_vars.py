@@ -210,6 +210,10 @@ class TestRegistryBuiltinBaseUrlVars:
                 "exactHosts must be fixed hostnames with at least two labels",
             ),
             (
+                {"kind": "providerOwned", "exactHosts": ["api.例子.com"]},
+                "exactHosts must be fixed hostnames with at least two labels",
+            ),
+            (
                 {"kind": "providerOwned", "suffixes": ["*.example.com"]},
                 "suffixes must be fixed hostnames with at least two labels",
             ),
