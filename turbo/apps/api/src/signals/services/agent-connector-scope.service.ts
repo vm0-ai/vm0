@@ -4,7 +4,10 @@ import {
 } from "@vm0/connectors/connectors";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
+import {
+  zeroAgents,
+  type ZeroAgentVisibility,
+} from "@vm0/db/schema/zero-agent";
 import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../external/db";
@@ -12,6 +15,11 @@ import type { Db } from "../external/db";
 interface AgentConnectorScope {
   readonly allowedConnectorTypes: readonly ConnectorType[];
   readonly allowedCustomConnectorIds: readonly string[];
+}
+
+interface ZeroBackedComposeAgent {
+  readonly owner: string;
+  readonly visibility: ZeroAgentVisibility;
 }
 
 async function loadAgentAllowedConnectorTypes(
@@ -78,28 +86,25 @@ export async function loadAgentConnectorScope(
   return { allowedConnectorTypes, allowedCustomConnectorIds };
 }
 
-export async function loadZeroBackedComposeConnectorScope(
+export async function loadZeroBackedComposeAgent(
   db: Db,
   args: {
-    readonly userId: string;
-    readonly orgId: string;
     readonly composeId: string;
   },
-): Promise<AgentConnectorScope | null> {
+): Promise<ZeroBackedComposeAgent | null> {
+  // The caller must verify agent_composes.org_id first. zero_agents.org_id is
+  // denormalized and must not decide whether a resolved compose is Zero-backed.
   const [agent] = await db
-    .select({ id: zeroAgents.id })
+    .select({
+      id: zeroAgents.id,
+      owner: zeroAgents.owner,
+      visibility: zeroAgents.visibility,
+    })
     .from(zeroAgents)
-    .where(
-      and(eq(zeroAgents.id, args.composeId), eq(zeroAgents.orgId, args.orgId)),
-    )
+    .where(eq(zeroAgents.id, args.composeId))
     .limit(1);
   if (!agent) {
     return null;
   }
-
-  return await loadAgentConnectorScope(db, {
-    userId: args.userId,
-    orgId: args.orgId,
-    agentId: args.composeId,
-  });
+  return { owner: agent.owner, visibility: agent.visibility };
 }

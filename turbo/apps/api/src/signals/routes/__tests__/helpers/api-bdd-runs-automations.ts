@@ -617,6 +617,20 @@ export function createRunsAutomationsApi(context: TestContext) {
       return response.body;
     },
 
+    async requestDirectRun(
+      actor: ApiTestUser | null,
+      body: DirectRunRequest,
+      statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
+    ) {
+      return await accept(
+        setupApp({ context })(runsMainContract).create({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
     async applyUserPermissionGrant(
       actor: ApiTestUser,
       body: {

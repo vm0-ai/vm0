@@ -167,7 +167,10 @@ import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
-import { loadZeroBackedComposeConnectorScope } from "./agent-connector-scope.service";
+import {
+  loadAgentConnectorScope,
+  loadZeroBackedComposeAgent,
+} from "./agent-connector-scope.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
@@ -4786,6 +4789,7 @@ type PrepareRunContextGet = <T>(value: Computed<T>) => T;
 interface PreparedRunBodyContext {
   readonly body: CreateRunBody;
   readonly resolved: ResolvedCompose;
+  readonly connectorScope: EffectiveConnectorScope;
   readonly requestedFramework: SupportedFramework;
   readonly featureSwitchContext: FeatureSwitchContext;
 }
@@ -4811,20 +4815,28 @@ async function resolveEffectiveConnectorScope(args: {
   readonly createArgs: CreateAgentRunArgs;
   readonly resolved: ResolvedCompose;
   readonly signal: AbortSignal;
-}): Promise<EffectiveConnectorScope> {
+}): Promise<EffectiveConnectorScope | CreateRunErrorResult> {
   const createArgsScope = connectorScopeFromCreateArgs(args.createArgs);
   if (createArgsScope) {
     return createArgsScope;
   }
 
-  const zeroBackedScope = await loadZeroBackedComposeConnectorScope(args.db, {
-    userId: args.createArgs.userId,
-    orgId: args.createArgs.orgId,
+  const zeroBackedAgent = await loadZeroBackedComposeAgent(args.db, {
     composeId: args.resolved.composeId,
   });
   args.signal.throwIfAborted();
-  if (zeroBackedScope) {
-    return zeroBackedScope;
+  if (zeroBackedAgent) {
+    if (
+      zeroBackedAgent.visibility === "private" &&
+      zeroBackedAgent.owner !== args.createArgs.userId
+    ) {
+      return forbidden("Only the private agent owner can run this agent");
+    }
+    return await loadAgentConnectorScope(args.db, {
+      userId: args.createArgs.userId,
+      orgId: args.createArgs.orgId,
+      agentId: args.resolved.composeId,
+    });
   }
 
   return {
@@ -4871,6 +4883,23 @@ async function prepareRunBodyContext(args: {
   }
   if (resolved.orgId !== args.createArgs.orgId) {
     return notFound("Resource not found");
+  }
+
+  const connectorScope = await args.timing.measure(
+    "api_dispatch_prepare_context_resolve_connector_scope",
+    "nested",
+    async () => {
+      return await resolveEffectiveConnectorScope({
+        db: args.db,
+        createArgs: args.createArgs,
+        resolved,
+        signal: args.signal,
+      });
+    },
+  );
+  args.signal.throwIfAborted();
+  if (isRouteError(connectorScope)) {
+    return connectorScope;
   }
 
   const persistedEnvironment = await args.timing.measure(
@@ -4920,6 +4949,7 @@ async function prepareRunBodyContext(args: {
   return {
     body,
     resolved,
+    connectorScope,
     requestedFramework: requestedFrameworkResult,
     featureSwitchContext,
   };
@@ -5068,24 +5098,10 @@ function prepareRunContext(
         return bodyContext;
       }
 
-      const connectorScope = await timing.measure(
-        "api_dispatch_prepare_context_resolve_connector_scope",
-        "nested",
-        async () => {
-          return await resolveEffectiveConnectorScope({
-            db,
-            createArgs: args,
-            resolved: bodyContext.resolved,
-            signal,
-          });
-        },
-      );
-      signal.throwIfAborted();
-
       const runtimeContext = await prepareRunRuntimeContext({
         db,
         createArgs: args,
-        connectorScope,
+        connectorScope: bodyContext.connectorScope,
         timing,
         signal,
         bodyContext,
@@ -5131,7 +5147,7 @@ function prepareRunContext(
           return await Promise.resolve(
             prepareRunOutputMetadata({
               createArgs: args,
-              connectorScope,
+              connectorScope: bodyContext.connectorScope,
               framework: runtimeContext.framework,
               featureSwitchContext: bodyContext.featureSwitchContext,
               body: bodyContext.body,

@@ -512,7 +512,9 @@ async function entitledRunActor(): Promise<{
   return { actor, agentId: agent.agentId, runnerGroup, granted };
 }
 
-async function zeroBackedDirectRunActor(): Promise<{
+async function zeroBackedDirectRunActor(args?: {
+  readonly visibility?: "private" | "public";
+}): Promise<{
   readonly actor: ApiTestUser;
   readonly orgId: string;
   readonly agentId: string;
@@ -533,7 +535,7 @@ async function zeroBackedDirectRunActor(): Promise<{
 
   const agent = await bdd.createAgent(actor, {
     displayName: "BDD zero-backed direct agent",
-    visibility: "private",
+    visibility: args?.visibility ?? "private",
   });
 
   return { actor, orgId: actor.orgId, agentId: agent.agentId, runnerGroup };
@@ -1720,6 +1722,64 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
 
     await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("rejects same-org non-owner Zero-backed direct runs for private agents", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await zeroBackedDirectRunActor();
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+
+    const rejected = await api.requestDirectRun(
+      member,
+      zeroBackedDirectRunBody({
+        agentId,
+        prompt: "direct run someone else's private zero agent",
+      }),
+      [403],
+    );
+
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      "Only the private agent owner can run this agent",
+    );
+  });
+
+  it("allows same-org non-owner Zero-backed direct runs for public agents without owner connector leakage", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor({
+      visibility: "public",
+    });
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-public-owner-access",
+      refreshToken: "x-bdd-public-owner-refresh",
+    });
+    const enabled = await api.enableAgentConnectors(actor, agentId, ["x"]);
+    expect(enabled).toContain("x");
+
+    const run = await api.createDirectRun(
+      member,
+      zeroBackedDirectRunBody({
+        agentId,
+        prompt: "direct run someone else's public zero agent",
+      }),
+    );
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(claim.secretConnectorMap ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
+    expect(claim.billableFirewalls).not.toContain("x");
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("x");
+
+    await api.requestCancelRun(member, run.runId, [200]);
   });
 
   it("injects oauth connector tokens with billable firewalls and resolvable secrets", async () => {
