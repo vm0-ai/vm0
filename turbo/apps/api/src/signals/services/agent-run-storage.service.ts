@@ -21,11 +21,17 @@ import { generatePresignedGetUrl, putS3Object } from "../external/s3";
 import type { Db } from "../external/db";
 import { nowDate } from "../external/time";
 import { settle } from "../utils";
+import {
+  measureApiDispatchTiming,
+  type ApiDispatchTimingCollector,
+} from "./api-dispatch-timing.service";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
 
 type StorageType = "artifact" | "volume";
 type ManifestStorage = StorageManifest["storages"][number];
 type ManifestArtifact = StorageManifest["artifacts"][number];
+type OptionalManifestStorage = ManifestStorage | null;
+type ComputedGetter = <T>(computedValue: Computed<T>) => T;
 
 interface ContextArtifact {
   readonly name: string;
@@ -60,6 +66,20 @@ interface AgentComposeContent {
   readonly volumes?: Record<string, VolumeConfig | undefined>;
 }
 
+interface PrepareAgentRunStorageManifestArgs {
+  readonly db: Db;
+  readonly content: AgentComposeContent;
+  readonly vars: Record<string, string> | undefined;
+  readonly agentOrgId: string;
+  readonly runtimeOrgId: string;
+  readonly userId: string;
+  readonly artifacts: readonly ContextArtifact[];
+  readonly volumeVersionOverrides: Record<string, string> | undefined;
+  readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+  readonly framework: SupportedFramework;
+  readonly timing?: ApiDispatchTimingCollector;
+}
+
 interface ResolvedVolume {
   readonly name: string;
   readonly mountPath: string;
@@ -87,6 +107,17 @@ interface StorageIndexEntry {
   readonly storageId: string;
   readonly headVersionId: string | null;
   readonly headVersion: { readonly id: string; readonly s3Key: string } | null;
+}
+
+interface StorageManifestInputs {
+  readonly artifacts: readonly ContextArtifact[];
+  readonly composeVolumes: readonly ResolvedVolume[];
+}
+
+interface StorageManifestEntries {
+  readonly composeEntries: readonly OptionalManifestStorage[];
+  readonly additionalEntries: readonly OptionalManifestStorage[];
+  readonly artifactEntries: ManifestArtifact[];
 }
 
 /**
@@ -743,111 +774,236 @@ function mergeStorageEntries(args: {
   ];
 }
 
-export function prepareAgentRunStorageManifest(args: {
+function isManifestStorage(
+  entry: OptionalManifestStorage,
+): entry is ManifestStorage {
+  return entry !== null;
+}
+
+async function resolveStorageManifestInputs(
+  args: PrepareAgentRunStorageManifestArgs,
+): Promise<StorageManifestInputs> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_resolve_inputs",
+    "nested",
+    () => {
+      return {
+        artifacts: dedupArtifacts(args.artifacts),
+        composeVolumes: resolveComposeVolumes({
+          content: args.content,
+          vars: args.vars,
+          volumeVersionOverrides: args.volumeVersionOverrides,
+          framework: args.framework,
+        }),
+      };
+    },
+  );
+}
+
+async function ensureStorageManifestArtifacts(
+  get: ComputedGetter,
+  args: {
+    readonly db: Db;
+    readonly runtimeOrgId: string;
+    readonly userId: string;
+    readonly bucket: string;
+    readonly artifacts: readonly ContextArtifact[];
+    readonly timing?: ApiDispatchTimingCollector;
+  },
+): Promise<void> {
+  await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+    "nested",
+    async () => {
+      await Promise.all(
+        args.artifacts.map((artifact) => {
+          return get(
+            ensureArtifactStorage({
+              db: args.db,
+              orgId: args.runtimeOrgId,
+              userId: args.userId,
+              name: artifact.name,
+              bucket: args.bucket,
+            }),
+          );
+        }),
+      );
+    },
+  );
+}
+
+async function loadTimedStorageIndex(args: {
   readonly db: Db;
-  readonly content: AgentComposeContent;
-  readonly vars: Record<string, string> | undefined;
   readonly agentOrgId: string;
   readonly runtimeOrgId: string;
-  readonly userId: string;
-  readonly artifacts: readonly ContextArtifact[];
-  readonly volumeVersionOverrides: Record<string, string> | undefined;
-  readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
-  readonly framework: SupportedFramework;
-}): Computed<Promise<StorageManifest>> {
-  return computed(async (get): Promise<StorageManifest> => {
-    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-    const artifacts = dedupArtifacts(args.artifacts);
-    const composeVolumes = resolveComposeVolumes({
-      content: args.content,
-      vars: args.vars,
-      volumeVersionOverrides: args.volumeVersionOverrides,
-      framework: args.framework,
-    });
+  readonly timing?: ApiDispatchTimingCollector;
+}): Promise<StorageIndex> {
+  // Resolve every volume/artifact from one pre-fetched snapshot instead of a
+  // per-item `SELECT storages` round-trip. Loaded after ensureArtifactStorage
+  // so freshly created artifact rows are included.
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_load_storage_index",
+    "nested",
+    async () => {
+      return await loadStorageIndex(args.db, [
+        args.agentOrgId,
+        args.runtimeOrgId,
+        SYSTEM_ORG_ID,
+      ]);
+    },
+  );
+}
 
-    await Promise.all(
-      artifacts.map((artifact) => {
-        return get(
-          ensureArtifactStorage({
-            db: args.db,
-            orgId: args.runtimeOrgId,
-            userId: args.userId,
-            name: artifact.name,
-            bucket,
-          }),
-        );
-      }),
-    );
-
-    // Resolve every volume/artifact from one pre-fetched snapshot instead of a
-    // per-item `SELECT storages` round-trip. Loaded after ensureArtifactStorage
-    // so freshly created artifact rows are included.
-    const storageIndex = await loadStorageIndex(args.db, [
-      args.agentOrgId,
-      args.runtimeOrgId,
-      SYSTEM_ORG_ID,
+async function buildStorageManifestEntries(
+  get: ComputedGetter,
+  args: {
+    readonly db: Db;
+    readonly bucket: string;
+    readonly storageIndex: StorageIndex;
+    readonly agentOrgId: string;
+    readonly runtimeOrgId: string;
+    readonly userId: string;
+    readonly composeVolumes: readonly ResolvedVolume[];
+    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
+    readonly artifacts: readonly ContextArtifact[];
+    readonly timing?: ApiDispatchTimingCollector;
+  },
+): Promise<StorageManifestEntries> {
+  const [composeEntries, additionalEntries, artifactEntries] =
+    await Promise.all([
+      measureApiDispatchTiming(
+        args.timing,
+        "api_dispatch_prepare_storage_manifest_build_compose_entries",
+        "nested",
+        async () => {
+          return await Promise.all(
+            args.composeVolumes.map((volume) => {
+              return get(
+                buildComposeStorageEntry({
+                  db: args.db,
+                  index: args.storageIndex,
+                  bucket: args.bucket,
+                  agentOrgId: args.agentOrgId,
+                  volume,
+                }),
+              );
+            }),
+          );
+        },
+      ),
+      measureApiDispatchTiming(
+        args.timing,
+        "api_dispatch_prepare_storage_manifest_build_additional_entries",
+        "nested",
+        async () => {
+          return await Promise.all(
+            (args.additionalVolumes ?? []).map((volume) => {
+              return get(
+                buildAdditionalStorageEntry({
+                  db: args.db,
+                  index: args.storageIndex,
+                  bucket: args.bucket,
+                  runtimeOrgId: args.runtimeOrgId,
+                  volume,
+                }),
+              );
+            }),
+          );
+        },
+      ),
+      measureApiDispatchTiming(
+        args.timing,
+        "api_dispatch_prepare_storage_manifest_build_artifact_entries",
+        "nested",
+        async () => {
+          return await Promise.all(
+            args.artifacts.map((artifact) => {
+              return get(
+                buildArtifactEntry({
+                  db: args.db,
+                  index: args.storageIndex,
+                  bucket: args.bucket,
+                  runtimeOrgId: args.runtimeOrgId,
+                  userId: args.userId,
+                  artifact,
+                }),
+              );
+            }),
+          );
+        },
+      ),
     ]);
 
-    const [composeEntries, additionalEntries, artifactEntries] =
-      await Promise.all([
-        Promise.all(
-          composeVolumes.map((volume) => {
-            return get(
-              buildComposeStorageEntry({
-                db: args.db,
-                index: storageIndex,
-                bucket,
-                agentOrgId: args.agentOrgId,
-                volume,
-              }),
-            );
-          }),
-        ),
-        Promise.all(
-          (args.additionalVolumes ?? []).map((volume) => {
-            return get(
-              buildAdditionalStorageEntry({
-                db: args.db,
-                index: storageIndex,
-                bucket,
-                runtimeOrgId: args.runtimeOrgId,
-                volume,
-              }),
-            );
-          }),
-        ),
-        Promise.all(
-          artifacts.map((artifact) => {
-            return get(
-              buildArtifactEntry({
-                db: args.db,
-                index: storageIndex,
-                bucket,
-                runtimeOrgId: args.runtimeOrgId,
-                userId: args.userId,
-                artifact,
-              }),
-            );
-          }),
-        ),
-      ]);
+  return { composeEntries, additionalEntries, artifactEntries };
+}
 
-    return {
-      storages: [
-        ...mergeStorageEntries({
-          composeEntries: composeEntries.filter(
-            (entry): entry is ManifestStorage => {
-              return entry !== null;
-            },
-          ),
-          additionalEntries: additionalEntries.filter(
-            (entry): entry is ManifestStorage => {
-              return entry !== null;
-            },
-          ),
-        }),
-      ],
-      artifacts: artifactEntries,
-    };
+async function assembleStorageManifest(args: {
+  readonly composeEntries: readonly OptionalManifestStorage[];
+  readonly additionalEntries: readonly OptionalManifestStorage[];
+  readonly artifactEntries: ManifestArtifact[];
+  readonly timing?: ApiDispatchTimingCollector;
+}): Promise<StorageManifest> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_prepare_storage_manifest_assemble",
+    "nested",
+    () => {
+      return {
+        storages: [
+          ...mergeStorageEntries({
+            composeEntries: args.composeEntries.filter(isManifestStorage),
+            additionalEntries: args.additionalEntries.filter(isManifestStorage),
+          }),
+        ],
+        artifacts: args.artifactEntries,
+      };
+    },
+  );
+}
+
+export function prepareAgentRunStorageManifest(
+  args: PrepareAgentRunStorageManifestArgs,
+): Computed<Promise<StorageManifest>> {
+  return computed(async (get): Promise<StorageManifest> => {
+    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
+    const { artifacts, composeVolumes } =
+      await resolveStorageManifestInputs(args);
+
+    await ensureStorageManifestArtifacts(get, {
+      db: args.db,
+      runtimeOrgId: args.runtimeOrgId,
+      userId: args.userId,
+      bucket,
+      artifacts,
+      timing: args.timing,
+    });
+
+    const storageIndex = await loadTimedStorageIndex({
+      db: args.db,
+      agentOrgId: args.agentOrgId,
+      runtimeOrgId: args.runtimeOrgId,
+      timing: args.timing,
+    });
+
+    const entries = await buildStorageManifestEntries(get, {
+      db: args.db,
+      bucket,
+      storageIndex,
+      agentOrgId: args.agentOrgId,
+      runtimeOrgId: args.runtimeOrgId,
+      userId: args.userId,
+      composeVolumes,
+      additionalVolumes: args.additionalVolumes,
+      artifacts,
+      timing: args.timing,
+    });
+
+    return await assembleStorageManifest({
+      ...entries,
+      timing: args.timing,
+    });
   });
 }
