@@ -1,7 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { initClient } from "@ts-rest/core";
+import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import {
   integrationsSlackMessageContract,
   integrationsSlackUploadInitContract,
@@ -76,7 +76,7 @@ interface DownloadSlackFileResult {
  * Download a Slack file to a local path, streaming the response body to disk.
  * Uses the org bot token on the server side; the CLI just authenticates via
  * ZERO_TOKEN and writes the bytes. Response is binary, so this bypasses the
- * ts-rest contract system.
+ * typed contract client.
  */
 export async function downloadSlackFile(
   fileId: string,

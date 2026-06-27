@@ -36,7 +36,7 @@ export function mockUploadSuccess(result: MockUploadResult): HttpHandler[] {
   const uploadUrl = uploadUrlFor(result.id);
   return [
     // mockApi cannot be used here: /api/zero/uploads/prepare is an internal
-    // helper endpoint with no ts-rest contract (see route.ts — returns
+    // helper endpoint with no typed contract (see route.ts — returns
     // presigned URLs, not domain data).
     http.post("*/api/zero/uploads/prepare", () => {
       return HttpResponse.json({ ...result, uploadUrl });
@@ -59,7 +59,7 @@ export function mockUploadPending(
   const mockHttp = createMockHttp(context);
   return [
     // mockApi cannot be used here: /api/zero/uploads/prepare is an internal
-    // helper endpoint with no ts-rest contract.
+    // helper endpoint with no typed contract.
     http.post("*/api/zero/uploads/prepare", () => {
       return HttpResponse.json({ ...result, uploadUrl });
     }),

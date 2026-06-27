@@ -62,6 +62,17 @@ const FOLLOWUP_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
 const HISTORY_THREAD_ID = "b0000000-0000-4000-a000-000000000705";
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
 
+function computerUsePermissions() {
+  return {
+    accessibility: true,
+    screenRecording: true,
+    automation: {
+      chrome: { status: "unknown" as const, updatedAt: null, reason: null },
+      safari: { status: "unknown" as const, updatedAt: null, reason: null },
+    },
+  };
+}
+
 interface PushBrowserMock {
   readonly register: ReturnType<typeof vi.fn>;
 }
@@ -2603,7 +2614,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
     });
 
     await waitFor(() => {
@@ -2647,7 +2657,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
     });
 
     await waitFor(() => {
@@ -3351,7 +3360,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
     });
 
     await waitFor(() => {
@@ -3451,7 +3459,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
     });
 
     await waitFor(() => {
@@ -3554,7 +3561,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
     });
 
     await waitFor(() => {
@@ -3623,10 +3629,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.VideoTemplatePicker]: true,
-      },
     });
 
     await waitFor(() => {
@@ -3642,7 +3644,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("hides historical template labels behind picker feature switches", async () => {
+  it("shows historical template labels after picker rollout", async () => {
     const threadId = "template-message-history-gated";
     const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
@@ -3684,23 +3686,16 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: false,
-      },
     });
 
     await waitFor(() => {
       expect(screen.getByText("Create the business review deck")).toBeVisible();
       expect(
-        screen.queryByLabelText(
-          `Message template ${presentationTemplate.title}`,
-        ),
-      ).not.toBeInTheDocument();
+        screen.getByLabelText(`Message template ${presentationTemplate.title}`),
+      ).toHaveTextContent("Presentation");
       expect(
-        screen.queryByLabelText(
-          `Message template ${illustrationTemplate.title}`,
-        ),
-      ).not.toBeInTheDocument();
+        screen.getByLabelText(`Message template ${illustrationTemplate.title}`),
+      ).toHaveTextContent("Illustration");
     });
   });
 
@@ -4170,7 +4165,7 @@ describe("chat lifecycle", () => {
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
             supportedCapabilities: ["app.open"],
-            permissions: { accessibility: true, screenRecording: true },
+            permissions: computerUsePermissions(),
             status: "online",
             lastSeenAt: "2026-06-10T12:00:00Z",
             createdAt: "2026-06-10T11:00:00Z",
@@ -4181,7 +4176,7 @@ describe("chat lifecycle", () => {
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
             supportedCapabilities: ["app.open"],
-            permissions: { accessibility: true, screenRecording: true },
+            permissions: computerUsePermissions(),
             status: "online",
             lastSeenAt: "2026-06-10T12:01:00Z",
             createdAt: "2026-06-10T11:01:00Z",
@@ -4192,7 +4187,7 @@ describe("chat lifecycle", () => {
             appVersion: "1.0.0",
             osVersion: "Windows 11",
             supportedCapabilities: ["app.open"],
-            permissions: { accessibility: true, screenRecording: true },
+            permissions: computerUsePermissions(),
             status: "offline",
             lastSeenAt: "2026-06-09T12:00:00Z",
             createdAt: "2026-06-09T11:00:00Z",
@@ -4272,7 +4267,7 @@ describe("chat lifecycle", () => {
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
             supportedCapabilities: ["app.open"],
-            permissions: { accessibility: true, screenRecording: true },
+            permissions: computerUsePermissions(),
             status: "online",
             lastSeenAt: "2026-06-10T12:00:00Z",
             createdAt: "2026-06-10T11:00:00Z",
@@ -4320,7 +4315,7 @@ describe("chat lifecycle", () => {
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
             supportedCapabilities: ["app.open"],
-            permissions: { accessibility: true, screenRecording: true },
+            permissions: computerUsePermissions(),
             status: hostOnline ? "online" : "offline",
             lastSeenAt: "2026-06-10T12:00:00Z",
             createdAt: "2026-06-10T11:00:00Z",
@@ -4393,7 +4388,7 @@ describe("chat lifecycle", () => {
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
             supportedCapabilities: ["app.open"],
-            permissions: { accessibility: true, screenRecording: true },
+            permissions: computerUsePermissions(),
             status: "online",
             lastSeenAt: "2026-06-10T12:00:00Z",
             createdAt: "2026-06-10T11:00:00Z",
@@ -4470,7 +4465,7 @@ describe("chat lifecycle", () => {
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
             supportedCapabilities: ["app.open"],
-            permissions: { accessibility: true, screenRecording: true },
+            permissions: computerUsePermissions(),
             status: "online",
             lastSeenAt: "2026-06-10T12:00:00Z",
             createdAt: "2026-06-10T11:00:00Z",
@@ -4524,7 +4519,7 @@ describe("chat lifecycle", () => {
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
             supportedCapabilities: ["app.open"],
-            permissions: { accessibility: true, screenRecording: true },
+            permissions: computerUsePermissions(),
             status: "offline",
             lastSeenAt: "2026-06-10T12:00:00Z",
             createdAt: "2026-06-10T11:00:00Z",

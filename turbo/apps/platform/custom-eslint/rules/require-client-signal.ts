@@ -2,7 +2,7 @@
  * ESLint rule: require-client-signal
  *
  * In src/signals/**, any async non-computed function that accepts an
- * AbortSignal and calls a ts-rest client obtained from zeroClient$ must pass
+ * AbortSignal and calls a contract client obtained from zeroClient$ must pass
  * that signal via `fetchOptions: { signal }`.
  *
  * Good:

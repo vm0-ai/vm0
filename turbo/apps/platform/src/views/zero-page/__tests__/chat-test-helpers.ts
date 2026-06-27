@@ -116,6 +116,9 @@ export function mockSubagentThread(context: TestContext, threadId: string) {
         description: null;
         sound: null;
         avatarUrl: string | null;
+        modelProviderId: string | null;
+        selectedModel: string | null;
+        preferPersonalProvider: boolean;
       }
     > = {
       [DEFAULT_AGENT_ID]: {
@@ -125,6 +128,9 @@ export function mockSubagentThread(context: TestContext, threadId: string) {
         description: null,
         sound: null,
         avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
       },
       [SUB_AGENT_ID]: {
         agentId: SUB_AGENT_ID,
@@ -133,6 +139,9 @@ export function mockSubagentThread(context: TestContext, threadId: string) {
         description: null,
         sound: null,
         avatarUrl: "https://example.com/avatar.png",
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
       },
     };
     const agent = agents[params.id];

@@ -11,6 +11,17 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
+function computerUsePermissions() {
+  return {
+    accessibility: true,
+    screenRecording: true,
+    automation: {
+      chrome: { status: "unknown" as const, updatedAt: null, reason: null },
+      safari: { status: "unknown" as const, updatedAt: null, reason: null },
+    },
+  };
+}
+
 function computerUseHost(args: {
   readonly id: string;
   readonly displayName: string;
@@ -22,7 +33,7 @@ function computerUseHost(args: {
     appVersion: "1.0.0",
     osVersion: "macOS 15.0",
     supportedCapabilities: ["app.open"],
-    permissions: { accessibility: true, screenRecording: true },
+    permissions: computerUsePermissions(),
     status: args.status,
     lastSeenAt: "2026-06-10T12:00:00Z",
     createdAt: "2026-06-10T11:00:00Z",

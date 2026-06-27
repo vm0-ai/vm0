@@ -197,7 +197,7 @@ describe("POST /api/zero/billing/checkout", () => {
 
     const response = await client.create({
       body: {
-        // ts-rest contract z.enum(["pro","team"]) rejects this at parse time
+        // typed contract z.enum(["pro","team"]) rejects this at parse time
         tier: "enterprise" as "pro",
         successUrl: `${APP_ORIGIN}/billing?billing=success`,
         cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,

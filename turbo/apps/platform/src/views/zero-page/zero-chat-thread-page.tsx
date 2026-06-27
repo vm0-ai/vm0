@@ -985,13 +985,6 @@ function GithubPrTrackingButton({
   );
 }
 
-function featureSwitchEnabled(
-  features: Record<FeatureSwitchKey, boolean> | undefined,
-  key: FeatureSwitchKey,
-): boolean {
-  return features?.[key] ?? false;
-}
-
 // Loads automations and only renders once this thread has at least one linked
 // automation.
 export function AutomationMenuButton({
@@ -2575,14 +2568,7 @@ export function ZeroChatThreadPage() {
   const presentationEditorUrl = useGet(currentPresentationEditorUrl$);
   const closePresentationEditor = useSet(closePresentationEditor$);
   const artifactFullscreen = useGet(artifactFullscreen$);
-  const features = useLastResolved(featureSwitch$);
-  const presentationHtmlEditorEnabled = featureSwitchEnabled(
-    features,
-    FeatureSwitchKey.PresentationHtmlPptxDownload,
-  );
-  const activePresentationEditorUrl = presentationHtmlEditorEnabled
-    ? presentationEditorUrl
-    : null;
+  const activePresentationEditorUrl = presentationEditorUrl;
   const artifactPanelOpen =
     artifactRef !== null || artifactInboxThreadId !== null;
   const automationPanelOpen = automationPanelThreadId !== null;
@@ -6193,14 +6179,6 @@ function UserMessageGenerationTemplate({
 }: {
   generationTemplate: GenerationTemplateRequest | undefined;
 }) {
-  const features = useLastResolved(featureSwitch$);
-  const templateLabelEnabled =
-    generationTemplate?.type === "video"
-      ? (features?.[FeatureSwitchKey.VideoTemplatePicker] ?? false)
-      : (features?.[FeatureSwitchKey.ChatTemplatePicker] ?? false);
-  if (!templateLabelEnabled) {
-    return null;
-  }
   const label = generationTemplateLabel(generationTemplate);
   const typeLabel = generationTemplateTypeLabel(generationTemplate);
   if (!label || !typeLabel) {

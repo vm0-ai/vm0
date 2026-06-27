@@ -1,7 +1,6 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 
@@ -344,9 +343,6 @@ function setupPresentationArtifactThread(
       }),
     ],
     content: `[Quarterly roadmap](${presentationUrl})`,
-    featureSwitches: {
-      [FeatureSwitchKey.PresentationHtmlPptxDownload]: true,
-    },
     path: `${THREAD_PATH}?artifact=${encodeURIComponent(presentationUrl)}`,
   });
 }
@@ -1019,9 +1015,6 @@ ${openFencedHostedSiteUrl}`,
         }),
       ],
       content: `[Missing roadmap](${presentationUrl})`,
-      featureSwitches: {
-        [FeatureSwitchKey.PresentationHtmlPptxDownload]: true,
-      },
       path: `${THREAD_PATH}?artifact=${encodeURIComponent(presentationUrl)}`,
     });
 

@@ -442,7 +442,7 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    // Raw GET for 400s the ts-rest contracts cannot express (queue-position
+    // Raw GET for 400s the typed contracts cannot express (queue-position
     // without runId, telemetry queries rejected by zod before the handler).
     // Modeled on rawSearchLogs in helpers/api-bdd-ops-logs.ts.
     async rawApiRequest(
