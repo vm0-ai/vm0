@@ -458,7 +458,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         };
         let err = result.as_ref().err().map(|e| e.to_string());
         telemetry.record(
-            "runner_storage_download_total",
+            "runner_storage_manifest_apply",
             t.elapsed(),
             result.is_ok(),
             err.as_deref(),

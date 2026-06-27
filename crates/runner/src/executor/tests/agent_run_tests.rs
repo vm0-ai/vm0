@@ -268,8 +268,8 @@ async fn run_in_sandbox_runs_guest_download_for_cached_instruction_normalization
     let ops = telemetry.pending_ops_snapshot();
     assert!(
         ops.iter()
-            .any(|(action, success, _)| action == "runner_storage_download_total" && *success),
-        "runner storage download total should be recorded with the disambiguated metric name: {ops:?}"
+            .any(|(action, success, _)| action == "runner_storage_manifest_apply" && *success),
+        "runner storage manifest apply should be recorded with the disambiguated metric name: {ops:?}"
     );
     assert!(
         ops.iter()
