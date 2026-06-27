@@ -963,10 +963,10 @@ export const createZeroIntegrationRun$ = command(
     args: CreateZeroIntegrationRunCommandArgs,
     signal: AbortSignal,
   ) => {
-    const db = set(writeDb$);
     const timing = zeroServiceEntryTiming({
       apiStartTime: args.apiStartTime,
     });
+    const db = set(writeDb$);
     const agent = await measureZeroPreCreate(
       timing,
       "api_dispatch_pre_create_zero_load_agent",
@@ -1063,11 +1063,11 @@ export const createZeroIntegrationRun$ = command(
 
 export const createZeroRun$ = command(
   async ({ set }, args: CreateZeroRunCommandArgs, signal: AbortSignal) => {
-    const db = set(writeDb$);
     const timing = zeroServiceEntryTiming({
       apiStartTime: args.apiStartTime,
       timing: args.timing,
     });
+    const db = set(writeDb$);
 
     const agentId = await measureZeroPreCreate(
       timing,
