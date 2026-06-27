@@ -138,6 +138,8 @@ class TestResponseHandler:
                 flow,
                 upstream_chunk=upstream_chunk,
             )
+            assert not jsonl_exists_after_flush(tmp_path / "proxy.jsonl")
+            flow.response.trailers = header_map({"x-upstream-trailer": "discarded"})
             mitm_addon.response(flow)
 
         content = flow.response.content
@@ -148,6 +150,7 @@ class TestResponseHandler:
         assert flow.response.headers["content-length"] == str(len(diagnostic_body))
         assert "content-encoding" not in flow.response.headers
         assert "transfer-encoding" not in flow.response.headers
+        assert flow.response.trailers is None
         assert flow.response.stream is False
         assert metadata_keys.STREAM_BUFFER not in flow.metadata
         assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata

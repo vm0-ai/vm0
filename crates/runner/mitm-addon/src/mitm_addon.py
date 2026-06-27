@@ -1126,6 +1126,12 @@ def _maybe_replace_connector_diagnostic_response(
     if flow.response is None:
         return
     if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS):
+        flow.response.trailers = None
+        _log_connector_diagnostic_proxy_entry(
+            flow,
+            original_url=original_url,
+            upstream_status=flow.response.status_code,
+        )
         return
     if flow.response.status_code not in (
         _HTTP_STATUS_UNAUTHORIZED,
@@ -1228,11 +1234,6 @@ def _install_connector_diagnostic_response_stream(flow: http.HTTPFlow) -> bool:
     if body is None:
         return False
     flow.metadata[_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS] = True
-    _log_connector_diagnostic_proxy_entry(
-        flow,
-        original_url=original_url,
-        upstream_status=upstream_status,
-    )
 
     def stream_connector_diagnostic_response(chunk: bytes) -> bytes:
         if chunk:
