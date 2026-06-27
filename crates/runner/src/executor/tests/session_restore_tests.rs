@@ -164,6 +164,21 @@ fn restored_session_identity_changes_with_framework_session_and_history_hash() {
     });
     let codex_identity = RestoredSessionIdentity::from_context(&ctx).expect("codex identity");
     assert_ne!(claude_identity, codex_identity);
+
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "019E9154C30470F0ADDE36EFB1BE1701".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: "hash-a".into(),
+                url: "https://example.com/history".into(),
+                size: Some(12),
+            },
+        },
+    });
+    let codex_compact_uppercase_identity =
+        RestoredSessionIdentity::from_context(&ctx).expect("codex compact uppercase identity");
+    assert_eq!(codex_identity, codex_compact_uppercase_identity);
 }
 
 #[test]

@@ -7,7 +7,7 @@ use tracing::{info, warn};
 
 use super::cli_framework::{EffectiveCliFramework, effective_cli_framework};
 use super::env::validate_resume_session_id;
-use super::session_id::is_valid_session_id;
+use super::session_id::{canonical_codex_thread_id, is_valid_session_id};
 use super::{RunnerError, RunnerResult};
 use crate::paths::diagnostic_session_fingerprint;
 use crate::restored_session_identity::{RestoredSessionFramework, RestoredSessionIdentity};
@@ -25,16 +25,30 @@ impl RestoredSessionIdentity {
         validate_resume_session_id(context).ok()?;
         let resume_session = context.resume_session.as_ref()?;
         let history_ref = resume_session.history_ref()?;
-        let framework =
-            restored_session_framework(effective_cli_framework(&context.cli_agent_type));
+        let effective_framework = effective_cli_framework(&context.cli_agent_type);
+        let framework = restored_session_framework(effective_framework);
+        let session_id = restored_session_identity_session_id(
+            effective_framework,
+            &resume_session.cli_agent_session_id,
+        )?;
         Some(Self::new(
             framework,
-            &resume_session.cli_agent_session_id,
+            &session_id,
             history_ref.kind,
             history_ref.hash.clone(),
             history_ref.size,
             None,
         ))
+    }
+}
+
+fn restored_session_identity_session_id(
+    framework: EffectiveCliFramework,
+    session_id: &str,
+) -> Option<String> {
+    match framework {
+        EffectiveCliFramework::ClaudeCode => Some(session_id.to_owned()),
+        EffectiveCliFramework::Codex => canonical_codex_thread_id(session_id),
     }
 }
 
