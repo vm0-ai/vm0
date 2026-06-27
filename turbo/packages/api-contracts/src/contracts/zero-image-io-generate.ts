@@ -5,6 +5,10 @@ import { apiErrorSchema } from "./errors";
 import { zeroBuiltInGenerationAcceptedResponseSchema } from "./zero-built-in-generation";
 
 const c = initContract();
+const stringOrStringArraySchema = z.union([
+  z.string(),
+  z.array(z.string()).readonly(),
+]);
 
 export const zeroImageIoGenerateRequestSchema = z
   .object({
@@ -19,10 +23,10 @@ export const zeroImageIoGenerateRequestSchema = z
     seed: z.unknown().optional(),
     safetyTolerance: z.unknown().optional(),
     enhancePrompt: z.unknown().optional(),
-    imageUrl: z.unknown().optional(),
-    image_url: z.unknown().optional(),
-    imageUrls: z.unknown().optional(),
-    image_urls: z.unknown().optional(),
+    imageUrl: stringOrStringArraySchema.optional(),
+    image_url: stringOrStringArraySchema.optional(),
+    imageUrls: stringOrStringArraySchema.optional(),
+    image_urls: stringOrStringArraySchema.optional(),
     maskImageUrl: z.unknown().optional(),
     mask_image_url: z.unknown().optional(),
     inputFidelity: z.unknown().optional(),

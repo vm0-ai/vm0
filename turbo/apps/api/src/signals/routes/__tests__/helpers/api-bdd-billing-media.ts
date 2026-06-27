@@ -702,7 +702,7 @@ export function createBillingMediaApi(context: TestContext) {
         readonly safetyTolerance?: string;
         readonly enhancePrompt?: boolean;
         readonly imageUrl?: string;
-        readonly imageUrls?: readonly unknown[];
+        readonly imageUrls?: readonly string[];
         readonly maskImageUrl?: string;
         readonly inputFidelity?: string;
         readonly imagePromptStrength?: number;
