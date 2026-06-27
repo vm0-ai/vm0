@@ -588,31 +588,19 @@ class TestGetFirewallHeaders:
         """The cooldown is burned before awaiting the forced auth fetch."""
         cache_key = auth_cache_key()
         mark_force_refresh(cache_key)
-        fetch_entered = asyncio.Event()
-        allow_fetch_return = asyncio.Event()
 
         async def delayed_fetch(*args, **kwargs):
             assert kwargs["force_refresh"] is True
             assert require_last_force_refresh_monotonic_at(cache_key) == 1234.0
-            fetch_entered.set()
-            await allow_fetch_return.wait()
             return _auth_success(headers={"Authorization": "Bearer new"})
 
         with (
             patch.object(auth_cache.time, "monotonic", return_value=1234.0),
             patch.object(auth_cache, "fetch_firewall_headers", side_effect=delayed_fetch),
         ):
-            task = asyncio.create_task(
-                auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
-            )
-            try:
-                await asyncio.wait_for(fetch_entered.wait(), timeout=5)
-                assert require_last_force_refresh_monotonic_at(cache_key) == 1234.0
-                allow_fetch_return.set()
-                await task
-            finally:
-                allow_fetch_return.set()
-                await cancel_pending_task(task)
+            await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
+
+        assert require_last_force_refresh_monotonic_at(cache_key) == 1234.0
 
     async def test_non_forced_fetch_does_not_cache_if_marker_appears_in_flight(self, headers):
         """A 401 marker during a non-forced fetch must win over the cache write."""
