@@ -1,13 +1,14 @@
 // Agent-scoped workflow detail at /agents/:agentId/workflows/:workflowId. Hosts
 // the instruction editor, supplementary file manager (SKILL.md is never shown),
 // triggers, visibility controls, metadata editing, slash use, copy, and delete.
-import type {
-  CSSProperties,
-  FormEvent,
-  InputHTMLAttributes,
-  ReactNode,
-} from "react";
-import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
+import type { FormEvent, InputHTMLAttributes, ReactNode } from "react";
+import {
+  useGet,
+  useLastLoadable,
+  useLastResolved,
+  useLoadable,
+  useSet,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type {
   GmailLabelAppliedEventConfig,
@@ -25,18 +26,17 @@ import {
   IconChevronDown,
   IconClock,
   IconCopy,
-  IconDotsVertical,
   IconFileText,
   IconLink,
   IconLoader2,
   IconMail,
+  IconMessageCircle,
   IconPencil,
   IconPlus,
   IconShieldLock,
   IconTrash,
   IconUpload,
   IconUsers,
-  IconX,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -51,7 +51,6 @@ import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
-  DropdownMenuSeparator,
   DropdownMenuTrigger,
   Input,
   Select,
@@ -59,7 +58,12 @@ import {
   SelectItem,
   SelectTrigger,
   SelectValue,
+  Tabs,
+  TabsList,
+  TabsTrigger,
 } from "@vm0/ui";
+import type { ConnectorType } from "@vm0/connectors/connectors";
+import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 
 import { agents$ } from "../../signals/agent.ts";
 import { user$ } from "../../signals/auth.ts";
@@ -90,21 +94,21 @@ import {
   setScheduleTriggerType$,
   setSelectedWorkflowFilePath$,
   setWorkflowActionDialog$,
-  setWorkflowDetailTriggerSidebarOpen$,
+  setWorkflowAuthorizedConnectors$,
+  setWorkflowDetailActiveTab$,
   setWorkflowFileDraft$,
   setWorkflowTriggerCreateDialog$,
   setWorkflowTriggerEnabled$,
-  setWorkflowTriggerPermissionsDrawerTriggerId$,
   updateWorkflowGmailNewMessageTrigger$,
   updateWorkflowGmailLabelAppliedTrigger$,
   updateWorkflowScheduleTrigger$,
   updateWorkflow$,
   workflowActionDialog$,
+  workflowAuthorizedConnectors,
+  workflowDetailActiveTab$,
   workflowTriggerCreateDialog$,
-  workflowDetailTriggerSidebarOpen$,
   workflowFileDraft$,
   workflowDetail,
-  workflowTriggerPermissionsDrawerTriggerId$,
   type WorkflowCronFields,
   type WorkflowCronFrequency,
   workflowEditDraft$,
@@ -117,7 +121,7 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
-import { detach, Reason } from "../../signals/utils.ts";
+import { bestEffort, detach, Reason } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 import {
   atTimeInTimezone,
@@ -133,9 +137,35 @@ import {
   DetailPageMain,
   DetailPageShell,
 } from "../components/detail-page-layout.tsx";
-import { TriggerPermissionsDialog } from "../trigger-permissions/trigger-permissions-page.tsx";
 import { TiptapInstructionsEditor } from "../zero-page/tiptap-instructions-editor.tsx";
 import { ZeroUnsavedBar } from "../zero-page/zero-unsaved-bar.tsx";
+import { toast } from "@vm0/ui/components/ui/sonner";
+import {
+  applyUserPermissionGrants$,
+  userPermissionGrantsByWorkflow,
+} from "../../signals/permission-allow/permission-allow-signals.ts";
+import { savePermissionDraftPolicies } from "../../signals/zero-page/settings/permission-grant-save.ts";
+import {
+  allConnectorTypes$,
+  matchesConnectorSearch,
+} from "../../signals/zero-page/settings/connectors.ts";
+import {
+  permConnectorType$,
+  permSavingType$,
+  permSearch$,
+  permSearchActive$,
+  setPermConnectorType$,
+  setPermSavingType$,
+  setPermSearch$,
+  setPermSearchActive$,
+} from "../../signals/zero-page/zero-job-detail-page.ts";
+import {
+  AgentPermissionsDrawer,
+  ConnectedConnectorPermissions,
+  NoConnectedConnectors,
+  PermissionGrantsError,
+  PermissionListSkeleton,
+} from "../team-page/zero-job-detail-page.tsx";
 import {
   agentLabel,
   isMarkdownPath,
@@ -150,7 +180,6 @@ const TRIGGER_FIELD_CLASS =
 const WORKFLOW_EDIT_TEXTAREA_CLASS =
   "min-h-24 w-full resize-y rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm text-foreground placeholder:text-sm placeholder:text-muted-foreground outline-none transition-colors focus:border-primary focus:ring-[3px] focus:ring-primary/10 disabled:cursor-not-allowed disabled:opacity-50";
 const TRIGGER_TIMEZONE = "UTC";
-const WORKFLOW_SIDEBAR_WIDTH = "min(520px, 42vw)";
 
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
 type GmailTextMatcher = NonNullable<GmailMatchRules["from"]>;
@@ -260,82 +289,27 @@ function WorkflowDetailContent({
   const detailLoadable = useLoadable(workflowDetail(workflowId));
   const detail =
     detailLoadable.state === "hasData" ? detailLoadable.data : null;
-  const triggerSidebarOpen = useGet(workflowDetailTriggerSidebarOpen$);
-  const setTriggerSidebarOpen = useSet(setWorkflowDetailTriggerSidebarOpen$);
-  const permissionTriggerId = useGet(
-    workflowTriggerPermissionsDrawerTriggerId$,
-  );
-  const setPermissionTriggerId = useSet(
-    setWorkflowTriggerPermissionsDrawerTriggerId$,
-  );
-  const permissionTrigger =
-    detail?.triggers.find((trigger) => {
-      return trigger.id === permissionTriggerId;
-    }) ?? null;
-  const shellStyle = {
-    "--workflow-trigger-sidebar-width": WORKFLOW_SIDEBAR_WIDTH,
-  } as CSSProperties;
+  const activeTab = useGet(workflowDetailActiveTab$);
+  const setActiveTab = useSet(setWorkflowDetailActiveTab$);
 
   return (
-    <div className="flex min-h-0 flex-1" style={shellStyle}>
-      <DetailPageShell
-        scroll={false}
-        className={cn(
-          "min-w-0",
-          triggerSidebarOpen ? "hidden flex-1 basis-0 xl:flex" : "flex flex-1",
+    <DetailPageShell>
+      <WorkflowBreadcrumb detail={detail} />
+      <DetailHeader
+        detail={detail}
+        activeTab={activeTab}
+        onTabChange={setActiveTab}
+      />
+      <DetailPageMain>
+        {detail ? (
+          <WorkflowTabContent activeTab={activeTab} detail={detail} />
+        ) : detailLoadable.state === "hasData" ? (
+          <p className="text-sm text-muted-foreground">Workflow not found.</p>
+        ) : (
+          <DetailSkeleton />
         )}
-      >
-        <DetailHeader
-          detail={detail}
-          triggerSidebarOpen={triggerSidebarOpen}
-          onTriggerSidebarOpenChange={setTriggerSidebarOpen}
-        />
-        <DetailPageMain scrollable constrainContent>
-          {detail ? (
-            <WorkflowDetailBody detail={detail} />
-          ) : detailLoadable.state === "hasData" ? (
-            <p className="text-sm text-muted-foreground">Workflow not found.</p>
-          ) : (
-            <DetailSkeleton />
-          )}
-        </DetailPageMain>
-      </DetailPageShell>
-      {triggerSidebarOpen && detail ? (
-        <div className="hidden w-px shrink-0 bg-border/60 xl:block" />
-      ) : null}
-      <div
-        className={cn(
-          "min-h-0 min-w-0 overflow-hidden",
-          triggerSidebarOpen
-            ? "flex flex-1 basis-0 xl:w-[var(--workflow-trigger-sidebar-width)] xl:flex-none xl:basis-[var(--workflow-trigger-sidebar-width)]"
-            : "pointer-events-none hidden w-0 flex-none basis-0",
-        )}
-        aria-hidden={!triggerSidebarOpen}
-      >
-        {triggerSidebarOpen && detail ? (
-          <TriggersSection
-            detail={detail}
-            onClose={() => {
-              setTriggerSidebarOpen(false);
-            }}
-            onOpenTriggerPermissions={setPermissionTriggerId}
-          />
-        ) : null}
-      </div>
-      {permissionTrigger && detail ? (
-        <TriggerPermissionsDialog
-          agentId={detail.agentId}
-          workflowId={detail.id}
-          trigger={permissionTrigger}
-          open
-          onOpenChange={(open) => {
-            if (!open) {
-              setPermissionTriggerId(null);
-            }
-          }}
-        />
-      ) : null}
-    </div>
+      </DetailPageMain>
+    </DetailPageShell>
   );
 }
 
@@ -378,8 +352,6 @@ function WorkflowBreadcrumb({
       <span className="min-w-0 truncate rounded-md px-1.5 py-0.5 text-inherit">
         {workflowTitle(detail)}
       </span>
-      <span className="select-none text-muted-foreground/40">/</span>
-      <WorkflowFilePicker detail={detail} />
     </DetailPageBreadcrumbBar>
   );
 }
@@ -407,156 +379,105 @@ function BreadcrumbLink({
   );
 }
 
-function WorkflowMobileCascade({
-  detail,
-}: {
-  readonly detail: ZeroWorkflowDetailResponse | null;
-}) {
-  const navigate = useSet(detachedNavigateTo$);
-  const selectedFilePath = useGet(selectedWorkflowFilePath$);
-  const setSelectedFilePath = useSet(setSelectedWorkflowFilePath$);
-
-  if (!detail) {
-    return (
-      <div
-        className="h-8 w-48 rounded-md bg-muted/50 md:hidden"
-        aria-hidden="true"
-      />
-    );
-  }
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="inline-flex min-w-0 items-center gap-1.5 rounded-md px-2 py-1 text-sm font-medium text-foreground transition-colors hover:bg-muted md:hidden"
-        >
-          <IconFileText size={14} stroke={1.5} className="shrink-0" />
-          <span className="min-w-0 truncate">
-            {workflowTitle(detail)} / {selectedFilePath ?? "instructions"}
-          </span>
-          <IconChevronDown
-            size={14}
-            stroke={1.5}
-            className="shrink-0 text-muted-foreground"
-          />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="start" className="w-72">
-        <DropdownMenuItem
-          onSelect={() => {
-            navigate(ROUTES.agents);
-          }}
-        >
-          Agents
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => {
-            navigate(ROUTES.agentDetail, {
-              pathParams: { agentId: detail.agentId },
-            });
-          }}
-        >
-          {agentLabel(detail)}
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          onSelect={() => {
-            navigate(ROUTES.agentWorkflows, {
-              pathParams: { agentId: detail.agentId },
-            });
-          }}
-        >
-          workflows
-        </DropdownMenuItem>
-        <div className="my-1 h-px bg-border/60" />
-        <DropdownMenuItem
-          className={cn(!selectedFilePath ? "bg-muted" : "")}
-          onSelect={() => {
-            setSelectedFilePath(null);
-          }}
-        >
-          instructions
-        </DropdownMenuItem>
-        {(detail.files ?? []).map((file) => {
-          return (
-            <DropdownMenuItem
-              key={file.path}
-              className={cn(selectedFilePath === file.path ? "bg-muted" : "")}
-              onSelect={() => {
-                setSelectedFilePath(file.path);
-              }}
-            >
-              {file.path}
-            </DropdownMenuItem>
-          );
-        })}
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function WorkflowDetailBody({
-  detail,
-}: {
-  readonly detail: ZeroWorkflowDetailResponse;
-}) {
-  return (
-    <div className="flex min-h-[calc(100vh-8rem)] flex-col">
-      <ShadowWarning detail={detail} />
-      <WorkflowFilePreview detail={detail} />
-    </div>
-  );
-}
-
 function DetailHeader({
   detail,
-  triggerSidebarOpen,
-  onTriggerSidebarOpenChange,
+  activeTab,
+  onTabChange,
 }: {
   readonly detail: ZeroWorkflowDetailResponse | null;
-  readonly triggerSidebarOpen: boolean;
-  readonly onTriggerSidebarOpenChange: (open: boolean) => void;
+  readonly activeTab: "authorization" | "triggers" | "info";
+  readonly onTabChange: (tab: "authorization" | "triggers" | "info") => void;
 }) {
   return (
-    <DetailPageHeader className="pt-4" contentClassName="max-w-none">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0 flex-1">
-          <WorkflowBreadcrumb detail={detail} />
-          <WorkflowMobileCascade detail={detail} />
+    <DetailPageHeader>
+      {detail ? (
+        <>
+          <div className="min-w-0">
+            <div className="flex min-w-0 flex-wrap items-center gap-2">
+              <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+                {workflowTitle(detail)}
+              </h1>
+              <span className="inline-flex max-w-full shrink-0 items-center rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 text-xs font-medium text-muted-foreground">
+                /{detail.name}
+              </span>
+            </div>
+            <p className="mt-1.5 max-w-3xl text-sm leading-tight text-muted-foreground">
+              {detail.description || "No description yet"}
+            </p>
+          </div>
+          <div className="mt-4 flex items-center gap-2 sm:mt-6">
+            <WorkflowTabNav activeTab={activeTab} onTabChange={onTabChange} />
+            <WorkflowChatButton detail={detail} />
+          </div>
+        </>
+      ) : (
+        <div className="animate-pulse space-y-3">
+          <div className="h-5 w-48 rounded bg-muted" />
+          <div className="h-4 w-72 rounded bg-muted" />
+          <div className="mt-4 h-9 w-80 rounded bg-muted" />
         </div>
-        {detail ? (
-          <div className="ml-auto flex shrink-0 items-center gap-2">
-            <WorkflowUseThisButton detail={detail} />
-            <button
-              type="button"
-              className={cn(
-                "zero-btn-morandi inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm",
-                triggerSidebarOpen ? "bg-muted" : "",
-              )}
-              aria-pressed={triggerSidebarOpen}
-              onClick={() => {
-                onTriggerSidebarOpenChange(!triggerSidebarOpen);
-              }}
-            >
-              <IconClock size={14} stroke={1.5} />
-              <span className="hidden sm:inline">Trigger</span>
-            </button>
-            <WorkflowActionsMenu detail={detail} />
-          </div>
-        ) : (
-          <div className="flex shrink-0 items-center gap-2" aria-hidden="true">
-            <div className="h-9 w-9 rounded-md bg-muted/50 sm:w-24" />
-            <div className="h-9 w-9 rounded-md bg-muted/50 sm:w-20" />
-            <div className="size-9 rounded-md bg-muted/50" />
-          </div>
-        )}
-      </div>
+      )}
     </DetailPageHeader>
   );
 }
 
-function WorkflowUseThisButton({
+const WORKFLOW_TAB_TRIGGER_CLASS =
+  "gap-1.5 px-3 text-sm data-[state=active]:bg-background";
+
+function WorkflowTabNav({
+  activeTab,
+  onTabChange,
+}: {
+  readonly activeTab: "authorization" | "triggers" | "info";
+  readonly onTabChange: (tab: "authorization" | "triggers" | "info") => void;
+}) {
+  return (
+    <Tabs
+      value={activeTab}
+      onValueChange={(tab) => {
+        onTabChange(tab as "authorization" | "triggers" | "info");
+      }}
+      className="min-w-0 flex-1"
+    >
+      <div className="sm:hidden">
+        <Select
+          value={activeTab}
+          onValueChange={(tab) => {
+            onTabChange(tab as "authorization" | "triggers" | "info");
+          }}
+        >
+          <SelectTrigger className="h-9 w-full">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="authorization">Authorization</SelectItem>
+            <SelectItem value="triggers">Triggers</SelectItem>
+            <SelectItem value="info">Info</SelectItem>
+          </SelectContent>
+        </Select>
+      </div>
+      <TabsList className="zero-tabs hidden h-9 gap-1 px-1 py-1 sm:inline-flex">
+        <TabsTrigger
+          value="authorization"
+          className={WORKFLOW_TAB_TRIGGER_CLASS}
+        >
+          <IconShieldLock size={14} stroke={1.5} />
+          Authorization
+        </TabsTrigger>
+        <TabsTrigger value="triggers" className={WORKFLOW_TAB_TRIGGER_CLASS}>
+          <IconClock size={14} stroke={1.5} />
+          Triggers
+        </TabsTrigger>
+        <TabsTrigger value="info" className={WORKFLOW_TAB_TRIGGER_CLASS}>
+          <IconFileText size={14} stroke={1.5} />
+          Info
+        </TabsTrigger>
+      </TabsList>
+    </Tabs>
+  );
+}
+
+function WorkflowChatButton({
   detail,
 }: {
   readonly detail: ZeroWorkflowDetailResponse;
@@ -566,7 +487,8 @@ function WorkflowUseThisButton({
   return (
     <button
       type="button"
-      className="zero-btn-morandi inline-flex h-9 items-center gap-1.5 rounded-md px-3 text-sm"
+      aria-label="Chat with Zero"
+      className="zero-btn-morandi inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm"
       onClick={() => {
         navigate(ROUTES.agentChat, {
           pathParams: { agentId: detail.agentId },
@@ -574,35 +496,173 @@ function WorkflowUseThisButton({
         });
       }}
     >
-      <IconPlus size={14} stroke={1.5} />
-      <span className="hidden sm:inline">Use this</span>
+      <IconMessageCircle size={14} stroke={1.5} />
+      <span className="hidden sm:inline">Chat with Zero</span>
     </button>
   );
 }
 
-function ShadowWarning({
+function WorkflowTabContent({
+  activeTab,
+  detail,
+}: {
+  readonly activeTab: "authorization" | "triggers" | "info";
+  readonly detail: ZeroWorkflowDetailResponse;
+}) {
+  const content = (() => {
+    switch (activeTab) {
+      case "authorization": {
+        return <WorkflowAuthorizationTab detail={detail} />;
+      }
+      case "triggers": {
+        return <TriggersSection detail={detail} />;
+      }
+      case "info": {
+        return <WorkflowInfoTab detail={detail} />;
+      }
+    }
+  })();
+
+  return (
+    <>
+      <ShadowWarning detail={detail} />
+      {content}
+    </>
+  );
+}
+
+function WorkflowAuthorizationTab({
   detail,
 }: {
   readonly detail: ZeroWorkflowDetailResponse;
 }) {
-  if (!detail.shadowedBy) {
-    return null;
+  const authorizedLoadable = useLastLoadable(
+    workflowAuthorizedConnectors(detail.id),
+  );
+  const authorizedConnectors =
+    authorizedLoadable.state === "hasData" ? authorizedLoadable.data : [];
+  const allTypesLoadable = useLastLoadable(allConnectorTypes$);
+  const allConnectors =
+    allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+  const userGrantsLoadable = useLoadable(
+    userPermissionGrantsByWorkflow({ workflowId: detail.id }),
+  );
+  const userGrants =
+    userGrantsLoadable.state === "hasData" ? userGrantsLoadable.data : [];
+  const userGrantPolicies =
+    userGrantsLoadable.state === "hasData"
+      ? permissionGrantsToFirewallPolicies(userGrants)
+      : null;
+  const drawerInitialPolicies = userGrantPolicies ?? {};
+  const [, applyGrantPolicies] = useLoadableSet(applyUserPermissionGrants$);
+  const [saveConnectorsLoadable, setWorkflowConnectors] = useLoadableSet(
+    setWorkflowAuthorizedConnectors$,
+  );
+  const pageSignal = useGet(pageSignal$);
+  const connectorType = useGet(permConnectorType$);
+  const setConnectorType = useSet(setPermConnectorType$);
+  const search = useGet(permSearch$);
+  const setSearch = useSet(setPermSearch$);
+  const searchActive = useGet(permSearchActive$);
+  const setSearchActive = useSet(setPermSearchActive$);
+  const savingType = useGet(permSavingType$);
+  const setSavingType = useSet(setPermSavingType$);
+  const connectedConnectors = allConnectors.filter((connector) => {
+    return connector.connected;
+  });
+  const filteredConnectors = connectedConnectors.filter((connector) => {
+    return matchesConnectorSearch(search, connector);
+  });
+  const authorizedSet = new Set(authorizedConnectors);
+  const loading =
+    authorizedLoadable.state === "loading" ||
+    allTypesLoadable.state !== "hasData" ||
+    userGrantsLoadable.state === "loading";
+
+  const handleToggle = async (type: ConnectorType, checked: boolean) => {
+    if (savingType !== null || saveConnectorsLoadable.state === "loading") {
+      return;
+    }
+    const next = checked
+      ? Array.from(new Set([...authorizedConnectors, type]))
+      : authorizedConnectors.filter((connector) => {
+          return connector !== type;
+        });
+    setSavingType(type);
+    await bestEffort(
+      (async () => {
+        await setWorkflowConnectors(
+          { workflowId: detail.id, enabledTypes: next },
+          pageSignal,
+        );
+        toast.success("Connectors saved");
+      })(),
+    );
+    setSavingType(null);
+  };
+
+  if (loading) {
+    return <PermissionListSkeleton />;
+  }
+
+  if (userGrantsLoadable.state === "hasError") {
+    return <PermissionGrantsError />;
   }
 
   return (
-    <div className="mb-4 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
-      <IconAlertTriangle size={16} stroke={1.5} className="mt-0.5 shrink-0" />
-      <p className="min-w-0">
-        <span className="font-medium">/{detail.name}</span> currently resolves
-        to{" "}
-        <span className="font-medium">{workflowTitle(detail.shadowedBy)}</span>{" "}
-        for you. This workflow is shadowed by the same-slug priority rule.
-      </p>
+    <div className="mx-auto flex max-w-[900px] flex-col gap-4">
+      {connectedConnectors.length === 0 ? (
+        <NoConnectedConnectors />
+      ) : (
+        <>
+          <ConnectedConnectorPermissions
+            filteredConnectors={filteredConnectors}
+            authorizedSet={authorizedSet}
+            search={search}
+            setSearch={setSearch}
+            searchActive={searchActive}
+            setSearchActive={setSearchActive}
+            savingType={savingType}
+            canManagePermissions
+            onToggle={handleToggle}
+            onManage={setConnectorType}
+          />
+          <AgentPermissionsDrawer
+            targetId={detail.id}
+            targetKind="workflow"
+            connectorType={connectorType}
+            displayName={workflowTitle(detail)}
+            initialPolicies={drawerInitialPolicies}
+            initialGrants={userGrants}
+            resetEnabled
+            readOnly={false}
+            onApply={async (intent, { metadata }) => {
+              if (connectorType === null) {
+                throw new Error("Cannot save permissions without a connector");
+              }
+              await savePermissionDraftPolicies({
+                scope: { workflowId: detail.id },
+                connectorType,
+                metadata,
+                initialPolicies: drawerInitialPolicies,
+                initialGrants: userGrants,
+                intent,
+                pageSignal,
+                applyGrantPolicies,
+              });
+              toast.success("Permissions updated");
+            }}
+            onClose={() => {
+              setConnectorType(null);
+            }}
+          />
+        </>
+      )}
     </div>
   );
 }
 
-function WorkflowActionsMenu({
+function WorkflowInfoTab({
   detail,
 }: {
   readonly detail: ZeroWorkflowDetailResponse;
@@ -612,56 +672,93 @@ function WorkflowActionsMenu({
   const openEditDialog = useSet(openWorkflowEditDialog$);
 
   return (
-    <>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            aria-label="Workflow actions"
-            className="zero-btn-morandi inline-flex size-9 items-center justify-center rounded-md"
-          >
-            <IconDotsVertical size={16} stroke={1.5} />
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-72">
-          <div className="px-2 py-2">
+    <div className="mx-auto flex max-w-[900px] flex-col gap-4">
+      <div className="zero-card">
+        <div className="flex items-center justify-between gap-4 border-b border-border/50 px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">Visibility</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Choose how this workflow is shared inside your workspace.
+            </p>
+          </div>
+          <div className="w-72 max-w-full shrink-0">
             <WorkflowPublicToggle detail={detail} />
           </div>
-          <DropdownMenuSeparator />
-          <DropdownMenuItem
-            disabled={!detail.canManage}
-            className="gap-2"
-            onSelect={() => {
-              openEditDialog(detail);
+        </div>
+        <button
+          type="button"
+          disabled={!detail.canManage}
+          className="flex w-full items-center gap-3 border-b border-border/50 px-5 py-4 text-left transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
+          onClick={() => {
+            openEditDialog(detail);
+          }}
+        >
+          <IconPencil
+            size={16}
+            stroke={1.5}
+            className="text-muted-foreground"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-foreground">
+              Edit details
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              Update title, description, and slug.
+            </span>
+          </span>
+        </button>
+        <button
+          type="button"
+          className="flex w-full items-center gap-3 border-b border-border/50 px-5 py-4 text-left transition-colors hover:bg-muted/50"
+          onClick={() => {
+            setActionDialog("copy");
+          }}
+        >
+          <IconCopy size={16} stroke={1.5} className="text-muted-foreground" />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium text-foreground">
+              Copy workflow
+            </span>
+            <span className="block text-xs text-muted-foreground">
+              Copy this workflow to another agent.
+            </span>
+          </span>
+        </button>
+        {detail.canManage ? (
+          <button
+            type="button"
+            className="flex w-full items-center gap-3 px-5 py-4 text-left text-destructive transition-colors hover:bg-destructive/5"
+            onClick={() => {
+              setActionDialog("delete");
             }}
           >
-            <IconPencil size={15} stroke={1.5} />
-            Edit
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            className="gap-2"
-            onSelect={() => {
-              setActionDialog("copy");
-            }}
-          >
-            <IconCopy size={15} stroke={1.5} />
-            Copy
-          </DropdownMenuItem>
-          {detail.canManage ? (
-            <DropdownMenuItem
-              className="gap-2 text-destructive focus:text-destructive"
-              onSelect={() => {
-                setActionDialog("delete");
-              }}
-            >
-              <IconTrash size={15} stroke={1.5} />
-              Delete
-            </DropdownMenuItem>
-          ) : null}
-          <DropdownMenuSeparator />
-          <WorkflowAuditMetadata detail={detail} />
-        </DropdownMenuContent>
-      </DropdownMenu>
+            <IconTrash size={16} stroke={1.5} />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">Delete workflow</span>
+              <span className="block text-xs text-destructive/80">
+                Delete this workflow and its triggers.
+              </span>
+            </span>
+          </button>
+        ) : null}
+      </div>
+      <div className="zero-card px-5 py-4">
+        <WorkflowAuditMetadata detail={detail} />
+      </div>
+      <div className="zero-card overflow-hidden">
+        <div className="flex items-center justify-between gap-3 border-b border-border/50 px-5 py-4">
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">Content</p>
+            <p className="mt-0.5 text-xs text-muted-foreground">
+              Edit the workflow instructions and attached files.
+            </p>
+          </div>
+          <WorkflowFilePicker detail={detail} />
+        </div>
+        <div className="px-5 pb-5">
+          <WorkflowFilePreview detail={detail} />
+        </div>
+      </div>
       <WorkflowEditDialog
         detail={detail}
         open={actionDialog === "edit"}
@@ -687,7 +784,29 @@ function WorkflowActionsMenu({
           setActionDialog(open ? "delete" : null);
         }}
       />
-    </>
+    </div>
+  );
+}
+
+function ShadowWarning({
+  detail,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse;
+}) {
+  if (!detail.shadowedBy) {
+    return null;
+  }
+
+  return (
+    <div className="mb-4 flex items-start gap-2 rounded-md border border-amber-500/30 bg-amber-500/10 px-3 py-2 text-sm text-amber-800 dark:text-amber-200">
+      <IconAlertTriangle size={16} stroke={1.5} className="mt-0.5 shrink-0" />
+      <p className="min-w-0">
+        <span className="font-medium">/{detail.name}</span> currently resolves
+        to{" "}
+        <span className="font-medium">{workflowTitle(detail.shadowedBy)}</span>{" "}
+        for you. This workflow is shadowed by the same-slug priority rule.
+      </p>
+    </div>
   );
 }
 
@@ -2221,12 +2340,8 @@ function TriggerCreateMenu({
 
 function TriggersSection({
   detail,
-  onClose,
-  onOpenTriggerPermissions,
 }: {
   readonly detail: ZeroWorkflowDetailResponse;
-  readonly onClose: () => void;
-  readonly onOpenTriggerPermissions: (triggerId: string) => void;
 }) {
   const createDialog = useGet(workflowTriggerCreateDialog$);
   const setCreateDialog = useSet(setWorkflowTriggerCreateDialog$);
@@ -2241,32 +2356,22 @@ function TriggersSection({
     features[FeatureSwitchKey.WorkflowWebhookTriggers] ?? false;
 
   return (
-    <aside className="flex min-h-0 w-full flex-col bg-background">
-      <div className="flex h-14 shrink-0 items-center justify-between gap-3 border-b border-border/60 px-4">
+    <section className="mx-auto flex max-w-[900px] flex-col gap-3">
+      <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="text-sm font-medium text-foreground">Trigger</span>
+          <span className="text-sm font-medium text-foreground">Triggers</span>
           <span className="text-xs text-muted-foreground">
             {triggers.length}
           </span>
         </div>
-        <div className="flex shrink-0 items-center gap-2">
-          <TriggerCreateMenu
-            onSelect={setCreateDialog}
-            webhookTriggersEnabled={webhookTriggersEnabled}
-          />
-          <button
-            type="button"
-            aria-label="Close trigger sidebar"
-            className="zero-btn-morandi inline-flex size-8 items-center justify-center rounded-md"
-            onClick={onClose}
-          >
-            <IconX size={15} stroke={1.5} />
-          </button>
-        </div>
+        <TriggerCreateMenu
+          onSelect={setCreateDialog}
+          webhookTriggersEnabled={webhookTriggersEnabled}
+        />
       </div>
-      <div className="min-h-0 flex-1 overflow-auto p-3">
+      <div className="zero-card">
         {triggers.length > 0 ? (
-          <div className="flex flex-col gap-1">
+          <div className="flex flex-col">
             {triggers.map((trigger) => {
               return (
                 <TriggerRow
@@ -2274,13 +2379,12 @@ function TriggersSection({
                   trigger={trigger}
                   canManage={trigger.ownerUserId === currentUserId}
                   displayTimezone={displayTimezone}
-                  onOpenPermissions={onOpenTriggerPermissions}
                 />
               );
             })}
           </div>
         ) : (
-          <p className="px-2 py-3 text-xs text-muted-foreground">
+          <p className="px-5 py-4 text-sm text-muted-foreground">
             No triggers.
           </p>
         )}
@@ -2314,7 +2418,7 @@ function TriggersSection({
           setCreateDialog(open ? "webhook" : null);
         }}
       />
-    </aside>
+    </section>
   );
 }
 
@@ -3157,12 +3261,10 @@ function TriggerRow({
   trigger,
   canManage,
   displayTimezone,
-  onOpenPermissions,
 }: {
   readonly trigger: ZeroWorkflowTriggerSummary;
   readonly canManage: boolean;
   readonly displayTimezone: string;
-  readonly onOpenPermissions: (triggerId: string) => void;
 }) {
   const editingTriggerId = useGet(editingWorkflowTriggerId$);
   const setEditingTriggerId = useSet(setEditingWorkflowTriggerId$);
@@ -3224,7 +3326,6 @@ function TriggerRow({
             trigger={trigger}
             editing={editing}
             displayTimezone={displayTimezone}
-            onOpenPermissions={onOpenPermissions}
           />
         ) : null}
         {canManage && trigger.kind === "schedule" && editing ? (
@@ -3267,12 +3368,10 @@ function TriggerControls({
   trigger,
   editing,
   displayTimezone,
-  onOpenPermissions,
 }: {
   readonly trigger: ZeroWorkflowTriggerSummary;
   readonly editing: boolean;
   readonly displayTimezone: string;
-  readonly onOpenPermissions: (triggerId: string) => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const setEditingTriggerId = useSet(setEditingWorkflowTriggerId$);
@@ -3291,17 +3390,6 @@ function TriggerControls({
 
   return (
     <div className="mt-1 flex items-center gap-2">
-      <button
-        type="button"
-        disabled={busy}
-        className="inline-flex items-center gap-1 text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
-        onClick={() => {
-          onOpenPermissions(trigger.id);
-        }}
-      >
-        <IconShieldLock size={13} stroke={1.5} />
-        <span>Permissions</span>
-      </button>
       {canEdit && !editing ? (
         <button
           type="button"

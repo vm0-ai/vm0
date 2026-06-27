@@ -105,6 +105,7 @@ interface ConnectorPermission {
 
 interface PermissionsDrawerProps {
   agentId: string;
+  targetKind?: "agent" | "workflow";
   connectorType: ConnectorType;
   displayName: string;
   initialPolicies: FirewallPolicies;
@@ -178,8 +179,12 @@ function buildInitialPermissionDrawerState({
 function PermissionsDrawerHeader({
   connectorType,
   displayName,
+  targetKind = "agent",
   surface,
-}: Pick<PermissionsDrawerProps, "connectorType" | "displayName"> & {
+}: Pick<
+  PermissionsDrawerProps,
+  "connectorType" | "displayName" | "targetKind"
+> & {
   readonly surface: PermissionsSurface;
 }) {
   const connectorLabel = CONNECTOR_TYPES[connectorType].label;
@@ -192,7 +197,9 @@ function PermissionsDrawerHeader({
     </>
   );
   const description =
-    "Configure which actions this agent is allowed to perform via this connector.";
+    targetKind === "workflow"
+      ? "Configure which actions this workflow is allowed to perform via this connector."
+      : "Configure which actions this agent is allowed to perform via this connector.";
 
   if (surface === "dialog") {
     return (
@@ -1476,6 +1483,7 @@ function PermissionsContent({
       <PermissionsDrawerHeader
         connectorType={props.connectorType}
         displayName={props.displayName}
+        targetKind={props.targetKind}
         surface={surface}
       />
 

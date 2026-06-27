@@ -18,16 +18,33 @@ const userPermissionGrantAuthOptions = {
 const listQuery$ = queryOf(zeroUserPermissionGrantsContract.list);
 const applyBody$ = bodyResultOf(zeroUserPermissionGrantsContract.apply);
 
+function permissionGrantScopeFromQuery(query: {
+  readonly agentId?: string;
+  readonly workflowId?: string;
+}):
+  | { readonly agentId: string; readonly workflowId?: never }
+  | { readonly workflowId: string; readonly agentId?: never } {
+  if (query.workflowId !== undefined) {
+    return { workflowId: query.workflowId };
+  }
+  if (query.agentId !== undefined) {
+    return { agentId: query.agentId };
+  }
+  throw new Error("Expected permission grant scope");
+}
+
 const listUserPermissionGrantsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const query = get(listQuery$);
+    const scope = permissionGrantScopeFromQuery(query);
     const result = await set(
       listUserPermissionGrants$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        agentId: query.agentId,
+        role: auth.orgRole ?? "member",
+        ...scope,
       },
       signal,
     );
@@ -54,6 +71,7 @@ const applyUserPermissionGrantsInner$ = command(
       {
         orgId: auth.orgId,
         userId: auth.userId,
+        role: auth.orgRole ?? "member",
         apply: bodyResult.data,
       },
       signal,

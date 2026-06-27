@@ -141,7 +141,10 @@ async function applyPermissionGrant(
   if (!grant) {
     throw new Error("User permission grant apply did not return a grant");
   }
-  return grant;
+  if (!grant.agentId) {
+    throw new Error("User permission grant apply did not return agent scope");
+  }
+  return { ...grant, agentId: grant.agentId };
 }
 
 describe("zero user permission grants", () => {

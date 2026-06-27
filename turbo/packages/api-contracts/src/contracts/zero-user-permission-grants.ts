@@ -5,6 +5,7 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 const agentIdSchema = z.string().uuid();
+const workflowIdSchema = z.string().uuid();
 const connectorRefSchema = z.string().min(1).max(64);
 const permissionSchema = z.string().min(1).max(128);
 
@@ -17,8 +18,22 @@ export const userPermissionGrantExpiresInSchema = z.enum([
   "always",
 ]);
 
-export const userPermissionGrantResponseSchema = z.object({
+const agentPermissionGrantScopeSchema = z.object({
   agentId: agentIdSchema,
+  workflowId: z.never().optional(),
+});
+
+const workflowPermissionGrantScopeSchema = z.object({
+  workflowId: workflowIdSchema,
+  agentId: z.never().optional(),
+});
+
+export const userPermissionGrantScopeSchema = z.union([
+  agentPermissionGrantScopeSchema,
+  workflowPermissionGrantScopeSchema,
+]);
+
+const userPermissionGrantResponseBaseSchema = z.object({
   connectorRef: connectorRefSchema,
   permission: permissionSchema,
   action: userPermissionGrantActionSchema,
@@ -27,9 +42,27 @@ export const userPermissionGrantResponseSchema = z.object({
   updatedAt: z.string(),
 });
 
-export const listUserPermissionGrantsQuerySchema = z.object({
-  agentId: agentIdSchema,
-});
+export const userPermissionGrantResponseSchema =
+  userPermissionGrantResponseBaseSchema
+    .extend({
+      agentId: agentIdSchema.optional(),
+      workflowId: workflowIdSchema.optional(),
+    })
+    .refine(
+      (grant) => grant.agentId !== undefined || grant.workflowId !== undefined,
+      {
+        message: "Either agentId or workflowId is required",
+      },
+    )
+    .refine(
+      (grant) => grant.agentId === undefined || grant.workflowId === undefined,
+      {
+        message: "Only one of agentId or workflowId can be provided",
+      },
+    );
+
+export const listUserPermissionGrantsQuerySchema =
+  userPermissionGrantScopeSchema;
 
 const applyUserPermissionGrantBaseSchema = z.object({
   permission: permissionSchema,
@@ -46,12 +79,14 @@ export const applyUserPermissionGrantSchema = z.discriminatedUnion("action", [
   }),
 ]);
 
-export const applyUserPermissionGrantsRequestSchema = z.object({
-  agentId: agentIdSchema,
-  connectorRef: connectorRefSchema,
-  mode: userPermissionGrantApplyModeSchema,
-  grants: z.array(applyUserPermissionGrantSchema),
-});
+export const applyUserPermissionGrantsRequestSchema =
+  userPermissionGrantScopeSchema.and(
+    z.object({
+      connectorRef: connectorRefSchema,
+      mode: userPermissionGrantApplyModeSchema,
+      grants: z.array(applyUserPermissionGrantSchema),
+    }),
+  );
 
 export const zeroUserPermissionGrantsContract = c.router({
   list: {
@@ -66,7 +101,8 @@ export const zeroUserPermissionGrantsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary: "List current user's active permission grants for an agent",
+    summary:
+      "List current user's active permission grants for an agent or workflow",
   },
   apply: {
     method: "PUT",

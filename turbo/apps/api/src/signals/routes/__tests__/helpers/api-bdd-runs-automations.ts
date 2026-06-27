@@ -14,7 +14,6 @@ import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-bil
 import {
   zeroUserPermissionGrantsContract,
   type ApplyUserPermissionGrant,
-  type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import {
@@ -620,8 +619,10 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async applyUserPermissionGrant(
       actor: ApiTestUser,
-      body: Pick<ApplyUserPermissionGrantsRequest, "agentId" | "connectorRef"> &
-        ApplyUserPermissionGrant,
+      body: {
+        readonly agentId: string;
+        readonly connectorRef: string;
+      } & ApplyUserPermissionGrant,
     ): Promise<UserPermissionGrantResponse> {
       const response = await accept(
         setupApp({ context })(zeroUserPermissionGrantsContract).apply({

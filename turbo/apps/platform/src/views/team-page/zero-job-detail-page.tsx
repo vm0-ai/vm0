@@ -432,7 +432,7 @@ function PermissionRow({
   );
 }
 
-function PermissionListSkeleton() {
+export function PermissionListSkeleton() {
   return (
     <div className="mx-auto max-w-[900px]">
       <div className="zero-card animate-pulse">
@@ -459,7 +459,7 @@ function PermissionListSkeleton() {
   );
 }
 
-function PermissionGrantsError() {
+export function PermissionGrantsError() {
   return (
     <div className="mx-auto max-w-[900px]">
       <div className="zero-card px-5 py-4 text-sm text-destructive">
@@ -469,7 +469,7 @@ function PermissionGrantsError() {
   );
 }
 
-function NoConnectedConnectors() {
+export function NoConnectedConnectors() {
   return (
     <>
       <div className="zero-card py-8 flex flex-col items-center gap-3">
@@ -494,7 +494,7 @@ function NoConnectedConnectors() {
   );
 }
 
-function ConnectedConnectorPermissions({
+export function ConnectedConnectorPermissions({
   filteredConnectors,
   authorizedSet,
   search,
@@ -615,8 +615,9 @@ function ConnectedConnectorPermissions({
   );
 }
 
-function AgentPermissionsDrawer({
-  agentId,
+export function AgentPermissionsDrawer({
+  targetId,
+  targetKind = "agent",
   connectorType,
   displayName,
   initialPolicies,
@@ -626,7 +627,8 @@ function AgentPermissionsDrawer({
   onApply,
   onClose,
 }: {
-  agentId: string;
+  targetId: string;
+  targetKind?: "agent" | "workflow";
   connectorType: ConnectorType | null;
   displayName: string;
   initialPolicies: FirewallPolicies;
@@ -646,7 +648,8 @@ function AgentPermissionsDrawer({
   }
   return (
     <PermissionsDrawer
-      agentId={agentId}
+      agentId={targetId}
+      targetKind={targetKind}
       connectorType={connectorType}
       displayName={displayName}
       initialPolicies={initialPolicies}
@@ -767,7 +770,7 @@ function JobPermissionsTab({
             onManage={setConnectorType}
           />
           <AgentPermissionsDrawer
-            agentId={agentId}
+            targetId={agentId}
             connectorType={connectorType}
             displayName={displayName}
             initialPolicies={drawerInitialPolicies}
@@ -779,7 +782,7 @@ function JobPermissionsTab({
                 throw new Error("Cannot save permissions without a connector");
               }
               await savePermissionDraftPolicies({
-                agentId,
+                scope: { agentId },
                 connectorType,
                 metadata,
                 initialPolicies: drawerInitialPolicies,

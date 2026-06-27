@@ -8,6 +8,7 @@ import {
   type ZeroWorkflowSummary,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 
 import { mockApi } from "../msw-contract.ts";
 import {
@@ -18,6 +19,7 @@ import {
 const DEFAULT_WORKFLOWS: ZeroWorkflowDetailResponse[] = [];
 
 let mockWorkflows: ZeroWorkflowDetailResponse[] = [...DEFAULT_WORKFLOWS];
+const mockWorkflowUserConnectors = new Map<string, string[]>();
 
 function notFound(workflowId: string) {
   return {
@@ -97,6 +99,7 @@ function triggerSummary(
 
 export function resetMockWorkflows(): void {
   mockWorkflows = [...DEFAULT_WORKFLOWS];
+  mockWorkflowUserConnectors.clear();
 }
 
 export const apiWorkflowsHandlers = [
@@ -242,6 +245,21 @@ export const apiWorkflowsHandlers = [
       runId: `run-${workflow.id}`,
     });
   }),
+
+  mockApi(zeroWorkflowUserConnectorsContract.get, ({ params, respond }) => {
+    return respond(200, {
+      enabledTypes: mockWorkflowUserConnectors.get(params.id) ?? [],
+    });
+  }),
+
+  mockApi(
+    zeroWorkflowUserConnectorsContract.update,
+    ({ body, params, respond }) => {
+      const enabledTypes = Array.from(new Set(body.enabledTypes));
+      mockWorkflowUserConnectors.set(params.id, enabledTypes);
+      return respond(200, { enabledTypes });
+    },
+  ),
 
   ...visibilityHandlers(),
   ...workflowTriggerHandlers(),

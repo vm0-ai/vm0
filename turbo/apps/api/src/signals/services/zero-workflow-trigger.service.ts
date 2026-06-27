@@ -16,7 +16,7 @@ import {
 import { loadFirewallPermissionIndex } from "@vm0/connectors/firewall-metadata/server";
 import { parseScheduledAtTime } from "@vm0/core/timezone";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { userConnectors } from "@vm0/db/schema/user-connector";
+import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
   zeroWorkflowTriggers,
@@ -342,22 +342,22 @@ function uniqueConnectorRefs(
   return Array.from(new Set(connectorRefs));
 }
 
-async function loadAgentConnectorRefs(
+async function loadWorkflowConnectorRefs(
   db: ReadonlyDb,
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly agentId: string;
+    readonly workflowId: string;
   },
 ): Promise<UnattendedTriggerConnectorRefs> {
   const rows = await db
-    .select({ connectorType: userConnectors.connectorType })
-    .from(userConnectors)
+    .select({ connectorType: workflowUserConnectors.connectorType })
+    .from(workflowUserConnectors)
     .where(
       and(
-        eq(userConnectors.orgId, args.orgId),
-        eq(userConnectors.userId, args.userId),
-        eq(userConnectors.agentId, args.agentId),
+        eq(workflowUserConnectors.orgId, args.orgId),
+        eq(workflowUserConnectors.userId, args.userId),
+        eq(workflowUserConnectors.workflowId, args.workflowId),
       ),
     );
 
@@ -604,28 +604,28 @@ function triggerCreateInputIsSchedule(
   return "schedule" in args;
 }
 
-async function ensureAgentGmailConnector(
+async function ensureWorkflowGmailConnector(
   db: Db,
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly agentId: string;
+    readonly workflowId: string;
   },
 ): Promise<void> {
   await db
-    .insert(userConnectors)
+    .insert(workflowUserConnectors)
     .values({
       orgId: args.orgId,
       userId: args.userId,
-      agentId: args.agentId,
+      workflowId: args.workflowId,
       connectorType: "gmail",
     })
     .onConflictDoNothing({
       target: [
-        userConnectors.orgId,
-        userConnectors.userId,
-        userConnectors.agentId,
-        userConnectors.connectorType,
+        workflowUserConnectors.orgId,
+        workflowUserConnectors.userId,
+        workflowUserConnectors.workflowId,
+        workflowUserConnectors.connectorType,
       ],
     });
 }
@@ -646,15 +646,15 @@ async function insertGmailEventTrigger(
         }`
       : "Gmail new message";
   return await db.transaction(async (tx) => {
-    await ensureAgentGmailConnector(tx, {
+    await ensureWorkflowGmailConnector(tx, {
       orgId: args.input.orgId,
       userId: args.input.member.userId,
-      agentId: args.agentId,
+      workflowId: args.workflowId,
     });
-    const connectorRefs = await loadAgentConnectorRefs(tx, {
+    const connectorRefs = await loadWorkflowConnectorRefs(tx, {
       orgId: args.input.orgId,
       userId: args.input.member.userId,
-      agentId: args.agentId,
+      workflowId: args.workflowId,
     });
 
     const [thread] = await tx
@@ -711,10 +711,10 @@ async function insertWebhookEventTrigger(
   },
 ): Promise<ZeroWorkflowTriggerSummary> {
   return await db.transaction(async (tx) => {
-    const connectorRefs = await loadAgentConnectorRefs(tx, {
+    const connectorRefs = await loadWorkflowConnectorRefs(tx, {
       orgId: args.input.orgId,
       userId: args.input.member.userId,
-      agentId: args.agentId,
+      workflowId: args.workflowId,
     });
 
     const [thread] = await tx
@@ -845,10 +845,10 @@ async function insertScheduleTrigger(
   },
 ): Promise<ZeroWorkflowTriggerSummary> {
   return await db.transaction(async (tx) => {
-    const connectorRefs = await loadAgentConnectorRefs(tx, {
+    const connectorRefs = await loadWorkflowConnectorRefs(tx, {
       orgId: args.input.orgId,
       userId: args.input.member.userId,
-      agentId: args.agentId,
+      workflowId: args.workflowId,
     });
 
     const [thread] = await tx
@@ -1383,14 +1383,6 @@ export const enableWorkflowTrigger$ = command(
         };
       }
 
-      const agentId = await loadTriggerWorkflowAgentId(writeDb, {
-        orgId: args.orgId,
-        workflowId: trigger.workflowId,
-      });
-      signal.throwIfAborted();
-      if (agentId === null) {
-        return { kind: "not-found" };
-      }
       const watchResult = await ensureGmailWatchForUser({
         db: writeDb,
         orgId: args.orgId,
@@ -1401,10 +1393,10 @@ export const enableWorkflowTrigger$ = command(
       if (watchResult.kind !== "ok") {
         return { kind: "bad-request", message: watchResult.message };
       }
-      await ensureAgentGmailConnector(writeDb, {
+      await ensureWorkflowGmailConnector(writeDb, {
         orgId: args.orgId,
         userId: args.member.userId,
-        agentId,
+        workflowId: trigger.workflowId,
       });
       signal.throwIfAborted();
     }

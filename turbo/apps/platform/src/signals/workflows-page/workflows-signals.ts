@@ -15,6 +15,7 @@ import {
   type UnattendedTriggerConnectorRefs,
   type UnattendedTriggerPermissionPolicy,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -28,6 +29,7 @@ import {
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 
 type WorkflowDetailActionDialog = "edit" | "copy" | "delete" | null;
+export type WorkflowDetailTab = "authorization" | "triggers" | "info";
 type WorkflowTriggerCreateDialog =
   | "schedule"
   | "gmail"
@@ -40,6 +42,21 @@ type WorkflowWebhookTriggerSummary = Extract<
 >;
 const WORKFLOW_DETAIL_SIDEBAR_PARAM = "sidebar";
 const WORKFLOW_TRIGGER_SIDEBAR_VALUE = "triggers";
+export const WORKFLOW_DETAIL_TAB_PARAM = "tab";
+const WORKFLOW_DETAIL_TABS = new Set<WorkflowDetailTab>([
+  "authorization",
+  "triggers",
+  "info",
+]);
+
+function workflowDetailTabFromSearchParams(
+  params: URLSearchParams,
+): WorkflowDetailTab | null {
+  const value = params.get(WORKFLOW_DETAIL_TAB_PARAM);
+  return WORKFLOW_DETAIL_TABS.has(value as WorkflowDetailTab)
+    ? (value as WorkflowDetailTab)
+    : null;
+}
 
 export type WorkflowCronFrequency =
   | "every_day"
@@ -94,6 +111,9 @@ export const currentWorkflowId$ = computed((get): string | null => {
 });
 
 const internalWorkflowReload$ = state(0);
+const internalWorkflowConnectorAuthorizationsReload$ = state(0);
+const internalWorkflowDetailActiveTab$ =
+  state<WorkflowDetailTab>("authorization");
 
 const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
@@ -207,6 +227,7 @@ export const patchWorkflowEditDraft$ = command(
 );
 
 export const resetWorkflowDetailUiState$ = command(({ set }) => {
+  set(internalWorkflowDetailActiveTab$, "authorization");
   set(internalSelectedFilePath$, null);
   set(internalWorkflowActionDialog$, null);
   set(internalWorkflowFileDraft$, null);
@@ -218,6 +239,28 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalScheduleTriggerType$, "cron");
   set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
   set(internalEditingScheduleCronFields$, defaultWorkflowCronFields());
+});
+
+export const workflowDetailActiveTab$ = computed((get) => {
+  return (
+    workflowDetailTabFromSearchParams(get(searchParams$)) ??
+    get(internalWorkflowDetailActiveTab$)
+  );
+});
+
+export const setWorkflowDetailActiveTab$ = command(
+  ({ get, set }, tab: WorkflowDetailTab) => {
+    set(internalWorkflowDetailActiveTab$, tab);
+    const params = new URLSearchParams(get(searchParams$));
+    params.set(WORKFLOW_DETAIL_TAB_PARAM, tab);
+    set(replaceSearchParams$, params);
+  },
+);
+
+export const reloadWorkflowConnectorAuthorizations$ = command(({ set }) => {
+  set(internalWorkflowConnectorAuthorizationsReload$, (prev) => {
+    return prev + 1;
+  });
 });
 
 export const editingWorkflowTriggerId$ = computed((get) => {
@@ -392,6 +435,52 @@ function createWorkflowDetailFactory(): (
 }
 
 export const workflowDetail = createWorkflowDetailFactory();
+
+function createWorkflowAuthorizedConnectorsFactory(): (
+  workflowId: string,
+) => Computed<Promise<readonly string[]>> {
+  const cache = new Map<string, Computed<Promise<readonly string[]>>>();
+  return (workflowId: string) => {
+    const existing = cache.get(workflowId);
+    if (existing) {
+      return existing;
+    }
+    const atom$ = computed(async (get) => {
+      get(internalWorkflowConnectorAuthorizationsReload$);
+      const client = get(zeroClient$)(zeroWorkflowUserConnectorsContract);
+      const result = await accept(
+        client.get({ params: { id: workflowId } }),
+        [200],
+      );
+      return result.body.enabledTypes;
+    });
+    cache.set(workflowId, atom$);
+    return atom$;
+  };
+}
+
+export const workflowAuthorizedConnectors =
+  createWorkflowAuthorizedConnectorsFactory();
+
+export const setWorkflowAuthorizedConnectors$ = command(
+  async (
+    { get, set },
+    input: { readonly workflowId: string; readonly enabledTypes: string[] },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowUserConnectorsContract);
+    await accept(
+      client.update({
+        params: { id: input.workflowId },
+        body: { enabledTypes: input.enabledTypes },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflowConnectorAuthorizations$);
+  },
+);
 
 export const updateWorkflow$ = command(
   async (
