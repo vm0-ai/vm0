@@ -758,11 +758,69 @@ that exclude migrated roots from the remaining dirty program. Under that
 runner shape, this experiment contributes a healthy standalone auth-device
 chunk with a peak far below the full `api` OOM.
 
+### 34. TypeScript native preview tool replacement
+
+Change tested: do not change repo code. Run the native TypeScript preview CLI
+from `@typescript/native-preview` as a possible drop-in `tsc --noEmit`
+replacement.
+
+Commands:
+
+- `node scripts/measure-memory.mjs --label native-preview-api-contracts-check-types --json .memory-results/latest.jsonl -- pnpm dlx @typescript/native-preview -p packages/api-contracts/tsconfig.json --noEmit`
+- `node scripts/measure-memory.mjs --label native-preview-api-check-types --json .memory-results/latest.jsonl -- pnpm dlx @typescript/native-preview -p apps/api/tsconfig.json --noEmit`
+
+Results:
+
+- `@typescript/native-preview` resolved to `7.0.0-dev.20260624.1` under the
+  repo's package manager settings.
+- `@vm0/api-contracts` passed, but peak RSS was `1950.7 MiB`, worse than the
+  latest-main `tsc` baseline of `1688.5 MiB` and the rebased-branch `tsc`
+  result of `1678.9 MiB`.
+- `api` did not finish after more than `210s`; the run was manually stopped.
+
+Conclusion: do not adopt the native preview checker for this PR. It is a
+dev-preview compiler, does not match the repo's pinned TypeScript `6.0.3`, and
+the measured small-package peak is already worse than `tsc`. It may be worth
+revisiting once TypeScript native is stable and version-aligned with the repo,
+but it is not a safe current memory optimization.
+
+### 35. Split `@vm0/app` production and test type checks
+
+Change: add `apps/platform/tsconfig.production.json` and
+`apps/platform/tsconfig.tests.json`, then change `@vm0/app` `check-types` to
+run the two strict `tsc --noEmit` programs sequentially. The production config
+inherits the existing app tsconfig and excludes test files. The tests config
+includes test roots plus the app ambient declarations and Vitest setup file so
+Jest-DOM matchers and global `Window` augmentations remain available.
+
+Commands:
+
+- `node scripts/measure-memory.mjs --label app-production-check-types --json .memory-results/latest.jsonl -- pnpm -F @vm0/app exec tsc -p tsconfig.production.json --noEmit`
+- `node scripts/measure-memory.mjs --label app-tests-check-types-with-ambient --json .memory-results/latest.jsonl -- pnpm -F @vm0/app exec tsc -p tsconfig.tests.json --noEmit`
+- `node scripts/measure-memory.mjs --label app-split-check-types-script --json .memory-results/latest.jsonl -- pnpm -F @vm0/app check-types`
+
+Results:
+
+- Production chunk passed, peak `2084.3 MiB`, duration `47.1s`.
+- Tests chunk passed after adding the app ambient declarations and test setup,
+  peak `2132.6 MiB`, duration `53.0s`.
+- Real package script passed, peak `2144.9 MiB`, duration `82.6s`.
+- Delta versus rebased branch `@vm0/app` full check (`2223.5 MiB`): `-78.6 MiB`.
+- Delta versus latest-main `@vm0/app` full check (`2217.1 MiB`): `-72.2 MiB`.
+
+Conclusion: keep this change. It preserves strict `tsc --noEmit` coverage for
+both production and test code while reducing the package check peak by about
+`79 MiB`. The trade-off is longer wall time because two TypeScript programs run
+sequentially, but the root `turbo run check-types --concurrency=1` already
+optimizes for bounded memory over parallelism.
+
 ## Current conclusions
 
 - `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
-  preserve public exports and type strictness. On latest `origin/main`, app
-  measured `2217.1 MiB`; on the rebased branch it measured `2223.5 MiB`.
+  preserve public exports and type strictness. Also keep the production/test
+  split from experiment 35: on latest `origin/main`, app measured
+  `2217.1 MiB`; on the rebased branch before the split it measured
+  `2223.5 MiB`; with the split package script it now passes at `2144.9 MiB`.
 - `@vm0/api-contracts`: latest-main cold peak is `1688.5 MiB`; the rebased
   branch measured `1678.9 MiB`. This package is not the main problem.
 - `api`: dependency dedupe/declaration boundaries and route registry reshaping
