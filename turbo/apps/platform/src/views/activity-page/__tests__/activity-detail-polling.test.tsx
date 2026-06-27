@@ -1,4 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
 import {
@@ -9,7 +10,7 @@ import {
   type RunContextResponse,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   click,
@@ -2188,6 +2189,44 @@ describe("activity detail polling", () => {
 
     expect(extra.context).toBeUndefined();
     expect(extra.networkLogs).toStrictEqual([]);
+  });
+
+  it("silences optional activity extra fetch failures during download", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000396";
+    const toastError = vi.spyOn(toast, "error");
+
+    context.mocks.api(zeroRunContextContract.getContext, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "NOT_FOUND",
+          message: "Run context not available",
+        },
+      });
+    });
+    context.mocks.api(
+      zeroRunNetworkLogsContract.getNetworkLogs,
+      ({ respond }) => {
+        return respond(400, {
+          error: {
+            code: "BAD_REQUEST",
+            message: "Network logs unavailable",
+          },
+        });
+      },
+    );
+
+    try {
+      const extra = await context.store.set(
+        fetchDownloadExtra$,
+        runId,
+        context.signal,
+      );
+
+      expect(extra).toStrictEqual({});
+      expect(toastError).not.toHaveBeenCalled();
+    } finally {
+      toastError.mockRestore();
+    }
   });
 
   it("propagates abort while fetching raw download extras", async () => {

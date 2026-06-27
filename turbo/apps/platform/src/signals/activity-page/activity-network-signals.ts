@@ -34,6 +34,10 @@ interface ZeroActivityNetworkLogs {
   loading: boolean;
 }
 
+interface NetworkLogsRequestOptions {
+  toast?: boolean;
+}
+
 /**
  * Fetch a single page of network logs.
  */
@@ -42,6 +46,7 @@ async function fetchPage(
   runId: string,
   signal?: AbortSignal,
   cursor?: string,
+  options?: NetworkLogsRequestOptions,
 ): Promise<NetworkLogsPage> {
   const result = await accept(
     client.getNetworkLogs({
@@ -54,6 +59,7 @@ async function fetchPage(
       fetchOptions: signal ? { signal } : undefined,
     }),
     [200],
+    options,
   );
   const nextCursor = result.body.nextCursor ?? null;
   return {
@@ -70,6 +76,7 @@ export async function fetchAllNetworkLogs(
   client: NetworkLogsClient,
   runId: string,
   signal: AbortSignal,
+  options?: NetworkLogsRequestOptions,
 ): Promise<NetworkLogEntry[]> {
   const all: NetworkLogEntry[] = [];
   let cursor: string | undefined;
@@ -81,6 +88,7 @@ export async function fetchAllNetworkLogs(
       runId,
       signal,
       cursor,
+      options,
     );
     all.push(...logs);
 
