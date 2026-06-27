@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.184.1](https://github.com/vm0-ai/vm0/compare/api-v1.184.0...api-v1.184.1) (2026-06-27)
+
+
+### Performance Improvements
+
+* scope direct run connectors ([#19145](https://github.com/vm0-ai/vm0/issues/19145)) ([1fd3496](https://github.com/vm0-ai/vm0/commit/1fd349612583dc27bb333b53b19040eb622576ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.121.1
+    * @vm0/connectors bumped to 1.110.2
+    * @vm0/core bumped to 8.373.1
+    * @vm0/db bumped to 1.75.1
+
 ## [1.184.0](https://github.com/vm0-ai/vm0/compare/api-v1.183.0...api-v1.184.0) (2026-06-27)
 
 

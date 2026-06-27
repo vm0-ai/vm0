@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.500.1](https://github.com/vm0-ai/vm0/compare/app-v0.500.0...app-v0.500.1) (2026-06-27)
+
+
+### Bug Fixes
+
+* preserve computer use host order ([#19176](https://github.com/vm0-ai/vm0/issues/19176)) ([fc2b7d2](https://github.com/vm0-ai/vm0/commit/fc2b7d280ddc3d0a8b58371ced0d1aa07fbb88f3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.121.1
+    * @vm0/connectors bumped to 1.110.2
+    * @vm0/core bumped to 8.373.1
+
 ## [0.500.0](https://github.com/vm0-ai/vm0/compare/app-v0.499.0...app-v0.500.0) (2026-06-27)
 
 

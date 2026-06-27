@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.129.37](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.36...runner-rs-v0.129.37) (2026-06-27)
+
+
+### Refactoring
+
+* split runner service command module ([#19165](https://github.com/vm0-ai/vm0/issues/19165)) ([8c97aa6](https://github.com/vm0-ai/vm0/commit/8c97aa6ed38079621776473634bda7177a0524e7))
+
 ## [0.129.36](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.35...runner-rs-v0.129.36) (2026-06-27)
 
 
