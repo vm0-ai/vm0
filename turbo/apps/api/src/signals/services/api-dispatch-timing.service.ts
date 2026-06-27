@@ -78,6 +78,7 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_prepare_storage_manifest_resolve_inputs"
   | "api_dispatch_prepare_storage_manifest_ensure_artifacts"
   | "api_dispatch_prepare_storage_manifest_load_storage_index"
+  | "api_dispatch_prepare_storage_manifest_build_entries"
   | "api_dispatch_prepare_storage_manifest_build_compose_entries"
   | "api_dispatch_prepare_storage_manifest_build_additional_entries"
   | "api_dispatch_prepare_storage_manifest_build_artifact_entries"
