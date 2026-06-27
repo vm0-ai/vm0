@@ -112,6 +112,7 @@ _CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES = "_connector_diagnostic_auth_query
 _CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS = (
     "_connector_diagnostic_response_replaced_in_headers"
 )
+_CONNECTOR_DIAGNOSTIC_RESPONSE_BODY = "_connector_diagnostic_response_body"
 _CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT = "_connector_diagnostic_response_stream_body_sent"
 _CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_CALLBACK = "_connector_diagnostic_response_stream_callback"
 _CONNECTOR_DIAGNOSTIC_PROXY_ENTRY_LOGGED = "_connector_diagnostic_proxy_entry_logged"
@@ -1128,6 +1129,13 @@ def _maybe_replace_connector_diagnostic_response(
         return
     if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS):
         flow.response.trailers = None
+        body = flow.metadata.get(_CONNECTOR_DIAGNOSTIC_RESPONSE_BODY)
+        if isinstance(body, bytes) and not flow.metadata.get(
+            _CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT
+        ):
+            flow.response.content = body
+            flow.response.headers["Content-Type"] = "application/json"
+            flow.response.headers["Content-Length"] = str(len(body))
         _log_connector_diagnostic_proxy_entry(
             flow,
             original_url=original_url,
@@ -1238,6 +1246,7 @@ def _install_connector_diagnostic_response_stream(flow: http.HTTPFlow) -> bool:
     )
     if body is None:
         return False
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_RESPONSE_BODY] = body
     flow.metadata[_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS] = True
 
     def stream_connector_diagnostic_response(chunk: bytes) -> bytes | tuple[bytes, ...]:
@@ -1952,6 +1961,7 @@ def _release_terminal_flow_state(
 
 def _release_connector_diagnostic_response_stream_state(flow: http.HTTPFlow) -> None:
     stream_callback = flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_CALLBACK, None)
+    flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_RESPONSE_BODY, None)
     flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT, None)
     flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS, None)
     flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_PROXY_ENTRY_LOGGED, None)

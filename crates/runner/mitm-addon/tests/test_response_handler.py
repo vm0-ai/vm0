@@ -167,6 +167,40 @@ class TestResponseHandler:
         proxy_entries = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
         assert sum(entry["type"] == "connector_diagnostic" for entry in proxy_entries) == 1
 
+    async def test_restores_connector_diagnostic_body_when_headers_end_stream(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+        )
+        _prepare_legacy_connector_diagnostic_flow(tmp_path, flow, capture_body=True)
+
+        with mitm_ctx():
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"",
+            )
+            mitm_addon.responseheaders(flow)
+            flow.response.data.content = b""
+            mitm_addon.response(flow)
+
+        content = flow.response.content
+        assert content is not None
+        body = json.loads(content)
+        assert body["error"] == "connector_not_configured_for_run"
+        assert flow.response.headers["content-type"] == "application/json"
+        assert flow.response.headers["content-length"] == str(len(content))
+        assert flow.response.stream is False
+
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["response_size"] == len(content)
+        assert json.loads(entry["response_body"])["error"] == "connector_not_configured_for_run"
+
     async def test_streams_connector_401_when_user_auth_is_present(
         self, tmp_path, real_flow, mitm_ctx, headers
     ):
