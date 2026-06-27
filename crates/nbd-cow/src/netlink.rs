@@ -14,8 +14,10 @@
 //!   by the kernel within ~60s if there is pending I/O. Idle orphans still
 //!   require `runner gc`.
 
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::fd::{AsRawFd, OwnedFd};
 use std::path::Path;
+
+use nix::sys::socket::{AddressFamily, SockFlag, SockType, socketpair};
 
 use crate::error::{NbdCowError, Result};
 
@@ -59,20 +61,13 @@ const NBD_GENL_VERSION: u8 = 1;
 
 /// Create a Unix socketpair for NBD communication.
 pub fn create_socketpair() -> Result<(OwnedFd, OwnedFd)> {
-    let mut fds = [0i32; 2];
-    let ret = unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, fds.as_mut_ptr()) };
-    if ret < 0 {
-        return Err(NbdCowError::Io(std::io::Error::last_os_error()));
-    }
-    let fd0 = fds
-        .first()
-        .copied()
-        .ok_or_else(|| NbdCowError::Io(std::io::Error::other("failed to get fd[0]")))?;
-    let fd1 = fds
-        .get(1)
-        .copied()
-        .ok_or_else(|| NbdCowError::Io(std::io::Error::other("failed to get fd[1]")))?;
-    Ok(unsafe { (OwnedFd::from_raw_fd(fd0), OwnedFd::from_raw_fd(fd1)) })
+    socketpair(
+        AddressFamily::Unix,
+        SockType::Stream,
+        None,
+        SockFlag::SOCK_CLOEXEC,
+    )
+    .map_err(|err| NbdCowError::Io(err.into()))
 }
 
 /// Read the kernel's nbds_max parameter to know how many devices are available.
@@ -399,11 +394,26 @@ fn build_sockets_nla(client_fds: &[OwnedFd], sockets_payload_len: usize) -> Vec<
 mod tests {
     use super::*;
 
+    use nix::fcntl::{FcntlArg, FdFlag, fcntl};
+
     fn raw_nla_header(nla_len: u16, nla_type: u16) -> Vec<u8> {
         let mut attr = Vec::new();
         attr.extend_from_slice(&nla_len.to_ne_bytes());
         attr.extend_from_slice(&nla_type.to_ne_bytes());
         attr
+    }
+
+    fn assert_close_on_exec(fd: &OwnedFd) {
+        let flags = fcntl(fd, FcntlArg::F_GETFD).unwrap();
+        assert!(FdFlag::from_bits_truncate(flags).contains(FdFlag::FD_CLOEXEC));
+    }
+
+    #[test]
+    fn create_socketpair_sets_close_on_exec() {
+        let (client_fd, server_fd) = create_socketpair().unwrap();
+
+        assert_close_on_exec(&client_fd);
+        assert_close_on_exec(&server_fd);
     }
 
     #[test]
