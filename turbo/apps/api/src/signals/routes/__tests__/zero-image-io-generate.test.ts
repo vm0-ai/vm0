@@ -13,7 +13,7 @@ import { runBuiltInAdmissions } from "@vm0/db/schema/run-built-in-admission";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";

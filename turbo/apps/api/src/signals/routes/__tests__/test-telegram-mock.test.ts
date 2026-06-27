@@ -8,7 +8,7 @@ import { e2eTelegramMockCallLog } from "@vm0/db/schema/e2e-telegram-mock-call-lo
 
 import { createApp } from "../../../app-factory";
 import { mockEnv } from "../../../lib/env";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { writeDb$ } from "../../external/db";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 

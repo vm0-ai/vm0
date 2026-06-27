@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { generateSandboxToken } from "../../auth/tokens";
 import { DEFAULT_TEST_EMAIL } from "../../services/cli-auth.service";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";

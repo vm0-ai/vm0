@@ -2,7 +2,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { now } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import {

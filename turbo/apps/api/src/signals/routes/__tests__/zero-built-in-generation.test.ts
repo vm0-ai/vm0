@@ -5,7 +5,7 @@ import { eq } from "drizzle-orm";
 
 import { createApp } from "../../../app-factory";
 import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
 import {

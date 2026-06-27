@@ -8,7 +8,7 @@ import { eq } from "drizzle-orm";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { clearMockNow, mockNow, now } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {

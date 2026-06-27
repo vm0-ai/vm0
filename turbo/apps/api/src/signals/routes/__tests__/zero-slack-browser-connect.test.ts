@@ -2,7 +2,7 @@ import { createStore } from "ccstate";
 import { describe, expect, it, beforeEach } from "vitest";
 
 import { createApp } from "../../../app-factory";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import {

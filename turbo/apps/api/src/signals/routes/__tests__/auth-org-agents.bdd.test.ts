@@ -6,7 +6,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { writeDb$ } from "../../external/db";
 import {
   createAuthOrgAgentsBddApi,

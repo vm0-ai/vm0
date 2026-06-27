@@ -24,7 +24,7 @@ import { describe, expect, it } from "vitest";
 import { and, eq, inArray } from "drizzle-orm";
 
 import { createApp } from "../../../app-factory";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
 import { createFixtureTracker } from "./helpers/zero-route-test";

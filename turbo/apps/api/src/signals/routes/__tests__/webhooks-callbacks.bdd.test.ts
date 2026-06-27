@@ -16,7 +16,7 @@ import { describe, expect, it } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { writeDb$ } from "../../external/db";
 import { settle } from "../../utils";

@@ -168,6 +168,76 @@ Command: `pnpm -F api exec tsc -p tsconfig.tests-only.json --noEmit`
   `createApp`. Test splitting or explicit per-test route arrays are required
   before a split `api` check can be a full replacement.
 
+### 13. Split route-free test context helpers
+
+Change: move `testContext` and `accept` from `src/__tests__/test-helpers.ts`
+to `src/__tests__/test-context.ts`; keep re-exports from `test-helpers.ts`.
+Mechanically update 54 files that do not use `setupApp` to import from
+`test-context`.
+
+Important measurement note: files-based child tsconfigs inherited the parent
+`include: ["src/**/*", "custom-eslint/**/*"]` until the experiment configs were
+changed to use exact `include` lists. The corrected results below use exact
+child `include` entries.
+
+- Command:
+  `pnpm -F api exec tsc -p tsconfig.tests-no-setup-app.json --noEmit`
+- Result: failed OOM, peak `2252.4 MiB`.
+- Conclusion: simply moving direct `testContext` imports is not enough because
+  43 of the 54 files still reach `test-helpers.ts` transitively through BDD
+  helpers.
+
+### 14. Split app creation for explicit-route tests
+
+Change: move the Hono construction logic into `app-factory-core.ts` as
+`createAppWithRoutes`; keep `app-factory.ts` and its default `ROUTES` behavior
+intact by delegating to the core factory. Migrate `callback-route.test.ts` to
+use `createAppWithRoutes` and `RouteEntry` from `route-entry.ts`.
+
+- Corrected single-file command:
+  `pnpm -F api exec tsc -p tsconfig.tests-callback-route.json --noEmit`
+- Result: passed, peak `919.7 MiB`, duration `18.3s`.
+- Conclusion: explicit-route tests can avoid the full route registry if they use
+  the core factory; this is a safe pattern to roll through other tests.
+
+### 15. Pure-context test entry chunk
+
+Command:
+`pnpm -F api exec tsc -p tsconfig.tests-pure-context-entries.json --noEmit`
+
+- Scope: 7 real test entry files that do not transitively import `test-helpers`,
+  `app-factory`, or `signals/route.ts`.
+- Result: passed, peak `1897.9 MiB`, duration `30.7s`.
+- Conclusion: test-side chunking is viable once route-free helpers and explicit
+  route app creation are separated. Remaining BDD/setupApp tests still need
+  route-specific helper migration.
+
+### 16. Route-free contract test app helper and core BDD route slices
+
+Change: add `src/__tests__/test-app.ts` with `setupAppWithRoutes`, backed by
+`createAppWithRoutes` and explicit `readonly RouteEntry[]`. Keep the existing
+`test-helpers.ts` public `setupApp` API as a thin wrapper over full `ROUTES`.
+Migrate the core `api-bdd.ts` helper to use exact route slices for auth,
+onboarding, org, and agent contracts.
+
+Commands:
+
+- `pnpm -F api exec tsc -p tsconfig.tests-callback-route.json --noEmit`
+- `pnpm -F api exec tsc -p tsconfig.tests-pure-context-entries.json --noEmit`
+- `pnpm -F api exec tsc -p tsconfig.tests-no-setup-app.json --noEmit`
+
+Results:
+
+- `callback-route`: passed, peak `1026.0 MiB`, duration `8.5s`.
+- `pure-context` expanded from 7 to 12 roots: passed, peak `1963.2 MiB`,
+  duration `42.8s`.
+- `tests-no-setup-app` 54-root chunk: still OOM, peak `2238.3 MiB`.
+
+Conclusion: this is a safe strictness-preserving pattern. It increases
+route-free test coverage without weakening response validation or contract
+typing. The remaining OOM is now concentrated in 42 roots that still reach
+`app-factory.ts` / `signals/route.ts` through other BDD helpers.
+
 ## Current conclusions
 
 - `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
@@ -176,8 +246,9 @@ Command: `pnpm -F api exec tsc -p tsconfig.tests-only.json --noEmit`
 - `@vm0/api-contracts`: current cold peak is `1686.4 MiB`; not the main problem.
 - `api`: dependency dedupe/declaration boundaries and route registry reshaping
   did not solve the OOM. The effective direction is strict sequential chunks,
-  but full correctness still requires solving registry/core/test coverage.
-- Next API work should target test helpers first: replace default `setupApp`
-  usage with explicit route arrays where possible, so tests can be chunked
-  without importing the whole `ROUTES` registry. After that, wire route/test/core
-  chunks through a package-local `check-types` runner.
+  and the strongest measured chunks are route leaves (`2057.9 MiB` max),
+  explicit-route tests (`1026.0 MiB` for callback-route), and route-free
+  pure-context tests (`1963.2 MiB` for 12 roots).
+- Next API work should migrate BDD/setup helpers from default `setupApp` to
+  explicit route arrays and `createAppWithRoutes` where possible. After that,
+  wire route/test/core chunks through a package-local `check-types` runner.

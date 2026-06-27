@@ -6,7 +6,7 @@ import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { createApp } from "../../../app-factory";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import {

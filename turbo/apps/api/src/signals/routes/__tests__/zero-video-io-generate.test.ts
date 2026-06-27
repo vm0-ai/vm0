@@ -13,7 +13,7 @@ import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";

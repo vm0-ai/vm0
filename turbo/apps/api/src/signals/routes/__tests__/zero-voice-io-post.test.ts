@@ -13,7 +13,7 @@ import { HttpResponse, http } from "msw";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";

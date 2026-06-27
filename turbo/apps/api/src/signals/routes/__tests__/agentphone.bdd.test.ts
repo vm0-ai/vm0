@@ -12,7 +12,7 @@ import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { writeDb$ } from "../../external/db";

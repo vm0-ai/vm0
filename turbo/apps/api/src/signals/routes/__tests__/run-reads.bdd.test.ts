@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { writeDb$ } from "../../external/db";
 import {
   createBddApi,

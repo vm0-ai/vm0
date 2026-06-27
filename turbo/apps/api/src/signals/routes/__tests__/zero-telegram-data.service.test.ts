@@ -4,7 +4,7 @@ import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-inte
 import { createStore } from "ccstate";
 import { afterEach, beforeEach } from "vitest";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { zeroTelegramBots } from "../../services/zero-telegram-data.service";
 import {

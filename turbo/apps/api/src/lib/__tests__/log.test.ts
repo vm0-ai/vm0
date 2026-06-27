@@ -1,7 +1,7 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
 import { EVENT } from "@axiomhq/logging";
 import { flushLogs, logger, __resetForTest } from "../log";
-import { testContext } from "../../__tests__/test-helpers";
+import { testContext } from "../../__tests__/test-context";
 
 const { axiomLogging } = testContext().mocks;
 

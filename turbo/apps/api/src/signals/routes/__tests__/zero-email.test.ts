@@ -27,7 +27,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, inArray, or } from "drizzle-orm";
 
 import { createApp } from "../../../app-factory";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";

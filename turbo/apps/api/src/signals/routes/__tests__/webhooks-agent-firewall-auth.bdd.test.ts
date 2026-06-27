@@ -7,7 +7,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { now } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { setFirewallAuthRefreshTimeoutMsForTests } from "../../services/agent-webhook-firewall-auth.service";
 import {

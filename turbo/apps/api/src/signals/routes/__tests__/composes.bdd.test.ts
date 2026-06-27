@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { mockEnv } from "../../../lib/env";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { expectApiError } from "./helpers/api-bdd";
 import {
   createAuthOrgAgentsBddApi,

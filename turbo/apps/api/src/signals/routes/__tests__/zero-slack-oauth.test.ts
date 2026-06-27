@@ -5,7 +5,7 @@ import { beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { now } from "../../external/time";
 import { writeDb$ } from "../../external/db";
 import { flushWaitUntilForTest } from "../../context/wait-until";

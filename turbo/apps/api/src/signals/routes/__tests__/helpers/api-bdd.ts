@@ -17,11 +17,13 @@ import {
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroOrgContract } from "@vm0/api-contracts/contracts/zero-org";
 
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { authMeRoutes } from "../../auth-me";
+import { zeroAgentsRoutes } from "../../zero-agents";
+import { zeroOnboardingSetupRoutes } from "../../zero-onboarding-setup";
+import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
+import { zeroOrgReadRoutes } from "../../zero-org-read";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
@@ -95,27 +97,42 @@ export function createBddApi(context: TestContext) {
   const mocks = createZeroRouteMocks(context);
 
   function authClient() {
-    return setupApp({ context })(authContract);
+    return setupAppWithRoutes({ context, routes: authMeRoutes })(authContract);
   }
 
   function onboardingStatusClient() {
-    return setupApp({ context })(onboardingStatusContract);
+    return setupAppWithRoutes({
+      context,
+      routes: zeroOnboardingStatusRoutes,
+    })(onboardingStatusContract);
   }
 
   function onboardingSetupClient() {
-    return setupApp({ context })(onboardingSetupContract);
+    return setupAppWithRoutes({
+      context,
+      routes: zeroOnboardingSetupRoutes,
+    })(onboardingSetupContract);
   }
 
   function orgClient() {
-    return setupApp({ context })(zeroOrgContract);
+    return setupAppWithRoutes({
+      context,
+      routes: zeroOrgReadRoutes,
+    })(zeroOrgContract);
   }
 
   function agentsClient() {
-    return setupApp({ context })(zeroAgentsMainContract);
+    return setupAppWithRoutes({
+      context,
+      routes: zeroAgentsRoutes,
+    })(zeroAgentsMainContract);
   }
 
   function agentsByIdClient() {
-    return setupApp({ context })(zeroAgentsByIdContract);
+    return setupAppWithRoutes({
+      context,
+      routes: zeroAgentsRoutes,
+    })(zeroAgentsByIdContract);
   }
 
   function user(options: ApiTestUserOptions = {}): ApiTestUser {

@@ -25,7 +25,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createApp } from "../../../app-factory";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { writeDb$ } from "../../external/db";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";

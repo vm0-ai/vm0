@@ -1,0 +1,21 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "types": ["node", "vitest/globals"]
+  },
+  "include": [
+    "src/lib/__tests__/log.test.ts",
+    "src/lib/callback-route/__tests__/callback-route.test.ts",
+    "src/signals/routes/__tests__/agent-lifecycle.bdd.test.ts",
+    "src/signals/routes/__tests__/helpers/api-bdd-session-history.ts",
+    "src/signals/routes/__tests__/helpers/zero-memory.ts",
+    "src/signals/routes/__tests__/helpers/zero-route-test.ts",
+    "src/signals/routes/__tests__/helpers/zero-workflows.ts",
+    "src/signals/routes/__tests__/internal-callbacks-telegram.test.ts",
+    "src/signals/routes/__tests__/zero-telegram-data.service.test.ts",
+    "src/signals/routes/__tests__/zero-workflow-trigger-scheduler.test.ts",
+    "src/signals/services/__tests__/runner-dispatch.service.test.ts",
+    "src/signals/services/__tests__/zero-credit-usage.service.test.ts"
+  ]
+}
