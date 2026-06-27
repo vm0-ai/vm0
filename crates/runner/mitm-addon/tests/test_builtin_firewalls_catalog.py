@@ -1,14 +1,247 @@
 """Generated builtin firewall catalog tests."""
 
+from dataclasses import dataclass
+
 import generated.builtin_firewalls as builtin_firewalls
+import matching
 
 READ_LIKE_PERMISSION_NAMES = {"read", "readonly"}
 READ_LIKE_PERMISSION_SUFFIXES = (":read", ".read")
 READ_LIKE_MUTATION_METHODS = {"DELETE", "PATCH", "PUT"}
+VALID_RULE_METHODS = {
+    "GET",
+    "POST",
+    "PUT",
+    "PATCH",
+    "DELETE",
+    "HEAD",
+    "OPTIONS",
+    "ANY",
+}
+
+
+@dataclass(frozen=True)
+class RuleReference:
+    permission_name: str
+    rule: str
+
+
+@dataclass(frozen=True)
+class ParsedRule:
+    method: str
+    segments: tuple[dict[str, str], ...]
 
 
 def _is_read_like_permission(name: str) -> bool:
     return name in READ_LIKE_PERMISSION_NAMES or name.endswith(READ_LIKE_PERMISSION_SUFFIXES)
+
+
+def _split_path_segments(path: str) -> list[str]:
+    if path in ("", "/"):
+        return []
+    path_without_leading_slash = path[1:] if path.startswith("/") else path
+    if path_without_leading_slash == "":
+        return []
+    return path_without_leading_slash.split("/")
+
+
+def _parse_rule(rule: str) -> ParsedRule:
+    method, path = rule.split(" ", maxsplit=1)
+    assert method in VALID_RULE_METHODS
+    assert path.startswith("/")
+
+    segments = tuple(matching.parse_segment(segment) for segment in _split_path_segments(path))
+    param_names: set[str] = set()
+    last_index = len(segments) - 1
+    for index, segment in enumerate(segments):
+        assert segment["kind"] != "error"
+        if segment["kind"] == "literal":
+            continue
+
+        name = segment["name"]
+        assert name not in param_names
+        param_names.add(name)
+        assert segment["greedy"] == "" or index == last_index
+        assert segment["greedy"] == "" or (segment["prefix"] == "" and segment["suffix"] == "")
+
+    return ParsedRule(method=method, segments=segments)
+
+
+def _intersect_methods(left: str, right: str) -> str | None:
+    if left == right:
+        return "GET" if left == "ANY" else left
+    if left == "ANY":
+        return right
+    if right == "ANY":
+        return left
+    return None
+
+
+def _is_greedy_segment(segment: dict[str, str] | None) -> bool:
+    return segment is not None and segment["kind"] == "param" and segment["greedy"] != ""
+
+
+def _segment_matches_param(value: str, pattern: dict[str, str]) -> bool:
+    if pattern["greedy"] != "":
+        return value != ""
+    if pattern["prefix"] == "" and pattern["suffix"] == "":
+        return value != ""
+    return (
+        value.startswith(pattern["prefix"])
+        and value.endswith(pattern["suffix"])
+        and len(value) > len(pattern["prefix"]) + len(pattern["suffix"])
+    )
+
+
+def _segment_witness(segment: dict[str, str]) -> str:
+    if segment["kind"] == "literal":
+        return segment["value"]
+    if segment["prefix"] == "" and segment["suffix"] == "":
+        return "x"
+    return f"{segment['prefix']}x{segment['suffix']}"
+
+
+def _intersect_param_segments(left: dict[str, str], right: dict[str, str]) -> str | None:
+    prefix = left["prefix"] if len(left["prefix"]) >= len(right["prefix"]) else right["prefix"]
+    if not prefix.startswith(left["prefix"]) or not prefix.startswith(right["prefix"]):
+        return None
+
+    suffix = left["suffix"] if len(left["suffix"]) >= len(right["suffix"]) else right["suffix"]
+    if not suffix.endswith(left["suffix"]) or not suffix.endswith(right["suffix"]):
+        return None
+
+    for candidate in (f"{prefix}x{suffix}", f"{prefix}{suffix}x"):
+        if _segment_matches_param(candidate, left) and _segment_matches_param(candidate, right):
+            return candidate
+    return None
+
+
+def _intersect_fixed_segments(left: dict[str, str], right: dict[str, str]) -> str | None:
+    if left["kind"] == "literal" and right["kind"] == "literal":
+        return left["value"] if left["value"] == right["value"] else None
+    if left["kind"] == "literal":
+        return left["value"] if _segment_matches_param(left["value"], right) else None
+    if right["kind"] == "literal":
+        return right["value"] if _segment_matches_param(right["value"], left) else None
+    return _intersect_param_segments(left, right)
+
+
+def _witness_for_pattern(
+    segments: tuple[dict[str, str], ...],
+    start_index: int,
+    require_non_empty: bool,
+) -> list[str]:
+    if start_index >= len(segments):
+        return ["x"] if require_non_empty else []
+
+    segment = segments[start_index]
+    if _is_greedy_segment(segment):
+        return ["x"] if segment["greedy"] == "+" or require_non_empty else []
+
+    return [
+        _segment_witness(segment),
+        *_witness_for_pattern(segments, start_index + 1, False),
+    ]
+
+
+def _empty_witness_for_pattern(
+    segments: tuple[dict[str, str], ...],
+    start_index: int,
+) -> list[str] | None:
+    if start_index >= len(segments):
+        return []
+
+    segment = segments[start_index]
+    if _is_greedy_segment(segment) and segment["greedy"] == "*":
+        return []
+
+    return None
+
+
+def _intersect_path_segments(
+    left: tuple[dict[str, str], ...],
+    right: tuple[dict[str, str], ...],
+    left_index: int,
+    right_index: int,
+) -> list[str] | None:
+    left_segment = left[left_index] if left_index < len(left) else None
+    right_segment = right[right_index] if right_index < len(right) else None
+
+    if left_segment is None and right_segment is None:
+        return []
+    if left_segment is None:
+        return _empty_witness_for_pattern(right, right_index)
+    if right_segment is None:
+        return _empty_witness_for_pattern(left, left_index)
+
+    left_greedy = _is_greedy_segment(left_segment)
+    right_greedy = _is_greedy_segment(right_segment)
+    if left_greedy and right_greedy:
+        return ["x"] if left_segment["greedy"] == "+" or right_segment["greedy"] == "+" else []
+    if left_greedy:
+        return _witness_for_pattern(right, right_index, left_segment["greedy"] == "+")
+    if right_greedy:
+        return _witness_for_pattern(left, left_index, right_segment["greedy"] == "+")
+
+    segment = _intersect_fixed_segments(left_segment, right_segment)
+    if segment is None:
+        return None
+
+    tail = _intersect_path_segments(left, right, left_index + 1, right_index + 1)
+    if tail is None:
+        return None
+    return [segment, *tail]
+
+
+def _rules_overlap(left_rule: str, right_rule: str) -> bool:
+    left = _parse_rule(left_rule)
+    right = _parse_rule(right_rule)
+    return _intersect_methods(left.method, right.method) is not None and (
+        _intersect_path_segments(left.segments, right.segments, 0, 0) is not None
+    )
+
+
+def _permission_rule_references(api: dict) -> list[RuleReference]:
+    return [
+        RuleReference(permission["name"], rule)
+        for permission in api.get("permissions", [])
+        for rule in permission.get("rules", [])
+    ]
+
+
+def _find_rule_overlaps(
+    left_rules: list[RuleReference],
+    right_rules: list[RuleReference],
+) -> list[str]:
+    return [
+        f"{left.permission_name}: {left.rule} <-> {right.permission_name}: {right.rule}"
+        for left in left_rules
+        for right in right_rules
+        if _rules_overlap(left.rule, right.rule)
+    ]
+
+
+def test_firewall_rule_overlap_helper_detects_request_overlaps():
+    assert _rules_overlap("GET /v4/items/{id}", "GET /v4/items/{id}")
+    assert _rules_overlap(
+        "ANY /v4/pages/assets/{rest*}",
+        "POST /v4/pages/assets/upload",
+    )
+    assert _rules_overlap(
+        "POST /v4/accounts/{account_id}/workers/assets/{action}",
+        "POST /v4/accounts/{account_id}/workers/assets/upload",
+    )
+    assert _rules_overlap("GET /files/file-{id}", "GET /files/{slug}")
+    assert _rules_overlap("GET /v4/{rest*}", "GET /v4")
+    assert _rules_overlap("GET /v4/{rest+}", "GET /v4/pages")
+    assert not _rules_overlap("GET /files/file-{id}", "GET /files/user-{id}")
+    assert not _rules_overlap("GET /v4/{rest+}", "GET /v4")
+    assert not _rules_overlap("GET /v4/items", "POST /v4/items")
+    assert not _rules_overlap(
+        "POST /v4/accounts/{account_id}/workers/dispatch/namespaces/"
+        "{dispatch_namespace}/scripts/{script_name}/assets-upload-session",
+        "POST /v4/accounts/{account_id}/workers/assets/upload",
+    )
 
 
 def test_get_existing_builtin_firewall():
@@ -121,6 +354,19 @@ def test_cloudflare_builtin_maps_cf_permissions_required_operations_to_connector
     assert "DELETE /v4/accounts/{account_id}/browser-rendering/crawl/{job_id}" in connector_rules
     assert "POST /v4/accounts/{account_id}/ai-search/instances/{id}/search" not in upload_rules
     assert "POST /v4/accounts/{account_id}/email/sending/send" not in upload_rules
+
+
+def test_cloudflare_builtin_auth_boundaries_have_no_route_overlaps():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["cloudflare"]
+    connector_api, upload_api = firewall["apis"]
+
+    assert (
+        _find_rule_overlaps(
+            _permission_rule_references(connector_api),
+            _permission_rule_references(upload_api),
+        )
+        == []
+    )
 
 
 def test_read_like_builtin_permissions_do_not_own_mutation_methods():

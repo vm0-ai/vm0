@@ -1,5 +1,9 @@
 import { beforeAll, describe, expect, it } from "vitest";
 
+import {
+  findFirewallRuleReferenceOverlaps,
+  type FirewallRuleReference,
+} from "../firewall-rule-overlap-helper";
 import { findMatchingPermissions } from "../../firewall-rule-matcher";
 import {
   extractSecretNamesFromApis,
@@ -43,6 +47,21 @@ function expectCloudflareMatches(
 ): void {
   const matches = findMatchingPermissions(method, path, firewall);
   expect([...matches].sort()).toStrictEqual([...permissionNames].sort());
+}
+
+function permissionRuleReferences(
+  api: FirewallConfig["apis"][number] | undefined,
+): FirewallRuleReference[] {
+  return (
+    api?.permissions?.flatMap((permission) => {
+      return permission.rules.map((rule) => {
+        return {
+          permissionName: permission.name,
+          rule,
+        };
+      });
+    }) ?? []
+  );
 }
 
 describe("cloudflare firewall", () => {
@@ -264,6 +283,17 @@ describe("cloudflare firewall", () => {
       },
     );
     expect(conflicts).toStrictEqual([]);
+  });
+
+  it("keeps connector-auth and authless upload routes request-disjoint", () => {
+    const [connectorApi, authlessUploadApi] = firewall.apis;
+
+    const overlaps = findFirewallRuleReferenceOverlaps(
+      permissionRuleReferences(connectorApi),
+      permissionRuleReferences(authlessUploadApi),
+    );
+
+    expect(overlaps).toStrictEqual([]);
   });
 
   it("does not assign any route to both default-allowed and default-denied permissions", () => {
