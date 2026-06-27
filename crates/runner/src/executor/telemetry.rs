@@ -58,7 +58,7 @@ impl RunnerPreSpawnPhase {
     }
 }
 
-#[derive(Clone, Copy, Default)]
+#[derive(Default)]
 struct RunnerPreSpawnPhaseDurations {
     resume_session_validation: Option<Duration>,
     session_history_materializer_start: Option<Duration>,
@@ -94,7 +94,7 @@ impl RunnerPreSpawnPhaseDurations {
         }
     }
 
-    fn get(self, phase: RunnerPreSpawnPhase) -> Option<Duration> {
+    fn get(&self, phase: RunnerPreSpawnPhase) -> Option<Duration> {
         match phase {
             RunnerPreSpawnPhase::ResumeSessionValidation => self.resume_session_validation,
             RunnerPreSpawnPhase::SessionHistoryMaterializerStart => {
@@ -114,14 +114,12 @@ impl RunnerPreSpawnPhaseDurations {
     }
 }
 
-#[derive(Clone, Copy)]
 pub(crate) struct RunnerPreSpawnTiming {
     claim_returned_at: Instant,
     phase_durations: RunnerPreSpawnPhaseDurations,
     task_enqueued_at: Option<Instant>,
 }
 
-#[derive(Clone, Copy)]
 pub(super) struct RunnerSpawnTiming {
     executor_started_at: Instant,
     pre_spawn_timing: Option<RunnerPreSpawnTiming>,
@@ -148,11 +146,11 @@ impl RunnerPreSpawnTiming {
         self.task_enqueued_at = Some(Instant::now());
     }
 
-    fn elapsed_at(self, at: Instant) -> Duration {
+    fn elapsed_at(&self, at: Instant) -> Duration {
         at.saturating_duration_since(self.claim_returned_at)
     }
 
-    fn record_collected_phases(self, telemetry: &mut JobTelemetry, executor_started_at: Instant) {
+    fn record_collected_phases(&self, telemetry: &mut JobTelemetry, executor_started_at: Instant) {
         for phase in RunnerPreSpawnPhase::ALL {
             if let Some(duration) = self.phase_durations.get(phase) {
                 telemetry.record(phase.action_type(), duration, true, None);
@@ -177,8 +175,8 @@ impl RunnerSpawnTiming {
         }
     }
 
-    pub(super) fn record_claim_to_executor_start(self, telemetry: &mut JobTelemetry) {
-        if let Some(pre_spawn_timing) = self.pre_spawn_timing {
+    pub(super) fn record_claim_to_executor_start(&self, telemetry: &mut JobTelemetry) {
+        if let Some(pre_spawn_timing) = self.pre_spawn_timing.as_ref() {
             telemetry.record(
                 "runner_claim_to_executor_start",
                 pre_spawn_timing.elapsed_at(self.executor_started_at),
@@ -189,14 +187,18 @@ impl RunnerSpawnTiming {
         }
     }
 
-    pub(super) fn record_spawn_success_at(self, telemetry: &mut JobTelemetry, spawned_at: Instant) {
+    pub(super) fn record_spawn_success_at(
+        &self,
+        telemetry: &mut JobTelemetry,
+        spawned_at: Instant,
+    ) {
         telemetry.record(
             "runner_executor_start_to_spawn",
             spawned_at.saturating_duration_since(self.executor_started_at),
             true,
             None,
         );
-        if let Some(pre_spawn_timing) = self.pre_spawn_timing {
+        if let Some(pre_spawn_timing) = self.pre_spawn_timing.as_ref() {
             telemetry.record(
                 "runner_claim_to_spawn",
                 pre_spawn_timing.elapsed_at(spawned_at),
