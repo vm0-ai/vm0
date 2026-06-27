@@ -5,7 +5,10 @@ import { apiErrorSchema } from "./errors";
 import { zeroBuiltInGenerationAcceptedResponseSchema } from "./zero-built-in-generation";
 
 const c = initContract();
-const stringOrStringArraySchema = z.union([z.string(), z.array(z.string())]);
+const stringOrStringArraySchema = z.union([
+  z.string(),
+  z.array(z.string()).readonly(),
+]);
 
 export const zeroVideoIoGenerateRequestSchema = z
   .object({
