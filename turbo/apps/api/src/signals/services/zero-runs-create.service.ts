@@ -37,9 +37,9 @@ import {
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
 import {
+  ApiDispatchTimingCollector,
   measureApiDispatchTiming,
   type ApiDispatchTimingActionType,
-  type ApiDispatchTimingCollector,
 } from "./api-dispatch-timing.service";
 import { loadAgentConnectorScope } from "./agent-connector-scope.service";
 import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.service";
@@ -153,6 +153,29 @@ interface CreateZeroRunCommandArgs {
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly timing?: ApiDispatchTimingCollector;
+}
+
+interface CreateZeroIntegrationRunCommandArgs {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId: string;
+  readonly sessionId?: string;
+  readonly prompt: string;
+  readonly appendSystemPrompt?: string;
+  readonly triggerSource: TriggerSource;
+  readonly callbacks?: readonly RunCallback[];
+  readonly apiStartTime: number;
+  readonly userInfoExtras?: Pick<
+    UserInfo,
+    | "slackDisplayName"
+    | "slackUserId"
+    | "telegramDisplayName"
+    | "telegramUsername"
+    | "telegramUserId"
+    | "telegramLanguage"
+    | "agentphoneHandle"
+  >;
+  readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
 }
 
 function forbidden(message: string) {
@@ -745,6 +768,21 @@ function measureZeroPreCreate<T>(
   return measureApiDispatchTiming(timing, actionType, "nested", operation);
 }
 
+function zeroServiceEntryTiming(args: {
+  readonly apiStartTime: number;
+  readonly timing?: ApiDispatchTimingCollector;
+}): ApiDispatchTimingCollector {
+  const timing = args.timing ?? new ApiDispatchTimingCollector();
+  if (!args.timing) {
+    timing.recordElapsed(
+      "api_dispatch_pre_create_zero_entrypoint_gap",
+      "nested",
+      args.apiStartTime,
+    );
+  }
+  return timing;
+}
+
 async function resolveZeroRunAgentId(
   db: Db,
   args: CreateZeroRunCommandArgs,
@@ -791,6 +829,31 @@ async function loadZeroRunConnectorScopes(
   return scope;
 }
 
+async function resolveZeroRunTriggerPreCreateContext(
+  db: Db,
+  args: CreateZeroRunCommandArgs,
+  signal: AbortSignal,
+): Promise<{
+  readonly triggerAgentId: string | undefined;
+  readonly triggerRun: Awaited<ReturnType<typeof resolveTriggerRunContext>>;
+}> {
+  const triggerAgentId = await triggerAgentIdForAuth(db, args.auth);
+  signal.throwIfAborted();
+
+  // Trigger-fired runs resolve from the trigger owner's workflow-scoped
+  // connector authorization and grants. Expose trigger/workflow ids so
+  // the in-sandbox permission-change deep-link can target the workflow.
+  const triggerRun = await resolveTriggerRunContext(
+    db,
+    {
+      orgId: args.auth.orgId,
+      workflowTriggerId: args.zeroRunMetadata?.workflowTriggerId,
+    },
+    signal,
+  );
+  return { triggerAgentId, triggerRun };
+}
+
 function buildZeroCreateAgentRunArgs(args: {
   readonly command: CreateZeroRunCommandArgs;
   readonly agent: ZeroAgentRunRecord;
@@ -801,6 +864,7 @@ function buildZeroCreateAgentRunArgs(args: {
   readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
   readonly allowedConnectorTypes: readonly ConnectorType[];
   readonly allowedCustomConnectorIds: readonly string[];
+  readonly timing: ApiDispatchTimingCollector;
 }): CreateAgentRunArgs {
   const command = args.command;
   return {
@@ -847,39 +911,69 @@ function buildZeroCreateAgentRunArgs(args: {
       triggerAgentId: args.triggerAgentId,
     },
     dispatchFailedCallbacks: command.dispatchFailedCallbacks,
-    ...(command.timing ? { timing: command.timing } : {}),
+    timing: args.timing,
+  };
+}
+
+function buildZeroIntegrationCreateAgentRunArgs(args: {
+  readonly command: CreateZeroIntegrationRunCommandArgs;
+  readonly agent: ZeroAgentRunRecord;
+  readonly userInfo: UserInfo;
+  readonly runPermissionPolicies: FirewallPolicies | null | undefined;
+  readonly workflows: Awaited<ReturnType<typeof loadWorkflowsForRun>>;
+  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly allowedCustomConnectorIds: readonly string[];
+  readonly timing: ApiDispatchTimingCollector;
+}): CreateAgentRunArgs {
+  const command = args.command;
+  return {
+    userId: command.userId,
+    orgId: command.orgId,
+    body: createIntegrationRunBody({
+      prompt: command.prompt,
+      sessionId: command.sessionId,
+      agent: args.agent,
+      userInfo: { ...args.userInfo, ...command.userInfoExtras },
+      permissionPolicies: args.runPermissionPolicies,
+      triggerSource: command.triggerSource,
+      appendSystemPrompt: command.appendSystemPrompt,
+    }),
+    apiStartTime: command.apiStartTime,
+    modelProviderId: args.agent.modelProviderId ?? undefined,
+    selectedModelOverride: args.agent.selectedModel ?? undefined,
+    extraEnvironment: { ZERO_AGENT_ID: args.agent.id },
+    callbacks: command.callbacks,
+    includeZeroTokenSecret: true,
+    enforceVm0Credits: true,
+    queueOnConcurrencyLimit: true,
+    injectSkillVolumes: { workflows: args.workflows },
+    connectorScope: {
+      allowedConnectorTypes: args.allowedConnectorTypes,
+      allowedCustomConnectorIds: args.allowedCustomConnectorIds,
+    },
+    validateEnvironmentReferences: false,
+    dispatchFailedCallbacks: command.dispatchFailedCallbacks,
+    timing: args.timing,
   };
 }
 
 export const createZeroIntegrationRun$ = command(
   async (
     { set },
-    args: {
-      readonly userId: string;
-      readonly orgId: string;
-      readonly agentId: string;
-      readonly sessionId?: string;
-      readonly prompt: string;
-      readonly appendSystemPrompt?: string;
-      readonly triggerSource: TriggerSource;
-      readonly callbacks?: readonly RunCallback[];
-      readonly apiStartTime: number;
-      readonly userInfoExtras?: Pick<
-        UserInfo,
-        | "slackDisplayName"
-        | "slackUserId"
-        | "telegramDisplayName"
-        | "telegramUsername"
-        | "telegramUserId"
-        | "telegramLanguage"
-        | "agentphoneHandle"
-      >;
-      readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
-    },
+    args: CreateZeroIntegrationRunCommandArgs,
     signal: AbortSignal,
   ) => {
     const db = set(writeDb$);
-    const agent = await loadZeroAgent(db, args.agentId);
+    const timing = zeroServiceEntryTiming({
+      apiStartTime: args.apiStartTime,
+    });
+    const agent = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_load_agent",
+      async () => {
+        return await loadZeroAgent(db, args.agentId);
+      },
+    );
     signal.throwIfAborted();
     if (!agent || agent.orgId !== args.orgId) {
       return notFound("Agent not found");
@@ -889,78 +983,94 @@ export const createZeroIntegrationRun$ = command(
       return forbidden("Only the private agent owner can run this agent");
     }
 
-    const userInfo = await loadUserInfo(db, {
-      userId: args.userId,
-      orgId: args.orgId,
-    });
+    const userInfo = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_load_user_info",
+      async () => {
+        return await loadUserInfo(db, {
+          userId: args.userId,
+          orgId: args.orgId,
+        });
+      },
+    );
     signal.throwIfAborted();
     const { allowedConnectorTypes, allowedCustomConnectorIds } =
-      await loadAgentConnectorScope(db, {
-        userId: args.userId,
-        orgId: args.orgId,
-        agentId: agent.id,
-      });
+      await measureZeroPreCreate(
+        timing,
+        "api_dispatch_pre_create_zero_load_connector_scopes",
+        async () => {
+          return await loadAgentConnectorScope(db, {
+            userId: args.userId,
+            orgId: args.orgId,
+            agentId: agent.id,
+          });
+        },
+      );
     signal.throwIfAborted();
-    const workflows = await loadWorkflowsForRun(db, {
-      userId: args.userId,
-      orgId: args.orgId,
-      agentId: agent.id,
-    });
-    signal.throwIfAborted();
-
-    const runPermissionPolicies = await resolveZeroRunPermissionPolicies(
-      db,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        agent,
-        allowedConnectorTypes,
-        checkedAt: new Date(args.apiStartTime),
+    const workflows = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_load_workflows",
+      async () => {
+        return await loadWorkflowsForRun(db, {
+          userId: args.userId,
+          orgId: args.orgId,
+          agentId: agent.id,
+        });
       },
-      signal,
     );
+    signal.throwIfAborted();
 
-    return await set(
-      createAgentRun$,
-      {
-        userId: args.userId,
-        orgId: args.orgId,
-        body: createIntegrationRunBody({
-          prompt: args.prompt,
-          sessionId: args.sessionId,
+    const runPermissionPolicies = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_resolve_permission_policies",
+      async () => {
+        return await resolveZeroRunPermissionPolicies(
+          db,
+          {
+            orgId: args.orgId,
+            userId: args.userId,
+            agent,
+            allowedConnectorTypes,
+            checkedAt: new Date(args.apiStartTime),
+          },
+          signal,
+        );
+      },
+    );
+    signal.throwIfAborted();
+
+    const createAgentRunArgs = await measureZeroPreCreate(
+      timing,
+      "api_dispatch_pre_create_zero_build_create_run_args",
+      () => {
+        return buildZeroIntegrationCreateAgentRunArgs({
+          command: args,
           agent,
-          userInfo: { ...userInfo, ...args.userInfoExtras },
-          permissionPolicies: runPermissionPolicies,
-          triggerSource: args.triggerSource,
-          appendSystemPrompt: args.appendSystemPrompt,
-        }),
-        apiStartTime: args.apiStartTime,
-        modelProviderId: agent.modelProviderId ?? undefined,
-        selectedModelOverride: agent.selectedModel ?? undefined,
-        extraEnvironment: { ZERO_AGENT_ID: agent.id },
-        callbacks: args.callbacks,
-        includeZeroTokenSecret: true,
-        enforceVm0Credits: true,
-        queueOnConcurrencyLimit: true,
-        injectSkillVolumes: { workflows },
-        connectorScope: {
+          userInfo,
+          runPermissionPolicies,
+          workflows,
           allowedConnectorTypes,
           allowedCustomConnectorIds,
-        },
-        validateEnvironmentReferences: false,
-        dispatchFailedCallbacks: args.dispatchFailedCallbacks,
+          timing,
+        });
       },
-      signal,
     );
+    signal.throwIfAborted();
+
+    return await set(createAgentRun$, createAgentRunArgs, signal);
   },
 );
 
 export const createZeroRun$ = command(
   async ({ set }, args: CreateZeroRunCommandArgs, signal: AbortSignal) => {
     const db = set(writeDb$);
+    const timing = zeroServiceEntryTiming({
+      apiStartTime: args.apiStartTime,
+      timing: args.timing,
+    });
 
     const agentId = await measureZeroPreCreate(
-      args.timing,
+      timing,
       "api_dispatch_pre_create_zero_resolve_agent_id",
       async () => {
         return await resolveZeroRunAgentId(db, args);
@@ -975,7 +1085,7 @@ export const createZeroRun$ = command(
     }
 
     const agent = await measureZeroPreCreate(
-      args.timing,
+      timing,
       "api_dispatch_pre_create_zero_load_agent",
       async () => {
         return await loadZeroAgent(db, agentId);
@@ -991,7 +1101,7 @@ export const createZeroRun$ = command(
     }
 
     const userInfo = await measureZeroPreCreate(
-      args.timing,
+      timing,
       "api_dispatch_pre_create_zero_load_user_info",
       async () => {
         return await loadUserInfo(db, {
@@ -1002,30 +1112,16 @@ export const createZeroRun$ = command(
     );
     signal.throwIfAborted();
     const triggerContext = await measureZeroPreCreate(
-      args.timing,
+      timing,
       "api_dispatch_pre_create_zero_resolve_trigger_context",
       async () => {
-        const triggerAgentId = await triggerAgentIdForAuth(db, args.auth);
-        signal.throwIfAborted();
-
-        // Trigger-fired runs resolve from the trigger owner's workflow-scoped
-        // connector authorization and grants. Expose trigger/workflow ids so
-        // the in-sandbox permission-change deep-link can target the workflow.
-        const triggerRun = await resolveTriggerRunContext(
-          db,
-          {
-            orgId: args.auth.orgId,
-            workflowTriggerId: args.zeroRunMetadata?.workflowTriggerId,
-          },
-          signal,
-        );
-        return { triggerAgentId, triggerRun };
+        return await resolveZeroRunTriggerPreCreateContext(db, args, signal);
       },
     );
     signal.throwIfAborted();
     const { triggerAgentId, triggerRun } = triggerContext;
     const connectorScopes = await measureZeroPreCreate(
-      args.timing,
+      timing,
       "api_dispatch_pre_create_zero_load_connector_scopes",
       async () => {
         return await loadZeroRunConnectorScopes(
@@ -1043,7 +1139,7 @@ export const createZeroRun$ = command(
     const { allowedConnectorTypes, allowedCustomConnectorIds } =
       connectorScopes;
     const workflows = await measureZeroPreCreate(
-      args.timing,
+      timing,
       "api_dispatch_pre_create_zero_load_workflows",
       async () => {
         return await loadWorkflowsForRun(db, {
@@ -1055,7 +1151,7 @@ export const createZeroRun$ = command(
     );
     signal.throwIfAborted();
     const runPermissionPolicies = await measureZeroPreCreate(
-      args.timing,
+      timing,
       "api_dispatch_pre_create_zero_resolve_permission_policies",
       async () => {
         return await resolveZeroRunPermissionPolicies(
@@ -1075,7 +1171,7 @@ export const createZeroRun$ = command(
     signal.throwIfAborted();
 
     const createAgentRunArgs = await measureZeroPreCreate(
-      args.timing,
+      timing,
       "api_dispatch_pre_create_zero_build_create_run_args",
       () => {
         return buildZeroCreateAgentRunArgs({
@@ -1088,6 +1184,7 @@ export const createZeroRun$ = command(
           workflows,
           allowedConnectorTypes,
           allowedCustomConnectorIds,
+          timing,
         });
       },
     );

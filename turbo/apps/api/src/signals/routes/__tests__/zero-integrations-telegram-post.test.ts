@@ -1291,14 +1291,39 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
         expect.objectContaining({
           op_type: "api_dispatch_pre_create_agent_run",
           span_kind: "top_level",
+          trigger_source: "telegram",
+        }),
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_entrypoint_gap",
+          span_kind: "nested",
+          trigger_source: "telegram",
+        }),
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_load_agent",
+          span_kind: "nested",
+          trigger_source: "telegram",
+        }),
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_load_connector_scopes",
+          span_kind: "nested",
+          trigger_source: "telegram",
+        }),
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_build_create_run_args",
+          span_kind: "nested",
+          trigger_source: "telegram",
         }),
       ]),
     );
-    expect(
-      timingEvents.map((event) => {
-        return event.op_type;
-      }),
-    ).not.toContain("api_dispatch_pre_create_zero_parse_body");
+    const timingActionTypes = timingEvents.map((event) => {
+      return event.op_type;
+    });
+    expect(timingActionTypes).not.toContain(
+      "api_dispatch_pre_create_zero_parse_body",
+    );
+    expect(timingActionTypes).not.toContain(
+      "api_dispatch_pre_create_zero_prepare_args",
+    );
   });
 
   it("keeps Telegram callbacks typed when VM0_API_BACKEND_URL is set", async () => {
