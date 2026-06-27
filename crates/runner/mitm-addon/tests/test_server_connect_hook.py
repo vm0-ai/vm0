@@ -67,6 +67,28 @@ def test_server_connect_retargets_credentialed_connector_host(tmp_path, mitm_ctx
     assert binding.original_address == ("203.0.113.10", 443)
 
 
+def test_server_connect_uses_tls_clienthello_sni_when_client_sni_is_empty(tmp_path, mitm_ctx):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    data = _data(sni="")
+    mitm_addon._record_tls_admission(
+        data.client,
+        mitm_addon._TlsAdmission(
+            client_ip="10.200.0.5",
+            kind=mitm_addon._TLS_ADMISSION_VALID_REGISTRY_VM,
+            run_id="run-conn-1",
+            sni="api.github.com",
+        ),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("api.github.com", 443)
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
+    assert binding.host == "api.github.com"
+    assert binding.kinds == frozenset(("connector_auth",))
+
+
 def test_server_connect_retargets_api_allow_host(registry_file, mitm_ctx):
     data = _data(client_ip="10.200.0.1", sni="api.vm0.ai")
 

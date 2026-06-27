@@ -196,6 +196,7 @@ class _TlsAdmission:
     client_ip: str
     kind: _TlsAdmissionKind
     run_id: str | None = None
+    sni: str | None = None
 
 
 @dataclass(frozen=True)
@@ -1520,10 +1521,14 @@ def server_connect(data: object) -> None:
         return
 
     run_id = vm_info.get("runId", "")
+    tls_admission = _tls_admission_for_client(client)
+    raw_sni = getattr(client, "sni", None)
+    if not raw_sni and tls_admission is not None:
+        raw_sni = tls_admission.sni
     _bind_privileged_upstream_destination(
         client=client,
         server=server,
-        raw_sni=getattr(client, "sni", None),
+        raw_sni=raw_sni,
         registry_state=registry_state,
         client_ip=client_ip,
         run_id=run_id,
@@ -1569,18 +1574,20 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
     vm_info = registry_state.vms.get(client_ip)
     if vm_info is not None:
         run_id = vm_info.get("runId", "")
+        raw_sni = data.client_hello.sni
         _record_tls_admission(
             data.context.client,
             _TlsAdmission(
                 client_ip=client_ip,
                 kind=_TLS_ADMISSION_VALID_REGISTRY_VM,
                 run_id=run_id,
+                sni=raw_sni if isinstance(raw_sni, str) else None,
             ),
         )
         _bind_privileged_upstream_destination(
             client=data.context.client,
             server=data.context.server,
-            raw_sni=data.client_hello.sni,
+            raw_sni=raw_sni,
             registry_state=registry_state,
             client_ip=client_ip,
             run_id=run_id,
