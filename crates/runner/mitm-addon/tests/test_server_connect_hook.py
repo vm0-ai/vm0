@@ -137,6 +137,32 @@ def test_server_connect_binds_connected_api_edge_when_peer_misses_dns(registry_f
     assert binding.original_address == ("76.76.21.164", 443)
 
 
+def test_server_connect_binds_connected_connector_when_peer_misses_dns(tmp_path, mitm_ctx):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    data = _data(
+        sni="api.github.com",
+        address=("140.82.112.5", 443),
+        server_peername=("140.82.112.5", 443),
+        server_connected=True,
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            side_effect=AssertionError("connector binding must not use fresh DNS"),
+        ),
+    ):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("140.82.112.5", 443)
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
+    assert binding.host == "api.github.com"
+    assert binding.kinds == frozenset(("connector_auth",))
+    assert binding.original_address == ("140.82.112.5", 443)
+
+
 def test_server_connect_binds_api_host_from_original_address(registry_file, mitm_ctx):
     data = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
 

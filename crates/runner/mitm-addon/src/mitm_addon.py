@@ -821,11 +821,13 @@ def _bind_flow_upstream_destination(
         if _api_hostname_matches(
             normalized_host
         ) and _request_allows_connected_platform_api_edge_fallback(flow, kind=kind):
-            connected_address = _connected_api_destination_endpoint(
+            connected_address = _connected_ip_destination_endpoint(
                 flow.server_conn,
                 port=flow.request.port,
                 extra_endpoints=(_connection_sockname(flow.client_conn),),
             )
+        elif kind == "connector_auth":
+            return False
         else:
             connected_address = _connected_trusted_destination_endpoint(
                 flow.server_conn,
@@ -1671,7 +1673,7 @@ def _connected_trusted_destination_endpoint(
     return None
 
 
-def _connected_api_destination_endpoint(
+def _connected_ip_destination_endpoint(
     server: object,
     *,
     port: int,
@@ -1718,7 +1720,7 @@ def _request_allows_connected_platform_api_edge_fallback(
         # Agent webhooks carry the per-job sandbox token and never inject
         # connector credentials. This request-stage fallback handles
         # load-balanced API edge IPs when earlier connection hooks did not
-        # leave a binding and a fresh DNS lookup returns a different edge.
+        # leave a binding.
         return _request_has_platform_api_edge_authorization(flow)
     if kind == "connector_auth":
         # Synthetic test providers live on the platform API preview host but
@@ -1879,7 +1881,19 @@ def _bind_privileged_upstream_destination(
             # API auto-allow does not inject connector credentials. The platform
             # API may be behind edge IPs that differ from a fresh DNS lookup, so
             # bind the already-connected endpoint only for API-only traffic.
-            connected_address = _connected_api_destination_endpoint(
+            connected_address = _connected_ip_destination_endpoint(
+                server,
+                port=port,
+                extra_endpoints=(_connection_sockname(client),),
+            )
+        elif "connector_auth" in kinds:
+            # At this point a registered VM presented SNI for a configured
+            # credentialed connector authority, and request handling will still
+            # require HTTP authority to match that SNI before injecting
+            # credentials. CDN/Anycast/LB edges can differ from any fresh DNS
+            # lookup, so record the actual connected endpoint instead of
+            # treating DNS membership as the proof.
+            connected_address = _connected_ip_destination_endpoint(
                 server,
                 port=port,
                 extra_endpoints=(_connection_sockname(client),),

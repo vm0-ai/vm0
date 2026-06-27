@@ -154,7 +154,7 @@ class TestTlsClienthello:
         assert binding.kinds == frozenset(("connector_auth",))
         assert binding.original_address == ("140.82.112.5", 443)
 
-    def test_registered_vm_does_not_bind_connected_connector_when_peer_misses_dns(
+    def test_registered_vm_binds_connected_connector_when_peer_misses_dns(
         self, tmp_path, make_tls_data, mitm_ctx
     ):
         registry_file = _write_github_firewall_registry(tmp_path)
@@ -171,13 +171,16 @@ class TestTlsClienthello:
             patch.object(
                 mitm_addon.socket,
                 "getaddrinfo",
-                return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("140.82.112.6", 443))],
+                side_effect=AssertionError("connector binding must not use fresh DNS"),
             ),
         ):
             mitm_addon.tls_clienthello(data)
 
         assert data.context.server.address == ("140.82.112.5", 443)
-        assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+        binding = upstream_destination_binding.binding_snapshot_for_tests()[data.context.server.id]
+        assert binding.host == "api.github.com"
+        assert binding.kinds == frozenset(("connector_auth",))
+        assert binding.original_address == ("140.82.112.5", 443)
 
     def test_client_disconnect_clears_clienthello_binding(
         self, registry_file, make_tls_data, mitm_ctx
