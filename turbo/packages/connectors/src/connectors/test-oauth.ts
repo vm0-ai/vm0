@@ -4,7 +4,7 @@ import type {
   ConnectorConfig,
   ConnectorManualGrantConfig,
   ConnectorRevokeConfig,
-} from "../connectors";
+} from "../connector-config";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
 const TEST_OAUTH_CLIENT = {
