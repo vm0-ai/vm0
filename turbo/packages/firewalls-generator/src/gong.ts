@@ -37,6 +37,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "https://${{ vars.GONG_API_BASE }}",',
+    '      hostPolicy: { kind: "providerOwned", suffixes: ["gong.io"] },',
     "      auth: {",
     "        headers: {",
     "          Authorization:",

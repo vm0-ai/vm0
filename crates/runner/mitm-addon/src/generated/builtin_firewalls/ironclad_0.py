@@ -12,6 +12,15 @@ JSON_PART = r"""{
         }
       },
       "base": "https://${{ vars.IRONCLAD_HOST }}",
+      "hostPolicy": {
+        "exactHosts": [
+          "ironcladapp.com",
+          "na1.ironcladapp.com",
+          "eu1.ironcladapp.com",
+          "demo.ironcladapp.com"
+        ],
+        "kind": "providerOwned"
+      },
       "permissions": []
     }
   ],

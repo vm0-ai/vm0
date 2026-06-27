@@ -23,6 +23,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "${{ vars.N8N_BASE_URL }}/api/v1",',
+    '      hostPolicy: { kind: "publicDestination" },',
     "      auth: {",
     "        headers: {",
     '          "X-N8N-API-KEY": "${{ secrets.N8N_TOKEN }}",',

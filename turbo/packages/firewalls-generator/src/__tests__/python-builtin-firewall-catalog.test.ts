@@ -349,6 +349,49 @@ describe("Python builtin firewall catalog renderer", () => {
     expect(diagnostics.content).not.toContain("Provider Responses API");
   });
 
+  it("preserves runtime API host policies in catalog JSON", () => {
+    const files = renderEntries([
+      connectorEntry({
+        name: "jira",
+        apis: [
+          {
+            base: "https://${{ vars.JIRA_DOMAIN }}",
+            hostPolicy: {
+              kind: "providerOwned",
+              suffixes: ["atlassian.net"],
+            },
+            auth: {
+              headers: {
+                Authorization:
+                  "${{ basic(vars.JIRA_EMAIL, secrets.JIRA_API_TOKEN) }}",
+              },
+            },
+          },
+        ],
+      }),
+    ]);
+    const module = findGeneratedFile(files, "jira_0.py");
+
+    expect(JSON.parse(jsonPartFromModule(module))).toStrictEqual({
+      name: "jira",
+      apis: [
+        {
+          base: "https://${{ vars.JIRA_DOMAIN }}",
+          hostPolicy: {
+            kind: "providerOwned",
+            suffixes: ["atlassian.net"],
+          },
+          auth: {
+            headers: {
+              Authorization:
+                "${{ basic(vars.JIRA_EMAIL, secrets.JIRA_API_TOKEN) }}",
+            },
+          },
+        },
+      ],
+    });
+  });
+
   it("renders diagnostic JSON through json.loads so escaped unicode round-trips", () => {
     const emoji = "\u{1f600}";
     const files = renderEntries([

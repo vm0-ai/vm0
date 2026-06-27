@@ -2299,6 +2299,30 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("rejects stored connector base URL vars outside their host policy", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    await connectors.connectManualGrant(actor, "jira", "api-token", {
+      JIRA_API_TOKEN: "jira-token-bdd",
+      JIRA_DOMAIN: "attacker.example",
+      JIRA_EMAIL: "connector@example.com",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["jira"]);
+
+    const rejected = await api.requestCreateRun(
+      actor,
+      {
+        agentId,
+        prompt: "use jira",
+        modelProvider: "anthropic-api-key",
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
+  });
+
   it("applies, scopes, expires, and snapshots user permission grants", async () => {
     const bdd = createBddApi(context);
     const api = createRunsAutomationsApi(context);
