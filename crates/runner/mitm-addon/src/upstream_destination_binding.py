@@ -100,6 +100,43 @@ def _address_matches(host: str, port: int, address: object) -> bool:
     return normalized_address_host == host and address_port == port
 
 
+def _binding_matches(
+    binding: UpstreamDestinationBinding,
+    *,
+    host: str,
+    port: int,
+    allowed_kinds: frozenset[BindingKind],
+) -> bool:
+    return binding.host == host and binding.port == port and bool(binding.kinds & allowed_kinds)
+
+
+def _client_binding_matches(
+    client: object,
+    *,
+    host: str,
+    port: int,
+    allowed_kinds: frozenset[BindingKind],
+) -> bool:
+    client_id = _connection_id(client)
+    if client_id is None:
+        return False
+
+    server_ids = _server_ids_by_client_id.get(client_id)
+    if not server_ids:
+        return False
+
+    return any(
+        _binding_matches(
+            binding,
+            host=host,
+            port=port,
+            allowed_kinds=allowed_kinds,
+        )
+        for server_id in server_ids
+        if (binding := _bindings_by_server_id.get(server_id)) is not None
+    )
+
+
 def flow_matches_bound_destination(
     flow: http.HTTPFlow,
     *,
@@ -118,11 +155,20 @@ def flow_matches_bound_destination(
     server_id = _connection_id(server)
     binding = _bindings_by_server_id.get(server_id) if server_id is not None else None
     if binding is not None:
-        return (
-            binding.host == normalized_host
-            and binding.port == port
-            and bool(binding.kinds & allowed_kinds)
+        return _binding_matches(
+            binding,
+            host=normalized_host,
+            port=port,
+            allowed_kinds=allowed_kinds,
         )
+
+    if _client_binding_matches(
+        flow.client_conn,
+        host=normalized_host,
+        port=port,
+        allowed_kinds=allowed_kinds,
+    ):
+        return True
 
     if bool(getattr(server, "connected", False)):
         return False
