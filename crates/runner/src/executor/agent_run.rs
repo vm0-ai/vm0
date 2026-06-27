@@ -49,6 +49,7 @@ pub(crate) enum SessionHistoryRestoreFallback {
     NonReuse,
     MissingIdleIdentity,
     UnverifiedIdleIdentity,
+    StaleIdleIdentity,
     IdentityMismatch,
 }
 
@@ -60,6 +61,7 @@ impl SessionHistoryRestoreFallback {
             Self::UnverifiedIdleIdentity => {
                 "session_history_restore_fallback_unverified_idle_identity"
             }
+            Self::StaleIdleIdentity => "session_history_restore_fallback_stale_idle_identity",
             Self::IdentityMismatch => "session_history_restore_fallback_identity_mismatch",
         }
     }
@@ -475,9 +477,27 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let mut restored_session_identity = None;
     let session_history_materializer = match session_history_restore_plan {
         SessionHistoryRestorePlan::SkipVerified(identity) => {
-            telemetry.record("session_history_restore_skip", Duration::ZERO, true, None);
-            restored_session_identity = Some(identity);
-            None
+            match verify_restored_session_identity_for_reuse(sandbox, context, Some(identity)).await
+            {
+                Some(identity) => {
+                    telemetry.record("session_history_restore_skip", Duration::ZERO, true, None);
+                    restored_session_identity = Some(identity);
+                    None
+                }
+                None => {
+                    telemetry.record(
+                        SessionHistoryRestoreFallback::StaleIdleIdentity.action_type(),
+                        Duration::ZERO,
+                        true,
+                        None,
+                    );
+                    Some(SessionHistoryMaterializer::start_cancellable(
+                        &config.http,
+                        context.resume_session.as_ref(),
+                        cancel.clone(),
+                    ))
+                }
+            }
         }
         SessionHistoryRestorePlan::Default => Some(SessionHistoryMaterializer::start_cancellable(
             &config.http,
