@@ -165,6 +165,66 @@ export function stringifyUnknownValue(value: unknown): string {
   return stringifyUnknownJsonValue(value, new WeakSet()) ?? "[unserializable]";
 }
 
+function stringifyDedupeValue(value: unknown, seen: WeakSet<object>): string {
+  if (value === null) {
+    return "null";
+  }
+  if (typeof value === "string") {
+    return `string:${JSON.stringify(value)}`;
+  }
+  if (typeof value === "number") {
+    return `number:${Object.is(value, -0) ? "-0" : String(value)}`;
+  }
+  if (typeof value === "boolean") {
+    return `boolean:${String(value)}`;
+  }
+  if (typeof value === "bigint") {
+    return `bigint:${value.toString()}`;
+  }
+  if (typeof value === "undefined") {
+    return "undefined";
+  }
+  if (typeof value === "symbol") {
+    return `symbol:${value.description ?? ""}`;
+  }
+  if (typeof value === "function") {
+    return `function:${value.name}:${String(value)}`;
+  }
+  if (seen.has(value)) {
+    return "[Circular]";
+  }
+  if (value instanceof Date) {
+    return `date:${Number.isFinite(value.getTime()) ? value.toISOString() : "Invalid Date"}`;
+  }
+
+  seen.add(value);
+  if (Array.isArray(value)) {
+    const items: string[] = [];
+    for (let index = 0; index < value.length; index += 1) {
+      items.push(
+        Object.prototype.hasOwnProperty.call(value, index)
+          ? stringifyDedupeValue(value[index], seen)
+          : "[Hole]",
+      );
+    }
+    seen.delete(value);
+    return `array:[${items.join(",")}]`;
+  }
+
+  const entries = Object.keys(value)
+    .sort()
+    .map((key) => {
+      const descriptor = Object.getOwnPropertyDescriptor(value, key);
+      const serialized =
+        descriptor && "value" in descriptor
+          ? stringifyDedupeValue(descriptor.value, seen)
+          : "[Accessor]";
+      return `${JSON.stringify(key)}:${serialized}`;
+    });
+  seen.delete(value);
+  return `object:{${entries.join(",")}}`;
+}
+
 // ============ GROUPED MESSAGE TYPES ============
 
 interface TodoItem {
@@ -366,12 +426,7 @@ function toToolResultMeta(value: unknown): ToolResultMeta | undefined {
 }
 
 function eventDedupeKey(event: AgentEvent): string {
-  return stringifyUnknownValue({
-    sequenceNumber: event.sequenceNumber,
-    eventType: event.eventType,
-    createdAt: event.createdAt,
-    eventData: event.eventData,
-  });
+  return stringifyDedupeValue(event, new WeakSet());
 }
 
 interface SeenSequenceEvents {

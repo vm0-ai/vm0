@@ -347,6 +347,46 @@ describe("groupEventsIntoMessages event dedupe", () => {
     expect(messages[0]?.textBefore).toBe("Repeated boundary event.");
   });
 
+  it("keeps same-sequence events that differ after display truncation limits", () => {
+    const largePayload = (marker: string): Record<string, string> => {
+      const payload: Record<string, string> = {};
+      for (let index = 0; index < 100; index += 1) {
+        payload[`field-${index}`] = "same";
+      }
+      payload["field-after-truncation-limit"] = marker;
+      return payload;
+    };
+    const baseEvent = {
+      sequenceNumber: 4,
+      eventType: "assistant",
+      createdAt: "2026-06-26T02:31:21Z",
+      eventData: {
+        message: {
+          content: [{ type: "text", text: "Repeated visible text." }],
+        },
+      },
+    } satisfies AgentEvent;
+
+    const messages = groupEventsIntoMessages([
+      {
+        ...baseEvent,
+        eventData: {
+          ...baseEvent.eventData,
+          payload: largePayload("first"),
+        },
+      },
+      {
+        ...baseEvent,
+        eventData: {
+          ...baseEvent.eventData,
+          payload: largePayload("second"),
+        },
+      },
+    ]);
+
+    expect(messages).toHaveLength(2);
+  });
+
   it("keeps fallback tool ids unique for same-sequence events", () => {
     const messages = groupEventsIntoMessages([
       {
