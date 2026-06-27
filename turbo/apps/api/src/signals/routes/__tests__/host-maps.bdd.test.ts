@@ -8,7 +8,7 @@ import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
-import { hostedTextFile } from "./helpers/api-bdd-chat-files";
+import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 

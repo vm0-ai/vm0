@@ -9,6 +9,8 @@
     "src/lib/callback-route/__tests__/callback-route.test.ts",
     "src/signals/routes/__tests__/agent-lifecycle.bdd.test.ts",
     "src/signals/routes/__tests__/auth-org-agents.bdd.test.ts",
+    "src/signals/routes/__tests__/automations.bdd.test.ts",
+    "src/signals/routes/__tests__/chat-files.bdd.test.ts",
     "src/signals/routes/__tests__/composes.bdd.test.ts",
     "src/signals/routes/__tests__/helpers/api-bdd-session-history.ts",
     "src/signals/routes/__tests__/helpers/zero-memory.ts",

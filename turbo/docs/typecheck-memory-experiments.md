@@ -395,6 +395,39 @@ remaining broad helpers (`api-bdd-chat-files.ts`, `api-bdd-billing-media.ts`,
 `api-bdd-misc.ts`, `api-bdd-integrations.ts`, `api-bdd-webhooks.ts`,
 `api-bdd-connectors.ts`, and `api-bdd-auth-device.ts`).
 
+### 22. Chat-files, email, and firewall BDD helper route slices
+
+Change: migrate `api-bdd-chat-files.ts` from default `setupApp` to
+`setupAppWithRoutes` backed by explicit real route arrays for chat threads,
+chat messages, v1 chat, compose creation/read, uploads, host, memory, and
+storage routes. Split the pure hosted-file helper into
+`api-bdd-host-files.ts` while preserving the existing `api-bdd-chat-files.ts`
+export. Also migrate the smaller `api-bdd-email.ts` and
+`api-bdd-firewall.ts` helpers to explicit real route arrays.
+
+Commands:
+
+- `pnpm -F api exec tsc -p tsconfig.tests-pure-context-entries.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-tests-pure-context-34-roots-chat-files-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-pure-context-entries.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-tests-no-setup-app-54-roots-email-firewall-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-no-setup-app.json --noEmit`
+
+Results:
+
+- Static split improved from `32 clean / 22 dirty` to `34 clean / 20 dirty`.
+  Newly clean roots: `automations.bdd.test.ts` and `chat-files.bdd.test.ts`.
+- `pure-context` expanded from 32 to 34 roots: passed, peak `2233.9 MiB`,
+  duration `48.4s`.
+- `tests-no-setup-app` 54-root chunk after email/firewall slicing: still OOM,
+  peak `2244.2 MiB`.
+
+Conclusion: the chat-files migration is safe but confirms the 34-root chunk is
+now at the edge of the default V8 heap. Email/firewall slicing lowers the
+54-root OOM peak slightly, but those entrypoints are still blocked by broader
+helpers (`api-bdd-webhooks.ts`, `api-bdd-connectors.ts`, and related
+integration helpers). Further work should keep migrating helpers, but the
+shipping `api` check-types path should use multiple strict chunks instead of
+one larger test chunk.
+
 ## Current conclusions
 
 - `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
@@ -406,7 +439,7 @@ remaining broad helpers (`api-bdd-chat-files.ts`, `api-bdd-billing-media.ts`,
   did not solve the OOM. The effective direction is strict sequential chunks,
   and the strongest measured chunks are route leaves (`2057.9 MiB` max),
   explicit-route tests (`1026.0 MiB` for callback-route), and route-free
-  pure-context tests (`2192.6 MiB` for 32 roots).
+  pure-context tests (`2233.9 MiB` for 34 roots).
 - Direct route test entries are worth keeping: they eliminate every direct
   `app-factory.ts` edge in `tsconfig.tests-no-setup-app.json` without reducing
   strictness.

@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import {
   chatMessagesContract,
@@ -57,14 +57,37 @@ import {
   type MemoryDetailResponse,
 } from "@vm0/api-contracts/contracts/zero-memory";
 
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { agentComposesReadRoutes } from "../../agent-composes-read";
+import { agentComposesRoutes } from "../../agent-composes";
+import { chatThreadsV1Routes } from "../../chat-threads-v1";
+import { storagesCommitRoutes } from "../../storages-commit";
+import { storagesDownloadRoutes } from "../../storages-download";
+import { storagesListRoutes } from "../../storages-list";
+import { storagesPrepareRoutes } from "../../storages-prepare";
+import { zeroChatMessagesRoutes } from "../../zero-chat-messages";
+import { zeroChatThreadComputerUseHostRoutes } from "../../zero-chat-threads-computer-use-host";
+import { zeroChatThreadCreateRoutes } from "../../zero-chat-threads-create";
+import { zeroChatThreadDeleteRoutes } from "../../zero-chat-threads-delete";
+import { zeroChatThreadMarkReadRoutes } from "../../zero-chat-threads-mark-read";
+import { zeroChatThreadModelSelectionRoutes } from "../../zero-chat-threads-model-selection";
+import { zeroChatThreadPatchRoutes } from "../../zero-chat-threads-patch";
+import { zeroChatThreadPinRoutes } from "../../zero-chat-threads-pin";
+import { zeroChatThreadRenameRoutes } from "../../zero-chat-threads-rename";
+import { zeroChatThreadRoutes } from "../../zero-chat-threads";
+import { zeroChatThreadUnpinRoutes } from "../../zero-chat-threads-unpin";
+import { zeroChatThreadsArtifactsSyncRoutes } from "../../zero-chat-threads-artifacts-sync";
+import { zeroHostRoutes } from "../../zero-host";
+import { zeroMemoryActivityRoutes } from "../../zero-memory-activity";
+import { zeroMemoryRoutes } from "../../zero-memory";
+import { zeroUploadsCompleteRoutes } from "../../zero-uploads-complete";
+import { zeroUploadsHtmlDomEditSnapshotRoutes } from "../../zero-uploads-html-dom-edit-snapshot";
+import { zeroUploadsPrepareRoutes } from "../../zero-uploads-prepare";
 import type { BddStorageFileEntry } from "./api-bdd-storage-files";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
+export { hostedTextFile } from "./api-bdd-host-files";
 export { storageTextFile } from "./api-bdd-storage-files";
 
 type StorageType = "volume" | "artifact";
@@ -193,18 +216,36 @@ function mockObjectStorageObjectsExist(context: TestContext): void {
   });
 }
 
-export function hostedTextFile(
-  path: string,
-  content: string,
-  contentType = "text/html; charset=utf-8",
-): HostedSitePrepareRequest["files"][number] {
-  const bytes = Buffer.from(content, "utf8");
-  return {
-    path,
-    size: bytes.byteLength,
-    sha256: createHash("sha256").update(bytes).digest("hex"),
-    contentType,
-  };
+const chatFilesRoutes = [
+  ...agentComposesRoutes,
+  ...agentComposesReadRoutes,
+  ...zeroChatThreadRoutes,
+  ...zeroChatThreadCreateRoutes,
+  ...zeroChatThreadDeleteRoutes,
+  ...zeroChatThreadPatchRoutes,
+  ...zeroChatThreadMarkReadRoutes,
+  ...zeroChatThreadPinRoutes,
+  ...zeroChatThreadUnpinRoutes,
+  ...zeroChatThreadRenameRoutes,
+  ...zeroChatThreadModelSelectionRoutes,
+  ...zeroChatThreadComputerUseHostRoutes,
+  ...zeroChatThreadsArtifactsSyncRoutes,
+  ...zeroChatMessagesRoutes,
+  ...chatThreadsV1Routes,
+  ...zeroUploadsPrepareRoutes,
+  ...zeroUploadsCompleteRoutes,
+  ...zeroUploadsHtmlDomEditSnapshotRoutes,
+  ...zeroHostRoutes,
+  ...zeroMemoryRoutes,
+  ...zeroMemoryActivityRoutes,
+  ...storagesPrepareRoutes,
+  ...storagesCommitRoutes,
+  ...storagesListRoutes,
+  ...storagesDownloadRoutes,
+] as const;
+
+function chatFilesApp(context: TestContext) {
+  return setupAppWithRoutes({ context, routes: chatFilesRoutes });
 }
 
 export function persistedAttachment(
@@ -226,71 +267,71 @@ export function createChatFilesBddApi(context: TestContext) {
   const mocks = createZeroRouteMocks(context);
 
   function composeClient() {
-    return setupApp({ context })(composesMainContract);
+    return chatFilesApp(context)(composesMainContract);
   }
 
   function threadsClient() {
-    return setupApp({ context })(chatThreadsContract);
+    return chatFilesApp(context)(chatThreadsContract);
   }
 
   function threadByIdClient() {
-    return setupApp({ context })(chatThreadByIdContract);
+    return chatFilesApp(context)(chatThreadByIdContract);
   }
 
   function threadMessagesClient() {
-    return setupApp({ context })(chatThreadMessagesContract);
+    return chatFilesApp(context)(chatThreadMessagesContract);
   }
 
   function threadArtifactsClient() {
-    return setupApp({ context })(chatThreadArtifactsContract);
+    return chatFilesApp(context)(chatThreadArtifactsContract);
   }
 
   function threadMarkReadClient() {
-    return setupApp({ context })(chatThreadMarkReadContract);
+    return chatFilesApp(context)(chatThreadMarkReadContract);
   }
 
   function threadPinClient() {
-    return setupApp({ context })(chatThreadPinContract);
+    return chatFilesApp(context)(chatThreadPinContract);
   }
 
   function threadUnpinClient() {
-    return setupApp({ context })(chatThreadUnpinContract);
+    return chatFilesApp(context)(chatThreadUnpinContract);
   }
 
   function threadRenameClient() {
-    return setupApp({ context })(chatThreadRenameContract);
+    return chatFilesApp(context)(chatThreadRenameContract);
   }
 
   function threadModelSelectionClient() {
-    return setupApp({ context })(chatThreadModelSelectionContract);
+    return chatFilesApp(context)(chatThreadModelSelectionContract);
   }
 
   function threadComputerUseHostClient() {
-    return setupApp({ context })(chatThreadComputerUseHostContract);
+    return chatFilesApp(context)(chatThreadComputerUseHostContract);
   }
 
   function chatMessagesClient() {
-    return setupApp({ context })(chatMessagesContract);
+    return chatFilesApp(context)(chatMessagesContract);
   }
 
   function chatSearchClient() {
-    return setupApp({ context })(chatSearchContract);
+    return chatFilesApp(context)(chatSearchContract);
   }
 
   function threadGithubPrsClient() {
-    return setupApp({ context })(chatThreadGithubPrsContract);
+    return chatFilesApp(context)(chatThreadGithubPrsContract);
   }
 
   function threadV1Client() {
-    return setupApp({ context })(chatThreadV1GetContract);
+    return chatFilesApp(context)(chatThreadV1GetContract);
   }
 
   function threadV1MessagesClient() {
-    return setupApp({ context })(chatThreadV1MessagesContract);
+    return chatFilesApp(context)(chatThreadV1MessagesContract);
   }
 
   function threadV1SendClient() {
-    return setupApp({ context })(chatThreadV1SendContract);
+    return chatFilesApp(context)(chatThreadV1SendContract);
   }
 
   /**
@@ -306,35 +347,35 @@ export function createChatFilesBddApi(context: TestContext) {
   }
 
   function uploadsClient() {
-    return setupApp({ context })(zeroUploadsContract);
+    return chatFilesApp(context)(zeroUploadsContract);
   }
 
   function hostClient() {
-    return setupApp({ context })(zeroHostContract);
+    return chatFilesApp(context)(zeroHostContract);
   }
 
   function memoryClient() {
-    return setupApp({ context })(zeroMemoryContract);
+    return chatFilesApp(context)(zeroMemoryContract);
   }
 
   function memoryActivityClient() {
-    return setupApp({ context })(zeroMemoryActivityContract);
+    return chatFilesApp(context)(zeroMemoryActivityContract);
   }
 
   function storagePrepareClient() {
-    return setupApp({ context })(storagesPrepareContract);
+    return chatFilesApp(context)(storagesPrepareContract);
   }
 
   function storageCommitClient() {
-    return setupApp({ context })(storagesCommitContract);
+    return chatFilesApp(context)(storagesCommitContract);
   }
 
   function storageListClient() {
-    return setupApp({ context })(storagesListContract);
+    return chatFilesApp(context)(storagesListContract);
   }
 
   function storageDownloadClient() {
-    return setupApp({ context })(storagesDownloadContract);
+    return chatFilesApp(context)(storagesDownloadContract);
   }
 
   return {
