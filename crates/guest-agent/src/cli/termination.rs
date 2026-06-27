@@ -107,13 +107,17 @@ impl PostResultCleanupTrigger {
     }
 }
 
+pub(super) fn deadline_after(now: Instant, duration: Duration) -> Instant {
+    now.checked_add(duration).unwrap_or(now)
+}
+
 impl PostResultCleanupState {
     pub(super) fn arm(now: Instant, quiet: Duration, total_cap: Duration) -> Self {
         Self {
             started_at: now,
             last_meaningful_event_at: now,
-            quiet_deadline: now + quiet,
-            total_cap_deadline: now + total_cap,
+            quiet_deadline: deadline_after(now, quiet),
+            total_cap_deadline: deadline_after(now, total_cap),
             meaningful_event_count: 0,
             signal_sent: false,
         }
@@ -135,7 +139,7 @@ impl PostResultCleanupState {
             return None;
         }
         self.last_meaningful_event_at = now;
-        self.quiet_deadline = now + quiet;
+        self.quiet_deadline = deadline_after(now, quiet);
         self.meaningful_event_count = self.meaningful_event_count.saturating_add(1);
         self.next_deadline()
     }
@@ -247,6 +251,14 @@ mod tests {
     }
 
     #[test]
+    fn post_result_cleanup_arm_uses_immediate_deadline_on_overflow() {
+        let now = Instant::now();
+        let cleanup = PostResultCleanupState::arm(now, Duration::MAX, Duration::MAX);
+
+        assert_eq!(cleanup.next_deadline(), Some(now));
+    }
+
+    #[test]
     fn post_result_cleanup_meaningful_event_refreshes_quiet_deadline_only() {
         let now = Instant::now();
         let mut cleanup =
@@ -271,6 +283,19 @@ mod tests {
                 quiet_for: Duration::from_secs(2),
                 meaningful_event_count: 1,
             })
+        );
+    }
+
+    #[test]
+    fn post_result_cleanup_meaningful_event_uses_immediate_deadline_on_overflow() {
+        let now = Instant::now();
+        let mut cleanup =
+            PostResultCleanupState::arm(now, Duration::from_secs(10), Duration::from_secs(20));
+        let event_at = now + Duration::from_secs(1);
+
+        assert_eq!(
+            cleanup.record_meaningful_event(event_at, Duration::MAX),
+            Some(event_at)
         );
     }
 

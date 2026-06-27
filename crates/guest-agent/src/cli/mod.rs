@@ -54,7 +54,7 @@ use std::collections::HashMap;
 use std::path::Path;
 use std::process::Stdio;
 use std::time::{Duration, Instant};
-use termination::{PostResultCleanupState, TerminationReason, TerminationState};
+use termination::{PostResultCleanupState, TerminationReason, TerminationState, deadline_after};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
 
@@ -664,10 +664,8 @@ async fn execute_cli_inner(
                                     let now = tokio::time::Instant::now();
                                     let cleanup = PostResultCleanupState::arm(
                                         now,
-                                        Duration::from_secs(
-                                            env::post_result_sigterm_grace_secs(),
-                                        ),
-                                        Duration::from_secs(env::post_result_total_cap_secs()),
+                                        env::post_result_sigterm_grace(),
+                                        env::post_result_total_cap(),
                                     );
                                     if let Some(next_deadline) = cleanup.next_deadline() {
                                         termination_runtime.state =
@@ -715,7 +713,7 @@ async fn execute_cli_inner(
                             {
                                 let next_deadline = cleanup.record_meaningful_event(
                                     tokio::time::Instant::now(),
-                                    Duration::from_secs(env::post_result_sigterm_grace_secs()),
+                                    env::post_result_sigterm_grace(),
                                 );
                                 if let Some(next_deadline) = next_deadline {
                                     termination_deadline.as_mut().reset(next_deadline);
@@ -797,9 +795,7 @@ async fn execute_cli_inner(
                                 .flatten();
                         let grace = cleanup_timeout
                             .map(|timeout| timeout.elapsed)
-                            .unwrap_or_else(|| {
-                                Duration::from_secs(env::post_result_sigterm_grace_secs())
-                            });
+                            .unwrap_or_else(env::post_result_sigterm_grace);
                         if let Some(pid) = termination_runtime.pgid {
                             if reason == TerminationReason::PostResult {
                                 if let Some(timeout) = cleanup_timeout {
@@ -846,13 +842,13 @@ async fn execute_cli_inner(
                             }
                         }
                         termination_runtime.state = TerminationState::SigkillPending { reason };
-                        termination_deadline.as_mut().reset(
-                            tokio::time::Instant::now()
-                                + Duration::from_secs(env::post_result_sigkill_grace_secs()),
-                        );
+                        termination_deadline.as_mut().reset(deadline_after(
+                            tokio::time::Instant::now(),
+                            env::post_result_sigkill_grace(),
+                        ));
                     }
                     TerminationState::SigkillPending { reason } => {
-                        let grace = Duration::from_secs(env::post_result_sigkill_grace_secs());
+                        let grace = env::post_result_sigkill_grace();
                         let now = tokio::time::Instant::now();
                         if let Some(pid) = termination_runtime.pgid {
                             log_warn!(
@@ -1187,7 +1183,7 @@ impl CliTerminationRuntime {
         post_result_cleanup: &mut Option<PostResultCleanupState>,
         mut termination_deadline: std::pin::Pin<&mut tokio::time::Sleep>,
     ) {
-        let grace = Duration::from_secs(env::post_result_sigkill_grace_secs());
+        let grace = env::post_result_sigkill_grace();
         record_cli_termination_signal(
             &mut self.diagnostic,
             reason,
@@ -1203,7 +1199,7 @@ impl CliTerminationRuntime {
         self.state = TerminationState::SigkillPending { reason };
         termination_deadline
             .as_mut()
-            .reset(tokio::time::Instant::now() + grace);
+            .reset(deadline_after(tokio::time::Instant::now(), grace));
     }
 }
 
