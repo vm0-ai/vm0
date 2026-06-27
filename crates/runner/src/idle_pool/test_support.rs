@@ -3,8 +3,8 @@ use std::sync::Arc;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
 use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
-use crate::executor::RestoredSessionIdentity;
 use crate::resource_budget::BudgetLease;
+use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::workspace_image_cache::WorkspaceImagePromotionContext;
 

@@ -36,10 +36,10 @@ mod session_restore;
 mod storage;
 mod telemetry;
 
+pub(crate) use crate::restored_session_identity::RestoredSessionIdentity;
 pub(crate) use agent_run::{SessionHistoryRestoreFallback, SessionHistoryRestorePlan};
 pub(crate) use guest_state::{is_valid_guest_timezone_name, restore_guest_state_with_timezone};
 pub(crate) use session_history_download::SessionHistoryMaterializer;
-pub(crate) use session_restore::RestoredSessionIdentity;
 
 use crate::active_input::ActiveInputSource;
 use agent_run::{ProcessCancelTimeouts, RunControls};

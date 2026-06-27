@@ -23,7 +23,7 @@ use super::idle_lifecycle::{
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
 use crate::executor::{
-    RestoredSessionIdentity, RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryMaterializer,
+    RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryMaterializer,
     SessionHistoryRestoreFallback, SessionHistoryRestorePlan, validate_resume_session_id,
 };
 use crate::http::HttpClient;
@@ -32,6 +32,7 @@ use crate::ids::RunId;
 use crate::paths::diagnostic_session_fingerprint;
 use crate::provider::{ClaimedJob, JobCandidate};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
+use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
 use crate::status::{RunnerMode, StatusTracker};
 use crate::types::{ExecutionContext, SandboxReuseResult};
@@ -704,6 +705,36 @@ mod tests {
                 );
             }
             _ => panic!("missing reused identity should fall back to restore"),
+        }
+    }
+
+    #[tokio::test]
+    async fn restore_plan_falls_back_when_reused_identity_mismatches() {
+        let http = test_http_client();
+        let context = context_with_history_ref("history-hash-a");
+        let restored_identity = RestoredSessionIdentity::claude_code_for_test("history-hash-b");
+        let reusable_sandbox = reusable_sandbox_with_identity(Some(restored_identity)).await;
+        let cancel = RunCancellationHandle::new();
+        let mut timing = RunnerPreSpawnTiming::start_after_claim();
+
+        let plan = build_session_history_restore_plan(
+            &http,
+            &context,
+            true,
+            &cancel,
+            Some(&reusable_sandbox),
+            SandboxReuseResult::Reused,
+            &mut timing,
+        );
+
+        match plan {
+            SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
+                assert_eq!(
+                    fallback,
+                    Some(SessionHistoryRestoreFallback::IdentityMismatch)
+                );
+            }
+            _ => panic!("mismatched reused identity should fall back to restore"),
         }
     }
 }

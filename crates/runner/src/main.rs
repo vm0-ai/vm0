@@ -36,6 +36,7 @@ mod provider;
 mod proxy;
 mod r2_cache;
 mod resource_budget;
+mod restored_session_identity;
 mod retry;
 mod run_cancellation;
 mod run_resolution;

@@ -10,8 +10,8 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use futures_util::FutureExt;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
 
-use crate::executor::RestoredSessionIdentity;
 use crate::resource_budget::BudgetLease;
+use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::status::IdleVm;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::HeldSessionState;

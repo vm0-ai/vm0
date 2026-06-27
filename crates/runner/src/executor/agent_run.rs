@@ -21,7 +21,7 @@ use super::diagnostics::{
 use super::env::{build_env_json, build_user_env_json, write_user_env_file};
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::session_history_download::{SessionHistoryMaterialization, SessionHistoryMaterializer};
-use super::session_restore::{RestoredSessionIdentity, restore_session};
+use super::session_restore::restore_session;
 use super::storage::{apply_storage_fingerprint_reuse, download_storages, guest_download_has_work};
 use super::telemetry::{RunnerSpawnTiming, record_api_latency};
 use super::{
@@ -33,6 +33,7 @@ use super::{
 use crate::active_input::ActiveInputSource;
 use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
 use crate::paths::guest;
+use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, GuestDownloadManifest};
 

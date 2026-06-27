@@ -21,7 +21,6 @@ use super::job_lifecycle::{
 use super::ownership::OwnershipTransitions;
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
-use crate::executor::RestoredSessionIdentity;
 use crate::idle_pool::{
     DestroyOutcome, IdleDestroyPayload, IdleParkActiveParts, IdleParkRequest, IdleParkRequestParts,
     ParkResult, ParkingGate,
@@ -33,6 +32,7 @@ use crate::paths::diagnostic_session_fingerprint;
 #[cfg(test)]
 use crate::provider::CompletionAuth;
 use crate::resource_budget::BudgetLease;
+use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::run_cancellation::RunCancellationHandle;
 use crate::status::StatusTracker;
 use crate::storage_fingerprints::StorageFingerprints;

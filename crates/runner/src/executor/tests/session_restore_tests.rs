@@ -8,9 +8,10 @@ use tracing_subscriber::prelude::*;
 
 use super::super::DEFAULT_EXEC_TIMEOUT;
 use super::super::session_id::{canonical_codex_thread_id, is_valid_session_id};
-use super::super::session_restore::{RestoredSessionIdentity, restore_session};
+use super::super::session_restore::restore_session;
 use super::support::{CapturedEvent, CapturedEvents, minimal_context, sandbox_write_file_error};
 use crate::paths::diagnostic_session_fingerprint;
+use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::types::{
     ResumeSession, ResumeSessionHistory, ResumeSessionHistoryRef, ResumeSessionHistoryRefKind,
 };
