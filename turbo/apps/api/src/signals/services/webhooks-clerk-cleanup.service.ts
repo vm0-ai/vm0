@@ -117,12 +117,19 @@ async function cancelLastAdminOrgsStripeSubscriptions(
       );
 
     if ((result?.adminCount ?? 0) <= 1) {
-      await tapError(markStripeSubscriptionsNonRenewing(db, orgId), (error) => {
-        L.warn(
-          "failed to mark stripe subscriptions non-renewing for org with banned last admin",
-          { userId, orgId, error },
-        );
-      });
+      await tapError(
+        cancelStripeSubscriptionsForDeletedOrg(db, orgId),
+        (error) => {
+          L.warn(
+            "failed to cancel stripe subscriptions for banned last admin",
+            {
+              userId,
+              orgId,
+              error,
+            },
+          );
+        },
+      );
     }
   }
 }
@@ -176,7 +183,62 @@ async function cleanupWorkspaceInstallation(
     .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId));
 }
 
-async function markStripeSubscriptionsNonRenewing(
+interface StripeSubscriptionCleanupTargets {
+  readonly cancelNowSubscriptionIds: Set<string>;
+  readonly cancelAtPeriodEndSubscriptionIds: Set<string>;
+  readonly nonRenewingSubscriptionIds: Set<string>;
+}
+
+function queueStripeSubscriptionCleanup(
+  targets: StripeSubscriptionCleanupTargets,
+  subscription: {
+    readonly id: string;
+    readonly status: string | null;
+    readonly cancel_at_period_end: boolean | null;
+  },
+): void {
+  if (subscription.status === "canceled") {
+    targets.nonRenewingSubscriptionIds.add(subscription.id);
+    return;
+  }
+
+  if (subscription.status === "trialing") {
+    targets.cancelNowSubscriptionIds.add(subscription.id);
+    return;
+  }
+
+  if (subscription.cancel_at_period_end) {
+    targets.nonRenewingSubscriptionIds.add(subscription.id);
+    return;
+  }
+
+  targets.cancelAtPeriodEndSubscriptionIds.add(subscription.id);
+}
+
+function queueFallbackStripeSubscriptionCleanup(
+  targets: StripeSubscriptionCleanupTargets,
+  subscriptionId: string | null,
+  subscriptionStatus: string | null,
+): void {
+  if (
+    !subscriptionId ||
+    subscriptionStatus === "canceled" ||
+    targets.nonRenewingSubscriptionIds.has(subscriptionId) ||
+    targets.cancelNowSubscriptionIds.has(subscriptionId) ||
+    targets.cancelAtPeriodEndSubscriptionIds.has(subscriptionId)
+  ) {
+    return;
+  }
+
+  if (subscriptionStatus === "trialing") {
+    targets.cancelNowSubscriptionIds.add(subscriptionId);
+    return;
+  }
+
+  targets.cancelAtPeriodEndSubscriptionIds.add(subscriptionId);
+}
+
+async function cancelStripeSubscriptionsForDeletedOrg(
   db: Db,
   orgId: string,
 ): Promise<void> {
@@ -195,8 +257,11 @@ async function markStripeSubscriptionsNonRenewing(
   }
 
   const stripe = getStripeClient();
-  const renewingSubscriptionIds = new Set<string>();
-  const nonRenewingSubscriptionIds = new Set<string>();
+  const targets: StripeSubscriptionCleanupTargets = {
+    cancelNowSubscriptionIds: new Set<string>(),
+    cancelAtPeriodEndSubscriptionIds: new Set<string>(),
+    nonRenewingSubscriptionIds: new Set<string>(),
+  };
 
   if (meta.stripeCustomerId) {
     let startingAfter: string | undefined;
@@ -210,14 +275,7 @@ async function markStripeSubscriptionsNonRenewing(
       });
 
       for (const subscription of subscriptions.data) {
-        if (
-          subscription.status === "canceled" ||
-          subscription.cancel_at_period_end
-        ) {
-          nonRenewingSubscriptionIds.add(subscription.id);
-        } else {
-          renewingSubscriptionIds.add(subscription.id);
-        }
+        queueStripeSubscriptionCleanup(targets, subscription);
       }
 
       const lastSubscription =
@@ -229,15 +287,17 @@ async function markStripeSubscriptionsNonRenewing(
     }
   }
 
-  if (
-    meta.stripeSubscriptionId &&
-    meta.subscriptionStatus !== "canceled" &&
-    !nonRenewingSubscriptionIds.has(meta.stripeSubscriptionId)
-  ) {
-    renewingSubscriptionIds.add(meta.stripeSubscriptionId);
+  queueFallbackStripeSubscriptionCleanup(
+    targets,
+    meta.stripeSubscriptionId,
+    meta.subscriptionStatus,
+  );
+
+  for (const subscriptionId of targets.cancelNowSubscriptionIds) {
+    await stripe.subscriptions.cancel(subscriptionId);
   }
 
-  for (const subscriptionId of renewingSubscriptionIds) {
+  for (const subscriptionId of targets.cancelAtPeriodEndSubscriptionIds) {
     await stripe.subscriptions.update(subscriptionId, {
       cancel_at_period_end: true,
     });
@@ -388,7 +448,7 @@ const cleanupOrgExternalServices$ = command(
       {
         name: "stripe subscriptions",
         run: () => {
-          return markStripeSubscriptionsNonRenewing(db, orgId);
+          return cancelStripeSubscriptionsForDeletedOrg(db, orgId);
         },
       },
       {
