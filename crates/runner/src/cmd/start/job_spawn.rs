@@ -6,6 +6,7 @@
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
+use std::time::Instant;
 
 use agent_diagnostics::{CliTerminationDiagnostic, FailureClass, FailureDiagnostic, FailureReason};
 use futures_util::FutureExt;
@@ -27,7 +28,8 @@ use super::sandbox_finalization::{FinalizeContext, finalize_sandbox_for_completi
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::executor::{
-    self, ExecutionFailureKind, ExecutorConfig, RunnerPreSpawnTiming, SessionHistoryMaterializer,
+    self, ExecutionFailureKind, ExecutorConfig, RunnerPreSpawnPhase, RunnerPreSpawnTiming,
+    SessionHistoryMaterializer,
 };
 use crate::idle_pool::{ParkingGate, ReusableIdleSandbox};
 use crate::ids::RunId;
@@ -443,6 +445,7 @@ pub(super) fn spawn_job(
     ctx: &SpawnContext,
     jobs: &mut JoinSet<Option<RunId>>,
 ) {
+    let started_at = Instant::now();
     let SpawnJobRequest {
         claimed,
         sandbox_id,
@@ -530,7 +533,7 @@ pub(super) fn spawn_job(
             },
         ))
     };
-    let executor = ExecutorInvocation {
+    let mut executor = ExecutorInvocation {
         run_id,
         sandbox_id,
         context,
@@ -576,6 +579,10 @@ pub(super) fn spawn_job(
         exec_config: Arc::clone(&exec_config),
     };
 
+    executor
+        .pre_spawn_timing
+        .record_phase_elapsed(RunnerPreSpawnPhase::SpawnJobSetup, started_at);
+    executor.pre_spawn_timing.mark_task_enqueued();
     jobs.spawn(async move {
         let mut active_cli_agent_session_guard = active_cli_agent_session_guard;
         let body = async move {

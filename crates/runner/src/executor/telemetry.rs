@@ -11,10 +11,74 @@ use crate::types::{ExecutionContext, SandboxReuseResult};
 use crate::workspace_image_cache::WorkspaceCacheCheckoutResult;
 
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
+const RUNNER_PRE_SPAWN_PHASE_COUNT: usize = 10;
+
+#[derive(Clone, Copy)]
+pub(crate) enum RunnerPreSpawnPhase {
+    ResumeSessionValidation,
+    SessionHistoryMaterializerStart,
+    DeviceRateLimits,
+    IdleReuseLookup,
+    HeldSessionStateRefresh,
+    ProviderHeldSessionUpdate,
+    WorkspacePromotionValidation,
+    IdleUnpark,
+    ActiveStatusPublish,
+    SpawnJobSetup,
+}
+
+impl RunnerPreSpawnPhase {
+    const ALL: [Self; RUNNER_PRE_SPAWN_PHASE_COUNT] = [
+        Self::ResumeSessionValidation,
+        Self::SessionHistoryMaterializerStart,
+        Self::DeviceRateLimits,
+        Self::IdleReuseLookup,
+        Self::HeldSessionStateRefresh,
+        Self::ProviderHeldSessionUpdate,
+        Self::WorkspacePromotionValidation,
+        Self::IdleUnpark,
+        Self::ActiveStatusPublish,
+        Self::SpawnJobSetup,
+    ];
+
+    const fn index(self) -> usize {
+        match self {
+            Self::ResumeSessionValidation => 0,
+            Self::SessionHistoryMaterializerStart => 1,
+            Self::DeviceRateLimits => 2,
+            Self::IdleReuseLookup => 3,
+            Self::HeldSessionStateRefresh => 4,
+            Self::ProviderHeldSessionUpdate => 5,
+            Self::WorkspacePromotionValidation => 6,
+            Self::IdleUnpark => 7,
+            Self::ActiveStatusPublish => 8,
+            Self::SpawnJobSetup => 9,
+        }
+    }
+
+    const fn action_type(self) -> &'static str {
+        match self {
+            Self::ResumeSessionValidation => "runner_claim_resume_session_validation",
+            Self::SessionHistoryMaterializerStart => {
+                "runner_claim_session_history_materializer_start"
+            }
+            Self::DeviceRateLimits => "runner_claim_device_rate_limits",
+            Self::IdleReuseLookup => "runner_claim_idle_reuse_lookup",
+            Self::HeldSessionStateRefresh => "runner_claim_held_session_state_refresh",
+            Self::ProviderHeldSessionUpdate => "runner_claim_provider_held_session_update",
+            Self::WorkspacePromotionValidation => "runner_claim_workspace_promotion_validation",
+            Self::IdleUnpark => "runner_claim_idle_unpark",
+            Self::ActiveStatusPublish => "runner_claim_active_status_publish",
+            Self::SpawnJobSetup => "runner_claim_spawn_job_setup",
+        }
+    }
+}
 
 #[derive(Clone, Copy)]
 pub(crate) struct RunnerPreSpawnTiming {
     claim_returned_at: Instant,
+    phase_durations: [Option<Duration>; RUNNER_PRE_SPAWN_PHASE_COUNT],
+    task_enqueued_at: Option<Instant>,
 }
 
 #[derive(Clone, Copy)]
@@ -27,11 +91,43 @@ impl RunnerPreSpawnTiming {
     pub(crate) fn start_after_claim() -> Self {
         Self {
             claim_returned_at: Instant::now(),
+            phase_durations: [None; RUNNER_PRE_SPAWN_PHASE_COUNT],
+            task_enqueued_at: None,
         }
+    }
+
+    pub(crate) fn record_phase(&mut self, phase: RunnerPreSpawnPhase, duration: Duration) {
+        if let Some(slot) = self.phase_durations.get_mut(phase.index()) {
+            *slot = Some(duration);
+        }
+    }
+
+    pub(crate) fn record_phase_elapsed(&mut self, phase: RunnerPreSpawnPhase, started_at: Instant) {
+        self.record_phase(phase, started_at.elapsed());
+    }
+
+    pub(crate) fn mark_task_enqueued(&mut self) {
+        self.task_enqueued_at = Some(Instant::now());
     }
 
     fn elapsed_at(self, at: Instant) -> Duration {
         at.saturating_duration_since(self.claim_returned_at)
+    }
+
+    fn record_collected_phases(self, telemetry: &mut JobTelemetry, executor_started_at: Instant) {
+        for phase in RunnerPreSpawnPhase::ALL {
+            if let Some(Some(duration)) = self.phase_durations.get(phase.index()).copied() {
+                telemetry.record(phase.action_type(), duration, true, None);
+            }
+        }
+        if let Some(task_enqueued_at) = self.task_enqueued_at {
+            telemetry.record(
+                "runner_claim_task_schedule_wait",
+                executor_started_at.saturating_duration_since(task_enqueued_at),
+                true,
+                None,
+            );
+        }
     }
 }
 
@@ -51,6 +147,7 @@ impl RunnerSpawnTiming {
                 true,
                 None,
             );
+            pre_spawn_timing.record_collected_phases(telemetry, self.executor_started_at);
         }
     }
 
