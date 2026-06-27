@@ -740,7 +740,7 @@ async def test_http_firewall_without_managed_credentials_still_matches(
     ):
         await mitm_addon.request(flow)
 
-    auth_fetch.assert_called_once()
+    auth_fetch.assert_not_called()
     assert flow.response is None
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert flow.metadata[metadata_keys.FIREWALL_BASE] == "http://api.github.com"
