@@ -1528,12 +1528,10 @@ def _server_peername(server: object) -> tuple[str, int] | None:
     return host, port
 
 
-def _global_ip_address(host: str) -> str | None:
+def _ip_address_text(host: str) -> str | None:
     try:
         address = ipaddress.ip_address(host)
     except ValueError:
-        return None
-    if not address.is_global:
         return None
     return str(address)
 
@@ -1561,7 +1559,7 @@ def _resolved_trusted_host_addresses(host: str, port: int) -> frozenset[str]:
         sockaddr_host = sockaddr[0]
         if not isinstance(sockaddr_host, str):
             continue
-        resolved_ip = _global_ip_address(sockaddr_host)
+        resolved_ip = _ip_address_text(sockaddr_host)
         if resolved_ip is not None:
             address_set.add(resolved_ip)
 
@@ -1601,7 +1599,7 @@ def _server_connected_to_trusted_destination(
     if peer_port != port:
         return False
 
-    peer_ip = _global_ip_address(peer_host)
+    peer_ip = _ip_address_text(peer_host)
     if peer_ip is None:
         return False
 

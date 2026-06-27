@@ -143,7 +143,7 @@ async def test_capture_enabled_api_allow_uses_connected_upstream_when_dns_verifi
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
-        host="104.18.12.34",
+        host="198.18.20.34",
         sni="api.vm0.ai",
         method="POST",
         path="/api/webhooks/agent/heartbeat",
@@ -153,20 +153,20 @@ async def test_capture_enabled_api_allow_uses_connected_upstream_when_dns_verifi
         ),
     )
     flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.peername = ("104.18.12.34", 443)
+    flow.server_conn.peername = ("198.18.20.34", 443)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         patch.object(
             mitm_addon.socket,
             "getaddrinfo",
-            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("104.18.12.34", 443))],
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))],
         ),
     ):
         mitm_addon.requestheaders(flow)
 
         assert callable(flow.request.stream)
-        assert flow.server_conn.address == ("104.18.12.34", 443)
+        assert flow.server_conn.address == ("198.18.20.34", 443)
 
         await mitm_addon.request(flow)
 
@@ -174,7 +174,7 @@ async def test_capture_enabled_api_allow_uses_connected_upstream_when_dns_verifi
     binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
     assert binding.host == "api.vm0.ai"
     assert binding.kinds == frozenset(("api_allow",))
-    assert binding.original_address == ("104.18.12.34", 443)
+    assert binding.original_address == ("198.18.20.34", 443)
 
 
 async def test_api_allow_small_bounded_body_retargets_unconnected_upstream(
