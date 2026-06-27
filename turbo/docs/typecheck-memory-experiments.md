@@ -2,7 +2,8 @@
 
 Date: 2026-06-27
 Base branch: `main`
-Base commit: `7b14b934a4ea535d43bfa55f485af1e5a6687ef0`
+Latest validation base commit: `ba104205214ef487ef0488ad0c92c38352bf2eaa`
+Original experiment base commit: `7b14b934a4ea535d43bfa55f485af1e5a6687ef0`
 
 ## Constraints
 
@@ -15,15 +16,18 @@ Base commit: `7b14b934a4ea535d43bfa55f485af1e5a6687ef0`
 
 ## Baselines
 
-- `@vm0/api-contracts` on `origin/main`: passed, peak RSS `1631.4 MiB`,
-  duration `39.8s`.
-- `@vm0/app` on `origin/main`: passed, peak RSS `2189.5 MiB`, duration
-  `53.9s`.
-- `api` on `origin/main`: failed with V8 heap OOM, peak RSS `2258.3 MiB`,
-  duration `54.8s`.
+- `@vm0/api-contracts` on latest `origin/main`
+  (`ba104205214ef487ef0488ad0c92c38352bf2eaa`): passed, peak RSS
+  `1688.5 MiB`, duration `48.2s`.
+- `@vm0/app` on latest `origin/main`
+  (`ba104205214ef487ef0488ad0c92c38352bf2eaa`): passed, peak RSS
+  `2217.1 MiB`, duration `56.6s`.
+- `api` on latest `origin/main`
+  (`ba104205214ef487ef0488ad0c92c38352bf2eaa`): failed with V8 heap OOM,
+  peak RSS `2267.9 MiB`, duration `61.2s`.
 - Current experiment branch after the retained app/type-splitting changes:
-  `@vm0/api-contracts` passed at `1640.9 MiB`, `@vm0/app` passed at
-  `2179.1 MiB`, and full `api` still OOMed at `2238.6 MiB`.
+  `@vm0/api-contracts` passed at `1678.9 MiB`, `@vm0/app` passed at
+  `2223.5 MiB`, and full `api` still OOMed at `2274.4 MiB`.
 
 ## Static diagnostics
 
@@ -653,19 +657,61 @@ program validate only the registry's `RouteEntry` boundary without rechecking
 every route leaf in the same TypeScript program. That needs a carefully audited
 implementation because a naive stub would lose type coverage.
 
+### 31. Rebase onto latest main and refresh key measurements
+
+Change: rebase the experiment branch onto latest `origin/main`
+`ba104205214ef487ef0488ad0c92c38352bf2eaa`, then rerun the key package
+baselines and the retained API test chunks with the same process-tree RSS
+measurement.
+
+Latest-main commands:
+
+- `node /tmp/vm0-measure-memory.mjs --label latest-main-api-contracts-check-types --json .memory-results/latest.jsonl -- pnpm -F @vm0/api-contracts check-types`
+- `node /tmp/vm0-measure-memory.mjs --label latest-main-app-check-types --json .memory-results/latest.jsonl -- pnpm -F @vm0/app check-types`
+- `node /tmp/vm0-measure-memory.mjs --label latest-main-api-check-types --json .memory-results/latest.jsonl -- pnpm -F api check-types`
+
+Rebased-branch commands:
+
+- `node scripts/measure-memory.mjs --label rebased-api-contracts-check-types --json .memory-results/latest.jsonl -- pnpm -F @vm0/api-contracts check-types`
+- `node scripts/measure-memory.mjs --label rebased-app-check-types --json .memory-results/latest.jsonl -- pnpm -F @vm0/app check-types`
+- `node scripts/measure-memory.mjs --label rebased-api-check-types --json .memory-results/latest.jsonl -- pnpm -F api check-types`
+- `node scripts/measure-memory.mjs --label rebased-api-tests-host-maps-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-host-maps-slice.json --noEmit`
+- `node scripts/measure-memory.mjs --label rebased-api-tests-agent-run-callback-service-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-agent-run-callback-service-slice.json --noEmit`
+
+Results:
+
+- Latest main `@vm0/api-contracts`: passed, peak `1688.5 MiB`.
+- Rebased branch `@vm0/api-contracts`: passed, peak `1678.9 MiB`.
+- Latest main `@vm0/app`: passed, peak `2217.1 MiB`.
+- Rebased branch `@vm0/app`: passed, peak `2223.5 MiB`.
+- Latest main `api`: OOM, peak `2267.9 MiB`.
+- Rebased branch `api`: OOM, peak `2274.4 MiB`.
+- Rebased branch `host-maps` strict slice: passed, peak `1860.1 MiB`.
+- Rebased branch `agent-run-callback.service` strict slice: passed, peak
+  `1664.5 MiB`.
+
+Conclusion: the retained API test slices survive the latest-main rebase and
+remain comfortably below the full `api` OOM peak. The latest main changes moved
+the app and contract peaks upward, so the branch's small app-side savings are
+no longer visible in the aggregate package peak. The remaining high-value API
+work is still the full registry edge and broad dirty BDD helper graph, not
+dependency version fragmentation or contract package checking.
+
 ## Current conclusions
 
 - `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
   preserve public exports and type strictness. On latest `origin/main`, app
-  measured `2189.5 MiB`; on the current branch it measured `2179.1 MiB`.
-- `@vm0/api-contracts`: latest-main cold peak is `1631.4 MiB`; current branch
-  measured `1640.9 MiB`. This package is not the main problem.
+  measured `2217.1 MiB`; on the rebased branch it measured `2223.5 MiB`.
+- `@vm0/api-contracts`: latest-main cold peak is `1688.5 MiB`; the rebased
+  branch measured `1678.9 MiB`. This package is not the main problem.
 - `api`: dependency dedupe/declaration boundaries and route registry reshaping
   did not solve the OOM. The effective direction is strict sequential chunks,
   and the strongest measured chunks are route leaves (`2057.9 MiB` max),
   explicit-route tests (`1026.0 MiB` for callback-route), route-free
   pure-context tests (`2233.9 MiB` for 34 roots), and the host/maps BDD chunk
-  (`1894.2 MiB`) plus callback-service chunk (`1651.1 MiB`).
+  (`1860.1 MiB` after rebase) plus callback-service chunk (`1664.5 MiB` after
+  rebase). Full `api` still OOMs at `2267.9 MiB` on latest main and
+  `2274.4 MiB` on the rebased branch.
 - A package-local sequential `api` `check-types` runner is not ready to ship as
   a simple clean/dirty split: the remaining dirty 18-root test chunk OOMs at
   `2294.6 MiB`, a representative dirty 9-root chunk OOMs at `2278.0 MiB`, and
