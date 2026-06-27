@@ -109,6 +109,12 @@ _CONNECTOR_DIAGNOSTIC_LOOKUP_DONE = "_connector_diagnostic_lookup_done"
 _CONNECTOR_DIAGNOSTIC_CANDIDATE = "_connector_diagnostic_candidate"
 _CONNECTOR_DIAGNOSTIC_AUTH_HEADER_NAMES = "_connector_diagnostic_auth_header_names"
 _CONNECTOR_DIAGNOSTIC_AUTH_QUERY_PARAM_NAMES = "_connector_diagnostic_auth_query_param_names"
+_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS = (
+    "_connector_diagnostic_response_replaced_in_headers"
+)
+_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT = "_connector_diagnostic_response_stream_body_sent"
+_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_CALLBACK = "_connector_diagnostic_response_stream_callback"
+_CONNECTOR_DIAGNOSTIC_PROXY_ENTRY_LOGGED = "_connector_diagnostic_proxy_entry_logged"
 _GENERIC_AUTH_HEADER_NAMES = frozenset(
     (
         "authorization",
@@ -1037,19 +1043,23 @@ def _replace_connector_diagnostic_response_content(
     candidate: builtin_connector_diagnostics.ConnectorDiagnosticCandidate,
     *,
     upstream_status: int,
-) -> None:
+) -> bytes | None:
     if flow.response is None:
-        return
+        return None
     flow.metadata.pop(metadata_keys.STREAM_BUFFER, None)
     flow.metadata.pop(metadata_keys.STREAM_BUFFER_STATE, None)
-    for header in ("content-encoding", "transfer-encoding"):
+    for header in ("content-encoding", "content-length", "transfer-encoding"):
         if header in flow.response.headers:
             del flow.response.headers[header]
-    flow.response.headers["Content-Type"] = "application/json"
-    flow.response.content = _connector_diagnostic_response_body(
+    flow.response.trailers = None
+    body = _connector_diagnostic_response_body(
         candidate,
         upstream_status=upstream_status,
     )
+    flow.response.content = body
+    flow.response.headers["Content-Type"] = "application/json"
+    flow.response.headers["Content-Length"] = str(len(body))
+    return body
 
 
 def _log_connector_diagnostic_proxy_entry(
@@ -1058,6 +1068,8 @@ def _log_connector_diagnostic_proxy_entry(
     original_url: str,
     upstream_status: int,
 ) -> None:
+    if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_PROXY_ENTRY_LOGGED):
+        return
     candidate = _connector_diagnostic_candidate_from_flow(flow)
     if candidate is None:
         return
@@ -1072,6 +1084,7 @@ def _log_connector_diagnostic_proxy_entry(
         upstream_status=upstream_status,
         url=original_url,
     )
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_PROXY_ENTRY_LOGGED] = True
 
 
 def _maybe_make_connector_diagnostic_local_response(
@@ -1111,6 +1124,8 @@ def _maybe_replace_connector_diagnostic_response(
     original_url: str,
 ) -> None:
     if flow.response is None:
+        return
+    if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS):
         return
     if flow.response.status_code not in (
         _HTTP_STATUS_UNAUTHORIZED,
@@ -1169,7 +1184,7 @@ def _maybe_make_connector_diagnostic_error_response(
     )
 
 
-def _should_buffer_connector_diagnostic_response(flow: http.HTTPFlow) -> bool:
+def _should_stream_connector_diagnostic_response(flow: http.HTTPFlow) -> bool:
     if flow.response is None:
         return False
     if flow.response.status_code not in (
@@ -1189,6 +1204,49 @@ def _should_buffer_connector_diagnostic_response(flow: http.HTTPFlow) -> bool:
     if candidate is None:
         return False
     return not _request_has_connector_auth_material(flow, candidate, original_url)
+
+
+def _install_connector_diagnostic_response_stream(flow: http.HTTPFlow) -> bool:
+    if flow.response is None:
+        return False
+    original_url = flow.metadata.get(metadata_keys.ORIGINAL_URL)
+    if not isinstance(original_url, str):
+        return False
+    candidate = _resolve_connector_diagnostic_candidate(flow, original_url=original_url)
+    if candidate is None:
+        return False
+    if _request_has_connector_auth_material(flow, candidate, original_url):
+        return False
+
+    upstream_status = flow.response.status_code
+    _set_connector_diagnostic_failure_metadata(flow, candidate)
+    body = _replace_connector_diagnostic_response_content(
+        flow,
+        candidate,
+        upstream_status=upstream_status,
+    )
+    if body is None:
+        return False
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS] = True
+    _log_connector_diagnostic_proxy_entry(
+        flow,
+        original_url=original_url,
+        upstream_status=upstream_status,
+    )
+
+    def stream_connector_diagnostic_response(chunk: bytes) -> bytes:
+        if chunk:
+            return b""
+        if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT):
+            return b""
+        flow.metadata[_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT] = True
+        return body
+
+    flow.response.stream = stream_connector_diagnostic_response
+    flow.metadata[_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_CALLBACK] = (
+        stream_connector_diagnostic_response
+    )
+    return True
 
 
 def _network_log_target(flow: http.HTTPFlow, original_url: str) -> tuple[str, str, int]:
@@ -1776,7 +1834,8 @@ def _schedule_model_websocket_message_trim(flow: http.HTTPFlow) -> None:
 
 def responseheaders(flow: http.HTTPFlow) -> None:
     """Install response stream buffering and incremental body parsers."""
-    if _should_buffer_connector_diagnostic_response(flow):
+    should_stream_diagnostic = _should_stream_connector_diagnostic_response(flow)
+    if should_stream_diagnostic and _install_connector_diagnostic_response_stream(flow):
         return
     response_streaming.configure_response_stream(flow)
 
@@ -1878,10 +1937,20 @@ def _release_terminal_flow_state(
     flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
     flow.metadata.pop(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS, None)
     request_streaming.release_request_stream_state(flow)
+    _release_connector_diagnostic_response_stream_state(flow)
     response_streaming.release_response_stream_state(flow)
     auth_base_forwarder.release_forward_request_admission_from_flow(flow)
     if release_tracking:
         _release_tracked_usage_flow(flow)
+
+
+def _release_connector_diagnostic_response_stream_state(flow: http.HTTPFlow) -> None:
+    stream_callback = flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_CALLBACK, None)
+    flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT, None)
+    flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS, None)
+    flow.metadata.pop(_CONNECTOR_DIAGNOSTIC_PROXY_ENTRY_LOGGED, None)
+    if stream_callback is not None and flow.response and flow.response.stream is stream_callback:
+        flow.response.stream = False
 
 
 def _track_usage_flow(fn):

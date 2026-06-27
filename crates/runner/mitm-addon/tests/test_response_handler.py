@@ -48,6 +48,16 @@ def _prepare_legacy_connector_diagnostic_flow(tmp_path, flow, *, capture_body: b
     flow.metadata[mitm_addon._CONNECTOR_DIAGNOSTIC_ACTIVE_FIREWALL_NAMES] = ()
 
 
+def _drain_connector_diagnostic_response_stream(flow, *, upstream_chunk: bytes = b"upstream"):
+    stream = response_stream(flow)
+    assert stream(upstream_chunk) == b""
+    diagnostic_body = stream(b"")
+    assert isinstance(diagnostic_body, bytes)
+    assert json.loads(diagnostic_body)["error"] == "connector_not_configured_for_run"
+    assert stream(b"") == b""
+    return diagnostic_body
+
+
 class TestResponseHandler:
     async def test_replaces_unauthenticated_connector_401_body(self, tmp_path, real_flow, mitm_ctx):
         flow = real_flow(
@@ -97,7 +107,7 @@ class TestResponseHandler:
         assert proxy_entry["connector"] == "fal"
         assert proxy_entry["upstream_status"] == 401
 
-    async def test_buffers_unauthenticated_connector_401_before_response_replacement(
+    async def test_streams_unauthenticated_connector_401_diagnostic_without_upstream_body(
         self, tmp_path, real_flow, mitm_ctx
     ):
         flow = real_flow(
@@ -107,21 +117,52 @@ class TestResponseHandler:
             path="/fal-ai/nano-banana-pro",
             method="POST",
         )
-        _prepare_legacy_connector_diagnostic_flow(tmp_path, flow)
+        _prepare_legacy_connector_diagnostic_flow(tmp_path, flow, capture_body=True)
+        upstream_chunk = b"discarded-upstream-body-" * 1024
 
         with mitm_ctx():
             flow.response = tutils.tresp(
                 status_code=401,
-                headers=header_map({"content-type": "text/plain"}),
+                headers=header_map(
+                    {
+                        "content-encoding": "gzip",
+                        "content-length": "10485760",
+                        "content-type": "text/plain",
+                        "transfer-encoding": "chunked",
+                    }
+                ),
                 content=b"upstream",
             )
             mitm_addon.responseheaders(flow)
-            assert flow.response.stream is False
+            diagnostic_body = _drain_connector_diagnostic_response_stream(
+                flow,
+                upstream_chunk=upstream_chunk,
+            )
             mitm_addon.response(flow)
 
         content = flow.response.content
         assert content is not None
+        assert content == diagnostic_body
         assert json.loads(content)["error"] == "connector_not_configured_for_run"
+        assert flow.response.headers["content-type"] == "application/json"
+        assert flow.response.headers["content-length"] == str(len(diagnostic_body))
+        assert "content-encoding" not in flow.response.headers
+        assert "transfer-encoding" not in flow.response.headers
+        assert flow.response.stream is False
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["response_size"] == len(diagnostic_body)
+        response_headers = {
+            name.lower(): value for name, value in entry["response_headers"].items()
+        }
+        assert response_headers["content-type"] == "application/json"
+        assert response_headers["content-length"] == str(len(diagnostic_body))
+        assert json.loads(entry["response_body"])["error"] == "connector_not_configured_for_run"
+        assert "discarded-upstream-body" not in entry["response_body"]
+        assert entry["response_body_encoding"] == "utf-8"
+        proxy_entries = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+        assert sum(entry["type"] == "connector_diagnostic" for entry in proxy_entries) == 1
 
     async def test_streams_connector_401_when_user_auth_is_present(
         self, tmp_path, real_flow, mitm_ctx, headers
@@ -258,11 +299,12 @@ class TestResponseHandler:
                 content=b"upstream auth error",
             )
             mitm_addon.responseheaders(flow)
-            assert flow.response.stream is False
+            diagnostic_body = _drain_connector_diagnostic_response_stream(flow)
             mitm_addon.response(flow)
 
         content = flow.response.content
         assert content is not None
+        assert content == diagnostic_body
         body = json.loads(content)
         assert body["error"] == "connector_not_configured_for_run"
         assert body["connector"] == "fal"
@@ -466,11 +508,12 @@ class TestResponseHandler:
                 content=b"upstream empty auth error",
             )
             mitm_addon.responseheaders(flow)
-            assert flow.response.stream is False
+            diagnostic_body = _drain_connector_diagnostic_response_stream(flow)
             mitm_addon.response(flow)
 
         content = flow.response.content
         assert content is not None
+        assert content == diagnostic_body
         body = json.loads(content)
         assert body["error"] == "connector_not_configured_for_run"
         [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
@@ -499,11 +542,12 @@ class TestResponseHandler:
                 content=b"upstream proxy auth error",
             )
             mitm_addon.responseheaders(flow)
-            assert flow.response.stream is False
+            diagnostic_body = _drain_connector_diagnostic_response_stream(flow)
             mitm_addon.response(flow)
 
         content = flow.response.content
         assert content is not None
+        assert content == diagnostic_body
         body = json.loads(content)
         assert body["error"] == "connector_not_configured_for_run"
         [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
@@ -532,11 +576,12 @@ class TestResponseHandler:
                 content=b"upstream empty key auth error",
             )
             mitm_addon.responseheaders(flow)
-            assert flow.response.stream is False
+            diagnostic_body = _drain_connector_diagnostic_response_stream(flow)
             mitm_addon.response(flow)
 
         content = flow.response.content
         assert content is not None
+        assert content == diagnostic_body
         body = json.loads(content)
         assert body["error"] == "connector_not_configured_for_run"
         [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
@@ -561,11 +606,12 @@ class TestResponseHandler:
                 content=b"upstream empty query auth error",
             )
             mitm_addon.responseheaders(flow)
-            assert flow.response.stream is False
+            diagnostic_body = _drain_connector_diagnostic_response_stream(flow)
             mitm_addon.response(flow)
 
         content = flow.response.content
         assert content is not None
+        assert content == diagnostic_body
         body = json.loads(content)
         assert body["error"] == "connector_not_configured_for_run"
         [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
