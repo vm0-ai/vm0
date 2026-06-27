@@ -539,6 +539,34 @@ with a healthy standalone chunk. The 54-root peak is effectively neutral versus
 the previous `2237.2 MiB` run, but the full route graph now covers one fewer
 service test root.
 
+### 27. Computer-use BDD route slice
+
+Change tested: migrate `computer-use.bdd.test.ts` away from its direct
+`createApp` raw request and pure Clerk membership import, then migrate
+`api-bdd-computer-use.ts` from default `setupApp` to `setupAppWithRoutes`
+backed by explicit real `zeroComputerUseRoutes` and
+`cronComputerUseScreenshotCleanupRoutes`.
+
+Commands:
+
+- `node scripts/measure-memory.mjs --label api-tests-computer-use-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-computer-use-slice.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-tests-no-setup-app-54-roots-computer-use-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-no-setup-app.json --noEmit`
+
+Results:
+
+- Static split would improve from `36 clean / 18 dirty` to
+  `37 clean / 17 dirty`; newly clean root: `computer-use.bdd.test.ts`.
+- `computer-use` standalone strict slice passed, peak `1516.7 MiB`, duration
+  `20.5s`.
+- `tests-no-setup-app` 54-root chunk still OOMed, peak worsened to
+  `2280.4 MiB`.
+
+Conclusion: do not keep this migration as an isolated change. The standalone
+slice is healthy, but adding the computer-use route slice while the same
+54-root program still imports many dirty helpers increases the monolithic OOM
+peak. Revisit this after wiring a real sequential test-check runner that
+excludes migrated roots from the remaining dirty chunk.
+
 ## Current conclusions
 
 - `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
