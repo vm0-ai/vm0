@@ -12,6 +12,9 @@ JSON_PART = r"""{
         }
       },
       "base": "${{ vars.QDRANT_BASE_URL }}",
+      "hostPolicy": {
+        "kind": "publicDestination"
+      },
       "permissions": []
     }
   ],

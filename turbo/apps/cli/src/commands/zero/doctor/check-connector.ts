@@ -14,6 +14,7 @@ import {
   type FirewallRoutingPermissionApi,
 } from "@vm0/connectors/firewall-rule-matcher";
 import {
+  type FirewallBaseHostPolicy,
   resolveFirewallBaseUrlTemplate,
   UNKNOWN_PERMISSION_GRANT,
   type NetworkPolicies,
@@ -96,12 +97,25 @@ function hasRoutingPermissionRules(config: DiagnosticRoutingConfig): boolean {
   });
 }
 
-function routingBaseIsCredentialed(type: ConnectorType, base: string): boolean {
+interface RoutingBaseExecutionTemplate {
+  readonly credentialed: boolean;
+  readonly hostPolicy?: FirewallBaseHostPolicy;
+}
+
+function routingBaseExecutionTemplate(
+  type: ConnectorType,
+  base: string,
+): RoutingBaseExecutionTemplate {
   const executionMetadata = getFirewallExecutionMetadata(type);
   const template = executionMetadata?.baseUrlTemplates.find((entry) => {
     return entry.base === base;
   });
-  return template?.credentialed ?? true;
+  return {
+    credentialed: template?.credentialed ?? true,
+    ...(template?.hostPolicy !== undefined
+      ? { hostPolicy: template.hostPolicy }
+      : {}),
+  };
 }
 
 function routingConfigFromMetadata(
@@ -113,13 +127,17 @@ function routingConfigFromMetadata(
     type: metadata.type,
     label: metadata.label,
     apis: metadata.apis.map((api) => {
+      const template = routingBaseExecutionTemplate(metadata.type, api.base);
       return {
         base: resolveBaseUrlVars
           ? resolveFirewallBaseUrlTemplate({
               serviceName: metadata.type,
               base: api.base,
               vars: baseUrlVars,
-              credentialed: routingBaseIsCredentialed(metadata.type, api.base),
+              credentialed: template.credentialed,
+              ...(template.hostPolicy !== undefined
+                ? { hostPolicy: template.hostPolicy }
+                : {}),
             })
           : api.base,
         routes: api.routes,

@@ -18,7 +18,6 @@ import {
   getWorkflowTrigger,
   listThreadBoundWorkflowTriggers,
   loadWorkflowTriggers,
-  setWorkflowTriggerPermissionPolicy$,
   updateWorkflowTrigger$,
   type TriggerResult,
 } from "../services/zero-workflow-trigger.service";
@@ -34,15 +33,6 @@ const workflowWriteAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "agent:write",
-} as const;
-
-// The unattended permission policy is set only from a browser session or PAT,
-// never from an in-run agent token (sandbox/zero). This prevents an unattended
-// run from self-escalating the permissions of the trigger it runs under. See
-// issue #18789.
-const workflowPermissionPolicyWriteAuth = {
-  ...workflowWriteAuth,
-  accept: ["session", "pat"],
 } as const;
 
 function memberFromAuth(auth: {
@@ -84,9 +74,6 @@ function triggerErrorResponse(
 
 const createTriggerBody$ = bodyResultOf(zeroWorkflowTriggersContract.create);
 const updateTriggerBody$ = bodyResultOf(zeroWorkflowTriggersContract.update);
-const setTriggerPermissionPolicyBody$ = bodyResultOf(
-  zeroWorkflowTriggersContract.setPermissionPolicy,
-);
 
 const listChatThreadTriggersInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -228,36 +215,6 @@ const updateTriggerInner$ = command(
   },
 );
 
-const setTriggerPermissionPolicyInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const params = get(
-      pathParamsOf(zeroWorkflowTriggersContract.setPermissionPolicy),
-    );
-    const bodyResult = await get(setTriggerPermissionPolicyBody$);
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-    const result = await set(
-      setWorkflowTriggerPermissionPolicy$,
-      {
-        orgId: auth.orgId,
-        member: memberFromAuth(auth),
-        triggerId: params.id,
-        connectorRefs: bodyResult.data.unattendedConnectorRefs,
-        policy: bodyResult.data.unattendedPermissionPolicy,
-      },
-      signal,
-    );
-    signal.throwIfAborted();
-    if (result.kind === "ok") {
-      return { status: 200 as const, body: result.summary };
-    }
-    return triggerErrorResponse(result);
-  },
-);
-
 const deleteTriggerInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -353,12 +310,5 @@ export const zeroWorkflowTriggersRoutes: readonly RouteEntry[] = [
   {
     route: zeroWorkflowTriggersContract.disable,
     handler: authRoute(workflowWriteAuth, disableTriggerInner$),
-  },
-  {
-    route: zeroWorkflowTriggersContract.setPermissionPolicy,
-    handler: authRoute(
-      workflowPermissionPolicyWriteAuth,
-      setTriggerPermissionPolicyInner$,
-    ),
   },
 ];

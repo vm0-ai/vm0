@@ -3543,6 +3543,13 @@
       "when": 1782463956819,
       "tag": "0505_lively_arclight",
       "breakpoints": true
+    },
+    {
+      "idx": 506,
+      "version": "7",
+      "when": 1782525518285,
+      "tag": "0506_workflow_user_authorization",
+      "breakpoints": true
     }
   ]
 }

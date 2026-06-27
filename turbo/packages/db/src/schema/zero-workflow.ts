@@ -12,10 +12,6 @@ import {
   jsonb,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type {
-  UnattendedTriggerConnectorRefs,
-  UnattendedTriggerPermissionPolicy,
-} from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroAgents } from "./zero-agent";
 import { chatThreads } from "./chat-thread";
 
@@ -161,19 +157,6 @@ export const zeroWorkflowTriggers = pgTable(
     lastRunAt: timestamp("last_run_at"),
     lastRunId: uuid("last_run_id"),
     consecutiveFailures: integer("consecutive_failures").notNull().default(0),
-    // Connector refs this unattended trigger may use. Empty means the trigger
-    // runs without connector access; per-connector policies are kept separate
-    // so disabled connectors can preserve their permission choices.
-    unattendedConnectorRefs: jsonb(
-      "unattended_connector_refs",
-    ).$type<UnattendedTriggerConnectorRefs>(),
-    // Isolated unattended permission policy for trigger-fired runs (allow/deny
-    // only). NULL falls back to connector metadata defaults; agent/user grants
-    // are never inherited. Set only via a session/PAT-gated route, never by the
-    // in-run agent. See issue #18789.
-    unattendedPermissionPolicy: jsonb(
-      "unattended_permission_policy",
-    ).$type<UnattendedTriggerPermissionPolicy>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },

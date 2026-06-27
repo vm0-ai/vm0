@@ -37,6 +37,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "${{ vars.BENTO_CLOUD_API_ENDPOINT }}",',
+    '      hostPolicy: { kind: "publicDestination" },',
     "      auth: {",
     "        headers: {",
     '          Authorization: "Bearer ${{ secrets.BENTO_CLOUD_API_KEY }}",',

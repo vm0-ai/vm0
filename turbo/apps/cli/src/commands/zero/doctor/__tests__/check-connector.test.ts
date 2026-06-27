@@ -880,6 +880,49 @@ describe("zero doctor check-connector command", () => {
       expect(output).toContain("  - https://acme.zendesk.com");
     });
 
+    it("should reject compact built-in run context base URL vars outside host policy", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                kind: "builtin",
+                name: "jira",
+                baseUrlVars: { JIRA_DOMAIN: "attacker.example" },
+              },
+            ],
+            networkPolicies: {
+              jira: {
+                allow: [],
+                deny: [],
+                ask: [],
+                unknownPolicy: "allow" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://attacker.example/rest/api/3/project",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("host policy does not allow resolved host"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should strip query and match permissions only on the resolved API base", async () => {
       vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
       vi.stubEnv("VM0_TOKEN", "test-token");

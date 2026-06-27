@@ -33,6 +33,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "https://${{ vars.JIRA_DOMAIN }}",',
+    '      hostPolicy: { kind: "providerOwned", suffixes: ["atlassian.net"] },',
     "      auth: {",
     "        headers: {",
     '          Authorization: "${{ basic(vars.JIRA_EMAIL, secrets.JIRA_API_TOKEN) }}",',

@@ -12,6 +12,12 @@ JSON_PART = r"""{
         }
       },
       "base": "https://${{ vars.JIRA_DOMAIN }}",
+      "hostPolicy": {
+        "kind": "providerOwned",
+        "suffixes": [
+          "atlassian.net"
+        ]
+      },
       "permissions": []
     }
   ],

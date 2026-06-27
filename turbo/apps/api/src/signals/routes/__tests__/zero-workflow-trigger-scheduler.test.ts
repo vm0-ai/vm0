@@ -1,9 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import type {
-  UnattendedTriggerConnectorRefs,
-  UnattendedTriggerPermissionPolicy,
-} from "@vm0/api-contracts/contracts/zero-workflows";
 import { networkPoliciesSchema } from "@vm0/connectors/firewall-types";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
@@ -18,6 +14,8 @@ import { secrets } from "@vm0/db/schema/secret";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
+import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
+import { workflowUserPermissionGrants } from "@vm0/db/schema/workflow-user-permission-grant";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   zeroWorkflowTriggers,
@@ -136,8 +134,6 @@ async function seedTrigger(
     readonly enabled?: boolean;
     readonly consecutiveFailures?: number;
     readonly lastRunId?: string;
-    readonly unattendedConnectorRefs?: UnattendedTriggerConnectorRefs;
-    readonly unattendedPermissionPolicy?: UnattendedTriggerPermissionPolicy | null;
   },
 ): Promise<{ triggerId: string; threadId: string }> {
   const db = store.set(writeDb$);
@@ -165,8 +161,6 @@ async function seedTrigger(
       nextRunAt: opts.nextRunAt,
       consecutiveFailures: opts.consecutiveFailures ?? 0,
       lastRunId: opts.lastRunId ?? null,
-      unattendedConnectorRefs: opts.unattendedConnectorRefs ?? [],
-      unattendedPermissionPolicy: opts.unattendedPermissionPolicy ?? null,
     })
     .returning({ id: zeroWorkflowTriggers.id });
   return { triggerId: trigger!.id, threadId: thread!.id };
@@ -226,7 +220,7 @@ async function runIdForTrigger(db: Db, triggerId: string): Promise<string> {
 }
 
 describe("zero workflow trigger scheduler", () => {
-  it("isolates trigger-run permissions: uses the trigger policy, never agent grants", async () => {
+  it("isolates trigger-run permissions: uses workflow user grants, never agent grants", async () => {
     const scenario = await setup();
     const db = store.set(writeDb$);
 
@@ -249,7 +243,7 @@ describe("zero workflow trigger scheduler", () => {
       encryptedValue: await encryptStoredSecretValue("gmail-access-token"),
       type: "connector",
     });
-    // Enable Gmail for the agent; trigger runs still use their own connector refs.
+    // Enable Gmail for the agent; trigger runs still use workflow connector refs.
     await db.insert(userConnectors).values({
       orgId: scenario.fixture.orgId,
       userId: scenario.fixture.userId,
@@ -265,16 +259,25 @@ describe("zero workflow trigger scheduler", () => {
       permission: "messages.write",
       action: "allow",
     });
+    await db.insert(workflowUserConnectors).values({
+      orgId: scenario.fixture.orgId,
+      userId: scenario.fixture.userId,
+      workflowId: scenario.workflowId,
+      connectorType: "gmail",
+    });
+    await db.insert(workflowUserPermissionGrants).values({
+      orgId: scenario.fixture.orgId,
+      userId: scenario.fixture.userId,
+      workflowId: scenario.workflowId,
+      connectorRef: "gmail",
+      permission: "labels.write",
+      action: "allow",
+    });
 
-    // The trigger grants a different permission than the agent grant above.
     const trigger = await seedTrigger(scenario, {
       scheduleType: "loop",
       intervalSeconds: 60,
       nextRunAt: pastDate(),
-      unattendedConnectorRefs: ["gmail"],
-      unattendedPermissionPolicy: {
-        gmail: { policies: { "labels.write": "allow" } },
-      },
     });
 
     const result = await store.set(executeDueWorkflowTriggers$, context.signal);
@@ -284,7 +287,7 @@ describe("zero workflow trigger scheduler", () => {
       db,
       await runIdForTrigger(db, trigger.triggerId),
     );
-    // The trigger's own policy is honored.
+    // The workflow-scoped policy is honored.
     expect(policies?.gmail?.allow ?? []).toContain("labels.write");
     // The agent grant is NOT inherited by the unattended run.
     expect(policies?.gmail?.allow ?? []).not.toContain("messages.write");
@@ -293,7 +296,7 @@ describe("zero workflow trigger scheduler", () => {
     expect(policies?.gmail?.ask ?? []).toHaveLength(0);
   });
 
-  it("does not grant connector access from trigger policies when the connector is disabled", async () => {
+  it("does not grant connector access from workflow grants when the workflow connector is disabled", async () => {
     const scenario = await setup();
     const db = store.set(writeDb$);
 
@@ -321,15 +324,19 @@ describe("zero workflow trigger scheduler", () => {
       agentId: scenario.agentId,
       connectorType: "gmail",
     });
+    await db.insert(workflowUserPermissionGrants).values({
+      orgId: scenario.fixture.orgId,
+      userId: scenario.fixture.userId,
+      workflowId: scenario.workflowId,
+      connectorRef: "gmail",
+      permission: "labels.write",
+      action: "allow",
+    });
 
     const trigger = await seedTrigger(scenario, {
       scheduleType: "loop",
       intervalSeconds: 60,
       nextRunAt: pastDate(),
-      unattendedConnectorRefs: [],
-      unattendedPermissionPolicy: {
-        gmail: { policies: { "labels.write": "allow" } },
-      },
     });
 
     const result = await store.set(executeDueWorkflowTriggers$, context.signal);

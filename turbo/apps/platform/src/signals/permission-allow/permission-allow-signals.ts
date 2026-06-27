@@ -119,8 +119,16 @@ interface UserPermissionGrantsByAgentParams {
   agentId: string;
 }
 
-function createUserPermissionGrantsByAgentFactory(): (
-  params: UserPermissionGrantsByAgentParams,
+interface UserPermissionGrantsByWorkflowParams {
+  workflowId: string;
+}
+
+type UserPermissionGrantsParams =
+  | UserPermissionGrantsByAgentParams
+  | UserPermissionGrantsByWorkflowParams;
+
+function createUserPermissionGrantsFactory(): (
+  params: UserPermissionGrantsParams,
 ) => Computed<Promise<readonly UserPermissionGrantResponse[]>> {
   const cache = new Map<
     string,
@@ -136,10 +144,7 @@ function createUserPermissionGrantsByAgentFactory(): (
       get(internalUserPermissionGrantsReload$);
       const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
       const result = await retryTransientLoad(() => {
-        return accept(
-          client.list({ query: { agentId: params.agentId } }),
-          [200],
-        );
+        return accept(client.list({ query: params }), [200]);
       });
       return result.body;
     });
@@ -148,8 +153,10 @@ function createUserPermissionGrantsByAgentFactory(): (
   };
 }
 
-export const userPermissionGrantsByAgent =
-  createUserPermissionGrantsByAgentFactory();
+export const userPermissionGrantsByAgent = createUserPermissionGrantsFactory();
+
+export const userPermissionGrantsByWorkflow =
+  createUserPermissionGrantsFactory();
 
 export const permissionAllowUserPermissionGrants$ = computed(async (get) => {
   const agentId = get(permissionAllowAgentId$);
@@ -163,7 +170,8 @@ export const applyUserPermissionGrants$ = command(
   async (
     { get, set },
     params: {
-      agentId: string;
+      agentId?: string;
+      workflowId?: string;
       connectorRef: string;
       mode: UserPermissionGrantApplyMode;
       grants: readonly ApplyUserPermissionGrant[];
@@ -174,7 +182,9 @@ export const applyUserPermissionGrants$ = command(
     const result = await accept(
       client.apply({
         body: {
-          agentId: params.agentId,
+          ...(params.workflowId
+            ? { workflowId: params.workflowId }
+            : { agentId: params.agentId ?? "" }),
           connectorRef: params.connectorRef,
           mode: params.mode,
           grants: [...params.grants],

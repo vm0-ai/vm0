@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.373.0](https://github.com/vm0-ai/vm0/compare/core-v8.372.2...core-v8.373.0) (2026-06-27)
+
+
+### Features
+
+* enable goal workflows for staff orgs ([#19141](https://github.com/vm0-ai/vm0/issues/19141)) ([6d01523](https://github.com/vm0-ai/vm0/commit/6d01523dbf2ecfaa6f583d4f64652122e825ca37))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.121.0
+    * @vm0/connectors bumped to 1.110.1
+
 ## [8.372.2](https://github.com/vm0-ai/vm0/compare/core-v8.372.1...core-v8.372.2) (2026-06-26)
 
 

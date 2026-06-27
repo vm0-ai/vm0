@@ -15,6 +15,7 @@ import type {
 import type { FirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
 import type {
   FirewallConfig,
+  FirewallBaseHostPolicy,
   FirewallPolicy,
   FirewallPolicyValue,
 } from "@vm0/connectors/firewall-types";
@@ -420,26 +421,62 @@ function expandFirewallPlaceholders(
   return { ...firewall, placeholders: expanded };
 }
 
+interface ExecutionBaseUrlTemplateAccumulator {
+  readonly credentialed: boolean;
+  readonly hostPolicy?: FirewallBaseHostPolicy;
+}
+
+function hostPolicyKey(hostPolicy: FirewallBaseHostPolicy | undefined): string {
+  return stableJson(hostPolicy ?? null);
+}
+
+function mergeExecutionBaseUrlTemplate(
+  templates: Map<string, ExecutionBaseUrlTemplateAccumulator>,
+  api: FirewallConfig["apis"][number],
+): void {
+  const existing = templates.get(api.base);
+  if (!existing) {
+    templates.set(api.base, {
+      credentialed: firewallAuthInjectsCredentials(api.auth),
+      ...(api.hostPolicy !== undefined ? { hostPolicy: api.hostPolicy } : {}),
+    });
+    return;
+  }
+
+  if (hostPolicyKey(existing.hostPolicy) !== hostPolicyKey(api.hostPolicy)) {
+    throw new Error(
+      `Conflicting host policies for dynamic base URL template: ${api.base}`,
+    );
+  }
+  templates.set(api.base, {
+    ...existing,
+    credentialed:
+      existing.credentialed || firewallAuthInjectsCredentials(api.auth),
+  });
+}
+
 function buildExecutionBaseUrlTemplates(
   firewall: FirewallConfig,
 ): FirewallExecutionMetadata["baseUrlTemplates"] {
-  const templates = new Map<string, boolean>();
+  const templates = new Map<string, ExecutionBaseUrlTemplateAccumulator>();
   for (const api of firewall.apis) {
     if (!hasBaseUrlVars(api.base)) {
       continue;
     }
-    templates.set(
-      api.base,
-      (templates.get(api.base) ?? false) ||
-        firewallAuthInjectsCredentials(api.auth),
-    );
+    mergeExecutionBaseUrlTemplate(templates, api);
   }
   return [...templates.entries()]
     .sort(([a], [b]) => {
       return compareStrings(a, b);
     })
-    .map(([base, credentialed]) => {
-      return { base, credentialed };
+    .map(([base, template]) => {
+      return {
+        base,
+        credentialed: template.credentialed,
+        ...(template.hostPolicy !== undefined
+          ? { hostPolicy: template.hostPolicy }
+          : {}),
+      };
     });
 }
 

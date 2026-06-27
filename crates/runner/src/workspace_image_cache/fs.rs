@@ -65,14 +65,21 @@ pub(super) fn existing_fs_stats_path(path: &Path) -> PathBuf {
 }
 
 pub(super) async fn workspace_cache_path_allocated_bytes(path: &Path) -> u64 {
-    let Ok(metadata) = fs::symlink_metadata(path).await else {
-        return 0;
-    };
-    if metadata.is_dir() {
-        directory_tree_allocated_bytes(path).await
-    } else {
-        allocated_bytes(&metadata)
+    match workspace_cache_existing_path_allocated_bytes(path).await {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) | Err(_) => 0,
     }
+}
+
+pub(super) async fn workspace_cache_existing_path_allocated_bytes(
+    path: &Path,
+) -> std::io::Result<Option<u64>> {
+    let metadata = match fs::symlink_metadata(path).await {
+        Ok(metadata) => metadata,
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(e) => return Err(e),
+    };
+    Ok(Some(path_tree_allocated_bytes(path, metadata).await))
 }
 
 pub(super) async fn remove_workspace_cache_path_if_exists(path: &Path) -> std::io::Result<bool> {
@@ -246,26 +253,39 @@ pub(super) fn statvfs_bytes_sync(path: &Path) -> RunnerResult<FsStats> {
     })
 }
 
-pub(super) async fn directory_tree_allocated_bytes(path: &Path) -> u64 {
-    let mut total: u64 = 0;
-    let mut pending = vec![path.to_path_buf()];
-    while let Some(dir) = pending.pop() {
-        let Ok(metadata) = fs::symlink_metadata(&dir).await else {
-            continue;
-        };
-        total = total.saturating_add(allocated_bytes(&metadata));
+async fn path_tree_allocated_bytes(path: &Path, metadata: std::fs::Metadata) -> u64 {
+    let mut total = allocated_bytes(&metadata);
+    if !metadata.file_type().is_dir() {
+        return total;
+    }
+
+    let mut pending = vec![(path.to_path_buf(), true)];
+    while let Some((dir, metadata_counted)) = pending.pop() {
+        if !metadata_counted {
+            let Ok(metadata) = fs::symlink_metadata(&dir).await else {
+                continue;
+            };
+            total = total.saturating_add(allocated_bytes(&metadata));
+            if !metadata.file_type().is_dir() {
+                continue;
+            }
+        }
+
         let mut entries = match fs::read_dir(&dir).await {
             Ok(entries) => entries,
             Err(_) => continue,
         };
         while let Ok(Some(entry)) = entries.next_entry().await {
             let path = entry.path();
-            let Ok(metadata) = fs::symlink_metadata(&path).await else {
+            let Ok(file_type) = entry.file_type().await else {
                 continue;
             };
-            if metadata.is_dir() {
-                pending.push(path);
+            if file_type.is_dir() {
+                pending.push((path, false));
             } else {
+                let Ok(metadata) = fs::symlink_metadata(&path).await else {
+                    continue;
+                };
                 total = total.saturating_add(allocated_bytes(&metadata));
             }
         }

@@ -11,10 +11,22 @@ let mockUserPermissionGrants: UserPermissionGrantResponse[] = [];
 function grantKey(
   grant: Pick<
     UserPermissionGrantResponse,
-    "agentId" | "connectorRef" | "permission"
+    "agentId" | "workflowId" | "connectorRef" | "permission"
   >,
 ): string {
-  return `${grant.agentId}:${grant.connectorRef}:${grant.permission}`;
+  const scope = grant.workflowId
+    ? `workflow:${grant.workflowId}`
+    : `agent:${grant.agentId}`;
+  return `${scope}:${grant.connectorRef}:${grant.permission}`;
+}
+
+function sameScope(
+  grant: UserPermissionGrantResponse,
+  scope: { readonly agentId?: string; readonly workflowId?: string },
+): boolean {
+  return scope.workflowId
+    ? grant.workflowId === scope.workflowId
+    : grant.agentId === scope.agentId;
 }
 
 function isActiveGrant(grant: UserPermissionGrantResponse, checkedAt: Date) {
@@ -60,9 +72,7 @@ export const apiUserPermissionGrantsHandlers = [
     return respond(
       200,
       mockUserPermissionGrants.filter((grant) => {
-        return (
-          grant.agentId === query.agentId && isActiveGrant(grant, checkedAt)
-        );
+        return sameScope(grant, query) && isActiveGrant(grant, checkedAt);
       }),
     );
   }),
@@ -87,8 +97,7 @@ export const apiUserPermissionGrantsHandlers = [
         ? []
         : mockUserPermissionGrants.filter((grant) => {
             return (
-              grant.agentId === body.agentId &&
-              grant.connectorRef === body.connectorRef
+              sameScope(grant, body) && grant.connectorRef === body.connectorRef
             );
           });
     const existingGrantsByPermission = new Map(
@@ -106,7 +115,9 @@ export const apiUserPermissionGrantsHandlers = [
         now,
       });
       return {
-        agentId: body.agentId,
+        ...(body.workflowId
+          ? { workflowId: body.workflowId }
+          : { agentId: body.agentId }),
         connectorRef: body.connectorRef,
         permission: appliedGrant.permission,
         action: appliedGrant.action,
@@ -125,7 +136,7 @@ export const apiUserPermissionGrantsHandlers = [
       ...mockUserPermissionGrants.filter((grant) => {
         if (
           body.mode === "replace" &&
-          grant.agentId === body.agentId &&
+          sameScope(grant, body) &&
           grant.connectorRef === body.connectorRef
         ) {
           return false;

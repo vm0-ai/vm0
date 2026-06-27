@@ -57,7 +57,7 @@ describe("zero doctor permission-change command", () => {
     expect(logCalls).not.toContain("admin approval");
   });
 
-  it("deep-links to the trigger permission editor inside an unattended trigger run", async () => {
+  it("deep-links to the workflow authorization tab inside an unattended trigger run", async () => {
     vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
     vi.stubEnv("ZERO_WORKFLOW_ID", "wf-789");
@@ -73,15 +73,19 @@ describe("zero doctor permission-change command", () => {
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain(
-      "/agents/agent-abc-123/workflows/wf-789/triggers/trig-456/permissions?",
-    );
+    expect(logCalls).toContain("/agents/agent-abc-123/workflows/wf-789?");
+    expect(logCalls).toContain("tab=authorization");
     expect(logCalls).toContain("ref=slack");
-    // The trigger editor toggles allow/deny per permission, so the agent-grant
-    // params and the agent permission page are not used.
+    expect(logCalls).toContain(
+      `permission=${encodeURIComponent(SLACK_READ_PERMISSION)}`,
+    );
+    expect(logCalls).toContain("action=allow");
+    expect(logCalls).toContain("expiresIn=1h");
+    expect(logCalls).toContain("Requested duration: 1h");
+    // Trigger-fired runs use workflow-user grants, so the agent permission page
+    // and legacy trigger permission editor are not used.
     expect(logCalls).not.toContain("/agents/agent-abc-123/permissions?");
-    expect(logCalls).not.toContain("expiresIn=");
-    expect(logCalls).not.toContain("action=allow");
+    expect(logCalls).not.toContain("/triggers/trig-456/permissions?");
   });
 
   it("outputs an allow grant link with an explicit duration", async () => {
@@ -308,6 +312,8 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("explains selected-host token grants for computer-use permission changes", async () => {
+    vi.stubEnv("ZERO_TOKEN", "");
+
     await permissionChangeCommand.parseAsync([
       "node",
       "cli",
@@ -373,6 +379,8 @@ describe("zero doctor permission-change command", () => {
   });
 
   it("recognizes computer-use:write even when the connector ref is wrong", async () => {
+    vi.stubEnv("ZERO_TOKEN", "");
+
     await permissionChangeCommand.parseAsync([
       "node",
       "cli",

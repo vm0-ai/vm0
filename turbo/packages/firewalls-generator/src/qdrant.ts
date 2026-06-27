@@ -35,6 +35,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "${{ vars.QDRANT_BASE_URL }}",',
+    '      hostPolicy: { kind: "publicDestination" },',
     "      auth: {",
     "        headers: {",
     '          "api-key": "${{ secrets.QDRANT_TOKEN }}",',

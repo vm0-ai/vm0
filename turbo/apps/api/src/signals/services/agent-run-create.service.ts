@@ -50,6 +50,7 @@ import {
   type ExecutionFirewallEntry,
   type ExecutionFirewalls,
   type ExpandedFirewallConfig,
+  FirewallBaseUrlResolutionError,
   type Firewall,
   type FirewallPolicies,
   type FirewallPolicy,
@@ -166,6 +167,10 @@ import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
 } from "./api-dispatch-timing.service";
+import {
+  loadAgentConnectorScope,
+  loadZeroBackedComposeAgent,
+} from "./agent-connector-scope.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
@@ -289,6 +294,16 @@ interface ResolvedCompose {
   readonly resumedFromCheckpointId?: string;
   readonly continuedFromAgentSessionId?: string;
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
+}
+
+interface EffectiveConnectorScope {
+  readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+  readonly allowedCustomConnectorIds: readonly string[] | undefined;
+}
+
+interface ExplicitConnectorScope {
+  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly allowedCustomConnectorIds: readonly string[];
 }
 
 // Session naming in this service:
@@ -428,8 +443,7 @@ export interface CreateAgentRunArgs {
       readonly workflowId: string;
     }[];
   };
-  readonly allowedConnectorTypes?: readonly ConnectorType[];
-  readonly allowedCustomConnectorIds?: readonly string[];
+  readonly connectorScope?: ExplicitConnectorScope;
   readonly validateEnvironmentReferences?: boolean;
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly queueOnConcurrencyLimit?: boolean;
@@ -596,7 +610,10 @@ function buildWorkflowSkillVolumes(
 }
 
 function buildInjectedSkillVolumes(
-  args: CreateAgentRunArgs,
+  args: {
+    readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
+    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+  },
   framework: SupportedFramework,
   goalSeedEnabled: boolean,
 ): readonly AdditionalVolume[] | undefined {
@@ -2569,6 +2586,7 @@ function runtimeFirewall(firewall: ExpandedFirewallConfig): Firewall {
     apis: firewall.apis.map((api) => {
       return {
         base: api.base,
+        ...(api.hostPolicy !== undefined ? { hostPolicy: api.hostPolicy } : {}),
         auth: api.auth,
         permissions: api.permissions ?? [],
       };
@@ -2594,7 +2612,7 @@ function builtinFirewallEntry(
   for (const name of names) {
     const value = vars?.[name];
     if (!value) {
-      throw new Error(
+      throw new FirewallBaseUrlResolutionError(
         `Firewall "${firewall.name}" base URL requires variable "${name}" but it was not provided`,
       );
     }
@@ -2628,7 +2646,7 @@ function builtinFirewallEntryForMetadata(
   for (const name of metadata.baseUrlVarNames) {
     const value = vars?.[name];
     if (!value) {
-      throw new Error(
+      throw new FirewallBaseUrlResolutionError(
         `Firewall "${metadata.type}" base URL requires variable "${name}" but it was not provided`,
       );
     }
@@ -2641,6 +2659,9 @@ function builtinFirewallEntryForMetadata(
         apis: metadata.baseUrlTemplates.map((template) => {
           return {
             base: template.base,
+            ...(template.hostPolicy !== undefined
+              ? { hostPolicy: template.hostPolicy }
+              : {}),
             auth: baseUrlValidationAuth(template.credentialed),
             permissions: [],
           };
@@ -4718,20 +4739,30 @@ async function buildPreparedPermissionManifest(args: {
   readonly connectorContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly timing: ApiDispatchTimingCollector;
-}): Promise<PermissionManifest | undefined> {
-  return await buildPermissionManifest({
-    modelProvider: args.modelProvider,
-    permissionPolicies: args.body.permissionPolicies,
-    vars: args.body.vars,
-    connectorVars: args.connectorContext.vars,
-    connectorTypes: args.connectorContext.connectorTypes,
-    customConnectorFirewalls: args.customConnectorContext.firewalls,
-    timing: args.timing,
-  });
+}): Promise<PermissionManifest | undefined | CreateRunErrorResult> {
+  const result = await settle(
+    buildPermissionManifest({
+      modelProvider: args.modelProvider,
+      permissionPolicies: args.body.permissionPolicies,
+      vars: args.body.vars,
+      connectorVars: args.connectorContext.vars,
+      connectorTypes: args.connectorContext.connectorTypes,
+      customConnectorFirewalls: args.customConnectorContext.firewalls,
+      timing: args.timing,
+    }),
+  );
+  if (result.ok) {
+    return result.value;
+  }
+  if (result.error instanceof FirewallBaseUrlResolutionError) {
+    return badRequestMessage(result.error.message);
+  }
+  throw result.error;
 }
 
 function preparedRunAdditionalVolumes(args: {
   readonly createArgs: CreateAgentRunArgs;
+  readonly connectorScope: EffectiveConnectorScope;
   readonly framework: SupportedFramework;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
@@ -4739,7 +4770,10 @@ function preparedRunAdditionalVolumes(args: {
 }): readonly AdditionalVolume[] | undefined {
   return mergeAdditionalVolumes({
     prepend: buildInjectedSkillVolumes(
-      args.createArgs,
+      {
+        injectSkillVolumes: args.createArgs.injectSkillVolumes,
+        allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
+      },
       args.framework,
       isFeatureEnabled(
         FeatureSwitchKey.GoalWorkflows,
@@ -4755,6 +4789,7 @@ type PrepareRunContextGet = <T>(value: Computed<T>) => T;
 interface PreparedRunBodyContext {
   readonly body: CreateRunBody;
   readonly resolved: ResolvedCompose;
+  readonly connectorScope: EffectiveConnectorScope;
   readonly requestedFramework: SupportedFramework;
   readonly featureSwitchContext: FeatureSwitchContext;
 }
@@ -4767,6 +4802,47 @@ interface PreparedRuntimeContext {
   readonly permissionManifest: PermissionManifest | undefined;
   readonly billableFirewalls: readonly string[];
   readonly modelUsageProvider: string | undefined;
+}
+
+function connectorScopeFromCreateArgs(
+  args: CreateAgentRunArgs,
+): EffectiveConnectorScope | null {
+  return args.connectorScope ?? null;
+}
+
+async function resolveEffectiveConnectorScope(args: {
+  readonly db: Db;
+  readonly createArgs: CreateAgentRunArgs;
+  readonly resolved: ResolvedCompose;
+  readonly signal: AbortSignal;
+}): Promise<EffectiveConnectorScope | CreateRunErrorResult> {
+  const createArgsScope = connectorScopeFromCreateArgs(args.createArgs);
+  if (createArgsScope) {
+    return createArgsScope;
+  }
+
+  const zeroBackedAgent = await loadZeroBackedComposeAgent(args.db, {
+    composeId: args.resolved.composeId,
+  });
+  args.signal.throwIfAborted();
+  if (zeroBackedAgent) {
+    if (
+      zeroBackedAgent.visibility === "private" &&
+      zeroBackedAgent.owner !== args.createArgs.userId
+    ) {
+      return forbidden("Only the private agent owner can run this agent");
+    }
+    return await loadAgentConnectorScope(args.db, {
+      userId: args.createArgs.userId,
+      orgId: args.createArgs.orgId,
+      agentId: args.resolved.composeId,
+    });
+  }
+
+  return {
+    allowedConnectorTypes: undefined,
+    allowedCustomConnectorIds: undefined,
+  };
 }
 
 async function prepareRunBodyContext(args: {
@@ -4807,6 +4883,23 @@ async function prepareRunBodyContext(args: {
   }
   if (resolved.orgId !== args.createArgs.orgId) {
     return notFound("Resource not found");
+  }
+
+  const connectorScope = await args.timing.measure(
+    "api_dispatch_prepare_context_resolve_connector_scope",
+    "nested",
+    async () => {
+      return await resolveEffectiveConnectorScope({
+        db: args.db,
+        createArgs: args.createArgs,
+        resolved,
+        signal: args.signal,
+      });
+    },
+  );
+  args.signal.throwIfAborted();
+  if (isRouteError(connectorScope)) {
+    return connectorScope;
   }
 
   const persistedEnvironment = await args.timing.measure(
@@ -4856,6 +4949,7 @@ async function prepareRunBodyContext(args: {
   return {
     body,
     resolved,
+    connectorScope,
     requestedFramework: requestedFrameworkResult,
     featureSwitchContext,
   };
@@ -4864,6 +4958,7 @@ async function prepareRunBodyContext(args: {
 async function prepareRunRuntimeContext(args: {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
+  readonly connectorScope: EffectiveConnectorScope;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
   readonly bodyContext: PreparedRunBodyContext;
@@ -4895,7 +4990,13 @@ async function prepareRunRuntimeContext(args: {
       async () => {
         return await loadRunConnectorContexts(
           args.db,
-          args.createArgs,
+          {
+            orgId: args.createArgs.orgId,
+            userId: args.createArgs.userId,
+            allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
+            allowedCustomConnectorIds:
+              args.connectorScope.allowedCustomConnectorIds,
+          },
           featureSwitchContext,
           args.timing,
         );
@@ -4917,6 +5018,9 @@ async function prepareRunRuntimeContext(args: {
     },
   );
   args.signal.throwIfAborted();
+  if (isRouteError(permissionManifest)) {
+    return permissionManifest;
+  }
   const modelUsageContext = prepareModelUsageContext({
     modelProvider,
     permissionManifest,
@@ -4938,6 +5042,7 @@ async function prepareRunRuntimeContext(args: {
 
 function prepareRunOutputMetadata(args: {
   readonly createArgs: CreateAgentRunArgs;
+  readonly connectorScope: EffectiveConnectorScope;
   readonly framework: SupportedFramework;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
@@ -4948,6 +5053,7 @@ function prepareRunOutputMetadata(args: {
 } {
   const additionalVolumes = preparedRunAdditionalVolumes({
     createArgs: args.createArgs,
+    connectorScope: args.connectorScope,
     framework: args.framework,
     featureSwitchContext: args.featureSwitchContext,
     body: args.body,
@@ -4995,6 +5101,7 @@ function prepareRunContext(
       const runtimeContext = await prepareRunRuntimeContext({
         db,
         createArgs: args,
+        connectorScope: bodyContext.connectorScope,
         timing,
         signal,
         bodyContext,
@@ -5040,6 +5147,7 @@ function prepareRunContext(
           return await Promise.resolve(
             prepareRunOutputMetadata({
               createArgs: args,
+              connectorScope: bodyContext.connectorScope,
               framework: runtimeContext.framework,
               featureSwitchContext: bodyContext.featureSwitchContext,
               body: bodyContext.body,

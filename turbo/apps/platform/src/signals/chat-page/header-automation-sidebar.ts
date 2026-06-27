@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed } from "ccstate";
 
 import {
   replaceSearchParams$,
@@ -32,21 +32,3 @@ export const closeHeaderAutomationSidebar$ = command(({ get, set }) => {
   clearChatAutomationSidebarParams(params);
   set(replaceSearchParams$, params);
 });
-
-export type HeaderWorkflowTriggerDialog = {
-  readonly kind: "permissions";
-  readonly triggerId: string;
-} | null;
-
-const headerWorkflowTriggerDialogState$ =
-  state<HeaderWorkflowTriggerDialog>(null);
-
-export const headerWorkflowTriggerDialog$ = computed((get) => {
-  return get(headerWorkflowTriggerDialogState$);
-});
-
-export const setHeaderWorkflowTriggerDialog$ = command(
-  ({ set }, dialog: HeaderWorkflowTriggerDialog) => {
-    set(headerWorkflowTriggerDialogState$, dialog);
-  },
-);

@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { firewallPolicyValueSchema } from "@vm0/connectors/firewall-types";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 
@@ -207,66 +206,6 @@ export const zeroWorkflowScheduleSchema = z.discriminatedUnion("type", [
 export type ZeroWorkflowSchedule = z.infer<typeof zeroWorkflowScheduleSchema>;
 
 /**
- * Unattended permission policy for a workflow trigger.
- *
- * A trigger fires its workflow unattended, so it carries its own permission
- * allowlist instead of inheriting interactive agent/user grants. Only `allow` /
- * `deny` are expressible: there is no human to answer an `ask`, and the runtime
- * enforces `ask` as `deny` anyway. The unknown-endpoint policy is not stored
- * here — trigger runs always fall back to the connector metadata default
- * (`deny` for every connector).
- *
- * The action enum is derived from the runtime `firewallPolicyValueSchema`
- * (minus `ask`) so it stays a provable subset of the policy the firewall
- * actually enforces — the eventual resolution path maps this onto a
- * `FirewallPolicies` value, and deriving here prevents the two from drifting.
- * The record keys reuse the same connectorRef/permission bounds as the sibling
- * user-permission-grants contract.
- */
-export const unattendedTriggerPermissionActionSchema =
-  firewallPolicyValueSchema.exclude(["ask"]);
-export type UnattendedTriggerPermissionAction = z.infer<
-  typeof unattendedTriggerPermissionActionSchema
->;
-
-const unattendedTriggerConnectorRefSchema = z.string().min(1).max(64);
-const unattendedTriggerPermissionKeySchema = z.string().min(1).max(128);
-
-export const unattendedTriggerConnectorRefsSchema = z.array(
-  unattendedTriggerConnectorRefSchema,
-);
-export type UnattendedTriggerConnectorRefs = z.infer<
-  typeof unattendedTriggerConnectorRefsSchema
->;
-
-export const unattendedTriggerPermissionPolicySchema = z.record(
-  unattendedTriggerConnectorRefSchema,
-  z.object({
-    policies: z.record(
-      unattendedTriggerPermissionKeySchema,
-      unattendedTriggerPermissionActionSchema,
-    ),
-  }),
-);
-export type UnattendedTriggerPermissionPolicy = z.infer<
-  typeof unattendedTriggerPermissionPolicySchema
->;
-
-/**
- * Full-replace request for a trigger's unattended connector access and
- * permission policy. `null` clears the policy back to connector metadata
- * defaults.
- */
-export const setUnattendedTriggerPermissionPolicyRequestSchema = z.object({
-  unattendedConnectorRefs: unattendedTriggerConnectorRefsSchema.optional(),
-  unattendedPermissionPolicy:
-    unattendedTriggerPermissionPolicySchema.nullable(),
-});
-export type SetUnattendedTriggerPermissionPolicyRequest = z.infer<
-  typeof setUnattendedTriggerPermissionPolicyRequestSchema
->;
-
-/**
  * Trigger summary. Under 1:N the agent is derived from the workflow, so triggers
  * no longer carry an agentId. Detail responses only ever list the caller's own
  * triggers.
@@ -278,9 +217,6 @@ const zeroWorkflowTriggerSummaryBaseSchema = z.object({
   chatThreadId: z.string().nullable(),
   nextRunAt: z.string().datetime().nullable(),
   lastRunAt: z.string().datetime().nullable(),
-  unattendedConnectorRefs: unattendedTriggerConnectorRefsSchema,
-  unattendedPermissionPolicy:
-    unattendedTriggerPermissionPolicySchema.nullable(),
 });
 
 export const zeroWorkflowScheduleTriggerSummarySchema =
@@ -840,22 +776,6 @@ export const zeroWorkflowTriggersContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Disable a workflow trigger",
-  },
-  setPermissionPolicy: {
-    method: "PUT",
-    path: "/api/zero/workflow-triggers/:id/permission-policy",
-    headers: authHeadersSchema,
-    pathParams: triggerIdParams,
-    body: setUnattendedTriggerPermissionPolicyRequestSchema,
-    responses: {
-      200: zeroWorkflowTriggerSummarySchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary:
-      "Set a workflow trigger unattended permission policy (session/PAT only)",
   },
 });
 
