@@ -1472,6 +1472,22 @@ mod tests {
         );
     }
 
+    fn assert_op_error(
+        ops: &[(String, bool, Option<String>)],
+        action_type: &str,
+        expected_error: &str,
+    ) {
+        let error = ops
+            .iter()
+            .find(|(key, _, _)| key == action_type)
+            .and_then(|(_, _, error)| error.as_deref());
+        assert_eq!(
+            error,
+            Some(expected_error),
+            "expected {action_type} error {expected_error:?} in {ops:?}"
+        );
+    }
+
     fn assert_no_op(ops: &[(String, bool, Option<String>)], action_type: &str) {
         assert!(
             !ops.iter().any(|(key, _, _)| key == action_type),
@@ -1876,6 +1892,12 @@ mod tests {
         let ops = telemetry.pending_ops_snapshot();
         assert_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE, false);
         assert_op(&ops, STORAGE_CACHE_STAGE_TOTAL, false);
+        assert_op_error(
+            &ops,
+            STORAGE_CACHE_STAGE_BATCH_WRITE,
+            STORAGE_CACHE_STAGE_FAILED,
+        );
+        assert_op_error(&ops, STORAGE_CACHE_STAGE_TOTAL, STORAGE_CACHE_STAGE_FAILED);
         assert_no_op(&ops, STORAGE_CACHE_STAGE_SINGLE_WRITE);
         assert_no_op(&ops, "storage_cache_hit");
     }
