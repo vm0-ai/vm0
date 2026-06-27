@@ -1982,6 +1982,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn miss_path_single_stage_failure_records_failed_staging_telemetry() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_write_file_result(Err(sandbox_write_file_error("single write failed")));
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/archive.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/archive.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let original = server.url("/archive.tar.gz");
+        let name = "single-stage-fail";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        let err = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap_err();
+
+        probe.assert_async().await;
+        get.assert_async().await;
+        assert!(
+            err.to_string().contains("single write failed"),
+            "got: {err}"
+        );
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert_eq!(
+            std::fs::read(home.storage_cache_dir(name, version).join("archive.tar.gz")).unwrap(),
+            body
+        );
+
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op(&ops, STORAGE_CACHE_STAGE_SINGLE_WRITE, false);
+        assert_op(&ops, STORAGE_CACHE_STAGE_TOTAL, false);
+        assert_op_error(
+            &ops,
+            STORAGE_CACHE_STAGE_SINGLE_WRITE,
+            STORAGE_CACHE_STAGE_FAILED,
+        );
+        assert_op_error(&ops, STORAGE_CACHE_STAGE_TOTAL, STORAGE_CACHE_STAGE_FAILED);
+        assert_no_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE);
+        assert_no_op(&ops, "storage_cache_miss");
+        assert_no_op(&ops, "storage_cache_download");
+    }
+
+    #[tokio::test]
     async fn over_size_entry_is_passthrough() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
