@@ -1,3 +1,5 @@
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+
 import { now } from "../external/time";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { onRejection } from "../utils";
@@ -10,6 +12,7 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_direct_prepare_args"
   | "api_dispatch_pre_create_zero_parse_body"
   | "api_dispatch_pre_create_zero_prepare_args"
+  | "api_dispatch_pre_create_zero_entrypoint_gap"
   | "api_dispatch_pre_create_zero_resolve_agent_id"
   | "api_dispatch_pre_create_zero_load_agent"
   | "api_dispatch_pre_create_zero_load_user_info"
@@ -120,6 +123,7 @@ export class ApiDispatchTimingCollector {
     readonly runnerGroup: string;
     readonly profile: string;
     readonly dispatchPath: "direct";
+    readonly triggerSource?: TriggerSource;
   }): void {
     const records = this.records.splice(0);
     recordSandboxOperations(
@@ -136,6 +140,9 @@ export class ApiDispatchTimingCollector {
             profile: args.profile,
             dispatch_path: args.dispatchPath,
             span_kind: record.spanKind,
+            ...(args.triggerSource
+              ? { trigger_source: args.triggerSource }
+              : {}),
           },
         };
       }),

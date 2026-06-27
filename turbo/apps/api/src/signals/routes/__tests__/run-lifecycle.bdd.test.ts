@@ -147,6 +147,9 @@ const API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_resolve_permission_policies",
   "api_dispatch_pre_create_zero_build_create_run_args",
 ] as const;
+const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_entrypoint_gap",
+] as const;
 const API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_stored_connector_rows",
   "api_dispatch_prepare_context_filter_stored_connector_rows",
@@ -641,6 +644,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES,
     );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
+    );
     expectApiDispatchActions(
       timingEvents,
       API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
@@ -696,6 +703,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           runner_group: runnerGroup,
           profile: "vm0/default",
           dispatch_path: "direct",
+          trigger_source: "web",
         }),
       );
       expect(event.duration_ms).toStrictEqual(expect.any(Number));
@@ -748,6 +756,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
     );
     expectApiDispatchSpanKind(
       timingEvents,

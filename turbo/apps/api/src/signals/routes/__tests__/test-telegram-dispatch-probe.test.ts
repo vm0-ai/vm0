@@ -62,6 +62,25 @@ function uniqueNumericId(): string {
   return String(100_000_000 + Math.floor(Math.random() * 899_999_999));
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function apiDispatchTimingEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event) && event.run_id === runId;
+    });
+  });
+}
+
 async function cleanupFixture(fixture: TelegramProbeFixture): Promise<void> {
   const db = store.set(writeDb$);
   const runRows = await db
@@ -334,6 +353,46 @@ describe("POST /api/test/telegram-dispatch-probe", () => {
         isDM: true,
       },
     });
+
+    const timingEvents = apiDispatchTimingEventsForRun(run!.id);
+    expect(timingEvents).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_agent_run",
+          span_kind: "top_level",
+          trigger_source: "telegram",
+        }),
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_entrypoint_gap",
+          span_kind: "nested",
+          trigger_source: "telegram",
+        }),
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_load_agent",
+          span_kind: "nested",
+          trigger_source: "telegram",
+        }),
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_load_connector_scopes",
+          span_kind: "nested",
+          trigger_source: "telegram",
+        }),
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_build_create_run_args",
+          span_kind: "nested",
+          trigger_source: "telegram",
+        }),
+      ]),
+    );
+    const timingActionTypes = timingEvents.map((event) => {
+      return event.op_type;
+    });
+    expect(timingActionTypes).not.toContain(
+      "api_dispatch_pre_create_zero_parse_body",
+    );
+    expect(timingActionTypes).not.toContain(
+      "api_dispatch_pre_create_zero_prepare_args",
+    );
   });
 
   it("dispatches group mentions with mention stripping and Telegram metadata", async () => {

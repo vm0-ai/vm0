@@ -4385,6 +4385,9 @@ function dispatchRun(
         runnerGroup: payload.runnerGroup,
         profile: payload.profile,
         dispatchPath: "direct",
+        ...(args.body.triggerSource
+          ? { triggerSource: args.body.triggerSource }
+          : {}),
       });
     }
 
