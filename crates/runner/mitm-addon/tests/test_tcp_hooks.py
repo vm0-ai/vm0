@@ -303,9 +303,13 @@ class TestTcpLog:
         flow.messages.append(second_client)
 
         with mitm_ctx():
+            mitm_addon.tcp_message(flow)
             mitm_addon.tcp_end(flow)
 
         [entry] = read_jsonl_entries_after_flush(Path(log_path))
         assert entry["request_size"] == max_log_size
         assert entry["response_size"] == 0
+        assert flow.messages == []
+
+        _run_scheduled_tcp_drains(scheduled)
         assert flow.messages == []
