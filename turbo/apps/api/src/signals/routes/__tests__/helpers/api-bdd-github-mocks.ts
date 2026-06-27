@@ -7,9 +7,9 @@ import { z } from "zod";
 import { mockOptionalEnv } from "../../../../lib/env";
 import { server } from "../../../../mocks/server";
 
-export const GITHUB_APP_SLUG = "vm0-test";
-export const GITHUB_APP_CLIENT_ID = "github-app-client-id";
-export const GITHUB_APP_CLIENT_SECRET = "github-app-client-secret";
+const GITHUB_APP_SLUG = "vm0-test";
+const GITHUB_APP_CLIENT_ID = "github-app-client-id";
+const GITHUB_APP_CLIENT_SECRET = "github-app-client-secret";
 
 interface CapturedIssueComment {
   readonly repo: string;

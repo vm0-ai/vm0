@@ -1,11 +1,6 @@
 #!/usr/bin/env node
 import { spawn } from "node:child_process";
-import {
-  appendFileSync,
-  mkdirSync,
-  readFileSync,
-  readdirSync,
-} from "node:fs";
+import { appendFileSync, mkdirSync, readFileSync, readdirSync } from "node:fs";
 import { dirname } from "node:path";
 
 const args = process.argv.slice(2);
@@ -39,7 +34,13 @@ function readParentPid(pid) {
   try {
     const stat = readFileSync(`/proc/${pid}/stat`, "utf8");
     const end = stat.lastIndexOf(")");
-    return Number.parseInt(stat.slice(end + 2).trim().split(/\s+/)[1], 10);
+    return Number.parseInt(
+      stat
+        .slice(end + 2)
+        .trim()
+        .split(/\s+/)[1],
+      10,
+    );
   } catch {
     return undefined;
   }

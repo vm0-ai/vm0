@@ -182,8 +182,6 @@ import { testTelegramDispatchProbeRoutes } from "./routes/test-telegram-dispatch
 import { testTelegramMockRoutes } from "./routes/test-telegram-mock";
 import { testTelegramStateRoutes } from "./routes/test-telegram-state";
 
-export type { RouteEntry, SignalRouteHandler } from "./route-entry";
-
 export const ROUTES: readonly RouteEntry[] = [
   {
     route: healthContract.check,

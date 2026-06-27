@@ -9,10 +9,7 @@ import {
 import { resetSignal } from "../utils.ts";
 import { createRestoredAttachment } from "../zero-page/chat-draft.ts";
 import { clearArtifactPreview$ } from "../zero-page/zero-artifact-sidebar.ts";
-import {
-  createChatThreadSignals,
-  ensureDraft$,
-} from "./create-chat-thread.ts";
+import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import { closeHeaderAutomationSidebar$ } from "./header-automation-sidebar.ts";
 import { createIdbCachedDataSource } from "./idb-cached-chat-thread-data-source.ts";

@@ -4,10 +4,7 @@
     "incremental": false,
     "types": ["node"]
   },
-  "include": [
-    "src/signals/routes/test*.ts",
-    "src/signals/routes/webhooks*.ts"
-  ],
+  "include": ["src/signals/routes/test*.ts", "src/signals/routes/webhooks*.ts"],
   "exclude": [
     "node_modules",
     "dist",
