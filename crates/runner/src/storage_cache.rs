@@ -1579,41 +1579,6 @@ mod tests {
         std::fs::write(cache_dir.join("archive.tar.gz"), bytes).unwrap();
     }
 
-    #[test]
-    fn stage_metrics_total_sums_guest_write_durations() {
-        let mut telemetry = new_telemetry();
-        let mut metrics = StorageCacheStageMetrics::start();
-        let ok: RunnerResult<()> = Ok(());
-
-        metrics.record_write_result(
-            &mut telemetry,
-            STORAGE_CACHE_STAGE_SINGLE_WRITE,
-            Instant::now() - Duration::from_millis(5_000),
-            &ok,
-        );
-        metrics.record_write_result(
-            &mut telemetry,
-            STORAGE_CACHE_STAGE_BATCH_WRITE,
-            Instant::now() - Duration::from_millis(7_000),
-            &ok,
-        );
-        metrics.record_total(&mut telemetry);
-
-        let ops = telemetry.pending_ops_with_duration_snapshot();
-        assert!(
-            op_duration_ms(&ops, STORAGE_CACHE_STAGE_SINGLE_WRITE) >= 5_000,
-            "expected single write duration in {ops:?}"
-        );
-        assert!(
-            op_duration_ms(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE) >= 7_000,
-            "expected batch write duration in {ops:?}"
-        );
-        assert!(
-            op_duration_ms(&ops, STORAGE_CACHE_STAGE_TOTAL) >= 12_000,
-            "expected total to include both guest writes in {ops:?}"
-        );
-    }
-
     struct SamePathConcurrentWriteDetectingSandbox {
         inner: MockSandbox,
         gate: MockLifecycleGate,
@@ -1908,6 +1873,12 @@ mod tests {
         assert_op(&ops, STORAGE_CACHE_STAGE_TOTAL, true);
         assert_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE, true);
         assert_no_op(&ops, STORAGE_CACHE_STAGE_SINGLE_WRITE);
+        let ops_with_duration = telemetry.pending_ops_with_duration_snapshot();
+        assert_eq!(
+            op_duration_ms(&ops_with_duration, STORAGE_CACHE_STAGE_TOTAL),
+            op_duration_ms(&ops_with_duration, STORAGE_CACHE_STAGE_BATCH_WRITE),
+            "pure batch staging total should equal the batch guest write duration in {ops_with_duration:?}"
+        );
     }
 
     #[tokio::test]
@@ -2000,6 +1971,12 @@ mod tests {
         assert_op(&ops, STORAGE_CACHE_STAGE_TOTAL, true);
         assert_op(&ops, STORAGE_CACHE_STAGE_SINGLE_WRITE, true);
         assert_no_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE);
+        let ops_with_duration = telemetry.pending_ops_with_duration_snapshot();
+        assert_eq!(
+            op_duration_ms(&ops_with_duration, STORAGE_CACHE_STAGE_TOTAL),
+            op_duration_ms(&ops_with_duration, STORAGE_CACHE_STAGE_SINGLE_WRITE),
+            "single-write staging total should equal the single guest write duration in {ops_with_duration:?}"
+        );
         assert!(ops.iter().any(|(k, _, _)| k == "storage_cache_miss"));
         assert!(ops.iter().any(|(k, _, _)| k == "storage_cache_download"));
     }
