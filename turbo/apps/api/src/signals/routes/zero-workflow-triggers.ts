@@ -18,6 +18,7 @@ import {
   getWorkflowTrigger,
   listThreadBoundWorkflowTriggers,
   loadWorkflowTriggers,
+  runOwnedWorkflowTriggerNow$,
   updateWorkflowTrigger$,
   type TriggerResult,
 } from "../services/zero-workflow-trigger.service";
@@ -278,6 +279,34 @@ const disableTriggerInner$ = command(
   },
 );
 
+const runTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(pathParamsOf(zeroWorkflowTriggersContract.run));
+  const result = await set(
+    runOwnedWorkflowTriggerNow$,
+    {
+      orgId: auth.orgId,
+      member: memberFromAuth(auth),
+      triggerId: params.id,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (result.kind === "ok") {
+    return {
+      status: 201 as const,
+      body: {
+        runId: result.runId,
+        chatThreadId: result.chatThreadId,
+      },
+    };
+  }
+  if (result.kind === "run_error") {
+    return result.response;
+  }
+  return triggerErrorResponse(result);
+});
+
 export const zeroWorkflowTriggersRoutes: readonly RouteEntry[] = [
   {
     route: zeroWorkflowTriggersContract.listForChatThread,
@@ -310,5 +339,9 @@ export const zeroWorkflowTriggersRoutes: readonly RouteEntry[] = [
   {
     route: zeroWorkflowTriggersContract.disable,
     handler: authRoute(workflowWriteAuth, disableTriggerInner$),
+  },
+  {
+    route: zeroWorkflowTriggersContract.run,
+    handler: authRoute(workflowWriteAuth, runTriggerInner$),
   },
 ];

@@ -100,6 +100,10 @@ const ZERO_WORKFLOW_COPY_REWRITE_SOURCE = `/api/zero/workflows/:workflowId(${UUI
 const ZERO_WORKFLOW_COPY_PATH_RE = new RegExp(
   `^/api/zero/workflows/${UUID_PATH_SEGMENT_PATTERN}/copy$`,
 );
+const ZERO_WORKFLOW_CHAT_THREAD_REWRITE_SOURCE = `/api/zero/workflows/:workflowId(${UUID_PATH_SEGMENT_PATTERN})/chat-thread`;
+const ZERO_WORKFLOW_CHAT_THREAD_PATH_RE = new RegExp(
+  `^/api/zero/workflows/${UUID_PATH_SEGMENT_PATTERN}/chat-thread$`,
+);
 const ZERO_WORKFLOW_DEMOTE_REWRITE_SOURCE = `/api/zero/workflows/:workflowId(${UUID_PATH_SEGMENT_PATTERN})/demote`;
 const ZERO_WORKFLOW_DEMOTE_PATH_RE = new RegExp(
   `^/api/zero/workflows/${UUID_PATH_SEGMENT_PATTERN}/demote$`,
@@ -131,6 +135,10 @@ const ZERO_WORKFLOW_TRIGGER_ENABLE_PATH_RE = new RegExp(
 const ZERO_WORKFLOW_TRIGGER_DISABLE_REWRITE_SOURCE = `/api/zero/workflow-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/disable`;
 const ZERO_WORKFLOW_TRIGGER_DISABLE_PATH_RE = new RegExp(
   `^/api/zero/workflow-triggers/${UUID_PATH_SEGMENT_PATTERN}/disable$`,
+);
+const ZERO_WORKFLOW_TRIGGER_RUN_REWRITE_SOURCE = `/api/zero/workflow-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/run`;
+const ZERO_WORKFLOW_TRIGGER_RUN_PATH_RE = new RegExp(
+  `^/api/zero/workflow-triggers/${UUID_PATH_SEGMENT_PATTERN}/run$`,
 );
 const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
 const ZERO_VARIABLE_BY_NAME_REWRITE_SOURCE = "/api/zero/variables/:name";
@@ -1398,6 +1406,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_WORKFLOW_COPY_PATH_RE,
   ],
   [
+    ZERO_WORKFLOW_CHAT_THREAD_REWRITE_SOURCE,
+    "/api/zero/workflows/:workflowId/chat-thread",
+    ZERO_WORKFLOW_CHAT_THREAD_PATH_RE,
+  ],
+  [
     ZERO_WORKFLOW_DEMOTE_REWRITE_SOURCE,
     "/api/zero/workflows/:workflowId/demote",
     ZERO_WORKFLOW_DEMOTE_PATH_RE,
@@ -1431,6 +1444,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_WORKFLOW_TRIGGER_DISABLE_REWRITE_SOURCE,
     "/api/zero/workflow-triggers/:id/disable",
     ZERO_WORKFLOW_TRIGGER_DISABLE_PATH_RE,
+  ],
+  [
+    ZERO_WORKFLOW_TRIGGER_RUN_REWRITE_SOURCE,
+    "/api/zero/workflow-triggers/:id/run",
+    ZERO_WORKFLOW_TRIGGER_RUN_PATH_RE,
   ],
   [
     ZERO_WORKFLOW_TRIGGER_BY_ID_REWRITE_SOURCE,

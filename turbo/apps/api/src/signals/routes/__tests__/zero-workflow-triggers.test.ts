@@ -5,13 +5,20 @@ import {
   zeroWorkflowTriggersContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
 import { gmailWatchStates } from "@vm0/db/schema/gmail-event";
 import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import {
+  workflowUserTriggerThreads,
+  zeroWorkflowTriggers,
+  zeroWorkflows,
+} from "@vm0/db/schema/zero-workflow";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
@@ -89,6 +96,15 @@ async function seedAgentWithWorkflow(
       userId: fixture.userId,
       name: "trigger-agent",
       workflowNames: [WORKFLOW_NAME],
+      composeContent: {
+        version: "1",
+        agents: {
+          "trigger-agent": {
+            framework: "claude-code",
+            environment: { ANTHROPIC_API_KEY: "test-key" },
+          },
+        },
+      },
     },
     context.signal,
   );
@@ -251,10 +267,25 @@ describe("zero workflow triggers", () => {
       }),
       [201],
     );
+    const second = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          schedule: {
+            type: "cron",
+            cronExpression: "0 9 * * *",
+            timezone: "UTC",
+          },
+        },
+      }),
+      [201],
+    );
     const threadId = created.body.chatThreadId;
     if (!threadId) {
       throw new Error("Expected the workflow trigger to bind a chat thread");
     }
+    expect(second.body.chatThreadId).toBe(threadId);
 
     const listed = await accept(
       triggersClient().listForChatThread({
@@ -264,14 +295,73 @@ describe("zero workflow triggers", () => {
       [200],
     );
 
-    expect(listed.body).toHaveLength(1);
-    expect(listed.body[0]).toMatchObject({
-      id: created.body.id,
-      kind: "schedule",
-      scheduleSummary: "Every 60s",
-      chatThreadId: threadId,
-      workflow: { id: workflowId, name: WORKFLOW_NAME },
-    });
+    expect(listed.body).toHaveLength(2);
+    expect(
+      listed.body.map((trigger) => {
+        return {
+          id: trigger.id,
+          kind: trigger.kind,
+          scheduleSummary: trigger.scheduleSummary,
+          chatThreadId: trigger.chatThreadId,
+          workflow: trigger.workflow,
+        };
+      }),
+    ).toStrictEqual([
+      {
+        id: created.body.id,
+        kind: "schedule",
+        scheduleSummary: "Every 60s",
+        chatThreadId: threadId,
+        workflow: expect.objectContaining({
+          id: workflowId,
+          name: WORKFLOW_NAME,
+        }),
+      },
+      {
+        id: second.body.id,
+        kind: "schedule",
+        scheduleSummary: "0 9 * * * (UTC)",
+        chatThreadId: threadId,
+        workflow: expect.objectContaining({
+          id: workflowId,
+          name: WORKFLOW_NAME,
+        }),
+      },
+    ]);
+  });
+
+  it("stores trigger chat threads at the workflow-user level", async () => {
+    const { workflowId } = await setupFixture();
+    const first = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { schedule: { type: "loop", intervalSeconds: 60 } },
+      }),
+      [201],
+    );
+    const second = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { schedule: { type: "loop", intervalSeconds: 120 } },
+      }),
+      [201],
+    );
+
+    expect(second.body.chatThreadId).toBe(first.body.chatThreadId);
+
+    const db = store.set(writeDb$);
+    const rows = await db
+      .select({ chatThreadId: workflowUserTriggerThreads.chatThreadId })
+      .from(workflowUserTriggerThreads)
+      .where(eq(workflowUserTriggerThreads.workflowId, workflowId));
+    expect(rows).toStrictEqual([{ chatThreadId: first.body.chatThreadId }]);
+    const triggerRows = await db
+      .select({ id: zeroWorkflowTriggers.id })
+      .from(zeroWorkflowTriggers)
+      .where(eq(zeroWorkflowTriggers.workflowId, workflowId));
+    expect(triggerRows).toHaveLength(2);
   });
 
   it("creates and updates one-time schedules from local atTime and timezone", async () => {
@@ -960,5 +1050,84 @@ describe("zero workflow triggers", () => {
       .from(chatThreads)
       .where(eq(chatThreads.id, threadId!));
     expect(threads).toHaveLength(1);
+  });
+
+  it("runs a trigger immediately in its bound chat thread", async () => {
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    const { workflowId } = await setupFixture();
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          schedule: {
+            type: "cron",
+            cronExpression: "0 9 * * *",
+            timezone: "UTC",
+          },
+        },
+      }),
+      [201],
+    );
+    const threadId = created.body.chatThreadId;
+    if (!threadId) {
+      throw new Error("Expected trigger creation to bind a chat thread");
+    }
+
+    const run = await accept(
+      triggersClient().run({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [201],
+    );
+
+    expect(run.body.chatThreadId).toBe(threadId);
+    const db = store.set(writeDb$);
+    const [zeroRun] = await db
+      .select({
+        id: zeroRuns.id,
+        workflowTriggerId: zeroRuns.workflowTriggerId,
+        triggerSource: zeroRuns.triggerSource,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.id, run.body.runId))
+      .limit(1);
+    expect(zeroRun).toMatchObject({
+      id: run.body.runId,
+      workflowTriggerId: created.body.id,
+      triggerSource: "workflow-schedule",
+    });
+
+    const [trigger] = await db
+      .select({
+        lastRunId: zeroWorkflowTriggers.lastRunId,
+        lastRunAt: zeroWorkflowTriggers.lastRunAt,
+        nextRunAt: zeroWorkflowTriggers.nextRunAt,
+      })
+      .from(zeroWorkflowTriggers)
+      .where(eq(zeroWorkflowTriggers.id, created.body.id))
+      .limit(1);
+    expect(trigger?.lastRunId).toBe(run.body.runId);
+    expect(trigger?.lastRunAt).toBeInstanceOf(Date);
+    expect(trigger?.nextRunAt?.toISOString()).toBe(created.body.nextRunAt);
+
+    const messages = await db
+      .select({ role: chatMessages.role, content: chatMessages.content })
+      .from(chatMessages)
+      .where(eq(chatMessages.chatThreadId, threadId));
+    expect(messages).toContainEqual({
+      role: "user",
+      content: `/${WORKFLOW_NAME}`,
+    });
+
+    const callbacks = await db
+      .select({ internalKind: agentRunCallbacks.internalKind })
+      .from(agentRunCallbacks)
+      .where(eq(agentRunCallbacks.runId, run.body.runId));
+    const callbackKinds = callbacks.map((callback) => {
+      return callback.internalKind;
+    });
+    expect(callbackKinds).toStrictEqual(["chat"]);
   });
 });

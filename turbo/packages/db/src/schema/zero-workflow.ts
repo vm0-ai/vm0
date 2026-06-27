@@ -85,6 +85,55 @@ export const zeroWorkflows = pgTable(
 );
 
 /**
+ * Shared trigger chat thread for one workflow execution owner.
+ *
+ * Workflow permissions/connectors are scoped by (workflow_id, user_id), and
+ * trigger-fired runs use the trigger owner's identity. Keep the linked chat
+ * thread at the same workflow-user level so every trigger owned by the same
+ * user for a workflow writes to one conversation.
+ */
+export const workflowUserTriggerThreads = pgTable(
+  "workflow_user_trigger_threads",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    workflowId: uuid("workflow_id")
+      .notNull()
+      .references(
+        () => {
+          return zeroWorkflows.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    chatThreadId: uuid("chat_thread_id").references(
+      () => {
+        return chatThreads.id;
+      },
+      { onDelete: "set null" },
+    ),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("idx_workflow_user_trigger_threads_unique").on(
+        table.orgId,
+        table.userId,
+        table.workflowId,
+      ),
+      index("idx_workflow_user_trigger_threads_chat_thread").on(
+        table.chatThreadId,
+      ),
+      index("idx_workflow_user_trigger_threads_workflow_user").on(
+        table.workflowId,
+        table.userId,
+      ),
+    ];
+  },
+);
+
+/**
  * Schedule sub-type for a workflow trigger.
  *
  * - `cron`: recurring at wall-clock times defined by a cron expression.
@@ -106,8 +155,8 @@ export type ZeroWorkflowEventConfig = Record<string, unknown>;
  * Workflow triggers.
  *
  * A trigger answers "when" (schedule) and "where" (agent) a workflow runs; the
- * workflow's SKILL.md is the "what". Each trigger binds to its own chat thread
- * and runs under its `owner_user_id` identity.
+ * workflow's SKILL.md is the "what". Trigger chat is shared at the
+ * workflow-user level by `workflow_user_trigger_threads`.
  *
  * Schedule triggers are polled by `next_run_at`. Event triggers keep
  * `next_run_at = NULL` and fire from their event-specific junction.
@@ -145,14 +194,6 @@ export const zeroWorkflowTriggers = pgTable(
     atTime: timestamp("at_time"),
     timezone: varchar("timezone", { length: 50 }).default("UTC").notNull(),
     enabled: boolean("enabled").default(true).notNull(),
-    // Nullable: the bound thread is removed when its agent is deleted
-    // (chat_threads.agent_compose_id ON DELETE CASCADE).
-    chatThreadId: uuid("chat_thread_id").references(
-      () => {
-        return chatThreads.id;
-      },
-      { onDelete: "set null" },
-    ),
     nextRunAt: timestamp("next_run_at"),
     lastRunAt: timestamp("last_run_at"),
     lastRunId: uuid("last_run_id"),
@@ -164,7 +205,6 @@ export const zeroWorkflowTriggers = pgTable(
     return [
       index("idx_zero_workflow_triggers_workflow").on(table.workflowId),
       index("idx_zero_workflow_triggers_org").on(table.orgId),
-      index("idx_zero_workflow_triggers_chat_thread").on(table.chatThreadId),
       uniqueIndex("idx_zero_workflow_triggers_run_group").on(table.runGroupId),
       // Partial index for the time poller: enabled triggers with a due next run.
       index("idx_zero_workflow_triggers_next_run")

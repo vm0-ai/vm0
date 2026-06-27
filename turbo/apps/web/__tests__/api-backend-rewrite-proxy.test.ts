@@ -2660,12 +2660,43 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(false);
   });
 
+  it("matches the zero workflow chat thread rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/workflows/00000000-0000-0000-0000-000000000001/chat-thread",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/workflows/not-a-uuid/chat-thread",
+      ),
+    ).toBe(false);
+  });
+
   it("matches the zero workflow run rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath(
         "/api/zero/workflows/00000000-0000-0000-0000-000000000001/run",
       ),
     ).toBe(true);
+  });
+
+  it("matches the zero workflow trigger run rewrite path exactly", () => {
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/workflow-triggers/00000000-0000-0000-0000-000000000001/run",
+      ),
+    ).toBe(true);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/workflow-triggers/not-a-uuid/run",
+      ),
+    ).toBe(false);
+    expect(
+      matchesApiBackendRewritePath(
+        "/api/zero/workflow-triggers/00000000-0000-0000-0000-000000000001/run/extra",
+      ),
+    ).toBe(false);
   });
 
   it("matches the zero runs collection rewrite path exactly", () => {

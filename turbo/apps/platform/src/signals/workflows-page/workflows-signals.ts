@@ -18,8 +18,15 @@ import { zeroWorkflowUserConnectorsContract } from "@vm0/api-contracts/contracts
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { activeRoute$ } from "../active-route.ts";
-import { pathParams$, replaceSearchParams$, searchParams$ } from "../route.ts";
+import {
+  detachedNavigateTo$,
+  pathParams$,
+  replaceSearchParams$,
+  searchParams$,
+} from "../route.ts";
+import { ROUTES } from "../route-paths.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
+import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
 export type WorkflowDetailTab =
@@ -509,6 +516,26 @@ export const runWorkflow$ = command(
   },
 );
 
+export const openWorkflowChat$ = command(
+  async ({ get, set }, workflowId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
+    const result = await accept(
+      client.chatThread({
+        params: { workflowId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    const { draft } = set(ensureDraft$, result.body.chatThreadId);
+    set(draft.clear$);
+    set(draft.setInput$, result.body.prompt);
+    set(detachedNavigateTo$, ROUTES.chat, {
+      pathParams: { threadId: result.body.chatThreadId },
+    });
+  },
+);
+
 type WorkflowVisibilityAction =
   | "request-publish"
   | "cancel-publish-request"
@@ -737,6 +764,23 @@ export const setWorkflowTriggerEnabled$ = command(
     await accept(request, [200]);
     signal.throwIfAborted();
     set(reloadWorkflows$);
+  },
+);
+
+export const runWorkflowTriggerNow$ = command(
+  async ({ get, set }, triggerId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const result = await accept(
+      client.run({
+        params: { id: triggerId },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(detachedNavigateTo$, ROUTES.chat, {
+      pathParams: { threadId: result.body.chatThreadId },
+    });
   },
 );
 

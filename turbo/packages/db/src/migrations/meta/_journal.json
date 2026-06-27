@@ -3550,6 +3550,13 @@
       "when": 1782525518285,
       "tag": "0506_workflow_user_authorization",
       "breakpoints": true
+    },
+    {
+      "idx": 507,
+      "version": "7",
+      "when": 1782569786068,
+      "tag": "0507_workflow_user_trigger_threads",
+      "breakpoints": true
     }
   ]
 }

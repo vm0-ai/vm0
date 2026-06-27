@@ -2,7 +2,7 @@ import { Buffer } from "node:buffer";
 
 import { OAuth2Client } from "google-auth-library";
 import { command, computed } from "ccstate";
-import { and, eq, inArray, isNotNull, lte, or } from "drizzle-orm";
+import { and, eq, inArray, lte, or } from "drizzle-orm";
 import { z } from "zod";
 
 import {
@@ -22,6 +22,7 @@ import {
 } from "@vm0/db/schema/gmail-event";
 import { secrets as secretsTable } from "@vm0/db/schema/secret";
 import {
+  workflowUserTriggerThreads,
   zeroWorkflowTriggers,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
@@ -43,6 +44,7 @@ import {
   runWorkflowTriggerNow$,
   type TriggerRow,
 } from "./zero-workflow-trigger-run.service";
+import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
 
 const log = logger("api:gmail-workflow-event");
 
@@ -1087,6 +1089,7 @@ interface GmailEventTriggerRow {
   readonly trigger: TriggerRow;
   readonly agentId: string;
   readonly workflowName: string;
+  readonly chatThreadId: string;
   readonly config: GmailWorkflowEventConfig;
 }
 
@@ -1198,11 +1201,24 @@ async function loadGmailEventTriggers(args: {
       trigger: zeroWorkflowTriggers,
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
+      workflowDisplayName: zeroWorkflows.displayName,
+      chatThreadId: workflowUserTriggerThreads.chatThreadId,
     })
     .from(zeroWorkflowTriggers)
     .innerJoin(
       zeroWorkflows,
       eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
+    )
+    .leftJoin(
+      workflowUserTriggerThreads,
+      and(
+        eq(workflowUserTriggerThreads.orgId, zeroWorkflowTriggers.orgId),
+        eq(workflowUserTriggerThreads.userId, zeroWorkflowTriggers.ownerUserId),
+        eq(
+          workflowUserTriggerThreads.workflowId,
+          zeroWorkflowTriggers.workflowId,
+        ),
+      ),
     )
     .where(
       and(
@@ -1214,18 +1230,42 @@ async function loadGmailEventTriggers(args: {
           "gmail-new-message",
           "gmail-label-applied",
         ]),
-        isNotNull(zeroWorkflowTriggers.chatThreadId),
       ),
     );
   args.signal.throwIfAborted();
 
-  return triggerRows.flatMap((row) => {
+  const currentTime = nowDate();
+  const triggers: GmailEventTriggerRow[] = [];
+  for (const row of triggerRows) {
     const config =
       row.trigger.eventType === "gmail-label-applied"
         ? gmailLabelAppliedEventConfigSchema.safeParse(row.trigger.eventConfig)
         : gmailNewMessageEventConfigSchema.safeParse(row.trigger.eventConfig);
-    return config.success ? [{ ...row, config: config.data }] : [];
-  });
+    if (!config.success) {
+      continue;
+    }
+    const chatThreadId =
+      row.chatThreadId ??
+      (await args.db.transaction(async (tx) => {
+        return await ensureWorkflowUserTriggerThread(tx, {
+          orgId: row.trigger.orgId,
+          userId: row.trigger.ownerUserId,
+          workflowId: row.trigger.workflowId,
+          agentId: row.agentId,
+          workflowTitle: row.workflowDisplayName ?? row.workflowName,
+          currentTime,
+        });
+      }));
+    args.signal.throwIfAborted();
+    triggers.push({
+      trigger: row.trigger,
+      agentId: row.agentId,
+      workflowName: row.workflowName,
+      chatThreadId,
+      config: config.data,
+    });
+  }
+  return triggers;
 }
 
 async function cachedGmailMessageContext(args: {
@@ -1782,6 +1822,7 @@ export const dispatchGmailPubSubPush$ = command(
                 trigger: trigger.trigger,
                 agentId: trigger.agentId,
                 workflowName: trigger.workflowName,
+                chatThreadId: trigger.chatThreadId,
               },
               apiStartTime: args.apiStartTime,
               triggerSource: "workflow-event",
@@ -1792,7 +1833,7 @@ export const dispatchGmailPubSubPush$ = command(
                 message,
               }),
               callbacks: buildChatOnlyWorkflowTriggerCallbacks(
-                trigger.trigger,
+                trigger.chatThreadId,
                 trigger.agentId,
               ),
               recordLastRunAt: true,

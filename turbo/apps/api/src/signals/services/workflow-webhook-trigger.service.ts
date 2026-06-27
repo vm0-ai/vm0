@@ -2,12 +2,13 @@ import { Buffer } from "node:buffer";
 import { createHash, randomBytes } from "node:crypto";
 
 import { command, computed } from "ccstate";
-import { and, eq, gte, isNotNull } from "drizzle-orm";
+import { and, eq, gte } from "drizzle-orm";
 
 import type { WebhookReceivedEventConfig } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
+  workflowUserTriggerThreads,
   zeroWorkflowTriggers,
   zeroWorkflowWebhookDeliveries,
   zeroWorkflowWebhookTriggers,
@@ -32,6 +33,7 @@ import {
   type RunWorkflowTriggerResult,
   type TriggerRow,
 } from "./zero-workflow-trigger-run.service";
+import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
 
 export const WORKFLOW_WEBHOOK_BODY_LIMIT_BYTES = 1_000_000;
 const WORKFLOW_WEBHOOK_BODY_PREVIEW_CHARS = 16_000;
@@ -146,6 +148,7 @@ interface WorkflowWebhookTriggerDispatchRow {
   readonly webhook: WebhookTriggerRow;
   readonly agentId: string;
   readonly workflowName: string;
+  readonly chatThreadId: string;
 }
 
 interface AcceptedWebhookDelivery {
@@ -294,6 +297,7 @@ function buildWorkflowWebhookEventSystemPrompt(args: {
 async function loadWebhookTriggerForToken(args: {
   readonly db: Db;
   readonly token: string;
+  readonly signal: AbortSignal;
 }): Promise<WorkflowWebhookTriggerDispatchRow | null> {
   const [row] = await args.db
     .select({
@@ -301,6 +305,8 @@ async function loadWebhookTriggerForToken(args: {
       webhook: zeroWorkflowWebhookTriggers,
       agentId: zeroWorkflows.agentId,
       workflowName: zeroWorkflows.name,
+      workflowDisplayName: zeroWorkflows.displayName,
+      chatThreadId: workflowUserTriggerThreads.chatThreadId,
     })
     .from(zeroWorkflowWebhookTriggers)
     .innerJoin(
@@ -311,6 +317,17 @@ async function loadWebhookTriggerForToken(args: {
       zeroWorkflows,
       eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
     )
+    .leftJoin(
+      workflowUserTriggerThreads,
+      and(
+        eq(workflowUserTriggerThreads.orgId, zeroWorkflowTriggers.orgId),
+        eq(workflowUserTriggerThreads.userId, zeroWorkflowTriggers.ownerUserId),
+        eq(
+          workflowUserTriggerThreads.workflowId,
+          zeroWorkflowTriggers.workflowId,
+        ),
+      ),
+    )
     .where(
       and(
         eq(
@@ -320,11 +337,34 @@ async function loadWebhookTriggerForToken(args: {
         eq(zeroWorkflowTriggers.kind, "event"),
         eq(zeroWorkflowTriggers.eventType, "webhook-received"),
         eq(zeroWorkflowTriggers.enabled, true),
-        isNotNull(zeroWorkflowTriggers.chatThreadId),
       ),
     )
     .limit(1);
-  return row ?? null;
+  args.signal.throwIfAborted();
+  if (!row) {
+    return null;
+  }
+  const currentTime = nowDate();
+  const chatThreadId =
+    row.chatThreadId ??
+    (await args.db.transaction(async (tx) => {
+      return await ensureWorkflowUserTriggerThread(tx, {
+        orgId: row.trigger.orgId,
+        userId: row.trigger.ownerUserId,
+        workflowId: row.trigger.workflowId,
+        agentId: row.agentId,
+        workflowTitle: row.workflowDisplayName ?? row.workflowName,
+        currentTime,
+      });
+    }));
+  args.signal.throwIfAborted();
+  return {
+    trigger: row.trigger,
+    webhook: row.webhook,
+    agentId: row.agentId,
+    workflowName: row.workflowName,
+    chatThreadId,
+  };
 }
 
 async function rateLimitExceeded(args: {
@@ -492,6 +532,7 @@ const startWorkflowWebhookRun$ = command(
           trigger: args.row.trigger,
           agentId: args.row.agentId,
           workflowName: args.row.workflowName,
+          chatThreadId: args.row.chatThreadId,
         },
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
@@ -505,7 +546,7 @@ const startWorkflowWebhookRun$ = command(
           headers: args.headers,
         }),
         callbacks: buildChatOnlyWorkflowTriggerCallbacks(
-          args.row.trigger,
+          args.row.chatThreadId,
           args.row.agentId,
         ),
         recordLastRunAt: true,
@@ -543,6 +584,7 @@ export const dispatchWorkflowWebhook$ = command(
     const row = await loadWebhookTriggerForToken({
       db,
       token: args.token,
+      signal,
     });
     signal.throwIfAborted();
     if (!row) {

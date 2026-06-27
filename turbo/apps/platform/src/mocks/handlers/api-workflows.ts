@@ -240,6 +240,19 @@ export const apiWorkflowsHandlers = [
     });
   }),
 
+  mockApi(zeroWorkflowsDetailContract.chatThread, ({ params, respond }) => {
+    const workflow = mockWorkflows.find((item) => {
+      return item.id === params.workflowId;
+    });
+    if (!workflow) {
+      return respond(404, notFound(params.workflowId));
+    }
+    return respond(200, {
+      chatThreadId: "00000000-0000-4000-a000-000000000fff",
+      prompt: `/${workflow.name}`,
+    });
+  }),
+
   mockApi(zeroWorkflowUserConnectorsContract.get, ({ params, respond }) => {
     return respond(200, {
       enabledTypes: mockWorkflowUserConnectors.get(params.id) ?? [],
@@ -385,6 +398,19 @@ function notFoundTrigger() {
   };
 }
 
+function mockWorkflowTriggerExists(triggerId: string): boolean {
+  return (
+    getMockWorkflowTriggers().some((trigger) => {
+      return trigger.id === triggerId;
+    }) ||
+    mockWorkflows.some((workflow) => {
+      return workflow.triggers.some((trigger) => {
+        return trigger.id === triggerId;
+      });
+    })
+  );
+}
+
 function workflowTriggerListHandlers() {
   return [
     mockApi(zeroWorkflowTriggersContract.list, ({ params, respond }) => {
@@ -441,6 +467,20 @@ function workflowTriggerEnabledHandlers() {
   ];
 }
 
+function workflowTriggerRunHandlers() {
+  return [
+    mockApi(zeroWorkflowTriggersContract.run, ({ params, respond }) => {
+      if (!mockWorkflowTriggerExists(params.id)) {
+        return respond(404, notFoundTrigger());
+      }
+      return respond(201, {
+        runId: "mock-workflow-trigger-run",
+        chatThreadId: "00000000-0000-4000-a000-000000000301",
+      });
+    }),
+  ];
+}
+
 function workflowTriggerUpdateHandlers() {
   return [
     mockApi(
@@ -486,6 +526,7 @@ function workflowTriggerHandlers() {
   return [
     ...workflowTriggerListHandlers(),
     ...workflowTriggerEnabledHandlers(),
+    ...workflowTriggerRunHandlers(),
     ...workflowTriggerUpdateHandlers(),
   ];
 }
