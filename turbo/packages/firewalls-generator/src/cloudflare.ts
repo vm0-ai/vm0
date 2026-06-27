@@ -39,6 +39,10 @@ import {
   CLOUDFLARE_OPENAPI_URL,
 } from "./cloudflare-sources";
 import {
+  CLOUDFLARE_PERMISSIONS_REQUIRED_OPERATIONS,
+  type CloudflarePermissionsRequiredOperation,
+} from "./cloudflare-permissions-required";
+import {
   CLOUDFLARE_SUPPLEMENTAL_OPERATIONS,
   type CloudflareSupplementalAuthBehavior,
   type CloudflareSupplementalOperation,
@@ -94,8 +98,11 @@ interface OAuthCategoryData {
 interface BuildStats {
   totalOperations: number;
   operationsWithApiTokenGroup: number;
+  operationsWithoutApiTokenGroup: number;
   operationsWithCfPermissionsRequired: number;
+  operationsWithoutApiTokenGroupAndWithoutCfPermissionsRequired: number;
   openApiTokenGroupMappedOperations: number;
+  cfPermissionsRequiredMappedOperations: number;
   supplementalOpenApiMappedOperations: number;
   nonOpenApiSupplementalOperations: number;
   mappedOperations: number;
@@ -715,11 +722,14 @@ function getPermissionGroup(
   return created;
 }
 
-function normalizedPermissionFromName(name: string): NormalizedPermission {
+function normalizedPermissionFromName(
+  name: string,
+  descriptionPrefix = "Cloudflare supplemental permission",
+): NormalizedPermission {
   const action = permissionAction(name);
   if (!action) {
     throw new Error(
-      `Cloudflare supplemental permission has unknown action: ${name}`,
+      `Cloudflare explicit permission has unknown action: ${name}`,
     );
   }
   const ownerKey = permissionOwnerKey(name);
@@ -729,7 +739,7 @@ function normalizedPermissionFromName(name: string): NormalizedPermission {
     ownerKey,
     sourceGroup: name,
     sourceStem: ownerKey,
-    description: `Cloudflare supplemental permission: ${name}`,
+    description: `${descriptionPrefix}: ${name}`,
   };
 }
 
@@ -743,7 +753,19 @@ function supplementalOperationKey(
   return openApiOperationKey(operation.method, operation.path);
 }
 
+function permissionsRequiredOperationKey(
+  operation: CloudflarePermissionsRequiredOperation,
+): string {
+  return openApiOperationKey(operation.method, operation.path);
+}
+
 function supplementalRule(operation: CloudflareSupplementalOperation): string {
+  return `${operation.method} ${apiPathToRulePath(operation.path)}`;
+}
+
+function permissionsRequiredRule(
+  operation: CloudflarePermissionsRequiredOperation,
+): string {
   return `${operation.method} ${apiPathToRulePath(operation.path)}`;
 }
 
@@ -762,6 +784,36 @@ function buildSupplementalOperationIndex(): Map<
   return operations;
 }
 
+function buildPermissionsRequiredOperationIndex(
+  oauthCategoryData: OAuthCategoryData,
+): Map<string, CloudflarePermissionsRequiredOperation> {
+  const knownPermissionNames = new Set([
+    ...oauthCategoryData.categoriesByPermission.keys(),
+    ...API_TOKEN_ONLY_CATEGORY_OVERRIDES.keys(),
+  ]);
+  const operations = new Map<string, CloudflarePermissionsRequiredOperation>();
+  for (const operation of CLOUDFLARE_PERMISSIONS_REQUIRED_OPERATIONS) {
+    const key = permissionsRequiredOperationKey(operation);
+    if (operations.has(key)) {
+      throw new Error(
+        `Duplicate Cloudflare x-cfPermissionsRequired operation: ${key}`,
+      );
+    }
+    if (!knownPermissionNames.has(operation.permission)) {
+      throw new Error(
+        `Cloudflare x-cfPermissionsRequired operation maps to an unknown permission: ${key} -> ${operation.permission}`,
+      );
+    }
+    if (!permissionAction(operation.permission)) {
+      throw new Error(
+        `Cloudflare x-cfPermissionsRequired operation maps to a permission with unknown action: ${key} -> ${operation.permission}`,
+      );
+    }
+    operations.set(key, operation);
+  }
+  return operations;
+}
+
 function addSupplementalOperationRule(
   operation: CloudflareSupplementalOperation,
   permissionGroupsByAuthBehavior: Record<
@@ -773,6 +825,22 @@ function addSupplementalOperationRule(
     permissionGroupsByAuthBehavior[operation.authBehavior],
     normalizedPermissionFromName(operation.permission),
   ).rules.add(supplementalRule(operation));
+}
+
+function addPermissionsRequiredOperationRule(
+  operation: CloudflarePermissionsRequiredOperation,
+  permissionGroups: Map<
+    string,
+    { rules: Set<string>; metadata: NormalizedPermission }
+  >,
+): void {
+  getPermissionGroup(
+    permissionGroups,
+    normalizedPermissionFromName(
+      operation.permission,
+      "Cloudflare OAuth scope",
+    ),
+  ).rules.add(permissionsRequiredRule(operation));
 }
 
 function operationContext(
@@ -1168,14 +1236,20 @@ function buildGroups(
     preserveAuthorization: preserveAuthorizationPermissionGroups,
   };
   const supplementalOperationsByKey = buildSupplementalOperationIndex();
+  const permissionsRequiredOperationsByKey =
+    buildPermissionsRequiredOperationIndex(oauthCategoryData);
   const matchedSupplementalOpenApiKeys = new Set<string>();
-  const openApiOperationKeys = new Set<string>();
+  const matchedPermissionsRequiredOpenApiKeys = new Set<string>();
+  const openApiOperationsByKey = new Map<string, Record<string, unknown>>();
   const unscoredOwnerExamples: string[] = [];
   const stats: BuildStats = {
     totalOperations: 0,
     operationsWithApiTokenGroup: 0,
+    operationsWithoutApiTokenGroup: 0,
     operationsWithCfPermissionsRequired: 0,
+    operationsWithoutApiTokenGroupAndWithoutCfPermissionsRequired: 0,
     openApiTokenGroupMappedOperations: 0,
+    cfPermissionsRequiredMappedOperations: 0,
     supplementalOpenApiMappedOperations: 0,
     nonOpenApiSupplementalOperations: 0,
     mappedOperations: 0,
@@ -1207,13 +1281,19 @@ function buildGroups(
 
       stats.totalOperations += 1;
       const operationKey = openApiOperationKey(methodLower, apiPath);
-      openApiOperationKeys.add(operationKey);
+      openApiOperationsByKey.set(operationKey, rawOperation);
+      const cfPermissionRequirements = cfPermissionsRequired(rawOperation);
       if (hasCfPermissionsRequired(rawOperation)) {
         stats.operationsWithCfPermissionsRequired += 1;
       }
 
       const officialGroups = stringArray(rawOperation["x-api-token-group"]);
       if (officialGroups.length === 0) {
+        stats.operationsWithoutApiTokenGroup += 1;
+        if (cfPermissionRequirements.length === 0) {
+          stats.operationsWithoutApiTokenGroupAndWithoutCfPermissionsRequired += 1;
+        }
+
         const supplemental = supplementalOperationsByKey.get(operationKey);
         if (supplemental) {
           if (supplemental.openApi !== "present") {
@@ -1230,6 +1310,27 @@ function buildGroups(
           stats.mappedOperations += 1;
           continue;
         }
+
+        const permissionsRequired =
+          permissionsRequiredOperationsByKey.get(operationKey);
+        if (permissionsRequired) {
+          if (
+            !cfPermissionRequirements.includes(permissionsRequired.cfPermission)
+          ) {
+            throw new Error(
+              `Cloudflare x-cfPermissionsRequired operation has unexpected official permission: ${operationKey} expected ${permissionsRequired.cfPermission}, got ${cfPermissionRequirements.join(", ")}`,
+            );
+          }
+          addPermissionsRequiredOperationRule(
+            permissionsRequired,
+            connectorPermissionGroups,
+          );
+          matchedPermissionsRequiredOpenApiKeys.add(operationKey);
+          stats.cfPermissionsRequiredMappedOperations += 1;
+          stats.mappedOperations += 1;
+          continue;
+        }
+
         stats.unmappedOperations += 1;
         continue;
       }
@@ -1298,7 +1399,7 @@ function buildGroups(
 
   for (const operation of CLOUDFLARE_SUPPLEMENTAL_OPERATIONS) {
     const key = supplementalOperationKey(operation);
-    const existsInOpenApi = openApiOperationKeys.has(key);
+    const existsInOpenApi = openApiOperationsByKey.has(key);
     if (operation.openApi === "present") {
       if (!existsInOpenApi) {
         throw new Error(
@@ -1320,6 +1421,36 @@ function buildGroups(
     }
     addSupplementalOperationRule(operation, permissionGroupsByAuthBehavior);
     stats.nonOpenApiSupplementalOperations += 1;
+  }
+
+  for (const operation of CLOUDFLARE_PERMISSIONS_REQUIRED_OPERATIONS) {
+    const key = permissionsRequiredOperationKey(operation);
+    const rawOperation = openApiOperationsByKey.get(key);
+    if (!rawOperation) {
+      throw new Error(
+        `Cloudflare x-cfPermissionsRequired operation is missing from OpenAPI: ${key}`,
+      );
+    }
+
+    const officialGroups = stringArray(rawOperation["x-api-token-group"]);
+    if (officialGroups.length > 0) {
+      throw new Error(
+        `Cloudflare x-cfPermissionsRequired operation is no longer needed because OpenAPI has x-api-token-group: ${key}`,
+      );
+    }
+
+    const officialCfPermissions = cfPermissionsRequired(rawOperation);
+    if (!officialCfPermissions.includes(operation.cfPermission)) {
+      throw new Error(
+        `Cloudflare x-cfPermissionsRequired operation has unexpected official permission: ${key} expected ${operation.cfPermission}, got ${officialCfPermissions.join(", ")}`,
+      );
+    }
+
+    if (!matchedPermissionsRequiredOpenApiKeys.has(key)) {
+      throw new Error(
+        `Cloudflare x-cfPermissionsRequired operation was not mapped: ${key}`,
+      );
+    }
   }
 
   const connectorPermissions = permissionGroupsToPermissions(
@@ -1408,8 +1539,11 @@ function renderStats(stats: BuildStats): string[] {
     "export const cloudflareGenerationStats = {",
     `  totalOperations: ${stats.totalOperations},`,
     `  operationsWithApiTokenGroup: ${stats.operationsWithApiTokenGroup},`,
+    `  operationsWithoutApiTokenGroup: ${stats.operationsWithoutApiTokenGroup},`,
     `  operationsWithCfPermissionsRequired: ${stats.operationsWithCfPermissionsRequired},`,
+    `  operationsWithoutApiTokenGroupAndWithoutCfPermissionsRequired: ${stats.operationsWithoutApiTokenGroupAndWithoutCfPermissionsRequired},`,
     `  openApiTokenGroupMappedOperations: ${stats.openApiTokenGroupMappedOperations},`,
+    `  cfPermissionsRequiredMappedOperations: ${stats.cfPermissionsRequiredMappedOperations},`,
     `  supplementalOpenApiMappedOperations: ${stats.supplementalOpenApiMappedOperations},`,
     `  nonOpenApiSupplementalOperations: ${stats.nonOpenApiSupplementalOperations},`,
     `  mappedOperations: ${stats.mappedOperations},`,
@@ -1432,6 +1566,7 @@ function generateTypeScript(result: BuildResult): string {
     "// Auto-generated from Cloudflare's official OpenAPI spec and OAuth scopes.",
     `// Source: ${CLOUDFLARE_OPENAPI_URL}`,
     `// Source: ${CLOUDFLARE_OAUTH_SCOPES_URL}`,
+    "// x-cfPermissionsRequired mappings are listed in cloudflare-permissions-required.ts.",
     "// Supplemental sources are listed in cloudflare-supplemental.ts.",
     "// Update sources: cd turbo && pnpm -F @vm0/firewalls-generator update-specs:cloudflare",
     "// Regenerate: cd turbo && pnpm -F @vm0/firewalls-generator generate:cloudflare",

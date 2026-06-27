@@ -34,6 +34,8 @@ const ALLOWED_FIREWALL_BASE_OVERLAPS = new Set([
   "instagram[1] https://graph.facebook.com <-> meta-ads[1] https://graph.facebook.com",
   // Meta Ads has a same-origin page-token exception that intentionally skips auth injection.
   "meta-ads[0] https://graph.facebook.com <-> meta-ads[1] https://graph.facebook.com",
+  // Cloudflare keeps provider-issued upload JWTs on a narrow second API entry.
+  "cloudflare[0] https://api.cloudflare.com/client <-> cloudflare[1] https://api.cloudflare.com/client",
   // Microsoft 365, Outlook Mail, and Outlook Calendar share Microsoft Graph.
   "microsoft-365[0] https://graph.microsoft.com <-> outlook-calendar[0] https://graph.microsoft.com",
   "microsoft-365[0] https://graph.microsoft.com <-> outlook-mail[0] https://graph.microsoft.com",
