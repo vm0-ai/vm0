@@ -1675,6 +1675,96 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
 });
 
 describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
+  it("expires Atom day-grant subscription credits at the Atom grant end", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const grantExpiresAtUnix = epochSeconds(7);
+
+    await runs.grantProEntitlement(actor, {
+      periodEndUnix: epochSeconds(30),
+      cancelAtUnix: grantExpiresAtUnix,
+      subscriptionMetadata: {
+        source: "atom_entitlement",
+        duration: "7d",
+        atomGrantExpiresAt: isoOf(grantExpiresAtUnix),
+      },
+    });
+
+    const status = await billing.readBillingStatus(actor);
+    expect(status.tier).toBe("pro");
+    expect(status.currentPeriodEnd).toBe(isoOf(grantExpiresAtUnix));
+    expect(status.creditGrants).toStrictEqual([
+      expect.objectContaining({
+        amount: 20_000,
+        expiresAt: isoOf(grantExpiresAtUnix),
+        source: "subscription_renewal",
+      }),
+    ]);
+  });
+
+  it("expires Atom redeem-code day-grant subscription credits at the grant end", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const grantExpiresAtUnix = epochSeconds(7);
+
+    await runs.grantProEntitlement(actor, {
+      periodEndUnix: epochSeconds(30),
+      cancelAtUnix: grantExpiresAtUnix,
+      subscriptionMetadata: {
+        source: "atom_redeem_code",
+        duration: "7d",
+        atomGrantExpiresAt: isoOf(grantExpiresAtUnix),
+      },
+    });
+
+    const status = await billing.readBillingStatus(actor);
+    expect(status.tier).toBe("pro");
+    expect(status.currentPeriodEnd).toBe(isoOf(grantExpiresAtUnix));
+    expect(status.creditGrants).toStrictEqual([
+      expect.objectContaining({
+        amount: 20_000,
+        expiresAt: isoOf(grantExpiresAtUnix),
+        source: "subscription_renewal",
+      }),
+    ]);
+  });
+
+  it("uses the normal renewal credit window when an Atom day-grant cancel_at is cleared", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const grantExpiresAtUnix = epochSeconds(7);
+    const periodEndUnix = epochSeconds(30);
+    const renewalExpiresAt = new Date(periodEndUnix * 1000);
+    renewalExpiresAt.setMonth(renewalExpiresAt.getMonth() + 1);
+
+    await runs.grantProEntitlement(actor, {
+      periodEndUnix,
+      cancelAtUnix: null,
+      subscriptionMetadata: {
+        source: "atom_entitlement",
+        duration: "7d",
+        atomGrantExpiresAt: isoOf(grantExpiresAtUnix),
+      },
+    });
+
+    const status = await billing.readBillingStatus(actor);
+    expect(status.tier).toBe("pro");
+    expect(status.currentPeriodEnd).toBe(isoOf(periodEndUnix));
+    expect(status.creditGrants).toStrictEqual([
+      expect.objectContaining({
+        amount: 20_000,
+        expiresAt: renewalExpiresAt.toISOString(),
+        source: "subscription_renewal",
+      }),
+    ]);
+  });
+
   it("replays, expires, and auto-recharges subscription invoice credits", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsAutomationsApi(context);

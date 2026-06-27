@@ -291,6 +291,11 @@ function subscriptionCreditExpiresAt(
   subscription: SubscriptionInput,
   periodEndDate: Date,
 ): Date {
+  const atomGrantExpiresAt = atomDayGrantCreditExpiresAt(subscription);
+  if (atomGrantExpiresAt) {
+    return atomGrantExpiresAt;
+  }
+
   if (subscription.status === "trialing") {
     return requiredSubscriptionTrialEnd(subscription);
   }
@@ -302,6 +307,44 @@ function subscriptionCreditExpiresAt(
 
 const CREDITS_PER_DOLLAR = 1000;
 const CREDIT_PURCHASE_EXPIRES_AT_METADATA_KEY = "creditsExpiresAt";
+const ATOM_GRANT_EXPIRES_AT_METADATA_KEY = "atomGrantExpiresAt";
+
+function isAtomDayGrantSource(source: string | undefined): boolean {
+  return source === "atom_entitlement" || source === "atom_redeem_code";
+}
+
+function atomDayGrantCreditExpiresAt(
+  subscription: SubscriptionInput,
+): Date | null {
+  const metadata = subscription.metadata ?? {};
+  if (!isAtomDayGrantSource(metadata.source)) {
+    return null;
+  }
+
+  const duration = metadata.duration;
+  if (!duration || !/^\d+d$/.test(duration)) {
+    return null;
+  }
+
+  const cancelAt = subscriptionCancelAt(subscription);
+  if (!cancelAt) {
+    return null;
+  }
+
+  const metadataExpiresAt = metadata[ATOM_GRANT_EXPIRES_AT_METADATA_KEY];
+  if (metadataExpiresAt) {
+    const date = new Date(metadataExpiresAt);
+    if (
+      !Number.isNaN(date.getTime()) &&
+      Math.floor(date.getTime() / 1000) ===
+        Math.floor(cancelAt.getTime() / 1000)
+    ) {
+      return date;
+    }
+  }
+
+  return cancelAt;
+}
 
 function creditsFromAmountCents(
   amountCents: number | null | undefined,

@@ -453,7 +453,11 @@ export function createRunsAutomationsApi(context: TestContext) {
     // an org whose entire credit balance is already expired.
     async grantProEntitlement(
       actor: ApiTestUser,
-      options: { readonly periodEndUnix?: number } = {},
+      options: {
+        readonly periodEndUnix?: number;
+        readonly subscriptionMetadata?: Record<string, string>;
+        readonly cancelAtUnix?: number | null;
+      } = {},
     ): Promise<{
       readonly customerId: string;
       readonly subscriptionId: string;
@@ -486,10 +490,10 @@ export function createRunsAutomationsApi(context: TestContext) {
         status: "active",
         customer: customerId,
         cancel_at_period_end: false,
-        cancel_at: null,
+        cancel_at: options.cancelAtUnix ?? null,
         schedule: null,
         trial_end: null,
-        metadata: {},
+        metadata: options.subscriptionMetadata ?? {},
         items: { data: [{ price: { id: "price_bdd_pro" } }] },
       });
       const invoicePaidEvent = {
