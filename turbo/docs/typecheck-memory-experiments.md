@@ -697,6 +697,31 @@ no longer visible in the aggregate package peak. The remaining high-value API
 work is still the full registry edge and broad dirty BDD helper graph, not
 dependency version fragmentation or contract package checking.
 
+### 32. Auth-device helper route slice
+
+Change tested: migrate `api-bdd-auth-device.ts` from default `setupApp` /
+`createApp` to `setupAppWithRoutes` / `createAppWithRoutes` backed by real
+auth, CLI auth, CLI auth test, desktop auth, device token, realtime token,
+compose, agent/user-connector, billing status, Codex/Claude device-auth, and
+model-provider routes. Add a strict two-root test slice covering
+`auth-device.bdd.test.ts` and `cli-auth.bdd.test.ts`.
+
+Command:
+
+- `node scripts/measure-memory.mjs --label api-tests-auth-device-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-auth-device-slice.json --noEmit`
+
+Results:
+
+- Static analysis showed the two roots still reached the full app graph through
+  other broad helper imports: `api-bdd-misc.ts` and `api-bdd-connectors.ts`.
+- The two-root strict slice OOMed, peak `2274.6 MiB`, duration `96.9s`.
+
+Conclusion: do not keep this migration as an isolated change. The helper's own
+route clients can be made strict and explicit, but the consuming tests still
+import broader dirty helpers, so the program loads both explicit route slices
+and the full route registry. Revisit only after splitting `api-bdd-misc.ts` and
+`api-bdd-connectors.ts` into narrower consumer-specific helpers.
+
 ## Current conclusions
 
 - `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
