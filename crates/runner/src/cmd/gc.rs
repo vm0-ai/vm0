@@ -1323,11 +1323,11 @@ async fn gc_versions(
             continue;
         }
 
-        let unit = match service::unit_name(name) {
+        let unit = match service::RunnerServiceUnit::from_suffix(name) {
             Ok(u) => u,
             Err(_) => continue,
         };
-        let service_lock_path = home.service_lock(&unit);
+        let service_lock_path = home.service_lock(unit.unit_name());
         let service_lock_name = service_lock_path
             .file_name()
             .and_then(|name| name.to_str())
@@ -2497,8 +2497,15 @@ mod tests {
     }
 
     fn test_version_service_lock(home: &HomePaths, version: &str) -> PathBuf {
-        let unit = service::unit_name(version).unwrap();
-        home.service_lock(&unit)
+        let unit = service::RunnerServiceUnit::from_suffix(version).unwrap();
+        home.service_lock(unit.unit_name())
+    }
+
+    fn test_version_service_unit_name(version: &str) -> String {
+        service::RunnerServiceUnit::from_suffix(version)
+            .unwrap()
+            .unit_name()
+            .to_string()
     }
 
     fn create_test_version_service_lock(home: &HomePaths, version: &str) -> PathBuf {
@@ -2990,7 +2997,7 @@ mod tests {
     async fn gc_orphaned_version_service_locks_keeps_non_semver_service_lock() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
-        let unit = service::unit_name("staging").unwrap();
+        let unit = test_version_service_unit_name("staging");
         let service_lock = home.service_lock(&unit);
         drop(lock::open_lock_file(&service_lock).unwrap());
 
@@ -3085,7 +3092,7 @@ mod tests {
         let bin_dir = home.bin_dir();
         let runners_dir = home.runners_dir();
         let version = "v1.0.0";
-        let unit = service::unit_name(version).unwrap();
+        let unit = test_version_service_unit_name(version);
         std::fs::create_dir_all(bin_dir.join(version)).unwrap();
         std::fs::create_dir_all(runners_dir.join(version)).unwrap();
         age_version_past_gc_min_age(&home, version);
@@ -3106,7 +3113,7 @@ mod tests {
 
         std::fs::create_dir_all(bin_dir.join("v1.0.0")).unwrap();
         age_version_past_gc_min_age(&home, "v1.0.0");
-        let unit = service::unit_name("v1.0.0").unwrap();
+        let unit = test_version_service_unit_name("v1.0.0");
         let service_lock_path = home.service_lock(&unit);
 
         let removed = gc_versions(&home, true, None, None).await.unwrap();
@@ -3127,7 +3134,7 @@ mod tests {
 
         std::fs::create_dir_all(bin_dir.join(version)).unwrap();
         age_version_past_gc_min_age(&home, version);
-        let unit = service::unit_name(version).unwrap();
+        let unit = test_version_service_unit_name(version);
         let service_lock_path = home.service_lock(&unit);
         drop(lock::open_lock_file(&service_lock_path).unwrap());
 
@@ -3147,7 +3154,7 @@ mod tests {
         let bin_dir = home.bin_dir();
         let runners_dir = home.runners_dir();
         let version = "v1.0.0";
-        let unit = service::unit_name(version).unwrap();
+        let unit = test_version_service_unit_name(version);
 
         std::fs::create_dir_all(bin_dir.join(version)).unwrap();
         std::fs::create_dir_all(runners_dir.join(version)).unwrap();
@@ -3176,7 +3183,7 @@ mod tests {
         let bin_dir = home.bin_dir();
         let runners_dir = home.runners_dir();
         let version = "v1.0.0";
-        let unit = service::unit_name(version).unwrap();
+        let unit = test_version_service_unit_name(version);
 
         std::fs::create_dir_all(bin_dir.join(version)).unwrap();
         std::fs::create_dir_all(runners_dir.join(version)).unwrap();
@@ -3358,7 +3365,7 @@ mod tests {
         std::fs::create_dir_all(runners_dir.join("v1.0.0")).unwrap();
         age_version_past_gc_min_age(&home, "v1.0.0");
 
-        let unit = service::unit_name("v1.0.0").unwrap();
+        let unit = test_version_service_unit_name("v1.0.0");
         let lock_file = lock::open_lock_file(&home.service_lock(&unit)).unwrap();
         let _held_lock = Flock::lock(lock_file, FlockArg::LockExclusive).unwrap();
 
@@ -3386,7 +3393,7 @@ mod tests {
         std::fs::create_dir_all(bin_dir.join(version)).unwrap();
         std::fs::create_dir_all(runners_dir.join(version)).unwrap();
         age_version_past_gc_min_age(&home, version);
-        let unit = service::unit_name(version).unwrap();
+        let unit = test_version_service_unit_name(version);
         let service_lock_path = home.service_lock(&unit);
         drop(lock::open_lock_file(&service_lock_path).unwrap());
 
