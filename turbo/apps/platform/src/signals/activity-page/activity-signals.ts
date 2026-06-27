@@ -323,8 +323,10 @@ export const zeroActivityEvents$ = computed(async (get) => {
 });
 
 export const zeroActivityVisibleMessages$ = computed(async (get) => {
-  const detail = await get(zeroActivityDetail$);
-  const events = await get(zeroActivityEvents$);
+  const [detail, events] = await Promise.all([
+    get(zeroActivityDetail$),
+    get(zeroActivityEvents$),
+  ]);
   if (!detail || !events) {
     return [] as GroupedMessage[];
   }
