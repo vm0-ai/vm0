@@ -17,9 +17,7 @@ import {
 } from "@vm0/connectors/firewall-types";
 import { getFirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { userConnectors } from "@vm0/db/schema/user-connector";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
@@ -531,34 +529,27 @@ async function zeroBackedDirectRunActor(): Promise<{
   api.acceptTelemetryIngest();
   const runnerGroup = api.configureRunnerGroup();
   await api.grantProEntitlement(actor);
+  await api.ensureOrgModelProvider(actor);
 
-  const composeName = `bdd-zero-direct-${randomUUID().slice(0, 8)}`;
-  const compose = await api.createCompose(actor, {
-    version: "1",
-    agents: {
-      [composeName]: {
-        framework: "claude-code",
-        environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
-      },
-    },
-  });
-
-  await writeDb.insert(zeroAgents).values({
-    id: compose.composeId,
-    orgId: actor.orgId,
-    owner: actor.userId,
-    name: compose.name,
-    visibility: "private",
+  const agent = await bdd.createAgent(actor, {
     displayName: "BDD zero-backed direct agent",
-    description: null,
-    sound: null,
-    avatarUrl: null,
-    modelProviderId: null,
-    selectedModel: null,
-    preferPersonalProvider: false,
+    visibility: "private",
   });
 
-  return { actor, orgId: actor.orgId, agentId: compose.composeId, runnerGroup };
+  return { actor, orgId: actor.orgId, agentId: agent.agentId, runnerGroup };
+}
+
+function zeroBackedDirectRunBody(args: {
+  readonly agentId: string;
+  readonly prompt: string;
+}) {
+  return {
+    agentComposeId: args.agentId,
+    prompt: args.prompt,
+    modelProviderType: "anthropic-api-key" as const,
+    vars: { ZERO_AGENT_ID: args.agentId },
+    secrets: { ZERO_TOKEN: "bdd-zero-direct-token" },
+  };
 }
 
 const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
@@ -1648,10 +1639,13 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       refreshToken: "x-bdd-direct-unallowed-refresh",
     });
 
-    const run = await api.createDirectRun(actor, {
-      agentComposeId: agentId,
-      prompt: "direct run without enabled stored connectors",
-    });
+    const run = await api.createDirectRun(
+      actor,
+      zeroBackedDirectRunBody({
+        agentId,
+        prompt: "direct run without enabled stored connectors",
+      }),
+    );
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectNoApiDispatchActions(
       timingEvents,
@@ -1770,8 +1764,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
   it("injects only enabled stored connectors for Zero-backed direct runs", async () => {
     const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
-    const { actor, orgId, agentId, runnerGroup } =
-      await zeroBackedDirectRunActor();
+    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
 
     await fw.seedTestConnector(actor, {
       connectorName: "x",
@@ -1784,17 +1777,16 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       authMethod: "oauth",
       accessToken: "xoxb-bdd-direct-unenabled-access",
     });
-    await writeDb.insert(userConnectors).values({
-      orgId,
-      userId: actor.userId,
-      agentId,
-      connectorType: "x",
-    });
+    const enabled = await api.enableAgentConnectors(actor, agentId, ["x"]);
+    expect(enabled).toContain("x");
 
-    const run = await api.createDirectRun(actor, {
-      agentComposeId: agentId,
-      prompt: "direct run with the x connector",
-    });
+    const run = await api.createDirectRun(
+      actor,
+      zeroBackedDirectRunBody({
+        agentId,
+        prompt: "direct run with the x connector",
+      }),
+    );
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
       timingEvents,
@@ -2330,10 +2322,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     await connectors.updateAgentCustomConnectors(actor, agentId, [allowed.id]);
 
-    const run = await api.createDirectRun(actor, {
-      agentComposeId: agentId,
-      prompt: "direct run with the custom connector",
-    });
+    const run = await api.createDirectRun(
+      actor,
+      zeroBackedDirectRunBody({
+        agentId,
+        prompt: "direct run with the custom connector",
+      }),
+    );
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
       timingEvents,

@@ -293,15 +293,9 @@ interface ResolvedCompose {
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
 }
 
-type EffectiveConnectorScopeSource =
-  | "create-args"
-  | "zero-backed-direct"
-  | "legacy-direct";
-
 interface EffectiveConnectorScope {
   readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
   readonly allowedCustomConnectorIds: readonly string[] | undefined;
-  readonly source: EffectiveConnectorScopeSource;
 }
 
 // Session naming in this service:
@@ -4815,7 +4809,6 @@ function connectorScopeFromCreateArgs(
   return {
     allowedConnectorTypes: args.allowedConnectorTypes ?? [],
     allowedCustomConnectorIds: args.allowedCustomConnectorIds ?? [],
-    source: "create-args",
   };
 }
 
@@ -4837,16 +4830,12 @@ async function resolveEffectiveConnectorScope(args: {
   });
   args.signal.throwIfAborted();
   if (zeroBackedScope) {
-    return {
-      ...zeroBackedScope,
-      source: "zero-backed-direct",
-    };
+    return zeroBackedScope;
   }
 
   return {
     allowedConnectorTypes: undefined,
     allowedCustomConnectorIds: undefined,
-    source: "legacy-direct",
   };
 }
 
