@@ -73,20 +73,26 @@ impl RestoredSessionIdentity {
         &self.history_hash
     }
 
+    #[cfg(test)]
     pub(crate) fn history_size_bytes(&self) -> Option<u64> {
         self.history_size_bytes
     }
 
+    #[cfg(test)]
     pub(crate) fn guest_history_path(&self) -> Option<&str> {
         self.guest_history_path.as_deref()
     }
 
+    pub(crate) fn guest_history_verification(&self) -> Option<(u64, &str)> {
+        let history_size_bytes = self.history_size_bytes?;
+        let guest_history_path = self.guest_history_path.as_deref()?;
+        guest_history_path
+            .starts_with('/')
+            .then_some((history_size_bytes, guest_history_path))
+    }
+
     pub(crate) fn has_guest_history_verification(&self) -> bool {
-        self.history_size_bytes.is_some()
-            && self
-                .guest_history_path
-                .as_ref()
-                .is_some_and(|path| !path.is_empty())
+        self.guest_history_verification().is_some()
     }
 
     pub(crate) fn is_verified_match_for_request(&self, requested: &Self) -> bool {

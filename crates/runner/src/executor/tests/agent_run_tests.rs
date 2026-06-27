@@ -548,6 +548,82 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_is_stale_before_sta
 }
 
 #[tokio::test]
+async fn run_in_sandbox_restores_when_skip_verified_identity_has_invalid_path() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let history = br#"{"type":"init"}"#;
+    let server = MockServer::start_async().await;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-invalid-path-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: server.url("/history.blob?token=secret"),
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+    let idle_identity = RestoredSessionIdentity::from_context(&ctx)
+        .expect("identity")
+        .with_guest_history(history.len() as u64, "relative/session.jsonl");
+    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::Reused,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+            .with_session_history_restore_plan(SessionHistoryRestorePlan::SkipVerified(
+                idle_identity,
+            )),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    history_mock.assert_calls_async(1).await;
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0].path,
+        "/home/user/.claude/projects/-home-user-workspace/sess-invalid-path-123.jsonl"
+    );
+    assert_eq!(writes[0].content, history);
+    let read_calls = sandbox.read_file_calls();
+    assert_eq!(read_calls.len(), 1);
+    assert_eq!(
+        read_calls[0].path,
+        "/home/user/.claude/projects/-home-user-workspace/sess-invalid-path-123.jsonl"
+    );
+    let ops = telemetry.pending_ops_snapshot();
+    assert!(
+        ops.iter()
+            .any(|op| op.0 == "session_history_restore_fallback_stale_idle_identity" && op.1),
+        "expected invalid path fallback telemetry, got: {ops:?}"
+    );
+    assert!(
+        ops.iter().all(|op| op.0 != "session_history_restore_skip"),
+        "invalid path should not record skip telemetry, got: {ops:?}"
+    );
+}
+
+#[tokio::test]
 async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;

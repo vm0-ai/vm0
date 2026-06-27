@@ -104,17 +104,10 @@ async fn verify_restored_session_identity_for_reuse(
     identity: Option<RestoredSessionIdentity>,
 ) -> Option<RestoredSessionIdentity> {
     let identity = identity?;
-    let Some(expected_size) = identity.history_size_bytes() else {
+    let Some((expected_size, guest_history_path)) = identity.guest_history_verification() else {
         debug!(
             run_id = %context.run_id,
-            "restored session identity cannot be verified without history size"
-        );
-        return None;
-    };
-    let Some(guest_history_path) = identity.guest_history_path() else {
-        debug!(
-            run_id = %context.run_id,
-            "restored session identity cannot be verified without guest history path"
+            "restored session identity cannot be verified without history size and absolute guest history path"
         );
         return None;
     };
