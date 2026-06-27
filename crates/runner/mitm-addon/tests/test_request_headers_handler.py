@@ -141,6 +141,48 @@ async def test_capture_enabled_api_allow_blocks_connected_unbound_edge_upstream(
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
+async def test_capture_enabled_api_allow_uses_authenticated_connected_edge_upstream(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.vm0.ai",
+        method="POST",
+        path="/api/webhooks/agent/heartbeat",
+        request_headers=headers(
+            ("Authorization", "Bearer tok-conn"),
+            ("Host", "api.vm0.ai"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    flow.server_conn.state = connection.ConnectionState.OPEN
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))],
+        ),
+    ):
+        mitm_addon.requestheaders(flow)
+        assert callable(flow.request.stream)
+
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.vm0.ai"
+    assert binding.kinds == frozenset(("api_allow",))
+    assert binding.original_address == ("203.0.113.10", 443)
+
+
 async def test_capture_enabled_api_allow_uses_connected_upstream_address_when_dns_verified(
     tmp_path, real_flow, mitm_ctx, headers
 ):

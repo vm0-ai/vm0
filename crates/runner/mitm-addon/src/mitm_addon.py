@@ -817,12 +817,27 @@ def _bind_flow_upstream_destination(
 
     original_address = _server_address(flow.server_conn)
     if flow.server_conn.connected:
-        connected_address = _connected_trusted_destination_endpoint(
-            flow.server_conn,
-            host=normalized_host,
-            port=flow.request.port,
-            extra_endpoints=(_connection_sockname(flow.client_conn),),
-        )
+        if (
+            kind == "api_allow"
+            and _api_hostname_matches(normalized_host)
+            and _request_has_platform_api_edge_authorization(flow)
+        ):
+            # Agent webhooks carry the per-job sandbox token and never inject
+            # connector credentials. This request-stage fallback handles
+            # load-balanced API edge IPs when earlier connection hooks did not
+            # leave a binding and a fresh DNS lookup returns a different edge.
+            connected_address = _connected_api_destination_endpoint(
+                flow.server_conn,
+                port=flow.request.port,
+                extra_endpoints=(_connection_sockname(flow.client_conn),),
+            )
+        else:
+            connected_address = _connected_trusted_destination_endpoint(
+                flow.server_conn,
+                host=normalized_host,
+                port=flow.request.port,
+                extra_endpoints=(_connection_sockname(flow.client_conn),),
+            )
         if connected_address is None:
             return False
         original_address = connected_address
@@ -1679,6 +1694,15 @@ def _connected_api_destination_endpoint(
             return peer
 
     return None
+
+
+def _request_has_platform_api_edge_authorization(flow: http.HTTPFlow) -> bool:
+    if not flow.request.path.startswith("/api/webhooks/agent/"):
+        return False
+    sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY)
+    if not isinstance(sandbox_token, str) or not sandbox_token:
+        return False
+    return flow.request.headers.get("Authorization") == f"Bearer {sandbox_token}"
 
 
 def reset_upstream_destination_resolution_cache_for_tests() -> None:

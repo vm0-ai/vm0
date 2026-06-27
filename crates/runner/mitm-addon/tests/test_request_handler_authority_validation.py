@@ -400,7 +400,7 @@ async def test_matching_sni_and_host_blocks_connected_vm0_api_edge_when_unbound(
         with_response=False,
         host="203.0.113.10",
         sni="api.vm0.ai",
-        path="/api/runs/heartbeat",
+        path="/api/webhooks/agent/heartbeat",
         request_headers=headers(("Host", "api.vm0.ai")),
     )
     flow.server_conn.state = connection.ConnectionState.OPEN
@@ -421,6 +421,40 @@ async def test_matching_sni_and_host_blocks_connected_vm0_api_edge_when_unbound(
     assert body["error"] == "upstream_destination_unbound"
     assert body["reason"] == "api_allow"
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+
+
+async def test_matching_sni_and_host_allows_authenticated_connected_vm0_api_edge(
+    registry_file, real_flow, mitm_ctx, headers
+):
+    flow = real_flow(
+        with_response=False,
+        host="203.0.113.10",
+        sni="api.vm0.ai",
+        method="POST",
+        path="/api/webhooks/agent/heartbeat",
+        request_headers=headers(
+            ("Authorization", "Bearer tok-xyz"),
+            ("Host", "api.vm0.ai"),
+        ),
+    )
+    flow.server_conn.state = connection.ConnectionState.OPEN
+
+    with (
+        mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))],
+        ),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.vm0.ai"
+    assert binding.kinds == frozenset(("api_allow",))
+    assert binding.original_address == ("203.0.113.10", 443)
 
 
 async def test_matching_sni_and_host_retargets_unconnected_vm0_api_auto_allow(
