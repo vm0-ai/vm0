@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 
-import { initContract } from "@ts-rest/core";
+import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import { authContract } from "@vm0/api-contracts/contracts/auth";
 import { apiKeysByIdContract } from "@vm0/api-contracts/contracts/api-keys";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";

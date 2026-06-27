@@ -1,7 +1,7 @@
 import { createWriteStream } from "node:fs";
 import { Readable } from "node:stream";
 import { pipeline } from "node:stream/promises";
-import { initClient } from "@ts-rest/core";
+import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import {
   integrationsTelegramBotListContract,
   integrationsTelegramMessageContract,

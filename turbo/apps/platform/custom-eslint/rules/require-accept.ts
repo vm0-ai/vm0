@@ -1,7 +1,7 @@
 /**
  * ESLint rule: require-accept
  *
- * Enforces that all ts-rest client method calls obtained via
+ * Enforces that all contract client method calls obtained via
  * `get(zeroClient$)(contract)` in src/signals/** are wrapped in `accept()`.
  *
  * Good:

@@ -60,7 +60,6 @@
   },
   "devDependencies": {
     "@hono/vite-build": "^1.11.1",
-    "@ts-rest/core": "3.53.0-rc.1",
     "@types/adm-zip": "^0.5.8",
     "@types/archiver": "^7.0.0",
     "@types/html-to-text": "^9.0.4",

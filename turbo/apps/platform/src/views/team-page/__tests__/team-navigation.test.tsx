@@ -305,6 +305,7 @@ function mockTeamAPIs(): void {
       avatarUrl: null,
       modelProviderId: null,
       selectedModel: null,
+      preferPersonalProvider: false,
     });
   });
   context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {

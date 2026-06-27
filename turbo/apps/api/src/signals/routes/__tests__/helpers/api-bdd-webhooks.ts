@@ -110,7 +110,7 @@ interface StripeWebhookResponse {
   readonly body: unknown;
 }
 
-function serializedTsRestBody(body: unknown): string {
+function serializedContractBody(body: unknown): string {
   return JSON.stringify(body);
 }
 
@@ -139,7 +139,7 @@ function vm0SignatureHeaders(body: unknown): Vm0SignatureHeaders {
   const timestamp = Math.floor(now() / 1000);
   return {
     "x-vm0-signature": createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
-      .update(`${timestamp}.${serializedTsRestBody(body)}`)
+      .update(`${timestamp}.${serializedContractBody(body)}`)
       .digest("hex"),
     "x-vm0-timestamp": String(timestamp),
   };
@@ -154,7 +154,7 @@ function resendSvixHeaders(body: unknown): SvixHeaders {
     "svix-signature": new Webhook(RESEND_WEBHOOK_SECRET).sign(
       id,
       timestamp,
-      serializedTsRestBody(body),
+      serializedContractBody(body),
     ),
   };
 }
@@ -261,7 +261,7 @@ export function createWebhookCallbackApi(context: TestContext) {
     /**
      * Posts one signed Stripe event through the public webhook route. The
      * `constructEvent` trust boundary is mocked once per call so later posts
-     * never leak a stale event. Raw request (not ts-rest) so processing 500s
+     * never leak a stale event. Raw request (not contract client) so processing 500s
      * stay assertable.
      */
     async postStripeEvent(
@@ -274,7 +274,7 @@ export function createWebhookCallbackApi(context: TestContext) {
         {
           method: "POST",
           headers: { "stripe-signature": "t=1,v1=bdd" },
-          body: serializedTsRestBody(event),
+          body: serializedContractBody(event),
         },
       );
       const body = await parseRawResponseBody(response);

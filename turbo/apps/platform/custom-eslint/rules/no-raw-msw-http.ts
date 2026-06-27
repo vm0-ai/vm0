@@ -3,13 +3,13 @@
  *
  * Disallows raw `http.(get|post|put|patch|delete)(url, ...)` MSW handlers in
  * platform test files when `url` points at an internal `/api/zero/*` or
- * `/api/v1/*` route. Those routes have ts-rest contracts — tests should use
+ * `/api/v1/*` route. Those routes have typed contracts — tests should use
  * `mockApi(contract.route, ...)` so handler shape, path, method, params, and
  * response body are validated against the same contract the real server uses.
  *
  * If migration is genuinely impossible (e.g. simulating a status code not
  * declared in the contract's responses, or a multipart body without a
- * ts-rest contract), add a leading comment containing the marker phrase
+ * typed contract), add a leading comment containing the marker phrase
  * `mockApi cannot be used here` on the handler call or its enclosing
  * statement — the rule treats that as an explicit, reviewable exemption.
  *
@@ -38,7 +38,7 @@ export default createRule({
     type: "problem",
     docs: {
       description:
-        "Disallow raw http.* MSW handlers for internal /api/zero/* or /api/v1/* routes — use mockApi(contract.route, ...) so handlers stay typed against ts-rest contracts",
+        "Disallow raw http.* MSW handlers for internal /api/zero/* or /api/v1/* routes — use mockApi(contract.route, ...) so handlers stay typed against contracts",
     },
     schema: [],
     messages: {

@@ -1,4 +1,4 @@
-import { initContract } from "@ts-rest/core";
+import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import { cronAggregateModelStatsContract } from "@vm0/api-contracts/contracts/cron";
 import { command } from "ccstate";
 import { z } from "zod";

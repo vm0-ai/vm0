@@ -5,7 +5,7 @@ import {
   type AppRouter,
   type InitClientArgs,
   type InitClientReturn,
-} from "@ts-rest/core";
+} from "@vm0/api-contracts/contracts/trpc-contract";
 import { afterAll, afterEach, expect } from "vitest";
 
 import { createApp } from "../app-factory";

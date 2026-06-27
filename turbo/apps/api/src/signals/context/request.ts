@@ -1,4 +1,4 @@
-import type { AppRoute } from "@ts-rest/core";
+import type { AppRoute } from "@vm0/api-contracts/contracts/trpc-contract";
 import { computed, type Computed } from "ccstate";
 import type { z } from "zod";
 

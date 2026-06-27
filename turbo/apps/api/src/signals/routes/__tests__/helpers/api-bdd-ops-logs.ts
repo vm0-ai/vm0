@@ -78,7 +78,7 @@ export function createOpsLogsApi(context: TestContext) {
       );
     },
 
-    // The logs-search contract requires `keyword`, so the ts-rest client
+    // The logs-search contract requires `keyword`, so the contract client
     // cannot send the missing-keyword 400 case — read the route through a
     // raw app request instead.
     async rawSearchLogs(
