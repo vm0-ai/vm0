@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.129.36](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.35...runner-rs-v0.129.36) (2026-06-27)
+
+
+### Bug Fixes
+
+* add ScrapeNinja RapidAPI host header ([#19138](https://github.com/vm0-ai/vm0/issues/19138)) ([5bd367c](https://github.com/vm0-ai/vm0/commit/5bd367cff031a467dcb15cd01aa00636add12c12))
+* restrict credentialed dynamic firewall hosts ([#19137](https://github.com/vm0-ai/vm0/issues/19137)) ([9801134](https://github.com/vm0-ai/vm0/commit/9801134aede293f0fd3c1f11c386bf4483fff78d))
+* **runner:** key firewall auth cache by identity ([#19144](https://github.com/vm0-ai/vm0/issues/19144)) ([ab773e8](https://github.com/vm0-ai/vm0/commit/ab773e88aa376274683895228ea53b3ab67fb1a1))
+
+
+### Performance Improvements
+
+* add storage cache staging telemetry ([#19149](https://github.com/vm0-ai/vm0/issues/19149)) ([69bc147](https://github.com/vm0-ai/vm0/commit/69bc14720fbe3612222313798e9ae06b9972d5c7))
+
 ## [0.129.35](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.34...runner-rs-v0.129.35) (2026-06-26)
 
 
