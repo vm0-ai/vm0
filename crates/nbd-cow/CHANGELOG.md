@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.50](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.49...nbd-cow-v0.4.50) (2026-06-27)
+
+
+### Performance Improvements
+
+* **nbd-cow:** avoid redundant pid stat during scans ([#19162](https://github.com/vm0-ai/vm0/issues/19162)) ([6b23b2b](https://github.com/vm0-ai/vm0/commit/6b23b2b4f836adcb34259ca95ac3bf21322d49be))
+
 ## [0.4.49](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.48...nbd-cow-v0.4.49) (2026-06-26)
 
 
