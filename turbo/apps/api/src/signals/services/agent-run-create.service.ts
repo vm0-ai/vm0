@@ -4318,15 +4318,11 @@ function countBucket(
 function storedConnectorTimingDimensions(args: {
   readonly scopeSource: ConnectorScopeSource;
   readonly connectorCount?: number;
-  readonly secretCount?: number;
 }): ApiDispatchTimingDimensions {
   return {
     connector_scope_source: args.scopeSource,
     ...(args.connectorCount !== undefined
       ? { stored_connector_count_bucket: countBucket(args.connectorCount) }
-      : {}),
-    ...(args.secretCount !== undefined
-      ? { stored_connector_secret_count_bucket: countBucket(args.secretCount) }
       : {}),
   };
 }
@@ -5342,7 +5338,6 @@ async function prepareRunRuntimeContext(args: {
   const storedConnectorTiming = storedConnectorTimingDimensions({
     scopeSource: args.connectorScope.source,
     connectorCount: storedConnectorSnapshot?.allowedConnectorRows.length ?? 0,
-    secretCount: storedConnectorSnapshot?.secretRows.length ?? 0,
   });
   const connectorContextPromise = materializeStoredConnectorContext(
     storedConnectorSnapshot,
