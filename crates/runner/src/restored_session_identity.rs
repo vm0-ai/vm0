@@ -5,6 +5,10 @@ use crate::types::ResumeSessionHistoryRefKind;
 const CLAUDE_CODE_RESTORE_FORMAT_VERSION: u8 = 1;
 const CODEX_RESTORE_FORMAT_VERSION: u8 = 1;
 
+// Verification reads `expected_size + 1` bytes so a larger guest file cannot
+// masquerade as the requested history by sharing the expected prefix.
+pub(crate) const RESTORED_SESSION_IDENTITY_VERIFY_MAX_BYTES: u64 = 1024 * 1024;
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub(crate) enum RestoredSessionFramework {
     ClaudeCode,
@@ -28,6 +32,12 @@ pub(crate) struct RestoredSessionIdentity {
     history_hash: String,
     history_size_bytes: Option<u64>,
     guest_history_path: Option<String>,
+}
+
+pub(crate) struct RestoredSessionHistoryVerification<'a> {
+    pub(crate) expected_size: u64,
+    pub(crate) guest_history_path: &'a str,
+    pub(crate) read_limit: u64,
 }
 
 impl RestoredSessionIdentity {
@@ -83,12 +93,23 @@ impl RestoredSessionIdentity {
         self.guest_history_path.as_deref()
     }
 
-    pub(crate) fn guest_history_verification(&self) -> Option<(u64, &str)> {
-        let history_size_bytes = self.history_size_bytes?;
+    pub(crate) fn guest_history_verification(
+        &self,
+    ) -> Option<RestoredSessionHistoryVerification<'_>> {
+        let expected_size = self.history_size_bytes?;
         let guest_history_path = self.guest_history_path.as_deref()?;
-        guest_history_path
-            .starts_with('/')
-            .then_some((history_size_bytes, guest_history_path))
+        if !guest_history_path.starts_with('/') {
+            return None;
+        }
+        let read_limit = expected_size.checked_add(1)?;
+        if read_limit > RESTORED_SESSION_IDENTITY_VERIFY_MAX_BYTES {
+            return None;
+        }
+        Some(RestoredSessionHistoryVerification {
+            expected_size,
+            guest_history_path,
+            read_limit,
+        })
     }
 
     pub(crate) fn has_guest_history_verification(&self) -> bool {

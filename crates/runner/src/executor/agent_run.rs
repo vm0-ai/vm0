@@ -39,7 +39,6 @@ use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, GuestDownloadManifest};
 
 const AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
-const RESTORED_SESSION_IDENTITY_VERIFY_MAX_BYTES: u64 = 1024 * 1024;
 const SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR: &str = "session history download failed";
 const SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR: &str =
     "session history materialization failed";
@@ -104,30 +103,17 @@ async fn verify_restored_session_identity_for_reuse(
     identity: Option<RestoredSessionIdentity>,
 ) -> Option<RestoredSessionIdentity> {
     let identity = identity?;
-    let Some((expected_size, guest_history_path)) = identity.guest_history_verification() else {
+    let Some(verification) = identity.guest_history_verification() else {
         debug!(
             run_id = %context.run_id,
-            "restored session identity cannot be verified without history size and absolute guest history path"
+            "restored session identity cannot be verified without bounded history size and absolute guest history path"
         );
         return None;
     };
-    let Some(read_limit) = expected_size.checked_add(1) else {
-        debug!(
-            run_id = %context.run_id,
-            "restored session identity cannot be verified because history size overflowed"
-        );
-        return None;
-    };
-    if read_limit > RESTORED_SESSION_IDENTITY_VERIFY_MAX_BYTES {
-        debug!(
-            run_id = %context.run_id,
-            expected_size,
-            "restored session identity verification skipped for large history"
-        );
-        return None;
-    }
 
-    let read_result = sandbox.read_file(guest_history_path, read_limit).await;
+    let read_result = sandbox
+        .read_file(verification.guest_history_path, verification.read_limit)
+        .await;
     let bytes = match read_result {
         Ok(Some(bytes)) => bytes,
         Ok(None) => {
@@ -145,10 +131,10 @@ async fn verify_restored_session_identity_for_reuse(
             return None;
         }
     };
-    if bytes.len() as u64 != expected_size {
+    if bytes.len() as u64 != verification.expected_size {
         debug!(
             run_id = %context.run_id,
-            expected_size,
+            expected_size = verification.expected_size,
             actual_size = bytes.len(),
             "restored session identity invalidated because history size changed"
         );

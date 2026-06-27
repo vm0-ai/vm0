@@ -843,6 +843,44 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn restore_plan_falls_back_when_matching_reused_identity_is_too_large_to_verify() {
+        let http = test_http_client();
+        let context = context_with_history_ref_and_size(
+            "history-hash-a",
+            Some(crate::restored_session_identity::RESTORED_SESSION_IDENTITY_VERIFY_MAX_BYTES),
+        );
+        let restored_identity = RestoredSessionIdentity::from_context(&context)
+            .unwrap()
+            .with_guest_history(
+                crate::restored_session_identity::RESTORED_SESSION_IDENTITY_VERIFY_MAX_BYTES,
+                "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
+            );
+        let reusable_sandbox = reusable_sandbox_with_identity(Some(restored_identity)).await;
+        let cancel = RunCancellationHandle::new();
+        let mut timing = RunnerPreSpawnTiming::start_after_claim();
+
+        let plan = build_session_history_restore_plan(
+            &http,
+            &context,
+            true,
+            &cancel,
+            Some(&reusable_sandbox),
+            SandboxReuseResult::Reused,
+            &mut timing,
+        );
+
+        match plan {
+            SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
+                assert_eq!(
+                    fallback,
+                    Some(SessionHistoryRestoreFallback::UnverifiedIdleIdentity)
+                );
+            }
+            _ => panic!("oversized reused identity should fall back to prestarted restore"),
+        }
+    }
+
+    #[tokio::test]
     async fn restore_plan_falls_back_when_reused_identity_is_missing() {
         let http = test_http_client();
         let context = context_with_history_ref("history-hash-a");
