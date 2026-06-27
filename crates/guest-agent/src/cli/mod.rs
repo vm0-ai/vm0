@@ -17,10 +17,6 @@
 
 mod child_env;
 pub mod codex_app_server;
-// The event adapter preserves the app-server compatibility contract in tests
-// until a production app-server runtime boundary is ready to own it.
-#[cfg(test)]
-mod codex_app_server_events;
 mod codex_setup;
 mod command;
 mod diagnostics;
