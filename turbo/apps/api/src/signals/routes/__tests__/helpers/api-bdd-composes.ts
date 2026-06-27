@@ -18,14 +18,16 @@ import {
 } from "@vm0/api-contracts/contracts/zero-composes";
 import type { z } from "zod";
 
-import { createApp } from "../../../../app-factory";
+import { createAppWithRoutes } from "../../../../app-factory-core";
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { now } from "../../../../lib/time";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../../auth/tokens";
+import { agentComposesByIdRoutes } from "../../agent-composes-id";
+import { agentComposesMetadataRoutes } from "../../agent-composes-metadata";
+import { agentComposesReadRoutes } from "../../agent-composes-read";
+import { agentComposesRoutes } from "../../agent-composes";
+import { zeroComposesRoutes } from "../../zero-composes";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -76,6 +78,14 @@ type ReadStatus = 200 | 400 | 401 | 403 | 404;
 type ListStatus = 200 | 400 | 401 | 403;
 type DeleteStatus = 204 | 401 | 403 | 404 | 409;
 type ZeroMetadataStatus = 200 | 401 | 404;
+
+const composeRoutes = [
+  ...agentComposesRoutes,
+  ...agentComposesReadRoutes,
+  ...agentComposesByIdRoutes,
+  ...agentComposesMetadataRoutes,
+  ...zeroComposesRoutes,
+] as const;
 
 /**
  * Compose version ids are sha256 hashes of the canonical (key-sorted) JSON
@@ -317,43 +327,63 @@ export function createComposesBddApi(context: TestContext) {
   }
 
   function mainClient() {
-    return setupApp({ context })(composesMainContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      composesMainContract,
+    );
   }
 
   function byIdClient() {
-    return setupApp({ context })(composesByIdContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      composesByIdContract,
+    );
   }
 
   function listClient() {
-    return setupApp({ context })(composesListContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      composesListContract,
+    );
   }
 
   function versionsClient() {
-    return setupApp({ context })(composesVersionsContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      composesVersionsContract,
+    );
   }
 
   function metadataClient() {
-    return setupApp({ context })(composesMetadataContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      composesMetadataContract,
+    );
   }
 
   function instructionsClient() {
-    return setupApp({ context })(composesInstructionsContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      composesInstructionsContract,
+    );
   }
 
   function zeroMainClient() {
-    return setupApp({ context })(zeroComposesMainContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      zeroComposesMainContract,
+    );
   }
 
   function zeroByIdClient() {
-    return setupApp({ context })(zeroComposesByIdContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      zeroComposesByIdContract,
+    );
   }
 
   function zeroListClient() {
-    return setupApp({ context })(zeroComposesListContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      zeroComposesListContract,
+    );
   }
 
   function zeroMetadataClient() {
-    return setupApp({ context })(zeroComposesMetadataContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      zeroComposesMetadataContract,
+    );
   }
 
   return {
@@ -393,16 +423,16 @@ export function createComposesBddApi(context: TestContext) {
           ? {}
           : { "content-type": "application/json" }),
       };
-      const response = await createApp({ signal: context.signal }).request(
-        request.path,
-        {
-          method: request.method,
-          headers,
-          ...(request.jsonBody === undefined
-            ? {}
-            : { body: JSON.stringify(request.jsonBody) }),
-        },
-      );
+      const response = await createAppWithRoutes({
+        signal: context.signal,
+        routes: composeRoutes,
+      }).request(request.path, {
+        method: request.method,
+        headers,
+        ...(request.jsonBody === undefined
+          ? {}
+          : { body: JSON.stringify(request.jsonBody) }),
+      });
       return { status: response.status, body: await response.json() };
     },
 

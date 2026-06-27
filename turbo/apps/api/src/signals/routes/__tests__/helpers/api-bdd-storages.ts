@@ -6,11 +6,12 @@ import {
 } from "@vm0/api-contracts/contracts/storages";
 import type { z } from "zod";
 
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { storagesCommitRoutes } from "../../storages-commit";
+import { storagesDownloadRoutes } from "../../storages-download";
+import { storagesListRoutes } from "../../storages-list";
+import { storagesPrepareRoutes } from "../../storages-prepare";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -58,6 +59,13 @@ type ListContractQuery = z.infer<typeof storagesListContract.list.query>;
 type DownloadContractQuery = z.infer<
   typeof storagesDownloadContract.download.query
 >;
+
+const storageRoutes = [
+  ...storagesPrepareRoutes,
+  ...storagesCommitRoutes,
+  ...storagesListRoutes,
+  ...storagesDownloadRoutes,
+] as const;
 
 function authenticate(
   context: TestContext,
@@ -113,19 +121,27 @@ function commandInput(command: unknown): Record<string, unknown> {
 
 export function createStoragesBddApi(context: TestContext) {
   function prepareClient() {
-    return setupApp({ context })(storagesPrepareContract);
+    return setupAppWithRoutes({ context, routes: storageRoutes })(
+      storagesPrepareContract,
+    );
   }
 
   function commitClient() {
-    return setupApp({ context })(storagesCommitContract);
+    return setupAppWithRoutes({ context, routes: storageRoutes })(
+      storagesCommitContract,
+    );
   }
 
   function listClient() {
-    return setupApp({ context })(storagesListContract);
+    return setupAppWithRoutes({ context, routes: storageRoutes })(
+      storagesListContract,
+    );
   }
 
   function downloadClient() {
-    return setupApp({ context })(storagesDownloadContract);
+    return setupAppWithRoutes({ context, routes: storageRoutes })(
+      storagesDownloadContract,
+    );
   }
 
   return {

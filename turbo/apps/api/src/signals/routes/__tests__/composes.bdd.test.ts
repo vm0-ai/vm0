@@ -11,7 +11,7 @@ import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
-import { storageTextFile } from "./helpers/api-bdd-chat-files";
+import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import {
   AMBIGUOUS_COMPOSE_CONTENTS,
   AMBIGUOUS_COMPOSE_NAME,
@@ -22,7 +22,7 @@ import {
   sandboxComposeToken,
   zeroComposeDeleteToken,
 } from "./helpers/api-bdd-composes";
-import { mockClerkMembership } from "./helpers/api-bdd-github";
+import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 

@@ -62,8 +62,10 @@ import {
   setupApp,
   type TestContext,
 } from "../../../../__tests__/test-helpers";
+import type { BddStorageFileEntry } from "./api-bdd-storage-files";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
+export { storageTextFile } from "./api-bdd-storage-files";
 
 type StorageType = "volume" | "artifact";
 
@@ -77,12 +79,6 @@ interface BddCompose {
   readonly versionId: string;
   readonly action: "created" | "existing";
   readonly updatedAt: string;
-}
-
-interface BddStorageFileEntry {
-  readonly path: string;
-  readonly hash: string;
-  readonly size: number;
 }
 
 interface BddStoragePrepareResponse {
@@ -208,18 +204,6 @@ export function hostedTextFile(
     size: bytes.byteLength,
     sha256: createHash("sha256").update(bytes).digest("hex"),
     contentType,
-  };
-}
-
-export function storageTextFile(
-  path: string,
-  content: string,
-): BddStorageFileEntry {
-  const bytes = Buffer.from(content, "utf8");
-  return {
-    path,
-    hash: createHash("sha256").update(bytes).digest("hex"),
-    size: bytes.byteLength,
   };
 }
 

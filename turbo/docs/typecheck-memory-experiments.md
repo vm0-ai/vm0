@@ -361,6 +361,40 @@ direct-route tests. It increases the passing pure-context chunk by one root and
 about `62 MiB` versus the 28-root run, while the full 54-root test chunk remains
 blocked by the remaining BDD helpers.
 
+### 21. Storage, compose, and runs-automation BDD helper route slices
+
+Change: migrate `api-bdd-storages.ts`, `api-bdd-composes.ts`, and
+`api-bdd-runs-automations.ts` from default `setupApp` / `createApp` to strict
+`setupAppWithRoutes` / `createAppWithRoutes` backed by explicit real route
+arrays. Also split pure helper code out of broad BDD helpers:
+`storageTextFile` now lives in `api-bdd-storage-files.ts`, and
+`mockClerkMembership` now lives in `api-bdd-clerk.ts` while the previous
+GitHub helper export is preserved.
+
+Commands:
+
+- `pnpm -F api exec tsc -p tsconfig.tests-pure-context-entries.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-tests-pure-context-32-roots-runs-automation-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-pure-context-entries.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-tests-no-setup-app-54-roots-runs-automation-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-no-setup-app.json --noEmit`
+
+Results:
+
+- Static split improved from `29 clean / 25 dirty` to `32 clean / 22 dirty`.
+  Newly clean roots: `auth-org-agents.bdd.test.ts`, `composes.bdd.test.ts`,
+  and `storages.bdd.test.ts`.
+- `pure-context` expanded from 29 to 32 roots: passed, peak `2192.6 MiB`,
+  duration `42.9s`.
+- `tests-no-setup-app` 54-root chunk: still OOM, peak `2249.4 MiB`.
+
+Conclusion: the helper migration is safe and useful because three more BDD
+entrypoints no longer pull the full route registry. The 32-root chunk is
+already close to the default V8 heap limit, so the next implementation step
+should not be "keep adding roots to one chunk"; it should wire several strict
+chunks into `api` check-types. The full 54-root chunk remains blocked by the
+remaining broad helpers (`api-bdd-chat-files.ts`, `api-bdd-billing-media.ts`,
+`api-bdd-misc.ts`, `api-bdd-integrations.ts`, `api-bdd-webhooks.ts`,
+`api-bdd-connectors.ts`, and `api-bdd-auth-device.ts`).
+
 ## Current conclusions
 
 - `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
@@ -372,14 +406,14 @@ blocked by the remaining BDD helpers.
   did not solve the OOM. The effective direction is strict sequential chunks,
   and the strongest measured chunks are route leaves (`2057.9 MiB` max),
   explicit-route tests (`1026.0 MiB` for callback-route), and route-free
-  pure-context tests (`2129.8 MiB` for 29 roots).
+  pure-context tests (`2192.6 MiB` for 32 roots).
 - Direct route test entries are worth keeping: they eliminate every direct
   `app-factory.ts` edge in `tsconfig.tests-no-setup-app.json` without reducing
   strictness.
 - Next API work should migrate remaining BDD/setup helpers from default
   `setupApp` to explicit route arrays and `createAppWithRoutes` where possible,
-  starting with `api-bdd-chat-files.ts`, `api-bdd-storages.ts`, and then the
-  broader `api-bdd-webhooks.ts` / `api-bdd-runs-automations.ts` clusters. After
-  that, wire route/test/core chunks through a package-local
-  `check-types` runner so `api` no longer relies on one monolithic `tsc`
-  program.
+  starting with `api-bdd-chat-files.ts`, `api-bdd-billing-media.ts`,
+  `api-bdd-misc.ts`, `api-bdd-integrations.ts` / `api-bdd-webhooks.ts`,
+  `api-bdd-connectors.ts`, and `api-bdd-auth-device.ts`. After that, wire
+  route/test/core chunks through a package-local `check-types` runner so `api`
+  no longer relies on one monolithic `tsc` program.

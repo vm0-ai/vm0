@@ -6,7 +6,7 @@ import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
-import { storageTextFile } from "./helpers/api-bdd-chat-files";
+import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 
