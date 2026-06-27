@@ -73,6 +73,38 @@ def test_builtin_firewalls_mapping_is_read_only():
     assert not hasattr(builtin_firewalls.BUILTIN_FIREWALLS, "__setitem__")
 
 
+def test_cloudflare_builtin_preserves_upload_authorization_endpoints():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["cloudflare"]
+    connector_api, upload_api = firewall["apis"]
+
+    assert connector_api["auth"] == {
+        "headers": {"Authorization": "Bearer ${{ secrets.CLOUDFLARE_TOKEN }}"}
+    }
+    assert upload_api["auth"] == {}
+
+    connector_rules = {
+        rule for permission in connector_api["permissions"] for rule in permission.get("rules", [])
+    }
+    upload_rules = {
+        rule for permission in upload_api["permissions"] for rule in permission.get("rules", [])
+    }
+
+    assert (
+        "GET /v4/accounts/{account_id}/pages/projects/{project_name}/upload-token"
+        in connector_rules
+    )
+    assert (
+        "POST /v4/accounts/{account_id}/workers/dispatch/namespaces/"
+        "{dispatch_namespace}/scripts/{script_name}/assets-upload-session" in connector_rules
+    )
+    assert upload_rules == {
+        "POST /v4/pages/assets/check-missing",
+        "POST /v4/pages/assets/upload",
+        "POST /v4/pages/assets/upsert-hashes",
+        "POST /v4/accounts/{account_id}/workers/assets/upload",
+    }
+
+
 def test_read_like_builtin_permissions_do_not_own_mutation_methods():
     violations: list[str] = []
 

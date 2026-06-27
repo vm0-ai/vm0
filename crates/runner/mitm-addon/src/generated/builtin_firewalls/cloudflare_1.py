@@ -3,7 +3,12 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/firewalls-generator generate
 # ruff: noqa
 
-JSON_PART = r"""            "GET /v4/radar/http/timeseries_groups/ip_version",
+JSON_PART = r"""            "GET /v4/radar/http/timeseries_groups/browser",
+            "GET /v4/radar/http/timeseries_groups/browser_family",
+            "GET /v4/radar/http/timeseries_groups/device_type",
+            "GET /v4/radar/http/timeseries_groups/http_protocol",
+            "GET /v4/radar/http/timeseries_groups/http_version",
+            "GET /v4/radar/http/timeseries_groups/ip_version",
             "GET /v4/radar/http/timeseries_groups/os",
             "GET /v4/radar/http/timeseries_groups/post_quantum",
             "GET /v4/radar/http/timeseries_groups/tls_version",
@@ -358,6 +363,7 @@ JSON_PART = r"""            "GET /v4/radar/http/timeseries_groups/ip_version",
             "DELETE /v4/accounts/{account_id}/workers/dispatch/namespaces/{dispatch_namespace}/scripts",
             "PUT /v4/accounts/{account_id}/workers/dispatch/namespaces/{dispatch_namespace}/scripts/{script_name}",
             "DELETE /v4/accounts/{account_id}/workers/dispatch/namespaces/{dispatch_namespace}/scripts/{script_name}",
+            "POST /v4/accounts/{account_id}/workers/dispatch/namespaces/{dispatch_namespace}/scripts/{script_name}/assets-upload-session",
             "PUT /v4/accounts/{account_id}/workers/dispatch/namespaces/{dispatch_namespace}/scripts/{script_name}/content",
             "PUT /v4/accounts/{account_id}/workers/dispatch/namespaces/{dispatch_namespace}/scripts/{script_name}/secrets",
             "DELETE /v4/accounts/{account_id}/workers/dispatch/namespaces/{dispatch_namespace}/scripts/{script_name}/secrets/{secret_name}",
@@ -633,6 +639,28 @@ JSON_PART = r"""            "GET /v4/radar/http/timeseries_groups/ip_version",
             "POST /v4/zones/{zone_id}/hold",
             "PATCH /v4/zones/{zone_id}/hold",
             "DELETE /v4/zones/{zone_id}/hold"
+          ]
+        }
+      ]
+    },
+    {
+      "auth": {},
+      "base": "https://api.cloudflare.com/client",
+      "permissions": [
+        {
+          "description": "Cloudflare supplemental permission: page.write",
+          "name": "page.write",
+          "rules": [
+            "POST /v4/pages/assets/check-missing",
+            "POST /v4/pages/assets/upload",
+            "POST /v4/pages/assets/upsert-hashes"
+          ]
+        },
+        {
+          "description": "Cloudflare supplemental permission: workers-scripts.write",
+          "name": "workers-scripts.write",
+          "rules": [
+            "POST /v4/accounts/{account_id}/workers/assets/upload"
           ]
         }
       ]

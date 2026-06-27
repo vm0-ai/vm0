@@ -142,7 +142,7 @@ def _api_entry(
 
 def _copy_auth_config(auth_config: dict | None) -> dict:
     if auth_config is None:
-        return {"headers": {}}
+        return {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}}
 
     copied = dict(auth_config)
     for key in ("headers", "query"):
@@ -756,6 +756,90 @@ class TestHandleFirewallRequest:
         assert flow.metadata[metadata_keys.FIREWALL_PARAMS] == {"owner": "octocat", "repo": "hello"}
         log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
         assert "Firewall https://api.github.com: api.github.com" in log_text
+
+    async def test_empty_auth_config_preserves_existing_authorization(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        flow = real_flow(
+            with_response=False,
+            host="api.cloudflare.com",
+            path="/client/v4/pages/assets/check-missing",
+            method="POST",
+        )
+        flow.request.headers["Authorization"] = "Bearer upload-jwt"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
+        api_entry = _api_entry(
+            base="https://api.cloudflare.com/client",
+            auth_config={},
+            api_id="run-1:1",
+        )
+        vm_info = _vm_info(tmp_path, include_encrypted_secrets=False)
+        allow = _allow(
+            api_entry,
+            name="cloudflare",
+            permission="page.write",
+            rule="POST /v4/pages/assets/check-missing",
+            rel_path="/v4/pages/assets/check-missing",
+        )
+        mock_get_firewall_headers = AsyncMock()
+
+        with (
+            patch.object(auth, "get_firewall_headers", mock_get_firewall_headers),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+        mock_get_firewall_headers.assert_not_called()
+        assert flow.request.headers["Authorization"] == "Bearer upload-jwt"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_NAME] == "cloudflare"
+        assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "page.write"
+        assert flow.metadata[metadata_keys.AUTH_CACHE_HIT] is False
+
+    async def test_empty_auth_config_requestheaders_preserves_authorization_without_auth_resolution(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        flow = real_flow(
+            with_response=False,
+            host="api.cloudflare.com",
+            path="/client/v4/pages/assets/upload",
+            method="POST",
+        )
+        flow.request.headers["Authorization"] = "Bearer upload-jwt"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
+        api_entry = _api_entry(
+            base="https://api.cloudflare.com/client",
+            auth_config={},
+            api_id="run-1:1",
+        )
+        vm_info = _vm_info(tmp_path, include_encrypted_secrets=False)
+        allow = _allow(
+            api_entry,
+            name="cloudflare",
+            permission="page.write",
+            rule="POST /v4/pages/assets/upload",
+            rel_path="/v4/pages/assets/upload",
+        )
+        mock_get_firewall_headers = AsyncMock()
+
+        with (
+            patch.object(auth, "get_firewall_headers", mock_get_firewall_headers),
+            mitm_ctx(),
+        ):
+            result = await auth.try_apply_stream_safe_firewall_auth_for_requestheaders(
+                flow,
+                allow,
+                vm_info,
+            )
+
+        assert result is auth.FirewallHeaderPhaseAuthResult.APPLIED
+        mock_get_firewall_headers.assert_not_called()
+        assert flow.request.headers["Authorization"] == "Bearer upload-jwt"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_NAME] == "cloudflare"
+        assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "page.write"
+        assert flow.metadata[metadata_keys.AUTH_CACHE_HIT] is False
 
     async def test_auth_cache_identity_tracks_request_auth_inputs(
         self, real_flow, mitm_ctx, tmp_path
@@ -1471,7 +1555,9 @@ class TestHandleFirewallRequest:
     async def test_missing_encrypted_secrets_returns_502(self, real_flow, headers, mitm_ctx):
         """When encryptedSecrets is missing from vm_info, return 502."""
         flow = _firewall_flow(real_flow)
-        api_entry = _api_entry()
+        api_entry = _api_entry(
+            auth_config={"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}}
+        )
         vm_info = _vm_info(network_log_path="", include_encrypted_secrets=False)
         allow = _allow(api_entry)
         admission = auth_base_forwarder.reserve_forward_request_admission(42)
