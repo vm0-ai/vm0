@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.184.2](https://github.com/vm0-ai/vm0/compare/api-v1.184.1...api-v1.184.2) (2026-06-27)
+
+
+### Performance Improvements
+
+* add Zero service pre-create timing ([#19185](https://github.com/vm0-ai/vm0/issues/19185)) ([2d8e05f](https://github.com/vm0-ai/vm0/commit/2d8e05f7d2b49e9b87fdbf17cb986f2676b083cc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.121.2
+    * @vm0/connectors bumped to 1.110.3
+    * @vm0/core bumped to 8.373.2
+    * @vm0/db bumped to 1.75.2
+
 ## [1.184.1](https://github.com/vm0-ai/vm0/compare/api-v1.184.0...api-v1.184.1) (2026-06-27)
 
 
