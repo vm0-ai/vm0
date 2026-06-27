@@ -6,17 +6,14 @@ import {
   type GmailLabelAppliedEventConfig,
   type ChatThreadWorkflowTrigger,
   type GmailWorkflowEventConfig,
-  type UnattendedTriggerConnectorRefs,
-  type UnattendedTriggerPermissionPolicy,
   type WebhookReceivedEventConfig,
   type ZeroWorkflowEventType,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { loadFirewallPermissionIndex } from "@vm0/connectors/firewall-metadata/server";
 import { parseScheduledAtTime } from "@vm0/core/timezone";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { userConnectors } from "@vm0/db/schema/user-connector";
+import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
   zeroWorkflowTriggers,
@@ -240,8 +237,6 @@ function rowSummaryBase(row: TriggerRow) {
     chatThreadId: row.chatThreadId,
     nextRunAt: row.nextRunAt ? row.nextRunAt.toISOString() : null,
     lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
-    unattendedConnectorRefs: row.unattendedConnectorRefs ?? [],
-    unattendedPermissionPolicy: row.unattendedPermissionPolicy ?? null,
   };
 }
 
@@ -334,38 +329,6 @@ async function loadAgent(
  */
 function canUseAgent(agent: UsableAgent, member: WorkflowMember): boolean {
   return agent.visibility === "public" || agent.owner === member.userId;
-}
-
-function uniqueConnectorRefs(
-  connectorRefs: readonly string[],
-): UnattendedTriggerConnectorRefs {
-  return Array.from(new Set(connectorRefs));
-}
-
-async function loadAgentConnectorRefs(
-  db: ReadonlyDb,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly agentId: string;
-  },
-): Promise<UnattendedTriggerConnectorRefs> {
-  const rows = await db
-    .select({ connectorType: userConnectors.connectorType })
-    .from(userConnectors)
-    .where(
-      and(
-        eq(userConnectors.orgId, args.orgId),
-        eq(userConnectors.userId, args.userId),
-        eq(userConnectors.agentId, args.agentId),
-      ),
-    );
-
-  return uniqueConnectorRefs(
-    rows.map((row) => {
-      return row.connectorType;
-    }),
-  );
 }
 
 /**
@@ -488,8 +451,6 @@ export async function listThreadBoundWorkflowTriggers(
         nextRunAt: summary.nextRunAt,
         lastRunAt: summary.lastRunAt,
         ownerUserId: summary.ownerUserId,
-        unattendedConnectorRefs: summary.unattendedConnectorRefs,
-        unattendedPermissionPolicy: summary.unattendedPermissionPolicy,
         workflow: {
           id: workflow.id,
           agentId: workflow.agentId,
@@ -604,28 +565,28 @@ function triggerCreateInputIsSchedule(
   return "schedule" in args;
 }
 
-async function ensureAgentGmailConnector(
+async function ensureWorkflowGmailConnector(
   db: Db,
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly agentId: string;
+    readonly workflowId: string;
   },
 ): Promise<void> {
   await db
-    .insert(userConnectors)
+    .insert(workflowUserConnectors)
     .values({
       orgId: args.orgId,
       userId: args.userId,
-      agentId: args.agentId,
+      workflowId: args.workflowId,
       connectorType: "gmail",
     })
     .onConflictDoNothing({
       target: [
-        userConnectors.orgId,
-        userConnectors.userId,
-        userConnectors.agentId,
-        userConnectors.connectorType,
+        workflowUserConnectors.orgId,
+        workflowUserConnectors.userId,
+        workflowUserConnectors.workflowId,
+        workflowUserConnectors.connectorType,
       ],
     });
 }
@@ -646,15 +607,10 @@ async function insertGmailEventTrigger(
         }`
       : "Gmail new message";
   return await db.transaction(async (tx) => {
-    await ensureAgentGmailConnector(tx, {
+    await ensureWorkflowGmailConnector(tx, {
       orgId: args.input.orgId,
       userId: args.input.member.userId,
-      agentId: args.agentId,
-    });
-    const connectorRefs = await loadAgentConnectorRefs(tx, {
-      orgId: args.input.orgId,
-      userId: args.input.member.userId,
-      agentId: args.agentId,
+      workflowId: args.workflowId,
     });
 
     const [thread] = await tx
@@ -689,7 +645,6 @@ async function insertGmailEventTrigger(
         enabled: args.input.enabled,
         chatThreadId: thread.id,
         nextRunAt: null,
-        unattendedConnectorRefs: connectorRefs,
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
       })
@@ -711,12 +666,6 @@ async function insertWebhookEventTrigger(
   },
 ): Promise<ZeroWorkflowTriggerSummary> {
   return await db.transaction(async (tx) => {
-    const connectorRefs = await loadAgentConnectorRefs(tx, {
-      orgId: args.input.orgId,
-      userId: args.input.member.userId,
-      agentId: args.agentId,
-    });
-
     const [thread] = await tx
       .insert(chatThreads)
       .values({
@@ -750,7 +699,6 @@ async function insertWebhookEventTrigger(
         enabled: args.input.enabled,
         chatThreadId: thread.id,
         nextRunAt: null,
-        unattendedConnectorRefs: connectorRefs,
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
       })
@@ -845,12 +793,6 @@ async function insertScheduleTrigger(
   },
 ): Promise<ZeroWorkflowTriggerSummary> {
   return await db.transaction(async (tx) => {
-    const connectorRefs = await loadAgentConnectorRefs(tx, {
-      orgId: args.input.orgId,
-      userId: args.input.member.userId,
-      agentId: args.agentId,
-    });
-
     const [thread] = await tx
       .insert(chatThreads)
       .values({
@@ -883,7 +825,6 @@ async function insertScheduleTrigger(
         enabled: args.input.enabled,
         chatThreadId: thread.id,
         nextRunAt: args.nextRunAt,
-        unattendedConnectorRefs: connectorRefs,
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
       })
@@ -1183,112 +1124,6 @@ export const updateWorkflowTrigger$ = command(
   },
 );
 
-interface SetTriggerPermissionPolicyInput {
-  readonly orgId: string;
-  readonly member: WorkflowMember;
-  readonly triggerId: string;
-  readonly connectorRefs?: readonly string[];
-  readonly policy: UnattendedTriggerPermissionPolicy | null;
-}
-
-async function validateUnattendedConnectorRefs(
-  connectorRefs: readonly string[],
-): Promise<{ readonly kind: "bad-request"; readonly message: string } | null> {
-  for (const connectorRef of uniqueConnectorRefs(connectorRefs)) {
-    const index = await loadFirewallPermissionIndex(connectorRef);
-    if (!index) {
-      return {
-        kind: "bad-request",
-        message: `Unknown connector ref: ${connectorRef}`,
-      };
-    }
-  }
-  return null;
-}
-
-/**
- * Validates connector refs and permission names against the generated firewall
- * metadata (the same source the user-permission-grants apply path validates
- * against). `ask` is already rejected by the contract schema, and the unknown
- * pseudo-permission is intentionally not accepted: a trigger's unknown-endpoint
- * policy is not configurable and always resolves to `deny`.
- */
-async function validateUnattendedPermissionPolicy(
-  policy: UnattendedTriggerPermissionPolicy,
-): Promise<{ readonly kind: "bad-request"; readonly message: string } | null> {
-  for (const [connectorRef, entry] of Object.entries(policy)) {
-    const index = await loadFirewallPermissionIndex(connectorRef);
-    if (!index) {
-      return {
-        kind: "bad-request",
-        message: `Unknown connector ref: ${connectorRef}`,
-      };
-    }
-    for (const permission of Object.keys(entry.policies)) {
-      if (!index.hasPermission(permission)) {
-        return {
-          kind: "bad-request",
-          message: `Unknown permission "${permission}" for connector "${connectorRef}"`,
-        };
-      }
-    }
-  }
-  return null;
-}
-
-export const setWorkflowTriggerPermissionPolicy$ = command(
-  async (
-    { set },
-    args: SetTriggerPermissionPolicyInput,
-    signal: AbortSignal,
-  ): Promise<TriggerResult> => {
-    if (args.connectorRefs !== undefined) {
-      const connectorRefsError = await validateUnattendedConnectorRefs(
-        args.connectorRefs,
-      );
-      signal.throwIfAborted();
-      if (connectorRefsError) {
-        return connectorRefsError;
-      }
-    }
-    if (args.policy !== null) {
-      const policyError = await validateUnattendedPermissionPolicy(args.policy);
-      signal.throwIfAborted();
-      if (policyError) {
-        return policyError;
-      }
-    }
-    const writeDb = set(writeDb$);
-    const owned = await loadOwnedTrigger(writeDb, {
-      orgId: args.orgId,
-      member: args.member,
-      triggerId: args.triggerId,
-    });
-    signal.throwIfAborted();
-    if ("kind" in owned) {
-      return owned;
-    }
-    const values =
-      args.connectorRefs === undefined
-        ? { unattendedPermissionPolicy: args.policy, updatedAt: nowDate() }
-        : {
-            unattendedConnectorRefs: uniqueConnectorRefs(args.connectorRefs),
-            unattendedPermissionPolicy: args.policy,
-            updatedAt: nowDate(),
-          };
-    const [row] = await writeDb
-      .update(zeroWorkflowTriggers)
-      .set(values)
-      .where(eq(zeroWorkflowTriggers.id, owned.trigger.id))
-      .returning();
-    signal.throwIfAborted();
-    if (!row) {
-      throw new Error("Failed to update workflow trigger permission policy");
-    }
-    return { kind: "ok", summary: await rowToSummary(writeDb, row) };
-  },
-);
-
 interface TriggerActionInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
@@ -1383,14 +1218,6 @@ export const enableWorkflowTrigger$ = command(
         };
       }
 
-      const agentId = await loadTriggerWorkflowAgentId(writeDb, {
-        orgId: args.orgId,
-        workflowId: trigger.workflowId,
-      });
-      signal.throwIfAborted();
-      if (agentId === null) {
-        return { kind: "not-found" };
-      }
       const watchResult = await ensureGmailWatchForUser({
         db: writeDb,
         orgId: args.orgId,
@@ -1401,10 +1228,10 @@ export const enableWorkflowTrigger$ = command(
       if (watchResult.kind !== "ok") {
         return { kind: "bad-request", message: watchResult.message };
       }
-      await ensureAgentGmailConnector(writeDb, {
+      await ensureWorkflowGmailConnector(writeDb, {
         orgId: args.orgId,
         userId: args.member.userId,
-        agentId,
+        workflowId: trigger.workflowId,
       });
       signal.throwIfAborted();
     }

@@ -8,6 +8,7 @@ import {
   type ZeroWorkflowSummary,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 
 import { mockApi } from "../msw-contract.ts";
 import {
@@ -18,6 +19,7 @@ import {
 const DEFAULT_WORKFLOWS: ZeroWorkflowDetailResponse[] = [];
 
 let mockWorkflows: ZeroWorkflowDetailResponse[] = [...DEFAULT_WORKFLOWS];
+const mockWorkflowUserConnectors = new Map<string, string[]>();
 
 function notFound(workflowId: string) {
   return {
@@ -59,8 +61,6 @@ function triggerSummary(
       eventConfig: trigger.eventConfig,
       schedule: null,
       scheduleSummary: null,
-      unattendedConnectorRefs: trigger.unattendedConnectorRefs,
-      unattendedPermissionPolicy: trigger.unattendedPermissionPolicy,
     };
   }
   if (trigger.kind === "event" && trigger.eventType === "gmail-label-applied") {
@@ -76,8 +76,6 @@ function triggerSummary(
       eventConfig: trigger.eventConfig,
       schedule: null,
       scheduleSummary: null,
-      unattendedConnectorRefs: trigger.unattendedConnectorRefs,
-      unattendedPermissionPolicy: trigger.unattendedPermissionPolicy,
     };
   }
   return {
@@ -90,13 +88,12 @@ function triggerSummary(
     kind: "schedule",
     schedule: trigger.schedule,
     scheduleSummary: trigger.scheduleSummary,
-    unattendedConnectorRefs: trigger.unattendedConnectorRefs,
-    unattendedPermissionPolicy: trigger.unattendedPermissionPolicy,
   };
 }
 
 export function resetMockWorkflows(): void {
   mockWorkflows = [...DEFAULT_WORKFLOWS];
+  mockWorkflowUserConnectors.clear();
 }
 
 export const apiWorkflowsHandlers = [
@@ -242,6 +239,21 @@ export const apiWorkflowsHandlers = [
       runId: `run-${workflow.id}`,
     });
   }),
+
+  mockApi(zeroWorkflowUserConnectorsContract.get, ({ params, respond }) => {
+    return respond(200, {
+      enabledTypes: mockWorkflowUserConnectors.get(params.id) ?? [],
+    });
+  }),
+
+  mockApi(
+    zeroWorkflowUserConnectorsContract.update,
+    ({ body, params, respond }) => {
+      const enabledTypes = Array.from(new Set(body.enabledTypes));
+      mockWorkflowUserConnectors.set(params.id, enabledTypes);
+      return respond(200, { enabledTypes });
+    },
+  ),
 
   ...visibilityHandlers(),
   ...workflowTriggerHandlers(),
@@ -470,50 +482,10 @@ function workflowTriggerUpdateHandlers() {
   ];
 }
 
-function workflowTriggerPermissionHandlers() {
-  return [
-    mockApi(
-      zeroWorkflowTriggersContract.setPermissionPolicy,
-      ({ body, params, respond }) => {
-        const updatedChatTrigger = updateChatThreadTrigger(
-          params.id,
-          (trigger) => {
-            return {
-              ...trigger,
-              unattendedConnectorRefs:
-                body.unattendedConnectorRefs ?? trigger.unattendedConnectorRefs,
-              unattendedPermissionPolicy: body.unattendedPermissionPolicy,
-            };
-          },
-        );
-        if (updatedChatTrigger) {
-          return respond(200, updatedChatTrigger);
-        }
-
-        const updatedDetailTrigger = updateDetailTrigger(
-          params.id,
-          (trigger) => {
-            return {
-              ...trigger,
-              unattendedConnectorRefs:
-                body.unattendedConnectorRefs ?? trigger.unattendedConnectorRefs,
-              unattendedPermissionPolicy: body.unattendedPermissionPolicy,
-            };
-          },
-        );
-        return updatedDetailTrigger
-          ? respond(200, updatedDetailTrigger)
-          : respond(404, notFoundTrigger());
-      },
-    ),
-  ];
-}
-
 function workflowTriggerHandlers() {
   return [
     ...workflowTriggerListHandlers(),
     ...workflowTriggerEnabledHandlers(),
     ...workflowTriggerUpdateHandlers(),
-    ...workflowTriggerPermissionHandlers(),
   ];
 }

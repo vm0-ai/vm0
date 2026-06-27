@@ -494,7 +494,7 @@ function AgentPermissionDialog({
       readOnly={false}
       onApply={async (intent, { metadata: appliedMetadata }) => {
         await savePermissionDraftPolicies({
-          agentId: row.agent.id,
+          scope: { agentId: row.agent.id },
           connectorType,
           metadata: appliedMetadata,
           initialPolicies,

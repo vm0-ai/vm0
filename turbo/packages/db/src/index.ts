@@ -65,6 +65,8 @@ import * as usagePricingSchema from "./schema/usage-pricing";
 import * as zeroAgentSchema from "./schema/zero-agent";
 import * as zeroAgentDraftSchema from "./schema/zero-agent-draft";
 import * as userPermissionGrantSchema from "./schema/user-permission-grant";
+import * as workflowUserConnectorSchema from "./schema/workflow-user-connector";
+import * as workflowUserPermissionGrantSchema from "./schema/workflow-user-permission-grant";
 import * as zeroRunSchema from "./schema/zero-run";
 import * as threadGoalSchema from "./schema/thread-goal";
 import * as storageVersionLineageSchema from "./schema/storage-version-lineage";
@@ -155,6 +157,8 @@ export const schema = {
   ...zeroAgentSchema,
   ...zeroAgentDraftSchema,
   ...userPermissionGrantSchema,
+  ...workflowUserConnectorSchema,
+  ...workflowUserPermissionGrantSchema,
   ...zeroRunSchema,
   ...threadGoalSchema,
   ...storageVersionLineageSchema,

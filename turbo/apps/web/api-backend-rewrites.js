@@ -132,10 +132,6 @@ const ZERO_WORKFLOW_TRIGGER_DISABLE_REWRITE_SOURCE = `/api/zero/workflow-trigger
 const ZERO_WORKFLOW_TRIGGER_DISABLE_PATH_RE = new RegExp(
   `^/api/zero/workflow-triggers/${UUID_PATH_SEGMENT_PATTERN}/disable$`,
 );
-const ZERO_WORKFLOW_TRIGGER_PERMISSION_POLICY_REWRITE_SOURCE = `/api/zero/workflow-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})/permission-policy`;
-const ZERO_WORKFLOW_TRIGGER_PERMISSION_POLICY_PATH_RE = new RegExp(
-  `^/api/zero/workflow-triggers/${UUID_PATH_SEGMENT_PATTERN}/permission-policy$`,
-);
 const ZERO_ME_MODEL_PROVIDERS_REWRITE_SOURCE = "/api/zero/me/model-providers";
 const ZERO_VARIABLE_BY_NAME_REWRITE_SOURCE = "/api/zero/variables/:name";
 const ZERO_VARIABLE_BY_NAME_PATH_RE = /^\/api\/zero\/variables\/[^/]+$/;
@@ -171,6 +167,10 @@ const ZERO_AGENT_USER_CONNECTORS_REWRITE_SOURCE =
   "/api/zero/agents/:id/user-connectors";
 const ZERO_AGENT_USER_CONNECTORS_PATH_RE =
   /^\/api\/zero\/agents\/[^/]+\/user-connectors$/;
+const ZERO_WORKFLOW_USER_CONNECTORS_REWRITE_SOURCE = `/api/zero/workflows/:id(${UUID_PATH_SEGMENT_PATTERN})/user-connectors`;
+const ZERO_WORKFLOW_USER_CONNECTORS_PATH_RE = new RegExp(
+  `^/api/zero/workflows/${UUID_PATH_SEGMENT_PATTERN}/user-connectors$`,
+);
 const ZERO_CUSTOM_CONNECTORS_REWRITE_SOURCE = "/api/zero/custom-connectors";
 const ZERO_CUSTOM_CONNECTORS_PATH_RE = /^\/api\/zero\/custom-connectors$/;
 const ZERO_CUSTOM_CONNECTOR_BY_ID_REWRITE_SOURCE =
@@ -992,6 +992,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_AGENT_USER_CONNECTORS_PATH_RE,
   ],
   [
+    ZERO_WORKFLOW_USER_CONNECTORS_REWRITE_SOURCE,
+    "/api/zero/workflows/:id/user-connectors",
+    ZERO_WORKFLOW_USER_CONNECTORS_PATH_RE,
+  ],
+  [
     ZERO_AGENT_DRAFT_REWRITE_SOURCE,
     "/api/zero/agents/:id/draft",
     ZERO_AGENT_DRAFT_PATH_RE,
@@ -1426,11 +1431,6 @@ export const API_BACKEND_REWRITES = [
     ZERO_WORKFLOW_TRIGGER_DISABLE_REWRITE_SOURCE,
     "/api/zero/workflow-triggers/:id/disable",
     ZERO_WORKFLOW_TRIGGER_DISABLE_PATH_RE,
-  ],
-  [
-    ZERO_WORKFLOW_TRIGGER_PERMISSION_POLICY_REWRITE_SOURCE,
-    "/api/zero/workflow-triggers/:id/permission-policy",
-    ZERO_WORKFLOW_TRIGGER_PERMISSION_POLICY_PATH_RE,
   ],
   [
     ZERO_WORKFLOW_TRIGGER_BY_ID_REWRITE_SOURCE,

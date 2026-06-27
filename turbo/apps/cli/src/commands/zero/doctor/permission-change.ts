@@ -159,21 +159,33 @@ async function outputPermissionChangeMessage(
 ): Promise<void> {
   const platformOrigin = await getPlatformOrigin();
 
-  // Trigger-fired runs configure permissions on the trigger's own unattended
-  // allowlist (no expiry, no per-grant action), not on the agent. Deep-link to
-  // the trigger's permission editor for the relevant connector instead of the
-  // agent permission page.
+  // Trigger-fired runs configure permissions on the workflow-user grant store,
+  // shared by all triggers the same user owns for the workflow. Deep-link to
+  // the workflow Authorization tab for the relevant connector and permission.
   if (triggerContext && agentId) {
-    const triggerUrl = `${platformOrigin}/agents/${agentId}/workflows/${triggerContext.workflowId}/triggers/${triggerContext.triggerId}/permissions?${new URLSearchParams(
-      { ref: connectorRef },
-    ).toString()}`;
+    const workflowUrlParams = new URLSearchParams({
+      tab: "authorization",
+      ref: connectorRef,
+      permission,
+      action: action === "enable" ? "allow" : "deny",
+    });
+    if (action === "enable") {
+      workflowUrlParams.set(
+        "expiresIn",
+        duration ?? DEFAULT_PERMISSION_GRANT_DURATION,
+      );
+    }
+    const workflowUrl = `${platformOrigin}/agents/${agentId}/workflows/${triggerContext.workflowId}?${workflowUrlParams.toString()}`;
     printSensitivePermissionGuidance(connectorRef, permission, action);
     printPermissionActionMessage({
       action,
       permission,
       label,
-      url: triggerUrl,
-      duration: undefined,
+      url: workflowUrl,
+      duration:
+        action === "enable"
+          ? (duration ?? DEFAULT_PERMISSION_GRANT_DURATION)
+          : undefined,
     });
     return;
   }

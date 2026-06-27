@@ -54,8 +54,6 @@ export function createMockWorkflowTrigger(
     nextRunAt: null,
     lastRunAt: null,
     ownerUserId: "test-user-123",
-    unattendedConnectorRefs: [],
-    unattendedPermissionPolicy: null,
     workflow,
   };
   if (overrides?.kind === "event") {
