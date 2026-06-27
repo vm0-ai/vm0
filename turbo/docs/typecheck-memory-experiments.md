@@ -722,6 +722,42 @@ import broader dirty helpers, so the program loads both explicit route slices
 and the full route registry. Revisit only after splitting `api-bdd-misc.ts` and
 `api-bdd-connectors.ts` into narrower consumer-specific helpers.
 
+### 33. Auth-device route slice plus narrow support helper
+
+Change: keep the strict route-sliced `api-bdd-auth-device.ts` client from
+experiment 32, and remove the remaining broad helper imports from
+`auth-device.bdd.test.ts` and `cli-auth.bdd.test.ts`. Add
+`api-bdd-auth-device-support.ts`, a consumer-specific helper backed by real
+connector, feature-switch, model-provider, personal-model-provider, and
+user-preference route arrays.
+
+Commands:
+
+- Static import closure check for `auth-device.bdd.test.ts` and
+  `cli-auth.bdd.test.ts`.
+- `node scripts/measure-memory.mjs --label api-tests-auth-device-route-support-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-auth-device-slice.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-tests-no-setup-app-54-roots-auth-device-route-support-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-no-setup-app.json --noEmit`
+
+Results:
+
+- Static local closure for each of the two roots dropped from `496` files with
+  `app-factory.ts` / `src/__tests__/test-helpers.ts` offenders to `94` files
+  with no full-app offenders.
+- The two-root strict slice passed, peak `1811.0 MiB`, duration `42.8s`.
+  Compared with experiment 32's isolated helper migration, this changes the
+  same slice from `2274.6 MiB` OOM to a passing strict program.
+- The 54-root `tests-no-setup-app` aggregate still OOMed, peak `2291.9 MiB`.
+  This is worse than the current retained `2238 MiB`-class aggregate runs
+  because remaining dirty roots still import broad helpers/full registry while
+  this aggregate also loads the new explicit auth-device route slice.
+
+Conclusion: keep the narrow helper split as a strictness-preserving building
+block, but do not add these roots to an already near-limit aggregate test
+chunk. The shipping `api` check-types design needs sequential strict chunks
+that exclude migrated roots from the remaining dirty program. Under that
+runner shape, this experiment contributes a healthy standalone auth-device
+chunk with a peak far below the full `api` OOM.
+
 ## Current conclusions
 
 - `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
@@ -735,8 +771,8 @@ and the full route registry. Revisit only after splitting `api-bdd-misc.ts` and
   explicit-route tests (`1026.0 MiB` for callback-route), route-free
   pure-context tests (`2233.9 MiB` for 34 roots), and the host/maps BDD chunk
   (`1860.1 MiB` after rebase) plus callback-service chunk (`1664.5 MiB` after
-  rebase). Full `api` still OOMs at `2267.9 MiB` on latest main and
-  `2274.4 MiB` on the rebased branch.
+  rebase) plus the auth-device chunk (`1811.0 MiB`). Full `api` still OOMs at
+  `2267.9 MiB` on latest main and `2274.4 MiB` on the rebased branch.
 - A package-local sequential `api` `check-types` runner is not ready to ship as
   a simple clean/dirty split: the remaining dirty 18-root test chunk OOMs at
   `2294.6 MiB`, a representative dirty 9-root chunk OOMs at `2278.0 MiB`, and
@@ -752,7 +788,7 @@ and the full route registry. Revisit only after splitting `api-bdd-misc.ts` and
   Good next candidates are narrower consumer-specific slices in
   `api-bdd-billing-media.ts`,
   `api-bdd-integrations.ts` / `api-bdd-webhooks.ts`,
-  `api-bdd-connectors.ts`, and `api-bdd-auth-device.ts`; for
-  `api-bdd-misc.ts`, split it into narrower modules first. After that, wire
-  route/test/core chunks through a package-local `check-types` runner so `api`
-  no longer relies on one monolithic `tsc` program.
+  and `api-bdd-connectors.ts`; for `api-bdd-misc.ts`, split it into narrower
+  modules first. After that, wire route/test/core chunks through a
+  package-local `check-types` runner so `api` no longer relies on one
+  monolithic `tsc` program.
