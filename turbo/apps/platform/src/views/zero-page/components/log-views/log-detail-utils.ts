@@ -1255,10 +1255,10 @@ export function groupedMessageMatchesSearch(
   message: GroupedMessage,
   searchTerm: string,
 ): boolean {
-  if (!searchTerm.trim()) {
+  const normalizedSearchTerm = searchTerm.trim().toLowerCase();
+  if (!normalizedSearchTerm) {
     return true;
   }
-  const lowerSearch = searchTerm.toLowerCase();
   const visibleText = getVisibleGroupedMessageText(message).toLowerCase();
-  return visibleText.includes(lowerSearch);
+  return visibleText.includes(normalizedSearchTerm);
 }

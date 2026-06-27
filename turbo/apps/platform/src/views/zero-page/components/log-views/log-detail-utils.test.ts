@@ -597,6 +597,9 @@ describe("groupEventsIntoMessages task event data", () => {
     expect(taskMessage.eventData.task_status).toBe("completed");
     expect(taskMessage.eventData.task_summary).toBe("Orphan task finished");
     expect(groupedMessageMatchesSearch(taskMessage, "orphan task")).toBe(true);
+    expect(groupedMessageMatchesSearch(taskMessage, " orphan task ")).toBe(
+      true,
+    );
   });
 
   it("merges task notifications that already use task status fields", () => {
