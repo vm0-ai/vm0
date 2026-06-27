@@ -4,11 +4,13 @@ import asyncio
 from unittest.mock import AsyncMock, patch
 
 import pytest
+from mitmproxy import connection
 
 import auth
 import firewall_auth_client as auth_client
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import upstream_destination_binding
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.request_handler_helpers import (
     _single_firewall_vm,
@@ -424,6 +426,7 @@ async def test_firewall_allow_header_auth_requestheaders_falls_back_when_upstrea
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
+    flow.server_conn.state = connection.ConnectionState.OPEN
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -440,6 +443,64 @@ async def test_firewall_allow_header_auth_requestheaders_falls_back_when_upstrea
     assert flow.response is not None
     assert flow.response.status_code == 403
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+
+
+async def test_firewall_allow_header_auth_requestheaders_retargets_unconnected_upstream(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+
+        assert callable(flow.request.stream)
+        assert metadata_keys.REQUEST_STREAM_BUFFER in flow.metadata
+        assert flow.server_conn.address == ("api.github.com", 443)
+        assert flow.request.headers["Authorization"] == "Bearer resolved"
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+    assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.github.com"
+    assert binding.kinds == frozenset(("connector_auth",))
+    assert binding.original_address == ("203.0.113.10", 443)
 
 
 def test_capture_enabled_firewall_allow_small_bounded_body_does_not_install_request_stream(

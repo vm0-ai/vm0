@@ -4,7 +4,7 @@ import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from mitmproxy import http
+from mitmproxy import connection, http
 from mitmproxy.flow import Error
 
 import auth
@@ -794,6 +794,7 @@ async def test_https_firewall_with_ordinary_credentials_blocks_when_upstream_is_
         path="/repos/octocat/hello",
         request_headers=headers(("Host", "api.github.com")),
     )
+    flow.server_conn.state = connection.ConnectionState.OPEN
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),

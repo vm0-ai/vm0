@@ -752,6 +752,47 @@ def _has_bound_upstream_destination(
     )
 
 
+def _bind_flow_upstream_destination_if_unconnected(
+    flow: http.HTTPFlow,
+    *,
+    kind: upstream_destination_binding.BindingKind,
+) -> bool:
+    if flow.server_conn.connected:
+        return False
+
+    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
+    if not isinstance(trusted_host, str) or not trusted_host:
+        return False
+    try:
+        normalized_host = normalize_trusted_hostname(trusted_host)
+    except (UnicodeError, ValueError):
+        return False
+
+    original_address = _server_address(flow.server_conn)
+    flow.server_conn.address = (normalized_host, flow.request.port)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        host=normalized_host,
+        port=flow.request.port,
+        kinds=frozenset((kind,)),
+        original_address=original_address,
+    )
+    return True
+
+
+def _ensure_bound_upstream_destination(
+    flow: http.HTTPFlow,
+    *,
+    kind: upstream_destination_binding.BindingKind,
+) -> bool:
+    allowed_kinds = frozenset((kind,))
+    if _has_bound_upstream_destination(flow, allowed_kinds=allowed_kinds):
+        return True
+    if not _bind_flow_upstream_destination_if_unconnected(flow, kind=kind):
+        return False
+    return _has_bound_upstream_destination(flow, allowed_kinds=allowed_kinds)
+
+
 def _auth_base_body_header_check(flow: http.HTTPFlow) -> _AuthBaseBodyCheck:
     if flow.request.headers.get_all("Transfer-Encoding"):
         return _AuthBaseBodyCheck(kind="length_required", reason="transfer_encoding")
@@ -1729,9 +1770,9 @@ async def _try_firewall_request_stream_capture_from_headers(
     if allow is None or vm_info is None:
         _restore_request_headers_probe_metadata(flow, metadata_snapshot)
         return
-    if _firewall_allow_injects_ordinary_upstream_credentials(allow) and not (
-        _has_bound_upstream_destination(flow, allowed_kinds=frozenset(("connector_auth",)))
-    ):
+    if _firewall_allow_injects_ordinary_upstream_credentials(
+        allow
+    ) and not _ensure_bound_upstream_destination(flow, kind="connector_auth"):
         _restore_request_headers_probe_metadata(flow, metadata_snapshot)
         return
 
@@ -1848,10 +1889,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 _block_authority_validation_error(flow, authority_error)
             return
         if classification.kind == "api_allow":
-            if not _has_bound_upstream_destination(
-                flow,
-                allowed_kinds=frozenset(("api_allow",)),
-            ):
+            if not _ensure_bound_upstream_destination(flow, kind="api_allow"):
                 _block_upstream_destination_unbound(flow, reason="api_allow")
                 return
             flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
@@ -1877,10 +1915,7 @@ async def request(flow: http.HTTPFlow) -> None:
                 return
             if _firewall_allow_injects_ordinary_upstream_credentials(
                 allow
-            ) and not _has_bound_upstream_destination(
-                flow,
-                allowed_kinds=frozenset(("connector_auth",)),
-            ):
+            ) and not _ensure_bound_upstream_destination(flow, kind="connector_auth"):
                 prepare_firewall_metadata(flow, allow, vm_info)
                 _block_upstream_destination_unbound(flow, reason="connector_auth")
                 return

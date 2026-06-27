@@ -3,6 +3,7 @@
 import json
 
 import pytest
+from mitmproxy import connection
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
@@ -172,6 +173,7 @@ async def test_matching_sni_and_host_blocks_firewall_auth_when_upstream_is_unbou
         path="/repos",
         request_headers=headers(("Host", "api.github.com")),
     )
+    flow.server_conn.state = connection.ConnectionState.OPEN
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -188,6 +190,35 @@ async def test_matching_sni_and_host_blocks_firewall_auth_when_upstream_is_unbou
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
     assert "Authorization" not in flow.request.headers
+
+
+async def test_matching_sni_and_host_retargets_unconnected_firewall_auth(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        path="/repos",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(),
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.server_conn.address == ("api.github.com", 443)
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
+    assert flow.request.headers["Authorization"] == "Bearer x"
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.github.com"
+    assert binding.kinds == frozenset(("connector_auth",))
+    assert binding.original_address == ("203.0.113.10", 443)
 
 
 async def test_matching_sni_and_host_allows_bound_firewall_auth(
@@ -318,6 +349,7 @@ async def test_matching_sni_and_host_blocks_vm0_api_auto_allow_when_upstream_is_
         path="/api/runs/heartbeat",
         request_headers=headers(("Host", "api.vm0.ai")),
     )
+    flow.server_conn.state = connection.ConnectionState.OPEN
 
     with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
         await mitm_addon.request(flow)
@@ -328,6 +360,29 @@ async def test_matching_sni_and_host_blocks_vm0_api_auto_allow_when_upstream_is_
     assert body["error"] == "upstream_destination_unbound"
     assert body["reason"] == "api_allow"
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+
+
+async def test_matching_sni_and_host_retargets_unconnected_vm0_api_auto_allow(
+    registry_file, real_flow, mitm_ctx, headers
+):
+    flow = real_flow(
+        with_response=False,
+        host="203.0.113.10",
+        sni="api.vm0.ai",
+        path="/api/runs/heartbeat",
+        request_headers=headers(("Host", "api.vm0.ai")),
+    )
+
+    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.server_conn.address == ("api.vm0.ai", 443)
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.vm0.ai"
+    assert binding.kinds == frozenset(("api_allow",))
+    assert binding.original_address == ("203.0.113.10", 443)
 
 
 async def test_matching_sni_and_host_allows_bound_vm0_api_auto_allow(
