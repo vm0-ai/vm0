@@ -724,6 +724,47 @@ def _should_try_firewall_stream_capture_request(classification: _RequestClassifi
     return isinstance(vm_info, dict) and bool(vm_info.get("captureNetworkBodies", False))
 
 
+def _prebind_requestheaders_upstream_destination(
+    flow: http.HTTPFlow,
+    classification: _RequestClassification,
+) -> None:
+    """Bind privileged upstreams while requestheaders can still retarget."""
+    if classification.kind == "api_allow":
+        _ensure_bound_upstream_destination(flow, kind="api_allow")
+        return
+    if classification.kind != "firewall_allow":
+        return
+    allow = classification.firewall_allow
+    if allow is None or not _firewall_allow_injects_ordinary_upstream_credentials(allow):
+        return
+    _ensure_bound_upstream_destination(flow, kind="connector_auth")
+
+
+def _prebind_bounded_requestheaders_upstream_destination(flow: http.HTTPFlow) -> None:
+    metadata_snapshot = {
+        key: flow.metadata[key]
+        for key in _REQUEST_HEADERS_PROBE_METADATA_KEYS
+        if key in flow.metadata
+    }
+    try:
+        try:
+            trusted_authority = get_trusted_authority(flow)
+        except AuthorityValidationError:
+            return
+        flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = trusted_authority.host
+        if _api_hostname_matches(trusted_authority.host):
+            _ensure_bound_upstream_destination(flow, kind="api_allow")
+            return
+        if _has_bound_upstream_destination(
+            flow,
+            allowed_kinds=frozenset(("connector_auth",)),
+        ):
+            return
+        _prebind_requestheaders_upstream_destination(flow, _classify_request(flow))
+    finally:
+        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+
+
 def _start_request_timing(flow: http.HTTPFlow) -> None:
     if metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata:
         flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
@@ -1287,6 +1328,9 @@ def _http_network_log_entry(
         "request_size": request_size,
         "response_size": response_size,
     }
+    firewall_error = flow.metadata.get(metadata_keys.FIREWALL_ERROR)
+    if isinstance(firewall_error, str):
+        entry["firewall_error"] = firewall_error
     if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
         entry["browser_user_agent"] = True
     return entry
@@ -1464,7 +1508,10 @@ def _server_address(server: object) -> tuple[str, int] | None:
 
 
 def _api_hostname_matches(hostname: str) -> bool:
-    api_url = get_api_url()
+    try:
+        api_url = get_api_url()
+    except AttributeError:
+        return False
     if not api_url:
         return False
     parsed_api = urllib.parse.urlparse(api_url)
@@ -1666,7 +1713,9 @@ def client_disconnected(client: connection.Client) -> None:
 def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     """Handle request-header-only decisions before mitmproxy buffers bodies."""
     body_check = _auth_base_body_header_check(flow)
-    if body_check.kind == "ok" and _request_body_fits_stream_buffer(flow):
+    body_fits_stream_buffer = body_check.kind == "ok" and _request_body_fits_stream_buffer(flow)
+    if body_fits_stream_buffer:
+        _prebind_bounded_requestheaders_upstream_destination(flow)
         return None
 
     metadata_snapshot = {

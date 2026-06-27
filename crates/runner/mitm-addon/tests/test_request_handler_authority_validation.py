@@ -191,6 +191,13 @@ async def test_matching_sni_and_host_blocks_firewall_auth_when_upstream_is_unbou
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
     assert "Authorization" not in flow.request.headers
 
+    with mitm_ctx():
+        mitm_addon.response(flow)
+
+    [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+    assert entry["action"] == "BLOCK"
+    assert entry["firewall_error"] == "upstream_destination_unbound"
+
 
 async def test_matching_sni_and_host_retargets_unconnected_firewall_auth(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
