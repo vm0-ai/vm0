@@ -21,8 +21,6 @@ import {
 } from "@vm0/db/schema/agent-compose";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { userCache } from "@vm0/db/schema/user-cache";
-import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
-import { userConnectors } from "@vm0/db/schema/user-connector";
 import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroWorkflowTriggers } from "@vm0/db/schema/zero-workflow";
@@ -43,6 +41,7 @@ import {
   type ApiDispatchTimingActionType,
   type ApiDispatchTimingCollector,
 } from "./api-dispatch-timing.service";
+import { loadAgentConnectorScope } from "./agent-connector-scope.service";
 import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.service";
 import { loadWorkflowsForRun } from "./zero-workflow-data.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
@@ -393,55 +392,6 @@ async function loadZeroAgent(
         content: agent.content as ZeroAgentComposeContent,
       }
     : null;
-}
-
-async function loadAllowedConnectorTypes(
-  db: Db,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-    readonly agentId: string;
-  },
-): Promise<readonly ConnectorType[]> {
-  const rows = await db
-    .select({ connectorType: userConnectors.connectorType })
-    .from(userConnectors)
-    .where(
-      and(
-        eq(userConnectors.orgId, args.orgId),
-        eq(userConnectors.userId, args.userId),
-        eq(userConnectors.agentId, args.agentId),
-      ),
-    );
-
-  return rows.flatMap((row) => {
-    const parsed = connectorTypeSchema.safeParse(row.connectorType);
-    return parsed.success ? [parsed.data] : [];
-  });
-}
-
-async function loadAllowedCustomConnectorIds(
-  db: Db,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-    readonly agentId: string;
-  },
-): Promise<readonly string[]> {
-  const rows = await db
-    .select({ customConnectorId: userCustomConnectors.customConnectorId })
-    .from(userCustomConnectors)
-    .where(
-      and(
-        eq(userCustomConnectors.orgId, args.orgId),
-        eq(userCustomConnectors.userId, args.userId),
-        eq(userCustomConnectors.agentId, args.agentId),
-      ),
-    );
-
-  return rows.map((row) => {
-    return row.customConnectorId;
-  });
 }
 
 /**
@@ -832,18 +782,13 @@ async function loadZeroRunConnectorScopes(
     };
   }
 
-  const allowedConnectorTypes = await loadAllowedConnectorTypes(db, {
+  const scope = await loadAgentConnectorScope(db, {
     userId: args.auth.userId,
     orgId: args.auth.orgId,
     agentId: args.agentId,
   });
   signal.throwIfAborted();
-  const allowedCustomConnectorIds = await loadAllowedCustomConnectorIds(db, {
-    userId: args.auth.userId,
-    orgId: args.auth.orgId,
-    agentId: args.agentId,
-  });
-  return { allowedConnectorTypes, allowedCustomConnectorIds };
+  return scope;
 }
 
 function buildZeroCreateAgentRunArgs(args: {
@@ -892,8 +837,10 @@ function buildZeroCreateAgentRunArgs(args: {
     enforceVm0Credits: true,
     queueOnConcurrencyLimit: true,
     injectSkillVolumes: { workflows: args.workflows },
-    allowedConnectorTypes: args.allowedConnectorTypes,
-    allowedCustomConnectorIds: args.allowedCustomConnectorIds,
+    connectorScope: {
+      allowedConnectorTypes: args.allowedConnectorTypes,
+      allowedCustomConnectorIds: args.allowedCustomConnectorIds,
+    },
     validateEnvironmentReferences: false,
     zeroRunMetadata: {
       ...command.zeroRunMetadata,
@@ -947,17 +894,12 @@ export const createZeroIntegrationRun$ = command(
       orgId: args.orgId,
     });
     signal.throwIfAborted();
-    const allowedConnectorTypes = await loadAllowedConnectorTypes(db, {
-      userId: args.userId,
-      orgId: args.orgId,
-      agentId: agent.id,
-    });
-    signal.throwIfAborted();
-    const allowedCustomConnectorIds = await loadAllowedCustomConnectorIds(db, {
-      userId: args.userId,
-      orgId: args.orgId,
-      agentId: agent.id,
-    });
+    const { allowedConnectorTypes, allowedCustomConnectorIds } =
+      await loadAgentConnectorScope(db, {
+        userId: args.userId,
+        orgId: args.orgId,
+        agentId: agent.id,
+      });
     signal.throwIfAborted();
     const workflows = await loadWorkflowsForRun(db, {
       userId: args.userId,
@@ -1001,8 +943,10 @@ export const createZeroIntegrationRun$ = command(
         enforceVm0Credits: true,
         queueOnConcurrencyLimit: true,
         injectSkillVolumes: { workflows },
-        allowedConnectorTypes,
-        allowedCustomConnectorIds,
+        connectorScope: {
+          allowedConnectorTypes,
+          allowedCustomConnectorIds,
+        },
         validateEnvironmentReferences: false,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },

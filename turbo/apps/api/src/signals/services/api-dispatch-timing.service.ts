@@ -25,6 +25,7 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_prepare_context_load_persisted_environment"
   | "api_dispatch_prepare_context_build_resolved_body"
   | "api_dispatch_prepare_context_resolve_framework"
+  | "api_dispatch_prepare_context_resolve_connector_scope"
   | "api_dispatch_prepare_context_resolve_model_provider"
   | "api_dispatch_prepare_context_load_connector_contexts"
   | "api_dispatch_prepare_context_load_stored_connectors"
