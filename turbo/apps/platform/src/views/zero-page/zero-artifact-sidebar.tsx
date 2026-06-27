@@ -684,9 +684,7 @@ function ArtifactSidebarActions({
 }) {
   const features = useLastResolved(featureSwitch$);
   const showPresentationEdit =
-    artifactKind === "presentation-html" &&
-    Boolean(features?.[FeatureSwitchKey.PresentationHtmlPptxDownload]) &&
-    onEditPresentation !== undefined;
+    artifactKind === "presentation-html" && onEditPresentation !== undefined;
   const showHtmlControls =
     kind === "html" &&
     artifactKind === "hosted-site" &&

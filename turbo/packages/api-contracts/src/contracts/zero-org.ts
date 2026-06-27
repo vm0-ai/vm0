@@ -18,6 +18,7 @@ export const zeroOrgContract = c.router({
     responses: {
       200: orgResponseSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Get current org (zero proxy)",

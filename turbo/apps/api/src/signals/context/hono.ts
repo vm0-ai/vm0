@@ -1,4 +1,4 @@
-import type { AppRoute } from "@ts-rest/core";
+import type { AppRoute } from "@vm0/api-contracts/contracts/trpc-contract";
 import { command, computed, state } from "ccstate";
 import type { Context } from "hono";
 import { RedirectStatusCode } from "hono/utils/http-status";

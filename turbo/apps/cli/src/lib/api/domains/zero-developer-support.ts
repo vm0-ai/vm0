@@ -1,4 +1,4 @@
-import { initClient } from "@ts-rest/core";
+import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import { zeroDeveloperSupportContract } from "@vm0/api-contracts/contracts/zero-developer-support";
 import { getClientConfig, handleError } from "../core/client-factory";
 

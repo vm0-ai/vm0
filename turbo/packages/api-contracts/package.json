@@ -1,6 +1,6 @@
 {
   "name": "@vm0/api-contracts",
-  "version": "1.119.0",
+  "version": "1.120.0",
   "private": true,
   "type": "module",
   "exports": {
@@ -34,7 +34,7 @@
     "check-types": "tsc --noEmit"
   },
   "dependencies": {
-    "@ts-rest/core": "3.53.0-rc.1",
+    "@trpc/server": "11.18.0",
     "@vm0/connectors": "workspace:*",
     "zod": "^4.3.6"
   },

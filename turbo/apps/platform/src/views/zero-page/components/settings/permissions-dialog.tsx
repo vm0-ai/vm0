@@ -84,13 +84,16 @@ import {
   IconCheck,
   IconBan,
   IconChevronRight,
-  IconCircleHalf2,
   IconClock,
   IconChevronDown,
   IconLoader2,
   IconSearch,
   IconX,
 } from "@tabler/icons-react";
+import {
+  PermissionPolicyMixedBadge,
+  PermissionPolicyToggle,
+} from "./permission-policy-toggle.tsx";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { firewallPermissionMetadataByConnector } from "../../../../signals/firewall-permission-metadata.ts";
@@ -463,26 +466,6 @@ function allowDurationStatusLabel(
   return option?.statusLabel ?? null;
 }
 
-function permissionPolicyButtonClass({
-  active,
-  disabled,
-  tone,
-}: {
-  active: boolean;
-  disabled?: boolean;
-  tone: "allow" | "deny";
-}): string {
-  return `flex h-7 items-center gap-1 px-2.5 text-xs font-medium transition-colors ${
-    active
-      ? tone === "allow"
-        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-        : "bg-rose-500/10 text-rose-700 dark:text-rose-400"
-      : disabled
-        ? "text-muted-foreground/50"
-        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-  } ${disabled ? "cursor-default" : "cursor-pointer"}`;
-}
-
 function MenuItemCheck({ active }: { active: boolean }) {
   return active ? (
     <IconCheck size={14} stroke={2.5} />
@@ -584,19 +567,6 @@ function PermissionAllowDurationStatic({ label }: { label: string }) {
   );
 }
 
-// Non-interactive state read-out shown in the leading slot when a group's
-// permissions resolve to a mix of allow and deny. It occupies the same slot as
-// the duration dropdown (they are mutually exclusive), so the Allow / Deny
-// controls stay aligned in their columns across the header and the rows.
-function PermissionGroupMixedBadge() {
-  return (
-    <span className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-muted/60 px-2 text-[11px] font-medium text-muted-foreground">
-      <IconCircleHalf2 size={12} className="shrink-0" />
-      <span>Mixed</span>
-    </span>
-  );
-}
-
 function PermissionGrantPolicyControl({
   permission,
   policy,
@@ -666,47 +636,22 @@ function PermissionGrantPolicyControl({
               }}
             />
           )}
-          {policy === "mixed" && <PermissionGroupMixedBadge />}
-          <span className="inline-flex shrink-0 overflow-hidden rounded-md text-xs font-medium zero-border">
-            <button
-              type="button"
-              disabled={saving}
-              aria-pressed={policy === "allow"}
-              onClick={() => {
-                if (onAllowClick) {
-                  onAllowClick();
-                  return;
-                }
-                onPolicyChange("allow");
-              }}
-              className={permissionPolicyButtonClass({
-                active: policy === "allow",
-                disabled: saving,
-                tone: "allow",
-              })}
-            >
-              <IconCheck size={12} stroke={2.5} />
-              Allow
-            </button>
-            <button
-              type="button"
-              disabled={saving}
-              aria-pressed={policy === "deny"}
-              style={{ borderLeft: "0.7px solid hsl(var(--gray-400))" }}
-              onClick={() => {
-                onPolicyChange("deny");
-                onClearExpiration();
-              }}
-              className={permissionPolicyButtonClass({
-                active: policy === "deny",
-                disabled: saving,
-                tone: "deny",
-              })}
-            >
-              <IconBan size={12} stroke={2.5} />
-              Deny
-            </button>
-          </span>
+          {policy === "mixed" && <PermissionPolicyMixedBadge />}
+          <PermissionPolicyToggle
+            policy={policy}
+            disabled={saving}
+            onAllow={() => {
+              if (onAllowClick) {
+                onAllowClick();
+                return;
+              }
+              onPolicyChange("allow");
+            }}
+            onDeny={() => {
+              onPolicyChange("deny");
+              onClearExpiration();
+            }}
+          />
         </>
       )}
     </div>

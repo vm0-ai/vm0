@@ -1,6 +1,12 @@
 import { command, computed, state, type Computed } from "ccstate";
 
-import type { ChatThreadWorkflowTrigger } from "@vm0/api-contracts/contracts/zero-workflows";
+import {
+  zeroWorkflowTriggersContract,
+  type ChatThreadWorkflowTrigger,
+  type GmailLabelAppliedEventConfig,
+  type GmailNewMessageEventConfig,
+} from "@vm0/api-contracts/contracts/zero-workflows";
+import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
 import {
@@ -73,19 +79,19 @@ export interface HeaderWorkflowTriggerEntry {
   readonly id: string;
   readonly chatThreadId: string;
   readonly enabled: boolean;
+  readonly workflowId: string;
+  readonly workflowAgentId: string;
   readonly workflowName: string;
   readonly workflowDisplayName: string | null;
   readonly workflowDescription: string | null;
   readonly summary: string;
+  readonly trigger: ChatThreadWorkflowTrigger;
 }
 
 function workflowTriggerSummary(trigger: ChatThreadWorkflowTrigger): string {
   if (trigger.kind === "event") {
     if (trigger.eventType === "gmail-new-message") {
       return "Gmail new message";
-    }
-    if (trigger.eventType === "webhook-received") {
-      return "Webhook";
     }
     return "Event";
   }
@@ -118,10 +124,13 @@ function createHeaderWorkflowTriggersFactory(): (
             id: trigger.id,
             chatThreadId: trigger.chatThreadId,
             enabled: trigger.enabled,
+            workflowId: trigger.workflow.id,
+            workflowAgentId: trigger.workflow.agentId,
             workflowName: trigger.workflow.name,
             workflowDisplayName: trigger.workflow.displayName,
             workflowDescription: trigger.workflow.description,
             summary: workflowTriggerSummary(trigger),
+            trigger,
           };
         });
       },
@@ -146,6 +155,52 @@ export const toggleWorkflowTriggerEnabled$ = command(
     signal: AbortSignal,
   ) => {
     await setWorkflowTriggerEnabled(get(zeroClient$), params);
+    signal.throwIfAborted();
+    set(reloadHeaderAutomationMenu$);
+  },
+);
+
+export const updateHeaderWorkflowGmailNewMessageTrigger$ = command(
+  async (
+    { get, set },
+    params: {
+      readonly triggerId: string;
+      readonly eventConfig: GmailNewMessageEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.update({
+        params: { id: params.triggerId },
+        body: { eventConfig: params.eventConfig },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadHeaderAutomationMenu$);
+  },
+);
+
+export const updateHeaderWorkflowGmailLabelAppliedTrigger$ = command(
+  async (
+    { get, set },
+    params: {
+      readonly triggerId: string;
+      readonly eventConfig: GmailLabelAppliedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.update({
+        params: { id: params.triggerId },
+        body: { eventConfig: params.eventConfig },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
     signal.throwIfAborted();
     set(reloadHeaderAutomationMenu$);
   },

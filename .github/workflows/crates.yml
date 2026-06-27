@@ -1828,8 +1828,20 @@ jobs:
           echo "--- Waiting for job 2 ---"
           wait $SUBMIT2_PID || fail "Job 2 failed"
 
-          # 7. Wait for A to exit after drain, then uninstall
+          # 7. Wait for A to exit after drain, then verify drain still disables
+          # an inactive-but-enabled installed unit.
           wait_for_exit "$SVC_A"
+          echo "--- Re-enable inactive runner A, then drain again ---"
+          sudo systemctl enable "vm0-runner-${SVC_A}.service"
+          sudo systemctl is-enabled --quiet "vm0-runner-${SVC_A}.service" \
+            || fail "runner A should be enabled before inactive drain"
+          sudo "$BIN_DIR/runner" service drain --name "$SVC_A" \
+            || fail "inactive drain of runner A failed"
+          if sudo systemctl is-enabled --quiet "vm0-runner-${SVC_A}.service"; then
+            fail "runner A remained enabled after inactive drain"
+          fi
+          echo "PASS: inactive drain disabled runner A"
+
           echo "--- Uninstalling runner A ---"
           sudo "$BIN_DIR/runner" service uninstall --name "$SVC_A" --force
 

@@ -193,8 +193,23 @@ export function cronTimeInTimezone(
   sourceTimezone: string,
   displayTimezone: string,
 ): { hour: number; minute: number } {
+  const result = cronWallTimeInTimezone(
+    hour,
+    minute,
+    sourceTimezone,
+    displayTimezone,
+  );
+  return { hour: result.hour, minute: result.minute };
+}
+
+export function cronWallTimeInTimezone(
+  hour: number,
+  minute: number,
+  sourceTimezone: string,
+  displayTimezone: string,
+): { hour: number; minute: number; dayOffset: number } {
   if (sourceTimezone === displayTimezone) {
-    return { hour, minute };
+    return { hour, minute, dayOffset: 0 };
   }
   const sourceDateParts = new Intl.DateTimeFormat("en-US", {
     year: "numeric",
@@ -210,11 +225,24 @@ export function cronTimeInTimezone(
     minute,
   });
   const parts = new Intl.DateTimeFormat("en-US", {
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
     hour: "2-digit",
     minute: "2-digit",
     hourCycle: "h23",
     timeZone: displayTimezone,
   }).formatToParts(d);
+  const sourceDay = Date.UTC(
+    Number(datePart(sourceDateParts, "year")),
+    Number(datePart(sourceDateParts, "month")) - 1,
+    Number(datePart(sourceDateParts, "day")),
+  );
+  const displayDay = Date.UTC(
+    Number(datePart(parts, "year")),
+    Number(datePart(parts, "month")) - 1,
+    Number(datePart(parts, "day")),
+  );
   return {
     hour: Number(
       parts.find((p) => {
@@ -226,6 +254,7 @@ export function cronTimeInTimezone(
         return p.type === "minute";
       })?.value ?? minute,
     ),
+    dayOffset: Math.round((displayDay - sourceDay) / 86_400_000),
   };
 }
 

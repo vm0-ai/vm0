@@ -11,13 +11,14 @@ use sandbox_mock::MockSandboxFactory;
 use sha2::{Digest, Sha256};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
+use tokio::sync::{Notify, oneshot};
 
 use super::super::agent_run::{
     ProcessCancelTimeouts, RunControls, RunStart, build_agent_start_command, run_in_sandbox,
 };
 use super::super::diagnostics::AgentStdoutStreamDiagnostics;
 use super::super::storage::guest_download_stdin_command;
-use super::super::{EXIT_SIGKILL, PROCESS_CANCEL_WRITE_TIMEOUT};
+use super::super::{EXIT_SIGKILL, PROCESS_CANCEL_WRITE_TIMEOUT, SessionHistoryMaterializer};
 use super::support::{
     CancelAfterWaitSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, api_storage, create_overridden_sandbox,
     minimal_context, spawn_run_in_sandbox_test, spawn_run_in_sandbox_test_with_timeouts,
@@ -38,6 +39,29 @@ async fn serve_history_once(body: &'static [u8]) -> String {
         let (mut stream, _) = listener.accept().await.unwrap();
         let mut request = [0u8; 1024];
         let _ = stream.read(&mut request).await;
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
+            body.len()
+        );
+        stream.write_all(response.as_bytes()).await.unwrap();
+        stream.write_all(body).await.unwrap();
+    });
+    format!("http://{address}/history.blob?token=secret")
+}
+
+async fn serve_history_once_after_request(
+    body: &'static [u8],
+    request_received: oneshot::Sender<()>,
+    release_response: Arc<Notify>,
+) -> String {
+    let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    tokio::spawn(async move {
+        let (mut stream, _) = listener.accept().await.unwrap();
+        let mut request = [0u8; 1024];
+        let _ = stream.read(&mut request).await;
+        let _ = request_received.send(());
+        release_response.notified().await;
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Length: {}\r\nConnection: close\r\n\r\n",
             body.len()
@@ -282,6 +306,146 @@ async fn run_in_sandbox_materializes_resume_session_history_ref_before_restore()
         "/home/user/.claude/projects/-home-user-workspace/sess-ref-123.jsonl"
     );
     assert_eq!(writes[0].content, history);
+}
+
+#[tokio::test]
+async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let history = br#"{"type":"init"}"#;
+    let (request_received_tx, request_received_rx) = oneshot::channel();
+    let release_response = Arc::new(Notify::new());
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-prestarted-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: serve_history_once_after_request(
+                    history,
+                    request_received_tx,
+                    Arc::clone(&release_response),
+                )
+                .await,
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+
+    let materializer = SessionHistoryMaterializer::start_cancellable(
+        &config.http,
+        ctx.resume_session.as_ref(),
+        tokio_util::sync::CancellationToken::new(),
+    );
+    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, request_received_rx)
+        .await
+        .unwrap()
+        .unwrap();
+    release_response.notify_one();
+
+    let mut telemetry = test_telemetry(&config, &ctx);
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+            .with_session_history_materializer(Some(materializer)),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0].path,
+        "/home/user/.claude/projects/-home-user-workspace/sess-prestarted-123.jsonl"
+    );
+    assert_eq!(writes[0].content, history);
+    let ops = telemetry.pending_ops_snapshot();
+    assert!(
+        ops.iter()
+            .any(|op| op.0 == "session_history_materialization_wait" && op.1),
+        "expected session history wait telemetry, got: {ops:?}"
+    );
+    assert!(
+        ops.iter()
+            .any(|op| op.0 == "session_history_download" && op.1),
+        "expected session history download telemetry, got: {ops:?}"
+    );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_redacts_session_history_download_details_from_telemetry() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let history = br#"{"type":"init"}"#;
+    let expected_hash = hex::encode(Sha256::digest(b"different"));
+    let actual_hash = hex::encode(Sha256::digest(history));
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-ref-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: expected_hash.clone(),
+                url: serve_history_once(history).await,
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await;
+    let error = match result {
+        Ok(_) => panic!("expected session history hash mismatch error"),
+        Err(error) => error,
+    };
+
+    assert!(error.to_string().contains("hash mismatch"));
+    assert!(!error.to_string().contains(&expected_hash));
+    assert!(!error.to_string().contains(&actual_hash));
+    let ops = telemetry.pending_ops_snapshot();
+    assert!(
+        ops.iter().any(|op| {
+            op.0 == "session_history_materialization_wait"
+                && !op.1
+                && op.2.as_deref() == Some("session history materialization failed")
+        }),
+        "expected redacted session history wait telemetry, got: {ops:?}"
+    );
+    assert!(
+        ops.iter().any(|op| {
+            op.0 == "session_history_download"
+                && !op.1
+                && op.2.as_deref() == Some("session history download failed")
+        }),
+        "expected redacted session history download telemetry, got: {ops:?}"
+    );
+    let telemetry_debug = format!("{ops:?}");
+    assert!(!telemetry_debug.contains(&expected_hash));
+    assert!(!telemetry_debug.contains(&actual_hash));
 }
 
 #[tokio::test]

@@ -1,6 +1,6 @@
 {
   "name": "@vm0/app",
-  "version": "0.498.2",
+  "version": "0.499.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -25,7 +25,6 @@
     "@tiptap/pm": "3.21.0",
     "@tiptap/react": "3.21.0",
     "@tiptap/starter-kit": "3.21.0",
-    "@ts-rest/core": "3.53.0-rc.1",
     "@uiw/react-markdown-preview": "^5.1.5",
     "@vm0/api-contracts": "workspace:*",
     "@vm0/connectors": "workspace:*",

@@ -1,5 +1,5 @@
 import { command, computed, type Computed } from "ccstate";
-import { initContract } from "@ts-rest/core";
+import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import { z } from "zod";
 import type { View } from "@slack/web-api";
 import {

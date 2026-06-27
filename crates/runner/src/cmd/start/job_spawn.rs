@@ -26,7 +26,9 @@ use super::ownership::{OwnershipTransitions, RunSandbox};
 use super::sandbox_finalization::{FinalizeContext, finalize_sandbox_for_completion};
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
-use crate::executor::{self, ExecutionFailureKind, ExecutorConfig, RunnerPreSpawnTiming};
+use crate::executor::{
+    self, ExecutionFailureKind, ExecutorConfig, RunnerPreSpawnTiming, SessionHistoryMaterializer,
+};
 use crate::idle_pool::{ParkingGate, ReusableIdleSandbox};
 use crate::ids::RunId;
 use crate::network_log_drain::NetworkLogDrainCoordinator;
@@ -86,6 +88,7 @@ pub(super) struct SpawnJobRequest {
     pub(super) reuse_entry: Option<ReusableIdleSandbox>,
     pub(super) reuse_result: SandboxReuseResult,
     pub(super) pre_spawn_timing: RunnerPreSpawnTiming,
+    pub(super) session_history_materializer: Option<SessionHistoryMaterializer>,
     pub(super) active_cli_agent_session_guard: ActiveCliAgentSessionGuard,
 }
 
@@ -99,6 +102,7 @@ struct ExecutorInvocation {
     reuse_entry: Option<ReusableIdleSandbox>,
     reuse_result: SandboxReuseResult,
     pre_spawn_timing: RunnerPreSpawnTiming,
+    session_history_materializer: Option<SessionHistoryMaterializer>,
     cancel: CancellationToken,
     sandbox_token: String,
     sandbox_prepared: Option<executor::SandboxPreparedNotifier>,
@@ -124,6 +128,7 @@ impl ExecutorInvocation {
             reuse_entry,
             reuse_result,
             pre_spawn_timing,
+            session_history_materializer,
             cancel,
             sandbox_token,
             sandbox_prepared,
@@ -136,14 +141,18 @@ impl ExecutorInvocation {
         // still reports completion and releases budget.
         let inner = tokio::spawn(async move {
             if let Some(idle_entry) = reuse_entry {
-                executor::execute_job_reuse_with_active_input_source(
+                executor::execute_job_reuse_with_hooks(
                     idle_entry,
                     context,
                     &exec_config,
                     &params,
                     cancel_for_executor,
-                    active_input_source,
-                    Some(pre_spawn_timing),
+                    executor::ExecutionHooks {
+                        sandbox_prepared: None,
+                        active_input_source,
+                        pre_spawn_timing: Some(pre_spawn_timing),
+                        session_history_materializer,
+                    },
                 )
                 .await
             } else {
@@ -161,6 +170,7 @@ impl ExecutorInvocation {
                         sandbox_prepared,
                         active_input_source,
                         pre_spawn_timing: Some(pre_spawn_timing),
+                        session_history_materializer,
                     },
                 )
                 .await
@@ -440,6 +450,7 @@ pub(super) fn spawn_job(
         reuse_entry,
         reuse_result,
         pre_spawn_timing,
+        session_history_materializer,
         active_cli_agent_session_guard,
     } = request;
     let (context, completion_auth, active_input_source) = claimed.into_parts();
@@ -529,6 +540,7 @@ pub(super) fn spawn_job(
         reuse_entry,
         reuse_result,
         pre_spawn_timing,
+        session_history_materializer,
         cancel: job_cancel.token(),
         sandbox_token: sandbox_token.clone(),
         sandbox_prepared,

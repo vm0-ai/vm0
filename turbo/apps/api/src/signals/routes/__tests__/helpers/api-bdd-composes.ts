@@ -374,7 +374,7 @@ export function createComposesBddApi(context: TestContext) {
     },
 
     /**
-     * Raw HTTP request for contract-invalid payloads the typed ts-rest
+     * Raw HTTP request for contract-invalid payloads the typed contract
      * client cannot express (array agents, unsupported framework, numeric
      * metadata fields, malformed uuid paths, missing query params, short
      * version specifiers) and for reading stored compose content without

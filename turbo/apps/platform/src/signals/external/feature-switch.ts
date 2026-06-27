@@ -5,7 +5,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { clerk$ } from "../auth";
 import { accept } from "../../lib/accept.ts";
 import { resolveApiBaseForTarget } from "../api-base.ts";
-import { createAuthedTsRestClient } from "../api-client-base.ts";
+import { createAuthedContractClient } from "../api-client-base.ts";
 import { localStorageSignals } from "./local-storage.ts";
 
 export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v1";
@@ -16,7 +16,7 @@ const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
 // Pinned to the web backend: feature switches bootstrap before the platform API
 // client is available, and this keeps Lab overrides on the web origin.
 const webFeatureSwitchClient$ = computed((get) => {
-  return createAuthedTsRestClient(zeroFeatureSwitchesContract, {
+  return createAuthedContractClient(zeroFeatureSwitchesContract, {
     baseUrl: resolveApiBaseForTarget("www"),
     getClerk: () => {
       return get(clerk$);

@@ -21,7 +21,10 @@ use super::idle_lifecycle::{
 };
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
-use crate::executor::{RunnerPreSpawnTiming, validate_resume_session_id};
+use crate::executor::{
+    RunnerPreSpawnTiming, SessionHistoryMaterializer, validate_resume_session_id,
+};
+use crate::http::HttpClient;
 use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
 use crate::ids::RunId;
 use crate::paths::diagnostic_session_fingerprint;
@@ -127,6 +130,12 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
             None
         },
     );
+    let session_history_materializer = start_session_history_materializer_after_claim(
+        &ctx.spawn_ctx.exec_config.http,
+        claimed.context(),
+        resume_session_valid,
+        &job_cancel,
+    );
     info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
     let device_rate_limits = crate::io_limits::device_rate_limits_for_context(
         ctx.spawn_ctx.device_rate_limits.as_ref(),
@@ -182,11 +191,30 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
             reuse_entry,
             reuse_result,
             pre_spawn_timing,
+            session_history_materializer,
             active_cli_agent_session_guard,
         },
         ctx.spawn_ctx,
         ctx.jobs,
     );
+}
+
+fn start_session_history_materializer_after_claim(
+    http: &HttpClient,
+    context: &ExecutionContext,
+    resume_session_valid: bool,
+    cancel: &RunCancellationHandle,
+) -> Option<SessionHistoryMaterializer> {
+    if !resume_session_valid {
+        return None;
+    }
+    let resume_session = context.resume_session.as_ref()?;
+    resume_session.history_ref()?;
+    Some(SessionHistoryMaterializer::start_cancellable(
+        http,
+        Some(resume_session),
+        cancel.token(),
+    ))
 }
 
 async fn publish_active_run_status(

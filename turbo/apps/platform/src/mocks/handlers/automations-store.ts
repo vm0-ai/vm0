@@ -5,6 +5,12 @@ import type { AutomationView } from "@vm0/api-contracts/contracts/automation-vie
 // (`/api/automations`).
 let mockAutomations: AutomationView[] = [];
 let mockWorkflowTriggers: ChatThreadWorkflowTrigger[] = [];
+type MockWorkflowTriggerOverrides = Partial<
+  Omit<ChatThreadWorkflowTrigger, "workflow">
+> & {
+  readonly eventType?: "gmail-new-message" | "gmail-label-applied";
+  readonly workflow?: Partial<ChatThreadWorkflowTrigger["workflow"]>;
+};
 
 export function getMockAutomations(): AutomationView[] {
   return mockAutomations;
@@ -31,26 +37,63 @@ export function resetMockAutomations(): void {
 
 /** A workflow-trigger store row with sensible defaults. */
 export function createMockWorkflowTrigger(
-  overrides?: Partial<ChatThreadWorkflowTrigger>,
+  overrides?: MockWorkflowTriggerOverrides,
 ): ChatThreadWorkflowTrigger {
-  return {
+  const workflow = {
+    id: "a0000001-0000-4000-a000-000000000001",
+    agentId: "c0000000-0000-4000-a000-000000000001",
+    name: "nightly-sync",
+    displayName: "Nightly sync",
+    description: "Sync the changelog every night",
+    ...overrides?.workflow,
+  };
+  const base = {
     id: "e0000001-0000-4000-a000-000000000001",
-    kind: "schedule",
-    scheduleSummary: "Every 60s",
-    eventType: null,
     enabled: true,
     chatThreadId: DEFAULT_CHAT_THREAD_ID,
     nextRunAt: null,
     lastRunAt: null,
-    ...overrides,
-    workflow: {
-      id: "a0000001-0000-4000-a000-000000000001",
-      name: "nightly-sync",
-      displayName: "Nightly sync",
-      description: "Sync the changelog every night",
-      ...overrides?.workflow,
-    },
+    ownerUserId: "test-user-123",
+    unattendedConnectorRefs: [],
+    unattendedPermissionPolicy: null,
+    workflow,
   };
+  if (overrides?.kind === "event") {
+    if (overrides.eventType === "gmail-label-applied") {
+      return {
+        ...base,
+        kind: "event",
+        eventType: "gmail-label-applied",
+        eventConfig: {
+          provider: "gmail",
+          event: "label_applied",
+          labelName: "Support",
+        },
+        schedule: null,
+        scheduleSummary: null,
+        ...overrides,
+        workflow,
+      } as ChatThreadWorkflowTrigger;
+    }
+    return {
+      ...base,
+      kind: "event",
+      eventType: "gmail-new-message",
+      eventConfig: { provider: "gmail", event: "new_message" },
+      schedule: null,
+      scheduleSummary: null,
+      ...overrides,
+      workflow,
+    } as ChatThreadWorkflowTrigger;
+  }
+  return {
+    ...base,
+    kind: "schedule",
+    schedule: { type: "loop", intervalSeconds: 60 },
+    scheduleSummary: "Every 60s",
+    ...overrides,
+    workflow,
+  } as ChatThreadWorkflowTrigger;
 }
 
 const DEFAULT_CHAT_THREAD_ID = "d0000000-0000-4000-a000-000000000001";

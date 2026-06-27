@@ -22,7 +22,7 @@ helper gap:
   publishes memory versions without direct fixture writes; non-empty run
   artifacts and Google Drive status now live in chat-threads.bdd.test.ts.
 - FILE-01 legacy /f/:userId/:id/:filename and raw hosted-content download do
-  not have exported ts-rest contracts; this file covers typed upload, storage,
+  not have exported typed contracts; this file covers typed upload, storage,
   and host APIs instead of using DB or untyped route fallbacks.
 - CHAIN-CHAT callback-signing branches are blocked by the CHAT-02 callback
   signing gap; the run-to-artifact path is covered through public run and

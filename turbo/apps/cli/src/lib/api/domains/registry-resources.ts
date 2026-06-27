@@ -1,4 +1,4 @@
-import { initClient } from "@ts-rest/core";
+import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import { registryResourceDownloadContract } from "@vm0/api-contracts/contracts/registry-resources";
 
 import { getClientConfig, handleError } from "../core/client-factory";

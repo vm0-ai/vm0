@@ -423,12 +423,13 @@
       register: tgt_bin_precheck
       failed_when: not (tgt_bin_precheck.stat.exists and tgt_bin_precheck.stat.executable)
 
-    - name: Find running runner services
-      shell: >
-        systemctl list-units 'vm0-runner-*.service' --state=running
-        --plain --no-legend | awk '{print $1}'
-        | sed 's/^vm0-runner-//;s/\.service$//'
-      register: running_runners
+    - name: Find runner services to drain or stop
+      shell: |
+        (
+          systemctl list-units 'vm0-runner-*.service' --state=running --plain --no-legend | awk '{print $1}'
+          systemctl list-unit-files 'vm0-runner-*.service' --state=enabled --plain --no-legend | awk '{print $1}'
+        ) | sed 's/^vm0-runner-//;s/\.service$//' | sort -u
+      register: runner_service_candidates
       changed_when: false
 
     # `failed_when: false` tolerates non-zero exits from individual
@@ -440,13 +441,13 @@
     # still visible in Ansible's per-host log.
     - name: Drain non-target runners (graceful)
       command: "{{ bin_dir }}/runner service drain --name {{ item }}"
-      loop: "{{ running_runners.stdout_lines | default([]) }}"
+      loop: "{{ runner_service_candidates.stdout_lines | default([]) }}"
       when: item != runner_name and rollback_mode == "graceful"
       failed_when: false
 
     - name: Stop non-target runners (emergency)
       command: "{{ bin_dir }}/runner service stop --name {{ item }} --force"
-      loop: "{{ running_runners.stdout_lines | default([]) }}"
+      loop: "{{ runner_service_candidates.stdout_lines | default([]) }}"
       when: item != runner_name and rollback_mode == "emergency"
       failed_when: false
 

@@ -14,6 +14,7 @@ import mitm_addon
 import request_streaming
 from body_limits import STREAM_BUFFER_LIMIT
 from tests.auth_state_helpers import (
+    auth_cache_key,
     cached_headers,
     force_refresh_pending,
     has_auth_state,
@@ -1490,8 +1491,9 @@ class TestResponseHandler:
 
         flow.response = tutils.tresp(status_code=401, headers=http.Headers())
 
-        # Pre-populate firewall header cache keyed by api_id
-        cache_key = ("run-conn-1", "run-conn-1:0")
+        # Pre-populate firewall header cache with the request auth identity key.
+        cache_key = auth_cache_key(run_id="run-conn-1", api_id="run-conn-1:0")
+        flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
         set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
 
         with mitm_ctx():
@@ -1521,7 +1523,11 @@ class TestResponseHandler:
             headers=header_map({"content-length": "not-an-int"}),
         )
 
-        cache_key = ("run-conn-invalid-length", "run-conn-invalid-length:0")
+        cache_key = auth_cache_key(
+            run_id="run-conn-invalid-length",
+            api_id="run-conn-invalid-length:0",
+        )
+        flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
         set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
 
         with mitm_ctx():
@@ -1549,7 +1555,11 @@ class TestResponseHandler:
             headers=header_map({"content-length": "not-an-int"}),
         )
 
-        cache_key = ("run-conn-invalid-length-log", "run-conn-invalid-length-log:0")
+        cache_key = auth_cache_key(
+            run_id="run-conn-invalid-length-log",
+            api_id="run-conn-invalid-length-log:0",
+        )
+        flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
         set_cached_headers(cache_key, headers={"Authorization": "Bearer old-token"})
 
         with mitm_ctx():
@@ -1571,7 +1581,8 @@ class TestResponseHandler:
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
         flow.response = tutils.tresp(status_code=401, headers=http.Headers())
 
-        cache_key = ("run-conn-new", "run-conn-new:0")
+        cache_key = auth_cache_key(run_id="run-conn-new", api_id="run-conn-new:0")
+        flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
         assert not has_auth_state(cache_key)
 
         with mitm_ctx():
@@ -1594,7 +1605,8 @@ class TestResponseHandler:
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
         flow.response = tutils.tresp(status_code=401, headers=http.Headers())
 
-        cache_key = ("run-conn-cd", "run-conn-cd:0")
+        cache_key = auth_cache_key(run_id="run-conn-cd", api_id="run-conn-cd:0")
+        flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
         set_cached_headers(cache_key, headers={"Authorization": "Bearer cached-token"})
         # Simulate: a forced refresh JUST completed a moment ago
         set_last_force_refresh_at(cache_key, time.time())
@@ -1621,7 +1633,8 @@ class TestResponseHandler:
         flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
         flow.response = tutils.tresp(status_code=401, headers=http.Headers())
 
-        cache_key = ("run-conn-re", "run-conn-re:0")
+        cache_key = auth_cache_key(run_id="run-conn-re", api_id="run-conn-re:0")
+        flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
         # Simulate: last forced refresh happened well before the cooldown window
         set_last_force_refresh_at(
             cache_key,
@@ -1633,6 +1646,26 @@ class TestResponseHandler:
 
         # Cooldown elapsed → marker re-added
         assert force_refresh_pending(cache_key)
+
+    def test_401_without_auth_cache_key_does_not_synthesize_state(
+        self, real_flow, mitm_ctx, headers
+    ):
+        """401 invalidation requires the full request auth identity cache key."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-no-key"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
+        flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-no-key:0"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
+        flow.response = tutils.tresp(status_code=401, headers=http.Headers())
+
+        assert auth_cache._auth_state == {}
+
+        with mitm_ctx():
+            mitm_addon.response(flow)
+
+        assert auth_cache._auth_state == {}
 
     def test_error_status_logs_warning(self, tmp_path, real_flow, headers):
         """Response with status >= 400 writes to per-job proxy log."""
