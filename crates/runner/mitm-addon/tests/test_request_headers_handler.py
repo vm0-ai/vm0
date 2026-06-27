@@ -152,6 +152,8 @@ async def test_capture_enabled_api_allow_uses_connected_upstream_address_when_dn
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
+    flow.server_conn.address = ("api.vm0.ai", 443)
+    flow.client_conn.sockname = ("198.18.20.34", 443)
     flow.server_conn.state = connection.ConnectionState.OPEN
 
     with (
@@ -165,7 +167,7 @@ async def test_capture_enabled_api_allow_uses_connected_upstream_address_when_dn
         mitm_addon.requestheaders(flow)
 
         assert callable(flow.request.stream)
-        assert flow.server_conn.address == ("198.18.20.34", 443)
+        assert flow.server_conn.address == ("api.vm0.ai", 443)
 
         await mitm_addon.request(flow)
 

@@ -813,12 +813,15 @@ def _bind_flow_upstream_destination(
 
     original_address = _server_address(flow.server_conn)
     if flow.server_conn.connected:
-        if not _server_connected_to_trusted_destination(
+        connected_address = _connected_trusted_destination_endpoint(
             flow.server_conn,
             host=normalized_host,
             port=flow.request.port,
-        ):
+            extra_endpoints=(_connection_sockname(flow.client_conn),),
+        )
+        if connected_address is None:
             return False
+        original_address = connected_address
     else:
         flow.server_conn.address = (normalized_host, flow.request.port)
 
@@ -1509,20 +1512,21 @@ def reset_tls_admission_state_for_tests() -> None:
 
 
 def _server_address(server: object) -> tuple[str, int] | None:
-    address = getattr(server, "address", None)
-    if not isinstance(address, tuple) or len(address) != _ADDRESS_PAIR_LENGTH:
-        return None
-    host, port = address
-    if not isinstance(host, str) or not isinstance(port, int):
-        return None
-    return host, port
+    return _connection_address_pair(getattr(server, "address", None))
 
 
 def _server_peername(server: object) -> tuple[str, int] | None:
-    peername = getattr(server, "peername", None)
-    if not isinstance(peername, tuple) or len(peername) < _ADDRESS_PAIR_LENGTH:
+    return _connection_address_pair(getattr(server, "peername", None))
+
+
+def _connection_sockname(connection: object) -> tuple[str, int] | None:
+    return _connection_address_pair(getattr(connection, "sockname", None))
+
+
+def _connection_address_pair(address: object) -> tuple[str, int] | None:
+    if not isinstance(address, tuple) or len(address) < _ADDRESS_PAIR_LENGTH:
         return None
-    host, port = peername[:_ADDRESS_PAIR_LENGTH]
+    host, port = address[:_ADDRESS_PAIR_LENGTH]
     if not isinstance(host, str) or not isinstance(port, int):
         return None
     return host, port
@@ -1585,13 +1589,14 @@ def _resolved_trusted_host_addresses(host: str, port: int) -> frozenset[str]:
     return resolved_addresses
 
 
-def _server_connected_to_trusted_destination(
+def _connected_trusted_destination_endpoint(
     server: object,
     *,
     host: str,
     port: int,
-) -> bool:
-    for peer in (_server_peername(server), _server_address(server)):
+    extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
+) -> tuple[str, int] | None:
+    for peer in (_server_peername(server), _server_address(server), *extra_endpoints):
         if peer is None:
             continue
 
@@ -1603,9 +1608,10 @@ def _server_connected_to_trusted_destination(
         if peer_ip is None:
             continue
 
-        return peer_ip in _resolved_trusted_host_addresses(host, port)
+        if peer_ip in _resolved_trusted_host_addresses(host, port):
+            return peer
 
-    return False
+    return None
 
 
 def reset_upstream_destination_resolution_cache_for_tests() -> None:
@@ -1686,8 +1692,15 @@ def _bind_privileged_upstream_destination(
         return
 
     if bool(getattr(server, "connected", False)):
-        if not _server_connected_to_trusted_destination(server, host=hostname, port=port):
+        connected_address = _connected_trusted_destination_endpoint(
+            server,
+            host=hostname,
+            port=port,
+            extra_endpoints=(_connection_sockname(client),),
+        )
+        if connected_address is None:
             return
+        address = connected_address
     else:
         server.address = (hostname, port)
 
