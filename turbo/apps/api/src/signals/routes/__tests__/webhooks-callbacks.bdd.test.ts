@@ -3492,7 +3492,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     );
   });
 
-  it("marks every Stripe subscription non-renewing and deletes an empty org after a verified user.deleted event", async () => {
+  it("cancels trialing Stripe subscriptions and deletes an empty org after a verified user.deleted event", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsAutomationsApi(context);
     api.configureClerkWebhookSecret();
@@ -3561,19 +3561,19 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
         },
       );
       expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledTimes(
-        2,
+        1,
       );
       expect(context.mocks.stripe.subscriptions.update).toHaveBeenNthCalledWith(
         1,
         granted.subscriptionId,
         { cancel_at_period_end: true },
       );
-      expect(context.mocks.stripe.subscriptions.update).toHaveBeenNthCalledWith(
-        2,
-        extraSubscriptionId,
-        { cancel_at_period_end: true },
+      expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledTimes(
+        1,
       );
-      expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
+      expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+        extraSubscriptionId,
+      );
     });
     await expect
       .poll(async () => {
