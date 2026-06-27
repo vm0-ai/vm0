@@ -2,6 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { WebClient } from "@slack/web-api";
+import {
+  runnersHeartbeatContract,
+  runnersJobClaimContract,
+} from "@vm0/api-contracts/contracts/runners";
 import type { TestSlackDispatchProbeResponse } from "@vm0/api-contracts/contracts/test-slack-dispatch-probe";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
@@ -12,23 +16,26 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createApp } from "../../../app-factory";
-import { testContext } from "../../../__tests__/test-context";
+import { createAppWithRoutes } from "../../../app-factory-core";
+import { setupAppWithRoutes } from "../../../__tests__/test-app";
+import { accept, testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { verifyZeroToken } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
+import { runnersRoutes } from "../runners";
+import { testSlackDispatchProbeRoutes } from "../test-slack-dispatch-probe";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import {
   deleteSlackWebhookFixture$,
   seedSlackWebhookFixture$,
   type SlackWebhookFixture,
 } from "./helpers/zero-slack-webhooks";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 
 const context = testContext();
 const store = createStore();
-const runnerApi = createRunsAutomationsApi(context);
 const ROUTE = "/api/test/slack-dispatch-probe";
+const OFFICIAL_RUNNER_AUTHORIZATION =
+  "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 const TEST_VM0_ANTHROPIC_KEY = "vm0-key-slack-dispatch-probe-claude-sonnet-4-6";
 const TEST_VM0_DEEPSEEK_KEY = "vm0-key-slack-dispatch-probe-deepseek-v4-pro";
 const TEST_VM0_MOONSHOT_KEY = "vm0-key-slack-dispatch-probe-kimi-k2-7-code";
@@ -116,7 +123,10 @@ function configureSlackProbeTest(): void {
 }
 
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
-  const app = createApp({ signal: context.signal });
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: testSlackDispatchProbeRoutes,
+  });
   return Promise.resolve(app.request(path, init));
 }
 
@@ -126,6 +136,45 @@ function postProbe(body: unknown): Promise<Response> {
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+async function heartbeatRunner() {
+  return await accept(
+    setupAppWithRoutes({ context, routes: runnersRoutes })(
+      runnersHeartbeatContract,
+    ).heartbeat({
+      headers: { authorization: OFFICIAL_RUNNER_AUTHORIZATION },
+      body: {
+        runnerId: randomUUID(),
+        runnerName: "slack-dispatch-probe-runner",
+        group: "vm0/test",
+        profiles: ["vm0/default"],
+        totalVcpu: 8,
+        totalMemoryMb: 16_384,
+        maxConcurrent: 2,
+        allocatedVcpu: 0,
+        allocatedMemoryMb: 0,
+        runningCount: 0,
+        heldSessionStates: [],
+        mode: "running",
+      },
+    }),
+    [200],
+  );
+}
+
+async function claimRunnerJob(runId: string) {
+  const response = await accept(
+    setupAppWithRoutes({ context, routes: runnersRoutes })(
+      runnersJobClaimContract,
+    ).claim({
+      headers: { authorization: OFFICIAL_RUNNER_AUTHORIZATION },
+      params: { id: runId },
+      body: {},
+    }),
+    [200],
+  );
+  return response.body;
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -441,8 +490,8 @@ describe("POST /api/test/slack-dispatch-probe", () => {
     ).resolves.toStrictEqual({ ok: true });
 
     const run = await readSingleRunForUser(fixture.userId);
-    await runnerApi.heartbeatRunner();
-    const claim = await runnerApi.claimRunnerJob(run.id);
+    await heartbeatRunner();
+    const claim = await claimRunnerJob(run.id);
     const zeroToken = claim.environment?.ZERO_TOKEN;
     if (!zeroToken) {
       throw new Error("Claimed runner job did not include ZERO_TOKEN");

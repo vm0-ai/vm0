@@ -54,6 +54,10 @@ const INBOUND_SECRET = "whsec_test";
 const REPLY_PATH = "/api/zero/email/callbacks/reply";
 const TRIGGER_PATH = "/api/zero/email/callbacks/trigger";
 const INBOUND_PATH = "/api/zero/email/inbound";
+const emailRoutes = [
+  ...zeroEmailCallbackRoutes,
+  ...zeroEmailInboundRoutes,
+] as const;
 
 interface EmailFixture {
   readonly orgId: string;
@@ -368,13 +372,6 @@ function signedCallbackHeaders(
   };
 }
 
-function createEmailTestApp() {
-  return createAppWithRoutes({
-    signal: context.signal,
-    routes: [...zeroEmailCallbackRoutes, ...zeroEmailInboundRoutes],
-  });
-}
-
 async function postCallback(
   path: string,
   body: Record<string, unknown>,
@@ -383,11 +380,22 @@ async function postCallback(
   const rawBody = JSON.stringify(body);
   const headerOptions =
     typeof options === "string" ? { secret: options } : options;
-  return await createEmailTestApp().request(path, {
+  return await requestEmailApp(path, {
     method: "POST",
     headers: signedCallbackHeaders(rawBody, headerOptions),
     body: rawBody,
   });
+}
+
+async function requestEmailApp(
+  path: string,
+  init: RequestInit,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: emailRoutes,
+  });
+  return await app.request(path, init);
 }
 
 function svixHeaders(rawBody: string): Record<string, string> {
@@ -403,7 +411,7 @@ function svixHeaders(rawBody: string): Record<string, string> {
 
 async function postInbound(event: WebhookEvent): Promise<Response> {
   const rawBody = JSON.stringify(event);
-  return await createEmailTestApp().request(INBOUND_PATH, {
+  return await requestEmailApp(INBOUND_PATH, {
     method: "POST",
     headers: svixHeaders(rawBody),
     body: rawBody,
@@ -843,7 +851,7 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
   it("skips before callback verification when Resend is not configured", async () => {
     mockEnv("RESEND_API_KEY", undefined);
 
-    const response = await createEmailTestApp().request(TRIGGER_PATH, {
+    const response = await requestEmailApp(TRIGGER_PATH, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ runId: randomUUID(), status: "completed" }),
@@ -1168,7 +1176,7 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
 
 describe("POST /api/zero/email/inbound", () => {
   it("rejects missing Svix headers", async () => {
-    const response = await createEmailTestApp().request(INBOUND_PATH, {
+    const response = await requestEmailApp(INBOUND_PATH, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ type: "email.received" }),
@@ -1354,7 +1362,7 @@ describe("POST /api/zero/email/inbound", () => {
 
   it("rejects invalid Svix signatures", async () => {
     const rawBody = JSON.stringify({ type: "email.received" });
-    const response = await createEmailTestApp().request(INBOUND_PATH, {
+    const response = await requestEmailApp(INBOUND_PATH, {
       method: "POST",
       headers: {
         ...svixHeaders(rawBody),

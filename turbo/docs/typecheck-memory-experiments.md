@@ -295,6 +295,41 @@ below the raw latest-main full `api` OOM peak. It is not sufficient to make the
 54-root test chunk pass because remaining BDD helpers still pull default
 `setupApp` / full route registry edges.
 
+### 18. Email route slice migration
+
+Change: migrate `zero-email.test.ts` from raw `createApp` to
+`createAppWithRoutes` using `zeroEmailCallbackRoutes` and
+`zeroEmailInboundRoutes`.
+
+- Command:
+  `pnpm -F api exec tsc -p tsconfig.tests-pure-context-entries.json --noEmit`
+- Result: passed, peak `2052.4 MiB`, duration `45.7s`.
+- Scope: pure-context chunk expanded from 26 to 27 roots.
+- Conclusion: the email test no longer imports the full route registry; the
+  added route slice has a small, controlled peak increase.
+
+### 19. Inline runner route helpers in Slack dispatch probe test
+
+Change: remove `test-slack-dispatch-probe.test.ts`'s dependency on the broad
+`api-bdd-runs-automations` helper. Add two local strict contract clients for
+`runnersHeartbeatContract` and `runnersJobClaimContract`, both backed by
+`runnersRoutes`.
+
+Commands:
+
+- `pnpm -F api exec tsc -p tsconfig.tests-pure-context-entries.json --noEmit`
+- `pnpm -F api exec tsc -p tsconfig.tests-no-setup-app.json --noEmit`
+
+Results:
+
+- `pure-context` expanded from 27 to 28 roots: passed, peak `2067.7 MiB`,
+  duration `49.9s`.
+- `tests-no-setup-app` 54-root chunk: still OOM, peak `2247.8 MiB`.
+
+Conclusion: the direct/non-BDD test entrypoints are now mostly route-sliced.
+The remaining OOM is concentrated in 26 roots that reach full `ROUTES` through
+BDD helpers.
+
 ## Current conclusions
 
 - `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
@@ -306,7 +341,7 @@ below the raw latest-main full `api` OOM peak. It is not sufficient to make the
   did not solve the OOM. The effective direction is strict sequential chunks,
   and the strongest measured chunks are route leaves (`2057.9 MiB` max),
   explicit-route tests (`1026.0 MiB` for callback-route), and route-free
-  pure-context tests (`2035.0 MiB` for 27 roots).
+  pure-context tests (`2067.7 MiB` for 28 roots).
 - Direct route test entries are worth keeping: they eliminate every direct
   `app-factory.ts` edge in `tsconfig.tests-no-setup-app.json` without reducing
   strictness.

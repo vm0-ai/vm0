@@ -14,6 +14,7 @@
     "src/signals/routes/__tests__/helpers/zero-workflows.ts",
     "src/signals/routes/__tests__/internal-callbacks-telegram.test.ts",
     "src/signals/routes/__tests__/legacy-file.test.ts",
+    "src/signals/routes/__tests__/test-slack-dispatch-probe.test.ts",
     "src/signals/routes/__tests__/test-slack-mock.test.ts",
     "src/signals/routes/__tests__/test-slack-state.test.ts",
     "src/signals/routes/__tests__/test-telegram-dispatch-probe.test.ts",
