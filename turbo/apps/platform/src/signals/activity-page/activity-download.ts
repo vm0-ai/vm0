@@ -25,15 +25,16 @@ export const fetchDownloadExtra$ = command(
   }> => {
     const extra: { context?: unknown; networkLogs?: unknown } = {};
 
-    const fetchContextBody = async (): Promise<unknown> => {
-      const { body } = await accept(
+    const fetchContextBody = async (): Promise<unknown | undefined> => {
+      const result = await accept(
         get(zeroClient$)(zeroRunContextContract).getContext({
           params: { id: runId },
           fetchOptions: { signal: _signal },
         }),
-        [200],
+        [200, 404],
+        { toast: false },
       );
-      return body;
+      return result.status === 200 ? result.body : undefined;
     };
 
     const [contextResult, networkResult] = await Promise.allSettled([

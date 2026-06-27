@@ -9,7 +9,7 @@ import { accept } from "../../lib/accept.ts";
 
 interface ZeroActivityContext {
   runId: string;
-  context: RunContextResponse;
+  context: RunContextResponse | null;
 }
 
 /**
@@ -25,8 +25,15 @@ export const zeroActivityContext$ = computed(async (get) => {
   const client = get(zeroClient$)(zeroRunContextContract);
   const result = await accept(
     client.getContext({ params: { id: runId } }),
-    [200],
+    [200, 404],
+    { toast: false },
   );
+  if (result.status === 404) {
+    return {
+      runId,
+      context: null,
+    } satisfies ZeroActivityContext;
+  }
   return {
     runId,
     context: result.body,

@@ -2162,6 +2162,34 @@ describe("activity detail polling", () => {
     expect(downloads.revokedUrls).toContain(download.url);
   });
 
+  it("downloads activity extras without failing when context is unavailable", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000398";
+
+    context.mocks.api(zeroRunContextContract.getContext, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "NOT_FOUND",
+          message: "Run context not available",
+        },
+      });
+    });
+    context.mocks.api(
+      zeroRunNetworkLogsContract.getNetworkLogs,
+      ({ respond }) => {
+        return respond(200, { networkLogs: [], hasMore: false });
+      },
+    );
+
+    const extra = await context.store.set(
+      fetchDownloadExtra$,
+      runId,
+      context.signal,
+    );
+
+    expect(extra.context).toBeUndefined();
+    expect(extra.networkLogs).toStrictEqual([]);
+  });
+
   it("propagates abort while fetching raw download extras", async () => {
     const runId = "a0000000-0000-4000-a000-000000000397";
     const resetDownloadSignal$ = resetSignal();
@@ -3396,6 +3424,14 @@ describe("activity detail polling", () => {
         } satisfies AgentEventsResponse);
       },
     );
+    context.mocks.api(zeroRunContextContract.getContext, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "NOT_FOUND",
+          message: "Run context not available",
+        },
+      });
+    });
     context.mocks.api(zeroRunRunnerContract.getRunner, ({ respond }) => {
       return respond(200, { sandboxReuseResult: null });
     });
@@ -3415,6 +3451,14 @@ describe("activity detail polling", () => {
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Legacy Activity" }),
+      ).toBeInTheDocument();
+    });
+
+    click(getTabByText("Context"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Context not available" }),
       ).toBeInTheDocument();
     });
 
