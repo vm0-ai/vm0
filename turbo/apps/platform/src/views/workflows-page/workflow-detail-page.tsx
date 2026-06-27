@@ -785,6 +785,98 @@ function isValidWorkflowSlug(value: string): boolean {
   return /^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(value);
 }
 
+function WorkflowMetadataFields({
+  detail,
+  disabled,
+  onPatch,
+  values,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse;
+  readonly disabled: boolean;
+  readonly onPatch: (patch: Partial<WorkflowMetadataValues>) => void;
+  readonly values: WorkflowMetadataValues;
+}) {
+  const slugCommand = `/${values.name.trim() || "slug"}`;
+
+  return (
+    <div className="p-4 sm:p-5">
+      <InlineSettingsRow
+        label="Name"
+        description="Shown in workflow lists and when choosing a workflow."
+        wideControls
+      >
+        <Input
+          id="workflow-edit-display-name"
+          name="displayName"
+          aria-label="Name"
+          value={values.displayName}
+          onChange={(event) => {
+            onPatch({ displayName: event.currentTarget.value });
+          }}
+          disabled={disabled}
+          placeholder="Workflow name"
+          maxLength={256}
+          className="h-9 w-full"
+        />
+      </InlineSettingsRow>
+      <InlineSettingsRow
+        label="Slug"
+        description={`Lowercase letters, numbers, and - only. Use ${slugCommand} in chat to use this workflow.`}
+        wideControls
+      >
+        <Input
+          id="workflow-edit-slug"
+          name="name"
+          aria-label="Slug"
+          value={values.name}
+          onChange={(event) => {
+            onPatch({ name: event.currentTarget.value });
+          }}
+          disabled={disabled}
+          placeholder="workflow-slug"
+          maxLength={64}
+          required
+          minLength={2}
+          pattern="[a-z0-9][a-z0-9-]*[a-z0-9]"
+          title="Use lowercase letters, numbers, and hyphens only"
+          autoCapitalize="none"
+          autoComplete="off"
+          spellCheck={false}
+          className="h-9 w-full"
+        />
+      </InlineSettingsRow>
+      <InlineSettingsRow
+        label="Description"
+        description="Tell the agent when to use this workflow."
+        wideControls
+      >
+        <textarea
+          id="workflow-edit-description"
+          name="description"
+          aria-label="Description"
+          value={values.description}
+          onChange={(event) => {
+            onPatch({ description: event.currentTarget.value });
+          }}
+          disabled={disabled}
+          rows={3}
+          maxLength={1024}
+          className={WORKFLOW_EDIT_TEXTAREA_CLASS}
+        />
+      </InlineSettingsRow>
+      <InlineSettingsRow
+        label="Visibility"
+        description="Choose how this workflow is shared inside your workspace."
+        alignControls="center"
+      >
+        <div className="w-full max-w-72">
+          <WorkflowPublicToggle detail={detail} />
+        </div>
+      </InlineSettingsRow>
+    </div>
+  );
+}
+
 function WorkflowMetadataForm({
   detail,
 }: {
@@ -804,7 +896,6 @@ function WorkflowMetadataForm({
     values.displayName !== defaults.displayName ||
     values.name !== defaults.name ||
     values.description !== defaults.description;
-  const slugCommand = `/${values.name.trim() || "slug"}`;
   const patchValues = (patch: Partial<WorkflowMetadataValues>) => {
     patchForm({ workflowId: detail.id, patch });
   };
@@ -850,81 +941,12 @@ function WorkflowMetadataForm({
           save();
         }}
       >
-        <div className="p-4 sm:p-5">
-          <InlineSettingsRow
-            label="Name"
-            description="Shown in workflow lists and when choosing a workflow."
-            wideControls
-          >
-            <Input
-              id="workflow-edit-display-name"
-              name="displayName"
-              aria-label="Name"
-              value={values.displayName}
-              onChange={(event) => {
-                patchValues({ displayName: event.currentTarget.value });
-              }}
-              disabled={disabled}
-              placeholder="Workflow name"
-              maxLength={256}
-              className="h-9 w-full"
-            />
-          </InlineSettingsRow>
-          <InlineSettingsRow
-            label="Slug"
-            description={`Lowercase letters, numbers, and - only. Use ${slugCommand} in chat to use this workflow.`}
-            wideControls
-          >
-            <Input
-              id="workflow-edit-slug"
-              name="name"
-              aria-label="Slug"
-              value={values.name}
-              onChange={(event) => {
-                patchValues({ name: event.currentTarget.value });
-              }}
-              disabled={disabled}
-              placeholder="workflow-slug"
-              maxLength={64}
-              required
-              minLength={2}
-              pattern="[a-z0-9][a-z0-9-]*[a-z0-9]"
-              title="Use lowercase letters, numbers, and hyphens only"
-              autoCapitalize="none"
-              autoComplete="off"
-              spellCheck={false}
-              className="h-9 w-full"
-            />
-          </InlineSettingsRow>
-          <InlineSettingsRow
-            label="Description"
-            description="Tell the agent when to use this workflow."
-            wideControls
-          >
-            <textarea
-              id="workflow-edit-description"
-              name="description"
-              aria-label="Description"
-              value={values.description}
-              onChange={(event) => {
-                patchValues({ description: event.currentTarget.value });
-              }}
-              disabled={disabled}
-              rows={3}
-              maxLength={1024}
-              className={WORKFLOW_EDIT_TEXTAREA_CLASS}
-            />
-          </InlineSettingsRow>
-          <InlineSettingsRow
-            label="Visibility"
-            description="Choose how this workflow is shared inside your workspace."
-            alignControls="center"
-          >
-            <div className="w-full max-w-72">
-              <WorkflowPublicToggle detail={detail} />
-            </div>
-          </InlineSettingsRow>
-        </div>
+        <WorkflowMetadataFields
+          detail={detail}
+          disabled={disabled}
+          onPatch={patchValues}
+          values={values}
+        />
       </form>
       {dirty ? (
         <ZeroUnsavedBar onDiscard={resetForm} onSave={save} saving={saving} />
