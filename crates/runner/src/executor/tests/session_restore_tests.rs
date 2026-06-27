@@ -3,6 +3,7 @@ use sandbox::{
     SandboxOperation,
 };
 use sandbox_mock::MockSandbox;
+use sha2::{Digest, Sha256};
 use std::sync::Mutex;
 use tracing_subscriber::prelude::*;
 
@@ -11,7 +12,10 @@ use super::super::session_id::{canonical_codex_thread_id, is_valid_session_id};
 use super::super::session_restore::restore_session;
 use super::support::{CapturedEvent, CapturedEvents, minimal_context, sandbox_write_file_error};
 use crate::paths::diagnostic_session_fingerprint;
-use crate::types::ResumeSession;
+use crate::restored_session_identity::RestoredSessionIdentity;
+use crate::types::{
+    ResumeSession, ResumeSessionHistory, ResumeSessionHistoryRef, ResumeSessionHistoryRefKind,
+};
 
 static RESTORE_SESSION_LOG_CALLSITE_LOCK: Mutex<()> = Mutex::new(());
 
@@ -63,12 +67,149 @@ fn codex_thread_id_canonicalizes_uuid_spellings() {
 }
 
 #[test]
+fn restored_session_identity_requires_valid_hash_ref() {
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-identity-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: "hash-a".into(),
+                url: "https://example.com/history".into(),
+                size: Some(12),
+            },
+        },
+    });
+
+    assert!(RestoredSessionIdentity::from_context(&ctx).is_some());
+
+    ctx.resume_session = Some(ResumeSession::inline(
+        "sess-identity-123".into(),
+        "{}".into(),
+    ));
+    assert!(RestoredSessionIdentity::from_context(&ctx).is_none());
+
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "../../etc/passwd".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: "hash-a".into(),
+                url: "https://example.com/history".into(),
+                size: Some(12),
+            },
+        },
+    });
+    assert!(RestoredSessionIdentity::from_context(&ctx).is_none());
+}
+
+#[test]
+fn restored_session_identity_changes_with_framework_session_and_history_hash() {
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "claude-code".into();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-identity-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: "hash-a".into(),
+                url: "https://example.com/history".into(),
+                size: Some(12),
+            },
+        },
+    });
+    let claude_identity = RestoredSessionIdentity::from_context(&ctx).expect("claude identity");
+
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-identity-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: "hash-b".into(),
+                url: "https://example.com/history".into(),
+                size: Some(12),
+            },
+        },
+    });
+    let different_hash_identity =
+        RestoredSessionIdentity::from_context(&ctx).expect("different hash identity");
+    assert_ne!(claude_identity, different_hash_identity);
+
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-identity-other".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: "hash-a".into(),
+                url: "https://example.com/history".into(),
+                size: Some(12),
+            },
+        },
+    });
+    let different_session_identity =
+        RestoredSessionIdentity::from_context(&ctx).expect("different session identity");
+    assert_ne!(claude_identity, different_session_identity);
+
+    ctx.cli_agent_type = "codex".into();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "019e9154-c304-70f0-adde-36efb1be1701".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: "hash-a".into(),
+                url: "https://example.com/history".into(),
+                size: Some(12),
+            },
+        },
+    });
+    let codex_identity = RestoredSessionIdentity::from_context(&ctx).expect("codex identity");
+    assert_ne!(claude_identity, codex_identity);
+
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "019E9154C30470F0ADDE36EFB1BE1701".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: "hash-a".into(),
+                url: "https://example.com/history".into(),
+                size: Some(12),
+            },
+        },
+    });
+    let codex_compact_uppercase_identity =
+        RestoredSessionIdentity::from_context(&ctx).expect("codex compact uppercase identity");
+    assert_eq!(codex_identity, codex_compact_uppercase_identity);
+}
+
+#[test]
 fn restore_session_writes_history() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "claude-code".into();
-    let session = ResumeSession::inline("sess-abc-123".into(), r#"{"type":"init"}"#.into());
-    run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
+    let history = r#"{"type":"init"}"#;
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-abc-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history.as_bytes())),
+                url: "https://example.com/history".into(),
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+    let session = ResumeSession::inline("sess-abc-123".into(), history.into());
+    let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
+
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    let expected_identity = RestoredSessionIdentity::from_context(&ctx)
+        .expect("restored identity")
+        .with_guest_history(history.len() as u64, writes[0].path.clone());
+    assert_eq!(
+        diagnostics.restored_session_identity,
+        Some(expected_identity)
+    );
 }
 
 #[tokio::test]
@@ -156,27 +297,36 @@ fn restore_session_writes_codex_session() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
     let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
-    let session = ResumeSession::inline(
-        session_id.into(),
-        format!(
-            "{}\n",
-            serde_json::json!({
-                "timestamp": "2026-06-04T07:18:08.001Z",
-                "type": "session_meta",
-                "payload": {
-                    "id": session_id,
-                    "timestamp": "2026-06-04T07:18:08.000Z",
-                    "cwd": "/workspace",
-                    "originator": "test",
-                    "cli_version": "0.137.0",
-                    "source": "cli",
-                    "model_provider": "test-provider",
-                    "base_instructions": null,
-                },
-            }),
-        ),
+    let history = format!(
+        "{}\n",
+        serde_json::json!({
+            "timestamp": "2026-06-04T07:18:08.001Z",
+            "type": "session_meta",
+            "payload": {
+                "id": session_id,
+                "timestamp": "2026-06-04T07:18:08.000Z",
+                "cwd": "/workspace",
+                "originator": "test",
+                "cli_version": "0.137.0",
+                "source": "cli",
+                "model_provider": "test-provider",
+                "base_instructions": null,
+            },
+        }),
     );
-    run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: session_id.into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history.as_bytes())),
+                url: "https://example.com/history".into(),
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+    let session = ResumeSession::inline(session_id.into(), history.clone());
+    let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
     assert_codex_cleanup_call(&sandbox);
 
@@ -192,6 +342,13 @@ fn restore_session_writes_codex_session() {
     assert_eq!(
         writes[0].content,
         session.session_history().unwrap().as_bytes()
+    );
+    let expected_identity = RestoredSessionIdentity::from_context(&ctx)
+        .expect("restored identity")
+        .with_guest_history(history.len() as u64, writes[0].path.clone());
+    assert_eq!(
+        diagnostics.restored_session_identity,
+        Some(expected_identity)
     );
 }
 

@@ -6,9 +6,11 @@ use sandbox::{Sandbox, SandboxError};
 use tracing::{info, warn};
 
 use super::cli_framework::{EffectiveCliFramework, effective_cli_framework};
-use super::session_id::is_valid_session_id;
+use super::env::validate_resume_session_id;
+use super::session_id::{canonical_codex_thread_id, is_valid_session_id};
 use super::{RunnerError, RunnerResult};
 use crate::paths::diagnostic_session_fingerprint;
+use crate::restored_session_identity::{RestoredSessionFramework, RestoredSessionIdentity};
 use crate::types::{ExecutionContext, ResumeSession};
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
@@ -18,11 +20,51 @@ const REDACTED_SESSION_PATH: &str = "[redacted-session-path]";
 const REDACTED_SESSION_ID: &str = "[redacted-session-id]";
 const SUBSTRING_SESSION_ID_REDACTION_MIN_LEN: usize = 8;
 
+impl RestoredSessionIdentity {
+    pub(crate) fn from_context(context: &ExecutionContext) -> Option<Self> {
+        validate_resume_session_id(context).ok()?;
+        let resume_session = context.resume_session.as_ref()?;
+        let history_ref = resume_session.history_ref()?;
+        let effective_framework = effective_cli_framework(&context.cli_agent_type);
+        let framework = restored_session_framework(effective_framework);
+        let session_id = restored_session_identity_session_id(
+            effective_framework,
+            &resume_session.cli_agent_session_id,
+        )?;
+        Some(Self::new(
+            framework,
+            &session_id,
+            history_ref.kind,
+            history_ref.hash.clone(),
+            history_ref.size,
+            None,
+        ))
+    }
+}
+
+fn restored_session_identity_session_id(
+    framework: EffectiveCliFramework,
+    session_id: &str,
+) -> Option<String> {
+    match framework {
+        EffectiveCliFramework::ClaudeCode => Some(session_id.to_owned()),
+        EffectiveCliFramework::Codex => canonical_codex_thread_id(session_id),
+    }
+}
+
+fn restored_session_framework(framework: EffectiveCliFramework) -> RestoredSessionFramework {
+    match framework {
+        EffectiveCliFramework::ClaudeCode => RestoredSessionFramework::ClaudeCode,
+        EffectiveCliFramework::Codex => RestoredSessionFramework::Codex,
+    }
+}
+
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct SessionRestoreDiagnostics {
     pub(super) framework: &'static str,
     pub(super) session_fingerprint: String,
     pub(super) bytes_in: usize,
+    pub(super) restored_session_identity: Option<RestoredSessionIdentity>,
 }
 
 pub(super) async fn restore_session(
@@ -87,6 +129,9 @@ pub(super) async fn restore_claude_session(
         framework: "claude-code",
         session_fingerprint: diagnostic_session_fingerprint(&session.cli_agent_session_id),
         bytes_in: session_history.len(),
+        restored_session_identity: RestoredSessionIdentity::from_context(context).map(|identity| {
+            identity.with_guest_history(session_history.len() as u64, session_path.clone())
+        }),
     };
     info!(
         run_id = %context.run_id,

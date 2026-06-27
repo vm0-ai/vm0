@@ -29,7 +29,7 @@ use super::sandbox_finalization::{FinalizeContext, finalize_sandbox_for_completi
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
 use crate::executor::{
     self, ExecutionFailureKind, ExecutorConfig, RunnerPreSpawnPhase, RunnerPreSpawnTiming,
-    SessionHistoryMaterializer,
+    SessionHistoryRestorePlan,
 };
 use crate::idle_pool::{ParkingGate, ReusableIdleSandbox};
 use crate::ids::RunId;
@@ -90,7 +90,7 @@ pub(super) struct SpawnJobRequest {
     pub(super) reuse_entry: Option<ReusableIdleSandbox>,
     pub(super) reuse_result: SandboxReuseResult,
     pub(super) pre_spawn_timing: RunnerPreSpawnTiming,
-    pub(super) session_history_materializer: Option<SessionHistoryMaterializer>,
+    pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
     pub(super) active_cli_agent_session_guard: ActiveCliAgentSessionGuard,
 }
 
@@ -104,7 +104,7 @@ struct ExecutorInvocation {
     reuse_entry: Option<ReusableIdleSandbox>,
     reuse_result: SandboxReuseResult,
     pre_spawn_timing: RunnerPreSpawnTiming,
-    session_history_materializer: Option<SessionHistoryMaterializer>,
+    session_history_restore_plan: SessionHistoryRestorePlan,
     cancel: CancellationToken,
     sandbox_token: String,
     sandbox_prepared: Option<executor::SandboxPreparedNotifier>,
@@ -130,7 +130,7 @@ impl ExecutorInvocation {
             reuse_entry,
             reuse_result,
             pre_spawn_timing,
-            session_history_materializer,
+            session_history_restore_plan,
             cancel,
             sandbox_token,
             sandbox_prepared,
@@ -153,7 +153,7 @@ impl ExecutorInvocation {
                         sandbox_prepared: None,
                         active_input_source,
                         pre_spawn_timing: Some(pre_spawn_timing),
-                        session_history_materializer,
+                        session_history_restore_plan,
                     },
                 )
                 .await
@@ -172,7 +172,7 @@ impl ExecutorInvocation {
                         sandbox_prepared,
                         active_input_source,
                         pre_spawn_timing: Some(pre_spawn_timing),
-                        session_history_materializer,
+                        session_history_restore_plan,
                     },
                 )
                 .await
@@ -211,6 +211,7 @@ impl ExecutorInvocation {
                         network_log_session: None,
                         workspace_image: None,
                         discovered_cli_agent_session_id: None,
+                        restored_session_identity: None,
                     },
                     exit_code,
                     err,
@@ -290,6 +291,7 @@ impl FinalizationPhase {
             network_log_session,
             workspace_image,
             discovered_cli_agent_session_id,
+            restored_session_identity,
         } = outcome;
 
         let completion_payload = CompletionPayload::new(
@@ -313,6 +315,7 @@ impl FinalizationPhase {
                 profile_name,
                 cli_agent_session_id,
                 discovered_cli_agent_session_id,
+                restored_session_identity,
                 source_ip,
                 network_log_session,
                 workspace_image,
@@ -453,7 +456,7 @@ pub(super) fn spawn_job(
         reuse_entry,
         reuse_result,
         pre_spawn_timing,
-        session_history_materializer,
+        session_history_restore_plan,
         active_cli_agent_session_guard,
     } = request;
     let (context, completion_auth, active_input_source) = claimed.into_parts();
@@ -543,7 +546,7 @@ pub(super) fn spawn_job(
         reuse_entry,
         reuse_result,
         pre_spawn_timing,
-        session_history_materializer,
+        session_history_restore_plan,
         cancel: job_cancel.token(),
         sandbox_token: sandbox_token.clone(),
         sandbox_prepared,
