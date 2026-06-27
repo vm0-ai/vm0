@@ -222,6 +222,7 @@ def _find_rule_overlaps(
 
 
 def test_firewall_rule_overlap_helper_detects_request_overlaps():
+    assert _rules_overlap("GET /v4/items/{id}", "GET /v4/items/{id}")
     assert _rules_overlap(
         "ANY /v4/pages/assets/{rest*}",
         "POST /v4/pages/assets/upload",
@@ -230,6 +231,12 @@ def test_firewall_rule_overlap_helper_detects_request_overlaps():
         "POST /v4/accounts/{account_id}/workers/assets/{action}",
         "POST /v4/accounts/{account_id}/workers/assets/upload",
     )
+    assert _rules_overlap("GET /files/file-{id}", "GET /files/{slug}")
+    assert _rules_overlap("GET /v4/{rest*}", "GET /v4")
+    assert _rules_overlap("GET /v4/{rest+}", "GET /v4/pages")
+    assert not _rules_overlap("GET /files/file-{id}", "GET /files/user-{id}")
+    assert not _rules_overlap("GET /v4/{rest+}", "GET /v4")
+    assert not _rules_overlap("GET /v4/items", "POST /v4/items")
     assert not _rules_overlap(
         "POST /v4/accounts/{account_id}/workers/dispatch/namespaces/"
         "{dispatch_namespace}/scripts/{script_name}/assets-upload-session",

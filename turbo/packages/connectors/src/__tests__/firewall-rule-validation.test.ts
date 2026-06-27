@@ -29,9 +29,6 @@ const FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS = 60_000;
 const ALLOWED_FIREWALL_BASE_OVERLAPS = new Set([
   // `{network}` currently also matches `api`; avoid adding more Alchemy overlaps.
   "alchemy[0] https://{network}.g.alchemy.com <-> alchemy[1] https://api.g.alchemy.com",
-  // Cloudflare intentionally has one connector-auth API and one authless upload API on the same base;
-  // cloudflare.test.ts checks their request-level route sets stay disjoint.
-  "cloudflare[0] https://api.cloudflare.com/client <-> cloudflare[1] https://api.cloudflare.com/client",
   // Meta and Instagram share the Facebook Graph API origin.
   "instagram[1] https://graph.facebook.com <-> meta-ads[0] https://graph.facebook.com",
   "instagram[1] https://graph.facebook.com <-> meta-ads[1] https://graph.facebook.com",
