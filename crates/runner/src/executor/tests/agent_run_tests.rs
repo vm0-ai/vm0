@@ -415,7 +415,13 @@ async fn run_in_sandbox_skips_verified_session_history_restore() {
             },
         },
     });
-    let identity = RestoredSessionIdentity::from_context(&ctx).expect("identity");
+    let identity = RestoredSessionIdentity::from_context(&ctx)
+        .expect("identity")
+        .with_guest_history(
+            history.len() as u64,
+            "/home/user/.claude/projects/-home-user-workspace/sess-skip-123.jsonl",
+        );
+    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
     let mut telemetry = test_telemetry(&config, &ctx);
 
     let result = run_in_sandbox(
@@ -479,6 +485,7 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
         },
     });
     let expected_identity = RestoredSessionIdentity::from_context(&ctx).expect("identity");
+    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
         ctx.resume_session.as_ref(),
@@ -530,6 +537,64 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
         ops.iter().any(|op| op.0 == "session_restore" && op.1),
         "expected restore telemetry, got: {ops:?}"
     );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_clears_restored_identity_when_history_changes_before_parking() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let history = br#"{"type":"init"}"#;
+    let server = MockServer::start_async().await;
+    server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-mutated-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: server.url("/history.blob?token=secret"),
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+    let mut changed_history = history.to_vec();
+    changed_history[0] = b'[';
+    sandbox.push_read_file_result(Ok(Some(changed_history)));
+    let materializer = SessionHistoryMaterializer::start_cancellable(
+        &config.http,
+        ctx.resume_session.as_ref(),
+        tokio_util::sync::CancellationToken::new(),
+    );
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::Reused,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+            .with_session_history_restore_plan(SessionHistoryRestorePlan::Prestarted {
+                materializer,
+                fallback: None,
+            }),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    assert_eq!(result.restored_session_identity, None);
 }
 
 #[tokio::test]

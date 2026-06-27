@@ -5,9 +5,10 @@ use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, ProcessControlMode, ProcessOutputMode,
     Sandbox, StartProcessRequest,
 };
+use sha2::{Digest, Sha256};
 use shell_quote::quote_shell_arg;
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use super::diagnostics::{
     AgentBootstrapAbnormalExitLogContext, AgentStdoutStreamDiagnostics, StdoutDrainReport,
@@ -38,6 +39,7 @@ use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, GuestDownloadManifest};
 
 const AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
+const RESTORED_SESSION_IDENTITY_VERIFY_MAX_BYTES: u64 = 1024 * 1024;
 const SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR: &str = "session history download failed";
 const SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR: &str =
     "session history materialization failed";
@@ -88,6 +90,81 @@ pub(super) fn build_agent_start_command(run_agent_path: &str) -> String {
         fi; \
         exec {run_agent_path} 2>&1"
     )
+}
+
+async fn verify_restored_session_identity_for_reuse(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    identity: Option<RestoredSessionIdentity>,
+) -> Option<RestoredSessionIdentity> {
+    let identity = identity?;
+    let Some(expected_size) = identity.history_size_bytes() else {
+        debug!(
+            run_id = %context.run_id,
+            "restored session identity cannot be verified without history size"
+        );
+        return None;
+    };
+    let Some(guest_history_path) = identity.guest_history_path() else {
+        debug!(
+            run_id = %context.run_id,
+            "restored session identity cannot be verified without guest history path"
+        );
+        return None;
+    };
+    let Some(read_limit) = expected_size.checked_add(1) else {
+        debug!(
+            run_id = %context.run_id,
+            "restored session identity cannot be verified because history size overflowed"
+        );
+        return None;
+    };
+    if read_limit > RESTORED_SESSION_IDENTITY_VERIFY_MAX_BYTES {
+        debug!(
+            run_id = %context.run_id,
+            expected_size,
+            "restored session identity verification skipped for large history"
+        );
+        return None;
+    }
+
+    let read_result = sandbox.read_file(guest_history_path, read_limit).await;
+    let bytes = match read_result {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => {
+            debug!(
+                run_id = %context.run_id,
+                "restored session identity invalidated because history file is missing"
+            );
+            return None;
+        }
+        Err(_) => {
+            debug!(
+                run_id = %context.run_id,
+                "restored session identity verification failed"
+            );
+            return None;
+        }
+    };
+    if bytes.len() as u64 != expected_size {
+        debug!(
+            run_id = %context.run_id,
+            expected_size,
+            actual_size = bytes.len(),
+            "restored session identity invalidated because history size changed"
+        );
+        return None;
+    }
+    let actual_hash = hex::encode(Sha256::digest(&bytes));
+    if actual_hash != identity.history_hash() {
+        debug!(
+            run_id = %context.run_id,
+            "restored session identity invalidated because history hash changed"
+        );
+        return None;
+    }
+
+    Some(identity)
 }
 
 pub(super) struct ProcessCancelTimeouts {
@@ -457,7 +534,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             .as_ref()
             .or(context.resume_session.as_ref());
         if let Some(session) = resume_session {
-            let requested_identity = RestoredSessionIdentity::from_context(context);
             let t = Instant::now();
             let result = restore_session(sandbox, context, session).await;
             let err = result.as_ref().err().map(|e| e.to_string());
@@ -467,8 +543,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 result.is_ok(),
                 err.as_deref(),
             );
-            session_restore_diagnostics = Some(result?);
-            restored_session_identity = requested_identity;
+            let diagnostics = result?;
+            restored_session_identity = diagnostics.restored_session_identity.clone();
+            session_restore_diagnostics = Some(diagnostics);
         }
     }
 
@@ -908,6 +985,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     } else {
         None
     };
+
+    if failure.is_none() {
+        restored_session_identity =
+            verify_restored_session_identity_for_reuse(sandbox, context, restored_session_identity)
+                .await;
+    }
 
     let agent_result = match failure {
         Some(failure) => AgentExecutionResult {

@@ -20,12 +20,14 @@ impl RestoredSessionFramework {
     }
 }
 
-#[derive(Clone, Eq, PartialEq)]
+#[derive(Clone, Eq)]
 pub(crate) struct RestoredSessionIdentity {
     framework: RestoredSessionFramework,
     restore_format_version: u8,
     history_ref_kind: ResumeSessionHistoryRefKind,
     history_hash: String,
+    history_size_bytes: Option<u64>,
+    guest_history_path: Option<String>,
 }
 
 impl RestoredSessionIdentity {
@@ -33,12 +35,16 @@ impl RestoredSessionIdentity {
         framework: RestoredSessionFramework,
         history_ref_kind: ResumeSessionHistoryRefKind,
         history_hash: impl Into<String>,
+        history_size_bytes: Option<u64>,
+        guest_history_path: Option<String>,
     ) -> Self {
         Self {
             framework,
             restore_format_version: framework.restore_format_version(),
             history_ref_kind,
             history_hash: history_hash.into(),
+            history_size_bytes,
+            guest_history_path,
         }
     }
 
@@ -48,7 +54,40 @@ impl RestoredSessionIdentity {
             RestoredSessionFramework::ClaudeCode,
             ResumeSessionHistoryRefKind::Blob,
             history_hash,
+            None,
+            None,
         )
+    }
+
+    pub(crate) fn with_guest_history(
+        mut self,
+        history_size_bytes: u64,
+        guest_history_path: impl Into<String>,
+    ) -> Self {
+        self.history_size_bytes = Some(history_size_bytes);
+        self.guest_history_path = Some(guest_history_path.into());
+        self
+    }
+
+    pub(crate) fn history_hash(&self) -> &str {
+        &self.history_hash
+    }
+
+    pub(crate) fn history_size_bytes(&self) -> Option<u64> {
+        self.history_size_bytes
+    }
+
+    pub(crate) fn guest_history_path(&self) -> Option<&str> {
+        self.guest_history_path.as_deref()
+    }
+}
+
+impl PartialEq for RestoredSessionIdentity {
+    fn eq(&self, other: &Self) -> bool {
+        self.framework == other.framework
+            && self.restore_format_version == other.restore_format_version
+            && self.history_ref_kind == other.history_ref_kind
+            && self.history_hash == other.history_hash
     }
 }
 
@@ -59,6 +98,11 @@ impl fmt::Debug for RestoredSessionIdentity {
             .field("restore_format_version", &self.restore_format_version)
             .field("history_ref_kind", &self.history_ref_kind)
             .field("history_hash", &"[redacted]")
+            .field("history_size_bytes", &self.history_size_bytes)
+            .field(
+                "guest_history_path",
+                &self.guest_history_path.as_ref().map(|_| "[redacted]"),
+            )
             .finish()
     }
 }

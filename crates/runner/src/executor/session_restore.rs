@@ -30,6 +30,8 @@ impl RestoredSessionIdentity {
             framework,
             history_ref.kind,
             history_ref.hash.clone(),
+            history_ref.size,
+            None,
         ))
     }
 }
@@ -46,6 +48,7 @@ pub(super) struct SessionRestoreDiagnostics {
     pub(super) framework: &'static str,
     pub(super) session_fingerprint: String,
     pub(super) bytes_in: usize,
+    pub(super) restored_session_identity: Option<RestoredSessionIdentity>,
 }
 
 pub(super) async fn restore_session(
@@ -110,6 +113,9 @@ pub(super) async fn restore_claude_session(
         framework: "claude-code",
         session_fingerprint: diagnostic_session_fingerprint(&session.cli_agent_session_id),
         bytes_in: session_history.len(),
+        restored_session_identity: RestoredSessionIdentity::from_context(context).map(|identity| {
+            identity.with_guest_history(session_history.len() as u64, session_path.clone())
+        }),
     };
     info!(
         run_id = %context.run_id,
