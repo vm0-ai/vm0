@@ -298,6 +298,11 @@ interface EffectiveConnectorScope {
   readonly allowedCustomConnectorIds: readonly string[] | undefined;
 }
 
+interface ExplicitConnectorScope {
+  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly allowedCustomConnectorIds: readonly string[];
+}
+
 // Session naming in this service:
 // - agentSessionId is the vm0 application session (`agent_sessions.id`) used
 //   for product-level continuation and future correctness checks.
@@ -435,8 +440,7 @@ export interface CreateAgentRunArgs {
       readonly workflowId: string;
     }[];
   };
-  readonly allowedConnectorTypes?: readonly ConnectorType[];
-  readonly allowedCustomConnectorIds?: readonly string[];
+  readonly connectorScope?: ExplicitConnectorScope;
   readonly validateEnvironmentReferences?: boolean;
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly queueOnConcurrencyLimit?: boolean;
@@ -4799,17 +4803,7 @@ interface PreparedRuntimeContext {
 function connectorScopeFromCreateArgs(
   args: CreateAgentRunArgs,
 ): EffectiveConnectorScope | null {
-  if (
-    args.allowedConnectorTypes === undefined &&
-    args.allowedCustomConnectorIds === undefined
-  ) {
-    return null;
-  }
-
-  return {
-    allowedConnectorTypes: args.allowedConnectorTypes ?? [],
-    allowedCustomConnectorIds: args.allowedCustomConnectorIds ?? [],
-  };
+  return args.connectorScope ?? null;
 }
 
 async function resolveEffectiveConnectorScope(args: {

@@ -837,8 +837,10 @@ function buildZeroCreateAgentRunArgs(args: {
     enforceVm0Credits: true,
     queueOnConcurrencyLimit: true,
     injectSkillVolumes: { workflows: args.workflows },
-    allowedConnectorTypes: args.allowedConnectorTypes,
-    allowedCustomConnectorIds: args.allowedCustomConnectorIds,
+    connectorScope: {
+      allowedConnectorTypes: args.allowedConnectorTypes,
+      allowedCustomConnectorIds: args.allowedCustomConnectorIds,
+    },
     validateEnvironmentReferences: false,
     zeroRunMetadata: {
       ...command.zeroRunMetadata,
@@ -941,8 +943,10 @@ export const createZeroIntegrationRun$ = command(
         enforceVm0Credits: true,
         queueOnConcurrencyLimit: true,
         injectSkillVolumes: { workflows },
-        allowedConnectorTypes,
-        allowedCustomConnectorIds,
+        connectorScope: {
+          allowedConnectorTypes,
+          allowedCustomConnectorIds,
+        },
         validateEnvironmentReferences: false,
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
