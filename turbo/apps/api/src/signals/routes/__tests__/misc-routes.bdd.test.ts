@@ -3,7 +3,7 @@ import { createHmac, randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 
 import { env } from "../../../lib/env";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 

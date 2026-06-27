@@ -1,7 +1,7 @@
 import { cronAggregateInsightsContract } from "@vm0/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { aggregateInsights$ } from "../services/cron-aggregate-insights.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 

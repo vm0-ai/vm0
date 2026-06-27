@@ -6,7 +6,7 @@ import { nowDate } from "../../lib/time";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { usageSummary$ } from "../services/usage.service";
 
 const MAX_RANGE_MS = 30 * 24 * 60 * 60 * 1000;

@@ -10,7 +10,7 @@ import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
 import { notFound, badRequestMessage } from "../../lib/error";
 import { zeroWebDownloadFile } from "../services/zero-web-download.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const c = initContract();
 

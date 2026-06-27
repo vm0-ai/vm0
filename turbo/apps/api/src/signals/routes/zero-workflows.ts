@@ -48,7 +48,7 @@ import {
   type WorkflowMember,
   type WorkflowRow,
 } from "../services/zero-workflow-data.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const workflowReadAuth = {
   requireOrganization: true,

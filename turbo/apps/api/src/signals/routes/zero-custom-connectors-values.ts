@@ -8,7 +8,7 @@ import {
   deleteCustomConnectorValues$,
   setCustomConnectorValues$,
 } from "../services/zero-custom-connector.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const setValuesInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);

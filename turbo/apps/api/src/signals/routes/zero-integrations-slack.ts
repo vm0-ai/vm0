@@ -41,7 +41,7 @@ import { userSecrets, userVariables } from "../services/zero-user-data.service";
 import { decryptPersistentSecretValue } from "../services/crypto.utils";
 import { userFeatureSwitchContext } from "../services/feature-switches.service";
 import { env } from "../../lib/env";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { bestEffort, settle } from "../utils";
 
 const c = initContract();

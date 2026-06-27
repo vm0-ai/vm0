@@ -1,7 +1,7 @@
 import { cronCleanupSandboxesContract } from "@vm0/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { cleanupSandboxes$ } from "../services/cron-cleanup-sandboxes.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 

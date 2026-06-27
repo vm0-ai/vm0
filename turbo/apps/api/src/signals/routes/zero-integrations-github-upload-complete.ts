@@ -18,7 +18,7 @@ import {
   loadActiveGithubInstallationForOrg,
 } from "../services/github-integration-files.service";
 import { recordGithubUploadedFile$ } from "../services/run-uploaded-files.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { settle } from "../utils";
 
 function routeError<Status extends 404 | 502 | 500>(

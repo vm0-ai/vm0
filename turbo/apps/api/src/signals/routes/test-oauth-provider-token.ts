@@ -6,7 +6,7 @@ import {
 
 import { env } from "../../lib/env";
 import { request$ } from "../context/hono";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import {
   isTestEndpointAllowed,
   isTestOAuthDeviceClientId,

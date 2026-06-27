@@ -10,7 +10,7 @@ import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { notFound } from "../../lib/error";
 import { zeroAgentExists } from "../services/zero-agent-data.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const agentReadAuth = {
   requireOrganization: true,

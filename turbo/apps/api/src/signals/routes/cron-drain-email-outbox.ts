@@ -2,7 +2,7 @@ import { cronDrainEmailOutboxContract } from "@vm0/api-contracts/contracts/cron"
 import { command } from "ccstate";
 
 import { now } from "../../lib/time";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import {
   cleanupExpiredEmailOutbox$,
   drainEmailOutboxBatch$,

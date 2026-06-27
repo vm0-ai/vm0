@@ -17,7 +17,7 @@ import {
   agentComposeOrgId,
   agentComposeVersionResolution,
 } from "../services/agent-composes-read.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const getComposeByNameInner$ = computed(async (get) => {
   const auth = get(authContext$);

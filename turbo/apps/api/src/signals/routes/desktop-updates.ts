@@ -3,7 +3,7 @@ import { command } from "ccstate";
 
 import { notFound } from "../../lib/error";
 import { pathParamsOf } from "../context/request";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import {
   loadDesktopDmgDownloadUrl,
   loadDesktopReleasePageUrl,

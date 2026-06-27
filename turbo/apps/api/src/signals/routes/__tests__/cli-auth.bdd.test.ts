@@ -3,7 +3,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { generateSandboxToken } from "../../auth/tokens";
 import { DEFAULT_TEST_EMAIL } from "../../services/cli-auth.service";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
@@ -11,14 +11,12 @@ import {
   createAuthDeviceApiActions,
   makeCodexAuthJson,
 } from "./helpers/api-bdd-auth-device";
-import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
-import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
+import { createAuthDeviceSupportApi } from "./helpers/api-bdd-auth-device-support";
 
 const context = testContext();
 const bdd = createBddApi(context);
 const authDevice = createAuthDeviceApiActions(context);
-const connectors = createConnectorBddApi(context);
-const misc = createMiscRoutesApi(context);
+const support = createAuthDeviceSupportApi(context);
 
 const DEVICE_CODE_EXPIRY_MS = 16 * 60 * 1000;
 
@@ -173,7 +171,7 @@ describe("AUTH-02: approval transitions and timezone", () => {
     expectCliApprovalError(reApproved.body);
     expect(reApproved.body.error).toBe("Invalid or expired device code");
 
-    const initialPreferences = await misc.readPreferences(actor);
+    const initialPreferences = await support.readPreferences(actor);
     expect(initialPreferences.body.timezone).toBeNull();
 
     const second = await authDevice.startCliDevice();
@@ -182,7 +180,7 @@ describe("AUTH-02: approval transitions and timezone", () => {
       { device_code: second.device_code, timezone: "America/Los_Angeles" },
       [200],
     );
-    const afterFirstTimezone = await misc.readPreferences(actor);
+    const afterFirstTimezone = await support.readPreferences(actor);
     expect(afterFirstTimezone.body.timezone).toBe("America/Los_Angeles");
 
     const third = await authDevice.startCliDevice();
@@ -191,7 +189,7 @@ describe("AUTH-02: approval transitions and timezone", () => {
       { device_code: third.device_code, timezone: "Asia/Tokyo" },
       [200],
     );
-    const afterSecondTimezone = await misc.readPreferences(actor);
+    const afterSecondTimezone = await support.readPreferences(actor);
     expect(afterSecondTimezone.body.timezone).toBe("America/Los_Angeles");
 
     const freshActor = bdd.user();
@@ -201,7 +199,7 @@ describe("AUTH-02: approval transitions and timezone", () => {
       { device_code: fourth.device_code, timezone: "Not/AZone" },
       [200],
     );
-    const invalidTimezone = await misc.readPreferences(freshActor);
+    const invalidTimezone = await support.readPreferences(freshActor);
     expect(invalidTimezone.body.timezone).toBeNull();
   });
 });
@@ -710,7 +708,7 @@ describe("CLI-TEST: test-connector", () => {
   it("seeds connector state readable through the connectors API", async () => {
     const actor = bdd.user();
     await authDevice.provisionTestOrg(actor);
-    await connectors.updateFeatureSwitches(actor, {
+    await support.updateFeatureSwitches(actor, {
       [FeatureSwitchKey.TestOauthConnector]: true,
     });
 
@@ -731,10 +729,7 @@ describe("CLI-TEST: test-connector", () => {
       orgId: actor.orgId,
     });
 
-    const oauthState = await connectors.readConnectorByType(
-      actor,
-      "test-oauth",
-    );
+    const oauthState = await support.readConnectorByType(actor, "test-oauth");
     expect(oauthState).toMatchObject({
       authMethod: "oauth",
       externalUsername: "e2e-test-oauth",
@@ -759,7 +754,7 @@ describe("CLI-TEST: test-connector", () => {
       connectorType: "test-oauth",
       orgId: actor.orgId,
     });
-    const apiState = await connectors.readConnectorByType(actor, "test-oauth");
+    const apiState = await support.readConnectorByType(actor, "test-oauth");
     expect(apiState.authMethod).toBe("api");
 
     await authDevice.requestTestConnector(
@@ -955,7 +950,7 @@ describe("CLI-TEST: test-enable-connector", () => {
 
 describe("CLI-TEST: test-codex-oauth", () => {
   async function readCodexProvider(actor: ReturnType<typeof bdd.user>) {
-    const providers = await misc.listModelProviders(actor);
+    const providers = await support.listModelProviders(actor);
     const provider = providers.body.modelProviders.find((candidate) => {
       return candidate.type === "codex-oauth-token";
     });

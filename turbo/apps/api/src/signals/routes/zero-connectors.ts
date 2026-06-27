@@ -34,7 +34,7 @@ import {
   zeroConnectorSearch,
 } from "../services/zero-connector-data.service";
 import { userConnectorAvailability } from "../services/connector-availability.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { getConnectorOAuthCallbackOrigin } from "./connector-oauth-origin";
 import { CONNECTOR_OAUTH_COOKIE_MAX_AGE_SECONDS } from "./connector-oauth-route-state";
 import {

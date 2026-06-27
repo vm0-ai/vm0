@@ -103,14 +103,42 @@ import type {
 import { HttpResponse, http } from "msw";
 import type { z } from "zod";
 
-import { createApp } from "../../../../app-factory";
+import { createAppWithRoutes } from "../../../../app-factory-core";
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv } from "../../../../lib/env";
 import { server } from "../../../../mocks/server";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { agentComposesRoutes } from "../../agent-composes";
+import { agentComposesByIdRoutes } from "../../agent-composes-id";
+import { agentComposesMetadataRoutes } from "../../agent-composes-metadata";
+import { agentComposesReadRoutes } from "../../agent-composes-read";
+import { authMeRoutes } from "../../auth-me";
+import { zeroAgentsRoutes } from "../../zero-agents";
+import { zeroApiKeysRoutes } from "../../zero-api-keys";
+import { zeroApiKeysDeleteRoutes } from "../../zero-api-keys-delete";
+import { zeroComposesRoutes } from "../../zero-composes";
+import { zeroCustomConnectorsRoutes } from "../../zero-custom-connectors";
+import { zeroCustomConnectorsCreateRoutes } from "../../zero-custom-connectors-create";
+import { zeroCustomConnectorsDeleteRoutes } from "../../zero-custom-connectors-delete";
+import { zeroCustomConnectorsGetRoutes } from "../../zero-custom-connectors-get";
+import { zeroCustomConnectorsPatchRoutes } from "../../zero-custom-connectors-patch";
+import { zeroCustomConnectorSecretDeleteRoutes } from "../../zero-custom-connectors-secret-delete";
+import { zeroCustomConnectorsSecretSetRoutes } from "../../zero-custom-connectors-secret-set";
+import { zeroCustomConnectorsUpdateRoutes } from "../../zero-custom-connectors-update";
+import { zeroCustomConnectorValuesRoutes } from "../../zero-custom-connectors-values";
+import { zeroDefaultAgentRoutes } from "../../zero-default-agent";
+import { zeroOnboardingCompleteLimitedFreeRoutes } from "../../zero-onboarding-complete-limited-free";
+import { zeroOnboardingSetupRoutes } from "../../zero-onboarding-setup";
+import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
+import { zeroOrgDeleteRoutes } from "../../zero-org-delete";
+import { zeroOrgInviteRoutes } from "../../zero-org-invite";
+import { zeroOrgLogoRoutes } from "../../zero-org-logo";
+import { zeroOrgMembersRoutes } from "../../zero-org-members";
+import { zeroOrgMembershipRequestsRoutes } from "../../zero-org-membership-requests";
+import { zeroOrgReadRoutes } from "../../zero-org-read";
+import { zeroSecretsRoutes } from "../../zero-secrets";
+import { zeroTeamRoutes } from "../../zero-team";
+import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
@@ -222,6 +250,40 @@ interface RawJsonResponse {
   readonly status: number;
   readonly body: unknown;
 }
+
+const authOrgRoutes = [
+  ...authMeRoutes,
+  ...zeroApiKeysRoutes,
+  ...zeroApiKeysDeleteRoutes,
+  ...zeroOnboardingStatusRoutes,
+  ...zeroOnboardingSetupRoutes,
+  ...zeroOnboardingCompleteLimitedFreeRoutes,
+  ...zeroSecretsRoutes,
+  ...zeroUserPreferencesRoutes,
+  ...zeroOrgReadRoutes,
+  ...zeroOrgDeleteRoutes,
+  ...zeroOrgMembersRoutes,
+  ...zeroOrgInviteRoutes,
+  ...zeroOrgMembershipRequestsRoutes,
+  ...zeroOrgLogoRoutes,
+  ...zeroTeamRoutes,
+  ...zeroAgentsRoutes,
+  ...zeroDefaultAgentRoutes,
+  ...agentComposesRoutes,
+  ...agentComposesReadRoutes,
+  ...agentComposesByIdRoutes,
+  ...agentComposesMetadataRoutes,
+  ...zeroComposesRoutes,
+  ...zeroCustomConnectorsRoutes,
+  ...zeroCustomConnectorsCreateRoutes,
+  ...zeroCustomConnectorsGetRoutes,
+  ...zeroCustomConnectorsUpdateRoutes,
+  ...zeroCustomConnectorsPatchRoutes,
+  ...zeroCustomConnectorsDeleteRoutes,
+  ...zeroCustomConnectorsSecretSetRoutes,
+  ...zeroCustomConnectorSecretDeleteRoutes,
+  ...zeroCustomConnectorValuesRoutes,
+] as const;
 
 function isBearerActor(actor: LogoUploadActor): actor is BearerActor {
   return "bearerToken" in actor;
@@ -394,6 +456,13 @@ function defaultOrgMember(actor: ApiTestUser): BddOrgMember {
 export function createAuthOrgAgentsBddApi(context: TestContext) {
   const routeMocks = createZeroRouteMocks(context);
 
+  function testApp() {
+    return createAppWithRoutes({
+      signal: context.signal,
+      routes: authOrgRoutes,
+    });
+  }
+
   function authenticate(actor: ApiTestUser | null): AuthHeaders {
     if (!actor) {
       context.mocks.clerk.authenticateRequest.mockResolvedValue({
@@ -475,7 +544,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     if (auth.authorization) {
       headers.authorization = auth.authorization;
     }
-    const response = await createApp({ signal: context.signal }).request(path, {
+    const response = await testApp().request(path, {
       method,
       headers,
       body: JSON.stringify(body),
@@ -617,7 +686,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroOrgLogoContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgLogoContract,
+      );
       return await accept(
         client.get({ headers: authenticate(actor) }),
         statuses,
@@ -628,7 +699,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroOrgLogoContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgLogoContract,
+      );
       return await accept(
         client.delete({ headers: authenticate(actor) }),
         statuses,
@@ -651,10 +724,11 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
           headers.authorization = auth.authorization;
         }
       }
-      const response = await createApp({ signal: context.signal }).request(
-        "/api/zero/org/logo",
-        { method: "POST", headers, body: form },
-      );
+      const response = await testApp().request("/api/zero/org/logo", {
+        method: "POST",
+        headers,
+        body: form,
+      });
       const body: unknown = await response.json();
       if (!(statuses as readonly number[]).includes(response.status)) {
         throw new Error(
@@ -681,7 +755,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       readonly email: string;
     }> {
       mockClerkUsers([actor]);
-      const client = setupApp({ context })(authContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        authContract,
+      );
       const response = await accept(
         client.me({ headers: authenticate(actor) }),
         [200],
@@ -696,7 +772,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       if (actor) {
         mockClerkUsers([actor]);
       }
-      const client = setupApp({ context })(authContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        authContract,
+      );
       return await accept(
         client.me({ headers: authenticate(actor) }),
         statuses,
@@ -709,7 +787,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404 | 500)[],
     ) {
       mockClerkUsers([profileActor]);
-      const client = setupApp({ context })(authContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        authContract,
+      );
       return await accept(
         client.me({ headers: bearerHeaders(token) }),
         statuses,
@@ -720,7 +800,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       body: CreateApiKeyRequest,
     ): Promise<CreateApiKeyResponse> {
-      const client = setupApp({ context })(apiKeysContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        apiKeysContract,
+      );
       const response = await accept(
         client.create({ headers: authenticate(actor), body }),
         [201],
@@ -733,7 +815,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: CreateApiKeyRequest,
       statuses: readonly (201 | 400 | 401 | 500)[],
     ) {
-      const client = setupApp({ context })(apiKeysContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        apiKeysContract,
+      );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         statuses,
@@ -741,7 +825,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     },
 
     async listApiKeys(actor: ApiTestUser): Promise<ApiKeyListResponse> {
-      const client = setupApp({ context })(apiKeysContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        apiKeysContract,
+      );
       const response = await accept(
         client.list({ headers: authenticate(actor) }),
         [200],
@@ -750,7 +836,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     },
 
     async deleteApiKey(actor: ApiTestUser, apiKeyId: string): Promise<void> {
-      const client = setupApp({ context })(apiKeysByIdContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        apiKeysByIdContract,
+      );
       await accept(
         client.delete({
           headers: authenticate(actor),
@@ -763,7 +851,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async readOnboardingStatus(
       actor: ApiTestUser,
     ): Promise<OnboardingStatusResponse> {
-      const client = setupApp({ context })(onboardingStatusContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        onboardingStatusContract,
+      );
       const response = await accept(
         client.getStatus({ headers: authenticate(actor) }),
         [200],
@@ -772,7 +862,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     },
 
     async setupOnboarding(actor: ApiTestUser, body: OnboardingSetupBody) {
-      const client = setupApp({ context })(onboardingSetupContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        onboardingSetupContract,
+      );
       return await accept(
         client.setup({
           headers: authenticate(actor),
@@ -788,7 +880,7 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         typeof onboardingCompleteLimitedFreeContract.complete.body
       > = {},
     ) {
-      const client = setupApp({ context })(
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
         onboardingCompleteLimitedFreeContract,
       );
       return await accept(
@@ -805,7 +897,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: OnboardingSetupBody,
       statuses: readonly S[],
     ) {
-      const client = setupApp({ context })(onboardingSetupContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        onboardingSetupContract,
+      );
       return await accept(
         client.setup({
           headers: authenticate(actor),
@@ -819,7 +913,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       body: SetSecretRequest,
     ): Promise<SecretResponse> {
-      const client = setupApp({ context })(zeroSecretsContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroSecretsContract,
+      );
       const response = await accept(
         client.set({ headers: authenticate(actor), body }),
         [200, 201],
@@ -832,7 +928,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: SetSecretRequest,
       statuses: readonly (200 | 201 | 400 | 401 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroSecretsContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroSecretsContract,
+      );
       return await accept(
         client.set({ headers: authenticate(actor), body }),
         statuses,
@@ -840,7 +938,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     },
 
     async listSecrets(actor: ApiTestUser): Promise<SecretListResponse> {
-      const client = setupApp({ context })(zeroSecretsContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroSecretsContract,
+      );
       const response = await accept(
         client.list({ headers: authenticate(actor) }),
         [200],
@@ -849,7 +949,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     },
 
     async deleteSecret(actor: ApiTestUser, name: string): Promise<void> {
-      const client = setupApp({ context })(zeroSecretsByNameContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroSecretsByNameContract,
+      );
       await accept(
         client.delete({ headers: authenticate(actor), params: { name } }),
         [204],
@@ -860,7 +962,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       body: SetVariableRequest,
     ): Promise<VariableResponse> {
-      const client = setupApp({ context })(zeroVariablesContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroVariablesContract,
+      );
       const response = await accept(
         client.set({ headers: authenticate(actor), body }),
         [200, 201],
@@ -869,7 +973,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     },
 
     async listVariables(actor: ApiTestUser): Promise<VariableListResponse> {
-      const client = setupApp({ context })(zeroVariablesContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroVariablesContract,
+      );
       const response = await accept(
         client.list({ headers: authenticate(actor) }),
         [200],
@@ -878,7 +984,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     },
 
     async deleteVariable(actor: ApiTestUser, name: string): Promise<void> {
-      const client = setupApp({ context })(zeroVariablesByNameContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroVariablesByNameContract,
+      );
       await accept(
         client.delete({ headers: authenticate(actor), params: { name } }),
         [204],
@@ -888,7 +996,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async readPreferences(
       actor: ApiTestUser,
     ): Promise<UserPreferencesResponse> {
-      const client = setupApp({ context })(zeroUserPreferencesContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroUserPreferencesContract,
+      );
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
         [200],
@@ -900,7 +1010,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       body: UpdateUserPreferencesRequest,
     ): Promise<UserPreferencesResponse> {
-      const client = setupApp({ context })(zeroUserPreferencesContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroUserPreferencesContract,
+      );
       const response = await accept(
         client.update({ headers: authenticate(actor), body }),
         [200],
@@ -909,7 +1021,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     },
 
     async readOrg(actor: ApiTestUser): Promise<OrgResponse> {
-      const client = setupApp({ context })(zeroOrgContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgContract,
+      );
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
         [200],
@@ -921,7 +1035,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroOrgContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgContract,
+      );
       return await accept(
         client.get({ headers: authenticate(actor) }),
         statuses,
@@ -932,7 +1048,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       body: UpdateOrgRequest,
     ): Promise<OrgResponse> {
-      const client = setupApp({ context })(zeroOrgContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgContract,
+      );
       const response = await accept(
         client.update({ headers: authenticate(actor), body }),
         [200],
@@ -945,7 +1063,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: UpdateOrgRequest,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroOrgContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgContract,
+      );
       return await accept(
         client.update({ headers: authenticate(actor), body }),
         statuses,
@@ -953,7 +1073,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     },
 
     async listOrgs(actor: ApiTestUser) {
-      const client = setupApp({ context })(zeroOrgListContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgListContract,
+      );
       const response = await accept(
         client.list({ headers: authenticate(actor) }),
         [200],
@@ -962,7 +1084,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     },
 
     async listMembers(actor: ApiTestUser): Promise<OrgMembersResponse> {
-      const client = setupApp({ context })(zeroOrgMembersContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgMembersContract,
+      );
       const response = await accept(
         client.members({ headers: authenticate(actor) }),
         [200],
@@ -974,7 +1098,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       token: string,
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroOrgContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgContract,
+      );
       return await accept(
         client.get({ headers: bearerHeaders(token) }),
         statuses,
@@ -986,7 +1112,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: UpdateOrgRequest,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroOrgContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgContract,
+      );
       return await accept(
         client.update({ headers: bearerHeaders(token), body }),
         statuses,
@@ -996,7 +1124,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async requestListMembersWithBearer<
       S extends 200 | 400 | 401 | 403 | 404 | 500,
     >(token: string, statuses: readonly S[]) {
-      const client = setupApp({ context })(zeroOrgMembersContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgMembersContract,
+      );
       return await accept(
         client.members({ headers: bearerHeaders(token) }),
         statuses,
@@ -1007,7 +1137,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       body: InviteOrgMemberRequest,
     ): Promise<OrgMessageResponse> {
-      const client = setupApp({ context })(zeroOrgInviteContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgInviteContract,
+      );
       const response = await accept(
         client.invite({ headers: authenticate(actor), body }),
         [200],
@@ -1020,7 +1152,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: InviteOrgMemberRequest,
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroOrgInviteContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgInviteContract,
+      );
       return await accept(
         client.invite({ headers: authenticate(actor), body }),
         statuses,
@@ -1031,7 +1165,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       invitationId: string,
     ): Promise<OrgMessageResponse> {
-      const client = setupApp({ context })(zeroOrgInviteContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgInviteContract,
+      );
       const response = await accept(
         client.revoke({
           headers: authenticate(actor),
@@ -1047,7 +1183,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       invitationId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroOrgInviteContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgInviteContract,
+      );
       return await accept(
         client.revoke({
           headers: authenticate(actor),
@@ -1061,7 +1199,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       body: UpdateOrgMemberRoleRequest,
     ): Promise<OrgMessageResponse> {
-      const client = setupApp({ context })(zeroOrgMembersContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgMembersContract,
+      );
       const response = await accept(
         client.updateRole({ headers: authenticate(actor), body }),
         [200],
@@ -1074,7 +1214,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: UpdateOrgMemberRoleRequest,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroOrgMembersContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgMembersContract,
+      );
       return await accept(
         client.updateRole({ headers: authenticate(actor), body }),
         statuses,
@@ -1085,7 +1227,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       body: RemoveOrgMemberRequest,
     ): Promise<OrgMessageResponse> {
-      const client = setupApp({ context })(zeroOrgMembersContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgMembersContract,
+      );
       const response = await accept(
         client.removeMember({ headers: authenticate(actor), body }),
         [200],
@@ -1098,7 +1242,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: RemoveOrgMemberRequest,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroOrgMembersContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgMembersContract,
+      );
       return await accept(
         client.removeMember({ headers: authenticate(actor), body }),
         statuses,
@@ -1109,7 +1255,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       body: MembershipRequestAction,
     ): Promise<OrgMessageResponse> {
-      const client = setupApp({ context })(zeroOrgMembershipRequestsContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgMembershipRequestsContract,
+      );
       const response = await accept(
         client.accept({ headers: authenticate(actor), body }),
         [200],
@@ -1121,7 +1269,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       body: MembershipRequestAction,
     ): Promise<OrgMessageResponse> {
-      const client = setupApp({ context })(zeroOrgMembershipRequestsContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgMembershipRequestsContract,
+      );
       const response = await accept(
         client.reject({ headers: authenticate(actor), body }),
         [200],
@@ -1134,7 +1284,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: MembershipRequestAction,
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroOrgMembershipRequestsContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgMembershipRequestsContract,
+      );
       return await accept(
         client.accept({ headers: authenticate(actor), body }),
         statuses,
@@ -1146,7 +1298,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: MembershipRequestAction,
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroOrgMembershipRequestsContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgMembershipRequestsContract,
+      );
       return await accept(
         client.reject({ headers: authenticate(actor), body }),
         statuses,
@@ -1154,7 +1308,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     },
 
     async leaveOrg(actor: ApiTestUser): Promise<OrgMessageResponse> {
-      const client = setupApp({ context })(zeroOrgLeaveContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgLeaveContract,
+      );
       const response = await accept(
         client.leave({ headers: authenticate(actor), body: {} }),
         [200],
@@ -1166,7 +1322,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroOrgLeaveContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgLeaveContract,
+      );
       return await accept(
         client.leave({ headers: authenticate(actor), body: {} }),
         statuses,
@@ -1177,7 +1335,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       slug: string,
     ): Promise<OrgMessageResponse> {
-      const client = setupApp({ context })(zeroOrgDeleteContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgDeleteContract,
+      );
       const response = await accept(
         client.delete({ headers: authenticate(actor), body: { slug } }),
         [200],
@@ -1190,7 +1350,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       slug: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroOrgDeleteContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroOrgDeleteContract,
+      );
       return await accept(
         client.delete({ headers: authenticate(actor), body: { slug } }),
         statuses,
@@ -1198,7 +1360,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     },
 
     async listTeam(actor: ApiTestUser): Promise<readonly TeamComposeItem[]> {
-      const client = setupApp({ context })(zeroTeamContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroTeamContract,
+      );
       const response = await accept(
         client.list({ headers: authenticate(actor) }),
         [200],
@@ -1210,7 +1374,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 403)[],
     ) {
-      const client = setupApp({ context })(zeroTeamContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroTeamContract,
+      );
       return await accept(
         client.list({ headers: authenticate(actor) }),
         statuses,
@@ -1221,7 +1387,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       agentId: string,
     ): Promise<readonly string[]> {
-      const client = setupApp({ context })(zeroUserConnectorsContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroUserConnectorsContract,
+      );
       const response = await accept(
         client.get({
           headers: authenticate(actor),
@@ -1236,7 +1404,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       body: ZeroAgentRequest = {},
     ): Promise<ZeroAgentResponse> {
-      const client = setupApp({ context })(zeroAgentsMainContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroAgentsMainContract,
+      );
       const response = await accept(
         client.create({ headers: authenticate(actor), body }),
         [201],
@@ -1249,7 +1419,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: ZeroAgentRequest,
       statuses: readonly (201 | 400 | 401 | 403 | 409 | 422)[],
     ) {
-      const client = setupApp({ context })(zeroAgentsMainContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroAgentsMainContract,
+      );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         statuses,
@@ -1259,7 +1431,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async listAgents(
       actor: ApiTestUser,
     ): Promise<readonly ZeroAgentResponse[]> {
-      const client = setupApp({ context })(zeroAgentsMainContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroAgentsMainContract,
+      );
       const response = await accept(
         client.list({ headers: authenticate(actor) }),
         [200],
@@ -1271,7 +1445,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       agentId: string,
     ): Promise<ZeroAgentResponse> {
-      const client = setupApp({ context })(zeroAgentsByIdContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroAgentsByIdContract,
+      );
       const response = await accept(
         client.get({ params: { id: agentId }, headers: authenticate(actor) }),
         [200],
@@ -1284,7 +1460,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       agentId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroAgentsByIdContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroAgentsByIdContract,
+      );
       return await accept(
         client.get({ params: { id: agentId }, headers: authenticate(actor) }),
         statuses,
@@ -1296,7 +1474,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       agentId: string,
       body: ZeroAgentMetadataRequest,
     ): Promise<ZeroAgentResponse> {
-      const client = setupApp({ context })(zeroAgentsByIdContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroAgentsByIdContract,
+      );
       const response = await accept(
         client.updateMetadata({
           params: { id: agentId },
@@ -1314,7 +1494,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: ZeroAgentMetadataRequest,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409)[],
     ) {
-      const client = setupApp({ context })(zeroAgentsByIdContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroAgentsByIdContract,
+      );
       return await accept(
         client.updateMetadata({
           params: { id: agentId },
@@ -1326,7 +1508,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     },
 
     async deleteAgent(actor: ApiTestUser, agentId: string): Promise<void> {
-      const client = setupApp({ context })(zeroAgentsByIdContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroAgentsByIdContract,
+      );
       await accept(
         client.delete({
           params: { id: agentId },
@@ -1341,7 +1525,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       agentId: string,
       statuses: readonly (204 | 400 | 401 | 403 | 404 | 409)[],
     ) {
-      const client = setupApp({ context })(zeroAgentsByIdContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroAgentsByIdContract,
+      );
       return await accept(
         client.delete({
           params: { id: agentId },
@@ -1355,7 +1541,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       agentId: string | null,
     ): Promise<{ readonly agentId: string | null }> {
-      const client = setupApp({ context })(orgDefaultAgentContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        orgDefaultAgentContract,
+      );
       const response = await accept(
         client.setDefaultAgent({
           headers: authenticate(actor),
@@ -1372,7 +1560,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       agentId: string | null,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409)[],
     ) {
-      const client = setupApp({ context })(orgDefaultAgentContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        orgDefaultAgentContract,
+      );
       return await accept(
         client.setDefaultAgent({
           headers: authenticate(actor),
@@ -1395,7 +1585,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       readonly action: "created" | "existing";
       readonly updatedAt: string;
     }> {
-      const client = setupApp({ context })(composesMainContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        composesMainContract,
+      );
       const response = await accept(
         client.create({ headers: authenticate(actor), body: { content } }),
         [200, 201],
@@ -1408,7 +1600,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       content: ComposeContent,
       statuses: readonly (200 | 201 | 400 | 401 | 403)[],
     ) {
-      const client = setupApp({ context })(composesMainContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        composesMainContract,
+      );
       return await accept(
         client.create({ headers: authenticate(actor), body: { content } }),
         statuses,
@@ -1419,7 +1613,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       composeId: string,
     ): Promise<ComposeResponse> {
-      const client = setupApp({ context })(composesByIdContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        composesByIdContract,
+      );
       const response = await accept(
         client.getById({
           headers: authenticate(actor),
@@ -1435,7 +1631,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       composeId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(composesByIdContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        composesByIdContract,
+      );
       return await accept(
         client.getById({
           headers: authenticate(actor),
@@ -1449,7 +1647,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       name: string,
     ): Promise<ComposeResponse> {
-      const client = setupApp({ context })(composesMainContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        composesMainContract,
+      );
       const response = await accept(
         client.getByName({
           headers: authenticate(actor),
@@ -1463,7 +1663,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async listComposes(
       actor: ApiTestUser,
     ): Promise<readonly ComposeListItem[]> {
-      const client = setupApp({ context })(composesListContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        composesListContract,
+      );
       const response = await accept(
         client.list({ headers: authenticate(actor), query: {} }),
         [200],
@@ -1480,7 +1682,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         readonly sound?: string;
       },
     ): Promise<void> {
-      const client = setupApp({ context })(composesMetadataContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        composesMetadataContract,
+      );
       await accept(
         client.updateMetadata({
           headers: authenticate(actor),
@@ -1492,7 +1696,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     },
 
     async deleteCompose(actor: ApiTestUser, composeId: string): Promise<void> {
-      const client = setupApp({ context })(composesByIdContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        composesByIdContract,
+      );
       await accept(
         client.delete({
           headers: authenticate(actor),
@@ -1506,7 +1712,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       composeId: string,
     ): Promise<ComposeResponse> {
-      const client = setupApp({ context })(zeroComposesByIdContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroComposesByIdContract,
+      );
       const response = await accept(
         client.getById({
           headers: authenticate(actor),
@@ -1522,7 +1730,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       composeId: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroComposesByIdContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroComposesByIdContract,
+      );
       return await accept(
         client.getById({
           headers: authenticate(actor),
@@ -1536,7 +1746,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       name: string,
     ): Promise<ComposeResponse> {
-      const client = setupApp({ context })(zeroComposesMainContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroComposesMainContract,
+      );
       const response = await accept(
         client.getByName({
           headers: authenticate(actor),
@@ -1550,7 +1762,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async listZeroComposes(
       actor: ApiTestUser,
     ): Promise<readonly ComposeListItem[]> {
-      const client = setupApp({ context })(zeroComposesListContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroComposesListContract,
+      );
       const response = await accept(
         client.list({ headers: authenticate(actor), query: {} }),
         [200],
@@ -1567,7 +1781,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         readonly sound?: string | null;
       },
     ): Promise<void> {
-      const client = setupApp({ context })(zeroComposesMetadataContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroComposesMetadataContract,
+      );
       await accept(
         client.update({
           headers: authenticate(actor),
@@ -1582,7 +1798,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       composeId: string,
     ): Promise<void> {
-      const client = setupApp({ context })(zeroComposesByIdContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroComposesByIdContract,
+      );
       await accept(
         client.delete({
           headers: authenticate(actor),
@@ -1596,7 +1814,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       body: CreateCustomConnectorBody,
     ): Promise<CustomConnectorResponse> {
-      const client = setupApp({ context })(zeroCustomConnectorsContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroCustomConnectorsContract,
+      );
       const response = await accept(
         client.create({ headers: authenticate(actor), body }),
         [201],
@@ -1609,7 +1829,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       body: CreateCustomConnectorBody,
       statuses: readonly (201 | 400 | 401 | 403 | 500)[],
     ) {
-      const client = setupApp({ context })(zeroCustomConnectorsContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroCustomConnectorsContract,
+      );
       return await accept(
         client.create({ headers: authenticate(actor), body }),
         statuses,
@@ -1619,7 +1841,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
     async listCustomConnectors(actor: ApiTestUser): Promise<{
       readonly connectors: readonly CustomConnectorResponse[];
     }> {
-      const client = setupApp({ context })(zeroCustomConnectorsContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroCustomConnectorsContract,
+      );
       const response = await accept(
         client.list({ headers: authenticate(actor) }),
         [200],
@@ -1632,7 +1856,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       connectorId: string,
       body: PatchCustomConnectorBody,
     ): Promise<CustomConnectorResponse> {
-      const client = setupApp({ context })(zeroCustomConnectorByIdContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroCustomConnectorByIdContract,
+      );
       const response = await accept(
         client.patch({
           headers: authenticate(actor),
@@ -1649,7 +1875,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       connectorId: string,
       value: string,
     ): Promise<void> {
-      const client = setupApp({ context })(zeroCustomConnectorSecretContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroCustomConnectorSecretContract,
+      );
       await accept(
         client.set({
           headers: authenticate(actor),
@@ -1664,7 +1892,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       connectorId: string,
     ): Promise<void> {
-      const client = setupApp({ context })(zeroCustomConnectorSecretContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroCustomConnectorSecretContract,
+      );
       await accept(
         client.delete({
           headers: authenticate(actor),
@@ -1678,7 +1908,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       connectorId: string,
     ): Promise<void> {
-      const client = setupApp({ context })(zeroCustomConnectorByIdContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroCustomConnectorByIdContract,
+      );
       await accept(
         client.delete({
           headers: authenticate(actor),
@@ -1692,7 +1924,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       actor: ApiTestUser,
       agentId: string,
     ): Promise<AgentCustomConnectorEnabledIds> {
-      const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroAgentCustomConnectorsContract,
+      );
       const response = await accept(
         client.get({
           headers: authenticate(actor),
@@ -1708,7 +1942,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       agentId: string,
       enabledIds: readonly string[],
     ): Promise<AgentCustomConnectorEnabledIds> {
-      const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroAgentCustomConnectorsContract,
+      );
       const response = await accept(
         client.update({
           headers: authenticate(actor),
@@ -1726,7 +1962,9 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       enabledIds: readonly string[],
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroAgentCustomConnectorsContract);
+      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
+        zeroAgentCustomConnectorsContract,
+      );
       return await accept(
         client.update({
           headers: authenticate(actor),

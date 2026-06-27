@@ -5,7 +5,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { completeLimitedFreeOnboarding$ } from "../services/onboarding.service";
 import { bodyResultOf } from "../context/request";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const completeBody$ = bodyResultOf(
   onboardingCompleteLimitedFreeContract.complete,

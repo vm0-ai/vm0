@@ -25,7 +25,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
-import { WEEKDAY_LABELS, type AutomationEntry } from "./zero-automation-card";
+import { WEEKDAY_LABELS, type CombinedEntry } from "./automation-utils";
 import {
   AutomationFormDialog,
   type AutomationFormValues,
@@ -70,15 +70,7 @@ import {
   setAutomationListTab$,
 } from "../../signals/automation-page/automation-list-tab.ts";
 
-export type CombinedEntry = AutomationEntry & {
-  agentLabel: string;
-  agentId: string;
-  timezone: string;
-  nextRunAt: string | null;
-  lastRunAt: string | null;
-  chatThreadId: string;
-  triggerSummary: string;
-};
+export type { CombinedEntry } from "./automation-utils";
 
 export function buildCombinedAutomations(
   entries: OrgAutomationEntry[],

@@ -22,11 +22,12 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
-import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { writeDb$ } from "../../external/db";
+import { testTelegramDispatchProbeRoutes } from "../test-telegram-dispatch-probe";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 
@@ -50,7 +51,10 @@ interface TelegramRunRow {
 }
 
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
-  const app = createApp({ signal: context.signal });
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: testTelegramDispatchProbeRoutes,
+  });
   return Promise.resolve(app.request(path, init));
 }
 

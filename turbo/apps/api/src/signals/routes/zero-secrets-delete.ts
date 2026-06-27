@@ -8,7 +8,7 @@ import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { notFound } from "../../lib/error";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const deleteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);

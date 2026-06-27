@@ -6,7 +6,7 @@ import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { notFound } from "../../lib/error";
 import { agentSessionById } from "../services/agent-sessions.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const sessionNotFound = notFound("Session not found");
 

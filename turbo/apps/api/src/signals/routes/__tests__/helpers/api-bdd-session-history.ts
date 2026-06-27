@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { createHash } from "node:crypto";
 
-import type { TestContext } from "../../../../__tests__/test-helpers";
+import type { TestContext } from "../../../../__tests__/test-context";
 
 function knownSessionHistoryBodies(runId: string): readonly string[] {
   return [

@@ -16,7 +16,7 @@ import {
   publishSlackAdminSignal$,
 } from "../services/zero-slack-connect.service";
 import { tapError } from "../utils";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const L = logger("SlackBrowserConnect");
 const REDIRECT_STATUS = 307;

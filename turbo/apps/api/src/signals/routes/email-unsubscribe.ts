@@ -7,7 +7,7 @@ import {
   unsubscribeEmailUser$,
   verifyUnsubscribeToken,
 } from "../services/email-unsubscribe.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 function missingTokenResponse() {
   return { status: 400 as const, body: { error: "Missing token" } };

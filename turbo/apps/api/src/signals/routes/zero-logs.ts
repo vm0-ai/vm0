@@ -14,7 +14,7 @@ import {
   zeroLogsList,
   zeroLogSearch,
 } from "../services/zero-logs.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const runReadAuth = {
   requireOrganization: true,

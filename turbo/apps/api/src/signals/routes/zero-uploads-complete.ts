@@ -11,7 +11,7 @@ import { inferMimetype } from "../../lib/mimetype";
 import { isAllowedUploadType } from "../../lib/uploads-constants";
 import { recordWebUploadedFile$ } from "../services/run-uploaded-files.service";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const completeBody$ = bodyResultOf(zeroUploadsContract.complete);
 

@@ -4,7 +4,7 @@ import { zeroSlackChannelsContract } from "@vm0/api-contracts/contracts/zero-sla
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { zeroSlackChannels } from "../services/zero-slack-data.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const slackInstallationNotFound = Object.freeze({
   status: 404 as const,

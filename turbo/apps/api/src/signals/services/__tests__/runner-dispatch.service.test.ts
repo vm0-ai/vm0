@@ -5,7 +5,7 @@ import { createStore } from "ccstate";
 import { inArray } from "drizzle-orm";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import { notifyRunnerJob } from "../runner-dispatch.service";

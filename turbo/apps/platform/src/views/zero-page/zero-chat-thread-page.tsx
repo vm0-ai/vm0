@@ -225,7 +225,7 @@ import type {
   GroupedChatMessageGroup,
   PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
-import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
 import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import {

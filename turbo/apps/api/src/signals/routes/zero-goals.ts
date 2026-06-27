@@ -25,7 +25,7 @@ import {
   resumeCurrentGoal,
   type GoalResult,
 } from "../services/zero-goal.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import type { AuthContext } from "../../types/auth";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 

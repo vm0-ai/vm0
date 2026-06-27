@@ -12,7 +12,7 @@ import { publishUserSignal } from "../external/realtime";
 import { notFound } from "../../lib/error";
 import { visibleChatMessageCondition } from "../services/zero-chat-message-shared.service";
 import { zeroChatThreadUnreads } from "../services/zero-chat-thread.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);

@@ -26,7 +26,7 @@ import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { z } from "zod";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import {

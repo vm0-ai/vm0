@@ -11,7 +11,7 @@ import { publishThreadListChanged } from "../external/realtime";
 import { nowDate } from "../external/time";
 import { notFound } from "../../lib/error";
 import { resolveModelSelectionPin } from "../services/zero-model-selection.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const modelSelectionBody$ = bodyResultOf(
   chatThreadModelSelectionContract.update,

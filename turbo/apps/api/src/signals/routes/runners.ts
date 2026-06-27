@@ -44,7 +44,7 @@ import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
 
 const L = logger("Runners");

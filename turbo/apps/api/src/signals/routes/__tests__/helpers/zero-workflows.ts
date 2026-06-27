@@ -19,7 +19,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
 import { and, eq } from "drizzle-orm";
 
-import type { TestContext } from "../../../../__tests__/test-helpers";
+import type { TestContext } from "../../../../__tests__/test-context";
 import { writeDb$ } from "../../../external/db";
 
 export interface WorkflowsFixture {

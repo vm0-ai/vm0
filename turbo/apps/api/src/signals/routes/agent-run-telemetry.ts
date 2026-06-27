@@ -20,7 +20,7 @@ import {
   agentRunSystemLog,
   agentRunTelemetry,
 } from "../services/agent-run-telemetry.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const anySandboxOrgAuth = {
   acceptAnySandboxCapability: true,

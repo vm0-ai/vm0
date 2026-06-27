@@ -6,7 +6,7 @@ import {
 
 import { request$ } from "../context/hono";
 import { now } from "../external/time";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { dispatchZeroSlackProbe$ } from "../services/zero-slack-webhooks.service";
 import { settle } from "../utils";
 import {

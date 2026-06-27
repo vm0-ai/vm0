@@ -10,7 +10,7 @@ import { writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const pinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);

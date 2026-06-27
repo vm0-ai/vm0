@@ -25,7 +25,7 @@ import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
@@ -35,7 +35,7 @@ import { seedAgentRunCallback$ } from "../../routes/__tests__/helpers/agent-run-
 import {
   captureGithubIssueApi,
   mockGithubAppEnv,
-} from "../../routes/__tests__/helpers/api-bdd-github";
+} from "../../routes/__tests__/helpers/api-bdd-github-mocks";
 import { encryptSecretForTests } from "../../routes/__tests__/helpers/encrypt-secret";
 import {
   deleteSlackIntegrationFixture$,

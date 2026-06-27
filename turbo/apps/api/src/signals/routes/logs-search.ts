@@ -4,7 +4,7 @@ import { logsSearchContract } from "@vm0/api-contracts/contracts/runs";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { zeroLogSearch } from "../services/zero-logs.service";
 
 const searchLogsInner$ = computed(async (get) => {

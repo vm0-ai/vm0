@@ -23,7 +23,7 @@ import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { clerk$ } from "../external/clerk";
 import { db$, type Db, type ReadonlyDb, writeDb$ } from "../external/db";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
   isTestEndpointAllowed,

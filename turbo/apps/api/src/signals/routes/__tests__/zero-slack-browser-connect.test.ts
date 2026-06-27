@@ -1,10 +1,11 @@
 import { createStore } from "ccstate";
 import { describe, expect, it, beforeEach } from "vitest";
 
-import { createApp } from "../../../app-factory";
-import { testContext } from "../../../__tests__/test-helpers";
+import { createAppWithRoutes } from "../../../app-factory-core";
+import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { zeroSlackBrowserConnectRoutes } from "../zero-slack-browser-connect";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -53,7 +54,10 @@ async function requestConnect(
   url: string,
   headers?: HeadersInit,
 ): Promise<Response> {
-  const app = createApp({ signal: context.signal });
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: zeroSlackBrowserConnectRoutes,
+  });
   const requestHeaders = headers ?? { cookie: "__session=opaque" };
   return await app.request(url, { method: "GET", headers: requestHeaders });
 }

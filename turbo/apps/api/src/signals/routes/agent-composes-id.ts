@@ -10,7 +10,7 @@ import {
   agentComposeById,
   agentComposeOrgId,
 } from "../services/agent-composes-read.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const sandboxDeleteForbidden = {
   status: 403 as const,

@@ -14,12 +14,13 @@ import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
-import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
+import { zeroConnectorsRoutes } from "../zero-connectors";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 
 const context = testContext();
 const store = createStore();
@@ -110,7 +111,10 @@ async function requestOauthStart(
     headers.set("authorization", "Bearer clerk-session");
   }
   headers.set("content-type", "application/json");
-  const app = createApp({ signal: context.signal });
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: zeroConnectorsRoutes,
+  });
   return await app.request(oauthStartUrl(type, options.origin), {
     method: "POST",
     headers,

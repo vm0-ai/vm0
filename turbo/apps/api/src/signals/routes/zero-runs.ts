@@ -19,7 +19,7 @@ import {
 } from "../services/zero-runs.service";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const createRunBody$ = bodyResultOf(zeroRunsMainContract.create);
 

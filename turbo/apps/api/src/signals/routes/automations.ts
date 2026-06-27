@@ -27,7 +27,7 @@ import {
   type AutomationTriggerRow,
   type AutomationView,
 } from "../services/automations.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const NOT_FOUND_MESSAGE = "Resource not found";
 const AMBIGUOUS_MESSAGE = "Ambiguous name, use the id";

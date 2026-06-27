@@ -6,7 +6,7 @@ import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { deleteCustomConnector$ } from "../services/zero-custom-connector.service";
 import { isNotFoundResponse } from "../../lib/error";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
   status: 403 as const,

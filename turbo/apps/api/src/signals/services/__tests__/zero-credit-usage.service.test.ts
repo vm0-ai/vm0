@@ -14,7 +14,7 @@ import { createStore } from "ccstate";
 import { asc, eq, inArray, sql } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { createFixtureTracker } from "../../routes/__tests__/helpers/zero-route-test";
 import { writeDb$ } from "../../external/db";

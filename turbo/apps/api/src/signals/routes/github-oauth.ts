@@ -47,7 +47,7 @@ import {
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { upsertConnectorTokenConnection$ } from "../services/zero-connector-data.service";
 import { settle } from "../utils";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import {
   getOAuthCanonicalRedirectUrl,
   getOAuthWebOrigin,

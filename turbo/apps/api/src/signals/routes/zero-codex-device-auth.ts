@@ -12,7 +12,7 @@ import {
   completeCodexDeviceAuth$,
   startCodexDeviceAuth,
 } from "../services/codex-device-auth.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const modelProviderWriteAuth = {
   requireOrganization: true,

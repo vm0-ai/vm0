@@ -25,7 +25,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, nowDate } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { assistantMessageIdForRunEvent } from "../../services/assistant-message-id";

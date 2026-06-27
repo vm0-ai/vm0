@@ -9,7 +9,7 @@ import {
   getUploadUrlExternal,
 } from "../external/slack-message-client";
 import { zeroSlackOrgInstallation } from "../services/zero-slack-data.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const noInstallation = Object.freeze({
   status: 404 as const,

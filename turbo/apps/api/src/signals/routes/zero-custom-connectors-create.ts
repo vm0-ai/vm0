@@ -9,7 +9,7 @@ import {
   serialiseCustomConnector,
 } from "../services/zero-custom-connector.service";
 import { isBadRequestResponse } from "../../lib/error";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
   status: 403 as const,

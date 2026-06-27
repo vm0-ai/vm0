@@ -6,7 +6,7 @@ import { authRoute } from "../auth/auth-route";
 import { request$ } from "../context/hono";
 import { clerk$ } from "../external/clerk";
 import { settle } from "../utils";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const MAX_FILE_SIZE = 2 * 1024 * 1024;
 

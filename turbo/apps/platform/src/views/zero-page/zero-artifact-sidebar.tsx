@@ -59,7 +59,7 @@ import {
   type ZoomableImageControls,
   zoomableArtifactImageKey,
 } from "./zero-zoomable-image-canvas.tsx";
-import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   ArtifactActionSeparator,

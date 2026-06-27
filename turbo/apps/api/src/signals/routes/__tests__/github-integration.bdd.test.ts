@@ -7,7 +7,7 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { writeDb$ } from "../../external/db";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";

@@ -5,7 +5,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { clerk$ } from "../external/clerk";
 import { bodyResultOf } from "../context/request";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
   status: 403 as const,

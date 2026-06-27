@@ -11,7 +11,7 @@ import { describe, expect, it } from "vitest";
 
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { writeDb$ } from "../../external/db";
 import {
   createBddApi,
@@ -19,7 +19,7 @@ import {
   type ApiTestUser,
 } from "./helpers/api-bdd";
 import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
-import { storageTextFile } from "./helpers/api-bdd-chat-files";
+import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import {
   createRunsAutomationsApi,

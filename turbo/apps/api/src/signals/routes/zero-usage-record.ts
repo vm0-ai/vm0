@@ -6,7 +6,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
 import { zeroUsageRecord$ } from "../services/zero-usage-record.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { isValidTimeZone } from "../utils";
 
 function teamUsageRecordsUnavailable() {

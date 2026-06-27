@@ -1,0 +1,5 @@
+{
+  "extends": "./tsconfig.json",
+  "include": ["src/rust-bindings/**/*"],
+  "exclude": ["node_modules", "dist", "src/firewalls/*.generated.ts"]
+}

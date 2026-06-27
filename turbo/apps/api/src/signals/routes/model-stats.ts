@@ -6,7 +6,7 @@ import { z } from "zod";
 import { env } from "../../lib/env";
 import { authorization$, setResHeader$ } from "../context/hono";
 import { queryOf } from "../context/request";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import {
   aggregateModelStats$,
   DEFAULT_MODEL_STATS_REPROCESS_HOURS,

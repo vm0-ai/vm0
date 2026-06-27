@@ -9,7 +9,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { getCampaign } from "../services/one-time-products";
 import { startOrResumeRedemption$ } from "../services/zero-billing-redeem.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const billingUnavailable = Object.freeze({
   status: 200 as const,

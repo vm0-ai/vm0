@@ -7,14 +7,13 @@ import {
 import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhooks";
 import { HttpResponse, http } from "msw";
 
-import { createApp } from "../../../../app-factory";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { createAppWithRoutes } from "../../../../app-factory-core";
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { server } from "../../../../mocks/server";
 import { generateSandboxToken } from "../../../auth/tokens";
+import { cliAuthTestRoutes } from "../../cli-auth-test";
+import { webhooksAgentFirewallAuthRoutes } from "../../webhooks-agent-firewall-auth";
 import type { ApiTestUser } from "./api-bdd";
 import { encryptSecretForTests } from "./encrypt-secret";
 
@@ -30,6 +29,15 @@ type SeedCodexOauthBody = z.infer<
 
 interface SandboxHeaders {
   readonly authorization: string;
+}
+
+const firewallRoutes = [
+  ...cliAuthTestRoutes,
+  ...webhooksAgentFirewallAuthRoutes,
+] as const;
+
+function firewallApp(context: TestContext) {
+  return setupAppWithRoutes({ context, routes: firewallRoutes });
 }
 
 interface ClerkUserProfile {
@@ -121,7 +129,7 @@ export function createFirewallApi(context: TestContext) {
     async provisionRunReadyOrg(actor: ApiTestUser): Promise<void> {
       this.seedClerkDirectory(actor);
       await accept(
-        setupApp({ context })(cliAuthTestTokenContract).create({
+        firewallApp(context)(cliAuthTestTokenContract).create({
           query: { email: actor.email },
           body: {},
         }),
@@ -135,7 +143,7 @@ export function createFirewallApi(context: TestContext) {
     ): Promise<void> {
       this.seedClerkDirectory(actor);
       await accept(
-        setupApp({ context })(cliAuthTestConnectorContract).create({
+        firewallApp(context)(cliAuthTestConnectorContract).create({
           query: { email: actor.email },
           body,
         }),
@@ -149,7 +157,7 @@ export function createFirewallApi(context: TestContext) {
     ): Promise<void> {
       this.seedClerkDirectory(actor);
       await accept(
-        setupApp({ context })(cliAuthTestCodexOauthContract).create({
+        firewallApp(context)(cliAuthTestCodexOauthContract).create({
           query: { email: actor.email },
           body,
         }),
@@ -163,7 +171,7 @@ export function createFirewallApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 402 | 403 | 424 | 502)[],
     ) {
       return await accept(
-        setupApp({ context })(webhookFirewallAuthContract).resolve({
+        firewallApp(context)(webhookFirewallAuthContract).resolve({
           headers,
           body,
         }),
@@ -175,17 +183,17 @@ export function createFirewallApi(context: TestContext) {
       body: string,
       headers: SandboxHeaders,
     ): Promise<{ status: number; body: unknown }> {
-      const response = await createApp({ signal: context.signal }).request(
-        "/api/webhooks/agent/firewall/auth",
-        {
-          method: "POST",
-          headers: {
-            "content-type": "application/json",
-            ...headers,
-          },
-          body,
+      const response = await createAppWithRoutes({
+        signal: context.signal,
+        routes: firewallRoutes,
+      }).request("/api/webhooks/agent/firewall/auth", {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...headers,
         },
-      );
+        body,
+      });
       return { status: response.status, body: await response.json() };
     },
 

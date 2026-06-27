@@ -1,0 +1,7 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "tsBuildInfoFile": "./.tsbuildinfo.tests-only"
+  },
+  "include": ["src/**/__tests__/**/*", "src/**/*.test.ts", "src/**/*.spec.ts"]
+}

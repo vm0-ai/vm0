@@ -6,7 +6,7 @@ import {
 
 import { request$ } from "../context/hono";
 import { pathParamsOf, queryOf } from "../context/request";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { safeJsonParse, safeSync } from "../utils";
 import {
   downloadFalImage,

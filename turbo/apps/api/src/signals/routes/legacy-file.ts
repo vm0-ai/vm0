@@ -10,7 +10,7 @@ import {
 import { env } from "../../lib/env";
 import { generatePresignedGetUrl, s3ObjectExists } from "../external/s3";
 import { pathParamsOf } from "../context/request";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const c = initContract();
 

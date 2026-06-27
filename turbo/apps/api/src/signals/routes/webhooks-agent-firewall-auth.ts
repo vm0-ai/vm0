@@ -5,7 +5,7 @@ import { badRequestMessage } from "../../lib/error";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$ } from "../external/db";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { isSandboxToken, verifySandboxToken } from "../auth/tokens";
 import { resolveFirewallAuth } from "../services/agent-webhook-firewall-auth.service";
 

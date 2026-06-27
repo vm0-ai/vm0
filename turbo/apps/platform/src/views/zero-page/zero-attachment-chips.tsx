@@ -24,7 +24,7 @@ import type {
   ChatThreadArtifactRun,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroChatAttachment } from "../../signals/chat-page/chat-message.ts";
-import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
 import {
   currentLeftThread$,
   currentRightThread$,

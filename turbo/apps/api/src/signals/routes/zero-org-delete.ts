@@ -5,7 +5,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { deleteZeroOrg$ } from "../services/zero-org-data.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const deleteBody$ = bodyResultOf(zeroOrgDeleteContract.delete);
 

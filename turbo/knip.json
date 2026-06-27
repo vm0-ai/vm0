@@ -168,7 +168,8 @@
     "scripts/analyze-react-renders.mjs",
     "scripts/analyze-rewind-cause.mjs",
     "scripts/analyze-rewind.mjs",
-    "scripts/dump-rewind-chains.mjs"
+    "scripts/dump-rewind-chains.mjs",
+    "scripts/measure-memory.mjs"
   ],
   "ignoreDependencies": [
     "@commitlint/cli",
