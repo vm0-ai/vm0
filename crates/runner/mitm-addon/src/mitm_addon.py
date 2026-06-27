@@ -1169,6 +1169,10 @@ def _maybe_make_connector_diagnostic_error_response(
     *,
     original_url: str,
 ) -> None:
+    if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS):
+        if flow.response is not None:
+            flow.response.trailers = None
+        return
     if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT) or _is_browser_passthrough_heuristic(
         flow
     ):
