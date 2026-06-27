@@ -622,6 +622,9 @@ export function AgentPermissionsDrawer({
   displayName,
   initialPolicies,
   initialGrants,
+  initialIntent,
+  initialSearch,
+  initialContextKey,
   resetEnabled,
   readOnly,
   onApply,
@@ -633,6 +636,9 @@ export function AgentPermissionsDrawer({
   displayName: string;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
+  initialIntent?: PermissionDraftIntent;
+  initialSearch?: string;
+  initialContextKey?: string;
   resetEnabled: boolean;
   readOnly: boolean;
   onApply: (
@@ -654,6 +660,9 @@ export function AgentPermissionsDrawer({
       displayName={displayName}
       initialPolicies={initialPolicies}
       initialGrants={initialGrants}
+      initialIntent={initialIntent}
+      initialSearch={initialSearch}
+      initialContextKey={initialContextKey}
       resetEnabled={resetEnabled}
       readOnly={readOnly}
       onApply={onApply}

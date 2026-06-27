@@ -10,6 +10,7 @@ import {
   setupAuthPageWrapper,
   pathParams$,
   pathname$,
+  searchParams$,
   type RouterPathParams,
 } from "./route.ts";
 import { registerServiceWorker$ } from "../lib/push-notifications.ts";
@@ -105,14 +106,14 @@ const setupWorkflowTriggerPermissionsRedirect$ = command(({ get, set }) => {
     set(detachedNavigateTo$, ROUTES.agents, { replace: true });
     return;
   }
+  const targetSearchParams = new URLSearchParams(get(searchParams$));
+  targetSearchParams.set(WORKFLOW_DETAIL_TAB_PARAM, "authorization");
   set(detachedNavigateTo$, ROUTES.agentWorkflowDetail, {
     pathParams: {
       agentId,
       workflowId,
     } as RouterPathParams<typeof ROUTES.agentWorkflowDetail>,
-    searchParams: new URLSearchParams({
-      [WORKFLOW_DETAIL_TAB_PARAM]: "authorization",
-    }),
+    searchParams: targetSearchParams,
     replace: true,
   });
 });
