@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.129.35](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.34...runner-rs-v0.129.35) (2026-06-26)
+
+
+### Bug Fixes
+
+* **runner:** disable inactive units during service drain ([#19140](https://github.com/vm0-ai/vm0/issues/19140)) ([e5a3376](https://github.com/vm0-ai/vm0/commit/e5a33768c6271ba38b65446a6d3cd8296ea4986d))
+* saturate telemetry duration milliseconds ([#19139](https://github.com/vm0-ai/vm0/issues/19139)) ([4db715c](https://github.com/vm0-ai/vm0/commit/4db715c9ed4a6469519e84bb83ff1b33917f1162))
+
+
+### Refactoring
+
+* centralize auth base admission ownership ([#19143](https://github.com/vm0-ai/vm0/issues/19143)) ([bd2b026](https://github.com/vm0-ai/vm0/commit/bd2b02634bd74ecebd128b6c32c433ba6bd8c9b8))
+
+
+### Performance Improvements
+
+* start resume history downloads earlier ([#19128](https://github.com/vm0-ai/vm0/issues/19128)) ([653e788](https://github.com/vm0-ai/vm0/commit/653e788c4490f6726155ea2bfe8035b8e287415b))
+
 ## [0.129.34](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.33...runner-rs-v0.129.34) (2026-06-26)
 
 
