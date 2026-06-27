@@ -211,7 +211,7 @@ const runContextFirewallSchema = z.union([
   runContextSanitizedFirewallSchema,
 ]);
 
-const runContextResponseSchema = z.object({
+export const runContextResponseSchema = z.object({
   prompt: z.string(),
   appendSystemPrompt: z.string().nullable(),
   runId: z.string(),

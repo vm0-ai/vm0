@@ -93,5 +93,6 @@ export interface AgentEvent {
 export interface AgentEventsResponse {
   events: AgentEvent[];
   hasMore: boolean;
+  nextCursor?: string | null;
   framework: string;
 }

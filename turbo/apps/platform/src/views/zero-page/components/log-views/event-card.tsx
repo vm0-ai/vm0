@@ -9,60 +9,21 @@ import { nowDate } from "../../../../lib/time.ts";
 import { Markdown } from "../../../components/markdown.tsx";
 import { Popover, PopoverContent, PopoverTrigger } from "@vm0/ui";
 
-// Type definitions for EventData
-interface MessageData {
-  content: unknown[] | null;
-  id: string | null;
-  model: string | null;
-  role: string | null;
-  stop_reason: string | null;
-  usage?: {
-    input_tokens: number | null;
-    output_tokens: number | null;
-    cache_read_input_tokens: number | null;
-  };
-}
-
-interface ToolResultMeta {
-  bytes?: number | null;
-  code?: number | null;
-  codeText?: string | null;
-  durationMs?: number | null;
-  url?: string | null;
-  filePath?: string | null;
-  query?: string | null;
-  result?: string | null;
-}
-
-export interface EventData {
-  type?: string;
-  subtype?: string;
-  message?: MessageData;
-  tool_use_result?: ToolResultMeta;
-  model?: string;
-  session_id?: string;
-  tools?: string[];
-  agents?: string[];
-  slash_commands?: string[];
-  total_cost_usd?: number | null;
-  duration_ms?: number | null;
-  duration_api_ms?: number | null;
-  num_turns?: number | null;
-  modelUsage?: Record<
-    string,
-    {
-      costUSD?: number | null;
-      inputTokens?: number | null;
-      outputTokens?: number | null;
-    }
-  >;
-  is_error?: boolean;
-  result?: string | null;
-}
+type ModelUsage = Record<
+  string,
+  {
+    costUSD?: number | null;
+    inputTokens?: number | null;
+    outputTokens?: number | null;
+  }
+>;
 
 // Exported for reuse
 export function formatEventTime(isoString: string): string {
   const date = new Date(isoString);
+  if (Number.isNaN(date.getTime())) {
+    return isoString.trim().length > 0 ? isoString : "—";
+  }
   const now = nowDate();
   const isToday = date.toDateString() === now.toDateString();
 
@@ -87,6 +48,9 @@ export function formatEventTime(isoString: string): string {
 
 // Exported for reuse
 export function formatDuration(ms: number): string {
+  if (!Number.isFinite(ms) || ms < 0) {
+    return "—";
+  }
   if (ms < 1000) {
     return `${ms}ms`;
   }
@@ -112,6 +76,8 @@ function CategoryPopover({
   count: number;
   items: string[];
 }) {
+  const itemKeyCounts = new Map<string, number>();
+
   return (
     <Popover>
       <PopoverTrigger className="inline-flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors cursor-pointer">
@@ -126,8 +92,13 @@ function CategoryPopover({
       >
         <div className="flex flex-wrap gap-1.5">
           {items.map((item) => {
+            const occurrence = itemKeyCounts.get(item) ?? 0;
+            itemKeyCounts.set(item, occurrence + 1);
             return (
-              <span key={item} className="text-xs text-muted-foreground">
+              <span
+                key={occurrence === 0 ? item : `${item}:${occurrence}`}
+                className="text-xs text-muted-foreground"
+              >
                 {item}
               </span>
             );
@@ -138,11 +109,64 @@ function CategoryPopover({
   );
 }
 
+function toStringList(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter((item): item is string => {
+    return typeof item === "string";
+  });
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function toNonNegativeFiniteNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0
+    ? value
+    : null;
+}
+
+function toNonNegativeInteger(value: unknown): number | null {
+  return typeof value === "number" &&
+    Number.isFinite(value) &&
+    value >= 0 &&
+    Number.isInteger(value)
+    ? value
+    : null;
+}
+
+function toModelUsage(value: unknown): ModelUsage | undefined {
+  if (!isRecord(value)) {
+    return undefined;
+  }
+
+  const entries = Object.entries(value).flatMap(([model, usage]) => {
+    if (!isRecord(usage)) {
+      return [];
+    }
+    return [
+      [
+        model,
+        {
+          costUSD: toNonNegativeFiniteNumber(usage.costUSD),
+          inputTokens: toNonNegativeInteger(usage.inputTokens),
+          outputTokens: toNonNegativeInteger(usage.outputTokens),
+        },
+      ],
+    ];
+  });
+
+  return entries.length > 0 ? Object.fromEntries(entries) : undefined;
+}
+
 // Exported for use in GroupedMessageCard
-export function SystemInitContent({ eventData }: { eventData: EventData }) {
-  const tools = eventData.tools ?? [];
-  const agents = eventData.agents ?? [];
-  const slashCommands = eventData.slash_commands ?? [];
+export function SystemInitContent({ eventData }: { eventData: unknown }) {
+  const data = isRecord(eventData) ? eventData : {};
+  const tools = toStringList(data.tools);
+  const agents = toStringList(data.agents);
+  const slashCommands = toStringList(data.slash_commands);
 
   const hasAnyItems =
     tools.length > 0 || agents.length > 0 || slashCommands.length > 0;
@@ -185,18 +209,7 @@ export function SystemInitContent({ eventData }: { eventData: EventData }) {
 
 // ============ RESULT EVENT (Final stats) ============
 
-function ModelUsagePopover({
-  modelUsage,
-}: {
-  modelUsage: Record<
-    string,
-    {
-      costUSD?: number | null;
-      inputTokens?: number | null;
-      outputTokens?: number | null;
-    }
-  >;
-}) {
+function ModelUsagePopover({ modelUsage }: { modelUsage: ModelUsage }) {
   const entries = Object.entries(modelUsage).filter(([, usage]) => {
     return usage.inputTokens || usage.outputTokens;
   });
@@ -238,11 +251,12 @@ function ModelUsagePopover({
 }
 
 // Exported for use in GroupedMessageCard
-export function ResultEventContent({ eventData }: { eventData: EventData }) {
-  const durationMs = eventData.duration_ms;
-  const numTurns = eventData.num_turns;
-  const modelUsage = eventData.modelUsage;
-  const result = eventData.result;
+export function ResultEventContent({ eventData }: { eventData: unknown }) {
+  const data = isRecord(eventData) ? eventData : {};
+  const durationMs = toNonNegativeFiniteNumber(data.duration_ms);
+  const numTurns = toNonNegativeInteger(data.num_turns);
+  const modelUsage = toModelUsage(data.modelUsage);
+  const result = typeof data.result === "string" ? data.result : null;
 
   return (
     <div className="space-y-2">
