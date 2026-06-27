@@ -122,8 +122,9 @@ struct GuestStageBatch {
     content_bytes: usize,
 }
 
+/// Aggregates actual guest write time, excluding cache probe/download work.
 struct StorageCacheStageMetrics {
-    started_at: Instant,
+    total_duration: Duration,
     attempted: bool,
     failed: bool,
 }
@@ -267,7 +268,7 @@ impl GuestStageBatch {
 impl StorageCacheStageMetrics {
     fn start() -> Self {
         Self {
-            started_at: Instant::now(),
+            total_duration: Duration::ZERO,
             attempted: false,
             failed: false,
         }
@@ -281,13 +282,15 @@ impl StorageCacheStageMetrics {
         result: &RunnerResult<()>,
     ) {
         self.attempted = true;
+        let duration = started_at.elapsed();
+        self.total_duration = self.total_duration.saturating_add(duration);
         let success = result.is_ok();
         if !success {
             self.failed = true;
         }
         telemetry.record(
             action_type,
-            started_at.elapsed(),
+            duration,
             success,
             (!success).then_some(STORAGE_CACHE_STAGE_FAILED),
         );
@@ -298,7 +301,7 @@ impl StorageCacheStageMetrics {
             let success = !self.failed;
             telemetry.record(
                 STORAGE_CACHE_STAGE_TOTAL,
-                self.started_at.elapsed(),
+                self.total_duration,
                 success,
                 (!success).then_some(STORAGE_CACHE_STAGE_FAILED),
             );
