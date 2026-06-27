@@ -237,8 +237,14 @@ fn build_session_history_restore_plan(
             let requested_identity = RestoredSessionIdentity::from_context(context);
             if let Some(requested_identity) = requested_identity {
                 match reuse_entry.and_then(ReusableIdleSandbox::restored_session_identity) {
+                    Some(restored_identity)
+                        if restored_identity == &requested_identity
+                            && restored_identity.has_guest_history_verification() =>
+                    {
+                        return SessionHistoryRestorePlan::SkipVerified(restored_identity.clone());
+                    }
                     Some(restored_identity) if restored_identity == &requested_identity => {
-                        return SessionHistoryRestorePlan::SkipVerified(requested_identity);
+                        Some(SessionHistoryRestoreFallback::UnverifiedIdleIdentity)
                     }
                     Some(_) => Some(SessionHistoryRestoreFallback::IdentityMismatch),
                     None => Some(SessionHistoryRestoreFallback::MissingIdleIdentity),
@@ -656,8 +662,12 @@ mod tests {
         let http = test_http_client();
         let context = context_with_history_ref("history-hash-a");
         let requested_identity = RestoredSessionIdentity::from_context(&context).unwrap();
+        let restored_identity = requested_identity.clone().with_guest_history(
+            12,
+            "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
+        );
         let reusable_sandbox =
-            reusable_sandbox_with_identity(Some(requested_identity.clone())).await;
+            reusable_sandbox_with_identity(Some(restored_identity.clone())).await;
         let cancel = RunCancellationHandle::new();
         let mut timing = RunnerPreSpawnTiming::start_after_claim();
 
@@ -673,9 +683,71 @@ mod tests {
 
         match plan {
             SessionHistoryRestorePlan::SkipVerified(identity) => {
-                assert_eq!(identity, requested_identity);
+                assert_eq!(identity, restored_identity);
             }
             _ => panic!("matching reused identity should skip restore"),
+        }
+    }
+
+    #[tokio::test]
+    async fn restore_plan_falls_back_when_matching_reused_identity_is_unverified() {
+        let http = test_http_client();
+        let context = context_with_history_ref("history-hash-a");
+        let restored_identity = RestoredSessionIdentity::from_context(&context).unwrap();
+        let reusable_sandbox = reusable_sandbox_with_identity(Some(restored_identity)).await;
+        let cancel = RunCancellationHandle::new();
+        let mut timing = RunnerPreSpawnTiming::start_after_claim();
+
+        let plan = build_session_history_restore_plan(
+            &http,
+            &context,
+            true,
+            &cancel,
+            Some(&reusable_sandbox),
+            SandboxReuseResult::Reused,
+            &mut timing,
+        );
+
+        match plan {
+            SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
+                assert_eq!(
+                    fallback,
+                    Some(SessionHistoryRestoreFallback::UnverifiedIdleIdentity)
+                );
+            }
+            _ => panic!("unverified reused identity should fall back to restore"),
+        }
+    }
+
+    #[tokio::test]
+    async fn restore_plan_falls_back_when_matching_reused_identity_has_empty_history_path() {
+        let http = test_http_client();
+        let context = context_with_history_ref("history-hash-a");
+        let restored_identity = RestoredSessionIdentity::from_context(&context)
+            .unwrap()
+            .with_guest_history(12, "");
+        let reusable_sandbox = reusable_sandbox_with_identity(Some(restored_identity)).await;
+        let cancel = RunCancellationHandle::new();
+        let mut timing = RunnerPreSpawnTiming::start_after_claim();
+
+        let plan = build_session_history_restore_plan(
+            &http,
+            &context,
+            true,
+            &cancel,
+            Some(&reusable_sandbox),
+            SandboxReuseResult::Reused,
+            &mut timing,
+        );
+
+        match plan {
+            SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
+                assert_eq!(
+                    fallback,
+                    Some(SessionHistoryRestoreFallback::UnverifiedIdleIdentity)
+                );
+            }
+            _ => panic!("reused identity with empty history path should fall back to restore"),
         }
     }
 

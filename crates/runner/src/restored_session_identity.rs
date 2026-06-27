@@ -80,6 +80,14 @@ impl RestoredSessionIdentity {
     pub(crate) fn guest_history_path(&self) -> Option<&str> {
         self.guest_history_path.as_deref()
     }
+
+    pub(crate) fn has_guest_history_verification(&self) -> bool {
+        self.history_size_bytes.is_some()
+            && self
+                .guest_history_path
+                .as_ref()
+                .is_some_and(|path| !path.is_empty())
+    }
 }
 
 impl PartialEq for RestoredSessionIdentity {

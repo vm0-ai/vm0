@@ -48,6 +48,7 @@ const SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR: &str =
 pub(crate) enum SessionHistoryRestoreFallback {
     NonReuse,
     MissingIdleIdentity,
+    UnverifiedIdleIdentity,
     IdentityMismatch,
 }
 
@@ -56,6 +57,9 @@ impl SessionHistoryRestoreFallback {
         match self {
             Self::NonReuse => "session_history_restore_fallback_non_reuse",
             Self::MissingIdleIdentity => "session_history_restore_fallback_missing_idle_identity",
+            Self::UnverifiedIdleIdentity => {
+                "session_history_restore_fallback_unverified_idle_identity"
+            }
             Self::IdentityMismatch => "session_history_restore_fallback_identity_mismatch",
         }
     }
