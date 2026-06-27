@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.184.3](https://github.com/vm0-ai/vm0/compare/api-v1.184.2...api-v1.184.3) (2026-06-27)
+
+
+### Bug Fixes
+
+* cancel trial subscriptions on account deletion ([#19197](https://github.com/vm0-ai/vm0/issues/19197)) ([924fd60](https://github.com/vm0-ai/vm0/commit/924fd60279d7cc1e2c5e2256fd1b3d2ef54b2654))
+* update atom grant expiry ([#19201](https://github.com/vm0-ai/vm0/issues/19201)) ([589e3dd](https://github.com/vm0-ai/vm0/commit/589e3dd8b401d12837c14490db58e7313edbf9c4))
+
+
+### Refactoring
+
+* reduce fallback slop in runtime validation ([#19200](https://github.com/vm0-ai/vm0/issues/19200)) ([9f367c2](https://github.com/vm0-ai/vm0/commit/9f367c27b4c49578f8dd644ee73e166e092cbe09))
+
+
+### Performance Improvements
+
+* add storage manifest dispatch timing ([#19190](https://github.com/vm0-ai/vm0/issues/19190)) ([baf713f](https://github.com/vm0-ai/vm0/commit/baf713f63f3ceabb39d65fe895986c343c2a764a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.122.0
+    * @vm0/connectors bumped to 1.110.4
+    * @vm0/core bumped to 8.373.3
+    * @vm0/db bumped to 1.75.3
+
 ## [1.184.2](https://github.com/vm0-ai/vm0/compare/api-v1.184.1...api-v1.184.2) (2026-06-27)
 
 

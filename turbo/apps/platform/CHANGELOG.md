@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.501.0](https://github.com/vm0-ai/vm0/compare/app-v0.500.2...app-v0.501.0) (2026-06-27)
+
+
+### Features
+
+* normalize Codex platform activity events ([#18978](https://github.com/vm0-ai/vm0/issues/18978)) ([a5fb6cc](https://github.com/vm0-ai/vm0/commit/a5fb6cc2af14bc5cfd709dbcb2c144c37a6e6761))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.122.0
+    * @vm0/connectors bumped to 1.110.4
+    * @vm0/core bumped to 8.373.3
+
 ## [0.500.2](https://github.com/vm0-ai/vm0/compare/app-v0.500.1...app-v0.500.2) (2026-06-27)
 
 
