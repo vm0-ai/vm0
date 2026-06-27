@@ -387,6 +387,31 @@ describe("groupEventsIntoMessages event dedupe", () => {
     expect(messages).toHaveLength(2);
   });
 
+  it("keeps too-deep same-sequence events instead of lossy deduping", () => {
+    const deepPayload = (): unknown => {
+      let value: unknown = "leaf";
+      for (let depth = 0; depth < 80; depth += 1) {
+        value = { value };
+      }
+      return value;
+    };
+    const event = {
+      sequenceNumber: 4,
+      eventType: "assistant",
+      createdAt: "2026-06-26T02:31:21Z",
+      eventData: {
+        message: {
+          content: [{ type: "text", text: "Repeated visible text." }],
+        },
+        payload: deepPayload(),
+      },
+    } satisfies AgentEvent;
+
+    const messages = groupEventsIntoMessages([event, event]);
+
+    expect(messages).toHaveLength(2);
+  });
+
   it("keeps fallback tool ids unique for same-sequence events", () => {
     const messages = groupEventsIntoMessages([
       {

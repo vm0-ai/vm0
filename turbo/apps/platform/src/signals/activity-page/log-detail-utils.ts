@@ -12,6 +12,9 @@ interface ToolResultContent {
 const MAX_STRINGIFY_DEPTH = 32;
 const MAX_STRINGIFY_ARRAY_ITEMS = 100;
 const MAX_STRINGIFY_OBJECT_FIELDS = 100;
+const MAX_DEDUPE_DEPTH = 64;
+const MAX_DEDUPE_VALUES = 20_000;
+const MAX_DEDUPE_STRING_LENGTH = 1_000_000;
 
 /**
  * Normalizes tool result content to a string.
@@ -165,11 +168,27 @@ export function stringifyUnknownValue(value: unknown): string {
   return stringifyUnknownJsonValue(value, new WeakSet()) ?? "[unserializable]";
 }
 
-function stringifyDedupeValue(value: unknown, seen: WeakSet<object>): string {
+interface DedupeStringifyState {
+  seen: WeakSet<object>;
+  valueCount: number;
+}
+
+function stringifyDedupeValue(
+  value: unknown,
+  state: DedupeStringifyState,
+  depth = 0,
+): string | null {
+  state.valueCount += 1;
+  if (state.valueCount > MAX_DEDUPE_VALUES || depth > MAX_DEDUPE_DEPTH) {
+    return null;
+  }
   if (value === null) {
     return "null";
   }
   if (typeof value === "string") {
+    if (value.length > MAX_DEDUPE_STRING_LENGTH) {
+      return null;
+    }
     return `string:${JSON.stringify(value)}`;
   }
   if (typeof value === "number") {
@@ -185,44 +204,89 @@ function stringifyDedupeValue(value: unknown, seen: WeakSet<object>): string {
     return "undefined";
   }
   if (typeof value === "symbol") {
-    return `symbol:${value.description ?? ""}`;
+    return null;
   }
   if (typeof value === "function") {
-    return `function:${value.name}:${String(value)}`;
+    return null;
   }
-  if (seen.has(value)) {
-    return "[Circular]";
+  if (state.seen.has(value)) {
+    return null;
   }
   if (value instanceof Date) {
     return `date:${Number.isFinite(value.getTime()) ? value.toISOString() : "Invalid Date"}`;
   }
 
-  seen.add(value);
+  state.seen.add(value);
   if (Array.isArray(value)) {
+    if (value.length > MAX_DEDUPE_VALUES) {
+      state.seen.delete(value);
+      return null;
+    }
     const items: string[] = [];
     for (let index = 0; index < value.length; index += 1) {
-      items.push(
-        Object.prototype.hasOwnProperty.call(value, index)
-          ? stringifyDedupeValue(value[index], seen)
-          : "[Hole]",
+      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+      if (!descriptor) {
+        items.push("[Hole]");
+        continue;
+      }
+      if (!("value" in descriptor)) {
+        state.seen.delete(value);
+        return null;
+      }
+      const serialized = stringifyDedupeValue(
+        descriptor.value,
+        state,
+        depth + 1,
       );
+      if (serialized === null) {
+        state.seen.delete(value);
+        return null;
+      }
+      items.push(serialized);
     }
-    seen.delete(value);
+    state.seen.delete(value);
     return `array:[${items.join(",")}]`;
   }
 
-  const entries = Object.keys(value)
-    .sort()
-    .map((key) => {
-      const descriptor = Object.getOwnPropertyDescriptor(value, key);
-      const serialized =
-        descriptor && "value" in descriptor
-          ? stringifyDedupeValue(descriptor.value, seen)
-          : "[Accessor]";
-      return `${JSON.stringify(key)}:${serialized}`;
-    });
-  seen.delete(value);
+  const keys = Object.keys(value);
+  if (keys.length > MAX_DEDUPE_VALUES) {
+    state.seen.delete(value);
+    return null;
+  }
+  const entries: string[] = [];
+  for (const key of keys.sort()) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !("value" in descriptor)) {
+      state.seen.delete(value);
+      return null;
+    }
+    const serialized = stringifyDedupeValue(descriptor.value, state, depth + 1);
+    if (serialized === null) {
+      state.seen.delete(value);
+      return null;
+    }
+    entries.push(`${JSON.stringify(key)}:${serialized}`);
+  }
+  state.seen.delete(value);
   return `object:{${entries.join(",")}}`;
+}
+
+function eventDedupeKey(event: AgentEvent): string | null {
+  return stringifyDedupeValue(event, {
+    seen: new WeakSet(),
+    valueCount: 0,
+  });
+}
+
+function eventDedupeKeys(events: AgentEvent[]): Set<string> {
+  const keys = new Set<string>();
+  for (const event of events) {
+    const key = eventDedupeKey(event);
+    if (key) {
+      keys.add(key);
+    }
+  }
+  return keys;
 }
 
 // ============ GROUPED MESSAGE TYPES ============
@@ -423,10 +487,6 @@ function toToolResultMeta(value: unknown): ToolResultMeta | undefined {
   return meta.bytes === undefined && meta.durationMs === undefined
     ? undefined
     : meta;
-}
-
-function eventDedupeKey(event: AgentEvent): string {
-  return stringifyDedupeValue(event, new WeakSet());
 }
 
 interface SeenSequenceEvents {
@@ -1157,21 +1217,17 @@ export function groupEventsIntoMessages(
       return true;
     }
 
-    const keys =
-      existing.keys ??
-      new Set(
-        existing.events.map((event) => {
-          return eventDedupeKey(event);
-        }),
-      );
+    const keys = existing.keys ?? eventDedupeKeys(existing.events);
     existing.keys = keys;
 
     const key = eventDedupeKey(e);
-    if (keys.has(key)) {
+    if (key && keys.has(key)) {
       return false;
     }
     existing.events.push(e);
-    keys.add(key);
+    if (key) {
+      keys.add(key);
+    }
     return true;
   });
 
