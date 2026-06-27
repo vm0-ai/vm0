@@ -30,9 +30,11 @@ class _Client:
         *,
         client_ip: str = "10.200.0.5",
         sni: str = "api.github.com",
+        sockname: tuple[str, int] = ("127.0.0.1", 8080),
     ) -> None:
         self.id = str(uuid.uuid4())
         self.peername = (client_ip, 12345)
+        self.sockname = sockname
         self.sni = sni
 
 
@@ -47,9 +49,10 @@ def _data(
     client_ip: str = "10.200.0.5",
     sni: str = "api.github.com",
     address: tuple[str, int] = ("203.0.113.10", 443),
+    client_sockname: tuple[str, int] = ("127.0.0.1", 8080),
 ) -> _ServerConnectData:
     return _ServerConnectData(
-        client=_Client(client_ip=client_ip, sni=sni),
+        client=_Client(client_ip=client_ip, sni=sni, sockname=client_sockname),
         server=_Server(address=address),
     )
 
@@ -104,6 +107,31 @@ def test_server_connect_retargets_api_allow_host(registry_file, mitm_ctx):
 
 def test_server_connect_binds_api_host_from_original_address(registry_file, mitm_ctx):
     data = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
+
+    with (
+        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))],
+        ),
+    ):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("pr-test-api.vm6.ai", 443)
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
+    assert binding.host == "pr-test-api.vm6.ai"
+    assert binding.kinds == frozenset(("api_allow",))
+    assert binding.original_address == ("198.18.20.34", 443)
+
+
+def test_server_connect_binds_api_host_from_transparent_sockname(registry_file, mitm_ctx):
+    data = _data(
+        client_ip="10.200.0.1",
+        sni="",
+        address=("127.0.0.1", 8080),
+        client_sockname=("198.18.20.34", 443),
+    )
 
     with (
         mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),

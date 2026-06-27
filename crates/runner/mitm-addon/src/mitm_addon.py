@@ -1676,12 +1676,19 @@ def _bind_api_upstream_destination_from_original_address(
         return False
     api_hostname, api_port = api_destination
 
-    original_address = _server_address(server)
-    if not _address_resolves_to_trusted_host(
-        original_address,
-        host=api_hostname,
-        port=api_port,
-    ):
+    original_address = next(
+        (
+            address
+            for address in (_server_address(server), _connection_sockname(client))
+            if _address_resolves_to_trusted_host(
+                address,
+                host=api_hostname,
+                port=api_port,
+            )
+        ),
+        None,
+    )
+    if original_address is None:
         return False
 
     server.address = (api_hostname, api_port)
