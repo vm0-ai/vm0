@@ -51,7 +51,10 @@ Firewall and auth context
   matched firewall block, and auth paths. Read by logging, auth cache
   invalidation, usage dispatch, and local error responses.
 - ``FIREWALL_API_ID``: ``str`` API id or base fallback from the matched
-  firewall. Read by auth handling and 401 cache invalidation.
+  firewall. Read by auth handling.
+- ``FIREWALL_AUTH_CACHE_KEY``: opaque typed auth cache key written by matched
+  auth handling after the full auth input identity is known. Read by 401 cache
+  invalidation; stores only a digest of auth inputs and sandbox token.
 - ``FIREWALL_NAME``: ``str`` firewall connector/model name. Read by logging,
   model-provider gates, and connector usage dispatch.
 - ``FIREWALL_PERMISSION``: ``str`` matched permission name or empty string.
@@ -171,6 +174,7 @@ TCP_START_MONOTONIC: Final = "tcp_start_monotonic"
 # Firewall and auth metadata
 FIREWALL_BASE: Final = "firewall_base"
 FIREWALL_API_ID: Final = "firewall_api_id"
+FIREWALL_AUTH_CACHE_KEY: Final = "firewall_auth_cache_key"
 FIREWALL_NAME: Final = "firewall_name"
 FIREWALL_PERMISSION: Final = "firewall_permission"
 FIREWALL_RULE_MATCH: Final = "firewall_rule_match"
