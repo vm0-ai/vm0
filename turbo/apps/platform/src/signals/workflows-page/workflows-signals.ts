@@ -21,8 +21,12 @@ import { activeRoute$ } from "../active-route.ts";
 import { pathParams$, replaceSearchParams$, searchParams$ } from "../route.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 
-type WorkflowDetailActionDialog = "edit" | "copy" | "delete" | null;
-export type WorkflowDetailTab = "authorization" | "triggers" | "info";
+type WorkflowDetailActionDialog = "copy" | "delete" | null;
+export type WorkflowDetailTab =
+  | "authorization"
+  | "triggers"
+  | "instructions"
+  | "info";
 type WorkflowTriggerCreateDialog =
   | "schedule"
   | "gmail"
@@ -34,6 +38,7 @@ type WorkflowWebhookTriggerSummary = Extract<
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
 export const WORKFLOW_DETAIL_TAB_PARAM = "tab";
+export const WORKFLOW_DETAIL_FILE_PARAM = "file";
 
 function workflowDetailTabFromSearchParams(
   params: URLSearchParams,
@@ -42,6 +47,7 @@ function workflowDetailTabFromSearchParams(
   switch (value) {
     case "authorization":
     case "triggers":
+    case "instructions":
     case "info": {
       return value;
     }
@@ -85,11 +91,11 @@ interface WorkflowDetailFileDraft {
   readonly content: string;
 }
 
-interface WorkflowEditDraft {
+interface WorkflowMetadataPatch {
   readonly workflowId: string;
-  readonly displayName: string;
-  readonly name: string;
-  readonly description: string;
+  readonly displayName?: string;
+  readonly name?: string;
+  readonly description?: string;
 }
 
 /**
@@ -112,7 +118,9 @@ const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
 const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
 const internalEditingWorkflowTriggerId$ = state<string | null>(null);
-const internalWorkflowEditDraft$ = state<WorkflowEditDraft | null>(null);
+const internalWorkflowMetadataPatch$ = state<WorkflowMetadataPatch | null>(
+  null,
+);
 const internalWorkflowTriggerCreateDialog$ =
   state<WorkflowTriggerCreateDialog>(null);
 const internalScheduleTriggerType$ = state<ZeroWorkflowScheduleType>("cron");
@@ -132,9 +140,6 @@ export const workflowActionDialog$ = computed((get) => {
 export const setWorkflowActionDialog$ = command(
   ({ set }, dialog: WorkflowDetailActionDialog) => {
     set(internalWorkflowActionDialog$, dialog);
-    if (dialog !== "edit") {
-      set(internalWorkflowEditDraft$, null);
-    }
   },
 );
 
@@ -148,38 +153,30 @@ export const setWorkflowFileDraft$ = command(
   },
 );
 
-export const workflowEditDraft$ = computed((get) => {
-  return get(internalWorkflowEditDraft$);
+export const workflowMetadataPatch$ = computed((get) => {
+  return get(internalWorkflowMetadataPatch$);
 });
 
-export const openWorkflowEditDialog$ = command(
-  ({ set }, detail: ZeroWorkflowDetailResponse) => {
-    set(internalWorkflowEditDraft$, {
-      workflowId: detail.id,
-      displayName: detail.displayName ?? "",
-      name: detail.name,
-      description: detail.description ?? "",
-    });
-    set(internalWorkflowActionDialog$, "edit");
-  },
-);
-
-export const patchWorkflowEditDraft$ = command(
+export const patchWorkflowMetadataForm$ = command(
   (
     { set },
     input: {
       readonly workflowId: string;
-      readonly patch: Partial<Omit<WorkflowEditDraft, "workflowId">>;
+      readonly patch: Omit<WorkflowMetadataPatch, "workflowId">;
     },
   ) => {
-    set(internalWorkflowEditDraft$, (draft) => {
-      if (!draft || draft.workflowId !== input.workflowId) {
-        return draft;
+    set(internalWorkflowMetadataPatch$, (patch) => {
+      if (!patch || patch.workflowId !== input.workflowId) {
+        return { workflowId: input.workflowId, ...input.patch };
       }
-      return { ...draft, ...input.patch };
+      return { ...patch, ...input.patch };
     });
   },
 );
+
+export const resetWorkflowMetadataForm$ = command(({ set }) => {
+  set(internalWorkflowMetadataPatch$, null);
+});
 
 export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalWorkflowDetailActiveTab$, "authorization");
@@ -187,7 +184,7 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalWorkflowActionDialog$, null);
   set(internalWorkflowFileDraft$, null);
   set(internalEditingWorkflowTriggerId$, null);
-  set(internalWorkflowEditDraft$, null);
+  set(internalWorkflowMetadataPatch$, null);
   set(internalWorkflowTriggerCreateDialog$, null);
   set(internalCreatedWorkflowWebhookTrigger$, null);
   set(internalScheduleTriggerType$, "cron");
@@ -286,12 +283,23 @@ export const setEditingScheduleCronFields$ = command(
 
 /** The supplementary file selected in the detail viewer, or null. */
 export const selectedWorkflowFilePath$ = computed((get) => {
-  return get(internalSelectedFilePath$);
+  return (
+    get(searchParams$).get(WORKFLOW_DETAIL_FILE_PARAM) ??
+    get(internalSelectedFilePath$)
+  );
 });
 
 export const setSelectedWorkflowFilePath$ = command(
-  ({ set }, path: string | null) => {
+  ({ get, set }, path: string | null) => {
     set(internalSelectedFilePath$, path);
+    const params = new URLSearchParams(get(searchParams$));
+    if (path) {
+      params.set(WORKFLOW_DETAIL_FILE_PARAM, path);
+    } else {
+      params.delete(WORKFLOW_DETAIL_FILE_PARAM);
+    }
+    params.set(WORKFLOW_DETAIL_TAB_PARAM, "instructions");
+    set(replaceSearchParams$, params);
   },
 );
 

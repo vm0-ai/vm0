@@ -1,7 +1,7 @@
 // Agent-scoped workflow detail at /agents/:agentId/workflows/:workflowId. Hosts
 // the instruction editor, supplementary file manager (SKILL.md is never shown),
 // triggers, visibility controls, metadata editing, slash use, copy, and delete.
-import type { FormEvent, InputHTMLAttributes, ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import {
   useGet,
   useLastLoadable,
@@ -27,11 +27,11 @@ import {
   IconClock,
   IconCopy,
   IconFileText,
+  IconInfoCircle,
   IconLink,
   IconLoader2,
   IconMail,
   IconMessageCircle,
-  IconPencil,
   IconPlus,
   IconShieldLock,
   IconTrash,
@@ -82,9 +82,9 @@ import {
   deleteWorkflowTrigger$,
   editingScheduleCronFields$,
   editingWorkflowTriggerId$,
-  openWorkflowEditDialog$,
-  patchWorkflowEditDraft$,
+  patchWorkflowMetadataForm$,
   reloadWorkflows$,
+  resetWorkflowMetadataForm$,
   scheduleTriggerType$,
   selectedWorkflowFilePath$,
   setCreateScheduleCronFields$,
@@ -111,7 +111,8 @@ import {
   workflowDetail,
   type WorkflowCronFields,
   type WorkflowCronFrequency,
-  workflowEditDraft$,
+  type WorkflowDetailTab,
+  workflowMetadataPatch$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
@@ -139,6 +140,7 @@ import {
 } from "../components/detail-page-layout.tsx";
 import { TiptapInstructionsEditor } from "../zero-page/tiptap-instructions-editor.tsx";
 import { ZeroUnsavedBar } from "../zero-page/zero-unsaved-bar.tsx";
+import { InlineSettingsRow } from "../zero-page/components/zero-inline-settings-row.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import {
   applyUserPermissionGrants$,
@@ -292,6 +294,10 @@ function WorkflowDetailContent({
   const activeTab = useGet(workflowDetailActiveTab$);
   const setActiveTab = useSet(setWorkflowDetailActiveTab$);
 
+  if (!detail && detailLoadable.state !== "hasData") {
+    return <DetailSkeleton />;
+  }
+
   return (
     <DetailPageShell>
       <WorkflowBreadcrumb detail={detail} />
@@ -303,10 +309,8 @@ function WorkflowDetailContent({
       <DetailPageMain>
         {detail ? (
           <WorkflowTabContent activeTab={activeTab} detail={detail} />
-        ) : detailLoadable.state === "hasData" ? (
-          <p className="text-sm text-muted-foreground">Workflow not found.</p>
         ) : (
-          <DetailSkeleton />
+          <p className="text-sm text-muted-foreground">Workflow not found.</p>
         )}
       </DetailPageMain>
     </DetailPageShell>
@@ -320,14 +324,14 @@ function WorkflowBreadcrumb({
 }) {
   if (!detail) {
     return (
-      <DetailPageBreadcrumbBar className="min-w-0 px-0 pt-0">
+      <DetailPageBreadcrumbBar>
         <div className="h-7 w-56 rounded-md bg-muted/50" aria-hidden="true" />
       </DetailPageBreadcrumbBar>
     );
   }
 
   return (
-    <DetailPageBreadcrumbBar className="min-w-0 px-0 pt-0">
+    <DetailPageBreadcrumbBar>
       <BreadcrumbLink
         pathname={ROUTES.agents}
         icon={<IconUsers size={14} stroke={1.5} className="shrink-0" />}
@@ -349,7 +353,7 @@ function WorkflowBreadcrumb({
         workflows
       </BreadcrumbLink>
       <span className="select-none text-muted-foreground/40">/</span>
-      <span className="min-w-0 truncate rounded-md px-1.5 py-0.5 text-inherit">
+      <span className="min-w-0 truncate rounded-md px-1.5 py-0.5 font-medium text-foreground">
         {workflowTitle(detail)}
       </span>
     </DetailPageBreadcrumbBar>
@@ -385,8 +389,8 @@ function DetailHeader({
   onTabChange,
 }: {
   readonly detail: ZeroWorkflowDetailResponse | null;
-  readonly activeTab: "authorization" | "triggers" | "info";
-  readonly onTabChange: (tab: "authorization" | "triggers" | "info") => void;
+  readonly activeTab: WorkflowDetailTab;
+  readonly onTabChange: (tab: WorkflowDetailTab) => void;
 }) {
   return (
     <DetailPageHeader>
@@ -394,14 +398,14 @@ function DetailHeader({
         <>
           <div className="min-w-0">
             <div className="flex min-w-0 flex-wrap items-center gap-2">
-              <h1 className="min-w-0 truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+              <h1 className="truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
                 {workflowTitle(detail)}
               </h1>
               <span className="inline-flex max-w-full shrink-0 items-center rounded-md border border-border/60 bg-muted/40 px-2 py-0.5 text-xs font-medium text-muted-foreground">
                 /{detail.name}
               </span>
             </div>
-            <p className="mt-1.5 max-w-3xl text-sm leading-tight text-muted-foreground">
+            <p className="mt-1.5 line-clamp-2 text-sm leading-tight text-muted-foreground">
               {detail.description || "No description yet"}
             </p>
           </div>
@@ -428,14 +432,14 @@ function WorkflowTabNav({
   activeTab,
   onTabChange,
 }: {
-  readonly activeTab: "authorization" | "triggers" | "info";
-  readonly onTabChange: (tab: "authorization" | "triggers" | "info") => void;
+  readonly activeTab: WorkflowDetailTab;
+  readonly onTabChange: (tab: WorkflowDetailTab) => void;
 }) {
   return (
     <Tabs
       value={activeTab}
       onValueChange={(tab) => {
-        onTabChange(tab as "authorization" | "triggers" | "info");
+        onTabChange(tab as WorkflowDetailTab);
       }}
       className="min-w-0 flex-1"
     >
@@ -443,7 +447,7 @@ function WorkflowTabNav({
         <Select
           value={activeTab}
           onValueChange={(tab) => {
-            onTabChange(tab as "authorization" | "triggers" | "info");
+            onTabChange(tab as WorkflowDetailTab);
           }}
         >
           <SelectTrigger className="h-9 w-full">
@@ -452,6 +456,7 @@ function WorkflowTabNav({
           <SelectContent>
             <SelectItem value="authorization">Authorization</SelectItem>
             <SelectItem value="triggers">Triggers</SelectItem>
+            <SelectItem value="instructions">Instructions</SelectItem>
             <SelectItem value="info">Info</SelectItem>
           </SelectContent>
         </Select>
@@ -468,8 +473,15 @@ function WorkflowTabNav({
           <IconClock size={14} stroke={1.5} />
           Triggers
         </TabsTrigger>
-        <TabsTrigger value="info" className={WORKFLOW_TAB_TRIGGER_CLASS}>
+        <TabsTrigger
+          value="instructions"
+          className={WORKFLOW_TAB_TRIGGER_CLASS}
+        >
           <IconFileText size={14} stroke={1.5} />
+          Instructions
+        </TabsTrigger>
+        <TabsTrigger value="info" className={WORKFLOW_TAB_TRIGGER_CLASS}>
+          <IconInfoCircle size={14} stroke={1.5} />
           Info
         </TabsTrigger>
       </TabsList>
@@ -483,12 +495,15 @@ function WorkflowChatButton({
   readonly detail: ZeroWorkflowDetailResponse;
 }) {
   const navigate = useSet(detachedNavigateTo$);
+  const chatLabel = `Chat with ${agentLabel(detail)}`;
 
   return (
-    <button
+    <Button
+      variant="outline"
+      size="sm"
       type="button"
-      aria-label="Chat with Zero"
-      className="zero-btn-morandi inline-flex h-9 shrink-0 items-center gap-1.5 rounded-md px-3 text-sm"
+      aria-label={chatLabel}
+      className="zero-btn-morandi shrink-0 gap-1.5"
       onClick={() => {
         navigate(ROUTES.agentChat, {
           pathParams: { agentId: detail.agentId },
@@ -496,9 +511,9 @@ function WorkflowChatButton({
         });
       }}
     >
-      <IconMessageCircle size={14} stroke={1.5} />
-      <span className="hidden sm:inline">Chat with Zero</span>
-    </button>
+      <IconMessageCircle size={14} stroke={2} />
+      {chatLabel}
+    </Button>
   );
 }
 
@@ -506,7 +521,7 @@ function WorkflowTabContent({
   activeTab,
   detail,
 }: {
-  readonly activeTab: "authorization" | "triggers" | "info";
+  readonly activeTab: WorkflowDetailTab;
   readonly detail: ZeroWorkflowDetailResponse;
 }) {
   const content = (() => {
@@ -516,6 +531,9 @@ function WorkflowTabContent({
       }
       case "triggers": {
         return <TriggersSection detail={detail} />;
+      }
+      case "instructions": {
+        return <WorkflowInstructionsTab detail={detail} />;
       }
       case "info": {
         return <WorkflowInfoTab detail={detail} />;
@@ -669,107 +687,66 @@ function WorkflowInfoTab({
 }) {
   const actionDialog = useGet(workflowActionDialog$);
   const setActionDialog = useSet(setWorkflowActionDialog$);
-  const openEditDialog = useSet(openWorkflowEditDialog$);
 
   return (
     <div className="mx-auto flex max-w-[900px] flex-col gap-4">
-      <div className="zero-card">
-        <div className="flex items-center justify-between gap-4 border-b border-border/50 px-5 py-4">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground">Visibility</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Choose how this workflow is shared inside your workspace.
-            </p>
-          </div>
-          <div className="w-72 max-w-full shrink-0">
-            <WorkflowPublicToggle detail={detail} />
+      <WorkflowMetadataForm detail={detail} />
+      <div className="zero-card overflow-hidden">
+        <div className="p-4 sm:p-5">
+          <InlineSettingsRow
+            label="Copy workflow"
+            description="Copy this workflow to another agent."
+            alignControls="center"
+          >
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="zero-btn-morandi h-9 gap-2 rounded-lg"
+              onClick={() => {
+                setActionDialog("copy");
+              }}
+            >
+              <IconCopy size={14} stroke={1.5} />
+              Copy workflow
+            </Button>
+          </InlineSettingsRow>
+        </div>
+      </div>
+      {detail.canManage ? (
+        <div className="zero-card overflow-hidden border-destructive/20">
+          <div className="p-4 sm:p-5">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between sm:gap-6">
+              <div className="min-w-0 sm:max-w-[46%]">
+                <h3 className="text-sm font-medium text-foreground">
+                  Danger zone
+                </h3>
+                <p className="mt-1 text-xs leading-snug text-muted-foreground">
+                  Delete this workflow and its triggers. This action cannot be
+                  undone.
+                </p>
+              </div>
+              <div className="flex w-full shrink-0 justify-end sm:w-auto">
+                <Button
+                  type="button"
+                  variant="outline"
+                  size="sm"
+                  className="h-9 gap-2 rounded-lg border-destructive/40 px-4 text-destructive hover:bg-destructive/10 hover:text-destructive"
+                  onClick={() => {
+                    setActionDialog("delete");
+                  }}
+                >
+                  <IconTrash size={14} stroke={1.5} />
+                  Delete workflow
+                </Button>
+              </div>
+            </div>
           </div>
         </div>
-        <button
-          type="button"
-          disabled={!detail.canManage}
-          className="flex w-full items-center gap-3 border-b border-border/50 px-5 py-4 text-left transition-colors hover:bg-muted/50 disabled:cursor-not-allowed disabled:opacity-60"
-          onClick={() => {
-            openEditDialog(detail);
-          }}
-        >
-          <IconPencil
-            size={16}
-            stroke={1.5}
-            className="text-muted-foreground"
-          />
-          <span className="min-w-0">
-            <span className="block text-sm font-medium text-foreground">
-              Edit details
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Update title, description, and slug.
-            </span>
-          </span>
-        </button>
-        <button
-          type="button"
-          className="flex w-full items-center gap-3 border-b border-border/50 px-5 py-4 text-left transition-colors hover:bg-muted/50"
-          onClick={() => {
-            setActionDialog("copy");
-          }}
-        >
-          <IconCopy size={16} stroke={1.5} className="text-muted-foreground" />
-          <span className="min-w-0">
-            <span className="block text-sm font-medium text-foreground">
-              Copy workflow
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Copy this workflow to another agent.
-            </span>
-          </span>
-        </button>
-        {detail.canManage ? (
-          <button
-            type="button"
-            className="flex w-full items-center gap-3 px-5 py-4 text-left text-destructive transition-colors hover:bg-destructive/5"
-            onClick={() => {
-              setActionDialog("delete");
-            }}
-          >
-            <IconTrash size={16} stroke={1.5} />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium">Delete workflow</span>
-              <span className="block text-xs text-destructive/80">
-                Delete this workflow and its triggers.
-              </span>
-            </span>
-          </button>
-        ) : null}
-      </div>
+      ) : null}
       <div className="zero-card px-5 py-4">
         <WorkflowAuditMetadata detail={detail} />
       </div>
-      <div className="zero-card overflow-hidden">
-        <div className="flex items-center justify-between gap-3 border-b border-border/50 px-5 py-4">
-          <div className="min-w-0">
-            <p className="text-sm font-medium text-foreground">Content</p>
-            <p className="mt-0.5 text-xs text-muted-foreground">
-              Edit the workflow instructions and attached files.
-            </p>
-          </div>
-          <WorkflowFilePicker detail={detail} />
-        </div>
-        <div className="px-5 pb-5">
-          <WorkflowFilePreview detail={detail} />
-        </div>
-      </div>
-      <WorkflowEditDialog
-        detail={detail}
-        open={actionDialog === "edit"}
-        onOpenChange={(open) => {
-          if (open) {
-            openEditDialog(detail);
-            return;
-          }
-          setActionDialog(null);
-        }}
-      />
       <WorkflowCopyDialog
         detail={detail}
         open={actionDialog === "copy"}
@@ -784,6 +761,191 @@ function WorkflowInfoTab({
           setActionDialog(open ? "delete" : null);
         }}
       />
+    </div>
+  );
+}
+
+interface WorkflowMetadataValues {
+  readonly displayName: string;
+  readonly name: string;
+  readonly description: string;
+}
+
+function workflowMetadataDefaults(
+  detail: ZeroWorkflowDetailResponse,
+): WorkflowMetadataValues {
+  return {
+    displayName: detail.displayName ?? "",
+    name: detail.name,
+    description: detail.description ?? "",
+  };
+}
+
+function isValidWorkflowSlug(value: string): boolean {
+  return /^[a-z0-9][a-z0-9-]*[a-z0-9]$/.test(value);
+}
+
+function WorkflowMetadataForm({
+  detail,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const patch = useGet(workflowMetadataPatch$);
+  const patchForm = useSet(patchWorkflowMetadataForm$);
+  const resetForm = useSet(resetWorkflowMetadataForm$);
+  const [saveLoadable, updateWorkflow] = useLoadableSet(updateWorkflow$);
+  const saving = saveLoadable.state === "loading";
+  const disabled = !detail.canManage || saving;
+  const defaults = workflowMetadataDefaults(detail);
+  const values =
+    patch?.workflowId === detail.id ? { ...defaults, ...patch } : defaults;
+  const dirty =
+    values.displayName !== defaults.displayName ||
+    values.name !== defaults.name ||
+    values.description !== defaults.description;
+  const slugCommand = `/${values.name.trim() || "slug"}`;
+  const patchValues = (patch: Partial<WorkflowMetadataValues>) => {
+    patchForm({ workflowId: detail.id, patch });
+  };
+  const save = () => {
+    if (!detail.canManage) {
+      return;
+    }
+    const nextDisplayName = values.displayName.trim();
+    const nextName = values.name.trim();
+    const nextDescription = values.description.trim();
+    if (!isValidWorkflowSlug(nextName)) {
+      return;
+    }
+    detach(
+      (async () => {
+        await updateWorkflow(
+          {
+            workflowId: detail.id,
+            body: {
+              name: nextName,
+              displayName: nextDisplayName || null,
+              description: nextDescription || null,
+            },
+          },
+          pageSignal,
+        );
+        toast.success("Workflow saved");
+      })(),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <>
+      <form
+        aria-label="Workflow metadata"
+        className="zero-card overflow-hidden"
+        onSubmit={(event: FormEvent<HTMLFormElement>) => {
+          event.preventDefault();
+          if (!event.currentTarget.checkValidity()) {
+            return;
+          }
+          save();
+        }}
+      >
+        <div className="p-4 sm:p-5">
+          <InlineSettingsRow
+            label="Name"
+            description="Shown in workflow lists and when choosing a workflow."
+            wideControls
+          >
+            <Input
+              id="workflow-edit-display-name"
+              name="displayName"
+              aria-label="Name"
+              value={values.displayName}
+              onChange={(event) => {
+                patchValues({ displayName: event.currentTarget.value });
+              }}
+              disabled={disabled}
+              placeholder="Workflow name"
+              maxLength={256}
+              className="h-9 w-full"
+            />
+          </InlineSettingsRow>
+          <InlineSettingsRow
+            label="Slug"
+            description={`Lowercase letters, numbers, and - only. Use ${slugCommand} in chat to use this workflow.`}
+            wideControls
+          >
+            <Input
+              id="workflow-edit-slug"
+              name="name"
+              aria-label="Slug"
+              value={values.name}
+              onChange={(event) => {
+                patchValues({ name: event.currentTarget.value });
+              }}
+              disabled={disabled}
+              placeholder="workflow-slug"
+              maxLength={64}
+              required
+              minLength={2}
+              pattern="[a-z0-9][a-z0-9-]*[a-z0-9]"
+              title="Use lowercase letters, numbers, and hyphens only"
+              autoCapitalize="none"
+              autoComplete="off"
+              spellCheck={false}
+              className="h-9 w-full"
+            />
+          </InlineSettingsRow>
+          <InlineSettingsRow
+            label="Description"
+            description="Tell the agent when to use this workflow."
+            wideControls
+          >
+            <textarea
+              id="workflow-edit-description"
+              name="description"
+              aria-label="Description"
+              value={values.description}
+              onChange={(event) => {
+                patchValues({ description: event.currentTarget.value });
+              }}
+              disabled={disabled}
+              rows={3}
+              maxLength={1024}
+              className={WORKFLOW_EDIT_TEXTAREA_CLASS}
+            />
+          </InlineSettingsRow>
+          <InlineSettingsRow
+            label="Visibility"
+            description="Choose how this workflow is shared inside your workspace."
+            alignControls="center"
+          >
+            <div className="w-full max-w-72">
+              <WorkflowPublicToggle detail={detail} />
+            </div>
+          </InlineSettingsRow>
+        </div>
+      </form>
+      {dirty ? (
+        <ZeroUnsavedBar onDiscard={resetForm} onSave={save} saving={saving} />
+      ) : null}
+    </>
+  );
+}
+
+function WorkflowInstructionsTab({
+  detail,
+}: {
+  readonly detail: ZeroWorkflowDetailResponse;
+}) {
+  return (
+    <div className="mx-auto flex max-w-[900px] flex-col gap-3">
+      <div className="flex min-w-0 items-center">
+        <WorkflowFilePicker detail={detail} />
+      </div>
+      <div className="zero-card overflow-hidden px-5 pb-5">
+        <WorkflowFilePreview detail={detail} />
+      </div>
     </div>
   );
 }
@@ -870,279 +1032,6 @@ function formatWorkflowAuditDate(value: string): string {
   }).format(new Date(value));
 }
 
-function WorkflowEditDialog({
-  detail,
-  open,
-  onOpenChange,
-}: {
-  readonly detail: ZeroWorkflowDetailResponse;
-  readonly open: boolean;
-  readonly onOpenChange: (open: boolean) => void;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const draft = useGet(workflowEditDraft$);
-  const patchDraft = useSet(patchWorkflowEditDraft$);
-  const [saveLoadable, updateWorkflow] = useLoadableSet(updateWorkflow$);
-  const saving = saveLoadable.state === "loading";
-  const disabled = !detail.canManage || saving;
-  const values =
-    draft?.workflowId === detail.id
-      ? draft
-      : {
-          displayName: detail.displayName ?? "",
-          name: detail.name,
-          description: detail.description ?? "",
-        };
-  const patchValues = (patch: Partial<WorkflowEditValues>) => {
-    patchDraft({ workflowId: detail.id, patch });
-  };
-  const slugCommand = `/${values.name.trim() || "slug"}`;
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
-        <DialogHeader>
-          <DialogTitle>Edit workflow</DialogTitle>
-          <DialogDescription>
-            Update the workflow name, slug, and description.
-          </DialogDescription>
-        </DialogHeader>
-        <form
-          aria-label="Workflow metadata"
-          className="flex flex-col gap-5"
-          onSubmit={(event: FormEvent<HTMLFormElement>) => {
-            event.preventDefault();
-            if (!event.currentTarget.checkValidity()) {
-              return;
-            }
-            if (!detail.canManage) {
-              return;
-            }
-            const nextDisplayName = values.displayName.trim();
-            const nextName = values.name.trim();
-            const nextDescription = values.description.trim();
-            if (!nextName) {
-              return;
-            }
-            detach(
-              (async () => {
-                await updateWorkflow(
-                  {
-                    workflowId: detail.id,
-                    body: {
-                      name: nextName,
-                      displayName: nextDisplayName || null,
-                      description: nextDescription || null,
-                    },
-                  },
-                  pageSignal,
-                );
-                onOpenChange(false);
-              })(),
-              Reason.DomCallback,
-            );
-          }}
-        >
-          <WorkflowEditFields
-            disabled={disabled}
-            slugCommand={slugCommand}
-            values={values}
-            onChange={patchValues}
-          />
-          <DialogFooter>
-            <Button
-              type="button"
-              variant="outline"
-              disabled={saving}
-              onClick={() => {
-                onOpenChange(false);
-              }}
-            >
-              Cancel
-            </Button>
-            <Button
-              type="submit"
-              disabled={disabled || values.name.trim().length === 0}
-            >
-              {saving ? (
-                <IconLoader2 size={14} className="animate-spin" />
-              ) : null}
-              Save
-            </Button>
-          </DialogFooter>
-        </form>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-interface WorkflowEditValues {
-  readonly displayName: string;
-  readonly name: string;
-  readonly description: string;
-}
-
-type WorkflowEditTextInputProps = Pick<
-  InputHTMLAttributes<HTMLInputElement>,
-  | "required"
-  | "minLength"
-  | "pattern"
-  | "title"
-  | "autoCapitalize"
-  | "autoComplete"
-  | "spellCheck"
->;
-
-function WorkflowEditFields({
-  values,
-  slugCommand,
-  disabled,
-  onChange,
-}: {
-  readonly values: WorkflowEditValues;
-  readonly slugCommand: string;
-  readonly disabled: boolean;
-  readonly onChange: (patch: Partial<WorkflowEditValues>) => void;
-}) {
-  return (
-    <>
-      <WorkflowEditTextField
-        id="workflow-edit-display-name"
-        name="displayName"
-        label="Name"
-        value={values.displayName}
-        disabled={disabled}
-        placeholder="Workflow name"
-        maxLength={256}
-        onValueChange={(value) => {
-          onChange({ displayName: value });
-        }}
-      />
-      <WorkflowEditTextField
-        id="workflow-edit-slug"
-        name="name"
-        label="Slug"
-        value={values.name}
-        disabled={disabled}
-        placeholder="workflow-slug"
-        maxLength={64}
-        helperText={`Lowercase letters, numbers, and - only. Use ${slugCommand} in chat to use this workflow.`}
-        onValueChange={(value) => {
-          onChange({ name: value });
-        }}
-        inputProps={{
-          required: true,
-          minLength: 2,
-          pattern: "[a-z0-9][a-z0-9-]*[a-z0-9]",
-          title: "Use lowercase letters, numbers, and hyphens only",
-          autoCapitalize: "none",
-          autoComplete: "off",
-          spellCheck: false,
-        }}
-      />
-      <WorkflowEditTextareaField
-        id="workflow-edit-description"
-        name="description"
-        label="Description"
-        value={values.description}
-        disabled={disabled}
-        helperText="Tell the agent when to use this workflow."
-        onValueChange={(value) => {
-          onChange({ description: value });
-        }}
-      />
-    </>
-  );
-}
-
-function WorkflowEditTextField({
-  id,
-  name,
-  label,
-  value,
-  disabled,
-  placeholder,
-  maxLength,
-  helperText,
-  inputProps,
-  onValueChange,
-}: {
-  readonly id: string;
-  readonly name: string;
-  readonly label: string;
-  readonly value: string;
-  readonly disabled: boolean;
-  readonly placeholder: string;
-  readonly maxLength: number;
-  readonly helperText?: string;
-  readonly inputProps?: WorkflowEditTextInputProps;
-  readonly onValueChange: (value: string) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-foreground">
-        {label}
-      </label>
-      <Input
-        id={id}
-        name={name}
-        aria-label={label}
-        value={value}
-        onChange={(event) => {
-          onValueChange(event.currentTarget.value);
-        }}
-        disabled={disabled}
-        placeholder={placeholder}
-        maxLength={maxLength}
-        {...inputProps}
-      />
-      {helperText ? (
-        <p className="text-xs leading-5 text-muted-foreground">{helperText}</p>
-      ) : null}
-    </div>
-  );
-}
-
-function WorkflowEditTextareaField({
-  id,
-  name,
-  label,
-  value,
-  disabled,
-  helperText,
-  onValueChange,
-}: {
-  readonly id: string;
-  readonly name: string;
-  readonly label: string;
-  readonly value: string;
-  readonly disabled: boolean;
-  readonly helperText: string;
-  readonly onValueChange: (value: string) => void;
-}) {
-  return (
-    <div className="flex flex-col gap-1.5">
-      <label htmlFor={id} className="text-sm font-medium text-foreground">
-        {label}
-      </label>
-      <textarea
-        id={id}
-        name={name}
-        aria-label={label}
-        value={value}
-        onChange={(event) => {
-          onValueChange(event.currentTarget.value);
-        }}
-        disabled={disabled}
-        rows={3}
-        maxLength={1024}
-        className={WORKFLOW_EDIT_TEXTAREA_CLASS}
-      />
-      <p className="text-xs leading-5 text-muted-foreground">{helperText}</p>
-    </div>
-  );
-}
-
 function WorkflowPublicToggle({
   detail,
 }: {
@@ -1180,14 +1069,12 @@ function WorkflowPublicToggle({
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <p className="text-sm font-medium text-foreground">Visibility</p>
-          <p className="text-xs text-muted-foreground">{statusLabel}</p>
-        </div>
+      <div className="flex items-center justify-end gap-3">
+        <span className="text-xs text-muted-foreground">{statusLabel}</span>
         <button
           type="button"
           role="switch"
+          aria-label="Make workflow public"
           aria-checked={checked}
           disabled={busy || !toggleAction}
           className={cn(
@@ -1460,7 +1347,7 @@ function WorkflowFilePicker({
         <button
           type="button"
           aria-label="Workflow files"
-          className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 font-medium text-foreground transition-colors hover:bg-muted"
+          className="inline-flex max-w-full min-w-0 items-center gap-1 rounded-sm px-0.5 py-0.5 text-sm font-medium text-foreground transition-colors hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
         >
           <span className="min-w-0 truncate">{selectedLabel}</span>
           <IconChevronDown
@@ -3715,35 +3602,15 @@ function UpdateGmailLabelAppliedTriggerForm({
 
 function DetailSkeleton() {
   return (
-    <div
-      className="flex min-h-[calc(100vh-8rem)] flex-col"
-      data-testid="workflow-detail-loading"
-    >
-      <div className="flex flex-1 flex-col animate-pulse px-0 py-3">
-        <div className="mb-7 flex items-center justify-between gap-4">
-          <div className="flex min-w-0 items-center gap-2">
-            <div className="size-4 shrink-0 rounded bg-muted/40" />
-            <div className="h-4 w-28 rounded bg-muted/40" />
-          </div>
-          <div className="h-6 w-16 shrink-0 rounded-full bg-muted/40" />
+    <DetailPageShell scroll={false}>
+      <WorkflowBreadcrumb detail={null} />
+      <DetailPageHeader className="pb-3">
+        <div className="animate-pulse space-y-3">
+          <div className="h-5 w-48 rounded bg-muted" />
+          <div className="h-4 w-72 rounded bg-muted" />
+          <div className="mt-4 h-9 w-80 rounded bg-muted" />
         </div>
-        <div className="space-y-3">
-          <div className="h-5 w-1/2 rounded bg-muted/50" />
-          <div className="h-4 w-11/12 rounded bg-muted/40" />
-          <div className="h-4 w-3/4 rounded bg-muted/40" />
-          <div className="h-4 w-5/6 rounded bg-muted/40" />
-          <div className="h-4 w-2/5 rounded bg-muted/40" />
-        </div>
-        <div className="my-6 h-px w-full bg-border/60" />
-        <div className="space-y-3">
-          <div className="h-4 w-4/5 rounded bg-muted/40" />
-          <div className="h-4 w-2/3 rounded bg-muted/40" />
-          <div className="flex items-center gap-3">
-            <div className="h-4 w-1/3 rounded bg-muted/40" />
-            <div className="h-5 w-px rounded bg-muted-foreground/30" />
-          </div>
-        </div>
-      </div>
-    </div>
+      </DetailPageHeader>
+    </DetailPageShell>
   );
 }
