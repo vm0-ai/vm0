@@ -63,6 +63,75 @@ def test_capture_enabled_api_allow_installs_request_stream(tmp_path, real_flow, 
     }
 
 
+async def test_capture_enabled_api_allow_retargets_unconnected_upstream(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.vm0.ai",
+        method="POST",
+        path="/api/webhooks/agent/heartbeat",
+        request_headers=headers(
+            ("Host", "api.vm0.ai"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+
+        assert callable(flow.request.stream)
+        assert flow.server_conn.address == ("api.vm0.ai", 443)
+
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+    assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.vm0.ai"
+    assert binding.kinds == frozenset(("api_allow",))
+    assert binding.original_address == ("203.0.113.10", 443)
+
+
+async def test_capture_enabled_api_allow_falls_back_when_upstream_is_connected(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_vm_without_firewalls(tmp_path, vm_fields={"captureNetworkBodies": True}),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.vm0.ai",
+        method="POST",
+        path="/api/webhooks/agent/heartbeat",
+        request_headers=headers(
+            ("Host", "api.vm0.ai"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    flow.server_conn.state = connection.ConnectionState.OPEN
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.requestheaders(flow)
+        _assert_no_request_stream(flow)
+
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+
+
 def test_capture_enabled_browser_allow_installs_request_stream(
     tmp_path, real_flow, mitm_ctx, headers
 ):

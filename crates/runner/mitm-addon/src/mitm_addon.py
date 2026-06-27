@@ -1742,6 +1742,12 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         return None
 
     if _should_stream_capture_request(classification):
+        if classification.kind == "api_allow" and not _ensure_bound_upstream_destination(
+            flow,
+            kind="api_allow",
+        ):
+            _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+            return None
         _maybe_record_allow_connector_diagnostic_context(flow, classification)
         flow.metadata[_REQUEST_CLASSIFICATION] = classification
         _start_request_timing(flow)
