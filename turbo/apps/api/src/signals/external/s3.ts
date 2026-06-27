@@ -233,6 +233,18 @@ export function downloadS3BufferWithMaxBytes(
   });
 }
 
+function isAsyncIterableByteStream(
+  value: unknown,
+): value is AsyncIterable<Uint8Array> {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const iterator = (value as { [Symbol.asyncIterator]?: unknown })[
+    Symbol.asyncIterator
+  ];
+  return typeof iterator === "function";
+}
+
 function downloadS3BufferWithClient(
   client$: Computed<S3Client>,
   bucket: string,
@@ -247,6 +259,9 @@ function downloadS3BufferWithClient(
     if (!response.Body) {
       throw new Error("S3 object body is empty");
     }
+    if (!isAsyncIterableByteStream(response.Body)) {
+      throw new Error("S3 object body is not an async byte stream");
+    }
     if (
       options.maxBytes !== undefined &&
       response.ContentLength !== undefined &&
@@ -259,9 +274,11 @@ function downloadS3BufferWithClient(
       );
     }
     const chunks: Uint8Array[] = [];
-    const stream = response.Body as unknown as AsyncIterable<Uint8Array>;
     let totalLength = 0;
-    for await (const chunk of stream) {
+    for await (const chunk of response.Body) {
+      if (!(chunk instanceof Uint8Array)) {
+        throw new Error("S3 object body yielded a non-byte chunk");
+      }
       totalLength += chunk.length;
       if (options.maxBytes !== undefined && totalLength > options.maxBytes) {
         throw new S3ObjectSizeLimitError(key, totalLength, options.maxBytes);
