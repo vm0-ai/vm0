@@ -171,7 +171,7 @@ class _StubTLSClient:
     def __init__(
         self,
         peername: tuple[str, int] | None,
-        sni: str,
+        sni: str | None,
         client_id: str | None,
     ) -> None:
         self.id = client_id or str(uuid.uuid4())
@@ -179,9 +179,28 @@ class _StubTLSClient:
         self.sni = sni
 
 
+class _StubTLSServer:
+    """Minimal stand-in for ``mitmproxy.connection.Server`` in TLS tests."""
+
+    def __init__(
+        self,
+        *,
+        address: tuple[str, int],
+        server_id: str | None,
+    ) -> None:
+        self.id = server_id or str(uuid.uuid4())
+        self.address = address
+
+
 class _StubTLSContext:
-    def __init__(self, client: _StubTLSClient) -> None:
+    def __init__(self, client: _StubTLSClient, server: _StubTLSServer) -> None:
         self.client = client
+        self.server = server
+
+
+class _StubClientHello:
+    def __init__(self, sni: str | None) -> None:
+        self.sni = sni
 
 
 class _StubClientHelloData:
@@ -189,19 +208,26 @@ class _StubClientHelloData:
 
     ``ClientHelloData`` is constructed inside mitmproxy's TLS layer from
     protocol state we don't have access to at test time, so we can't
-    build a real one.  The addon only reads
-    ``data.context.client.peername`` / ``data.context.client.sni`` and
-    writes ``data.ignore_connection``; a dataclass-shaped stub covers
-    that surface without pulling in MagicMock's attribute-proliferation.
+    build a real one.  The addon reads the context's client/server plus
+    ``data.client_hello.sni`` and writes ``data.ignore_connection``; a
+    dataclass-shaped stub covers that surface without pulling in
+    MagicMock's attribute-proliferation.
     """
 
     def __init__(
         self,
         peername: tuple[str, int] | None,
-        sni: str,
+        sni: str | None,
         client_id: str | None,
+        client_sni: str | None,
+        server_address: tuple[str, int],
+        server_id: str | None,
     ) -> None:
-        self.context = _StubTLSContext(_StubTLSClient(peername, sni, client_id))
+        self.context = _StubTLSContext(
+            _StubTLSClient(peername, client_sni, client_id),
+            _StubTLSServer(address=server_address, server_id=server_id),
+        )
+        self.client_hello = _StubClientHello(sni)
         self.ignore_connection = False
 
 
@@ -212,8 +238,18 @@ def make_tls_data():
         client_ip: str = "10.200.0.1",
         sni: str = "example.com",
         client_id: str | None = None,
+        client_sni: str | None = None,
+        server_address: tuple[str, int] = ("203.0.113.10", 443),
+        server_id: str | None = None,
     ) -> _StubClientHelloData:
-        return _StubClientHelloData(peername=(client_ip, 12345), sni=sni, client_id=client_id)
+        return _StubClientHelloData(
+            peername=(client_ip, 12345),
+            sni=sni,
+            client_id=client_id,
+            client_sni=sni if client_sni is None else client_sni,
+            server_address=server_address,
+            server_id=server_id,
+        )
 
     return _make
 

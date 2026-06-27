@@ -1450,27 +1450,19 @@ def _server_connect_binding_kinds(
     return frozenset(kinds)
 
 
-def server_connect(data: object) -> None:
-    """Bind privileged HTTPS upstream connections to their trusted SNI host."""
-    client = getattr(data, "client", None)
-    server = getattr(data, "server", None)
-    if client is None or server is None:
-        return
-
-    client_ip = client.peername[0] if getattr(client, "peername", None) else None
-    if not client_ip:
-        return
-
-    registry_state = registry.load_registry_state(get_registry_path())
+def _bind_privileged_upstream_destination(
+    *,
+    client: object,
+    server: connection.Server,
+    raw_sni: object,
+    registry_state: registry.RegistryState,
+    client_ip: str,
+    run_id: str,
+) -> None:
     if isinstance(registry_state, registry.RegistryUnavailable):
         return
 
-    vm_info = registry_state.vms.get(client_ip)
-    if vm_info is None:
-        return
-
     tls_admission = _tls_admission_for_client(client)
-    run_id = vm_info.get("runId", "")
     if tls_admission is not None and (
         tls_admission.client_ip != client_ip
         or tls_admission.kind != _TLS_ADMISSION_VALID_REGISTRY_VM
@@ -1478,7 +1470,6 @@ def server_connect(data: object) -> None:
     ):
         return
 
-    raw_sni = getattr(client, "sni", None)
     if not isinstance(raw_sni, str) or not raw_sni.strip():
         return
     try:
@@ -1506,6 +1497,36 @@ def server_connect(data: object) -> None:
         port=port,
         kinds=kinds,
         original_address=address,
+    )
+
+
+def server_connect(data: object) -> None:
+    """Bind privileged HTTPS upstream connections to their trusted SNI host."""
+    client = getattr(data, "client", None)
+    server = getattr(data, "server", None)
+    if client is None or server is None:
+        return
+
+    client_ip = client.peername[0] if getattr(client, "peername", None) else None
+    if not client_ip:
+        return
+
+    registry_state = registry.load_registry_state(get_registry_path())
+    if isinstance(registry_state, registry.RegistryUnavailable):
+        return
+
+    vm_info = registry_state.vms.get(client_ip)
+    if vm_info is None:
+        return
+
+    run_id = vm_info.get("runId", "")
+    _bind_privileged_upstream_destination(
+        client=client,
+        server=server,
+        raw_sni=getattr(client, "sni", None),
+        registry_state=registry_state,
+        client_ip=client_ip,
+        run_id=run_id,
     )
 
 
@@ -1547,13 +1568,22 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
 
     vm_info = registry_state.vms.get(client_ip)
     if vm_info is not None:
+        run_id = vm_info.get("runId", "")
         _record_tls_admission(
             data.context.client,
             _TlsAdmission(
                 client_ip=client_ip,
                 kind=_TLS_ADMISSION_VALID_REGISTRY_VM,
-                run_id=vm_info.get("runId", ""),
+                run_id=run_id,
             ),
+        )
+        _bind_privileged_upstream_destination(
+            client=data.context.client,
+            server=data.context.server,
+            raw_sni=data.client_hello.sni,
+            registry_state=registry_state,
+            client_ip=client_ip,
+            run_id=run_id,
         )
         return
 
