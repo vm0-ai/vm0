@@ -31,7 +31,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc -p tsconfig.contracts.json --noEmit && tsc -p tsconfig.rust-bindings.json --noEmit"
   },
   "dependencies": {
     "@trpc/server": "11.18.0",

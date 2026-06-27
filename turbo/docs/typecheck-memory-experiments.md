@@ -814,6 +814,54 @@ both production and test code while reducing the package check peak by about
 sequentially, but the root `turbo run check-types --concurrency=1` already
 optimizes for bounded memory over parallelism.
 
+### 36. API route registry declaration boundary
+
+Change tested: do not keep code. Add a temporary tsconfig that includes only
+`apps/api/src/signals/route.ts` and asks TypeScript to emit declarations only.
+This tests whether the full route registry can be strictly checked once and
+then consumed as a declaration boundary by smaller app-entry programs.
+
+Command:
+
+- `node scripts/measure-memory.mjs --label api-route-registry-declaration-emit --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tmp-route-registry-declarations.json`
+
+Result:
+
+- Failed with V8 heap OOM, peak `2272.1 MiB`, duration `69.4s`.
+
+Conclusion: do not use a single full-registry declaration boundary. The
+registry itself is already too large for the default heap when it imports every
+route leaf. A viable production-side API split needs route registry groups that
+are each checked independently, plus a way for the app-entry check to consume a
+bounded `readonly RouteEntry[]` boundary without re-expanding every route leaf.
+
+### 37. Split `@vm0/api-contracts` contracts and rust bindings
+
+Change: add `packages/api-contracts/tsconfig.contracts.json` and
+`packages/api-contracts/tsconfig.rust-bindings.json`, then change
+`@vm0/api-contracts` `check-types` to run both strict `tsc --noEmit` programs
+sequentially.
+
+Commands:
+
+- `node scripts/measure-memory.mjs --label api-contracts-contracts-check-types --json .memory-results/latest.jsonl -- pnpm -F @vm0/api-contracts exec tsc -p tsconfig.contracts.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-contracts-rust-bindings-check-types --json .memory-results/latest.jsonl -- pnpm -F @vm0/api-contracts exec tsc -p tsconfig.rust-bindings.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-contracts-split-check-types-script --json .memory-results/latest.jsonl -- pnpm -F @vm0/api-contracts check-types`
+
+Results:
+
+- Contracts chunk passed, peak `1607.9 MiB`, duration `39.4s`.
+- Rust bindings chunk passed, peak `830.4 MiB`, duration `5.7s`.
+- Real package script passed, peak `1594.7 MiB`, duration `43.7s`.
+- Delta versus rebased branch `@vm0/api-contracts` full check
+  (`1678.9 MiB`): `-84.2 MiB`.
+- Delta versus latest-main `@vm0/api-contracts` full check (`1688.5 MiB`):
+  `-93.8 MiB`.
+
+Conclusion: keep this change. It preserves strict checking for all package
+source files while lowering the package-level peak below `1.6 GiB`. The wall
+time increase is small because the rust-bindings chunk is short.
+
 ## Current conclusions
 
 - `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
@@ -822,7 +870,9 @@ optimizes for bounded memory over parallelism.
   `2217.1 MiB`; on the rebased branch before the split it measured
   `2223.5 MiB`; with the split package script it now passes at `2144.9 MiB`.
 - `@vm0/api-contracts`: latest-main cold peak is `1688.5 MiB`; the rebased
-  branch measured `1678.9 MiB`. This package is not the main problem.
+  branch measured `1678.9 MiB`; the split package script now passes at
+  `1594.7 MiB`. This package is not the main problem, but its package-level
+  peak is now materially lower.
 - `api`: dependency dedupe/declaration boundaries and route registry reshaping
   did not solve the OOM. The effective direction is strict sequential chunks,
   and the strongest measured chunks are route leaves (`2057.9 MiB` max),
