@@ -15,7 +15,7 @@ import {
   ownedChatThreadV1,
 } from "../services/chat-thread.service";
 import { sendChatThreadMessageV1$ } from "../services/chat-thread-v1-send.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const getThreadHandler$ = computed(async (get) => {
   const auth = get(authContext$);

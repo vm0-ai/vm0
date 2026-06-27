@@ -21,7 +21,7 @@ import {
   zeroModelProviders,
   type ModelProviderInfo,
 } from "../services/zero-model-provider.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
   status: 403 as const,

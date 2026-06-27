@@ -38,7 +38,7 @@ import {
   type LinkTelegramUserResult,
 } from "../services/zero-telegram-link.service";
 import type { AuthContext } from "../../types/auth";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const log = logger("api:telegram:link");
 

@@ -5,7 +5,7 @@ import { command } from "ccstate";
 import { env } from "../../lib/env";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { summarizeMemoryForUser$ } from "../services/cron-summarize-memory.service";
 
 const memoryDevRefreshAuthOptions = {

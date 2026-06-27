@@ -11,7 +11,7 @@ import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
 import { db$ } from "../external/db";
 import { agentPhoneFilenameFromMediaUrl } from "../services/zero-agentphone.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { settle } from "../utils";
 
 const log = logger("api:zero:integrations:phone:download-file");

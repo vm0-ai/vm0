@@ -11,7 +11,7 @@ import {
   zeroInsights,
   zeroInsightsRange,
 } from "../services/zero-insights.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const orgAuth = {
   requireOrganization: true,

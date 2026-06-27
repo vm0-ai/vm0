@@ -8,7 +8,7 @@ import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contr
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { zeroUserModelProviders } from "../services/zero-model-provider.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 function isModelFirstPersonalProviderType(type: ModelProviderType): boolean {
   return type === "claude-code-oauth-token" || type === "codex-oauth-token";

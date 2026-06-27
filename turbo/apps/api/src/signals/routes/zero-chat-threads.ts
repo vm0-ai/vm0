@@ -30,7 +30,7 @@ import {
 } from "../services/zero-chat-thread.service";
 import { zeroChatThreadGithubPrs$ } from "../services/chat-thread-github-prs.service";
 import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifacts-sync";
 import { zeroChatThreadComputerUseHostRoutes } from "./zero-chat-threads-computer-use-host";
 import { zeroChatThreadCreateRoutes } from "./zero-chat-threads-create";

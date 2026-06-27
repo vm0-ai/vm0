@@ -5,7 +5,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { notFound } from "../../lib/error";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { getBuiltInGenerationJob$ } from "../services/zero-built-in-generation.service";
 
 const builtInGenerationNotFound = notFound("Built-in generation not found");

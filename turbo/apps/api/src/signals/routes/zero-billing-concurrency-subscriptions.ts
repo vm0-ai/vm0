@@ -10,7 +10,7 @@ import {
   cancelConcurrencySubscription$,
   restoreConcurrencySubscription$,
 } from "../services/zero-billing-concurrency-subscription.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
   status: 403 as const,

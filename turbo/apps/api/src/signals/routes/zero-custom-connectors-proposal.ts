@@ -5,7 +5,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { saveCustomConnectorProposal$ } from "../services/zero-custom-connector.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const saveProposalInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {

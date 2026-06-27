@@ -1,4 +1,3 @@
-import type { AppRoute } from "@vm0/api-contracts/contracts/trpc-contract";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
 
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
@@ -16,7 +15,7 @@ import { authMeRoutes } from "./routes/auth-me";
 import { audioTranscriptionsV1Routes } from "./routes/audio-transcriptions-v1";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import { cliAuthTestRoutes } from "./routes/cli-auth-test";
-import type { SignalRouteHandler } from "./context/route";
+import type { RouteEntry } from "./route-entry";
 import { chatThreadsV1Routes } from "./routes/chat-threads-v1";
 import { connectorsTypeCallbackRoutes } from "./routes/connectors-type-callback";
 import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
@@ -183,12 +182,7 @@ import { testTelegramDispatchProbeRoutes } from "./routes/test-telegram-dispatch
 import { testTelegramMockRoutes } from "./routes/test-telegram-mock";
 import { testTelegramStateRoutes } from "./routes/test-telegram-state";
 
-export type { SignalRouteHandler };
-
-export interface RouteEntry {
-  readonly route: AppRoute;
-  readonly handler: SignalRouteHandler<unknown>;
-}
+export type { RouteEntry, SignalRouteHandler } from "./route-entry";
 
 export const ROUTES: readonly RouteEntry[] = [
   {

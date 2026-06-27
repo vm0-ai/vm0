@@ -5,7 +5,7 @@ import { webhookGithubContract } from "@vm0/api-contracts/contracts/webhooks";
 
 import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { now } from "../external/time";

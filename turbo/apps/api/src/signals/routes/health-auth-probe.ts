@@ -9,7 +9,7 @@ import {
 } from "../auth/auth-context";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import type { AuthContext, AuthTokenType } from "../../types/auth";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { rawQuery$ } from "../context/hono";
 
 const c = initContract();

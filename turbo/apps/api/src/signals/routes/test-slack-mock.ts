@@ -9,7 +9,7 @@ import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import { now } from "../../lib/time";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { safeJsonParse, settle } from "../utils";
 import {
   isTestEndpointAllowed,

@@ -13,7 +13,7 @@ import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$ } from "../external/db";
 import { env } from "../../lib/env";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { processOrgUsageEvents$ } from "../services/zero-credit-usage.service";
 
 const MODEL = "gemini-2.5-flash-image";

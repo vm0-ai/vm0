@@ -5,7 +5,7 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { submitZeroDeveloperSupport$ } from "../services/zero-developer-support.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const scopedZeroTokenRequired = Object.freeze({
   status: 403 as const,

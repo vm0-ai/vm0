@@ -3,7 +3,7 @@ import { webhookEventsContract } from "@vm0/api-contracts/contracts/webhooks";
 
 import { authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { receiveAgentEvents$ } from "../services/agent-webhook-events.service";
 import {
   getSandboxAuthForRun,

@@ -12,7 +12,7 @@ import {
 import { zeroTelegramInstallation } from "../services/zero-telegram-data.service";
 import { telegramMessageSendFooterText } from "../services/zero-telegram-footer.service";
 import { buildTelegramResponse } from "../../lib/telegram-format";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const botNotFound = Object.freeze({
   status: 404 as const,

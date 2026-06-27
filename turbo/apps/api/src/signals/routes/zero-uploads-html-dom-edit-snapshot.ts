@@ -13,7 +13,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { putS3Object } from "../external/s3";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const HTML_DOM_EDIT_CONTENT_TYPE = "text/html";
 const MAX_HTML_DOM_EDIT_SNAPSHOT_BYTES = 5 * 1024 * 1024;

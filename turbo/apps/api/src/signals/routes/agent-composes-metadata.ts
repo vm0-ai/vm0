@@ -6,7 +6,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { badRequestMessage, isNotFoundResponse } from "../../lib/error";
 import { updateComposeMetadata$ } from "../services/zero-compose-data.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const updateMetadataInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {

@@ -1,5 +1,5 @@
 import { command, computed, state, type StateArg } from "ccstate";
-import type { AutomationEntry } from "../../views/zero-page/zero-automation-card.tsx";
+import type { AutomationEntry } from "../../views/zero-page/automation-utils.ts";
 import { withCleanup } from "../utils.ts";
 import { fetchSlackChannels$ } from "./slack-channels.ts";
 import { userPreferences$ } from "./settings/user-preferences.ts";

@@ -12,7 +12,7 @@ import {
   type CancelRunResult,
 } from "../services/zero-run-cancel.service";
 import { tapError } from "../utils";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const L = logger("RunCancel");
 

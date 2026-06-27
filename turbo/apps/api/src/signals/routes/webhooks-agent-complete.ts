@@ -5,7 +5,7 @@ import { logger } from "../../lib/log";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import {
   completeAgentRun$,
   dispatchCompleteSideEffects$,

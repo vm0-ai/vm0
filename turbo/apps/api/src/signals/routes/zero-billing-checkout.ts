@@ -17,7 +17,7 @@ import {
   checkoutWouldReplaceWithSameOrLowerTier,
   createCheckoutSession$,
 } from "../services/zero-billing-checkout.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
   status: 403 as const,

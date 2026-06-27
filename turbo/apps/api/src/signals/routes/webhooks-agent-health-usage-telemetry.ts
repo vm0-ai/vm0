@@ -24,7 +24,7 @@ import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$ } from "../external/db";
 import { flushAxiom, getDatasetName, ingestToAxiom } from "../external/axiom";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { dispatchProgressCallbacks$ } from "../services/agent-run-callbacks.service";
 import { settle } from "../utils";
 import {

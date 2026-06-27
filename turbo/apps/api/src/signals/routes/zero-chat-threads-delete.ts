@@ -11,7 +11,7 @@ import { logger } from "../../lib/log";
 import { deleteChatThread$ } from "../services/zero-chat-thread.service";
 import { dispatchCancelSideEffects$ } from "../services/zero-run-cancel.service";
 import { tapError } from "../utils";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const L = logger("ChatThreadDelete");
 

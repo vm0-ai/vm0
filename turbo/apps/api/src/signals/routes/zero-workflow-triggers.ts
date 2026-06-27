@@ -21,7 +21,7 @@ import {
   updateWorkflowTrigger$,
   type TriggerResult,
 } from "../services/zero-workflow-trigger.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const workflowReadAuth = {
   requireOrganization: true,

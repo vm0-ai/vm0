@@ -3,7 +3,7 @@ import { onboardingStatusContract } from "@vm0/api-contracts/contracts/onboardin
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { onboardingStatus } from "../services/onboarding.service";
 
 const getOnboardingStatusInner$ = computed(async (get): Promise<unknown> => {

@@ -3,7 +3,7 @@ import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/real
 
 import { requiredAuthContext$, setAuthContext$ } from "../auth/auth-context";
 import { createPlatformUserRealtimeToken } from "../external/realtime";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const unauthenticated = Object.freeze({
   status: 401 as const,

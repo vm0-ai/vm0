@@ -1,0 +1,38 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "types": ["node"]
+  },
+  "include": [
+    "src/signals/routes/audio*.ts",
+    "src/signals/routes/auth*.ts",
+    "src/signals/routes/cli*.ts",
+    "src/signals/routes/connector*.ts",
+    "src/signals/routes/connectors*.ts",
+    "src/signals/routes/desktop*.ts",
+    "src/signals/routes/device*.ts",
+    "src/signals/routes/email*.ts",
+    "src/signals/routes/generate*.ts",
+    "src/signals/routes/generation*.ts",
+    "src/signals/routes/github*.ts",
+    "src/signals/routes/health*.ts",
+    "src/signals/routes/integrations*.ts",
+    "src/signals/routes/legacy*.ts",
+    "src/signals/routes/logs*.ts",
+    "src/signals/routes/model*.ts",
+    "src/signals/routes/oauth*.ts",
+    "src/signals/routes/registry*.ts",
+    "src/signals/routes/storages*.ts",
+    "src/signals/routes/thread*.ts",
+    "src/signals/routes/usage.ts",
+    "src/signals/routes/user*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/**/__tests__/**",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts"
+  ]
+}

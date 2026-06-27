@@ -6,7 +6,7 @@ import { optionalEnv } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
 import {
   cleanupClerkBannedUser$,

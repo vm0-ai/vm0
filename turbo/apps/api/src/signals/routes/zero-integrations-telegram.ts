@@ -40,7 +40,7 @@ import {
 } from "../services/zero-telegram-post.service";
 import { inferMimetype } from "../../lib/mimetype";
 import { settle } from "../utils";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const c = initContract();
 

@@ -5,7 +5,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { deleteLegacyCustomConnectorSecret$ } from "../services/zero-custom-connector.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const deleteSecretInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {

@@ -7,7 +7,7 @@ import { bodyResultOf } from "../context/request";
 import { now } from "../external/time";
 import { createAgentRun$ } from "../services/agent-run-create.service";
 import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const createRunBody$ = bodyResultOf(runsMainContract.create);
 

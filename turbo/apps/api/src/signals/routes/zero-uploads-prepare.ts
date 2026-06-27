@@ -18,7 +18,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { generatePresignedPutUrl } from "../external/s3";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const PUT_URL_TTL_SECONDS = 3600;
 

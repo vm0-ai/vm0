@@ -1,7 +1,7 @@
 import { cronSummarizeMemoryContract } from "@vm0/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { summarizeMemory$ } from "../services/cron-summarize-memory.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 

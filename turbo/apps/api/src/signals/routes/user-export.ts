@@ -4,7 +4,7 @@ import { userExportContract } from "@vm0/api-contracts/contracts/user-export";
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { waitUntil } from "../context/wait-until";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { logger } from "../../lib/log";
 import {
   executeUserExportJob$,
