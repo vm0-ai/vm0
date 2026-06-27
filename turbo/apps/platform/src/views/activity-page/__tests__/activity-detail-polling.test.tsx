@@ -2625,13 +2625,15 @@ describe("activity detail polling", () => {
     });
     await secondEventsRequested.promise;
 
-    await waitFor(() => {
-      expect(
-        screen.queryByText("old run step should not remain"),
-      ).not.toBeInTheDocument();
-    });
-
-    secondEventsResponse.resolve();
+    try {
+      await waitFor(() => {
+        expect(
+          screen.queryByText("old run step should not remain"),
+        ).not.toBeInTheDocument();
+      });
+    } finally {
+      secondEventsResponse.resolve();
+    }
 
     await waitFor(() => {
       expect(
