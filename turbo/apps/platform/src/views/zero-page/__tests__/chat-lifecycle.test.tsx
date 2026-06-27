@@ -4155,12 +4155,25 @@ describe("chat lifecycle", () => {
   it("shows online computers in the chat composer", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "computer-use-selection";
-    mockChatLifecycle(context, { threadId });
+    const lifecycle = mockChatLifecycle(context, {
+      threadId,
+      computerUseHostId: "22222222-2222-4222-8222-222222222222",
+    });
+    lifecycle.setThreadList([
+      {
+        id: threadId,
+        title: null,
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        running: false,
+      },
+    ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
       return respond(200, {
         hosts: [
           {
-            id: "host-online",
+            id: "11111111-1111-4111-8111-111111111111",
             displayName: "Studio Mac",
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
@@ -4171,7 +4184,7 @@ describe("chat lifecycle", () => {
             createdAt: "2026-06-10T11:00:00Z",
           },
           {
-            id: "host-online-2",
+            id: "22222222-2222-4222-8222-222222222222",
             displayName: "Office Mac",
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
@@ -4182,7 +4195,7 @@ describe("chat lifecycle", () => {
             createdAt: "2026-06-10T11:01:00Z",
           },
           {
-            id: "host-offline",
+            id: "33333333-3333-4333-8333-333333333333",
             displayName: "Offline Desktop",
             appVersion: "1.0.0",
             osVersion: "Windows 11",
@@ -4212,9 +4225,20 @@ describe("chat lifecycle", () => {
         screen.getByRole("switch", { name: "Connect Studio Mac" }),
       ).toHaveAttribute("aria-checked", "false");
       expect(
-        screen.getByRole("switch", { name: "Connect Office Mac" }),
-      ).toHaveAttribute("aria-checked", "false");
+        screen.getByRole("switch", { name: "Disconnect Office Mac" }),
+      ).toHaveAttribute("aria-checked", "true");
     });
+
+    const hostsGroup = screen.getByRole("group", {
+      name: "Computer Use hosts",
+    });
+    expect(
+      within(hostsGroup)
+        .getAllByRole("switch")
+        .map((item) => {
+          return item.getAttribute("aria-label");
+        }),
+    ).toStrictEqual(["Connect Studio Mac", "Disconnect Office Mac"]);
   });
 
   it("opens the Computer Use download dialog from the chat composer", async () => {

@@ -73,15 +73,9 @@ export function visibleComputerUseHosts<Host extends SelectableComputerUseHost>(
   selectedHostId: string | null | undefined,
 ): Host[] {
   const selected = selectedComputerUseHostId(hosts, selectedHostId);
-  const selectedHost = selected
-    ? hosts.find((host) => {
-        return host.id === selected;
-      })
-    : undefined;
-  const onlineHosts = hosts.filter((host) => {
-    return host.status === "online" && host.id !== selected;
+  return hosts.filter((host) => {
+    return host.status === "online" || host.id === selected;
   });
-  return selectedHost ? [selectedHost, ...onlineHosts] : onlineHosts;
 }
 
 export const computerUseHosts$ = computed(
