@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
-import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -28,6 +28,8 @@ import {
   VOICE_IO_TTS_MODEL,
   type SpeechPricing,
 } from "../../services/zero-voice-io-post.service";
+import { zeroVoiceIoSpeechRoutes } from "../zero-voice-io-speech";
+import { zeroVoiceIoSttRoutes } from "../zero-voice-io-stt";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -59,6 +61,13 @@ interface VoiceFixture {
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
+}
+
+function createVoiceIoTestApp() {
+  return createAppWithRoutes({
+    signal: context.signal,
+    routes: [...zeroVoiceIoSpeechRoutes, ...zeroVoiceIoSttRoutes],
+  });
 }
 
 function currentSecond(): number {
@@ -389,7 +398,7 @@ describe("POST /api/zero/voice-io/*", () => {
   });
 
   it("returns 401 from /stt when unauthenticated", async () => {
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       body: sttForm(),
@@ -412,7 +421,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
@@ -437,7 +446,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
@@ -468,7 +477,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
@@ -504,7 +513,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
@@ -552,7 +561,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
@@ -605,7 +614,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
@@ -631,7 +640,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
@@ -658,7 +667,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
@@ -688,7 +697,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt?verbose=true", {
       method: "POST",
       headers: authHeaders(),
@@ -717,7 +726,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -743,7 +752,7 @@ describe("POST /api/zero/voice-io/*", () => {
       exp: seconds + 60,
     });
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -762,7 +771,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     for (let attempt = 0; attempt < 2; attempt++) {
       const response = await app.request("/api/zero/voice-io/stt", {
         method: "POST",
@@ -786,7 +795,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     for (let attempt = 1; attempt <= AUDIO_INPUT_FREE_QUOTA; attempt++) {
       const response = await app.request("/api/zero/voice-io/stt", {
         method: "POST",
@@ -816,7 +825,7 @@ describe("POST /api/zero/voice-io/*", () => {
         return HttpResponse.json({ text: "should not run" });
       }),
     );
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
@@ -850,7 +859,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
@@ -885,7 +894,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
@@ -920,7 +929,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/stt", {
       method: "POST",
       headers: authHeaders(),
@@ -942,7 +951,7 @@ describe("POST /api/zero/voice-io/*", () => {
   });
 
   it("returns 401 from /speech when unauthenticated", async () => {
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/speech", {
       method: "POST",
       body: JSON.stringify({ text: "hello" }),
@@ -965,7 +974,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/speech", {
       method: "POST",
       headers: authHeaders(),
@@ -990,7 +999,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/speech", {
       method: "POST",
       headers: authHeaders(),
@@ -1017,7 +1026,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/speech", {
       method: "POST",
       headers: authHeaders(),
@@ -1046,7 +1055,7 @@ describe("POST /api/zero/voice-io/*", () => {
     );
 
     await deleteSpeechPricing();
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/speech", {
       method: "POST",
       headers: authHeaders(),
@@ -1100,7 +1109,7 @@ describe("POST /api/zero/voice-io/*", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/speech", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1236,7 +1245,7 @@ describe("POST /api/zero/voice-io/*", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/speech", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1282,7 +1291,7 @@ describe("POST /api/zero/voice-io/*", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVoiceIoTestApp();
     const response = await app.request("/api/zero/voice-io/speech", {
       method: "POST",
       headers: authHeaders(),

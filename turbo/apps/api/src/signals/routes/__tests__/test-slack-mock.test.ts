@@ -8,10 +8,11 @@ import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
 import { afterEach, describe, expect, it } from "vitest";
 import { and, eq, inArray } from "drizzle-orm";
 
-import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
+import { testSlackMockRoutes } from "../test-slack-mock";
 
 const context = testContext();
 const store = createStore();
@@ -21,7 +22,10 @@ const BASE_ROUTE = "/api/test/slack-mock";
 const LOG_TEST_TEAM_ID = "T_TEST_SLACK_MOCK_12859";
 
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
-  const app = createApp({ signal: context.signal });
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: testSlackMockRoutes,
+  });
   return Promise.resolve(app.request(path, init));
 }
 

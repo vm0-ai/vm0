@@ -3,12 +3,13 @@ import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { eq } from "drizzle-orm";
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
 import { now } from "../../external/time";
 import { writeDb$ } from "../../external/db";
 import { flushWaitUntilForTest } from "../../context/wait-until";
+import { zeroSlackOauthRoutes } from "../zero-slack-oauth";
 import {
   countSlackOrgConnections$,
   deleteSlackConnectOrg$,
@@ -33,7 +34,10 @@ async function appRequest(
     readonly headers?: HeadersInit;
   } = {},
 ): Promise<Response> {
-  const app = createApp({ signal: context.signal });
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: zeroSlackOauthRoutes,
+  });
   return await app.request(`${options.origin ?? "http://api.test"}${path}`, {
     method: "GET",
     headers: options.headers,

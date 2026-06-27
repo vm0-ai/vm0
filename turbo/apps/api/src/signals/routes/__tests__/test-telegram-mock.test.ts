@@ -6,10 +6,11 @@ import { desc, eq } from "drizzle-orm";
 import { TELEGRAM_E2E_FIXTURES } from "@vm0/core/telegram-e2e-fixtures";
 import { e2eTelegramMockCallLog } from "@vm0/db/schema/e2e-telegram-mock-call-log";
 
-import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
 import { writeDb$ } from "../../external/db";
+import { testTelegramMockRoutes } from "../test-telegram-mock";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -55,7 +56,10 @@ interface MockCallRow {
 }
 
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
-  const app = createApp({ signal: context.signal });
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: testTelegramMockRoutes,
+  });
   return Promise.resolve(app.request(path, init));
 }
 

@@ -2,7 +2,7 @@
 
 Date: 2026-06-27
 Base branch: `main`
-Base commit: `f97340e2e91de2eb46e75ceb40967b335024673a`
+Base commit: `7b14b934a4ea535d43bfa55f485af1e5a6687ef0`
 
 ## Constraints
 
@@ -15,10 +15,15 @@ Base commit: `f97340e2e91de2eb46e75ceb40967b335024673a`
 
 ## Baselines
 
-- `@vm0/api-contracts`: passed, peak RSS `1686.4 MiB`, duration `31.7s`.
-- `@vm0/app`: passed, peak RSS `2188.7 MiB`, duration `57.8s`.
-- `api`: failed with V8 heap OOM on the latest-main full check. Earlier same
-  commit baseline was peak RSS `2273.0 MiB`, duration `56.2s`.
+- `@vm0/api-contracts` on `origin/main`: passed, peak RSS `1631.4 MiB`,
+  duration `39.8s`.
+- `@vm0/app` on `origin/main`: passed, peak RSS `2189.5 MiB`, duration
+  `53.9s`.
+- `api` on `origin/main`: failed with V8 heap OOM, peak RSS `2258.3 MiB`,
+  duration `54.8s`.
+- Current experiment branch after the retained app/type-splitting changes:
+  `@vm0/api-contracts` passed at `1640.9 MiB`, `@vm0/app` passed at
+  `2179.1 MiB`, and full `api` still OOMed at `2238.6 MiB`.
 
 ## Static diagnostics
 
@@ -26,11 +31,11 @@ Base commit: `f97340e2e91de2eb46e75ceb40967b335024673a`
   `signals/route.ts`. Splitting `RouteEntry` into `signals/route-entry.ts`
   removes the route leaf -> registry type-only edge and is required for useful
   route leaf chunking.
-- A fresh lockfile package-entry scan found `113` package names with multiple
-  versions. Notable type-graph candidates include `esbuild` and `type-fest`;
-  broader SDK families such as Clerk, Sentry, OpenTelemetry, and Babel should
-  still be reviewed with a package-manager-level dedupe report before making
-  lockfile changes.
+- A fresh lockfile package-entry scan on `7b14b93` found `214` package names
+  with multiple versions. Notable type-graph candidates include `type-fest`,
+  Clerk shared packages, Sentry bundler packages, Babel helpers, and
+  `commander`. This is real fragmentation, but declaration-boundary
+  experiments below show it is not the dominant source of the `api` OOM.
 - Declaration-boundary experiments show dependency fragmentation is not the
   dominant `api` peak source; the largest pressure is inside `apps/api/src`.
 
@@ -238,17 +243,76 @@ route-free test coverage without weakening response validation or contract
 typing. The remaining OOM is now concentrated in 42 roots that still reach
 `app-factory.ts` / `signals/route.ts` through other BDD helpers.
 
+### 17. Direct route test entry slices
+
+Change: migrate direct route tests that imported `app-factory.ts` to
+`createAppWithRoutes` with real production route arrays. This keeps real route
+handlers, real contract typing, response validation, and strict `tsc`; it only
+avoids registering the full API route table for tests that exercise one route
+or a small route set.
+
+Files migrated in this experiment:
+
+- `legacy-file.test.ts`
+- `test-slack-mock.test.ts`
+- `test-slack-state.test.ts`
+- `test-telegram-dispatch-probe.test.ts`
+- `test-telegram-mock.test.ts`
+- `test-telegram-state.test.ts`
+- `zero-built-in-generation.test.ts`
+- `zero-connectors-oauth-start.test.ts`
+- `zero-email.test.ts`
+- `zero-image-io-generate.test.ts`
+- `zero-slack-browser-connect.test.ts`
+- `zero-slack-oauth.test.ts`
+- `zero-video-io-generate.test.ts`
+- `zero-voice-io-post.test.ts`
+- `zero-web-download.test.ts`
+
+Commands:
+
+- `pnpm -F api exec tsc -p tsconfig.tests-pure-context-entries.json --noEmit`
+- `pnpm -F api exec tsc -p tsconfig.tests-no-setup-app.json --noEmit`
+
+Results:
+
+- Intermediate 14-root pure-context chunk: passed, peak `1916.4 MiB`.
+- Intermediate 25-root pure-context chunk: passed, peak `2031.7 MiB`.
+- Final 27-root pure-context chunk: passed, peak `2035.0 MiB`.
+- Full 54-root `tests-no-setup-app` chunk: still OOM, peak `2247.1 MiB`.
+
+Static result: the `tests-no-setup-app` roots split from `12 clean / 42 dirty`
+after experiment 16 to `27 clean / 27 dirty` after this experiment. All direct
+`app-factory.ts` imports in that set are gone; the remaining dirty roots are
+through BDD helper modules, primarily `api-bdd-webhooks.ts`,
+`api-bdd-runs-automations.ts`, `api-bdd-github.ts`, `api-bdd-misc.ts`,
+`api-bdd-connectors.ts`, `api-bdd-storages.ts`, `api-bdd-chat-files.ts`, and
+`api-bdd-user-config.ts`.
+
+Conclusion: this is the strongest safe API-side improvement so far. It creates
+a strict 27-entry test chunk that stays around `2035 MiB`, about `223 MiB`
+below the raw latest-main full `api` OOM peak. It is not sufficient to make the
+54-root test chunk pass because remaining BDD helpers still pull default
+`setupApp` / full route registry edges.
+
 ## Current conclusions
 
 - `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
-  preserve public exports and type strictness, reduce peak by `5.5 MiB` in the
-  combined measured state, and improve import boundaries.
-- `@vm0/api-contracts`: current cold peak is `1686.4 MiB`; not the main problem.
+  preserve public exports and type strictness. On latest `origin/main`, app
+  measured `2189.5 MiB`; on the current branch it measured `2179.1 MiB`.
+- `@vm0/api-contracts`: latest-main cold peak is `1631.4 MiB`; current branch
+  measured `1640.9 MiB`. This package is not the main problem.
 - `api`: dependency dedupe/declaration boundaries and route registry reshaping
   did not solve the OOM. The effective direction is strict sequential chunks,
   and the strongest measured chunks are route leaves (`2057.9 MiB` max),
   explicit-route tests (`1026.0 MiB` for callback-route), and route-free
-  pure-context tests (`1963.2 MiB` for 12 roots).
-- Next API work should migrate BDD/setup helpers from default `setupApp` to
-  explicit route arrays and `createAppWithRoutes` where possible. After that,
-  wire route/test/core chunks through a package-local `check-types` runner.
+  pure-context tests (`2035.0 MiB` for 27 roots).
+- Direct route test entries are worth keeping: they eliminate every direct
+  `app-factory.ts` edge in `tsconfig.tests-no-setup-app.json` without reducing
+  strictness.
+- Next API work should migrate remaining BDD/setup helpers from default
+  `setupApp` to explicit route arrays and `createAppWithRoutes` where possible,
+  starting with `api-bdd-webhooks.ts` and `api-bdd-runs-automations.ts`.
+  After that, wire route/test/core chunks through a package-local
+  `check-types` runner so `api` no longer relies on one monolithic `tsc`
+  program.

@@ -23,10 +23,11 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { describe, expect, it } from "vitest";
 import { and, eq, inArray } from "drizzle-orm";
 
-import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { writeDb$ } from "../../external/db";
+import { testSlackStateRoutes } from "../test-slack-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -62,7 +63,10 @@ function suffix(): string {
 }
 
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
-  const app = createApp({ signal: context.signal });
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: testSlackStateRoutes,
+  });
   return Promise.resolve(app.request(path, init));
 }
 
