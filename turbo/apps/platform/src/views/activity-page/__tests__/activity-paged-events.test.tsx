@@ -166,7 +166,7 @@ describe("activity paged events", () => {
     });
   });
 
-  it("uses event pagination cursors so same-sequence pages are not skipped", async () => {
+  it("uses event pagination cursors returned by the server", async () => {
     const requests: {
       since: number | undefined;
       cursor: string | undefined;
@@ -180,14 +180,14 @@ describe("activity paged events", () => {
       zeroRunAgentEventsContract.getAgentEvents,
       ({ query, respond }) => {
         requests.push({ since: query.since, cursor: query.cursor });
-        if (query.cursor === "sequence:asc:0") {
+        if (query.cursor === "server-page-2") {
           return respond(200, {
-            events: [makeAssistantEvent(0, "Second same-sequence page")],
+            events: [makeAssistantEvent(1, "Second cursor page")],
             hasMore: false,
             framework: "claude-code",
           } satisfies AgentEventsResponse);
         }
-        if (query.since === 0) {
+        if (query.since !== undefined) {
           return respond(200, {
             events: [],
             hasMore: false,
@@ -196,9 +196,9 @@ describe("activity paged events", () => {
         }
 
         return respond(200, {
-          events: [makeAssistantEvent(0, "First same-sequence page")],
+          events: [makeAssistantEvent(0, "First cursor page")],
           hasMore: true,
-          nextCursor: "sequence:asc:0",
+          nextCursor: "server-page-2",
           framework: "claude-code",
         } satisfies AgentEventsResponse);
       },
@@ -214,11 +214,11 @@ describe("activity paged events", () => {
         screen.getByRole("heading", { name: "Test Agent" }),
       ).toBeInTheDocument();
     });
-    expect(screen.getByText("First same-sequence page")).toBeInTheDocument();
-    expect(screen.getByText("Second same-sequence page")).toBeInTheDocument();
+    expect(screen.getByText("First cursor page")).toBeInTheDocument();
+    expect(screen.getByText("Second cursor page")).toBeInTheDocument();
     expect(requests.slice(0, 2)).toStrictEqual([
       { since: undefined, cursor: undefined },
-      { since: undefined, cursor: "sequence:asc:0" },
+      { since: undefined, cursor: "server-page-2" },
     ]);
   });
 });

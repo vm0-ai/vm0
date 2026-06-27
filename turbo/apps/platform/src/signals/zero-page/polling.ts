@@ -171,7 +171,7 @@ function nextEventPageRequest(
   pages: readonly PagedRunEvents[],
 ): EventPageRequest | null {
   const lastPage = pages[pages.length - 1];
-  // Prefer the server cursor so same-sequence events can span pages.
+  // Prefer the server-provided cursor over reconstructing a sequence cursor.
   if (lastPage?.hasMore && lastPage.nextCursor) {
     const repeatedCursor = pages.slice(0, -1).some((page) => {
       return page.nextCursor === lastPage.nextCursor;
