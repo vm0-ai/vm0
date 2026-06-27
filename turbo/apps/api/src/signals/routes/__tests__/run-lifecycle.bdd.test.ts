@@ -541,15 +541,32 @@ async function zeroBackedDirectRunActor(): Promise<{
 
 function zeroBackedDirectRunBody(args: {
   readonly agentId: string;
+  readonly agentComposeVersionId?: string;
   readonly prompt: string;
 }) {
   return {
-    agentComposeId: args.agentId,
+    ...(args.agentComposeVersionId
+      ? { agentComposeVersionId: args.agentComposeVersionId }
+      : { agentComposeId: args.agentId }),
     prompt: args.prompt,
     modelProviderType: "anthropic-api-key" as const,
     vars: { ZERO_AGENT_ID: args.agentId },
     secrets: { ZERO_TOKEN: "bdd-zero-direct-token" },
   };
+}
+
+async function readAgentHeadVersionId(agentId: string): Promise<string> {
+  const [composeRow] = await writeDb
+    .select({ headVersionId: agentComposes.headVersionId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, agentId))
+    .limit(1);
+  if (!composeRow?.headVersionId) {
+    throw new Error(
+      "Expected Zero-backed direct run agent to have a head version",
+    );
+  }
+  return composeRow.headVersionId;
 }
 
 const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
@@ -1667,6 +1684,42 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("omits connected stored connectors for pinned Zero-backed direct run versions", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
+    const agentComposeVersionId = await readAgentHeadVersionId(agentId);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-version-unallowed-access",
+      refreshToken: "x-bdd-version-unallowed-refresh",
+    });
+
+    const run = await api.createDirectRun(
+      actor,
+      zeroBackedDirectRunBody({
+        agentId,
+        agentComposeVersionId,
+        prompt: "direct run pinned to a zero agent version",
+      }),
+    );
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES,
+    );
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.agentComposeVersionId).toBe(agentComposeVersionId);
+    expect(claim.environment ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
+
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("injects oauth connector tokens with billable firewalls and resolvable secrets", async () => {
