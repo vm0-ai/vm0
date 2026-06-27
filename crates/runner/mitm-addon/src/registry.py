@@ -51,6 +51,10 @@ _HOST_DOT_EQUIVALENT_TRANSLATION = str.maketrans(
 _HOST_POLICY_HOST_FORBIDDEN_CHARS = frozenset("%*[]/?#@\\:{}")
 _IPV4_LITERAL_COMPONENT_PATTERN = re.compile(r"(?:0[xX][0-9a-fA-F]+|[0-9]+)")
 _IPV4_LITERAL_MAX_COMPONENTS = 4
+_PROVIDER_OWNED_HOST_POLICY_KEYS = frozenset(
+    ("kind", "exactHosts", "suffixes", "allowNonDefaultPort")
+)
+_PUBLIC_DESTINATION_HOST_POLICY_KEYS = frozenset(("kind",))
 _IPV4_NON_PUBLIC_RANGES = (
     (0x00000000, 0x00FFFFFF),
     (0x0A000000, 0x0AFFFFFF),
@@ -699,6 +703,31 @@ def _host_policy_string_list(policy: dict, key: str) -> list[str]:
     return value
 
 
+def _validate_host_policy_keys(
+    *,
+    firewall_name: str,
+    policy: dict,
+    allowed_keys: frozenset[str],
+) -> None:
+    extra_keys = sorted(set(policy) - allowed_keys)
+    if extra_keys:
+        joined = ", ".join(extra_keys)
+        raise _FirewallEntryResolutionError(
+            f'builtin firewall "{firewall_name}" hostPolicy has unsupported keys: {joined}'
+        )
+
+
+def _host_policy_optional_bool(*, firewall_name: str, policy: dict, key: str) -> bool:
+    value = policy.get(key)
+    if value is None:
+        return False
+    if not isinstance(value, bool):
+        raise _FirewallEntryResolutionError(
+            f'builtin firewall "{firewall_name}" hostPolicy.{key} must be a boolean'
+        )
+    return value
+
+
 def _normalize_host_policy_suffix(suffix: str) -> str:
     without_leading_dot = suffix[1:] if suffix.startswith(".") else suffix
     return _normalize_host_policy_hostname(without_leading_dot)
@@ -775,6 +804,11 @@ def _validate_provider_owned_host_policy(
     hostname = _normalize_host_policy_hostname(parsed.hostname)
     exact_hosts = _host_policy_string_list(policy, "exactHosts")
     suffixes = _host_policy_string_list(policy, "suffixes")
+    allow_non_default_port = _host_policy_optional_bool(
+        firewall_name=firewall_name,
+        policy=policy,
+        key="allowNonDefaultPort",
+    )
     if not exact_hosts and not suffixes:
         raise _FirewallEntryResolutionError(
             f'builtin firewall "{firewall_name}" providerOwned hostPolicy '
@@ -802,7 +836,7 @@ def _validate_provider_owned_host_policy(
             f'resolved host "{hostname}"'
         )
     if (
-        not bool(policy.get("allowNonDefaultPort"))
+        not allow_non_default_port
         and parsed.port is not None
         and parsed.port != _DEFAULT_HTTPS_PORT
     ):
@@ -905,6 +939,11 @@ def _validate_builtin_base_host_policy(
         )
     kind = host_policy.get("kind")
     if kind == "providerOwned":
+        _validate_host_policy_keys(
+            firewall_name=firewall_name,
+            policy=host_policy,
+            allowed_keys=_PROVIDER_OWNED_HOST_POLICY_KEYS,
+        )
         _validate_provider_owned_host_policy(
             firewall_name=firewall_name,
             parsed=parsed,
@@ -912,6 +951,11 @@ def _validate_builtin_base_host_policy(
         )
         return
     if kind == "publicDestination":
+        _validate_host_policy_keys(
+            firewall_name=firewall_name,
+            policy=host_policy,
+            allowed_keys=_PUBLIC_DESTINATION_HOST_POLICY_KEYS,
+        )
         _validate_public_destination_host_policy(
             firewall_name=firewall_name,
             parsed=parsed,

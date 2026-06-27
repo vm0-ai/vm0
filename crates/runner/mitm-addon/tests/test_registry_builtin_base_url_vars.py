@@ -195,7 +195,7 @@ class TestRegistryBuiltinBaseUrlVars:
             assert invalid_vm.reason == "invalid_firewalls"
             assert "host policy does not allow resolved host" in invalid_vm.message
 
-    def test_builtin_provider_owned_rejects_invalid_host_policies(self, tmp_path, monkeypatch):
+    def test_builtin_rejects_invalid_host_policies(self, tmp_path, monkeypatch):
         cases = [
             (
                 {"kind": "providerOwned", "exactHosts": [".api.example.com"]},
@@ -224,6 +224,22 @@ class TestRegistryBuiltinBaseUrlVars:
             (
                 {"kind": "providerOwned", "suffixes": ["com"]},
                 "suffixes must be fixed hostnames with at least two labels",
+            ),
+            (
+                {
+                    "kind": "providerOwned",
+                    "suffixes": ["example.com"],
+                    "allowNonDefaultPort": "true",
+                },
+                "hostPolicy.allowNonDefaultPort must be a boolean",
+            ),
+            (
+                {"kind": "providerOwned", "suffixes": ["example.com"], "extra": True},
+                "hostPolicy has unsupported keys: extra",
+            ),
+            (
+                {"kind": "publicDestination", "extra": True},
+                "hostPolicy has unsupported keys: extra",
             ),
         ]
         for index, (host_policy, message) in enumerate(cases):
