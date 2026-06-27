@@ -1868,7 +1868,7 @@ interface StoredConnectorMaterializationSnapshot {
   readonly bindingSets: readonly ConnectorEnvBindingSet[];
   readonly requirements: StoredConnectorRequirements;
   readonly secretRows: readonly StoredConnectorSecretRow[];
-  readonly variables: Record<string, string> | undefined;
+  readonly variableValues: Record<string, string>;
 }
 
 interface ResolvedStoredConnectorState {
@@ -2213,6 +2213,25 @@ function storedConnectorVariablesFromRows(
   );
 }
 
+function storedConnectorRuntimeVariables(
+  bindingSets: readonly ConnectorEnvBindingSet[],
+  connectorVariables: Record<string, string>,
+): Record<string, string> {
+  const vars: Record<string, string> = {};
+  for (const { runtimeBindings } of bindingSets) {
+    for (const { envName, source } of runtimeBindings) {
+      if (source.kind !== "connector-variable") {
+        continue;
+      }
+      const value = connectorVariables[source.name];
+      if (value !== undefined) {
+        vars[envName] = value;
+      }
+    }
+  }
+  return vars;
+}
+
 function resolveStoredConnectorState(
   bindingSets: readonly ConnectorEnvBindingSet[],
   connectorSecrets: Record<string, string>,
@@ -2287,7 +2306,12 @@ function storedConnectorContextFromSnapshot(
   }
   return {
     secrets: undefined,
-    vars: snapshot.variables,
+    vars: compactRecord(
+      storedConnectorRuntimeVariables(
+        snapshot.bindingSets,
+        snapshot.variableValues,
+      ),
+    ),
     secretConnectorMap: undefined,
     connectorTypes: snapshot.allowedConnectorRows.map((row) => {
       return row.connectorType;
@@ -2356,7 +2380,7 @@ async function materializeStoredConnectorContext(
       const resolved = resolveStoredConnectorState(
         snapshot.bindingSets,
         connectorSecrets,
-        snapshot.variables ?? {},
+        snapshot.variableValues,
         availableSecretNames,
       );
 
@@ -2599,7 +2623,7 @@ async function loadStoredConnectorMaterializationSnapshot(
     return {
       ...storedConnectorPlan,
       secretRows,
-      variables: compactRecord(connectorVariables),
+      variableValues: connectorVariables,
     } satisfies StoredConnectorMaterializationSnapshot;
   });
 }

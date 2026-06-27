@@ -2064,6 +2064,55 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
+  it("maps stored connector variable sources to runtime aliases for permission manifests", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "test-oauth",
+      authMethod: "oauth",
+      accessToken: "test-oauth-bdd-access",
+      refreshToken: "test-oauth-bdd-refresh",
+    });
+    const composeName = `bdd-connector-var-alias-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "use stored connector variable aliases",
+    });
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(findFirewallEntry(claim.firewalls, "test-oauth")).toStrictEqual({
+      kind: "builtin",
+      name: "test-oauth",
+      baseUrlVars: {
+        TEST_OAUTH_TENANT_ID: "test-oauth-oauth-tenantId",
+      },
+    });
+    expect(claim.environment?.TEST_OAUTH_TENANT_ID).toBe(
+      "test-oauth-oauth-tenantId",
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("injects only enabled stored connectors for Zero-backed direct runs", async () => {
     const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
