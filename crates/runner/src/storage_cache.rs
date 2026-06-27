@@ -61,6 +61,10 @@ const GUEST_STAGE_DIR: &str = "/tmp/vm0-storage-cache";
 
 const HEAD_TIMEOUT: Duration = Duration::from_secs(10);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
+const STORAGE_CACHE_STAGE_TOTAL: &str = "storage_cache_stage_total";
+const STORAGE_CACHE_STAGE_BATCH_WRITE: &str = "storage_cache_stage_batch_write";
+const STORAGE_CACHE_STAGE_SINGLE_WRITE: &str = "storage_cache_stage_single_write";
+const STORAGE_CACHE_STAGE_FAILED: &str = "storage-cache-stage-failed";
 
 /// Guest-side filename for a cached archive.
 ///
@@ -116,6 +120,20 @@ struct GuestStageWrite {
 struct GuestStageBatch {
     writes: Vec<GuestStageWrite>,
     content_bytes: usize,
+}
+
+/// Aggregates actual guest write time, excluding cache probe/download work.
+struct StorageCacheStageMetrics {
+    total_duration: Duration,
+    attempted: bool,
+    failed: bool,
+}
+
+struct GuestStageRecorder<'a> {
+    sandbox: &'a dyn Sandbox,
+    guest_writes: &'a GuestWriteLocks,
+    telemetry: &'a mut JobTelemetry,
+    metrics: &'a mut StorageCacheStageMetrics,
 }
 
 type ProcessedGroupTaskResult = (CacheTargetGroup, RunnerResult<ProcessedGroup>);
@@ -247,38 +265,107 @@ impl GuestStageBatch {
     }
 }
 
+impl StorageCacheStageMetrics {
+    fn start() -> Self {
+        Self {
+            total_duration: Duration::ZERO,
+            attempted: false,
+            failed: false,
+        }
+    }
+
+    fn record_write_result(
+        &mut self,
+        telemetry: &mut JobTelemetry,
+        action_type: &str,
+        started_at: Instant,
+        result: &RunnerResult<()>,
+    ) {
+        self.attempted = true;
+        let duration = started_at.elapsed();
+        self.total_duration = self.total_duration.saturating_add(duration);
+        let success = result.is_ok();
+        if !success {
+            self.failed = true;
+        }
+        telemetry.record(
+            action_type,
+            duration,
+            success,
+            (!success).then_some(STORAGE_CACHE_STAGE_FAILED),
+        );
+    }
+
+    fn record_total(&self, telemetry: &mut JobTelemetry) {
+        if self.attempted {
+            let success = !self.failed;
+            telemetry.record(
+                STORAGE_CACHE_STAGE_TOTAL,
+                self.total_duration,
+                success,
+                (!success).then_some(STORAGE_CACHE_STAGE_FAILED),
+            );
+        }
+    }
+}
+
 async fn flush_guest_stage_batch(
     batch: &mut GuestStageBatch,
-    sandbox: &dyn Sandbox,
-    guest_writes: &GuestWriteLocks,
+    stage: &mut GuestStageRecorder<'_>,
 ) -> RunnerResult<()> {
     if batch.writes.is_empty() {
         return Ok(());
     }
-    guest_writes.write_files(sandbox, &batch.writes).await?;
+    let started_at = Instant::now();
+    let result = stage
+        .guest_writes
+        .write_files(stage.sandbox, &batch.writes)
+        .await;
+    stage.metrics.record_write_result(
+        stage.telemetry,
+        STORAGE_CACHE_STAGE_BATCH_WRITE,
+        started_at,
+        &result,
+    );
+    result?;
     batch.writes.clear();
     batch.content_bytes = 0;
     Ok(())
 }
 
+async fn stage_single_guest_write(
+    write: &GuestStageWrite,
+    stage: &mut GuestStageRecorder<'_>,
+) -> RunnerResult<()> {
+    let started_at = Instant::now();
+    let result = stage
+        .guest_writes
+        .write_file(stage.sandbox, &write.guest_path, &write.bytes)
+        .await;
+    stage.metrics.record_write_result(
+        stage.telemetry,
+        STORAGE_CACHE_STAGE_SINGLE_WRITE,
+        started_at,
+        &result,
+    );
+    result
+}
+
 async fn push_guest_stage_write(
     batch: &mut GuestStageBatch,
     write: GuestStageWrite,
-    sandbox: &dyn Sandbox,
-    guest_writes: &GuestWriteLocks,
+    stage: &mut GuestStageRecorder<'_>,
 ) -> RunnerResult<()> {
     if write.bytes.len() > GUEST_STAGE_BATCH_MAX_BYTES {
-        guest_writes
-            .write_file(sandbox, &write.guest_path, &write.bytes)
-            .await?;
+        stage_single_guest_write(&write, stage).await?;
         return Ok(());
     }
     if batch.should_flush_before(&write) {
-        flush_guest_stage_batch(batch, sandbox, guest_writes).await?;
+        flush_guest_stage_batch(batch, stage).await?;
     }
     batch.push(write);
     if batch.should_flush_after_push() {
-        flush_guest_stage_batch(batch, sandbox, guest_writes).await?;
+        flush_guest_stage_batch(batch, stage).await?;
     }
     Ok(())
 }
@@ -318,8 +405,7 @@ async fn stage_processed_group(
     processed: ProcessedGroup,
     outcomes: &mut Vec<(CacheTargetGroup, GroupOutcome)>,
     stage_batch: &mut GuestStageBatch,
-    sandbox: &dyn Sandbox,
-    guest_writes: &GuestWriteLocks,
+    stage: &mut GuestStageRecorder<'_>,
 ) -> RunnerResult<()> {
     let ProcessedGroup {
         outcome,
@@ -327,12 +413,10 @@ async fn stage_processed_group(
     } = processed;
     if let Some(stage_write) = stage_write {
         if should_batch_stage_write(&outcome) {
-            push_guest_stage_write(stage_batch, stage_write, sandbox, guest_writes).await?;
+            push_guest_stage_write(stage_batch, stage_write, stage).await?;
         } else {
-            flush_guest_stage_batch(stage_batch, sandbox, guest_writes).await?;
-            guest_writes
-                .write_file(sandbox, &stage_write.guest_path, &stage_write.bytes)
-                .await?;
+            flush_guest_stage_batch(stage_batch, stage).await?;
+            stage_single_guest_write(&stage_write, stage).await?;
         }
     }
     outcomes.push((group, outcome));
@@ -345,8 +429,7 @@ async fn stage_joined_processed_group(
     processed: RunnerResult<ProcessedGroup>,
     outcomes: &mut Vec<(CacheTargetGroup, GroupOutcome)>,
     stage_batch: &mut GuestStageBatch,
-    sandbox: &dyn Sandbox,
-    guest_writes: &GuestWriteLocks,
+    stage: &mut GuestStageRecorder<'_>,
 ) -> RunnerResult<()> {
     let processed = match processed {
         Ok(processed) => processed,
@@ -355,15 +438,7 @@ async fn stage_joined_processed_group(
             return Err(error);
         }
     };
-    if let Err(error) = stage_processed_group(
-        group,
-        processed,
-        outcomes,
-        stage_batch,
-        sandbox,
-        guest_writes,
-    )
-    .await
+    if let Err(error) = stage_processed_group(group, processed, outcomes, stage_batch, stage).await
     {
         abort_pending_processed_groups(groups).await;
         return Err(error);
@@ -397,53 +472,64 @@ pub async fn populate_cache(
         .build()
         .map_err(|e| RunnerError::Internal(format!("build http client: {e}")))?;
     let guest_writes = GuestWriteLocks::default();
+    let mut stage_metrics = StorageCacheStageMetrics::start();
 
     // Cache population runs in owned tasks so a slow guest staging write does
     // not stop already-started workers from releasing host cache flocks. Failure
     // paths explicitly abort and drain pending workers so locks are not left for
     // the runtime to clean up later.
     let mut groups = JoinSet::new();
-    let mut outcomes = Vec::new();
-    let mut stage_batch = GuestStageBatch::default();
+    let stage_result: RunnerResult<Vec<(CacheTargetGroup, GroupOutcome)>> = async {
+        let mut outcomes = Vec::new();
+        let mut stage_batch = GuestStageBatch::default();
+        let mut stage = GuestStageRecorder {
+            sandbox,
+            guest_writes: &guest_writes,
+            telemetry,
+            metrics: &mut stage_metrics,
+        };
 
-    for group in target_groups {
-        while groups.len() >= CONCURRENCY {
-            let Some((group, outcome)) = join_next_processed_group(&mut groups).await? else {
-                break;
-            };
+        for group in target_groups {
+            while groups.len() >= CONCURRENCY {
+                let Some((group, outcome)) = join_next_processed_group(&mut groups).await? else {
+                    break;
+                };
+                stage_joined_processed_group(
+                    &mut groups,
+                    group,
+                    outcome,
+                    &mut outcomes,
+                    &mut stage_batch,
+                    &mut stage,
+                )
+                .await?;
+            }
+
+            let http = http.clone();
+            let home = home.clone();
+            groups.spawn(async move {
+                let res = process_group(&group, &http, &home).await;
+                (group, res)
+            });
+        }
+
+        while let Some((group, outcome)) = join_next_processed_group(&mut groups).await? {
             stage_joined_processed_group(
                 &mut groups,
                 group,
                 outcome,
                 &mut outcomes,
                 &mut stage_batch,
-                sandbox,
-                &guest_writes,
+                &mut stage,
             )
             .await?;
         }
-
-        let http = http.clone();
-        let home = home.clone();
-        groups.spawn(async move {
-            let res = process_group(&group, &http, &home).await;
-            (group, res)
-        });
+        flush_guest_stage_batch(&mut stage_batch, &mut stage).await?;
+        Ok(outcomes)
     }
-
-    while let Some((group, outcome)) = join_next_processed_group(&mut groups).await? {
-        stage_joined_processed_group(
-            &mut groups,
-            group,
-            outcome,
-            &mut outcomes,
-            &mut stage_batch,
-            sandbox,
-            &guest_writes,
-        )
-        .await?;
-    }
-    flush_guest_stage_batch(&mut stage_batch, sandbox, &guest_writes).await?;
+    .await;
+    stage_metrics.record_total(telemetry);
+    let outcomes = stage_result?;
 
     for (group, outcome) in outcomes {
         apply_group_outcome(manifest, &group, &outcome, telemetry);
@@ -1381,6 +1467,44 @@ mod tests {
         JobTelemetry::new(http, RunId::nil(), "test-token".to_string())
     }
 
+    fn assert_op(ops: &[(String, bool, Option<String>)], action_type: &str, success: bool) {
+        assert!(
+            ops.iter()
+                .any(|(key, op_success, _)| key == action_type && *op_success == success),
+            "expected {action_type} success={success} in {ops:?}"
+        );
+    }
+
+    fn assert_op_error(
+        ops: &[(String, bool, Option<String>)],
+        action_type: &str,
+        expected_error: &str,
+    ) {
+        let error = ops
+            .iter()
+            .find(|(key, _, _)| key == action_type)
+            .and_then(|(_, _, error)| error.as_deref());
+        assert_eq!(
+            error,
+            Some(expected_error),
+            "expected {action_type} error {expected_error:?} in {ops:?}"
+        );
+    }
+
+    fn assert_no_op(ops: &[(String, bool, Option<String>)], action_type: &str) {
+        assert!(
+            !ops.iter().any(|(key, _, _)| key == action_type),
+            "expected no {action_type} in {ops:?}"
+        );
+    }
+
+    fn op_duration_ms(ops: &[(String, u64, bool, Option<String>)], action_type: &str) -> u64 {
+        ops.iter()
+            .find(|(key, _, _, _)| key == action_type)
+            .map(|(_, duration_ms, _, _)| *duration_ms)
+            .unwrap_or_else(|| panic!("expected {action_type} in {ops:?}"))
+    }
+
     fn home_at(temp: &tempfile::TempDir) -> HomePaths {
         HomePaths::with_root(temp.path().to_path_buf())
     }
@@ -1745,6 +1869,53 @@ mod tests {
             ])
         );
         assert_eq!(sandbox.write_file_calls().len(), 2);
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op(&ops, STORAGE_CACHE_STAGE_TOTAL, true);
+        assert_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE, true);
+        assert_no_op(&ops, STORAGE_CACHE_STAGE_SINGLE_WRITE);
+        let ops_with_duration = telemetry.pending_ops_with_duration_snapshot();
+        assert_eq!(
+            op_duration_ms(&ops_with_duration, STORAGE_CACHE_STAGE_TOTAL),
+            op_duration_ms(&ops_with_duration, STORAGE_CACHE_STAGE_BATCH_WRITE),
+            "pure batch staging total should equal the batch guest write duration in {ops_with_duration:?}"
+        );
+    }
+
+    #[tokio::test]
+    async fn warm_hit_batch_stage_failure_records_failed_staging_telemetry() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_write_file_result(Err(sandbox_write_file_error("vsock write failed")));
+        let mut telemetry = new_telemetry();
+
+        let name = "warm-batch-fail";
+        let version = "v1";
+        let original = "https://r2.example.com/fail.tar.gz".to_string();
+        write_cached_archive(&home, name, version, &tarball_bytes());
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        let err = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap_err();
+
+        assert!(err.to_string().contains("vsock write failed"), "got: {err}");
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE, false);
+        assert_op(&ops, STORAGE_CACHE_STAGE_TOTAL, false);
+        assert_op_error(
+            &ops,
+            STORAGE_CACHE_STAGE_BATCH_WRITE,
+            STORAGE_CACHE_STAGE_FAILED,
+        );
+        assert_op_error(&ops, STORAGE_CACHE_STAGE_TOTAL, STORAGE_CACHE_STAGE_FAILED);
+        assert_no_op(&ops, STORAGE_CACHE_STAGE_SINGLE_WRITE);
+        assert_no_op(&ops, "storage_cache_hit");
     }
 
     #[tokio::test]
@@ -1797,8 +1968,84 @@ mod tests {
         );
 
         let ops = telemetry.pending_ops_snapshot();
+        assert_op(&ops, STORAGE_CACHE_STAGE_TOTAL, true);
+        assert_op(&ops, STORAGE_CACHE_STAGE_SINGLE_WRITE, true);
+        assert_no_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE);
+        let ops_with_duration = telemetry.pending_ops_with_duration_snapshot();
+        assert_eq!(
+            op_duration_ms(&ops_with_duration, STORAGE_CACHE_STAGE_TOTAL),
+            op_duration_ms(&ops_with_duration, STORAGE_CACHE_STAGE_SINGLE_WRITE),
+            "single-write staging total should equal the single guest write duration in {ops_with_duration:?}"
+        );
         assert!(ops.iter().any(|(k, _, _)| k == "storage_cache_miss"));
         assert!(ops.iter().any(|(k, _, _)| k == "storage_cache_download"));
+    }
+
+    #[tokio::test]
+    async fn miss_path_single_stage_failure_records_failed_staging_telemetry() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        sandbox.push_write_file_result(Err(sandbox_write_file_error("single write failed")));
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/archive.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let get = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/archive.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let original = server.url("/archive.tar.gz");
+        let name = "single-stage-fail";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        let err = populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap_err();
+
+        probe.assert_async().await;
+        get.assert_async().await;
+        assert!(
+            err.to_string().contains("single write failed"),
+            "got: {err}"
+        );
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert_eq!(
+            std::fs::read(home.storage_cache_dir(name, version).join("archive.tar.gz")).unwrap(),
+            body
+        );
+
+        let ops = telemetry.pending_ops_snapshot();
+        assert_op(&ops, STORAGE_CACHE_STAGE_SINGLE_WRITE, false);
+        assert_op(&ops, STORAGE_CACHE_STAGE_TOTAL, false);
+        assert_op_error(
+            &ops,
+            STORAGE_CACHE_STAGE_SINGLE_WRITE,
+            STORAGE_CACHE_STAGE_FAILED,
+        );
+        assert_op_error(&ops, STORAGE_CACHE_STAGE_TOTAL, STORAGE_CACHE_STAGE_FAILED);
+        assert_no_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE);
+        assert_no_op(&ops, "storage_cache_miss");
+        assert_no_op(&ops, "storage_cache_download");
     }
 
     #[tokio::test]
@@ -1842,6 +2089,9 @@ mod tests {
         assert!(!home.storage_cache_dir(name, version).exists());
 
         let ops = telemetry.pending_ops_snapshot();
+        assert_no_op(&ops, STORAGE_CACHE_STAGE_TOTAL);
+        assert_no_op(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE);
+        assert_no_op(&ops, STORAGE_CACHE_STAGE_SINGLE_WRITE);
         assert!(
             ops.iter()
                 .any(|(k, _, _)| k == "storage_cache_skipped_over_size")

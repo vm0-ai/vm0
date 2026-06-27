@@ -113,6 +113,24 @@ impl JobTelemetry {
             .collect()
     }
 
+    /// Snapshot of buffered ops for tests that need to assert duration semantics.
+    #[cfg(test)]
+    pub(crate) fn pending_ops_with_duration_snapshot(
+        &self,
+    ) -> Vec<(String, u64, bool, Option<String>)> {
+        self.pending_ops
+            .iter()
+            .map(|op| {
+                (
+                    op.action_type.clone(),
+                    op.duration_ms,
+                    op.success,
+                    op.error.clone(),
+                )
+            })
+            .collect()
+    }
+
     /// Rewind the oldest-pending marker to simulate a buffered op that has
     /// aged past the auto-flush threshold, without needing a real sleep or a
     /// paused tokio clock.
