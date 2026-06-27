@@ -61,8 +61,6 @@ function triggerSummary(
       eventConfig: trigger.eventConfig,
       schedule: null,
       scheduleSummary: null,
-      unattendedConnectorRefs: trigger.unattendedConnectorRefs,
-      unattendedPermissionPolicy: trigger.unattendedPermissionPolicy,
     };
   }
   if (trigger.kind === "event" && trigger.eventType === "gmail-label-applied") {
@@ -78,8 +76,6 @@ function triggerSummary(
       eventConfig: trigger.eventConfig,
       schedule: null,
       scheduleSummary: null,
-      unattendedConnectorRefs: trigger.unattendedConnectorRefs,
-      unattendedPermissionPolicy: trigger.unattendedPermissionPolicy,
     };
   }
   return {
@@ -92,8 +88,6 @@ function triggerSummary(
     kind: "schedule",
     schedule: trigger.schedule,
     scheduleSummary: trigger.scheduleSummary,
-    unattendedConnectorRefs: trigger.unattendedConnectorRefs,
-    unattendedPermissionPolicy: trigger.unattendedPermissionPolicy,
   };
 }
 
@@ -488,50 +482,10 @@ function workflowTriggerUpdateHandlers() {
   ];
 }
 
-function workflowTriggerPermissionHandlers() {
-  return [
-    mockApi(
-      zeroWorkflowTriggersContract.setPermissionPolicy,
-      ({ body, params, respond }) => {
-        const updatedChatTrigger = updateChatThreadTrigger(
-          params.id,
-          (trigger) => {
-            return {
-              ...trigger,
-              unattendedConnectorRefs:
-                body.unattendedConnectorRefs ?? trigger.unattendedConnectorRefs,
-              unattendedPermissionPolicy: body.unattendedPermissionPolicy,
-            };
-          },
-        );
-        if (updatedChatTrigger) {
-          return respond(200, updatedChatTrigger);
-        }
-
-        const updatedDetailTrigger = updateDetailTrigger(
-          params.id,
-          (trigger) => {
-            return {
-              ...trigger,
-              unattendedConnectorRefs:
-                body.unattendedConnectorRefs ?? trigger.unattendedConnectorRefs,
-              unattendedPermissionPolicy: body.unattendedPermissionPolicy,
-            };
-          },
-        );
-        return updatedDetailTrigger
-          ? respond(200, updatedDetailTrigger)
-          : respond(404, notFoundTrigger());
-      },
-    ),
-  ];
-}
-
 function workflowTriggerHandlers() {
   return [
     ...workflowTriggerListHandlers(),
     ...workflowTriggerEnabledHandlers(),
     ...workflowTriggerUpdateHandlers(),
-    ...workflowTriggerPermissionHandlers(),
   ];
 }

@@ -31,6 +31,7 @@ import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page
 import { setupAgentsPage$ } from "./agents-page/agents-page-setup.ts";
 import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts";
 import { setupWorkflowDetailPage$ } from "./workflows-page/workflow-detail-page-setup.ts";
+import { WORKFLOW_DETAIL_TAB_PARAM } from "./workflows-page/workflows-signals.ts";
 import { setupMemoryPage$ } from "./memory-page/memory-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
@@ -51,7 +52,6 @@ import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-pa
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
-import { setupTriggerPermissionsPage$ } from "./trigger-permissions/trigger-permissions-page-setup.ts";
 import { setupReportErrorPage$ } from "./report-error/report-error-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
@@ -96,6 +96,26 @@ function redirectWithId(target: RoutePath, targetParam: string) {
     });
   });
 }
+
+const setupWorkflowTriggerPermissionsRedirect$ = command(({ get, set }) => {
+  const params = get(pathParams$) ?? {};
+  const agentId = params.agentId;
+  const workflowId = params.workflowId;
+  if (typeof agentId !== "string" || typeof workflowId !== "string") {
+    set(detachedNavigateTo$, ROUTES.agents, { replace: true });
+    return;
+  }
+  set(detachedNavigateTo$, ROUTES.agentWorkflowDetail, {
+    pathParams: {
+      agentId,
+      workflowId,
+    } as RouterPathParams<typeof ROUTES.agentWorkflowDetail>,
+    searchParams: new URLSearchParams({
+      [WORKFLOW_DETAIL_TAB_PARAM]: "authorization",
+    }),
+    replace: true,
+  });
+});
 
 function setupSettingsParamAfterStableRoute(
   setupPage: Command<Promise<void> | void, [AbortSignal]>,
@@ -173,7 +193,9 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.agentWorkflowTriggerPermissions,
-    setup: setupAuthSidebarPageWrapper(setupTriggerPermissionsPage$),
+    setup: setupAuthSidebarPageWrapper(
+      setupWorkflowTriggerPermissionsRedirect$,
+    ),
   },
   {
     path: ROUTES.agentWorkflowDetail,

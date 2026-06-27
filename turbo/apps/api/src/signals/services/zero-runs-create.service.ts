@@ -7,7 +7,6 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
-import type { UnattendedTriggerConnectorRefs } from "@vm0/api-contracts/contracts/zero-workflows";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 import { resolveFirewallServerMetadataPolicies } from "@vm0/connectors/firewall-metadata/server";
 import type {
@@ -49,6 +48,7 @@ import { loadWorkflowsForRun } from "./zero-workflow-data.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
+type WorkflowConnectorRefs = readonly string[];
 
 const DISALLOWED_TOOLS = [
   "CronCreate",
@@ -488,7 +488,7 @@ async function loadTriggerRunContext(
   db: Db,
   args: { readonly orgId: string; readonly triggerId: string },
 ): Promise<{
-  readonly connectorRefs: UnattendedTriggerConnectorRefs;
+  readonly connectorRefs: WorkflowConnectorRefs;
   readonly workflowId: string;
   readonly userId: string;
 } | null> {
@@ -544,7 +544,7 @@ async function resolveTriggerRunContext(
 ): Promise<{
   readonly unattended:
     | {
-        readonly connectorRefs: UnattendedTriggerConnectorRefs;
+        readonly connectorRefs: WorkflowConnectorRefs;
         readonly workflowId: string | null;
         readonly userId: string | null;
       }
@@ -604,7 +604,7 @@ async function resolveZeroRunPermissionPolicies(
     readonly allowedConnectorTypes: readonly ConnectorType[];
     readonly checkedAt: Date;
     readonly unattended?: {
-      readonly connectorRefs: UnattendedTriggerConnectorRefs;
+      readonly connectorRefs: WorkflowConnectorRefs;
       readonly workflowId: string | null;
       readonly userId: string | null;
     };

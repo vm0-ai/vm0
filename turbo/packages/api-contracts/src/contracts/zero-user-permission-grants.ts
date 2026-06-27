@@ -49,20 +49,23 @@ export const userPermissionGrantResponseSchema =
       workflowId: workflowIdSchema.optional(),
     })
     .refine(
-      (grant) => grant.agentId !== undefined || grant.workflowId !== undefined,
+      (grant) => {
+        return grant.agentId !== undefined || grant.workflowId !== undefined;
+      },
       {
         message: "Either agentId or workflowId is required",
       },
     )
     .refine(
-      (grant) => grant.agentId === undefined || grant.workflowId === undefined,
+      (grant) => {
+        return grant.agentId === undefined || grant.workflowId === undefined;
+      },
       {
         message: "Only one of agentId or workflowId can be provided",
       },
     );
 
-export const listUserPermissionGrantsQuerySchema =
-  userPermissionGrantScopeSchema;
+const listUserPermissionGrantsQuerySchema = userPermissionGrantScopeSchema;
 
 const applyUserPermissionGrantBaseSchema = z.object({
   permission: permissionSchema,

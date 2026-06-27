@@ -930,7 +930,6 @@ export {
   userPermissionGrantApplyModeSchema,
   userPermissionGrantExpiresInSchema,
   userPermissionGrantResponseSchema,
-  listUserPermissionGrantsQuerySchema,
   applyUserPermissionGrantSchema,
   applyUserPermissionGrantsRequestSchema,
   type UserPermissionGrantAction,

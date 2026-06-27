@@ -36,11 +36,6 @@ type UserPermissionGrantScope = UserPermissionGrantBaseScope &
     | { readonly workflowId: string; readonly agentId?: never }
   );
 
-type UserPermissionGrantAgentScope = UserPermissionGrantBaseScope & {
-  readonly agentId: string;
-  readonly workflowId?: never;
-};
-
 type UserPermissionGrantWorkflowScope = UserPermissionGrantBaseScope & {
   readonly workflowId: string;
   readonly agentId?: never;

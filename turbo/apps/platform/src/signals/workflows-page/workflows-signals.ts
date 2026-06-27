@@ -12,20 +12,13 @@ import {
   type ZeroWorkflowSummary,
   type ZeroWorkflowTriggerSummary,
   type ZeroWorkflowUpdateRequest,
-  type UnattendedTriggerConnectorRefs,
-  type UnattendedTriggerPermissionPolicy,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroWorkflowUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { activeRoute$ } from "../active-route.ts";
-import {
-  pathParams$,
-  replaceSearchParams$,
-  searchParams$,
-  updateSearchParams$,
-} from "../route.ts";
+import { pathParams$, replaceSearchParams$, searchParams$ } from "../route.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 
 type WorkflowDetailActionDialog = "edit" | "copy" | "delete" | null;
@@ -40,22 +33,22 @@ type WorkflowWebhookTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
-const WORKFLOW_DETAIL_SIDEBAR_PARAM = "sidebar";
-const WORKFLOW_TRIGGER_SIDEBAR_VALUE = "triggers";
 export const WORKFLOW_DETAIL_TAB_PARAM = "tab";
-const WORKFLOW_DETAIL_TABS = new Set<WorkflowDetailTab>([
-  "authorization",
-  "triggers",
-  "info",
-]);
 
 function workflowDetailTabFromSearchParams(
   params: URLSearchParams,
 ): WorkflowDetailTab | null {
   const value = params.get(WORKFLOW_DETAIL_TAB_PARAM);
-  return WORKFLOW_DETAIL_TABS.has(value as WorkflowDetailTab)
-    ? (value as WorkflowDetailTab)
-    : null;
+  switch (value) {
+    case "authorization":
+    case "triggers":
+    case "info": {
+      return value;
+    }
+    default: {
+      return null;
+    }
+  }
 }
 
 export type WorkflowCronFrequency =
@@ -120,9 +113,6 @@ const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
 const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
 const internalEditingWorkflowTriggerId$ = state<string | null>(null);
 const internalWorkflowEditDraft$ = state<WorkflowEditDraft | null>(null);
-const internalWorkflowTriggerPermissionsDrawerTriggerId$ = state<string | null>(
-  null,
-);
 const internalWorkflowTriggerCreateDialog$ =
   state<WorkflowTriggerCreateDialog>(null);
 const internalScheduleTriggerType$ = state<ZeroWorkflowScheduleType>("cron");
@@ -133,41 +123,6 @@ const internalCreateScheduleCronFields$ = state<WorkflowCronFields>(
 );
 const internalEditingScheduleCronFields$ = state<WorkflowCronFields>(
   defaultWorkflowCronFields(),
-);
-
-export const workflowDetailTriggerSidebarOpen$ = computed((get) => {
-  return (
-    get(searchParams$).get(WORKFLOW_DETAIL_SIDEBAR_PARAM) ===
-    WORKFLOW_TRIGGER_SIDEBAR_VALUE
-  );
-});
-
-export const setWorkflowDetailTriggerSidebarOpen$ = command(
-  ({ get, set }, open: boolean) => {
-    const params = new URLSearchParams(get(searchParams$));
-    const currentlyOpen =
-      params.get(WORKFLOW_DETAIL_SIDEBAR_PARAM) ===
-      WORKFLOW_TRIGGER_SIDEBAR_VALUE;
-    if (open === currentlyOpen) {
-      return;
-    }
-    if (open) {
-      params.set(WORKFLOW_DETAIL_SIDEBAR_PARAM, WORKFLOW_TRIGGER_SIDEBAR_VALUE);
-      set(updateSearchParams$, params);
-      return;
-    }
-
-    const createdWebhookTrigger = get(internalCreatedWorkflowWebhookTrigger$);
-    if (createdWebhookTrigger) {
-      set(reloadWorkflows$);
-    }
-    params.delete(WORKFLOW_DETAIL_SIDEBAR_PARAM);
-    set(internalEditingWorkflowTriggerId$, null);
-    set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
-    set(internalWorkflowTriggerCreateDialog$, null);
-    set(internalCreatedWorkflowWebhookTrigger$, null);
-    set(replaceSearchParams$, params);
-  },
 );
 
 export const workflowActionDialog$ = computed((get) => {
@@ -233,7 +188,6 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalWorkflowFileDraft$, null);
   set(internalEditingWorkflowTriggerId$, null);
   set(internalWorkflowEditDraft$, null);
-  set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
   set(internalWorkflowTriggerCreateDialog$, null);
   set(internalCreatedWorkflowWebhookTrigger$, null);
   set(internalScheduleTriggerType$, "cron");
@@ -267,19 +221,9 @@ export const editingWorkflowTriggerId$ = computed((get) => {
   return get(internalEditingWorkflowTriggerId$);
 });
 
-export const workflowTriggerPermissionsDrawerTriggerId$ = computed((get) => {
-  return get(internalWorkflowTriggerPermissionsDrawerTriggerId$);
-});
-
 export const setEditingWorkflowTriggerId$ = command(
   ({ set }, triggerId: string | null) => {
     set(internalEditingWorkflowTriggerId$, triggerId);
-  },
-);
-
-export const setWorkflowTriggerPermissionsDrawerTriggerId$ = command(
-  ({ set }, triggerId: string | null) => {
-    set(internalWorkflowTriggerPermissionsDrawerTriggerId$, triggerId);
   },
 );
 
@@ -783,35 +727,6 @@ export const setWorkflowTriggerEnabled$ = command(
           fetchOptions: { signal },
         });
     await accept(request, [200]);
-    signal.throwIfAborted();
-    set(reloadWorkflows$);
-  },
-);
-
-export const setWorkflowTriggerPermissionPolicy$ = command(
-  async (
-    { get, set },
-    input: {
-      triggerId: string;
-      unattendedConnectorRefs?: UnattendedTriggerConnectorRefs;
-      unattendedPermissionPolicy: UnattendedTriggerPermissionPolicy | null;
-    },
-    signal: AbortSignal,
-  ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
-    await accept(
-      client.setPermissionPolicy({
-        params: { id: input.triggerId },
-        body: {
-          ...(input.unattendedConnectorRefs !== undefined
-            ? { unattendedConnectorRefs: input.unattendedConnectorRefs }
-            : {}),
-          unattendedPermissionPolicy: input.unattendedPermissionPolicy,
-        },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
     signal.throwIfAborted();
     set(reloadWorkflows$);
   },

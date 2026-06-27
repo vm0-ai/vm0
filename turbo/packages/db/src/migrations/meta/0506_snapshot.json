@@ -1,5 +1,5 @@
 {
-  "id": "367a1568-243c-41d0-b31c-bfcd3c4e1234",
+  "id": "a11ff5ac-1afd-4093-9915-c8d871784af5",
   "prevId": "c4b80e17-1669-4081-b2c7-9dc947922de3",
   "version": "7",
   "dialect": "postgresql",
@@ -14898,18 +14898,6 @@
           "primaryKey": false,
           "notNull": true,
           "default": 0
-        },
-        "unattended_connector_refs": {
-          "name": "unattended_connector_refs",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
-        "unattended_permission_policy": {
-          "name": "unattended_permission_policy",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
         },
         "created_at": {
           "name": "created_at",

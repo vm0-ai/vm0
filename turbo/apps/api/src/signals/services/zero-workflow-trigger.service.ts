@@ -6,14 +6,11 @@ import {
   type GmailLabelAppliedEventConfig,
   type ChatThreadWorkflowTrigger,
   type GmailWorkflowEventConfig,
-  type UnattendedTriggerConnectorRefs,
-  type UnattendedTriggerPermissionPolicy,
   type WebhookReceivedEventConfig,
   type ZeroWorkflowEventType,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { loadFirewallPermissionIndex } from "@vm0/connectors/firewall-metadata/server";
 import { parseScheduledAtTime } from "@vm0/core/timezone";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
@@ -240,8 +237,6 @@ function rowSummaryBase(row: TriggerRow) {
     chatThreadId: row.chatThreadId,
     nextRunAt: row.nextRunAt ? row.nextRunAt.toISOString() : null,
     lastRunAt: row.lastRunAt ? row.lastRunAt.toISOString() : null,
-    unattendedConnectorRefs: row.unattendedConnectorRefs ?? [],
-    unattendedPermissionPolicy: row.unattendedPermissionPolicy ?? null,
   };
 }
 
@@ -334,38 +329,6 @@ async function loadAgent(
  */
 function canUseAgent(agent: UsableAgent, member: WorkflowMember): boolean {
   return agent.visibility === "public" || agent.owner === member.userId;
-}
-
-function uniqueConnectorRefs(
-  connectorRefs: readonly string[],
-): UnattendedTriggerConnectorRefs {
-  return Array.from(new Set(connectorRefs));
-}
-
-async function loadWorkflowConnectorRefs(
-  db: ReadonlyDb,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly workflowId: string;
-  },
-): Promise<UnattendedTriggerConnectorRefs> {
-  const rows = await db
-    .select({ connectorType: workflowUserConnectors.connectorType })
-    .from(workflowUserConnectors)
-    .where(
-      and(
-        eq(workflowUserConnectors.orgId, args.orgId),
-        eq(workflowUserConnectors.userId, args.userId),
-        eq(workflowUserConnectors.workflowId, args.workflowId),
-      ),
-    );
-
-  return uniqueConnectorRefs(
-    rows.map((row) => {
-      return row.connectorType;
-    }),
-  );
 }
 
 /**
@@ -488,8 +451,6 @@ export async function listThreadBoundWorkflowTriggers(
         nextRunAt: summary.nextRunAt,
         lastRunAt: summary.lastRunAt,
         ownerUserId: summary.ownerUserId,
-        unattendedConnectorRefs: summary.unattendedConnectorRefs,
-        unattendedPermissionPolicy: summary.unattendedPermissionPolicy,
         workflow: {
           id: workflow.id,
           agentId: workflow.agentId,
@@ -651,11 +612,6 @@ async function insertGmailEventTrigger(
       userId: args.input.member.userId,
       workflowId: args.workflowId,
     });
-    const connectorRefs = await loadWorkflowConnectorRefs(tx, {
-      orgId: args.input.orgId,
-      userId: args.input.member.userId,
-      workflowId: args.workflowId,
-    });
 
     const [thread] = await tx
       .insert(chatThreads)
@@ -689,7 +645,6 @@ async function insertGmailEventTrigger(
         enabled: args.input.enabled,
         chatThreadId: thread.id,
         nextRunAt: null,
-        unattendedConnectorRefs: connectorRefs,
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
       })
@@ -711,12 +666,6 @@ async function insertWebhookEventTrigger(
   },
 ): Promise<ZeroWorkflowTriggerSummary> {
   return await db.transaction(async (tx) => {
-    const connectorRefs = await loadWorkflowConnectorRefs(tx, {
-      orgId: args.input.orgId,
-      userId: args.input.member.userId,
-      workflowId: args.workflowId,
-    });
-
     const [thread] = await tx
       .insert(chatThreads)
       .values({
@@ -750,7 +699,6 @@ async function insertWebhookEventTrigger(
         enabled: args.input.enabled,
         chatThreadId: thread.id,
         nextRunAt: null,
-        unattendedConnectorRefs: connectorRefs,
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
       })
@@ -845,12 +793,6 @@ async function insertScheduleTrigger(
   },
 ): Promise<ZeroWorkflowTriggerSummary> {
   return await db.transaction(async (tx) => {
-    const connectorRefs = await loadWorkflowConnectorRefs(tx, {
-      orgId: args.input.orgId,
-      userId: args.input.member.userId,
-      workflowId: args.workflowId,
-    });
-
     const [thread] = await tx
       .insert(chatThreads)
       .values({
@@ -883,7 +825,6 @@ async function insertScheduleTrigger(
         enabled: args.input.enabled,
         chatThreadId: thread.id,
         nextRunAt: args.nextRunAt,
-        unattendedConnectorRefs: connectorRefs,
         createdAt: args.currentTime,
         updatedAt: args.currentTime,
       })
@@ -1178,112 +1119,6 @@ export const updateWorkflowTrigger$ = command(
     signal.throwIfAborted();
     if (!row) {
       throw new Error("Failed to update workflow trigger");
-    }
-    return { kind: "ok", summary: await rowToSummary(writeDb, row) };
-  },
-);
-
-interface SetTriggerPermissionPolicyInput {
-  readonly orgId: string;
-  readonly member: WorkflowMember;
-  readonly triggerId: string;
-  readonly connectorRefs?: readonly string[];
-  readonly policy: UnattendedTriggerPermissionPolicy | null;
-}
-
-async function validateUnattendedConnectorRefs(
-  connectorRefs: readonly string[],
-): Promise<{ readonly kind: "bad-request"; readonly message: string } | null> {
-  for (const connectorRef of uniqueConnectorRefs(connectorRefs)) {
-    const index = await loadFirewallPermissionIndex(connectorRef);
-    if (!index) {
-      return {
-        kind: "bad-request",
-        message: `Unknown connector ref: ${connectorRef}`,
-      };
-    }
-  }
-  return null;
-}
-
-/**
- * Validates connector refs and permission names against the generated firewall
- * metadata (the same source the user-permission-grants apply path validates
- * against). `ask` is already rejected by the contract schema, and the unknown
- * pseudo-permission is intentionally not accepted: a trigger's unknown-endpoint
- * policy is not configurable and always resolves to `deny`.
- */
-async function validateUnattendedPermissionPolicy(
-  policy: UnattendedTriggerPermissionPolicy,
-): Promise<{ readonly kind: "bad-request"; readonly message: string } | null> {
-  for (const [connectorRef, entry] of Object.entries(policy)) {
-    const index = await loadFirewallPermissionIndex(connectorRef);
-    if (!index) {
-      return {
-        kind: "bad-request",
-        message: `Unknown connector ref: ${connectorRef}`,
-      };
-    }
-    for (const permission of Object.keys(entry.policies)) {
-      if (!index.hasPermission(permission)) {
-        return {
-          kind: "bad-request",
-          message: `Unknown permission "${permission}" for connector "${connectorRef}"`,
-        };
-      }
-    }
-  }
-  return null;
-}
-
-export const setWorkflowTriggerPermissionPolicy$ = command(
-  async (
-    { set },
-    args: SetTriggerPermissionPolicyInput,
-    signal: AbortSignal,
-  ): Promise<TriggerResult> => {
-    if (args.connectorRefs !== undefined) {
-      const connectorRefsError = await validateUnattendedConnectorRefs(
-        args.connectorRefs,
-      );
-      signal.throwIfAborted();
-      if (connectorRefsError) {
-        return connectorRefsError;
-      }
-    }
-    if (args.policy !== null) {
-      const policyError = await validateUnattendedPermissionPolicy(args.policy);
-      signal.throwIfAborted();
-      if (policyError) {
-        return policyError;
-      }
-    }
-    const writeDb = set(writeDb$);
-    const owned = await loadOwnedTrigger(writeDb, {
-      orgId: args.orgId,
-      member: args.member,
-      triggerId: args.triggerId,
-    });
-    signal.throwIfAborted();
-    if ("kind" in owned) {
-      return owned;
-    }
-    const values =
-      args.connectorRefs === undefined
-        ? { unattendedPermissionPolicy: args.policy, updatedAt: nowDate() }
-        : {
-            unattendedConnectorRefs: uniqueConnectorRefs(args.connectorRefs),
-            unattendedPermissionPolicy: args.policy,
-            updatedAt: nowDate(),
-          };
-    const [row] = await writeDb
-      .update(zeroWorkflowTriggers)
-      .set(values)
-      .where(eq(zeroWorkflowTriggers.id, owned.trigger.id))
-      .returning();
-    signal.throwIfAborted();
-    if (!row) {
-      throw new Error("Failed to update workflow trigger permission policy");
     }
     return { kind: "ok", summary: await rowToSummary(writeDb, row) };
   },

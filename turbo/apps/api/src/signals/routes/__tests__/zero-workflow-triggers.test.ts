@@ -9,8 +9,8 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
 import { gmailWatchStates } from "@vm0/db/schema/gmail-event";
 import { secrets } from "@vm0/db/schema/secret";
-import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
+import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
 import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
@@ -21,14 +21,8 @@ import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { encryptStoredSecretValue } from "../../services/crypto.utils";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
 import {
   deleteWorkflowsForFixture$,
   seedAgentForInstructions$,
@@ -197,12 +191,6 @@ describe("zero workflow triggers", () => {
     await store.set(deleteWorkflowsForFixture$, fixture, context.signal);
   });
 
-  const trackMembership = createFixtureTracker<OrgMembershipFixture>(
-    async (fixture) => {
-      await store.set(deleteOrgMembership$, fixture, context.signal);
-    },
-  );
-
   async function setupFixture(): Promise<{
     fixture: WorkflowsFixture;
     agentId: string;
@@ -251,131 +239,6 @@ describe("zero workflow triggers", () => {
       throw new Error("Expected a schedule trigger");
     }
     expect(created.body.scheduleSummary.length).toBeGreaterThan(0);
-  });
-
-  async function createScheduleTrigger(workflowId: string): Promise<string> {
-    const created = await accept(
-      triggersClient().create({
-        headers: authHeaders(),
-        params: { workflowId },
-        body: { schedule: { type: "loop", intervalSeconds: 60 } },
-      }),
-      [201],
-    );
-    expect(created.body.unattendedPermissionPolicy).toBeNull();
-    expect(created.body.unattendedConnectorRefs).toStrictEqual([]);
-    return created.body.id;
-  }
-
-  it("sets and clears the unattended permission policy from a session", async () => {
-    const { workflowId } = await setupFixture();
-    const triggerId = await createScheduleTrigger(workflowId);
-
-    const set = await accept(
-      triggersClient().setPermissionPolicy({
-        headers: authHeaders(),
-        params: { id: triggerId },
-        body: {
-          unattendedConnectorRefs: ["gmail"],
-          unattendedPermissionPolicy: {
-            gmail: { policies: { "messages.write": "allow" } },
-          },
-        },
-      }),
-      [200],
-    );
-    expect(set.body.unattendedPermissionPolicy).toStrictEqual({
-      gmail: { policies: { "messages.write": "allow" } },
-    });
-    expect(set.body.unattendedConnectorRefs).toStrictEqual(["gmail"]);
-
-    const cleared = await accept(
-      triggersClient().setPermissionPolicy({
-        headers: authHeaders(),
-        params: { id: triggerId },
-        body: { unattendedPermissionPolicy: null },
-      }),
-      [200],
-    );
-    expect(cleared.body.unattendedPermissionPolicy).toBeNull();
-    expect(cleared.body.unattendedConnectorRefs).toStrictEqual(["gmail"]);
-  });
-
-  it("rejects an unknown unattended connector ref", async () => {
-    const { workflowId } = await setupFixture();
-    const triggerId = await createScheduleTrigger(workflowId);
-
-    await accept(
-      triggersClient().setPermissionPolicy({
-        headers: authHeaders(),
-        params: { id: triggerId },
-        body: {
-          unattendedConnectorRefs: ["not-a-connector"],
-          unattendedPermissionPolicy: null,
-        },
-      }),
-      [400],
-    );
-  });
-
-  it("rejects a permission policy with an unknown permission name", async () => {
-    const { workflowId } = await setupFixture();
-    const triggerId = await createScheduleTrigger(workflowId);
-
-    await accept(
-      triggersClient().setPermissionPolicy({
-        headers: authHeaders(),
-        params: { id: triggerId },
-        body: {
-          unattendedPermissionPolicy: {
-            gmail: { policies: { "messages.not-a-real-permission": "allow" } },
-          },
-        },
-      }),
-      [400],
-    );
-  });
-
-  it("rejects setting the policy from an in-run token even with agent:write", async () => {
-    const { workflowId } = await setupFixture();
-    const triggerId = await createScheduleTrigger(workflowId);
-
-    // Seed the in-run token's org membership so role resolution hits the cache
-    // instead of Clerk; the request then reaches the token-type gate, which is
-    // what this test asserts.
-    const runUserId = `user_${randomUUID()}`;
-    const runOrgId = `org_${randomUUID()}`;
-    await trackMembership(
-      store.set(
-        seedOrgMembership$,
-        { orgId: runOrgId, userId: runUserId },
-        context.signal,
-      ),
-    );
-
-    const seconds = Math.floor(now() / 1000);
-    const token = signSandboxJwtForTests({
-      scope: "zero",
-      userId: runUserId,
-      orgId: runOrgId,
-      runId: `run_${randomUUID()}`,
-      capabilities: ["agent:write"],
-      iat: seconds,
-      exp: seconds + 60,
-    });
-
-    await accept(
-      triggersClient().setPermissionPolicy({
-        headers: { authorization: `Bearer ${token}` },
-        params: { id: triggerId },
-        body: {
-          unattendedPermissionPolicy: {
-            gmail: { policies: { "messages.write": "allow" } },
-          },
-        },
-      }),
-      [403],
-    );
   });
 
   it("lists thread-bound workflow triggers", async () => {
@@ -713,7 +576,7 @@ describe("zero workflow triggers", () => {
   });
 
   it("creates Gmail event triggers with a watch and agent connector grant", async () => {
-    const { fixture, agentId, workflowId } = await setupFixture();
+    const { fixture, workflowId } = await setupFixture();
     await enableGmailWorkflowTriggers(fixture);
     const connectorId = await seedGmailConnector(fixture);
     configureGmailWatchMock();
@@ -749,8 +612,6 @@ describe("zero workflow triggers", () => {
       nextRunAt: null,
     });
     expect(created.body.chatThreadId).toBeTruthy();
-    expect(created.body.unattendedConnectorRefs).toStrictEqual(["gmail"]);
-
     const db = store.set(writeDb$);
     const watches = await db
       .select()
@@ -767,13 +628,13 @@ describe("zero workflow triggers", () => {
     });
 
     const grants = await db
-      .select({ connectorType: userConnectors.connectorType })
-      .from(userConnectors)
+      .select({ connectorType: workflowUserConnectors.connectorType })
+      .from(workflowUserConnectors)
       .where(
         and(
-          eq(userConnectors.orgId, fixture.orgId),
-          eq(userConnectors.userId, fixture.userId),
-          eq(userConnectors.agentId, agentId),
+          eq(workflowUserConnectors.orgId, fixture.orgId),
+          eq(workflowUserConnectors.userId, fixture.userId),
+          eq(workflowUserConnectors.workflowId, workflowId),
         ),
       );
     expect(grants).toStrictEqual([{ connectorType: "gmail" }]);
@@ -841,7 +702,6 @@ describe("zero workflow triggers", () => {
       scheduleSummary: null,
       enabled: true,
       nextRunAt: null,
-      unattendedConnectorRefs: ["gmail"],
     });
 
     configureGmailLabelsMock([{ id: "Label_escalated", name: "Escalated" }]);
