@@ -4,7 +4,9 @@ use sandbox::SandboxId;
 use sandbox::{ProcessOutputChunk, ProcessOutputMode};
 use sandbox_mock::MockSandboxFactory;
 
-use super::super::telemetry::{elapsed_since_api_start_ms, record_reuse_result};
+use super::super::telemetry::{
+    RunnerPreSpawnPhase, elapsed_since_api_start_ms, record_reuse_result,
+};
 use super::super::{
     ExecutionHooks, NewSandboxDispatch, RunnerPreSpawnTiming, execute_job, execute_job_reuse,
     execute_job_reuse_with_hooks, execute_job_with_prepared_notifier,
@@ -76,6 +78,46 @@ fn assert_action_success(telemetry: &JobTelemetry, action: &str, success: bool) 
     assert_eq!(op.1, success, "{action} success flag");
 }
 
+const RUNNER_PRE_SPAWN_PHASE_ACTIONS: &[&str] = &[
+    "runner_claim_resume_session_validation",
+    "runner_claim_session_history_materializer_start",
+    "runner_claim_device_rate_limits",
+    "runner_claim_idle_reuse_lookup",
+    "runner_claim_held_session_state_refresh",
+    "runner_claim_provider_held_session_update",
+    "runner_claim_workspace_promotion_validation",
+    "runner_claim_idle_unpark",
+    "runner_claim_active_status_publish",
+    "runner_claim_spawn_job_setup",
+    "runner_claim_task_schedule_wait",
+];
+
+fn assert_pre_spawn_phase_actions_succeeded(telemetry: &JobTelemetry) {
+    for action in RUNNER_PRE_SPAWN_PHASE_ACTIONS {
+        assert_action_success(telemetry, action, true);
+    }
+}
+
+fn pre_spawn_timing_with_phases() -> RunnerPreSpawnTiming {
+    let mut timing = RunnerPreSpawnTiming::start_after_claim();
+    for (phase, duration_ms) in [
+        (RunnerPreSpawnPhase::ResumeSessionValidation, 1),
+        (RunnerPreSpawnPhase::SessionHistoryMaterializerStart, 2),
+        (RunnerPreSpawnPhase::DeviceRateLimits, 3),
+        (RunnerPreSpawnPhase::IdleReuseLookup, 4),
+        (RunnerPreSpawnPhase::HeldSessionStateRefresh, 5),
+        (RunnerPreSpawnPhase::ProviderHeldSessionUpdate, 6),
+        (RunnerPreSpawnPhase::WorkspacePromotionValidation, 7),
+        (RunnerPreSpawnPhase::IdleUnpark, 8),
+        (RunnerPreSpawnPhase::ActiveStatusPublish, 9),
+        (RunnerPreSpawnPhase::SpawnJobSetup, 10),
+    ] {
+        timing.record_phase(phase, Duration::from_millis(duration_ms));
+    }
+    timing.mark_task_enqueued();
+    timing
+}
+
 #[test]
 fn record_reuse_result_emits_hit_for_reuse() {
     let mut telemetry = new_telemetry();
@@ -130,6 +172,9 @@ async fn execute_job_records_sandbox_reuse_miss_in_telemetry() {
         .collect();
     assert_eq!(reuse_events.len(), 1);
     assert_eq!(reuse_events[0].0, "sandbox_reuse_miss");
+    assert_lacks_action(&telemetry, "runner_claim_to_executor_start");
+    assert_lacks_action(&telemetry, "runner_claim_resume_session_validation");
+    assert_lacks_action(&telemetry, "runner_claim_task_schedule_wait");
 }
 
 #[tokio::test]
@@ -194,7 +239,7 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
         ExecutionHooks {
             sandbox_prepared: None,
             active_input_source: None,
-            pre_spawn_timing: Some(RunnerPreSpawnTiming::start_after_claim()),
+            pre_spawn_timing: Some(pre_spawn_timing_with_phases()),
             session_history_materializer: None,
         },
     )
@@ -216,6 +261,7 @@ async fn execute_job_records_runner_pre_spawn_and_fresh_path_timing() {
     ] {
         assert_has_action(&telemetry, action);
     }
+    assert_pre_spawn_phase_actions_succeeded(&telemetry);
     assert_lacks_action(&telemetry, "runner_reused_sandbox_prepare");
     assert_lacks_action(&telemetry, "runner_guest_state_restore");
 }
@@ -253,7 +299,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
         ExecutionHooks {
             sandbox_prepared: None,
             active_input_source: None,
-            pre_spawn_timing: Some(RunnerPreSpawnTiming::start_after_claim()),
+            pre_spawn_timing: Some(pre_spawn_timing_with_phases()),
             session_history_materializer: None,
         },
     )
@@ -274,6 +320,7 @@ async fn execute_job_reuse_records_runner_pre_spawn_and_reuse_path_timing() {
     ] {
         assert_has_action(&telemetry, action);
     }
+    assert_pre_spawn_phase_actions_succeeded(&telemetry);
     assert_lacks_action(&telemetry, "runner_fresh_sandbox_prepare");
     assert_lacks_action(&telemetry, "runner_guest_timezone_sync");
 }

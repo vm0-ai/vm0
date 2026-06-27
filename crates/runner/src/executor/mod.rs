@@ -46,7 +46,7 @@ pub(crate) use env::validate_resume_session_id;
 use sandbox_run::{
     NewSandboxHooks, execute_new_sandbox_with_prepared_notifier, execute_reused_sandbox,
 };
-pub(crate) use telemetry::RunnerPreSpawnTiming;
+pub(crate) use telemetry::{RunnerPreSpawnPhase, RunnerPreSpawnTiming};
 use telemetry::{RunnerSpawnTiming, record_api_latency, record_reuse_result};
 
 use crate::ids::RunId;

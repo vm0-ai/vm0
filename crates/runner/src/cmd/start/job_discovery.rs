@@ -6,6 +6,7 @@
 use std::collections::BTreeMap;
 use std::collections::hash_map::Entry;
 use std::sync::Arc;
+use std::time::Instant;
 
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use sandbox::SandboxId;
@@ -22,7 +23,8 @@ use super::idle_lifecycle::{
 use super::job_spawn::{JobProfile, SpawnContext, SpawnJobRequest, spawn_job};
 use crate::config::ProfileConfig;
 use crate::executor::{
-    RunnerPreSpawnTiming, SessionHistoryMaterializer, validate_resume_session_id,
+    RunnerPreSpawnPhase, RunnerPreSpawnTiming, SessionHistoryMaterializer,
+    validate_resume_session_id,
 };
 use crate::http::HttpClient;
 use crate::idle_pool::{IdlePoolSnapshot, IdleUnparkResult, ReusableIdleSandbox};
@@ -120,8 +122,10 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         budget_lease: job_lease,
         cancel: job_cancel,
     } = admission;
-    let pre_spawn_timing = RunnerPreSpawnTiming::start_after_claim();
+    let mut pre_spawn_timing = RunnerPreSpawnTiming::start_after_claim();
+    let started_at = Instant::now();
     let resume_session_valid = validate_resume_session_id(claimed.context()).is_ok();
+    pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::ResumeSessionValidation, started_at);
     let active_cli_agent_session_guard = ActiveCliAgentSessionGuard::new(
         ctx.spawn_ctx.active_cli_agent_sessions.clone(),
         if resume_session_valid {
@@ -130,17 +134,26 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
             None
         },
     );
+    let started_at = Instant::now();
     let session_history_materializer = start_session_history_materializer_after_claim(
         &ctx.spawn_ctx.exec_config.http,
         claimed.context(),
         resume_session_valid,
         &job_cancel,
     );
+    if session_history_materializer.is_some() {
+        pre_spawn_timing.record_phase_elapsed(
+            RunnerPreSpawnPhase::SessionHistoryMaterializerStart,
+            started_at,
+        );
+    }
     info!(run_id = %run_id, profile = %profile_name, "job claimed, spawning executor");
+    let started_at = Instant::now();
     let device_rate_limits = crate::io_limits::device_rate_limits_for_context(
         ctx.spawn_ctx.device_rate_limits.as_ref(),
         claimed.context(),
     );
+    pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::DeviceRateLimits, started_at);
 
     let (reuse_entry, active_lease, reuse_result, idle_snapshot) = try_reuse_from_pool(
         run_id,
@@ -153,6 +166,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
             job_lease,
         },
         &mut ctx,
+        &mut pre_spawn_timing,
     )
     .await;
 
@@ -163,6 +177,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         Some(entry) => entry.sandbox_id(),
         None => SandboxId::new_v4(),
     };
+    let started_at = Instant::now();
     publish_active_run_status(
         ctx.status,
         run_id,
@@ -171,6 +186,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         idle_snapshot,
     )
     .await;
+    pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::ActiveStatusPublish, started_at);
 
     let job_profile = JobProfile {
         profile_name,
@@ -313,6 +329,7 @@ async fn try_reuse_from_pool(
     run_id: RunId,
     request: ReuseAdmissionRequest<'_>,
     ctx: &mut DiscoveredJobContext<'_>,
+    pre_spawn_timing: &mut RunnerPreSpawnTiming,
 ) -> (
     Option<ReusableIdleSandbox>,
     BudgetLease,
@@ -328,10 +345,13 @@ async fn try_reuse_from_pool(
         job_lease,
     } = request;
 
+    let started_at = Instant::now();
     if !resume_session_valid {
+        pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
         return (None, job_lease, SandboxReuseResult::NoSessionId, None);
     }
     let Some(cli_agent_session_id) = context.cli_agent_session_id() else {
+        pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
         return (None, job_lease, SandboxReuseResult::NoSessionId, None);
     };
     let session_fingerprint = diagnostic_session_fingerprint(cli_agent_session_id);
@@ -345,6 +365,8 @@ async fn try_reuse_from_pool(
         let held_session_states = pool.held_session_states();
         (taken, snapshot, held_session_states)
     };
+    pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
+    let started_at = Instant::now();
     let held_session_states = current_held_session_states(
         held_session_states,
         ctx.spawn_ctx.exec_config.workspace_cache.as_ref(),
@@ -352,37 +374,50 @@ async fn try_reuse_from_pool(
         Some(cli_agent_session_id),
     )
     .await;
+    pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::HeldSessionStateRefresh, started_at);
+    let started_at = Instant::now();
     ctx.spawn_ctx
         .provider
         .set_held_session_states(held_session_states)
         .await;
+    pre_spawn_timing
+        .record_phase_elapsed(RunnerPreSpawnPhase::ProviderHeldSessionUpdate, started_at);
     match taken {
         Some(entry)
             if entry.profile_name() == profile_name
                 && entry.device_rate_limits() == device_rate_limits =>
         {
-            if let Some(cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref()
-                && let Err(mismatch) = entry.validate_workspace_promotion_identity(
+            if let Some(cache) = ctx.spawn_ctx.exec_config.workspace_cache.as_ref() {
+                let started_at = Instant::now();
+                let validation = entry.validate_workspace_promotion_identity(
                     cache,
                     CANONICAL_WORKING_DIR,
                     u64::from(workspace_disk_mb) * 1024 * 1024,
-                )
-            {
-                warn!(
-                    run_id = %run_id,
-                    session_fingerprint = %session_fingerprint,
-                    profile = %profile_name,
-                    mismatch = mismatch.as_str(),
-                    "workspace promotion identity mismatch, destroying idle VM and falling through to fresh create"
                 );
-                spawn_idle_destroy_job(
-                    ctx.destroy_tasks,
-                    entry.into_destroy_job_without_workspace_promotion_for_mismatch(),
-                    "reuse_workspace_promotion_mismatch",
+                pre_spawn_timing.record_phase_elapsed(
+                    RunnerPreSpawnPhase::WorkspacePromotionValidation,
+                    started_at,
                 );
-                return (None, job_lease, SandboxReuseResult::PoolMiss, snapshot);
+                if let Err(mismatch) = validation {
+                    warn!(
+                        run_id = %run_id,
+                        session_fingerprint = %session_fingerprint,
+                        profile = %profile_name,
+                        mismatch = mismatch.as_str(),
+                        "workspace promotion identity mismatch, destroying idle VM and falling through to fresh create"
+                    );
+                    spawn_idle_destroy_job(
+                        ctx.destroy_tasks,
+                        entry.into_destroy_job_without_workspace_promotion_for_mismatch(),
+                        "reuse_workspace_promotion_mismatch",
+                    );
+                    return (None, job_lease, SandboxReuseResult::PoolMiss, snapshot);
+                }
             }
-            match entry.try_unpark().await {
+            let started_at = Instant::now();
+            let unpark_result = entry.try_unpark().await;
+            pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleUnpark, started_at);
+            match unpark_result {
                 IdleUnparkResult::Reused {
                     sandbox,
                     budget_lease,
