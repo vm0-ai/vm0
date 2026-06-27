@@ -21,6 +21,7 @@ use super::job_lifecycle::{
 use super::ownership::OwnershipTransitions;
 #[cfg(test)]
 use super::{OuterJobPanicPoint, StartLoopTestObserver, maybe_panic_outer_job};
+use crate::executor::RestoredSessionIdentity;
 use crate::idle_pool::{
     DestroyOutcome, IdleDestroyPayload, IdleParkActiveParts, IdleParkRequest, IdleParkRequestParts,
     ParkResult, ParkingGate,
@@ -64,6 +65,7 @@ pub(super) struct FinalizeContext {
     pub(super) profile_name: String,
     pub(super) cli_agent_session_id: Option<String>,
     pub(super) discovered_cli_agent_session_id: Option<String>,
+    pub(super) restored_session_identity: Option<RestoredSessionIdentity>,
     pub(super) source_ip: String,
     pub(super) network_log_session: Option<NetworkLogSession>,
     pub(super) workspace_image: Option<WorkspaceImageLease>,
@@ -101,6 +103,7 @@ pub(super) async fn finalize_sandbox_for_completion(
         profile_name,
         cli_agent_session_id,
         discovered_cli_agent_session_id,
+        restored_session_identity,
         source_ip,
         mut network_log_session,
         workspace_image,
@@ -168,6 +171,7 @@ pub(super) async fn finalize_sandbox_for_completion(
             budget_lease: active_lease.into_idle_park_lease(),
             source_ip,
             storage_fingerprints,
+            restored_session_identity,
             workspace_image_size_bytes,
             workspace_promotion,
         });
@@ -672,6 +676,7 @@ mod tests {
                 profile_name: "vm0/default".into(),
                 cli_agent_session_id: Some(session_id.into()),
                 discovered_cli_agent_session_id: None,
+                restored_session_identity: None,
                 source_ip: "10.0.0.1".into(),
                 network_log_session: Some(network_log_session),
                 workspace_image: None,
@@ -1375,6 +1380,7 @@ mod tests {
             device_rate_limits: None,
             budget_lease: existing_lease,
             storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
+            restored_session_identity: None,
             workspace_image_size_bytes: b"image".len() as u64,
             workspace_promotion: Some(old_promotion),
         })

@@ -6,6 +6,7 @@ use std::sync::Arc;
 use std::time::Duration;
 
 use api_contracts::generated::types::runners::storage::StorageManifest;
+use httpmock::prelude::*;
 use sandbox::{ProcessExit, ProcessOutputChunk, SandboxConfig, SandboxFactory, SandboxId};
 use sandbox_mock::MockSandboxFactory;
 use sha2::{Digest, Sha256};
@@ -18,7 +19,10 @@ use super::super::agent_run::{
 };
 use super::super::diagnostics::AgentStdoutStreamDiagnostics;
 use super::super::storage::guest_download_stdin_command;
-use super::super::{EXIT_SIGKILL, PROCESS_CANCEL_WRITE_TIMEOUT, SessionHistoryMaterializer};
+use super::super::{
+    EXIT_SIGKILL, PROCESS_CANCEL_WRITE_TIMEOUT, RestoredSessionIdentity,
+    SessionHistoryMaterializer, SessionHistoryRestoreFallback, SessionHistoryRestorePlan,
+};
 use super::support::{
     CancelAfterWaitSandbox, RUN_IN_SANDBOX_TEST_TIMEOUT, api_storage, create_overridden_sandbox,
     minimal_context, spawn_run_in_sandbox_test, spawn_run_in_sandbox_test_with_timeouts,
@@ -357,7 +361,10 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
         },
         &mut telemetry,
         RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_materializer(Some(materializer)),
+            .with_session_history_restore_plan(SessionHistoryRestorePlan::Prestarted {
+                materializer,
+                fallback: None,
+            }),
     )
     .await
     .unwrap();
@@ -380,6 +387,148 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
         ops.iter()
             .any(|op| op.0 == "session_history_download" && op.1),
         "expected session history download telemetry, got: {ops:?}"
+    );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_skips_verified_session_history_restore() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let history = br#"{"type":"init"}"#;
+    let server = MockServer::start_async().await;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-skip-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: server.url("/history.blob?token=secret"),
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+    let identity = RestoredSessionIdentity::from_context(&ctx).expect("identity");
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::Reused,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+            .with_session_history_restore_plan(SessionHistoryRestorePlan::SkipVerified(
+                identity.clone(),
+            )),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    assert_eq!(result.restored_session_identity, Some(identity));
+    assert!(sandbox.write_file_calls().is_empty());
+    history_mock.assert_calls_async(0).await;
+    let ops = telemetry.pending_ops_snapshot();
+    assert!(
+        ops.iter()
+            .any(|op| op.0 == "session_history_restore_skip" && op.1),
+        "expected skip telemetry, got: {ops:?}"
+    );
+    assert!(
+        ops.iter()
+            .all(|op| op.0 != "session_history_download" && op.0 != "session_restore"),
+        "skip path should not download or restore, got: {ops:?}"
+    );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let history = br#"{"type":"init"}"#;
+    let server = MockServer::start_async().await;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-fallback-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: server.url("/history.blob?token=secret"),
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+    let expected_identity = RestoredSessionIdentity::from_context(&ctx).expect("identity");
+    let materializer = SessionHistoryMaterializer::start_cancellable(
+        &config.http,
+        ctx.resume_session.as_ref(),
+        tokio_util::sync::CancellationToken::new(),
+    );
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::Reused,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+            .with_session_history_restore_plan(SessionHistoryRestorePlan::Prestarted {
+                materializer,
+                fallback: Some(SessionHistoryRestoreFallback::IdentityMismatch),
+            }),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    assert_eq!(result.restored_session_identity, Some(expected_identity));
+    history_mock.assert_calls_async(1).await;
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0].path,
+        "/home/user/.claude/projects/-home-user-workspace/sess-fallback-123.jsonl"
+    );
+    assert_eq!(writes[0].content, history);
+    let ops = telemetry.pending_ops_snapshot();
+    assert!(
+        ops.iter()
+            .any(|op| op.0 == "session_history_restore_fallback_identity_mismatch" && op.1),
+        "expected fallback telemetry, got: {ops:?}"
+    );
+    assert!(
+        ops.iter()
+            .any(|op| op.0 == "session_history_download" && op.1),
+        "expected download telemetry, got: {ops:?}"
+    );
+    assert!(
+        ops.iter().any(|op| op.0 == "session_restore" && op.1),
+        "expected restore telemetry, got: {ops:?}"
     );
 }
 

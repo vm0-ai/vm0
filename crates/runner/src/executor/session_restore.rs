@@ -2,14 +2,17 @@
 
 mod codex;
 
+use std::fmt;
+
 use sandbox::{Sandbox, SandboxError};
 use tracing::{info, warn};
 
 use super::cli_framework::{EffectiveCliFramework, effective_cli_framework};
+use super::env::validate_resume_session_id;
 use super::session_id::is_valid_session_id;
 use super::{RunnerError, RunnerResult};
 use crate::paths::diagnostic_session_fingerprint;
-use crate::types::{ExecutionContext, ResumeSession};
+use crate::types::{ExecutionContext, ResumeSession, ResumeSessionHistoryRefKind};
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
 const SESSION_PATH_SENTINEL: &str = "\u{0}\u{1}";
@@ -17,6 +20,77 @@ const SESSION_ID_SENTINEL: &str = "\u{0}\u{2}";
 const REDACTED_SESSION_PATH: &str = "[redacted-session-path]";
 const REDACTED_SESSION_ID: &str = "[redacted-session-id]";
 const SUBSTRING_SESSION_ID_REDACTION_MIN_LEN: usize = 8;
+
+const CLAUDE_CODE_RESTORE_FORMAT_VERSION: u8 = 1;
+const CODEX_RESTORE_FORMAT_VERSION: u8 = 1;
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum RestoredSessionFramework {
+    ClaudeCode,
+    Codex,
+}
+
+impl RestoredSessionFramework {
+    fn from_effective(framework: EffectiveCliFramework) -> Self {
+        match framework {
+            EffectiveCliFramework::ClaudeCode => Self::ClaudeCode,
+            EffectiveCliFramework::Codex => Self::Codex,
+        }
+    }
+
+    const fn restore_format_version(self) -> u8 {
+        match self {
+            Self::ClaudeCode => CLAUDE_CODE_RESTORE_FORMAT_VERSION,
+            Self::Codex => CODEX_RESTORE_FORMAT_VERSION,
+        }
+    }
+}
+
+#[derive(Clone, Eq, PartialEq)]
+pub(crate) struct RestoredSessionIdentity {
+    framework: RestoredSessionFramework,
+    restore_format_version: u8,
+    history_ref_kind: ResumeSessionHistoryRefKind,
+    history_hash: String,
+}
+
+impl RestoredSessionIdentity {
+    pub(crate) fn from_context(context: &ExecutionContext) -> Option<Self> {
+        validate_resume_session_id(context).ok()?;
+        let history_ref = context.resume_session.as_ref()?.history_ref()?;
+        let framework = RestoredSessionFramework::from_effective(effective_cli_framework(
+            &context.cli_agent_type,
+        ));
+        Some(Self {
+            framework,
+            restore_format_version: framework.restore_format_version(),
+            history_ref_kind: history_ref.kind,
+            history_hash: history_ref.hash.clone(),
+        })
+    }
+
+    #[cfg(test)]
+    pub(crate) fn claude_code_for_test(history_hash: impl Into<String>) -> Self {
+        let framework = RestoredSessionFramework::ClaudeCode;
+        Self {
+            framework,
+            restore_format_version: framework.restore_format_version(),
+            history_ref_kind: ResumeSessionHistoryRefKind::Blob,
+            history_hash: history_hash.into(),
+        }
+    }
+}
+
+impl fmt::Debug for RestoredSessionIdentity {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        f.debug_struct("RestoredSessionIdentity")
+            .field("framework", &self.framework)
+            .field("restore_format_version", &self.restore_format_version)
+            .field("history_ref_kind", &self.history_ref_kind)
+            .field("history_hash", &"[redacted]")
+            .finish()
+    }
+}
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct SessionRestoreDiagnostics {

@@ -21,7 +21,7 @@ use super::diagnostics::{
 use super::env::{build_env_json, build_user_env_json, write_user_env_file};
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::session_history_download::{SessionHistoryMaterialization, SessionHistoryMaterializer};
-use super::session_restore::restore_session;
+use super::session_restore::{RestoredSessionIdentity, restore_session};
 use super::storage::{apply_storage_fingerprint_reuse, download_storages, guest_download_has_work};
 use super::telemetry::{RunnerSpawnTiming, record_api_latency};
 use super::{
@@ -40,6 +40,35 @@ const AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
 const SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR: &str = "session history download failed";
 const SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR: &str =
     "session history materialization failed";
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SessionHistoryRestoreFallback {
+    NonReuse,
+    MissingIdleIdentity,
+    IdentityMismatch,
+}
+
+impl SessionHistoryRestoreFallback {
+    const fn action_type(self) -> &'static str {
+        match self {
+            Self::NonReuse => "session_history_restore_fallback_non_reuse",
+            Self::MissingIdleIdentity => "session_history_restore_fallback_missing_idle_identity",
+            Self::IdentityMismatch => "session_history_restore_fallback_identity_mismatch",
+        }
+    }
+}
+
+#[derive(Default)]
+#[must_use = "restore plans decide whether resume history download can be skipped"]
+pub(crate) enum SessionHistoryRestorePlan {
+    #[default]
+    Default,
+    Prestarted {
+        materializer: SessionHistoryMaterializer,
+        fallback: Option<SessionHistoryRestoreFallback>,
+    },
+    SkipVerified(RestoredSessionIdentity),
+}
 
 pub(super) fn build_agent_start_command(run_agent_path: &str) -> String {
     let run_agent_path = quote_shell_arg(run_agent_path);
@@ -68,6 +97,7 @@ pub(super) struct ProcessCancelTimeouts {
 pub(super) struct AgentExecutionResult {
     pub(super) failure: Option<ExecutionFailure>,
     pub(super) stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
+    pub(super) restored_session_identity: Option<RestoredSessionIdentity>,
 }
 
 impl AgentExecutionResult {
@@ -75,6 +105,7 @@ impl AgentExecutionResult {
         Self {
             failure: None,
             stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
+            restored_session_identity: None,
         }
     }
 
@@ -86,6 +117,7 @@ impl AgentExecutionResult {
         Self {
             failure: Some(ExecutionFailure::new(exit_code, error, diagnostic)),
             stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
+            restored_session_identity: None,
         }
     }
 
@@ -102,6 +134,14 @@ impl AgentExecutionResult {
         diagnostics: AgentStdoutStreamDiagnostics,
     ) -> Self {
         self.stdout_stream_diagnostics = diagnostics;
+        self
+    }
+
+    pub(super) fn with_restored_session_identity(
+        mut self,
+        restored_session_identity: Option<RestoredSessionIdentity>,
+    ) -> Self {
+        self.restored_session_identity = restored_session_identity;
         self
     }
 
@@ -219,7 +259,7 @@ pub(super) struct RunControls {
     pub(super) cancel: CancellationToken,
     pub(super) active_input_source: Option<ActiveInputSource>,
     pub(super) spawn_timing: Option<RunnerSpawnTiming>,
-    pub(super) session_history_materializer: Option<SessionHistoryMaterializer>,
+    pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
 }
 
 impl RunControls {
@@ -231,7 +271,7 @@ impl RunControls {
             cancel,
             active_input_source,
             spawn_timing: None,
-            session_history_materializer: None,
+            session_history_restore_plan: SessionHistoryRestorePlan::Default,
         }
     }
 
@@ -240,11 +280,11 @@ impl RunControls {
         self
     }
 
-    pub(super) fn with_session_history_materializer(
+    pub(super) fn with_session_history_restore_plan(
         mut self,
-        materializer: Option<SessionHistoryMaterializer>,
+        plan: SessionHistoryRestorePlan,
     ) -> Self {
-        self.session_history_materializer = materializer;
+        self.session_history_restore_plan = plan;
         self
     }
 }
@@ -282,15 +322,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         cancel,
         active_input_source,
         spawn_timing,
-        session_history_materializer,
+        session_history_restore_plan,
     } = controls;
-    let session_history_materializer = session_history_materializer.unwrap_or_else(|| {
-        SessionHistoryMaterializer::start_cancellable(
-            &config.http,
-            context.resume_session.as_ref(),
-            cancel.clone(),
-        )
-    });
 
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
     //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
@@ -356,60 +389,86 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         result?;
     }
 
-    // 4. Restore session history. Hash-backed history downloads can start
-    // before sandbox preparation, then materialize here right before restore.
-    let should_record_materialization_wait = session_history_materializer.is_downloading();
-    let materialization_wait_started = Instant::now();
-    let materialization = session_history_materializer.finish(&cancel).await;
-    let materialization_wait = materialization_wait_started.elapsed();
-    let downloaded_resume_session = match materialization {
-        SessionHistoryMaterialization::Missing => None,
-        SessionHistoryMaterialization::Ready => None,
-        SessionHistoryMaterialization::Downloaded { session, elapsed } => {
-            if should_record_materialization_wait {
-                telemetry.record(
-                    "session_history_materialization_wait",
-                    materialization_wait,
-                    true,
-                    None,
-                );
-            }
-            telemetry.record("session_history_download", elapsed, true, None);
-            Some(session)
+    let mut session_restore_diagnostics = None;
+    let mut restored_session_identity = None;
+    let session_history_materializer = match session_history_restore_plan {
+        SessionHistoryRestorePlan::SkipVerified(identity) => {
+            telemetry.record("session_history_restore_skip", Duration::ZERO, true, None);
+            restored_session_identity = Some(identity);
+            None
         }
-        SessionHistoryMaterialization::Failed { elapsed, error } => {
-            if should_record_materialization_wait {
-                telemetry.record(
-                    "session_history_materialization_wait",
-                    materialization_wait,
-                    false,
-                    Some(SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR),
-                );
+        SessionHistoryRestorePlan::Default => Some(SessionHistoryMaterializer::start_cancellable(
+            &config.http,
+            context.resume_session.as_ref(),
+            cancel.clone(),
+        )),
+        SessionHistoryRestorePlan::Prestarted {
+            materializer,
+            fallback,
+        } => {
+            if let Some(fallback) = fallback {
+                telemetry.record(fallback.action_type(), Duration::ZERO, true, None);
             }
-            telemetry.record(
-                "session_history_download",
-                elapsed,
-                false,
-                Some(SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR),
-            );
-            return Err(error);
+            Some(materializer)
         }
     };
-    let resume_session = downloaded_resume_session
-        .as_ref()
-        .or(context.resume_session.as_ref());
-    let mut session_restore_diagnostics = None;
-    if let Some(session) = resume_session {
-        let t = Instant::now();
-        let result = restore_session(sandbox, context, session).await;
-        let err = result.as_ref().err().map(|e| e.to_string());
-        telemetry.record(
-            "session_restore",
-            t.elapsed(),
-            result.is_ok(),
-            err.as_deref(),
-        );
-        session_restore_diagnostics = Some(result?);
+    if let Some(session_history_materializer) = session_history_materializer {
+        // 4. Restore session history. Hash-backed history downloads can start
+        // before sandbox preparation, then materialize here right before restore.
+        let should_record_materialization_wait = session_history_materializer.is_downloading();
+        let materialization_wait_started = Instant::now();
+        let materialization = session_history_materializer.finish(&cancel).await;
+        let materialization_wait = materialization_wait_started.elapsed();
+        let downloaded_resume_session = match materialization {
+            SessionHistoryMaterialization::Missing => None,
+            SessionHistoryMaterialization::Ready => None,
+            SessionHistoryMaterialization::Downloaded { session, elapsed } => {
+                if should_record_materialization_wait {
+                    telemetry.record(
+                        "session_history_materialization_wait",
+                        materialization_wait,
+                        true,
+                        None,
+                    );
+                }
+                telemetry.record("session_history_download", elapsed, true, None);
+                Some(session)
+            }
+            SessionHistoryMaterialization::Failed { elapsed, error } => {
+                if should_record_materialization_wait {
+                    telemetry.record(
+                        "session_history_materialization_wait",
+                        materialization_wait,
+                        false,
+                        Some(SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR),
+                    );
+                }
+                telemetry.record(
+                    "session_history_download",
+                    elapsed,
+                    false,
+                    Some(SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR),
+                );
+                return Err(error);
+            }
+        };
+        let resume_session = downloaded_resume_session
+            .as_ref()
+            .or(context.resume_session.as_ref());
+        if let Some(session) = resume_session {
+            let requested_identity = RestoredSessionIdentity::from_context(context);
+            let t = Instant::now();
+            let result = restore_session(sandbox, context, session).await;
+            let err = result.as_ref().err().map(|e| e.to_string());
+            telemetry.record(
+                "session_restore",
+                t.elapsed(),
+                result.is_ok(),
+                err.as_deref(),
+            );
+            session_restore_diagnostics = Some(result?);
+            restored_session_identity = requested_identity;
+        }
     }
 
     // 5. Build env vars. The guest-agent bootstrap env is runner-owned only;
@@ -662,7 +721,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     .to_string();
                 telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
-                    .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled));
+                    .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled)
+                    .with_restored_session_identity(restored_session_identity));
             }
             let error = e.to_string();
             telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
@@ -677,6 +737,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                         None,
                     )),
                     stdout_stream_diagnostics: stdout_stream_diagnostics_on_wait_error,
+                    restored_session_identity,
                 });
             }
             return Err(e.into());
@@ -740,7 +801,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 telemetry.record("agent_execute", t.elapsed(), false, Some(error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
                     .with_resource_failure_kind(ResourceFailureKind::GuestMemoryOomKilled)
-                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics));
+                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics)
+                    .with_restored_session_identity(restored_session_identity));
             }
             Err(e) => {
                 warn!(run_id = %context.run_id, error = %e, "failed to exec dmesg for OOM check");
@@ -850,9 +912,11 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         Some(failure) => AgentExecutionResult {
             failure: Some(failure),
             stdout_stream_diagnostics,
+            restored_session_identity,
         },
         None => AgentExecutionResult::success()
-            .with_stdout_stream_diagnostics(stdout_stream_diagnostics),
+            .with_stdout_stream_diagnostics(stdout_stream_diagnostics)
+            .with_restored_session_identity(restored_session_identity),
     };
     telemetry.record(
         "agent_execute",

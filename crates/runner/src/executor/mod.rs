@@ -36,8 +36,10 @@ mod session_restore;
 mod storage;
 mod telemetry;
 
+pub(crate) use agent_run::{SessionHistoryRestoreFallback, SessionHistoryRestorePlan};
 pub(crate) use guest_state::{is_valid_guest_timezone_name, restore_guest_state_with_timezone};
 pub(crate) use session_history_download::SessionHistoryMaterializer;
+pub(crate) use session_restore::RestoredSessionIdentity;
 
 use crate::active_input::ActiveInputSource;
 use agent_run::{ProcessCancelTimeouts, RunControls};
@@ -192,7 +194,7 @@ pub(crate) struct ExecutionHooks {
     pub(crate) sandbox_prepared: Option<SandboxPreparedNotifier>,
     pub(crate) active_input_source: Option<ActiveInputSource>,
     pub(crate) pre_spawn_timing: Option<RunnerPreSpawnTiming>,
-    pub(crate) session_history_materializer: Option<SessionHistoryMaterializer>,
+    pub(crate) session_history_restore_plan: SessionHistoryRestorePlan,
 }
 
 impl ExecutionHooks {
@@ -202,7 +204,7 @@ impl ExecutionHooks {
             sandbox_prepared: None,
             active_input_source: None,
             pre_spawn_timing: None,
-            session_history_materializer: None,
+            session_history_restore_plan: SessionHistoryRestorePlan::Default,
         }
     }
 }
@@ -220,6 +222,7 @@ pub struct ExecuteOutcome {
     /// CLI-generated session ID read from the guest after execution.
     /// Used for first-run VM parking when `resume_session` is absent.
     pub discovered_cli_agent_session_id: Option<String>,
+    pub restored_session_identity: Option<RestoredSessionIdentity>,
 }
 
 impl ExecuteOutcome {
@@ -425,7 +428,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
         sandbox_prepared,
         active_input_source,
         pre_spawn_timing,
-        session_history_materializer,
+        session_history_restore_plan,
     } = hooks;
     let spawn_timing = RunnerSpawnTiming::start(pre_spawn_timing);
     let run_id = context.run_id;
@@ -450,6 +453,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             network_log_session: None,
             workspace_image: None,
             discovered_cli_agent_session_id: None,
+            restored_session_identity: None,
         }
     } else {
         match execute_new_sandbox_with_prepared_notifier(
@@ -462,7 +466,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
             NewSandboxHooks {
                 controls: RunControls::new(cancel, active_input_source)
                     .with_spawn_timing(spawn_timing)
-                    .with_session_history_materializer(session_history_materializer),
+                    .with_session_history_restore_plan(session_history_restore_plan),
                 sandbox_prepared: sandbox_prepared.as_ref(),
             },
         )
@@ -476,6 +480,7 @@ pub(crate) async fn execute_job_with_prepared_notifier(
                 network_log_session: None,
                 workspace_image: None,
                 discovered_cli_agent_session_id: None,
+                restored_session_identity: None,
             },
         }
     };
@@ -521,7 +526,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
         sandbox_prepared: _,
         active_input_source,
         pre_spawn_timing,
-        session_history_materializer,
+        session_history_restore_plan,
     } = hooks;
     let spawn_timing = RunnerSpawnTiming::start(pre_spawn_timing);
     let run_id = context.run_id;
@@ -537,6 +542,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     let idle_cli_agent_session_id = idle_parts.cli_agent_session_id;
     let source_ip = idle_parts.source_ip;
     let prev_storage = idle_parts.storage_fingerprints;
+    let _restored_session_identity = idle_parts.restored_session_identity;
     let workspace_promotion = idle_parts.workspace_promotion;
     let sandbox = idle_parts.sandbox;
 
@@ -576,6 +582,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
                                 network_log_session: None,
                                 workspace_image: None,
                                 discovered_cli_agent_session_id: None,
+                                restored_session_identity: None,
                             },
                             telemetry,
                         );
@@ -600,6 +607,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
                             network_log_session: None,
                             workspace_image: None,
                             discovered_cli_agent_session_id: None,
+                            restored_session_identity: None,
                         },
                         telemetry,
                     );
@@ -615,6 +623,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
                 network_log_session: None,
                 workspace_image,
                 discovered_cli_agent_session_id: None,
+                restored_session_identity: None,
             },
             telemetry,
         );
@@ -659,6 +668,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
                                 network_log_session: None,
                                 workspace_image: None,
                                 discovered_cli_agent_session_id: None,
+                                restored_session_identity: None,
                             },
                             telemetry,
                         );
@@ -698,6 +708,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
                         network_log_session: None,
                         workspace_image: None,
                         discovered_cli_agent_session_id: None,
+                        restored_session_identity: None,
                     },
                     telemetry,
                 );
@@ -722,6 +733,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
             network_log_session: None,
             workspace_image,
             discovered_cli_agent_session_id: None,
+            restored_session_identity: None,
         }
     } else {
         let mut outcome = execute_reused_sandbox(
@@ -733,7 +745,7 @@ pub(crate) async fn execute_job_reuse_with_hooks(
             &mut telemetry,
             RunControls::new(cancel, active_input_source)
                 .with_spawn_timing(spawn_timing)
-                .with_session_history_materializer(session_history_materializer),
+                .with_session_history_restore_plan(session_history_restore_plan),
         )
         .await;
         outcome.workspace_image = workspace_image;

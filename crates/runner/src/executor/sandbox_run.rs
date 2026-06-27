@@ -437,6 +437,7 @@ pub(super) async fn execute_reused_sandbox(
                 network_log_session: None,
                 workspace_image: None,
                 discovered_cli_agent_session_id: None,
+                restored_session_identity: None,
             };
         }
     };
@@ -469,6 +470,7 @@ pub(super) async fn execute_reused_sandbox(
             network_log_session: Some(network_log_session),
             workspace_image: None,
             discovered_cli_agent_session_id: None,
+            restored_session_identity: None,
         };
     }
     telemetry.record("workspace_drive_mount", mount_started.elapsed(), true, None);
@@ -527,6 +529,10 @@ pub(super) async fn execute_prepared_sandbox_run(
         |_| AgentStdoutStreamDiagnostics::default(),
         |result| result.stdout_stream_diagnostics,
     );
+    let restored_session_identity = result
+        .as_ref()
+        .ok()
+        .and_then(|result| result.restored_session_identity.clone());
 
     let cleanup_result = post_job_cleanup(
         sandbox.as_ref(),
@@ -580,6 +586,7 @@ pub(super) async fn execute_prepared_sandbox_run(
         network_log_session: Some(network_log_session),
         workspace_image: None,
         discovered_cli_agent_session_id,
+        restored_session_identity,
     }
 }
 

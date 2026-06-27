@@ -3,6 +3,7 @@ use std::sync::Arc;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
 use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
+use crate::executor::RestoredSessionIdentity;
 use crate::resource_budget::BudgetLease;
 use crate::storage_fingerprints::StorageFingerprints;
 use crate::workspace_image_cache::WorkspaceImagePromotionContext;
@@ -23,6 +24,7 @@ pub(crate) struct ParkedIdleCandidateBuilder {
     budget_lease: BudgetLease,
     source_ip: String,
     storage_fingerprints: StorageFingerprints,
+    restored_session_identity: Option<RestoredSessionIdentity>,
     last_completed_at: Option<String>,
     workspace_promotion: Option<WorkspaceImagePromotionContext>,
 }
@@ -42,6 +44,7 @@ impl ParkedIdleCandidateBuilder {
             budget_lease,
             source_ip: DEFAULT_SOURCE_IP.into(),
             storage_fingerprints: StorageFingerprints::default(),
+            restored_session_identity: None,
             last_completed_at: None,
             workspace_promotion: None,
         }
@@ -82,6 +85,14 @@ impl ParkedIdleCandidateBuilder {
         self
     }
 
+    pub(crate) fn with_restored_session_identity(
+        mut self,
+        restored_session_identity: RestoredSessionIdentity,
+    ) -> Self {
+        self.restored_session_identity = Some(restored_session_identity);
+        self
+    }
+
     pub(crate) fn with_workspace_promotion(
         mut self,
         workspace_promotion: WorkspaceImagePromotionContext,
@@ -101,6 +112,7 @@ impl ParkedIdleCandidateBuilder {
             budget_lease,
             source_ip,
             storage_fingerprints,
+            restored_session_identity,
             last_completed_at,
             workspace_promotion,
         } = self;
@@ -111,6 +123,7 @@ impl ParkedIdleCandidateBuilder {
             device_rate_limits,
             source_ip,
             storage_fingerprints,
+            restored_session_identity,
         );
         if let Some(last_completed_at) = last_completed_at {
             metadata = metadata.with_last_completed_at(last_completed_at);

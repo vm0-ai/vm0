@@ -10,6 +10,7 @@ use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use futures_util::FutureExt;
 use sandbox::{DeviceRateLimits, Sandbox, SandboxFactory, SandboxId};
 
+use crate::executor::RestoredSessionIdentity;
 use crate::resource_budget::BudgetLease;
 use crate::status::IdleVm;
 use crate::storage_fingerprints::StorageFingerprints;
@@ -143,6 +144,7 @@ pub(crate) struct IdleParkRequestParts {
     pub(crate) budget_lease: BudgetLease,
     pub(crate) source_ip: String,
     pub(crate) storage_fingerprints: StorageFingerprints,
+    pub(crate) restored_session_identity: Option<RestoredSessionIdentity>,
     pub(crate) workspace_image_size_bytes: u64,
     pub(crate) workspace_promotion: Option<WorkspaceImagePromotionContext>,
 }
@@ -159,6 +161,9 @@ struct IdleSandboxMetadata {
     /// Version fingerprints of storages downloaded in the previous turn.
     /// Used to skip re-downloading unchanged entries on reuse.
     storage_fingerprints: StorageFingerprints,
+    /// Verified hash-backed resume state restored into this sandbox before it
+    /// was parked. Missing means reuse must fall back to materialize+restore.
+    restored_session_identity: Option<RestoredSessionIdentity>,
     /// Local terminal timestamp for this parked session.
     ///
     /// `None` is reserved for synthetic test entries and means the VM is not
@@ -174,6 +179,7 @@ impl IdleSandboxMetadata {
         device_rate_limits: Option<DeviceRateLimits>,
         source_ip: String,
         storage_fingerprints: StorageFingerprints,
+        restored_session_identity: Option<RestoredSessionIdentity>,
     ) -> Self {
         Self {
             cli_agent_session_id,
@@ -182,6 +188,7 @@ impl IdleSandboxMetadata {
             device_rate_limits,
             source_ip,
             storage_fingerprints,
+            restored_session_identity,
             last_completed_at: None,
         }
     }
@@ -276,6 +283,7 @@ impl IdleParkRequest {
             budget_lease,
             source_ip,
             storage_fingerprints,
+            restored_session_identity,
             workspace_image_size_bytes,
             workspace_promotion,
         } = self.parts;
@@ -287,6 +295,7 @@ impl IdleParkRequest {
             device_rate_limits,
             source_ip,
             storage_fingerprints,
+            restored_session_identity,
         );
 
         if let Some(promotion) = workspace_promotion.as_ref()
@@ -488,12 +497,17 @@ pub struct ReusableIdleSandboxParts {
     pub cli_agent_session_id: String,
     pub source_ip: String,
     pub storage_fingerprints: StorageFingerprints,
+    pub restored_session_identity: Option<RestoredSessionIdentity>,
     pub workspace_promotion: Option<WorkspaceImagePromotionContext>,
 }
 
 impl ReusableIdleSandbox {
     pub fn sandbox_id(&self) -> SandboxId {
         self.metadata.sandbox_id
+    }
+
+    pub fn restored_session_identity(&self) -> Option<&RestoredSessionIdentity> {
+        self.metadata.restored_session_identity.as_ref()
     }
 
     pub fn into_parts(self) -> ReusableIdleSandboxParts {
@@ -509,6 +523,7 @@ impl ReusableIdleSandbox {
             device_rate_limits: _,
             source_ip,
             storage_fingerprints,
+            restored_session_identity,
             last_completed_at: _,
         } = metadata;
 
@@ -517,6 +532,7 @@ impl ReusableIdleSandbox {
             cli_agent_session_id,
             source_ip,
             storage_fingerprints,
+            restored_session_identity,
             workspace_promotion,
         }
     }
@@ -1126,6 +1142,7 @@ mod tests {
             budget_lease,
             source_ip: "10.0.0.1".into(),
             storage_fingerprints: StorageFingerprints::default(),
+            restored_session_identity: None,
             workspace_image_size_bytes: 0,
             workspace_promotion: None,
         })
@@ -1184,6 +1201,8 @@ mod tests {
             )]),
         };
         let expected_storage_fingerprints = storage_fingerprints.clone();
+        let restored_session_identity =
+            RestoredSessionIdentity::claude_code_for_test("history-hash-a");
         let request = IdleParkRequest::new(IdleParkRequestParts {
             sandbox,
             factory,
@@ -1194,6 +1213,7 @@ mod tests {
             budget_lease,
             source_ip: source_ip.into(),
             storage_fingerprints,
+            restored_session_identity: Some(restored_session_identity.clone()),
             workspace_image_size_bytes: 0,
             workspace_promotion: None,
         });
@@ -1225,6 +1245,10 @@ mod tests {
         let reused_parts = sandbox.into_parts();
         assert_eq!(reused_parts.cli_agent_session_id, session_id);
         assert_eq!(reused_parts.source_ip, source_ip);
+        assert_eq!(
+            reused_parts.restored_session_identity,
+            Some(restored_session_identity)
+        );
         assert_eq!(
             reused_parts.storage_fingerprints.storages,
             expected_storage_fingerprints.storages

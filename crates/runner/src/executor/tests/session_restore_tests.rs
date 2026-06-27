@@ -8,10 +8,12 @@ use tracing_subscriber::prelude::*;
 
 use super::super::DEFAULT_EXEC_TIMEOUT;
 use super::super::session_id::{canonical_codex_thread_id, is_valid_session_id};
-use super::super::session_restore::restore_session;
+use super::super::session_restore::{RestoredSessionIdentity, restore_session};
 use super::support::{CapturedEvent, CapturedEvents, minimal_context, sandbox_write_file_error};
 use crate::paths::diagnostic_session_fingerprint;
-use crate::types::ResumeSession;
+use crate::types::{
+    ResumeSession, ResumeSessionHistory, ResumeSessionHistoryRef, ResumeSessionHistoryRefKind,
+};
 
 static RESTORE_SESSION_LOG_CALLSITE_LOCK: Mutex<()> = Mutex::new(());
 
@@ -60,6 +62,91 @@ fn codex_thread_id_canonicalizes_uuid_spellings() {
         Some("019e9154-c304-70f0-adde-36efb1be1701")
     );
     assert!(canonical_codex_thread_id("codex-safe-but-not-uuid").is_none());
+}
+
+#[test]
+fn restored_session_identity_requires_valid_hash_ref() {
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-identity-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: "hash-a".into(),
+                url: "https://example.com/history".into(),
+                size: Some(12),
+            },
+        },
+    });
+
+    assert!(RestoredSessionIdentity::from_context(&ctx).is_some());
+
+    ctx.resume_session = Some(ResumeSession::inline(
+        "sess-identity-123".into(),
+        "{}".into(),
+    ));
+    assert!(RestoredSessionIdentity::from_context(&ctx).is_none());
+
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "../../etc/passwd".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: "hash-a".into(),
+                url: "https://example.com/history".into(),
+                size: Some(12),
+            },
+        },
+    });
+    assert!(RestoredSessionIdentity::from_context(&ctx).is_none());
+}
+
+#[test]
+fn restored_session_identity_changes_with_framework_and_history_hash() {
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "claude-code".into();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-identity-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: "hash-a".into(),
+                url: "https://example.com/history".into(),
+                size: Some(12),
+            },
+        },
+    });
+    let claude_identity = RestoredSessionIdentity::from_context(&ctx).expect("claude identity");
+
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-identity-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: "hash-b".into(),
+                url: "https://example.com/history".into(),
+                size: Some(12),
+            },
+        },
+    });
+    let different_hash_identity =
+        RestoredSessionIdentity::from_context(&ctx).expect("different hash identity");
+    assert_ne!(claude_identity, different_hash_identity);
+
+    ctx.cli_agent_type = "codex".into();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "019e9154-c304-70f0-adde-36efb1be1701".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: "hash-a".into(),
+                url: "https://example.com/history".into(),
+                size: Some(12),
+            },
+        },
+    });
+    let codex_identity = RestoredSessionIdentity::from_context(&ctx).expect("codex identity");
+    assert_ne!(claude_identity, codex_identity);
 }
 
 #[test]
