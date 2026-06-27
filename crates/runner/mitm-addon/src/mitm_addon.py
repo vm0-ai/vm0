@@ -812,6 +812,9 @@ def _bind_flow_upstream_destination(
     except (UnicodeError, ValueError):
         return False
 
+    if upstream_destination_binding.has_server_binding(flow.server_conn):
+        return False
+
     original_address = _server_address(flow.server_conn)
     if flow.server_conn.connected:
         connected_address = _connected_trusted_destination_endpoint(
@@ -1658,6 +1661,26 @@ def _connected_trusted_destination_endpoint(
     return None
 
 
+def _connected_api_destination_endpoint(
+    server: object,
+    *,
+    port: int,
+    extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
+) -> tuple[str, int] | None:
+    for peer in (_server_peername(server), _server_address(server), *extra_endpoints):
+        if peer is None:
+            continue
+
+        peer_host, peer_port = peer
+        if peer_port != port:
+            continue
+
+        if _ip_address_text(peer_host) is not None:
+            return peer
+
+    return None
+
+
 def reset_upstream_destination_resolution_cache_for_tests() -> None:
     _trusted_host_address_cache.clear()
 
@@ -1804,12 +1827,22 @@ def _bind_privileged_upstream_destination(
         return
 
     if bool(getattr(server, "connected", False)):
-        connected_address = _connected_trusted_destination_endpoint(
-            server,
-            host=hostname,
-            port=port,
-            extra_endpoints=(_connection_sockname(client),),
-        )
+        if kinds == frozenset(("api_allow",)):
+            # API auto-allow does not inject connector credentials. The platform
+            # API may be behind edge IPs that differ from a fresh DNS lookup, so
+            # bind the already-connected endpoint only for API-only traffic.
+            connected_address = _connected_api_destination_endpoint(
+                server,
+                port=port,
+                extra_endpoints=(_connection_sockname(client),),
+            )
+        else:
+            connected_address = _connected_trusted_destination_endpoint(
+                server,
+                host=hostname,
+                port=port,
+                extra_endpoints=(_connection_sockname(client),),
+            )
         if connected_address is None:
             return
         address = connected_address

@@ -87,6 +87,11 @@ def forget_client_bindings(client: object) -> None:
         _client_id_by_server_id.pop(server_id, None)
 
 
+def has_server_binding(server: object) -> bool:
+    server_id = _connection_id(server)
+    return server_id is not None and server_id in _bindings_by_server_id
+
+
 def _address_matches(host: str, port: int, address: object) -> bool:
     if not isinstance(address, tuple) or len(address) != _ADDRESS_PAIR_LENGTH:
         return False

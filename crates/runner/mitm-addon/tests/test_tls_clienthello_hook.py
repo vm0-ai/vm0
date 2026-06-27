@@ -70,6 +70,39 @@ class TestTlsClienthello:
         assert binding.kinds == frozenset(("api_allow",))
         assert binding.original_address == ("203.0.113.10", 443)
 
+    def test_registered_vm_binds_connected_api_edge_when_peer_misses_dns(
+        self, registry_file, make_tls_data, mitm_ctx
+    ):
+        data = make_tls_data(
+            client_ip="10.200.0.1",
+            sni="pr-test-api.vm6.ai",
+            client_sni="",
+            server_address=("76.76.21.164", 443),
+            server_peername=("76.76.21.164", 443),
+            server_connected=True,
+        )
+
+        with (
+            mitm_ctx(
+                registry_path=str(registry_file),
+                api_url="https://pr-test-api.vm6.ai",
+            ),
+            patch.object(
+                mitm_addon.socket,
+                "getaddrinfo",
+                return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("66.33.60.34", 443))],
+            ),
+        ):
+            mitm_addon.tls_clienthello(data)
+
+        assert data.ignore_connection is False
+        assert data.context.server.address == ("76.76.21.164", 443)
+        binding = upstream_destination_binding.binding_snapshot_for_tests()[data.context.server.id]
+        assert binding.host == "pr-test-api.vm6.ai"
+        assert binding.port == 443
+        assert binding.kinds == frozenset(("api_allow",))
+        assert binding.original_address == ("76.76.21.164", 443)
+
     def test_registered_vm_retargets_connector_host_from_clienthello_sni(
         self, tmp_path, make_tls_data, mitm_ctx
     ):

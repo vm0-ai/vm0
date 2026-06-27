@@ -393,7 +393,7 @@ async def test_rejects_spoofed_host_before_vm0_api_auto_allow(
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
 
 
-async def test_matching_sni_and_host_blocks_vm0_api_auto_allow_when_upstream_is_unbound(
+async def test_matching_sni_and_host_blocks_connected_vm0_api_edge_when_unbound(
     registry_file, real_flow, mitm_ctx, headers
 ):
     flow = real_flow(
@@ -405,7 +405,14 @@ async def test_matching_sni_and_host_blocks_vm0_api_auto_allow_when_upstream_is_
     )
     flow.server_conn.state = connection.ConnectionState.OPEN
 
-    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+    with (
+        mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"),
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))],
+        ),
+    ):
         await mitm_addon.request(flow)
 
     assert flow.response is not None

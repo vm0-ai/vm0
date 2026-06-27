@@ -101,7 +101,7 @@ async def test_capture_enabled_api_allow_retargets_unconnected_upstream(
     assert binding.original_address == ("203.0.113.10", 443)
 
 
-async def test_capture_enabled_api_allow_falls_back_when_upstream_is_connected(
+async def test_capture_enabled_api_allow_blocks_connected_unbound_edge_upstream(
     tmp_path, real_flow, mitm_ctx, headers
 ):
     reg_path = _write_registry(
@@ -122,7 +122,14 @@ async def test_capture_enabled_api_allow_falls_back_when_upstream_is_connected(
     )
     flow.server_conn.state = connection.ConnectionState.OPEN
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))],
+        ),
+    ):
         mitm_addon.requestheaders(flow)
         _assert_no_request_stream(flow)
 
@@ -131,6 +138,7 @@ async def test_capture_enabled_api_allow_falls_back_when_upstream_is_connected(
     assert flow.response is not None
     assert flow.response.status_code == 403
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 async def test_capture_enabled_api_allow_uses_connected_upstream_address_when_dns_verified(

@@ -18,10 +18,14 @@ class _Server:
         self,
         *,
         address: tuple[str, int] = ("203.0.113.10", 443),
+        peername: tuple[str, int] | None = None,
+        connected: bool = False,
         server_id: str | None = None,
     ) -> None:
         self.id = server_id or str(uuid.uuid4())
         self.address = address
+        self.peername = peername
+        self.connected = connected
 
 
 class _Client:
@@ -49,11 +53,13 @@ def _data(
     client_ip: str = "10.200.0.5",
     sni: str = "api.github.com",
     address: tuple[str, int] = ("203.0.113.10", 443),
+    server_peername: tuple[str, int] | None = None,
+    server_connected: bool = False,
     client_sockname: tuple[str, int] = ("127.0.0.1", 8080),
 ) -> _ServerConnectData:
     return _ServerConnectData(
         client=_Client(client_ip=client_ip, sni=sni, sockname=client_sockname),
-        server=_Server(address=address),
+        server=_Server(address=address, peername=server_peername, connected=server_connected),
     )
 
 
@@ -103,6 +109,32 @@ def test_server_connect_retargets_api_allow_host(registry_file, mitm_ctx):
     assert data.server.address == ("api.vm0.ai", 443)
     binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
     assert binding.kinds == frozenset(("api_allow",))
+
+
+def test_server_connect_binds_connected_api_edge_when_peer_misses_dns(registry_file, mitm_ctx):
+    data = _data(
+        client_ip="10.200.0.1",
+        sni="pr-test-api.vm6.ai",
+        address=("76.76.21.164", 443),
+        server_peername=("76.76.21.164", 443),
+        server_connected=True,
+    )
+
+    with (
+        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("66.33.60.34", 443))],
+        ),
+    ):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("76.76.21.164", 443)
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
+    assert binding.host == "pr-test-api.vm6.ai"
+    assert binding.kinds == frozenset(("api_allow",))
+    assert binding.original_address == ("76.76.21.164", 443)
 
 
 def test_server_connect_binds_api_host_from_original_address(registry_file, mitm_ctx):
