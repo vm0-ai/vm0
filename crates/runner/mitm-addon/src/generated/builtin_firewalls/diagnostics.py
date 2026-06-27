@@ -3709,6 +3709,7 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
     "apis": [
       {
         "authHeaderNames": [
+          "X-RapidAPI-Host",
           "X-RapidAPI-Key"
         ],
         "authQueryParamNames": [],
