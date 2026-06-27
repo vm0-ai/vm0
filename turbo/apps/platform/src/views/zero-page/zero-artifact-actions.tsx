@@ -16,7 +16,6 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorAuthMethodIdsByGrantKind } from "@vm0/connectors/connectors";
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
@@ -44,7 +43,6 @@ import {
   downloadAttachmentUrl,
   publicAttachmentUrl,
 } from "./zero-attachment-url.ts";
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { downloadPresentationHtmlPptx } from "./presentation-html-pptx-download.ts";
 
 const CONNECT_GOOGLE_DRIVE_ARTIFACT_UPLOAD_TOOLTIP =
@@ -435,11 +433,8 @@ export function ArtifactDownloadMenu({
   const openMenu = useSet(openArtifactDownloadMenu$);
   const closeMenu = useSet(closeArtifactDownloadMenu$);
   const pageSignal = useGet(pageSignal$);
-  const features = useLastResolved(featureSwitch$);
   const open = openKey === menuKey;
-  const showPresentationPptxDownload =
-    artifactKind === "presentation-html" &&
-    Boolean(features?.[FeatureSwitchKey.PresentationHtmlPptxDownload]);
+  const showPresentationPptxDownload = artifactKind === "presentation-html";
   const downloadFilename = artifactDownloadFilename(
     artifactKind,
     filename,

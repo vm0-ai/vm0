@@ -2603,7 +2603,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
     });
 
     await waitFor(() => {
@@ -2647,7 +2646,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
     });
 
     await waitFor(() => {
@@ -3351,7 +3349,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
     });
 
     await waitFor(() => {
@@ -3451,7 +3448,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
     });
 
     await waitFor(() => {
@@ -3554,7 +3550,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
     });
 
     await waitFor(() => {
@@ -3623,10 +3618,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.VideoTemplatePicker]: true,
-      },
     });
 
     await waitFor(() => {
@@ -3642,7 +3633,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("hides historical template labels behind picker feature switches", async () => {
+  it("shows historical template labels after picker rollout", async () => {
     const threadId = "template-message-history-gated";
     const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
@@ -3684,23 +3675,16 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: false,
-      },
     });
 
     await waitFor(() => {
       expect(screen.getByText("Create the business review deck")).toBeVisible();
       expect(
-        screen.queryByLabelText(
-          `Message template ${presentationTemplate.title}`,
-        ),
-      ).not.toBeInTheDocument();
+        screen.getByLabelText(`Message template ${presentationTemplate.title}`),
+      ).toHaveTextContent("Presentation");
       expect(
-        screen.queryByLabelText(
-          `Message template ${illustrationTemplate.title}`,
-        ),
-      ).not.toBeInTheDocument();
+        screen.getByLabelText(`Message template ${illustrationTemplate.title}`),
+      ).toHaveTextContent("Illustration");
     });
   });
 

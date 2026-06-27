@@ -912,9 +912,7 @@ function ArtifactPreviewDialogActions({
   );
   const features = useGet(featureSwitch$);
   const showPresentationEdit =
-    preview.kind === "html" &&
-    artifact?.artifactKind === "presentation-html" &&
-    Boolean(features?.[FeatureSwitchKey.PresentationHtmlPptxDownload]);
+    preview.kind === "html" && artifact?.artifactKind === "presentation-html";
   const showHtmlEdit =
     preview.kind === "html" &&
     artifact?.artifactKind === "hosted-site" &&
