@@ -1,6 +1,6 @@
 {
   "name": "@vm0/db",
-  "version": "1.75.3",
+  "version": "1.76.0",
   "private": true,
   "type": "module",
   "exports": {
