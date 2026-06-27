@@ -330,6 +330,8 @@ export type {
   ConnectorDeviceAuthStartOptionConfig,
   ConnectorDeviceAuthStartOptions,
   ConnectorDeviceAuthStartOptionsConfig,
+  ConnectorDeviceAuthStartSelectOptionChoiceConfig,
+  ConnectorDeviceAuthStartSelectOptionConfig,
   ConnectorDisplayCategory,
   ConnectorDisplayCategoryGroup,
   ConnectorEnvBindingValue,
