@@ -1,0 +1,140 @@
+"""Tests for upstream destination binding in server_connect()."""
+
+import uuid
+
+import mitm_addon
+import upstream_destination_binding
+from tests.request_handler_helpers import (
+    _single_firewall_vm,
+    _write_github_firewall_registry,
+    _write_registry,
+)
+
+
+class _Server:
+    def __init__(
+        self,
+        *,
+        address: tuple[str, int] = ("203.0.113.10", 443),
+        server_id: str | None = None,
+    ) -> None:
+        self.id = server_id or str(uuid.uuid4())
+        self.address = address
+
+
+class _Client:
+    def __init__(
+        self,
+        *,
+        client_ip: str = "10.200.0.5",
+        sni: str = "api.github.com",
+    ) -> None:
+        self.id = str(uuid.uuid4())
+        self.peername = (client_ip, 12345)
+        self.sni = sni
+
+
+class _ServerConnectData:
+    def __init__(self, *, client: _Client, server: _Server) -> None:
+        self.client = client
+        self.server = server
+
+
+def _data(
+    *,
+    client_ip: str = "10.200.0.5",
+    sni: str = "api.github.com",
+    address: tuple[str, int] = ("203.0.113.10", 443),
+) -> _ServerConnectData:
+    return _ServerConnectData(
+        client=_Client(client_ip=client_ip, sni=sni),
+        server=_Server(address=address),
+    )
+
+
+def test_server_connect_retargets_credentialed_connector_host(tmp_path, mitm_ctx):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    data = _data()
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("api.github.com", 443)
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
+    assert binding.host == "api.github.com"
+    assert binding.port == 443
+    assert binding.kinds == frozenset(("connector_auth",))
+    assert binding.original_address == ("203.0.113.10", 443)
+
+
+def test_server_connect_retargets_api_allow_host(registry_file, mitm_ctx):
+    data = _data(client_ip="10.200.0.1", sni="api.vm0.ai")
+
+    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("api.vm0.ai", 443)
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
+    assert binding.kinds == frozenset(("api_allow",))
+
+
+def test_server_connect_does_not_retarget_auth_base_only_connector(tmp_path, mitm_ctx):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://placeholder.example.com",
+                "auth": {"base": "${{ secrets.WEBHOOK_URL }}"},
+                "permissions": [{"name": "send", "rules": ["ANY /"]}],
+            },
+            network_policy={"allow": ["send"], "deny": [], "ask": [], "unknownPolicy": "deny"},
+        ),
+    )
+    data = _data(sni="placeholder.example.com")
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("203.0.113.10", 443)
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
+def test_server_connect_ignores_unregistered_vm(registry_file, mitm_ctx):
+    data = _data(client_ip="192.168.99.99")
+
+    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("203.0.113.10", 443)
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
+def test_server_connect_ignores_invalid_sni(tmp_path, mitm_ctx):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    data = _data(sni="api.github.com..")
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("203.0.113.10", 443)
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
+def test_server_disconnect_and_connect_error_clear_binding(tmp_path, mitm_ctx):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    data = _data()
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.server_connect(data)
+
+    assert data.server.id in upstream_destination_binding.binding_snapshot_for_tests()
+    mitm_addon.server_disconnected(data)
+    assert data.server.id not in upstream_destination_binding.binding_snapshot_for_tests()
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.server_connect(data)
+
+    assert data.server.id in upstream_destination_binding.binding_snapshot_for_tests()
+    mitm_addon.server_connect_error(data)
+    assert data.server.id not in upstream_destination_binding.binding_snapshot_for_tests()

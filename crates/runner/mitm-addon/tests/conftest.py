@@ -31,6 +31,7 @@ import builtin_connector_diagnostics
 import logging_utils
 import mitm_addon
 import registry
+import upstream_destination_binding
 import usage
 from tests.auth_state_helpers import clear_auth_state
 from tests.usage_helpers import UsageWebhookServer, fresh_usage_executor_context
@@ -52,6 +53,7 @@ def _reset_module_state() -> Iterator[None]:
     auth_base_forwarder.reset_forward_request_state_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
     registry.reset_cache_for_tests()
+    upstream_destination_binding.reset_for_tests()
     mitm_addon.reset_runner_usage_flush_state_for_tests()
     mitm_addon.reset_tls_admission_state_for_tests()
     clear_auth_state()
@@ -66,6 +68,7 @@ def _reset_module_state() -> Iterator[None]:
     logging_utils.reset_log_writer_for_tests()
     auth_base_forwarder.reset_forward_request_state_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
+    upstream_destination_binding.reset_for_tests()
     mitm_addon.reset_tls_admission_state_for_tests()
     usage.webhook.reset_delivery_capacity_for_tests()
     usage.counters.reset_for_tests()
@@ -156,6 +159,7 @@ def real_flow():
         flow = tflow.tflow(req=req, resp=resp)
         flow.client_conn.peername = (client_ip, 12345)
         flow.client_conn.sni = sni if sni is not None else (host if scheme == "https" else None)
+        flow.server_conn.address = (host, port)
         return flow
 
     return _build

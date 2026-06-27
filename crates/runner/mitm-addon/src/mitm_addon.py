@@ -51,6 +51,7 @@ import network_log_sanitization
 import registry
 import request_streaming
 import response_streaming
+import upstream_destination_binding
 import usage
 from auth import (
     FirewallAuthHandlingResult,
@@ -69,6 +70,7 @@ from firewall_auth_cache import (
     clear_cached_firewall_headers,
     request_force_refresh,
 )
+from firewall_auth_config import auth_config_injects_ordinary_upstream_credentials
 from logging_utils import (
     add_firewall_metadata,
     flush_log_path,
@@ -76,7 +78,7 @@ from logging_utils import (
     log_proxy_entry,
     shutdown_log_writer,
 )
-from url_utils import AuthorityValidationError, get_trusted_authority
+from url_utils import AuthorityValidationError, get_trusted_authority, normalize_trusted_hostname
 
 # HTTP status boundaries used in response-phase classification.
 _HTTP_STATUS_UNAUTHORIZED = 401
@@ -84,6 +86,7 @@ _HTTP_STATUS_FORBIDDEN = 403
 _HTTP_STATUS_FAILED_DEPENDENCY = 424
 _HTTP_STATUS_BAD_GATEWAY = 502
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
+_ADDRESS_PAIR_LENGTH = 2
 _HTTP_DEFAULT_PORT = 80
 _HTTPS_DEFAULT_PORT = 443
 _BROWSER_USER_AGENT_MARKERS = (
@@ -149,6 +152,7 @@ _TLS_ADMISSION_VALID_REGISTRY_VM: Final = "valid_registry_vm"
 _TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
 _TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
 _STALE_TLS_ADMISSION_ERROR: Final = "stale_tls_admission"
+_UPSTREAM_DESTINATION_UNBOUND_ERROR: Final = "upstream_destination_unbound"
 
 _TlsAdmissionKind = Literal[
     "valid_registry_vm",
@@ -728,6 +732,23 @@ def _firewall_allow_auth_base(allow: matching.FirewallAllow) -> str | None:
     auth_config = allow.api_entry.get("auth", {})
     auth_base = auth_config.get("base") if isinstance(auth_config, dict) else None
     return auth_base if isinstance(auth_base, str) and auth_base else None
+
+
+def _firewall_allow_injects_ordinary_upstream_credentials(
+    allow: matching.FirewallAllow,
+) -> bool:
+    return auth_config_injects_ordinary_upstream_credentials(allow.api_entry.get("auth"))
+
+
+def _has_bound_upstream_destination(
+    flow: http.HTTPFlow,
+    *,
+    allowed_kinds: frozenset[upstream_destination_binding.BindingKind],
+) -> bool:
+    return upstream_destination_binding.flow_matches_bound_destination(
+        flow,
+        allowed_kinds=allowed_kinds,
+    )
 
 
 def _auth_base_body_header_check(flow: http.HTTPFlow) -> _AuthBaseBodyCheck:
@@ -1320,6 +1341,45 @@ def _block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
     )
 
 
+def _block_upstream_destination_unbound(
+    flow: http.HTTPFlow,
+    *,
+    reason: str,
+) -> None:
+    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    server_address = getattr(flow.server_conn, "address", None)
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "Request blocked: upstream destination is not bound to the trusted authority",
+        type="upstream_destination_binding",
+        reason=reason,
+        trusted_host=trusted_host,
+        request_host=flow.request.host,
+        request_port=flow.request.port,
+        server_address=server_address,
+    )
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = _UPSTREAM_DESTINATION_UNBOUND_ERROR
+    body: dict[str, object] = {
+        "error": _UPSTREAM_DESTINATION_UNBOUND_ERROR,
+        "message": "Request blocked: upstream destination is not bound to trusted authority",
+        "reason": reason,
+        "trusted_host": trusted_host,
+        "request_host": flow.request.host,
+        "request_port": flow.request.port,
+    }
+    firewall_base = flow.metadata.get(metadata_keys.FIREWALL_BASE)
+    if isinstance(firewall_base, str):
+        body["base"] = firewall_base
+    flow.response = http.Response.make(
+        403,
+        json.dumps(body).encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
 def _client_connection_id(client: object) -> str | None:
     client_id = getattr(client, "id", None)
     if isinstance(client_id, str) and client_id:
@@ -1348,6 +1408,115 @@ def _forget_tls_admission(client: object) -> None:
 
 def reset_tls_admission_state_for_tests() -> None:
     _tls_admissions.clear()
+
+
+def _server_address(server: object) -> tuple[str, int] | None:
+    address = getattr(server, "address", None)
+    if not isinstance(address, tuple) or len(address) != _ADDRESS_PAIR_LENGTH:
+        return None
+    host, port = address
+    if not isinstance(host, str) or not isinstance(port, int):
+        return None
+    return host, port
+
+
+def _api_hostname_matches(hostname: str) -> bool:
+    api_url = get_api_url()
+    if not api_url:
+        return False
+    parsed_api = urllib.parse.urlparse(api_url)
+    if not parsed_api.hostname:
+        return False
+    try:
+        api_hostname = normalize_trusted_hostname(parsed_api.hostname)
+    except (UnicodeError, ValueError):
+        return False
+    return hostname == api_hostname or hostname.endswith(f".{api_hostname}")
+
+
+def _server_connect_binding_kinds(
+    *,
+    hostname: str,
+    port: int,
+    compiled_firewalls: matching.CompiledFirewallSet | None,
+) -> frozenset[upstream_destination_binding.BindingKind]:
+    kinds: set[upstream_destination_binding.BindingKind] = set()
+    if _api_hostname_matches(hostname):
+        kinds.add("api_allow")
+    if compiled_firewalls is not None and compiled_firewalls.matches_ordinary_credential_authority(
+        hostname, port
+    ):
+        kinds.add("connector_auth")
+    return frozenset(kinds)
+
+
+def server_connect(data: object) -> None:
+    """Bind privileged HTTPS upstream connections to their trusted SNI host."""
+    client = getattr(data, "client", None)
+    server = getattr(data, "server", None)
+    if client is None or server is None:
+        return
+
+    client_ip = client.peername[0] if getattr(client, "peername", None) else None
+    if not client_ip:
+        return
+
+    registry_state = registry.load_registry_state(get_registry_path())
+    if isinstance(registry_state, registry.RegistryUnavailable):
+        return
+
+    vm_info = registry_state.vms.get(client_ip)
+    if vm_info is None:
+        return
+
+    tls_admission = _tls_admission_for_client(client)
+    run_id = vm_info.get("runId", "")
+    if tls_admission is not None and (
+        tls_admission.client_ip != client_ip
+        or tls_admission.kind != _TLS_ADMISSION_VALID_REGISTRY_VM
+        or (tls_admission.run_id is not None and tls_admission.run_id != run_id)
+    ):
+        return
+
+    raw_sni = getattr(client, "sni", None)
+    if not isinstance(raw_sni, str) or not raw_sni.strip():
+        return
+    try:
+        hostname = normalize_trusted_hostname(raw_sni.strip())
+    except (UnicodeError, ValueError):
+        return
+
+    address = _server_address(server)
+    if address is None:
+        return
+    _original_host, port = address
+
+    kinds = _server_connect_binding_kinds(
+        hostname=hostname,
+        port=port,
+        compiled_firewalls=registry_state.compiled_firewalls.get(client_ip),
+    )
+    if not kinds:
+        return
+
+    server.address = (hostname, port)
+    upstream_destination_binding.record_server_binding(
+        server,
+        host=hostname,
+        port=port,
+        kinds=kinds,
+        original_address=address,
+    )
+
+
+def server_disconnected(data: object) -> None:
+    server = getattr(data, "server", data)
+    upstream_destination_binding.forget_server_binding(server)
+
+
+def server_connect_error(data: object) -> None:
+    server = getattr(data, "server", data)
+    upstream_destination_binding.forget_server_binding(server)
 
 
 # ============================================================================
@@ -1523,6 +1692,11 @@ async def _try_firewall_request_stream_capture_from_headers(
     if allow is None or vm_info is None:
         _restore_request_headers_probe_metadata(flow, metadata_snapshot)
         return
+    if _firewall_allow_injects_ordinary_upstream_credentials(allow) and not (
+        _has_bound_upstream_destination(flow, allowed_kinds=frozenset(("connector_auth",)))
+    ):
+        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+        return
 
     _start_request_timing(flow)
     try:
@@ -1637,6 +1811,12 @@ async def request(flow: http.HTTPFlow) -> None:
                 _block_authority_validation_error(flow, authority_error)
             return
         if classification.kind == "api_allow":
+            if not _has_bound_upstream_destination(
+                flow,
+                allowed_kinds=frozenset(("api_allow",)),
+            ):
+                _block_upstream_destination_unbound(flow, reason="api_allow")
+                return
             flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
             return
         if classification.kind == "browser_allow":
@@ -1657,6 +1837,15 @@ async def request(flow: http.HTTPFlow) -> None:
             if allow is None or vm_info is None:
                 return
             if flow.metadata.get(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS):
+                return
+            if _firewall_allow_injects_ordinary_upstream_credentials(
+                allow
+            ) and not _has_bound_upstream_destination(
+                flow,
+                allowed_kinds=frozenset(("connector_auth",)),
+            ):
+                prepare_firewall_metadata(flow, allow, vm_info)
+                _block_upstream_destination_unbound(flow, reason="connector_auth")
                 return
             _maybe_track_usage_flow(
                 flow,
@@ -2300,6 +2489,9 @@ def _log_tcp(flow: tcp.TCPFlow) -> None:
 
 # mitmproxy addon registration
 addons = [
+    server_connect,
+    server_disconnected,
+    server_connect_error,
     tls_clienthello,
     client_disconnected,
     request,

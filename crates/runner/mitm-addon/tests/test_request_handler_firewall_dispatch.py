@@ -747,6 +747,72 @@ async def test_http_firewall_without_managed_credentials_still_matches(
     assert "Authorization" not in flow.request.headers
 
 
+@pytest.mark.parametrize(
+    "auth_config",
+    [
+        {"headers": {"Authorization": "Bearer ${{ secrets.API_TOKEN }}"}},
+        {"query": {"api_key": "${{ secrets.API_TOKEN }}"}},
+        {
+            "awsSigv4": {
+                "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+            }
+        },
+    ],
+    ids=["headers", "query", "aws-sigv4"],
+)
+async def test_https_firewall_with_ordinary_credentials_blocks_when_upstream_is_unbound(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    auth_config,
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": auth_config,
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        path="/repos/octocat/hello",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "upstream_destination_unbound"
+    assert body["reason"] == "connector_auth"
+    assert body["base"] == "https://api.github.com"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    assert "Authorization" not in flow.request.headers
+
+
 async def test_oversized_auth_base_request_does_not_capture_request_body(
     tmp_path, real_flow, mitm_ctx, headers
 ):

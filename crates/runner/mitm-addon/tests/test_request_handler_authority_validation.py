@@ -6,6 +6,7 @@ import pytest
 
 import flow_metadata_keys as metadata_keys
 import mitm_addon
+import upstream_destination_binding
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
 from tests.request_handler_helpers import _write_github_firewall_registry
 
@@ -13,6 +14,24 @@ _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
     "(KHTML, like Gecko) HeadlessChrome/126.0.0.0 Safari/537.36"
 )
+
+
+def _bind_flow_upstream(
+    flow,
+    *,
+    host: str = "api.github.com",
+    port: int = 443,
+    kinds: frozenset[upstream_destination_binding.BindingKind] = frozenset(("connector_auth",)),
+) -> None:
+    original_address = flow.server_conn.address
+    flow.server_conn.address = (host, port)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        host=host,
+        port=port,
+        kinds=kinds,
+        original_address=original_address,
+    )
 
 
 @pytest.mark.parametrize(
@@ -141,7 +160,7 @@ async def test_browser_user_agent_marker_survives_authority_validation_block(
     assert entry["browser_user_agent"] is True
 
 
-async def test_matching_sni_and_host_allows_firewall_auth(
+async def test_matching_sni_and_host_blocks_firewall_auth_when_upstream_is_unbound(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
     reg_path = _write_github_firewall_registry(tmp_path)
@@ -153,6 +172,37 @@ async def test_matching_sni_and_host_allows_firewall_auth(
         path="/repos",
         request_headers=headers(("Host", "api.github.com")),
     )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "upstream_destination_unbound"
+    assert body["reason"] == "connector_auth"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    assert "Authorization" not in flow.request.headers
+
+
+async def test_matching_sni_and_host_allows_bound_firewall_auth(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        path="/repos",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+    _bind_flow_upstream(flow)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -188,6 +238,7 @@ async def test_pseudo_authority_without_host_allows_firewall_auth(
     )
     flow.request.http_version = http_version
     flow.request.authority = "api.github.com"
+    _bind_flow_upstream(flow)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -255,6 +306,47 @@ async def test_rejects_spoofed_host_before_vm0_api_auto_allow(
     body = json.loads(flow.response.content)
     assert body["error"] == "authority_mismatch"
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+
+
+async def test_matching_sni_and_host_blocks_vm0_api_auto_allow_when_upstream_is_unbound(
+    registry_file, real_flow, mitm_ctx, headers
+):
+    flow = real_flow(
+        with_response=False,
+        host="203.0.113.10",
+        sni="api.vm0.ai",
+        path="/api/runs/heartbeat",
+        request_headers=headers(("Host", "api.vm0.ai")),
+    )
+
+    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "upstream_destination_unbound"
+    assert body["reason"] == "api_allow"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+
+
+async def test_matching_sni_and_host_allows_bound_vm0_api_auto_allow(
+    registry_file, real_flow, mitm_ctx, headers
+):
+    flow = real_flow(
+        with_response=False,
+        host="203.0.113.10",
+        sni="api.vm0.ai",
+        path="/api/runs/heartbeat",
+        request_headers=headers(("Host", "api.vm0.ai")),
+    )
+    _bind_flow_upstream(flow, host="api.vm0.ai", kinds=frozenset(("api_allow",)))
+
+    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
 
 
 async def test_rejects_duplicate_host_authority_before_firewall_auth(

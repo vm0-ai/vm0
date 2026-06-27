@@ -22,6 +22,7 @@ from authority_utils import (
     is_default_scheme_port,
     percent_decode_host,
 )
+from firewall_auth_config import auth_config_injects_ordinary_upstream_credentials
 from host_normalization import normalize_idna_hostname
 from path_security import has_unsafe_path
 from url_syntax import (
@@ -342,6 +343,16 @@ class CompiledFirewallSet:
 
     def linear_api_candidates(self) -> tuple[_CompiledApiCandidate, ...]:
         return self._api_index.all_candidates
+
+    def matches_ordinary_credential_authority(self, host: str, port: int) -> bool:
+        url_parts = _split_https_authority_parts(host, port)
+        if url_parts is None:
+            return False
+        return any(
+            _api_matches_ordinary_credential_authority(candidate.api, url_parts)
+            for candidate in self._api_index.all_candidates
+            if not candidate.firewall.name_malformed
+        )
 
 
 UnknownPolicy = Literal["allow", "deny", "ask"]
@@ -1326,6 +1337,46 @@ def _match_compiled_base_url_parts(
         all_params = host_params
 
     return rel_path, all_params
+
+
+def _split_https_authority_parts(host: str, port: int) -> _BaseUrlParts | None:
+    authority_result = _normalize_authority("https", host, port)
+    if authority_result is None:
+        return None
+    authority, host_malformed = authority_result
+    if host_malformed:
+        return None
+    return _BaseUrlParts(
+        scheme="https",
+        authority=authority,
+        path="/",
+        host_malformed=False,
+        has_userinfo=False,
+        port_malformed=False,
+    )
+
+
+def _match_compiled_base_authority(url_parts: _BaseUrlParts, base: _CompiledBase) -> bool:
+    if url_parts.scheme.lower() != base.parts.scheme.lower():
+        return False
+    if not base.has_params:
+        return url_parts.authority.lower() == base.parts.authority.lower()
+    return _match_compiled_host(url_parts.authority, base.host_segments) is not None
+
+
+def _api_matches_ordinary_credential_authority(
+    api_entry: _CompiledApi,
+    url_parts: _BaseUrlParts,
+) -> bool:
+    if (
+        api_entry.base_malformed
+        or api_entry.auth_malformed
+        or api_entry.base.parts.scheme.lower() != "https"
+    ):
+        return False
+    if not auth_config_injects_ordinary_upstream_credentials(api_entry.raw_api_entry.get("auth")):
+        return False
+    return _match_compiled_base_authority(url_parts, api_entry.base)
 
 
 def _path_index_key(path: str) -> tuple[str, ...]:
