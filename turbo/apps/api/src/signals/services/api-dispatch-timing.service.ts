@@ -74,6 +74,13 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_check_concurrency_limit"
   | "api_dispatch_insert_run_record"
   | "api_dispatch_prepare_storage_manifest"
+  | "api_dispatch_prepare_storage_manifest_resolve_inputs"
+  | "api_dispatch_prepare_storage_manifest_ensure_artifacts"
+  | "api_dispatch_prepare_storage_manifest_load_storage_index"
+  | "api_dispatch_prepare_storage_manifest_build_compose_entries"
+  | "api_dispatch_prepare_storage_manifest_build_additional_entries"
+  | "api_dispatch_prepare_storage_manifest_build_artifact_entries"
+  | "api_dispatch_prepare_storage_manifest_assemble"
   | "api_dispatch_build_stored_execution_context";
 
 interface ApiDispatchTimingRecord {

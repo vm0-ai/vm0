@@ -4205,6 +4205,7 @@ function buildRunnerJobPayload(
               volumeVersionOverrides: body.volumeVersions,
               additionalVolumes: args.additionalVolumes,
               framework: args.framework,
+              timing: args.timing,
             }),
           );
         },

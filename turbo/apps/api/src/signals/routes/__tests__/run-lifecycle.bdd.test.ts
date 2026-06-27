@@ -129,7 +129,23 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_check_concurrency_limit",
   "api_dispatch_insert_run_record",
   "api_dispatch_prepare_storage_manifest",
+  "api_dispatch_prepare_storage_manifest_resolve_inputs",
+  "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+  "api_dispatch_prepare_storage_manifest_load_storage_index",
+  "api_dispatch_prepare_storage_manifest_build_compose_entries",
+  "api_dispatch_prepare_storage_manifest_build_additional_entries",
+  "api_dispatch_prepare_storage_manifest_build_artifact_entries",
+  "api_dispatch_prepare_storage_manifest_assemble",
   "api_dispatch_build_stored_execution_context",
+] as const;
+const API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES = [
+  "api_dispatch_prepare_storage_manifest_resolve_inputs",
+  "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+  "api_dispatch_prepare_storage_manifest_load_storage_index",
+  "api_dispatch_prepare_storage_manifest_build_compose_entries",
+  "api_dispatch_prepare_storage_manifest_build_additional_entries",
+  "api_dispatch_prepare_storage_manifest_build_artifact_entries",
+  "api_dispatch_prepare_storage_manifest_assemble",
 ] as const;
 const API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_direct_parse_body",
@@ -207,6 +223,20 @@ const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "environment",
   "execution_context",
   "presigned_url",
+  "presignedUrl",
+  "archive_url",
+  "archiveUrl",
+  "manifest_url",
+  "manifestUrl",
+  "url",
+  "storage_name",
+  "storageName",
+  "artifact_name",
+  "artifactName",
+  "volume_name",
+  "volumeName",
+  "mount_path",
+  "mountPath",
   "runner_id",
   "runnerId",
   "target_runner_id",
@@ -652,6 +682,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
     );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES,
+      "nested",
+    );
     expectApiDispatchActions(timingEvents, [
       "api_dispatch_resolve_compose_by_compose_id",
       "api_dispatch_resolve_compose_lookup_compose",
@@ -751,6 +786,11 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectApiDispatchSpanKind(
       timingEvents,
       API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES,
+      "nested",
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES,
       "nested",
     );
     expectNoApiDispatchActions(
