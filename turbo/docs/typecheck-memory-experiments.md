@@ -428,6 +428,35 @@ integration helpers). Further work should keep migrating helpers, but the
 shipping `api` check-types path should use multiple strict chunks instead of
 one larger test chunk.
 
+### 23. Broad misc BDD helper route slice
+
+Change tested: migrate `api-bdd-misc.ts` from default `setupApp` / `createApp`
+to `setupAppWithRoutes` / `createAppWithRoutes` backed by explicit real route
+arrays for email unsubscribe, user export, logs, personal/org model providers,
+model policies, org logo, push subscriptions, user preferences, and workflows.
+Also add `misc-routes.bdd.test.ts` to the pure-context chunk.
+
+Commands:
+
+- `node scripts/measure-memory.mjs --label api-tests-pure-context-35-roots-misc-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-pure-context-entries.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-tests-no-setup-app-54-roots-misc-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-no-setup-app.json --noEmit`
+
+Results:
+
+- Static split would improve from `34 clean / 20 dirty` to
+  `35 clean / 19 dirty`; newly clean root: `misc-routes.bdd.test.ts`.
+- `pure-context` expanded from 34 to 35 roots: passed, peak `2239.0 MiB`,
+  duration `57.4s`.
+- `tests-no-setup-app` 54-root chunk still OOMed, peak `2275.6 MiB`.
+
+Conclusion: do not keep this broad migration as-is. It preserves type
+strictness, but it imports a wide route slice into helper consumers that still
+also reach the full route registry through other dirty helpers, which worsens
+the current 54-root OOM peak by about `31 MiB` versus the prior `2244.2 MiB`.
+The better follow-up is to split `api-bdd-misc.ts` into narrower helper modules
+or migrate its consumers in smaller groups so dirty roots do not simultaneously
+load both the full app and a broad explicit route slice.
+
 ## Current conclusions
 
 - `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
@@ -445,8 +474,10 @@ one larger test chunk.
   strictness.
 - Next API work should migrate remaining BDD/setup helpers from default
   `setupApp` to explicit route arrays and `createAppWithRoutes` where possible,
-  starting with `api-bdd-chat-files.ts`, `api-bdd-billing-media.ts`,
-  `api-bdd-misc.ts`, `api-bdd-integrations.ts` / `api-bdd-webhooks.ts`,
-  `api-bdd-connectors.ts`, and `api-bdd-auth-device.ts`. After that, wire
+  but avoid broad helper migrations that are still imported by dirty roots.
+  Good next candidates are narrower slices in `api-bdd-billing-media.ts`,
+  `api-bdd-integrations.ts` / `api-bdd-webhooks.ts`,
+  `api-bdd-connectors.ts`, and `api-bdd-auth-device.ts`; for
+  `api-bdd-misc.ts`, split it into narrower modules first. After that, wire
   route/test/core chunks through a package-local `check-types` runner so `api`
   no longer relies on one monolithic `tsc` program.
