@@ -765,6 +765,7 @@ const networkLogEntrySchema = z.object({
   upstream_binding_direct_binding_kinds: z.string().optional(),
   upstream_binding_client_binding_count: z.number().optional(),
   upstream_binding_client_binding_match: z.boolean().optional(),
+  upstream_binding_client_binding_endpoint_match: z.boolean().optional(),
   upstream_binding_client_binding_hosts: z.string().optional(),
   connector_diagnostic_type: z.string().optional(),
   connector_diagnostic_reason: z.string().optional(),

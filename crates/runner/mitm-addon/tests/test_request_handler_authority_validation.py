@@ -11,7 +11,11 @@ import flow_metadata_keys as metadata_keys
 import mitm_addon
 import upstream_destination_binding
 from tests.jsonl_log_helpers import read_jsonl_entries_after_flush
-from tests.request_handler_helpers import _write_github_firewall_registry
+from tests.request_handler_helpers import (
+    _single_firewall_vm,
+    _write_github_firewall_registry,
+    _write_registry,
+)
 
 _BROWSER_USER_AGENT = (
     "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
@@ -455,6 +459,116 @@ async def test_matching_sni_and_host_allows_authenticated_connected_vm0_api_edge
     assert binding.host == "api.vm0.ai"
     assert binding.kinds == frozenset(("api_allow",))
     assert binding.original_address == ("203.0.113.10", 443)
+
+
+async def test_matching_sni_and_host_allows_test_connector_on_authenticated_api_edge(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+):
+    reg_path = _write_registry(
+        tmp_path,
+        client_ip="10.200.0.5",
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="test-oauth",
+            api_entry={
+                "base": "https://api.vm0.ai/api/test/oauth-provider",
+                "auth": {"headers": {"Authorization": "Bearer x"}},
+                "permissions": [{"name": "echo", "rules": ["GET /echo"]}],
+            },
+            network_policy={
+                "allow": ["echo"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.vm0.ai",
+        path="/api/test/oauth-provider/echo",
+        request_headers=headers(
+            ("Host", "api.vm0.ai"),
+            ("x-vm0-test-endpoint-bypass", "preview-secret"),
+        ),
+    )
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))],
+        ),
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer x"
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.vm0.ai"
+    assert binding.kinds == frozenset(("connector_auth",))
+    assert binding.original_address == ("203.0.113.10", 443)
+
+
+async def test_matching_sni_and_host_blocks_test_connector_api_edge_without_bypass(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+):
+    reg_path = _write_registry(
+        tmp_path,
+        client_ip="10.200.0.5",
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="test-oauth",
+            api_entry={
+                "base": "https://api.vm0.ai/api/test/oauth-provider",
+                "auth": {"headers": {"Authorization": "Bearer x"}},
+                "permissions": [{"name": "echo", "rules": ["GET /echo"]}],
+            },
+            network_policy={
+                "allow": ["echo"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.vm0.ai",
+        path="/api/test/oauth-provider/echo",
+        request_headers=headers(
+            ("Host", "api.vm0.ai"),
+            ("x-vm0-test-endpoint-bypass", "wrong-secret"),
+        ),
+    )
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))],
+        ),
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    assert "Authorization" not in flow.request.headers
 
 
 async def test_matching_sni_and_host_retargets_unconnected_vm0_api_auto_allow(

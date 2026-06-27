@@ -102,6 +102,7 @@ _BROWSER_USER_AGENT_MARKERS = (
     " opr/",
     " safari/",
 )
+_TEST_ENDPOINT_BYPASS_HEADER: Final = "x-vm0-test-endpoint-bypass"
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
 _MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED = "_model_websocket_message_trim_scheduled"
 _TCP_MESSAGE_DRAIN_SCHEDULED = "_tcp_message_drain_scheduled"
@@ -817,15 +818,9 @@ def _bind_flow_upstream_destination(
 
     original_address = _server_address(flow.server_conn)
     if flow.server_conn.connected:
-        if (
-            kind == "api_allow"
-            and _api_hostname_matches(normalized_host)
-            and _request_has_platform_api_edge_authorization(flow)
-        ):
-            # Agent webhooks carry the per-job sandbox token and never inject
-            # connector credentials. This request-stage fallback handles
-            # load-balanced API edge IPs when earlier connection hooks did not
-            # leave a binding and a fresh DNS lookup returns a different edge.
+        if _api_hostname_matches(
+            normalized_host
+        ) and _request_allows_connected_platform_api_edge_fallback(flow, kind=kind):
             connected_address = _connected_api_destination_endpoint(
                 flow.server_conn,
                 port=flow.request.port,
@@ -1703,6 +1698,35 @@ def _request_has_platform_api_edge_authorization(flow: http.HTTPFlow) -> bool:
     if not isinstance(sandbox_token, str) or not sandbox_token:
         return False
     return flow.request.headers.get("Authorization") == f"Bearer {sandbox_token}"
+
+
+def _request_has_platform_test_endpoint_bypass(flow: http.HTTPFlow) -> bool:
+    if not flow.request.path.startswith("/api/test/"):
+        return False
+    expected_bypass = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
+    if not expected_bypass:
+        return False
+    return flow.request.headers.get(_TEST_ENDPOINT_BYPASS_HEADER) == expected_bypass
+
+
+def _request_allows_connected_platform_api_edge_fallback(
+    flow: http.HTTPFlow,
+    *,
+    kind: upstream_destination_binding.BindingKind,
+) -> bool:
+    if kind == "api_allow":
+        # Agent webhooks carry the per-job sandbox token and never inject
+        # connector credentials. This request-stage fallback handles
+        # load-balanced API edge IPs when earlier connection hooks did not
+        # leave a binding and a fresh DNS lookup returns a different edge.
+        return _request_has_platform_api_edge_authorization(flow)
+    if kind == "connector_auth":
+        # Synthetic test providers live on the platform API preview host but
+        # intentionally exercise connector auth injection instead of API
+        # auto-allow. Keep this fallback limited to test endpoints gated by the
+        # same internal bypass secret that the API route validates.
+        return _request_has_platform_test_endpoint_bypass(flow)
+    return False
 
 
 def reset_upstream_destination_resolution_cache_for_tests() -> None:

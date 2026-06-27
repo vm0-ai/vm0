@@ -1,5 +1,6 @@
 """Track trusted upstream destinations selected before credential injection."""
 
+import ipaddress
 from dataclasses import dataclass
 from typing import Literal
 
@@ -30,6 +31,35 @@ def _connection_id(connection: object) -> str | None:
     if isinstance(connection_id, str) and connection_id:
         return connection_id
     return None
+
+
+def _address_pair(address: object) -> tuple[str, int] | None:
+    if not isinstance(address, tuple) or len(address) < _ADDRESS_PAIR_LENGTH:
+        return None
+    host, port = address[:_ADDRESS_PAIR_LENGTH]
+    if not isinstance(host, str) or not isinstance(port, int):
+        return None
+    return host, port
+
+
+def _endpoint_ip_key(host: str) -> str | None:
+    try:
+        return str(ipaddress.ip_address(host))
+    except ValueError:
+        return None
+
+
+def _endpoint_matches(left: object, right: tuple[str, int]) -> bool:
+    left_pair = _address_pair(left)
+    if left_pair is None:
+        return False
+    left_host, left_port = left_pair
+    right_host, right_port = right
+    if left_port != right_port:
+        return False
+    left_key = _endpoint_ip_key(left_host)
+    right_key = _endpoint_ip_key(right_host)
+    return left_key is not None and left_key == right_key
 
 
 def record_server_binding(
@@ -93,11 +123,10 @@ def has_server_binding(server: object) -> bool:
 
 
 def _address_matches(host: str, port: int, address: object) -> bool:
-    if not isinstance(address, tuple) or len(address) != _ADDRESS_PAIR_LENGTH:
+    address_pair = _address_pair(address)
+    if address_pair is None:
         return False
-    address_host, address_port = address
-    if not isinstance(address_host, str) or not isinstance(address_port, int):
-        return False
+    address_host, address_port = address_pair
     try:
         normalized_address_host = normalize_trusted_hostname(address_host)
     except (UnicodeError, ValueError):
@@ -115,30 +144,44 @@ def _binding_matches(
     return binding.host == host and binding.port == port and bool(binding.kinds & allowed_kinds)
 
 
-def _client_binding_matches(
+def _matching_client_bindings(
     client: object,
     *,
     host: str,
     port: int,
     allowed_kinds: frozenset[BindingKind],
-) -> bool:
+) -> tuple[UpstreamDestinationBinding, ...]:
     client_id = _connection_id(client)
     if client_id is None:
-        return False
+        return ()
 
     server_ids = _server_ids_by_client_id.get(client_id)
     if not server_ids:
-        return False
+        return ()
 
-    return any(
-        _binding_matches(
-            binding,
-            host=host,
-            port=port,
-            allowed_kinds=allowed_kinds,
-        )
+    return tuple(
+        binding
         for server_id in server_ids
         if (binding := _bindings_by_server_id.get(server_id)) is not None
+        and _binding_matches(binding, host=host, port=port, allowed_kinds=allowed_kinds)
+    )
+
+
+def _client_binding_matches_connected_endpoint(
+    *,
+    client: object,
+    server: object,
+    bindings: tuple[UpstreamDestinationBinding, ...],
+) -> bool:
+    endpoints = (
+        getattr(server, "peername", None),
+        getattr(server, "address", None),
+        getattr(client, "sockname", None),
+    )
+    return any(
+        any(_endpoint_matches(endpoint, binding.original_address) for endpoint in endpoints)
+        for binding in bindings
+        if binding.original_address is not None
     )
 
 
@@ -165,15 +208,24 @@ def diagnostic_snapshot_for_flow(
             normalized_host = normalize_trusted_hostname(trusted_host)
         except (UnicodeError, ValueError):
             normalized_host = None
-    client_binding_match = any(
-        _binding_matches(
-            binding,
-            host=normalized_host,
-            port=flow.request.port,
-            allowed_kinds=allowed_kinds,
+    matching_client_bindings = (
+        tuple(
+            binding
+            for binding in client_bindings
+            if _binding_matches(
+                binding,
+                host=normalized_host,
+                port=flow.request.port,
+                allowed_kinds=allowed_kinds,
+            )
         )
-        for binding in client_bindings
         if normalized_host is not None
+        else ()
+    )
+    client_binding_endpoint_match = _client_binding_matches_connected_endpoint(
+        client=flow.client_conn,
+        server=server,
+        bindings=matching_client_bindings,
     )
     return {
         "server_id": server_id or "",
@@ -185,7 +237,8 @@ def diagnostic_snapshot_for_flow(
         if direct_binding is not None
         else "",
         "client_binding_count": len(client_bindings),
-        "client_binding_match": client_binding_match,
+        "client_binding_match": bool(matching_client_bindings),
+        "client_binding_endpoint_match": client_binding_endpoint_match,
         "client_binding_hosts": ",".join(
             sorted({f"{binding.host}:{binding.port}" for binding in client_bindings})[:8]
         ),
@@ -217,16 +270,18 @@ def flow_matches_bound_destination(
             allowed_kinds=allowed_kinds,
         )
 
-    if _client_binding_matches(
+    matching_client_bindings = _matching_client_bindings(
         flow.client_conn,
         host=normalized_host,
         port=port,
         allowed_kinds=allowed_kinds,
-    ):
-        return True
-
+    )
     if bool(getattr(server, "connected", False)):
-        return False
+        return _client_binding_matches_connected_endpoint(
+            client=flow.client_conn,
+            server=server,
+            bindings=matching_client_bindings,
+        )
 
     return _address_matches(normalized_host, port, getattr(server, "address", None))
 
