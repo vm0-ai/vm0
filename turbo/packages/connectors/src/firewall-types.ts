@@ -4,7 +4,7 @@ import { hasRawWhitespace, hasUnsafeUrlCodepoint } from "./firewall-url-utils";
 import { parseSegment, splitPathSegments } from "./segment-parser";
 
 const HOST_DOT_EQUIVALENT_PATTERN = /[\u3002\uff0e\uff61]/g;
-const HOST_POLICY_HOST_FORBIDDEN_PATTERN = /[/?#@\\:{}]/u;
+const HOST_POLICY_HOST_FORBIDDEN_PATTERN = /[%*[\]/?#@\\:{}]/u;
 
 /**
  * Proxy-side firewall configuration for token replacement.
@@ -58,9 +58,16 @@ const firewallAuthSchema = z
     }
   });
 
-function hostPolicyHostHasFixedOwnership(value: string): boolean {
-  const normalized = value
-    .replace(/^[.]+/u, "")
+function hostPolicyHostHasFixedOwnership(
+  value: string,
+  options: { readonly allowLeadingDot: boolean },
+): boolean {
+  if (!options.allowLeadingDot && value.startsWith(".")) {
+    return false;
+  }
+  const rawHost =
+    options.allowLeadingDot && value.startsWith(".") ? value.slice(1) : value;
+  const normalized = rawHost
     .replace(HOST_DOT_EQUIVALENT_PATTERN, ".")
     .toLowerCase();
   const withoutTrailingDot = normalized.endsWith(".")
@@ -68,7 +75,15 @@ function hostPolicyHostHasFixedOwnership(value: string): boolean {
     : normalized;
   if (
     withoutTrailingDot === "" ||
+    hasRawWhitespace(value) ||
+    hasUnsafeUrlCodepoint(value) ||
     HOST_POLICY_HOST_FORBIDDEN_PATTERN.test(withoutTrailingDot)
+  ) {
+    return false;
+  }
+  if (
+    isIpv4LiteralLike(withoutTrailingDot) ||
+    parseIpv6Address(withoutTrailingDot)
   ) {
     return false;
   }
@@ -100,7 +115,9 @@ const firewallProviderOwnedHostPolicySchema = z
       });
     }
     for (const [index, exactHost] of (policy.exactHosts ?? []).entries()) {
-      if (!hostPolicyHostHasFixedOwnership(exactHost)) {
+      if (
+        !hostPolicyHostHasFixedOwnership(exactHost, { allowLeadingDot: false })
+      ) {
         ctx.addIssue({
           code: "custom",
           path: ["exactHosts", index],
@@ -110,7 +127,7 @@ const firewallProviderOwnedHostPolicySchema = z
       }
     }
     for (const [index, suffix] of (policy.suffixes ?? []).entries()) {
-      if (!hostPolicyHostHasFixedOwnership(suffix)) {
+      if (!hostPolicyHostHasFixedOwnership(suffix, { allowLeadingDot: true })) {
         ctx.addIssue({
           code: "custom",
           path: ["suffixes", index],

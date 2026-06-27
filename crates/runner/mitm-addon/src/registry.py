@@ -48,7 +48,9 @@ _HOST_DOT_EQUIVALENT_TRANSLATION = str.maketrans(
         "\uff61": ".",
     }
 )
-_HOST_POLICY_HOST_FORBIDDEN_CHARS = frozenset("/?#@\\:{}")
+_HOST_POLICY_HOST_FORBIDDEN_CHARS = frozenset("%*[]/?#@\\:{}")
+_IPV4_LITERAL_COMPONENT_PATTERN = re.compile(r"(?:0[xX][0-9a-fA-F]+|[0-9]+)")
+_IPV4_LITERAL_MAX_COMPONENTS = 4
 _IPV4_NON_PUBLIC_RANGES = (
     (0x00000000, 0x00FFFFFF),
     (0x0A000000, 0x0AFFFFFF),
@@ -702,9 +704,38 @@ def _normalize_host_policy_suffix(suffix: str) -> str:
     return _normalize_host_policy_hostname(without_leading_dot)
 
 
-def _host_policy_host_has_fixed_ownership(hostname: str) -> bool:
-    normalized = _normalize_host_policy_hostname(hostname.lstrip("."))
-    if not normalized or any(char in normalized for char in _HOST_POLICY_HOST_FORBIDDEN_CHARS):
+def _host_policy_host_is_ip_literal(hostname: str) -> bool:
+    try:
+        ipaddress.ip_address(hostname)
+    except ValueError:
+        return False
+    return True
+
+
+def _host_policy_host_is_ipv4_literal_like(hostname: str) -> bool:
+    parts = hostname.split(".")
+    return 1 <= len(parts) <= _IPV4_LITERAL_MAX_COMPONENTS and all(
+        _IPV4_LITERAL_COMPONENT_PATTERN.fullmatch(part) for part in parts
+    )
+
+
+def _host_policy_host_has_fixed_ownership(
+    hostname: str,
+    *,
+    allow_leading_dot: bool,
+) -> bool:
+    if not allow_leading_dot and hostname.startswith("."):
+        return False
+    raw_hostname = hostname[1:] if allow_leading_dot and hostname.startswith(".") else hostname
+    normalized = _normalize_host_policy_hostname(raw_hostname)
+    if (
+        not normalized
+        or has_raw_whitespace(hostname)
+        or has_unsafe_url_codepoint(hostname)
+        or any(char in normalized for char in _HOST_POLICY_HOST_FORBIDDEN_CHARS)
+        or _host_policy_host_is_ip_literal(normalized)
+        or _host_policy_host_is_ipv4_literal_like(normalized)
+    ):
         return False
     labels = normalized.split(".")
     return len(labels) >= _MIN_FIXED_HOST_OWNERSHIP_LABELS and all(labels)
@@ -749,13 +780,13 @@ def _validate_provider_owned_host_policy(
             "requires exactHosts or suffixes"
         )
     for exact_host in exact_hosts:
-        if not _host_policy_host_has_fixed_ownership(exact_host):
+        if not _host_policy_host_has_fixed_ownership(exact_host, allow_leading_dot=False):
             raise _FirewallEntryResolutionError(
                 f'builtin firewall "{firewall_name}" providerOwned hostPolicy '
                 "exactHosts must be fixed hostnames with at least two labels"
             )
     for suffix in suffixes:
-        if not _host_policy_host_has_fixed_ownership(suffix):
+        if not _host_policy_host_has_fixed_ownership(suffix, allow_leading_dot=True):
             raise _FirewallEntryResolutionError(
                 f'builtin firewall "{firewall_name}" providerOwned hostPolicy '
                 "suffixes must be fixed hostnames with at least two labels"

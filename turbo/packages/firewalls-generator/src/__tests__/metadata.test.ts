@@ -374,36 +374,69 @@ describe("firewall metadata generator", () => {
       if (previousSource === null) {
         throw new Error("missing generated github firewall source");
       }
-
-      writeOutput(
-        "github",
-        [
-          "export const githubFirewall = {",
-          '  name: "github",',
-          "  apis: [",
-          "    {",
-          '      base: "https://${{ vars.GITHUB_HOST }}",',
-          '      hostPolicy: { kind: "providerOwned", suffixes: ["com"] },',
-          "      auth: {",
-          "        headers: {",
-          '          Authorization: "Bearer ${{ secrets.GITHUB_TOKEN }}",',
-          "        },",
-          "      },",
-          "      permissions: [],",
-          "    },",
-          "  ],",
-          "};",
-        ].join("\n"),
-      );
+      const invalidCases = [
+        {
+          hostPolicy:
+            '{ kind: "providerOwned", exactHosts: [".api.github.com"] }',
+          message:
+            "providerOwned host policy exactHosts must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", exactHosts: ["127.0.0.1"] }',
+          message:
+            "providerOwned host policy exactHosts must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", exactHosts: ["0177.0.0.1"] }',
+          message:
+            "providerOwned host policy exactHosts must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", suffixes: ["*.github.com"] }',
+          message:
+            "providerOwned host policy suffixes must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", suffixes: ["..github.com"] }',
+          message:
+            "providerOwned host policy suffixes must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", suffixes: ["com"] }',
+          message:
+            "providerOwned host policy suffixes must be fixed hostnames with at least two labels",
+        },
+      ] as const;
 
       try {
-        await expect(
-          loadGeneratedConnectorFirewallSource("github", {
-            connectorsDir: CONNECTORS_DIR,
-          }),
-        ).rejects.toThrow(
-          "providerOwned host policy suffixes must be fixed hostnames with at least two labels",
-        );
+        for (const invalidCase of invalidCases) {
+          writeOutput(
+            "github",
+            [
+              "export const githubFirewall = {",
+              '  name: "github",',
+              "  apis: [",
+              "    {",
+              '      base: "https://${{ vars.GITHUB_HOST }}",',
+              `      hostPolicy: ${invalidCase.hostPolicy},`,
+              "      auth: {",
+              "        headers: {",
+              '          Authorization: "Bearer ${{ secrets.GITHUB_TOKEN }}",',
+              "        },",
+              "      },",
+              "      permissions: [],",
+              "    },",
+              "  ],",
+              "};",
+            ].join("\n"),
+          );
+
+          await expect(
+            loadGeneratedConnectorFirewallSource("github", {
+              connectorsDir: CONNECTORS_DIR,
+            }),
+          ).rejects.toThrow(invalidCase.message);
+        }
       } finally {
         writeOutput("github", previousSource);
       }
