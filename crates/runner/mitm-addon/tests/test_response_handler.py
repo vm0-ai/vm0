@@ -3,6 +3,7 @@
 import json
 import time
 from pathlib import Path
+from unittest.mock import patch
 
 import pytest
 from mitmproxy import http
@@ -19,7 +20,7 @@ from tests.auth_state_helpers import (
     force_refresh_pending,
     has_auth_state,
     set_cached_headers,
-    set_last_force_refresh_at,
+    set_last_force_refresh_monotonic_at,
 )
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import (
@@ -1609,7 +1610,7 @@ class TestResponseHandler:
         flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
         set_cached_headers(cache_key, headers={"Authorization": "Bearer cached-token"})
         # Simulate: a forced refresh JUST completed a moment ago
-        set_last_force_refresh_at(cache_key, time.time())
+        set_last_force_refresh_monotonic_at(cache_key, time.monotonic())
 
         with mitm_ctx():
             mitm_addon.response(flow)
@@ -1636,15 +1637,43 @@ class TestResponseHandler:
         cache_key = auth_cache_key(run_id="run-conn-re", api_id="run-conn-re:0")
         flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
         # Simulate: last forced refresh happened well before the cooldown window
-        set_last_force_refresh_at(
+        set_last_force_refresh_monotonic_at(
             cache_key,
-            time.time() - auth_cache._FORCE_REFRESH_COOLDOWN_SECS - 1,
+            time.monotonic() - auth_cache._FORCE_REFRESH_COOLDOWN_SECS - 1,
         )
 
         with mitm_ctx():
             mitm_addon.response(flow)
 
         # Cooldown elapsed → marker re-added
+        assert force_refresh_pending(cache_key)
+
+    def test_401_after_cooldown_re_marks_when_wall_clock_steps_back(
+        self, real_flow, mitm_ctx, headers
+    ):
+        """Cooldown uses monotonic elapsed time, not wall-clock time."""
+        flow = real_flow(with_response=False, host="api.github.com")
+        flow.metadata[metadata_keys.VM_RUN_ID] = "run-conn-skew"
+        flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = ""
+        flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
+        flow.metadata[metadata_keys.FIREWALL_BASE] = "https://api.github.com"
+        flow.metadata[metadata_keys.FIREWALL_API_ID] = "run-conn-skew:0"
+        flow.metadata[metadata_keys.ORIGINAL_URL] = "https://api.github.com/repos"
+        flow.response = tutils.tresp(status_code=401, headers=http.Headers())
+
+        cache_key = auth_cache_key(run_id="run-conn-skew", api_id="run-conn-skew:0")
+        flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = cache_key
+        set_cached_headers(cache_key, headers={"Authorization": "Bearer cached-token"})
+        set_last_force_refresh_monotonic_at(cache_key, 1000.0)
+
+        with (
+            patch.object(auth_cache.time, "monotonic", return_value=1121.0),
+            patch.object(auth_cache.time, "time", return_value=10.0),
+            mitm_ctx(),
+        ):
+            mitm_addon.response(flow)
+
+        assert cached_headers(cache_key) is None
         assert force_refresh_pending(cache_key)
 
     def test_401_without_auth_cache_key_does_not_synthesize_state(
