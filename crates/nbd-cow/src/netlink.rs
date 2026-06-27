@@ -100,18 +100,17 @@ pub fn random_offset(max: u32) -> u32 {
 /// Check if a device index appears free by inspecting its pid file.
 pub fn device_appears_free(index: u32) -> bool {
     let pid_path = format!("/sys/block/nbd{index}/pid");
-    let path = Path::new(&pid_path);
+    let device_path = format!("/dev/nbd{index}");
+    device_paths_appear_free(Path::new(&pid_path), Path::new(&device_path))
+}
 
-    if !path.exists() {
-        // No pid file: free if the device node exists.
-        return Path::new(&format!("/dev/nbd{index}")).exists();
-    }
-
-    match std::fs::read_to_string(path) {
+fn device_paths_appear_free(pid_path: &Path, device_path: &Path) -> bool {
+    match std::fs::read_to_string(pid_path) {
         Ok(contents) => {
             let pid = contents.trim();
             pid == "-1" || pid == "0" || pid.is_empty()
         }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => device_path.exists(),
         Err(_) => false, // Can't read pid file; EBUSY fallback will catch free devices.
     }
 }
@@ -415,6 +414,61 @@ mod tests {
                 assert!(random_offset(max) < max, "offset >= max for max={max}");
             }
         }
+    }
+
+    #[test]
+    fn device_appears_free_accepts_free_pid_values() {
+        for contents in ["-1", "0", "", " 0\n"] {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let pid_path = dir.path().join("pid");
+            let device_path = dir.path().join("nbd0");
+            std::fs::write(&pid_path, contents).expect("write pid");
+
+            assert!(
+                device_paths_appear_free(&pid_path, &device_path),
+                "pid contents {contents:?} should be free"
+            );
+        }
+    }
+
+    #[test]
+    fn device_appears_free_rejects_busy_pid_value() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let pid_path = dir.path().join("pid");
+        let device_path = dir.path().join("nbd0");
+        std::fs::write(&pid_path, "1234\n").expect("write pid");
+
+        assert!(!device_paths_appear_free(&pid_path, &device_path));
+    }
+
+    #[test]
+    fn device_appears_free_falls_back_to_device_path_when_pid_is_missing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let pid_path = dir.path().join("pid");
+        let device_path = dir.path().join("nbd0");
+        std::fs::write(&device_path, b"").expect("create device placeholder");
+
+        assert!(device_paths_appear_free(&pid_path, &device_path));
+    }
+
+    #[test]
+    fn device_appears_free_rejects_missing_pid_without_device_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let pid_path = dir.path().join("pid");
+        let device_path = dir.path().join("nbd0");
+
+        assert!(!device_paths_appear_free(&pid_path, &device_path));
+    }
+
+    #[test]
+    fn device_appears_free_rejects_unreadable_pid_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let pid_path = dir.path().join("pid");
+        let device_path = dir.path().join("nbd0");
+        std::fs::create_dir(&pid_path).expect("create pid directory");
+        std::fs::write(&device_path, b"").expect("create device placeholder");
+
+        assert!(!device_paths_appear_free(&pid_path, &device_path));
     }
 
     #[test]
