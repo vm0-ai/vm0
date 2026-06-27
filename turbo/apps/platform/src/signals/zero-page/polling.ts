@@ -261,6 +261,7 @@ export function createRunLoop(runId: string) {
   });
 
   return {
+    runId,
     pagedEventsList$,
     checkFinished$,
     cancel$,

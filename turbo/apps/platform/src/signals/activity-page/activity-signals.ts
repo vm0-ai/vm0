@@ -236,9 +236,9 @@ export const setZeroActivityStepSearch$ = command(({ set }, value: string) => {
 /**
  * Active run loop for the currently selected log.
  */
-type ActiveRunLoop = ReturnType<typeof createRunLoop> & { runId: string };
-
-const internalActiveRunLoop$ = state<ActiveRunLoop | null>(null);
+const internalActiveRunLoop$ = state<ReturnType<typeof createRunLoop> | null>(
+  null,
+);
 
 /**
  * Set selected log ID directly — triggers detail fetch + event polling.
@@ -254,7 +254,7 @@ export const setupActivityLogLoop$ = command(
       return;
     }
 
-    const run = { ...createRunLoop(runId), runId };
+    const run = createRunLoop(runId);
     set(internalActiveRunLoop$, run);
     // Yield one microtask tick so React can flush the run detail panel into the
     // DOM before we trigger scrollToBottomActivityDetail$. Without this yield

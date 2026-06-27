@@ -27,9 +27,11 @@ import {
   loadNetworkLogsNextPage$,
   zeroActivityNetworkLogs$,
 } from "../../../signals/activity-page/activity-network-signals.ts";
-import { setupActivityLogLoop$ } from "../../../signals/activity-page/activity-signals.ts";
 import { fetchDownloadExtra$ } from "../../../signals/activity-page/activity-download.ts";
-import { pushPathSilently$ } from "../../../signals/route.ts";
+import {
+  detachedNavigateTo$,
+  pushPathSilently$,
+} from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 
 const context = testContext();
@@ -2618,10 +2620,9 @@ describe("activity detail polling", () => {
       ).toBeInTheDocument();
     });
 
-    context.store.set(pushPathSilently$, ROUTES.activityDetail, {
-      activityRunId: secondRunId,
+    context.store.set(detachedNavigateTo$, ROUTES.activityDetail, {
+      pathParams: { activityRunId: secondRunId },
     });
-    void context.store.set(setupActivityLogLoop$, context.signal);
     await secondEventsRequested.promise;
 
     await waitFor(() => {
