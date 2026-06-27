@@ -6,9 +6,9 @@ const c = initContract();
 
 export const zeroVoiceIoSpeechRequestSchema = z
   .object({
-    text: z.unknown().optional(),
-    voice: z.unknown().optional(),
-    instructions: z.unknown().optional(),
+    text: z.string().optional(),
+    voice: z.string().optional(),
+    instructions: z.string().optional(),
   })
   .passthrough();
 
