@@ -520,6 +520,8 @@ pub(crate) async fn spawn_mitmdump(
         .arg("--set")
         .arg("termlog_verbosity=warn")
         .arg("--set")
+        .arg("connection_strategy=lazy")
+        .arg("--set")
         .arg(format!(
             "ssl_verify_upstream_trusted_ca={}",
             crate::deps::SYSTEM_CA_BUNDLE
@@ -1073,6 +1075,10 @@ PY
             args.lines()
                 .any(|arg| arg == "vm0_usage_state_id=usage-state-test"),
             "mitmdump args should include vm0_usage_state_id option; got:\n{args}",
+        );
+        assert!(
+            args.lines().any(|arg| arg == "connection_strategy=lazy"),
+            "mitmdump args should use lazy upstream connection strategy; got:\n{args}",
         );
     }
 
