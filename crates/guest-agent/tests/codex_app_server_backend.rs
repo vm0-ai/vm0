@@ -66,12 +66,63 @@ async fn codex_app_server_backend_runs_initial_turn_and_synthesizes_thread_start
     assert!(marker.ends_with(&format!(":{thread_id}")));
     assert_eq!(masker.mask_string(thread_id), "***");
 
+    let session_events = read_codex_session_history_events()?;
+    let input_event = session_events
+        .iter()
+        .find(|event| event.get("type").and_then(Value::as_str) == Some("mock.app_server.input"))
+        .ok_or("missing mock app-server input event")?;
+    assert_eq!(
+        input_event
+            .get("thread_request_has_runtime_workspace_roots")
+            .and_then(Value::as_bool),
+        Some(false)
+    );
+    assert_eq!(
+        input_event
+            .get("turn_request_has_runtime_workspace_roots")
+            .and_then(Value::as_bool),
+        Some(false)
+    );
+    assert_eq!(
+        input_event.get("turn_request_cwd").and_then(Value::as_str),
+        Some(guest_agent::paths::CANONICAL_WORKING_DIR)
+    );
+    assert_eq!(
+        input_event
+            .get("turn_request_approval_policy")
+            .and_then(Value::as_str),
+        Some("never")
+    );
+    assert_eq!(
+        input_event
+            .get("turn_request_approvals_reviewer")
+            .and_then(Value::as_str),
+        Some("user")
+    );
+    assert_eq!(
+        input_event
+            .pointer("/turn_request_sandbox_policy/type")
+            .and_then(Value::as_str),
+        Some("dangerFullAccess")
+    );
+
     Ok(())
 }
 
 fn read_agent_log_events() -> Result<Vec<Value>, Box<dyn std::error::Error>> {
     let log = std::fs::read_to_string(guest_agent::paths::agent_log_file())?;
     log.lines()
+        .map(|line| serde_json::from_str(line).map_err(Into::into))
+        .collect()
+}
+
+fn read_codex_session_history_events() -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+    let history = guest_agent::session_history::read_session_history(
+        guest_agent::paths::session_history_path_file(),
+    )?;
+    let history = String::from_utf8(history)?;
+    history
+        .lines()
         .map(|line| serde_json::from_str(line).map_err(Into::into))
         .collect()
 }

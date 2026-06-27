@@ -196,16 +196,23 @@ async fn run_codex_app_server(
 
     let shutdown_result = client.shutdown().await;
     let stderr_lines = masker.mask_diagnostic_lines(client.stderr_tail().to_vec());
-    if let Err(error) = shutdown_result {
-        log_warn!(LOG_TAG, "codex app-server shutdown failed: {error}");
-    }
 
-    match run_result {
-        Ok(mut result) => {
+    match (run_result, shutdown_result) {
+        (Ok(mut result), Ok(())) => {
             result.stderr_lines = stderr_lines;
             Ok(result)
         }
-        Err(error) => Err(error),
+        (Ok(_result), Err(error)) => Err(AgentError::Execution(format!(
+            "codex app-server shutdown failed: {error}"
+        ))),
+        (Err(error), Ok(())) => Err(error),
+        (Err(error), Err(shutdown_error)) => {
+            log_warn!(
+                LOG_TAG,
+                "codex app-server shutdown failed after run error: {shutdown_error}"
+            );
+            Err(error)
+        }
     }
 }
 
@@ -259,12 +266,6 @@ fn thread_param_fields() -> Map<String, Value> {
         Value::String(paths::CANONICAL_WORKING_DIR.to_string()),
     );
     params.insert(
-        "runtimeWorkspaceRoots".to_string(),
-        Value::Array(vec![Value::String(
-            paths::CANONICAL_WORKING_DIR.to_string(),
-        )]),
-    );
-    params.insert(
         "approvalPolicy".to_string(),
         Value::String("never".to_string()),
     );
@@ -311,12 +312,6 @@ fn turn_start_params(thread_id: &str) -> Value {
     params.insert(
         "cwd".to_string(),
         Value::String(paths::CANONICAL_WORKING_DIR.to_string()),
-    );
-    params.insert(
-        "runtimeWorkspaceRoots".to_string(),
-        Value::Array(vec![Value::String(
-            paths::CANONICAL_WORKING_DIR.to_string(),
-        )]),
     );
     params.insert(
         "approvalPolicy".to_string(),
@@ -395,6 +390,11 @@ async fn ingest_notification(
             terminal_exit_code: None,
         });
     };
+    if is_unexpected_thread_started(&event, expected_thread_id) {
+        return Err(AgentError::Execution(
+            "codex app-server reported unexpected thread id in thread.started".to_string(),
+        ));
+    }
     if is_duplicate_thread_started(&event, thread_started_emitted, expected_thread_id) {
         return Ok(NotificationIngestResult {
             emitted_thread_started: false,
@@ -402,7 +402,7 @@ async fn ingest_notification(
         });
     }
     let emitted_thread_started = is_thread_started_event(&event, expected_thread_id);
-    let terminal_exit_code = terminal_exit_code(&event, active_turn_id);
+    let terminal_exit_code = terminal_exit_code(&event, expected_thread_id, active_turn_id);
     ingest_event(event, sink).await?;
     Ok(NotificationIngestResult {
         emitted_thread_started,
@@ -440,14 +440,26 @@ fn is_duplicate_thread_started(
     thread_started_emitted && is_thread_started_event(event, expected_thread_id)
 }
 
+fn is_unexpected_thread_started(event: &Value, expected_thread_id: &str) -> bool {
+    event.get("type").and_then(Value::as_str) == Some("thread.started")
+        && event.get("thread_id").and_then(Value::as_str) != Some(expected_thread_id)
+}
+
 fn is_thread_started_event(event: &Value, expected_thread_id: &str) -> bool {
     event.get("type").and_then(Value::as_str) == Some("thread.started")
         && event.get("thread_id").and_then(Value::as_str) == Some(expected_thread_id)
 }
 
-fn terminal_exit_code(event: &Value, active_turn_id: &str) -> Option<i32> {
+fn terminal_exit_code(
+    event: &Value,
+    expected_thread_id: &str,
+    active_turn_id: &str,
+) -> Option<i32> {
     match event.get("type").and_then(Value::as_str)? {
         "turn.completed" => {
+            if event.get("thread_id").and_then(Value::as_str) != Some(expected_thread_id) {
+                return None;
+            }
             let turn_id = event.pointer("/turn/id").and_then(Value::as_str)?;
             if turn_id != active_turn_id {
                 return None;
@@ -459,7 +471,8 @@ fn terminal_exit_code(event: &Value, active_turn_id: &str) -> Option<i32> {
             }
         }
         "error" => {
-            if event.get("turn_id").and_then(Value::as_str) == Some(active_turn_id)
+            if event.get("thread_id").and_then(Value::as_str) == Some(expected_thread_id)
+                && event.get("turn_id").and_then(Value::as_str) == Some(active_turn_id)
                 && event.get("will_retry").and_then(Value::as_bool) == Some(false)
             {
                 Some(1)

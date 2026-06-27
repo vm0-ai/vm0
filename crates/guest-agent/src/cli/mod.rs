@@ -278,13 +278,9 @@ impl CliEventIngestor {
         }
     }
 
-    async fn write_raw_line(
-        log_file: &mut tokio::fs::File,
-        raw_line: impl AsRef<[u8]>,
-    ) -> Result<(), AgentError> {
-        log_file.write_all(raw_line.as_ref()).await?;
-        log_file.write_all(b"\n").await?;
-        Ok(())
+    async fn write_raw_line(log_file: &mut tokio::fs::File, raw_line: impl AsRef<[u8]>) {
+        let _ = log_file.write_all(raw_line.as_ref()).await;
+        let _ = log_file.write_all(b"\n").await;
     }
 
     async fn begin_event(
@@ -295,7 +291,7 @@ impl CliEventIngestor {
         masker: &SecretMasker,
         behavior: CliFrameworkBehavior,
     ) -> Result<ParsedEventAction, AgentError> {
-        Self::write_raw_line(log_file, raw_line).await?;
+        Self::write_raw_line(log_file, raw_line).await;
 
         if event.get("type").and_then(serde_json::Value::as_str) == Some("stream_event") {
             events::register_event_session_identifier(event, masker);
@@ -823,7 +819,7 @@ async fn execute_cli_inner(
                             // for background sending. Network I/O stays off the reading loop.
                             event_ingestor.enqueue_event(event, masker, should_send_events, &event_tx);
                         } else {
-                            CliEventIngestor::write_raw_line(&mut log_file, line.as_bytes()).await?;
+                            CliEventIngestor::write_raw_line(&mut log_file, line.as_bytes()).await;
                         }
                     }
                     Ok(None) => {

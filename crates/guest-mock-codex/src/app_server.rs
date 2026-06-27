@@ -121,6 +121,7 @@ struct AppServerThread {
     protocol_thread_id: String,
     artifact_thread_id: String,
     active_turn_id: Option<String>,
+    thread_request_has_runtime_workspace_roots: bool,
 }
 
 impl AppServerState {
@@ -241,7 +242,10 @@ impl AppServerState {
                     }
                 }
                 let thread_id = Uuid::now_v7().to_string();
-                self.set_current_thread(thread_id.clone());
+                self.set_current_thread(
+                    thread_id.clone(),
+                    params.get("runtimeWorkspaceRoots").is_some(),
+                );
                 let result = thread_response(&thread_id, false);
                 match self.scenario {
                     Scenario::InvalidResponseId => {
@@ -312,7 +316,10 @@ impl AppServerState {
                     write_error(output, id, INVALID_REQUEST, "missing threadId")?;
                     return Ok(ServerAction::Continue);
                 };
-                self.set_current_thread(thread_id.to_string());
+                self.set_current_thread(
+                    thread_id.to_string(),
+                    params.get("runtimeWorkspaceRoots").is_some(),
+                );
                 write_success(output, id, thread_response(thread_id, true))?;
                 Ok(ServerAction::Continue)
             }
@@ -338,6 +345,8 @@ impl AppServerState {
                 };
                 let thread_id = current_thread.protocol_thread_id.clone();
                 let artifact_thread_id = current_thread.artifact_thread_id.clone();
+                let thread_request_has_runtime_workspace_roots =
+                    current_thread.thread_request_has_runtime_workspace_roots;
                 let inputs = match text_inputs(params) {
                     Ok(inputs) => inputs,
                     Err(message) => {
@@ -359,6 +368,8 @@ impl AppServerState {
                     &turn_id,
                     "initial",
                     &inputs,
+                    thread_request_has_runtime_workspace_roots,
+                    params,
                 )?;
                 write_success(output, id, json!({ "turn": turn(&turn_id) }))?;
                 if matches!(
@@ -410,6 +421,8 @@ impl AppServerState {
 
                 let thread_id = current_thread.protocol_thread_id.clone();
                 let artifact_thread_id = current_thread.artifact_thread_id.clone();
+                let thread_request_has_runtime_workspace_roots =
+                    current_thread.thread_request_has_runtime_workspace_roots;
                 let inputs = match text_inputs(params) {
                     Ok(inputs) => inputs,
                     Err(message) => {
@@ -424,6 +437,8 @@ impl AppServerState {
                     &active_turn_id,
                     "steered",
                     &inputs,
+                    thread_request_has_runtime_workspace_roots,
+                    params,
                 )?;
                 write_success(output, id, json!({ "turnId": active_turn_id }))?;
                 Ok(ServerAction::Continue)
@@ -500,7 +515,11 @@ impl AppServerState {
         }
     }
 
-    fn set_current_thread(&mut self, thread_id: String) {
+    fn set_current_thread(
+        &mut self,
+        thread_id: String,
+        thread_request_has_runtime_workspace_roots: bool,
+    ) {
         let artifact_thread_id = self
             .session_artifact_thread_ids
             .entry(thread_id.clone())
@@ -510,6 +529,7 @@ impl AppServerState {
             protocol_thread_id: thread_id,
             artifact_thread_id,
             active_turn_id: None,
+            thread_request_has_runtime_workspace_roots,
         });
     }
 
@@ -782,6 +802,8 @@ fn persist_input_events(
     turn_id: &str,
     kind: &str,
     inputs: &[String],
+    thread_request_has_runtime_workspace_roots: bool,
+    turn_params: &Value,
 ) -> io::Result<()> {
     let events = inputs
         .iter()
@@ -791,7 +813,13 @@ fn persist_input_events(
                 "kind": kind,
                 "thread_id": thread_id,
                 "turn_id": turn_id,
-                "text": text
+                "text": text,
+                "thread_request_has_runtime_workspace_roots": thread_request_has_runtime_workspace_roots,
+                "turn_request_has_runtime_workspace_roots": turn_params.get("runtimeWorkspaceRoots").is_some(),
+                "turn_request_cwd": turn_params.get("cwd"),
+                "turn_request_approval_policy": turn_params.get("approvalPolicy"),
+                "turn_request_approvals_reviewer": turn_params.get("approvalsReviewer"),
+                "turn_request_sandbox_policy": turn_params.get("sandboxPolicy"),
             })
         })
         .collect::<Vec<_>>();
