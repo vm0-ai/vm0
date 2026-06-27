@@ -7,10 +7,6 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
-import type {
-  UnattendedTriggerConnectorRefs,
-  UnattendedTriggerPermissionPolicy,
-} from "@vm0/api-contracts/contracts/zero-workflows";
 import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
 import { resolveFirewallServerMetadataPolicies } from "@vm0/connectors/firewall-metadata/server";
 import type {
@@ -27,6 +23,7 @@ import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
+import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroWorkflowTriggers } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
@@ -51,6 +48,7 @@ import { loadWorkflowsForRun } from "./zero-workflow-data.service";
 import type { InternalRunCallbackKind } from "./internal-run-callback";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
+type WorkflowConnectorRefs = readonly string[];
 
 const DISALLOWED_TOOLS = [
   "CronCreate",
@@ -486,36 +484,18 @@ function connectorRefsToConnectorTypes(
   });
 }
 
-function filterUnattendedPolicyForConnectorRefs(
-  policy: UnattendedTriggerPermissionPolicy | null,
-  connectorRefs: readonly string[],
-): FirewallPolicies {
-  if (!policy) {
-    return {};
-  }
-  const enabled = new Set(connectorRefs);
-  const stored: FirewallPolicies = {};
-  for (const [connectorRef, connectorPolicy] of Object.entries(policy)) {
-    if (enabled.has(connectorRef)) {
-      stored[connectorRef] = connectorPolicy;
-    }
-  }
-  return stored;
-}
-
 async function loadTriggerRunContext(
   db: Db,
   args: { readonly orgId: string; readonly triggerId: string },
 ): Promise<{
-  readonly connectorRefs: UnattendedTriggerConnectorRefs;
-  readonly policy: UnattendedTriggerPermissionPolicy | null;
+  readonly connectorRefs: WorkflowConnectorRefs;
   readonly workflowId: string;
+  readonly userId: string;
 } | null> {
   const [row] = await db
     .select({
-      connectorRefs: zeroWorkflowTriggers.unattendedConnectorRefs,
-      policy: zeroWorkflowTriggers.unattendedPermissionPolicy,
       workflowId: zeroWorkflowTriggers.workflowId,
+      userId: zeroWorkflowTriggers.ownerUserId,
     })
     .from(zeroWorkflowTriggers)
     .where(
@@ -525,19 +505,34 @@ async function loadTriggerRunContext(
       ),
     )
     .limit(1);
-  return row
-    ? {
-        connectorRefs: row.connectorRefs ?? [],
-        policy: row.policy ?? null,
-        workflowId: row.workflowId,
-      }
-    : null;
+  if (!row) {
+    return null;
+  }
+
+  const connectorRows = await db
+    .select({ connectorType: workflowUserConnectors.connectorType })
+    .from(workflowUserConnectors)
+    .where(
+      and(
+        eq(workflowUserConnectors.orgId, args.orgId),
+        eq(workflowUserConnectors.userId, row.userId),
+        eq(workflowUserConnectors.workflowId, row.workflowId),
+      ),
+    );
+
+  return {
+    connectorRefs: connectorRows.map((connector) => {
+      return connector.connectorType;
+    }),
+    workflowId: row.workflowId,
+    userId: row.userId,
+  };
 }
 
 /**
- * Resolves the trigger-run context for a run: the isolated unattended policy
- * (undefined for interactive runs) plus the trigger/workflow env vars the
- * in-sandbox CLI uses to deep-link permission changes to the trigger editor.
+ * Resolves the trigger-run context for a run: the workflow-scoped connector
+ * refs (undefined for interactive runs) plus the trigger/workflow env vars the
+ * in-sandbox CLI uses to deep-link permission changes to the workflow editor.
  */
 async function resolveTriggerRunContext(
   db: Db,
@@ -549,8 +544,9 @@ async function resolveTriggerRunContext(
 ): Promise<{
   readonly unattended:
     | {
-        readonly connectorRefs: UnattendedTriggerConnectorRefs;
-        readonly policy: UnattendedTriggerPermissionPolicy | null;
+        readonly connectorRefs: WorkflowConnectorRefs;
+        readonly workflowId: string | null;
+        readonly userId: string | null;
       }
     | undefined;
   readonly environment: Record<string, string>;
@@ -567,7 +563,8 @@ async function resolveTriggerRunContext(
   return {
     unattended: {
       connectorRefs: context?.connectorRefs ?? [],
-      policy: context?.policy ?? null,
+      workflowId: context?.workflowId ?? null,
+      userId: context?.userId ?? null,
     },
     environment: {
       ZERO_WORKFLOW_TRIGGER_ID: workflowTriggerId,
@@ -594,10 +591,9 @@ function buildZeroRunExtraEnvironment(args: {
 /**
  * Resolves the firewall policies for a run.
  *
- * Interactive (chat/agent) runs resolve from the caller's user permission
- * grants. Trigger-fired runs (`args.unattended` present) are isolated: they
- * resolve from the trigger's own policy overlaid on connector metadata
- * defaults, never inherit agent/user grants, and have `ask` coerced to `deny`.
+ * Interactive (chat/agent) runs resolve from the caller's agent permission
+ * grants. Trigger-fired runs (`args.unattended` present) resolve from the
+ * trigger owner's workflow-scoped grants and have `ask` coerced to `deny`.
  */
 async function resolveZeroRunPermissionPolicies(
   db: Db,
@@ -608,20 +604,31 @@ async function resolveZeroRunPermissionPolicies(
     readonly allowedConnectorTypes: readonly ConnectorType[];
     readonly checkedAt: Date;
     readonly unattended?: {
-      readonly connectorRefs: UnattendedTriggerConnectorRefs;
-      readonly policy: UnattendedTriggerPermissionPolicy | null;
+      readonly connectorRefs: WorkflowConnectorRefs;
+      readonly workflowId: string | null;
+      readonly userId: string | null;
     };
   },
   signal: AbortSignal,
 ): Promise<FirewallPolicies | null> {
   if (args.unattended) {
-    const stored = filterUnattendedPolicyForConnectorRefs(
-      args.unattended.policy,
-      args.unattended.connectorRefs,
+    const grants =
+      args.unattended.workflowId && args.unattended.userId
+        ? await loadActiveUserPermissionGrants(
+            db,
+            {
+              orgId: args.orgId,
+              userId: args.unattended.userId,
+              workflowId: args.unattended.workflowId,
+            },
+            args.checkedAt,
+          )
+        : [];
+    signal.throwIfAborted();
+    const resolved = await resolveFirewallServerMetadataPolicies(
+      permissionGrantsToFirewallPolicies(grants),
+      [...args.unattended.connectorRefs],
     );
-    const resolved = await resolveFirewallServerMetadataPolicies(stored, [
-      ...args.unattended.connectorRefs,
-    ]);
     signal.throwIfAborted();
     return coerceUnattendedPolicyAsks(resolved);
   }
@@ -1057,10 +1064,9 @@ export const createZeroRun$ = command(
         const triggerAgentId = await triggerAgentIdForAuth(db, args.auth);
         signal.throwIfAborted();
 
-        // Trigger-fired runs resolve from the trigger's own isolated unattended
-        // connector scope and policy (never the caller's grants) and expose their
-        // trigger/workflow ids so the in-sandbox permission-change deep-link
-        // targets the trigger editor.
+        // Trigger-fired runs resolve from the trigger owner's workflow-scoped
+        // connector authorization and grants. Expose trigger/workflow ids so
+        // the in-sandbox permission-change deep-link can target the workflow.
         const triggerRun = await resolveTriggerRunContext(
           db,
           {

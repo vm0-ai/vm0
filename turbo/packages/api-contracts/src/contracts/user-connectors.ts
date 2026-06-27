@@ -6,7 +6,8 @@ const c = initContract();
 
 /**
  * User connector enabled types schema
- * Sparse model: only connector types explicitly enabled by the user for this agent.
+ * Sparse model: only connector types explicitly enabled by the user for this
+ * agent or workflow.
  */
 export const userConnectorEnabledTypesSchema = z.object({
   enabledTypes: z.array(z.string()),
@@ -49,3 +50,39 @@ export const zeroUserConnectorsContract = c.router({
   },
 });
 export type ZeroUserConnectorsContract = typeof zeroUserConnectorsContract;
+
+/**
+ * Contract for GET/PUT /api/zero/workflows/:id/user-connectors
+ */
+export const zeroWorkflowUserConnectorsContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/zero/workflows/:id/user-connectors",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string().uuid() }),
+    responses: {
+      200: userConnectorEnabledTypesSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get enabled connector types for user on workflow",
+  },
+  update: {
+    method: "PUT",
+    path: "/api/zero/workflows/:id/user-connectors",
+    headers: authHeadersSchema,
+    pathParams: z.object({ id: z.string().uuid() }),
+    body: userConnectorEnabledTypesSchema,
+    responses: {
+      200: userConnectorEnabledTypesSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Replace enabled connector types for user on workflow",
+  },
+});
+export type ZeroWorkflowUserConnectorsContract =
+  typeof zeroWorkflowUserConnectorsContract;

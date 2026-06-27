@@ -12,22 +12,21 @@ import {
   type ZeroWorkflowSummary,
   type ZeroWorkflowTriggerSummary,
   type ZeroWorkflowUpdateRequest,
-  type UnattendedTriggerConnectorRefs,
-  type UnattendedTriggerPermissionPolicy,
 } from "@vm0/api-contracts/contracts/zero-workflows";
+import { zeroWorkflowUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { activeRoute$ } from "../active-route.ts";
-import {
-  pathParams$,
-  replaceSearchParams$,
-  searchParams$,
-  updateSearchParams$,
-} from "../route.ts";
+import { pathParams$, replaceSearchParams$, searchParams$ } from "../route.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 
-type WorkflowDetailActionDialog = "edit" | "copy" | "delete" | null;
+type WorkflowDetailActionDialog = "copy" | "delete" | null;
+export type WorkflowDetailTab =
+  | "authorization"
+  | "triggers"
+  | "instructions"
+  | "info";
 type WorkflowTriggerCreateDialog =
   | "schedule"
   | "gmail"
@@ -38,8 +37,25 @@ type WorkflowWebhookTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
-const WORKFLOW_DETAIL_SIDEBAR_PARAM = "sidebar";
-const WORKFLOW_TRIGGER_SIDEBAR_VALUE = "triggers";
+export const WORKFLOW_DETAIL_TAB_PARAM = "tab";
+export const WORKFLOW_DETAIL_FILE_PARAM = "file";
+
+function workflowDetailTabFromSearchParams(
+  params: URLSearchParams,
+): WorkflowDetailTab | null {
+  const value = params.get(WORKFLOW_DETAIL_TAB_PARAM);
+  switch (value) {
+    case "authorization":
+    case "triggers":
+    case "instructions":
+    case "info": {
+      return value;
+    }
+    default: {
+      return null;
+    }
+  }
+}
 
 export type WorkflowCronFrequency =
   | "every_day"
@@ -75,11 +91,11 @@ interface WorkflowDetailFileDraft {
   readonly content: string;
 }
 
-interface WorkflowEditDraft {
+interface WorkflowMetadataPatch {
   readonly workflowId: string;
-  readonly displayName: string;
-  readonly name: string;
-  readonly description: string;
+  readonly displayName?: string;
+  readonly name?: string;
+  readonly description?: string;
 }
 
 /**
@@ -94,13 +110,15 @@ export const currentWorkflowId$ = computed((get): string | null => {
 });
 
 const internalWorkflowReload$ = state(0);
+const internalWorkflowConnectorAuthorizationsReload$ = state(0);
+const internalWorkflowDetailActiveTab$ =
+  state<WorkflowDetailTab>("authorization");
 
 const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
 const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
 const internalEditingWorkflowTriggerId$ = state<string | null>(null);
-const internalWorkflowEditDraft$ = state<WorkflowEditDraft | null>(null);
-const internalWorkflowTriggerPermissionsDrawerTriggerId$ = state<string | null>(
+const internalWorkflowMetadataPatch$ = state<WorkflowMetadataPatch | null>(
   null,
 );
 const internalWorkflowTriggerCreateDialog$ =
@@ -115,41 +133,6 @@ const internalEditingScheduleCronFields$ = state<WorkflowCronFields>(
   defaultWorkflowCronFields(),
 );
 
-export const workflowDetailTriggerSidebarOpen$ = computed((get) => {
-  return (
-    get(searchParams$).get(WORKFLOW_DETAIL_SIDEBAR_PARAM) ===
-    WORKFLOW_TRIGGER_SIDEBAR_VALUE
-  );
-});
-
-export const setWorkflowDetailTriggerSidebarOpen$ = command(
-  ({ get, set }, open: boolean) => {
-    const params = new URLSearchParams(get(searchParams$));
-    const currentlyOpen =
-      params.get(WORKFLOW_DETAIL_SIDEBAR_PARAM) ===
-      WORKFLOW_TRIGGER_SIDEBAR_VALUE;
-    if (open === currentlyOpen) {
-      return;
-    }
-    if (open) {
-      params.set(WORKFLOW_DETAIL_SIDEBAR_PARAM, WORKFLOW_TRIGGER_SIDEBAR_VALUE);
-      set(updateSearchParams$, params);
-      return;
-    }
-
-    const createdWebhookTrigger = get(internalCreatedWorkflowWebhookTrigger$);
-    if (createdWebhookTrigger) {
-      set(reloadWorkflows$);
-    }
-    params.delete(WORKFLOW_DETAIL_SIDEBAR_PARAM);
-    set(internalEditingWorkflowTriggerId$, null);
-    set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
-    set(internalWorkflowTriggerCreateDialog$, null);
-    set(internalCreatedWorkflowWebhookTrigger$, null);
-    set(replaceSearchParams$, params);
-  },
-);
-
 export const workflowActionDialog$ = computed((get) => {
   return get(internalWorkflowActionDialog$);
 });
@@ -157,9 +140,6 @@ export const workflowActionDialog$ = computed((get) => {
 export const setWorkflowActionDialog$ = command(
   ({ set }, dialog: WorkflowDetailActionDialog) => {
     set(internalWorkflowActionDialog$, dialog);
-    if (dialog !== "edit") {
-      set(internalWorkflowEditDraft$, null);
-    }
   },
 );
 
@@ -173,46 +153,38 @@ export const setWorkflowFileDraft$ = command(
   },
 );
 
-export const workflowEditDraft$ = computed((get) => {
-  return get(internalWorkflowEditDraft$);
+export const workflowMetadataPatch$ = computed((get) => {
+  return get(internalWorkflowMetadataPatch$);
 });
 
-export const openWorkflowEditDialog$ = command(
-  ({ set }, detail: ZeroWorkflowDetailResponse) => {
-    set(internalWorkflowEditDraft$, {
-      workflowId: detail.id,
-      displayName: detail.displayName ?? "",
-      name: detail.name,
-      description: detail.description ?? "",
-    });
-    set(internalWorkflowActionDialog$, "edit");
-  },
-);
-
-export const patchWorkflowEditDraft$ = command(
+export const patchWorkflowMetadataForm$ = command(
   (
     { set },
     input: {
       readonly workflowId: string;
-      readonly patch: Partial<Omit<WorkflowEditDraft, "workflowId">>;
+      readonly patch: Omit<WorkflowMetadataPatch, "workflowId">;
     },
   ) => {
-    set(internalWorkflowEditDraft$, (draft) => {
-      if (!draft || draft.workflowId !== input.workflowId) {
-        return draft;
+    set(internalWorkflowMetadataPatch$, (patch) => {
+      if (!patch || patch.workflowId !== input.workflowId) {
+        return { workflowId: input.workflowId, ...input.patch };
       }
-      return { ...draft, ...input.patch };
+      return { ...patch, ...input.patch };
     });
   },
 );
 
+export const resetWorkflowMetadataForm$ = command(({ set }) => {
+  set(internalWorkflowMetadataPatch$, null);
+});
+
 export const resetWorkflowDetailUiState$ = command(({ set }) => {
+  set(internalWorkflowDetailActiveTab$, "authorization");
   set(internalSelectedFilePath$, null);
   set(internalWorkflowActionDialog$, null);
   set(internalWorkflowFileDraft$, null);
   set(internalEditingWorkflowTriggerId$, null);
-  set(internalWorkflowEditDraft$, null);
-  set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
+  set(internalWorkflowMetadataPatch$, null);
   set(internalWorkflowTriggerCreateDialog$, null);
   set(internalCreatedWorkflowWebhookTrigger$, null);
   set(internalScheduleTriggerType$, "cron");
@@ -220,23 +192,35 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalEditingScheduleCronFields$, defaultWorkflowCronFields());
 });
 
-export const editingWorkflowTriggerId$ = computed((get) => {
-  return get(internalEditingWorkflowTriggerId$);
+export const workflowDetailActiveTab$ = computed((get) => {
+  return (
+    workflowDetailTabFromSearchParams(get(searchParams$)) ??
+    get(internalWorkflowDetailActiveTab$)
+  );
 });
 
-export const workflowTriggerPermissionsDrawerTriggerId$ = computed((get) => {
-  return get(internalWorkflowTriggerPermissionsDrawerTriggerId$);
+export const setWorkflowDetailActiveTab$ = command(
+  ({ get, set }, tab: WorkflowDetailTab) => {
+    set(internalWorkflowDetailActiveTab$, tab);
+    const params = new URLSearchParams(get(searchParams$));
+    params.set(WORKFLOW_DETAIL_TAB_PARAM, tab);
+    set(replaceSearchParams$, params);
+  },
+);
+
+export const reloadWorkflowConnectorAuthorizations$ = command(({ set }) => {
+  set(internalWorkflowConnectorAuthorizationsReload$, (prev) => {
+    return prev + 1;
+  });
+});
+
+export const editingWorkflowTriggerId$ = computed((get) => {
+  return get(internalEditingWorkflowTriggerId$);
 });
 
 export const setEditingWorkflowTriggerId$ = command(
   ({ set }, triggerId: string | null) => {
     set(internalEditingWorkflowTriggerId$, triggerId);
-  },
-);
-
-export const setWorkflowTriggerPermissionsDrawerTriggerId$ = command(
-  ({ set }, triggerId: string | null) => {
-    set(internalWorkflowTriggerPermissionsDrawerTriggerId$, triggerId);
   },
 );
 
@@ -299,12 +283,23 @@ export const setEditingScheduleCronFields$ = command(
 
 /** The supplementary file selected in the detail viewer, or null. */
 export const selectedWorkflowFilePath$ = computed((get) => {
-  return get(internalSelectedFilePath$);
+  return (
+    get(searchParams$).get(WORKFLOW_DETAIL_FILE_PARAM) ??
+    get(internalSelectedFilePath$)
+  );
 });
 
 export const setSelectedWorkflowFilePath$ = command(
-  ({ set }, path: string | null) => {
+  ({ get, set }, path: string | null) => {
     set(internalSelectedFilePath$, path);
+    const params = new URLSearchParams(get(searchParams$));
+    if (path) {
+      params.set(WORKFLOW_DETAIL_FILE_PARAM, path);
+    } else {
+      params.delete(WORKFLOW_DETAIL_FILE_PARAM);
+    }
+    params.set(WORKFLOW_DETAIL_TAB_PARAM, "instructions");
+    set(replaceSearchParams$, params);
   },
 );
 
@@ -392,6 +387,52 @@ function createWorkflowDetailFactory(): (
 }
 
 export const workflowDetail = createWorkflowDetailFactory();
+
+function createWorkflowAuthorizedConnectorsFactory(): (
+  workflowId: string,
+) => Computed<Promise<readonly string[]>> {
+  const cache = new Map<string, Computed<Promise<readonly string[]>>>();
+  return (workflowId: string) => {
+    const existing = cache.get(workflowId);
+    if (existing) {
+      return existing;
+    }
+    const atom$ = computed(async (get) => {
+      get(internalWorkflowConnectorAuthorizationsReload$);
+      const client = get(zeroClient$)(zeroWorkflowUserConnectorsContract);
+      const result = await accept(
+        client.get({ params: { id: workflowId } }),
+        [200],
+      );
+      return result.body.enabledTypes;
+    });
+    cache.set(workflowId, atom$);
+    return atom$;
+  };
+}
+
+export const workflowAuthorizedConnectors =
+  createWorkflowAuthorizedConnectorsFactory();
+
+export const setWorkflowAuthorizedConnectors$ = command(
+  async (
+    { get, set },
+    input: { readonly workflowId: string; readonly enabledTypes: string[] },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowUserConnectorsContract);
+    await accept(
+      client.update({
+        params: { id: input.workflowId },
+        body: { enabledTypes: input.enabledTypes },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflowConnectorAuthorizations$);
+  },
+);
 
 export const updateWorkflow$ = command(
   async (
@@ -694,35 +735,6 @@ export const setWorkflowTriggerEnabled$ = command(
           fetchOptions: { signal },
         });
     await accept(request, [200]);
-    signal.throwIfAborted();
-    set(reloadWorkflows$);
-  },
-);
-
-export const setWorkflowTriggerPermissionPolicy$ = command(
-  async (
-    { get, set },
-    input: {
-      triggerId: string;
-      unattendedConnectorRefs?: UnattendedTriggerConnectorRefs;
-      unattendedPermissionPolicy: UnattendedTriggerPermissionPolicy | null;
-    },
-    signal: AbortSignal,
-  ) => {
-    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
-    await accept(
-      client.setPermissionPolicy({
-        params: { id: input.triggerId },
-        body: {
-          ...(input.unattendedConnectorRefs !== undefined
-            ? { unattendedConnectorRefs: input.unattendedConnectorRefs }
-            : {}),
-          unattendedPermissionPolicy: input.unattendedPermissionPolicy,
-        },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
     signal.throwIfAborted();
     set(reloadWorkflows$);
   },
