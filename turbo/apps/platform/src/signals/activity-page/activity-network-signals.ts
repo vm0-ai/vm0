@@ -17,6 +17,23 @@ type NetworkLogsClient = InitClientReturn<
   InitClientArgs
 >;
 
+interface NetworkLogsPage {
+  logs: NetworkLogEntry[];
+  hasMore: boolean;
+  nextCursor: string | null;
+}
+
+interface RunNetworkLogsPage extends NetworkLogsPage {
+  runId: string;
+}
+
+interface ZeroActivityNetworkLogs {
+  runId: string | null;
+  networkLogs: NetworkLogEntry[];
+  hasMore: boolean;
+  loading: boolean;
+}
+
 /**
  * Fetch a single page of network logs.
  */
@@ -25,11 +42,7 @@ async function fetchPage(
   runId: string,
   signal?: AbortSignal,
   cursor?: string,
-): Promise<{
-  logs: NetworkLogEntry[];
-  hasMore: boolean;
-  nextCursor: string | null;
-}> {
+): Promise<NetworkLogsPage> {
   const result = await accept(
     client.getNetworkLogs({
       params: { id: runId },
@@ -94,7 +107,10 @@ const firstPage$ = computed(async (get) => {
     return null;
   }
   const client = get(zeroClient$)(zeroRunNetworkLogsContract);
-  return await fetchPage(client, runId);
+  return {
+    runId,
+    ...(await fetchPage(client, runId)),
+  } satisfies RunNetworkLogsPage;
 });
 
 interface PaginationState {
@@ -124,25 +140,28 @@ export const zeroActivityNetworkLogs$ = computed(async (get) => {
   const first = await get(firstPage$);
   if (!first) {
     return {
+      runId: null,
       networkLogs: [] as NetworkLogEntry[],
       hasMore: false,
       loading: false,
-    };
+    } satisfies ZeroActivityNetworkLogs;
   }
 
-  const runId = get(currentRunId$);
+  const currentRunId = get(currentRunId$);
   const pg = get(pagination$);
-  const extraRunMatch = pg.runId === runId;
+  const isCurrentRun = currentRunId === first.runId;
+  const extraRunMatch = isCurrentRun && pg.runId === first.runId;
   const extra = extraRunMatch ? pg.logs : [];
   const hasMore =
     extraRunMatch && pg.pageCount > 0 ? pg.hasMore : first.hasMore;
   const loading = extraRunMatch ? pg.loading : false;
 
   return {
+    runId: first.runId,
     networkLogs: [...first.logs, ...extra],
     hasMore,
     loading,
-  };
+  } satisfies ZeroActivityNetworkLogs;
 });
 
 /**
@@ -161,6 +180,9 @@ export const loadNetworkLogsNextPage$ = command(
     if (pg.runId !== runId) {
       const first = await get(firstPage$);
       signal.throwIfAborted();
+      if (get(currentRunId$) !== runId || first?.runId !== runId) {
+        return;
+      }
       if (!first || !first.hasMore || first.logs.length === 0) {
         return;
       }

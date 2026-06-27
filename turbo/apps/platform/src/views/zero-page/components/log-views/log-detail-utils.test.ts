@@ -386,7 +386,9 @@ describe("groupEventsIntoMessages event dedupe", () => {
 
     expect(messages).toHaveLength(2);
   });
+});
 
+describe("groupEventsIntoMessages event dedupe edge cases", () => {
   it("keeps too-deep same-sequence events instead of lossy deduping", () => {
     const deepPayload = (): unknown => {
       let value: unknown = "leaf";

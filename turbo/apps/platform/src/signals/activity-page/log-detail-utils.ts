@@ -173,15 +173,7 @@ interface DedupeStringifyState {
   valueCount: number;
 }
 
-function stringifyDedupeValue(
-  value: unknown,
-  state: DedupeStringifyState,
-  depth = 0,
-): string | null {
-  state.valueCount += 1;
-  if (state.valueCount > MAX_DEDUPE_VALUES || depth > MAX_DEDUPE_DEPTH) {
-    return null;
-  }
+function stringifyDedupePrimitive(value: unknown): string | null | undefined {
   if (value === null) {
     return "null";
   }
@@ -203,10 +195,77 @@ function stringifyDedupeValue(
   if (typeof value === "undefined") {
     return "undefined";
   }
-  if (typeof value === "symbol") {
+  if (typeof value === "symbol" || typeof value === "function") {
     return null;
   }
-  if (typeof value === "function") {
+  return undefined;
+}
+
+function stringifyDedupeArrayValue(
+  value: unknown[],
+  state: DedupeStringifyState,
+  depth: number,
+): string | null {
+  if (value.length > MAX_DEDUPE_VALUES) {
+    return null;
+  }
+  const items: string[] = [];
+  for (let index = 0; index < value.length; index += 1) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
+    if (!descriptor) {
+      items.push("[Hole]");
+      continue;
+    }
+    if (!("value" in descriptor)) {
+      return null;
+    }
+    const serialized = stringifyDedupeValue(descriptor.value, state, depth + 1);
+    if (serialized === null) {
+      return null;
+    }
+    items.push(serialized);
+  }
+  return `array:[${items.join(",")}]`;
+}
+
+function stringifyDedupeObjectValue(
+  value: object,
+  state: DedupeStringifyState,
+  depth: number,
+): string | null {
+  const keys = Object.keys(value);
+  if (keys.length > MAX_DEDUPE_VALUES) {
+    return null;
+  }
+  const entries: string[] = [];
+  for (const key of keys.sort()) {
+    const descriptor = Object.getOwnPropertyDescriptor(value, key);
+    if (!descriptor || !("value" in descriptor)) {
+      return null;
+    }
+    const serialized = stringifyDedupeValue(descriptor.value, state, depth + 1);
+    if (serialized === null) {
+      return null;
+    }
+    entries.push(`${JSON.stringify(key)}:${serialized}`);
+  }
+  return `object:{${entries.join(",")}}`;
+}
+
+function stringifyDedupeValue(
+  value: unknown,
+  state: DedupeStringifyState,
+  depth = 0,
+): string | null {
+  state.valueCount += 1;
+  if (state.valueCount > MAX_DEDUPE_VALUES || depth > MAX_DEDUPE_DEPTH) {
+    return null;
+  }
+  const primitive = stringifyDedupePrimitive(value);
+  if (primitive !== undefined) {
+    return primitive;
+  }
+  if (value === null || typeof value !== "object") {
     return null;
   }
   if (state.seen.has(value)) {
@@ -217,58 +276,11 @@ function stringifyDedupeValue(
   }
 
   state.seen.add(value);
-  if (Array.isArray(value)) {
-    if (value.length > MAX_DEDUPE_VALUES) {
-      state.seen.delete(value);
-      return null;
-    }
-    const items: string[] = [];
-    for (let index = 0; index < value.length; index += 1) {
-      const descriptor = Object.getOwnPropertyDescriptor(value, String(index));
-      if (!descriptor) {
-        items.push("[Hole]");
-        continue;
-      }
-      if (!("value" in descriptor)) {
-        state.seen.delete(value);
-        return null;
-      }
-      const serialized = stringifyDedupeValue(
-        descriptor.value,
-        state,
-        depth + 1,
-      );
-      if (serialized === null) {
-        state.seen.delete(value);
-        return null;
-      }
-      items.push(serialized);
-    }
-    state.seen.delete(value);
-    return `array:[${items.join(",")}]`;
-  }
-
-  const keys = Object.keys(value);
-  if (keys.length > MAX_DEDUPE_VALUES) {
-    state.seen.delete(value);
-    return null;
-  }
-  const entries: string[] = [];
-  for (const key of keys.sort()) {
-    const descriptor = Object.getOwnPropertyDescriptor(value, key);
-    if (!descriptor || !("value" in descriptor)) {
-      state.seen.delete(value);
-      return null;
-    }
-    const serialized = stringifyDedupeValue(descriptor.value, state, depth + 1);
-    if (serialized === null) {
-      state.seen.delete(value);
-      return null;
-    }
-    entries.push(`${JSON.stringify(key)}:${serialized}`);
-  }
+  const serialized = Array.isArray(value)
+    ? stringifyDedupeArrayValue(value, state, depth)
+    : stringifyDedupeObjectValue(value, state, depth);
   state.seen.delete(value);
-  return `object:{${entries.join(",")}}`;
+  return serialized;
 }
 
 function eventDedupeKey(event: AgentEvent): string | null {

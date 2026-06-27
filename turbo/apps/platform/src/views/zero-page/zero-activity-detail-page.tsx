@@ -460,12 +460,14 @@ function ActivityStepsContent({
   );
 }
 
-function ActivityContextTab() {
+function ActivityContextTab({ detailId }: { detailId: string }) {
   const contextLoadable = useLastLoadable(zeroActivityContext$);
 
   if (
     contextLoadable.state === "loading" ||
-    contextLoadable.state === "hasError"
+    contextLoadable.state === "hasError" ||
+    (contextLoadable.state === "hasData" &&
+      contextLoadable.data?.runId !== detailId)
   ) {
     return (
       <div className="flex flex-col gap-2 py-4">
@@ -481,7 +483,7 @@ function ActivityContextTab() {
     );
   }
 
-  const context = contextLoadable.data;
+  const context = contextLoadable.data?.context ?? null;
   if (!context) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-12">
@@ -499,12 +501,14 @@ function ActivityContextTab() {
   return <ContextContent context={context} />;
 }
 
-function ActivityRunnerTab() {
+function ActivityRunnerTab({ detailId }: { detailId: string }) {
   const runnerLoadable = useLastLoadable(zeroActivityRunner$);
 
   if (
     runnerLoadable.state === "loading" ||
-    runnerLoadable.state === "hasError"
+    runnerLoadable.state === "hasError" ||
+    (runnerLoadable.state === "hasData" &&
+      runnerLoadable.data?.runId !== detailId)
   ) {
     return (
       <div className="flex flex-col gap-2 py-4">
@@ -514,7 +518,7 @@ function ActivityRunnerTab() {
     );
   }
 
-  const runner = runnerLoadable.data;
+  const runner = runnerLoadable.data?.runner ?? null;
   const reuse = runner?.sandboxReuseResult ?? null;
   const info = reuse ? SANDBOX_REUSE_LABELS[reuse] : null;
 
@@ -542,12 +546,16 @@ function ActivityRunnerTab() {
   );
 }
 
-function ActivityNetworkTab() {
+function ActivityNetworkTab({ detailId }: { detailId: string }) {
   const logsLoadable = useLastLoadable(zeroActivityNetworkLogs$);
   const loadNextPage = useSet(loadNetworkLogsNextPage$);
   const pageSignal = useGet(pageSignal$);
 
-  if (logsLoadable.state === "loading" || logsLoadable.state === "hasError") {
+  if (
+    logsLoadable.state === "loading" ||
+    logsLoadable.state === "hasError" ||
+    (logsLoadable.state === "hasData" && logsLoadable.data.runId !== detailId)
+  ) {
     return (
       <div className="flex flex-col gap-2 py-4">
         {Array.from({ length: 5 }, (_, i) => {
@@ -603,12 +611,12 @@ function ActivityTabContent({
     return <ActivityStepsContent detail={detail} features={features} />;
   }
   if (activeTab === "context") {
-    return <ActivityContextTab />;
+    return <ActivityContextTab detailId={detail.id} />;
   }
   if (activeTab === "runner") {
-    return <ActivityRunnerTab />;
+    return <ActivityRunnerTab detailId={detail.id} />;
   }
-  return <ActivityNetworkTab />;
+  return <ActivityNetworkTab detailId={detail.id} />;
 }
 
 function ActivityDetailContent({

@@ -33,6 +33,7 @@ import {
   pushPathSilently$,
 } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
+import { resetSignal } from "../../../signals/utils.ts";
 
 const context = testContext();
 const LONG_GENERIC_CODEX_OUTPUT = "verbose adapter output ".repeat(20);
@@ -2163,9 +2164,11 @@ describe("activity detail polling", () => {
 
   it("propagates abort while fetching raw download extras", async () => {
     const runId = "a0000000-0000-4000-a000-000000000397";
-    const controller = new AbortController();
-    const abortError = new Error("Download aborted");
-    abortError.name = "AbortError";
+    const resetDownloadSignal$ = resetSignal();
+    const downloadSignal = context.store.set(
+      resetDownloadSignal$,
+      context.signal,
+    );
     let contextRequestStarted = false;
     let contextRequestAborted = false;
     let networkRequestStarted = false;
@@ -2194,15 +2197,15 @@ describe("activity detail polling", () => {
     const promise = context.store.set(
       fetchDownloadExtra$,
       runId,
-      controller.signal,
+      downloadSignal,
     );
     await waitFor(() => {
       expect(contextRequestStarted).toBeTruthy();
       expect(networkRequestStarted).toBeTruthy();
     });
 
-    controller.abort(abortError);
-    await expect(promise).rejects.toBe(abortError);
+    context.store.set(resetDownloadSignal$, context.signal);
+    await expect(promise).rejects.toMatchObject({ name: "AbortError" });
 
     await waitFor(() => {
       expect(contextRequestAborted).toBeTruthy();
@@ -2546,6 +2549,89 @@ describe("activity detail polling", () => {
     expect(urls).toContain("https://second.example.test/start");
     expect(urls).toContain("https://second.example.test/next");
     expect(urls).not.toContain("https://stale.example.test/old-run");
+  });
+
+  it("does not render stale context after changing activity", async () => {
+    const firstRunId = "a0000000-0000-4000-a000-000000000505";
+    const secondRunId = "a0000000-0000-4000-a000-000000000506";
+    const secondContextResponse = Promise.withResolvers<void>();
+    const secondContextRequested = Promise.withResolvers<void>();
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ params, respond }) => {
+      const id = String(params.id);
+      return respond(
+        200,
+        makeLogDetail({
+          id,
+          displayName: id === firstRunId ? "First Activity" : "Second Activity",
+          status: "completed",
+          prompt: "Inspect stale context rendering",
+          startedAt: "2026-03-10T18:40:00Z",
+          completedAt: "2026-03-10T18:40:10Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+    context.mocks.api(
+      zeroRunContextContract.getContext,
+      async ({ params, respond }) => {
+        const id = String(params.id);
+        if (id === secondRunId) {
+          secondContextRequested.resolve();
+          await secondContextResponse.promise;
+          return respond(200, {
+            ...codexRunContext(secondRunId),
+            secretNames: ["SECOND_ONLY_SECRET"],
+          });
+        }
+
+        return respond(200, {
+          ...codexRunContext(firstRunId),
+          secretNames: ["FIRST_ONLY_SECRET"],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${firstRunId}?tab=context`,
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("FIRST_ONLY_SECRET")).toBeInTheDocument();
+    });
+
+    context.store.set(detachedNavigateTo$, ROUTES.activityDetail, {
+      pathParams: { activityRunId: secondRunId },
+      searchParams: new URLSearchParams("tab=context"),
+    });
+    await secondContextRequested.promise;
+
+    try {
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "Second Activity" }),
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByText("FIRST_ONLY_SECRET")).not.toBeInTheDocument();
+    } finally {
+      secondContextResponse.resolve();
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText("SECOND_ONLY_SECRET")).toBeInTheDocument();
+    });
   });
 
   it("does not render stale step messages after changing activity", async () => {
