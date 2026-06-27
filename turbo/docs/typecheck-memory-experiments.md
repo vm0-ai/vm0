@@ -567,6 +567,32 @@ slice is healthy, but adding the computer-use route slice while the same
 peak. Revisit this after wiring a real sequential test-check runner that
 excludes migrated roots from the remaining dirty chunk.
 
+### 28. Org-team Slack-only helper slice
+
+Change tested: move the one `org-team.bdd.test.ts` Slack cleanup scenario from
+the broad `api-bdd-integrations.ts` helper to a new Slack-only helper backed by
+real `zeroSlackOauthRoutes` and `zeroSlackConnectRoutes`.
+
+Commands:
+
+- `node scripts/measure-memory.mjs --label api-tests-org-team-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-org-team-slice.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-tests-no-setup-app-org-slack-split --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-no-setup-app.json --noEmit`
+
+Results:
+
+- Static split would make `org-team.bdd.test.ts` stop touching the full app
+  test helper graph.
+- `org-team` standalone strict slice passed, peak `1866.1 MiB`, duration
+  `38.8s`.
+- `tests-no-setup-app` chunk still OOMed, peak worsened to `2269.4 MiB`
+  versus the current branch's previous `2238.0 MiB`-class runs.
+
+Conclusion: do not keep this migration as an isolated change. It creates a
+valid strict slice, but the route-sliced Slack oauth/connect graph increases
+the current monolithic API test program's peak while that same program still
+contains the broad dirty helper set. Revisit only after the migrated root is
+excluded from the remaining dirty chunk by a sequential runner.
+
 ## Current conclusions
 
 - `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
