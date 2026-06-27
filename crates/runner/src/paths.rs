@@ -271,7 +271,7 @@ impl HomePaths {
 
     /// Lock file for persistent service unit lifecycle operations.
     ///
-    /// Callers should pass full unit names produced by `service::unit_name`.
+    /// Callers should pass full unit names from `service::RunnerServiceUnit`.
     pub fn service_lock(&self, unit: &str) -> PathBuf {
         self.locks_dir().join(format!("service-{unit}.lock"))
     }
