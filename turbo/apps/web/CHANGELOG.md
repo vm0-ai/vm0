@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.443.0](https://github.com/vm0-ai/vm0/compare/web-v12.442.1...web-v12.443.0) (2026-06-27)
+
+
+### Features
+
+* add workflow-scoped authorization ([#19147](https://github.com/vm0-ai/vm0/issues/19147)) ([b17dcd9](https://github.com/vm0-ai/vm0/commit/b17dcd9d1b4499321bf6f5f8760ab6f43d9285d5))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.121.0
+
 ## [12.442.1](https://github.com/vm0-ai/vm0/compare/web-v12.442.0...web-v12.442.1) (2026-06-26)
 
 

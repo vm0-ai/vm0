@@ -1,5 +1,31 @@
 # Changelog
 
+## [9.212.0](https://github.com/vm0-ai/vm0/compare/cli-v9.211.5...cli-v9.212.0) (2026-06-27)
+
+
+### Features
+
+* add workflow-scoped authorization ([#19147](https://github.com/vm0-ai/vm0/issues/19147)) ([b17dcd9](https://github.com/vm0-ai/vm0/commit/b17dcd9d1b4499321bf6f5f8760ab6f43d9285d5))
+
+
+### Bug Fixes
+
+* restrict credentialed dynamic firewall hosts ([#19137](https://github.com/vm0-ai/vm0/issues/19137)) ([9801134](https://github.com/vm0-ai/vm0/commit/9801134aede293f0fd3c1f11c386bf4483fff78d))
+
+
+### Refactoring
+
+* replace ts-rest contracts with trpc-backed contracts ([#19150](https://github.com/vm0-ai/vm0/issues/19150)) ([100ff36](https://github.com/vm0-ai/vm0/commit/100ff36c7a8abb9a0506c1183596680b1e0c8199))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.121.0
+    * @vm0/connectors bumped to 1.110.1
+    * @vm0/core bumped to 8.373.0
+
 ## [9.211.5](https://github.com/vm0-ai/vm0/compare/cli-v9.211.4...cli-v9.211.5) (2026-06-26)
 
 
