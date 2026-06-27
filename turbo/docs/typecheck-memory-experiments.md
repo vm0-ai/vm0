@@ -511,6 +511,34 @@ registry for a large host/maps BDD root. It also confirms the shipping path
 should add more separate strict test chunks rather than growing the 34-root
 pure-context chunk.
 
+### 26. GitHub issue mock helper split for callback service tests
+
+Change: split the GitHub issue API/env mocks used by
+`agent-run-callback.service.test.ts` into a pure
+`api-bdd-github-mocks.ts` helper. Keep the route BDD helper
+`api-bdd-github.ts` unchanged for existing public exports, but point the
+service test at the pure helper so it no longer imports the full GitHub route
+BDD graph.
+
+Commands:
+
+- `node scripts/measure-memory.mjs --label api-tests-agent-run-callback-service-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-agent-run-callback-service-slice.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-tests-no-setup-app-54-roots-github-mocks-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-no-setup-app.json --noEmit`
+
+Results:
+
+- Static split improved from `35 clean / 19 dirty` to
+  `36 clean / 18 dirty`; newly clean root:
+  `agent-run-callback.service.test.ts`.
+- `agent-run-callback.service` standalone strict slice passed, peak
+  `1651.1 MiB`, duration `28.4s`.
+- `tests-no-setup-app` 54-root chunk still OOMed, peak `2238.0 MiB`.
+
+Conclusion: keep this change. It is a strictness-preserving pure helper split
+with a healthy standalone chunk. The 54-root peak is effectively neutral versus
+the previous `2237.2 MiB` run, but the full route graph now covers one fewer
+service test root.
+
 ## Current conclusions
 
 - `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
@@ -523,7 +551,7 @@ pure-context chunk.
   and the strongest measured chunks are route leaves (`2057.9 MiB` max),
   explicit-route tests (`1026.0 MiB` for callback-route), route-free
   pure-context tests (`2233.9 MiB` for 34 roots), and the host/maps BDD chunk
-  (`1894.2 MiB`).
+  (`1894.2 MiB`) plus callback-service chunk (`1651.1 MiB`).
 - Direct route test entries are worth keeping: they eliminate every direct
   `app-factory.ts` edge in `tsconfig.tests-no-setup-app.json` without reducing
   strictness.

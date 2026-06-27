@@ -35,7 +35,7 @@ import { seedAgentRunCallback$ } from "../../routes/__tests__/helpers/agent-run-
 import {
   captureGithubIssueApi,
   mockGithubAppEnv,
-} from "../../routes/__tests__/helpers/api-bdd-github";
+} from "../../routes/__tests__/helpers/api-bdd-github-mocks";
 import { encryptSecretForTests } from "../../routes/__tests__/helpers/encrypt-secret";
 import {
   deleteSlackIntegrationFixture$,
