@@ -1,4 +1,4 @@
-import type { ConnectorConfig } from "../connectors";
+import type { ConnectorConfig } from "../connector-config";
 import { FeatureSwitchKey } from "../feature-switch-key";
 
 export const posthog = {

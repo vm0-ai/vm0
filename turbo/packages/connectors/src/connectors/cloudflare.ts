@@ -1,4 +1,4 @@
-import type { ConnectorConfig } from "../connectors";
+import type { ConnectorConfig } from "../connector-config";
 
 const CLOUDFLARE_OAUTH_SCOPES = [
   "agent-memory.write",

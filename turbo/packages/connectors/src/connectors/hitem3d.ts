@@ -1,4 +1,4 @@
-import type { ConnectorConfig } from "../connectors";
+import type { ConnectorConfig } from "../connector-config";
 
 export const hitem3d = {
   hitem3d: {

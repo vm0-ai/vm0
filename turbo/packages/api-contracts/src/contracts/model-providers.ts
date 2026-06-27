@@ -5,11 +5,20 @@ import {
   VM0_MODEL_CREDIT_MULTIPLIER,
   type SupportedRunModel,
 } from "./model-credit-multipliers";
+import {
+  MODEL_PROVIDER_TYPE_IDS,
+  type ModelProviderFramework,
+  type ModelProviderType,
+} from "./model-provider-types";
 export {
   getModelProviderFirewall,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
 } from "./model-provider-firewalls";
+export type {
+  ModelProviderFramework,
+  ModelProviderType,
+} from "./model-provider-types";
 
 export {
   SUPPORTED_RUN_MODELS,
@@ -146,7 +155,7 @@ export function getDefaultOrgModelPolicySeed(): DefaultOrgModelPolicySeed[] {
  * models list from this mapping via Object.keys().
  */
 interface Vm0ModelConfig {
-  concreteType: string;
+  concreteType: ModelProviderType;
   vendor: string;
   // Overrides the display-name when substituting `$model` in the concrete
   // provider's env bindings. Needed when the upstream API expects a
@@ -764,10 +773,7 @@ export const MODEL_PROVIDER_TYPES = {
     models: Object.keys(VM0_MODEL_TO_PROVIDER) as string[],
     defaultModel: "claude-sonnet-4-6",
   },
-} as const;
-
-export type ModelProviderType = keyof typeof MODEL_PROVIDER_TYPES;
-export type ModelProviderFramework = "claude-code" | "codex";
+} as const satisfies Record<ModelProviderType, unknown>;
 
 const MODEL_FIRST_PROVIDER_COMPATIBILITY = {
   "claude-opus-4-8": [
@@ -930,23 +936,7 @@ export function getSelectableProviderTypes(): ModelProviderType[] {
   );
 }
 
-export const modelProviderTypeSchema = z.enum([
-  "claude-code-oauth-token",
-  "anthropic-api-key",
-  "openrouter-api-key",
-  "moonshot-api-key",
-  "minimax-api-key",
-  "deepseek-api-key",
-  "zai-api-key",
-  "vercel-ai-gateway",
-  "openrouter-codex",
-  "vercel-ai-gateway-codex",
-  "openai-api-key",
-  "codex-oauth-token",
-  "azure-foundry",
-  "aws-bedrock",
-  "vm0",
-]);
+export const modelProviderTypeSchema = z.enum(MODEL_PROVIDER_TYPE_IDS);
 
 export const modelProviderFrameworkSchema = z.enum(["claude-code", "codex"]);
 
