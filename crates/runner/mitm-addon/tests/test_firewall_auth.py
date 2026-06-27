@@ -23,11 +23,12 @@ from tests.auth_state_helpers import (
     auth_cache_key,
     cached_headers,
     force_refresh_pending,
-    last_force_refresh_at,
+    last_force_refresh_monotonic_at,
     mark_force_refresh,
     require_cached_headers,
-    require_last_force_refresh_at,
+    require_last_force_refresh_monotonic_at,
     set_cached_headers,
+    set_last_force_refresh_monotonic_at,
 )
 from tests.firewall_helpers import cancel_pending_task
 from tests.jsonl_log_helpers import read_jsonl_text_after_flush
@@ -523,7 +524,7 @@ class TestGetFirewallHeaders:
         is recorded so the cooldown can suppress re-marking (#9860)."""
         cache_key = auth_cache_key()
         mark_force_refresh(cache_key)
-        before = time.time()
+        before = time.monotonic()
 
         mock_fetch = AsyncMock(return_value=_auth_success(headers={"Authorization": "Bearer new"}))
         with patch.object(auth_cache, "fetch_firewall_headers", mock_fetch):
@@ -534,13 +535,13 @@ class TestGetFirewallHeaders:
         # Marker cleared after consumption
         assert not force_refresh_pending(cache_key)
         # Consume timestamp recorded for cooldown enforcement
-        assert require_last_force_refresh_at(cache_key) >= before
+        assert require_last_force_refresh_monotonic_at(cache_key) >= before
 
     async def test_force_refresh_fetch_failure_still_consumes_marker(self, headers):
         """A failed forced refresh burns the cooldown and does not cache headers."""
         cache_key = auth_cache_key()
         mark_force_refresh(cache_key)
-        before = time.time()
+        before = time.monotonic()
 
         mock_fetch = AsyncMock(side_effect=ConnectionError("server unreachable"))
         with (
@@ -551,8 +552,55 @@ class TestGetFirewallHeaders:
 
         assert mock_fetch.call_args.kwargs["force_refresh"] is True
         assert not force_refresh_pending(cache_key)
-        assert require_last_force_refresh_at(cache_key) >= before
+        assert require_last_force_refresh_monotonic_at(cache_key) >= before
         assert cached_headers(cache_key) is None
+
+    def test_force_refresh_first_request_is_allowed_without_previous_timestamp(self, headers):
+        """A fresh auth state has no cooldown timestamp, so the first 401 marks."""
+        cache_key = auth_cache_key()
+
+        with patch.object(auth_cache.time, "monotonic", return_value=10.0):
+            auth_cache.request_force_refresh(cache_key)
+
+        assert force_refresh_pending(cache_key)
+
+    def test_force_refresh_inside_monotonic_cooldown_is_suppressed(self, headers):
+        """Repeated 401s inside the process-local cooldown do not re-mark."""
+        cache_key = auth_cache_key()
+        set_last_force_refresh_monotonic_at(cache_key, 1000.0)
+
+        with patch.object(auth_cache.time, "monotonic", return_value=1119.0):
+            auth_cache.request_force_refresh(cache_key)
+
+        assert not force_refresh_pending(cache_key)
+
+    def test_force_refresh_after_monotonic_cooldown_is_allowed(self, headers):
+        """A 401 after the monotonic cooldown elapsed can re-mark."""
+        cache_key = auth_cache_key()
+        set_last_force_refresh_monotonic_at(cache_key, 1000.0)
+
+        with patch.object(auth_cache.time, "monotonic", return_value=1121.0):
+            auth_cache.request_force_refresh(cache_key)
+
+        assert force_refresh_pending(cache_key)
+
+    async def test_force_refresh_records_monotonic_timestamp_before_fetch_returns(self, headers):
+        """The cooldown is burned before awaiting the forced auth fetch."""
+        cache_key = auth_cache_key()
+        mark_force_refresh(cache_key)
+
+        async def delayed_fetch(*args, **kwargs):
+            assert kwargs["force_refresh"] is True
+            assert require_last_force_refresh_monotonic_at(cache_key) == 1234.0
+            return _auth_success(headers={"Authorization": "Bearer new"})
+
+        with (
+            patch.object(auth_cache.time, "monotonic", return_value=1234.0),
+            patch.object(auth_cache, "fetch_firewall_headers", side_effect=delayed_fetch),
+        ):
+            await auth_cache.get_firewall_headers(cache_key, _firewall_auth_request())
+
+        assert require_last_force_refresh_monotonic_at(cache_key) == 1234.0
 
     async def test_non_forced_fetch_does_not_cache_if_marker_appears_in_flight(self, headers):
         """A 401 marker during a non-forced fetch must win over the cache write."""
@@ -594,7 +642,7 @@ class TestGetFirewallHeaders:
         forced_fetch = AsyncMock(
             return_value=_auth_success(headers=forced_headers, expires_at=time.time() + 3600)
         )
-        before_forced = time.time()
+        before_forced = time.monotonic()
 
         with patch.object(auth_cache, "fetch_firewall_headers", forced_fetch):
             forced_result = await auth_cache.get_firewall_headers(
@@ -605,7 +653,7 @@ class TestGetFirewallHeaders:
         assert forced_result["headers"] == forced_headers
         assert forced_result["cache_hit"] is False
         assert not force_refresh_pending(cache_key)
-        assert require_last_force_refresh_at(cache_key) >= before_forced
+        assert require_last_force_refresh_monotonic_at(cache_key) >= before_forced
         assert require_cached_headers(cache_key).payload.headers == forced_headers
 
     async def test_waiting_request_force_refreshes_after_in_flight_marker(self, headers):
@@ -667,7 +715,7 @@ class TestGetFirewallHeaders:
 
         assert mock_fetch.call_args.kwargs["force_refresh"] is False
         # No consume timestamp written when force-refresh didn't happen
-        assert last_force_refresh_at(cache_key) == 0.0
+        assert last_force_refresh_monotonic_at(cache_key) is None
 
     async def test_force_refresh_marker_is_scoped_to_auth_identity(self, headers):
         old_key = auth_cache_key(auth_identity="old-auth")

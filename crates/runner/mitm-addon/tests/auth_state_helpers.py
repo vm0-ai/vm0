@@ -72,16 +72,22 @@ def force_refresh_pending(cache_key: auth_cache.FirewallAuthCacheKey) -> bool:
     return bool(state and state.force_refresh_pending)
 
 
-def set_last_force_refresh_at(cache_key: auth_cache.FirewallAuthCacheKey, timestamp: float) -> None:
-    auth_cache._get_auth_state(cache_key).last_force_refresh_at = timestamp
+def set_last_force_refresh_monotonic_at(
+    cache_key: auth_cache.FirewallAuthCacheKey, timestamp: float
+) -> None:
+    auth_cache._get_auth_state(cache_key).last_force_refresh_monotonic_at = timestamp
 
 
-def last_force_refresh_at(cache_key: auth_cache.FirewallAuthCacheKey) -> float | None:
+def last_force_refresh_monotonic_at(
+    cache_key: auth_cache.FirewallAuthCacheKey,
+) -> float | None:
     state = auth_cache._auth_state.get(cache_key)
-    return state.last_force_refresh_at if state else None
+    return state.last_force_refresh_monotonic_at if state else None
 
 
-def require_last_force_refresh_at(cache_key: auth_cache.FirewallAuthCacheKey) -> float:
-    timestamp = last_force_refresh_at(cache_key)
+def require_last_force_refresh_monotonic_at(
+    cache_key: auth_cache.FirewallAuthCacheKey,
+) -> float:
+    timestamp = last_force_refresh_monotonic_at(cache_key)
     assert timestamp is not None
     return timestamp
