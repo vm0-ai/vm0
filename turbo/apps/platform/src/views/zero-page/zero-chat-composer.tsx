@@ -5024,15 +5024,11 @@ function ComposerTemplatePickerSlot({
 }: {
   picker: ComposerTemplatePicker | undefined;
 }) {
-  const features = useLastResolved(featureSwitch$);
-  const hasChatTemplatePicker = Boolean(
-    features?.[FeatureSwitchKey.ChatTemplatePicker],
-  );
-  const hasPptTab = hasChatTemplatePicker;
-  const hasIllustrationTab = hasChatTemplatePicker;
-  const hasVideoTab = Boolean(features?.[FeatureSwitchKey.VideoTemplatePicker]);
+  const hasPptTab = true;
+  const hasIllustrationTab = true;
+  const hasVideoTab = true;
   const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
-  if (!picker || (!hasChatTemplatePicker && !hasVideoTab)) {
+  if (!picker) {
     return null;
   }
   return (

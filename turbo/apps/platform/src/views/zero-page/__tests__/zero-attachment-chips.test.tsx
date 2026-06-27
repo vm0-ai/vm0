@@ -1071,9 +1071,6 @@ describe("zero attachment chips", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.PresentationHtmlPptxDownload]: true,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 
