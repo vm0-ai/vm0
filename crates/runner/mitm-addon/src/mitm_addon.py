@@ -772,6 +772,7 @@ def _bind_flow_upstream_destination_if_unconnected(
     flow.server_conn.address = (normalized_host, flow.request.port)
     upstream_destination_binding.record_server_binding(
         flow.server_conn,
+        client=flow.client_conn,
         host=normalized_host,
         port=flow.request.port,
         kinds=frozenset((kind,)),
@@ -1535,6 +1536,7 @@ def _bind_privileged_upstream_destination(
     server.address = (hostname, port)
     upstream_destination_binding.record_server_binding(
         server,
+        client=client,
         host=hostname,
         port=port,
         kinds=kinds,
@@ -1653,6 +1655,7 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
 
 def client_disconnected(client: connection.Client) -> None:
     _forget_tls_admission(client)
+    upstream_destination_binding.forget_client_bindings(client)
 
 
 # ============================================================================

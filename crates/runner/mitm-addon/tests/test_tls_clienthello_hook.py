@@ -91,6 +91,31 @@ class TestTlsClienthello:
         assert binding.kinds == frozenset(("connector_auth",))
         assert binding.original_address == ("203.0.113.10", 443)
 
+    def test_client_disconnect_clears_clienthello_binding(
+        self, registry_file, make_tls_data, mitm_ctx
+    ):
+        data = make_tls_data(
+            client_ip="10.200.0.1",
+            sni="pr-test-api.vm6.ai",
+            client_sni="",
+        )
+
+        with (
+            mitm_ctx(
+                registry_path=str(registry_file),
+                api_url="https://pr-test-api.vm6.ai",
+            ),
+        ):
+            mitm_addon.tls_clienthello(data)
+
+        assert data.context.server.id in upstream_destination_binding.binding_snapshot_for_tests()
+
+        mitm_addon.client_disconnected(data.context.client)
+
+        assert (
+            data.context.server.id not in upstream_destination_binding.binding_snapshot_for_tests()
+        )
+
     def test_invalid_registered_vm_allows_mitm(self, tmp_path, make_tls_data, mitm_ctx):
         registry_file = tmp_path / "registry.json"
         registry_file.write_text(json.dumps({"vms": {"10.200.0.9": "broken"}, "updatedAt": 0}))

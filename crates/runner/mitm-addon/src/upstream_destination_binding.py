@@ -21,6 +21,8 @@ class UpstreamDestinationBinding:
 
 
 _bindings_by_server_id: dict[str, UpstreamDestinationBinding] = {}
+_server_ids_by_client_id: dict[str, set[str]] = {}
+_client_id_by_server_id: dict[str, str] = {}
 
 
 def _connection_id(connection: object) -> str | None:
@@ -33,6 +35,7 @@ def _connection_id(connection: object) -> str | None:
 def record_server_binding(
     server: object,
     *,
+    client: object | None = None,
     host: str,
     port: int,
     kinds: frozenset[BindingKind],
@@ -47,12 +50,41 @@ def record_server_binding(
         kinds=kinds,
         original_address=original_address,
     )
+    client_id = _connection_id(client)
+    if client_id is None:
+        return
+    existing_client_id = _client_id_by_server_id.get(server_id)
+    if existing_client_id is not None and existing_client_id != client_id:
+        server_ids = _server_ids_by_client_id.get(existing_client_id)
+        if server_ids is not None:
+            server_ids.discard(server_id)
+            if not server_ids:
+                _server_ids_by_client_id.pop(existing_client_id, None)
+    _client_id_by_server_id[server_id] = client_id
+    _server_ids_by_client_id.setdefault(client_id, set()).add(server_id)
 
 
 def forget_server_binding(server: object) -> None:
     server_id = _connection_id(server)
     if server_id is not None:
         _bindings_by_server_id.pop(server_id, None)
+        client_id = _client_id_by_server_id.pop(server_id, None)
+        if client_id is not None:
+            server_ids = _server_ids_by_client_id.get(client_id)
+            if server_ids is not None:
+                server_ids.discard(server_id)
+                if not server_ids:
+                    _server_ids_by_client_id.pop(client_id, None)
+
+
+def forget_client_bindings(client: object) -> None:
+    client_id = _connection_id(client)
+    if client_id is None:
+        return
+    server_ids = _server_ids_by_client_id.pop(client_id, set())
+    for server_id in server_ids:
+        _bindings_by_server_id.pop(server_id, None)
+        _client_id_by_server_id.pop(server_id, None)
 
 
 def _address_matches(host: str, port: int, address: object) -> bool:
@@ -101,3 +133,5 @@ def binding_snapshot_for_tests() -> dict[str, UpstreamDestinationBinding]:
 
 def reset_for_tests() -> None:
     _bindings_by_server_id.clear()
+    _server_ids_by_client_id.clear()
+    _client_id_by_server_id.clear()
