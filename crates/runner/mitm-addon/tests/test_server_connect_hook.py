@@ -1,6 +1,8 @@
 """Tests for upstream destination binding in server_connect()."""
 
+import socket
 import uuid
+from unittest.mock import patch
 
 import mitm_addon
 import upstream_destination_binding
@@ -98,6 +100,45 @@ def test_server_connect_retargets_api_allow_host(registry_file, mitm_ctx):
     assert data.server.address == ("api.vm0.ai", 443)
     binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
     assert binding.kinds == frozenset(("api_allow",))
+
+
+def test_server_connect_binds_api_host_from_original_address(registry_file, mitm_ctx):
+    data = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.34", 443))
+
+    with (
+        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))],
+        ),
+    ):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("pr-test-api.vm6.ai", 443)
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
+    assert binding.host == "pr-test-api.vm6.ai"
+    assert binding.kinds == frozenset(("api_allow",))
+    assert binding.original_address == ("198.18.20.34", 443)
+
+
+def test_server_connect_does_not_bind_api_host_when_original_address_misses_dns(
+    registry_file, mitm_ctx
+):
+    data = _data(client_ip="10.200.0.1", sni="", address=("198.18.20.35", 443))
+
+    with (
+        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))],
+        ),
+    ):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("198.18.20.35", 443)
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 def test_server_connect_does_not_retarget_auth_base_only_connector(tmp_path, mitm_ctx):

@@ -1619,20 +1619,81 @@ def reset_upstream_destination_resolution_cache_for_tests() -> None:
 
 
 def _api_hostname_matches(hostname: str) -> bool:
+    api_destination = _api_destination()
+    if api_destination is None:
+        return False
+    api_hostname, _api_port = api_destination
+    return hostname == api_hostname or hostname.endswith(f".{api_hostname}")
+
+
+def _api_destination() -> tuple[str, int] | None:
     try:
         api_url = get_api_url()
     except AttributeError:
-        return False
+        return None
     if not api_url:
-        return False
+        return None
     parsed_api = urllib.parse.urlparse(api_url)
     if not parsed_api.hostname:
-        return False
+        return None
     try:
         api_hostname = normalize_trusted_hostname(parsed_api.hostname)
     except (UnicodeError, ValueError):
+        return None
+    if parsed_api.port is not None:
+        api_port = parsed_api.port
+    elif parsed_api.scheme.lower() == "http":
+        api_port = 80
+    else:
+        api_port = 443
+    return api_hostname, api_port
+
+
+def _address_resolves_to_trusted_host(
+    address: tuple[str, int] | None,
+    *,
+    host: str,
+    port: int,
+) -> bool:
+    if address is None:
         return False
-    return hostname == api_hostname or hostname.endswith(f".{api_hostname}")
+    address_host, address_port = address
+    if address_port != port:
+        return False
+    address_ip = _ip_address_text(address_host)
+    if address_ip is None:
+        return False
+    return address_ip in _resolved_trusted_host_addresses(host, port)
+
+
+def _bind_api_upstream_destination_from_original_address(
+    *,
+    client: object,
+    server: connection.Server,
+) -> bool:
+    api_destination = _api_destination()
+    if api_destination is None:
+        return False
+    api_hostname, api_port = api_destination
+
+    original_address = _server_address(server)
+    if not _address_resolves_to_trusted_host(
+        original_address,
+        host=api_hostname,
+        port=api_port,
+    ):
+        return False
+
+    server.address = (api_hostname, api_port)
+    upstream_destination_binding.record_server_binding(
+        server,
+        client=client,
+        host=api_hostname,
+        port=api_port,
+        kinds=frozenset(("api_allow",)),
+        original_address=original_address,
+    )
+    return True
 
 
 def _server_connect_binding_kinds(
@@ -1738,6 +1799,11 @@ def server_connect(data: object) -> None:
     raw_sni = getattr(client, "sni", None)
     if not raw_sni and tls_admission is not None:
         raw_sni = tls_admission.sni
+    if not raw_sni and _bind_api_upstream_destination_from_original_address(
+        client=client,
+        server=server,
+    ):
+        return
     _bind_privileged_upstream_destination(
         client=client,
         server=server,
