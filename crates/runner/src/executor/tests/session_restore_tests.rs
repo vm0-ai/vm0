@@ -3,6 +3,7 @@ use sandbox::{
     SandboxOperation,
 };
 use sandbox_mock::MockSandbox;
+use sha2::{Digest, Sha256};
 use std::sync::Mutex;
 use tracing_subscriber::prelude::*;
 
@@ -155,8 +156,30 @@ fn restore_session_writes_history() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "claude-code".into();
-    let session = ResumeSession::inline("sess-abc-123".into(), r#"{"type":"init"}"#.into());
-    run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
+    let history = r#"{"type":"init"}"#;
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-abc-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history.as_bytes())),
+                url: "https://example.com/history".into(),
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+    let session = ResumeSession::inline("sess-abc-123".into(), history.into());
+    let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
+
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    let expected_identity = RestoredSessionIdentity::from_context(&ctx)
+        .expect("restored identity")
+        .with_guest_history(history.len() as u64, writes[0].path.clone());
+    assert_eq!(
+        diagnostics.restored_session_identity,
+        Some(expected_identity)
+    );
 }
 
 #[tokio::test]
@@ -244,27 +267,36 @@ fn restore_session_writes_codex_session() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
     let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
-    let session = ResumeSession::inline(
-        session_id.into(),
-        format!(
-            "{}\n",
-            serde_json::json!({
-                "timestamp": "2026-06-04T07:18:08.001Z",
-                "type": "session_meta",
-                "payload": {
-                    "id": session_id,
-                    "timestamp": "2026-06-04T07:18:08.000Z",
-                    "cwd": "/workspace",
-                    "originator": "test",
-                    "cli_version": "0.137.0",
-                    "source": "cli",
-                    "model_provider": "test-provider",
-                    "base_instructions": null,
-                },
-            }),
-        ),
+    let history = format!(
+        "{}\n",
+        serde_json::json!({
+            "timestamp": "2026-06-04T07:18:08.001Z",
+            "type": "session_meta",
+            "payload": {
+                "id": session_id,
+                "timestamp": "2026-06-04T07:18:08.000Z",
+                "cwd": "/workspace",
+                "originator": "test",
+                "cli_version": "0.137.0",
+                "source": "cli",
+                "model_provider": "test-provider",
+                "base_instructions": null,
+            },
+        }),
     );
-    run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: session_id.into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history.as_bytes())),
+                url: "https://example.com/history".into(),
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+    let session = ResumeSession::inline(session_id.into(), history.clone());
+    let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
     assert_codex_cleanup_call(&sandbox);
 
@@ -280,6 +312,13 @@ fn restore_session_writes_codex_session() {
     assert_eq!(
         writes[0].content,
         session.session_history().unwrap().as_bytes()
+    );
+    let expected_identity = RestoredSessionIdentity::from_context(&ctx)
+        .expect("restored identity")
+        .with_guest_history(history.len() as u64, writes[0].path.clone());
+    assert_eq!(
+        diagnostics.restored_session_identity,
+        Some(expected_identity)
     );
 }
 
