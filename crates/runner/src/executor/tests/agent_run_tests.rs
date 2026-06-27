@@ -265,6 +265,17 @@ async fn run_in_sandbox_runs_guest_download_for_cached_instruction_normalization
             .any(|call| call.cmd == guest_download_stdin_command()),
         "cached instruction storage should still invoke guest-download; calls: {exec_calls:?}"
     );
+    let ops = telemetry.pending_ops_snapshot();
+    assert!(
+        ops.iter()
+            .any(|(action, success, _)| action == "runner_storage_manifest_apply" && *success),
+        "runner storage manifest apply should be recorded with the disambiguated metric name: {ops:?}"
+    );
+    assert!(
+        ops.iter()
+            .all(|(action, _, _)| action != "storage_download"),
+        "runner telemetry should not use the guest-download per-entry metric name: {ops:?}"
+    );
 }
 
 #[tokio::test]
