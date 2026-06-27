@@ -20,6 +20,7 @@
     "src/signals/routes/__tests__/test-telegram-dispatch-probe.test.ts",
     "src/signals/routes/__tests__/test-telegram-mock.test.ts",
     "src/signals/routes/__tests__/test-telegram-state.test.ts",
+    "src/signals/routes/__tests__/user-config.bdd.test.ts",
     "src/signals/routes/__tests__/zero-built-in-generation.test.ts",
     "src/signals/routes/__tests__/zero-connectors-oauth-start.test.ts",
     "src/signals/routes/__tests__/zero-email.test.ts",

@@ -23,18 +23,25 @@ import {
 } from "@vm0/api-contracts/contracts/zero-user-preferences";
 import { z } from "zod";
 
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { now } from "../../../../lib/time";
 import {
   signPatJwtForTests,
   signSandboxJwtForTests,
 } from "../../../auth/tokens";
-import { healthAuthProbeContract } from "../../health-auth-probe";
-import type { ApiTestUser } from "./api-bdd-auth-org";
+import { authMeRoutes } from "../../auth-me";
+import { zeroAgentsRoutes } from "../../zero-agents";
+import { zeroApiKeysDeleteRoutes } from "../../zero-api-keys-delete";
+import { zeroPushSubscriptionsRoutes } from "../../zero-push-subscriptions";
+import { zeroSecretsRoutes } from "../../zero-secrets";
+import { zeroUserModelPreferenceRoutes } from "../../zero-user-model-preference";
+import { zeroUserPreferencesRoutes } from "../../zero-user-preferences";
+import {
+  healthAuthProbeContract,
+  healthAuthProbeRoutes,
+} from "../../health-auth-probe";
+import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type ClerkOrgRole = "org:admin" | "org:member";
@@ -102,6 +109,17 @@ const rawModelPreferenceContract = c.router({
     },
   },
 });
+
+const userConfigRoutes = [
+  ...healthAuthProbeRoutes,
+  ...authMeRoutes,
+  ...zeroAgentsRoutes,
+  ...zeroUserModelPreferenceRoutes,
+  ...zeroPushSubscriptionsRoutes,
+  ...zeroUserPreferencesRoutes,
+  ...zeroSecretsRoutes,
+  ...zeroApiKeysDeleteRoutes,
+] as const;
 
 function isBearerCredential(
   credential: Credential,
@@ -221,7 +239,10 @@ export function createUserConfigBddApi(context: TestContext) {
       query: ProbeQuery,
       statuses: readonly (200 | 401 | 403)[],
     ) {
-      const client = setupApp({ context })(healthAuthProbeContract);
+      const client = setupAppWithRoutes({
+        context,
+        routes: userConfigRoutes,
+      })(healthAuthProbeContract);
       return await accept(client.check({ headers, query }), statuses);
     },
 
@@ -229,7 +250,9 @@ export function createUserConfigBddApi(context: TestContext) {
       readonly userId: string;
       readonly email: string;
     }> {
-      const client = setupApp({ context })(authContract);
+      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
+        authContract,
+      );
       const response = await accept(
         client.me({ headers: authenticate(credential) }),
         [200],
@@ -241,7 +264,9 @@ export function createUserConfigBddApi(context: TestContext) {
       credential: Credential,
       agentId: string,
     ): Promise<{ readonly enabledTypes: string[] }> {
-      const client = setupApp({ context })(zeroUserConnectorsContract);
+      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
+        zeroUserConnectorsContract,
+      );
       const response = await accept(
         client.get({
           headers: authenticate(credential),
@@ -257,7 +282,9 @@ export function createUserConfigBddApi(context: TestContext) {
       agentId: string,
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroUserConnectorsContract);
+      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
+        zeroUserConnectorsContract,
+      );
       return await accept(
         client.get({
           headers: authenticate(credential),
@@ -272,7 +299,9 @@ export function createUserConfigBddApi(context: TestContext) {
       agentId: string,
       enabledTypes: readonly string[],
     ): Promise<{ readonly enabledTypes: string[] }> {
-      const client = setupApp({ context })(zeroUserConnectorsContract);
+      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
+        zeroUserConnectorsContract,
+      );
       const response = await accept(
         client.update({
           headers: authenticate(credential),
@@ -290,7 +319,9 @@ export function createUserConfigBddApi(context: TestContext) {
       enabledTypes: readonly string[],
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroUserConnectorsContract);
+      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
+        zeroUserConnectorsContract,
+      );
       return await accept(
         client.update({
           headers: authenticate(credential),
@@ -304,7 +335,9 @@ export function createUserConfigBddApi(context: TestContext) {
     async readModelPreference(
       actor: ApiTestUser,
     ): Promise<UserModelPreferenceResponse> {
-      const client = setupApp({ context })(zeroUserModelPreferenceContract);
+      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
+        zeroUserModelPreferenceContract,
+      );
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
         [200],
@@ -316,7 +349,9 @@ export function createUserConfigBddApi(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroUserModelPreferenceContract);
+      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
+        zeroUserModelPreferenceContract,
+      );
       return await accept(
         client.get({ headers: authenticate(actor) }),
         statuses,
@@ -327,7 +362,9 @@ export function createUserConfigBddApi(context: TestContext) {
       actor: ApiTestUser,
       body: UpdateUserModelPreferenceRequest,
     ): Promise<UserModelPreferenceResponse> {
-      const client = setupApp({ context })(zeroUserModelPreferenceContract);
+      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
+        zeroUserModelPreferenceContract,
+      );
       const response = await accept(
         client.update({ headers: authenticate(actor), body }),
         [200],
@@ -340,7 +377,9 @@ export function createUserConfigBddApi(context: TestContext) {
       body: UpdateUserModelPreferenceRequest,
       statuses: readonly (200 | 400 | 401)[],
     ) {
-      const client = setupApp({ context })(zeroUserModelPreferenceContract);
+      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
+        zeroUserModelPreferenceContract,
+      );
       return await accept(
         client.update({ headers: authenticate(actor), body }),
         statuses,
@@ -352,7 +391,9 @@ export function createUserConfigBddApi(context: TestContext) {
       body: unknown,
       statuses: readonly (200 | 400 | 401)[],
     ) {
-      const client = setupApp({ context })(rawModelPreferenceContract);
+      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
+        rawModelPreferenceContract,
+      );
       return await accept(
         client.update({ headers: authenticate(actor), body }),
         statuses,
@@ -364,7 +405,9 @@ export function createUserConfigBddApi(context: TestContext) {
       body: RegisterPushBody,
       statuses: readonly (201 | 400 | 401 | 403)[],
     ) {
-      const client = setupApp({ context })(pushSubscriptionsContract);
+      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
+        pushSubscriptionsContract,
+      );
       return await accept(
         client.register({ headers: authenticate(credential), body }),
         statuses,
@@ -376,7 +419,9 @@ export function createUserConfigBddApi(context: TestContext) {
       body: UpdateUserPreferencesRequest,
       statuses: readonly (200 | 400 | 401)[],
     ) {
-      const client = setupApp({ context })(zeroUserPreferencesContract);
+      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
+        zeroUserPreferencesContract,
+      );
       return await accept(
         client.update({ headers: authenticate(actor), body }),
         statuses,
@@ -388,7 +433,9 @@ export function createUserConfigBddApi(context: TestContext) {
       body: SetVariableRequest,
       statuses: readonly (200 | 201 | 400 | 401)[],
     ) {
-      const client = setupApp({ context })(zeroVariablesContract);
+      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
+        zeroVariablesContract,
+      );
       return await accept(
         client.set({ headers: authenticate(actor), body }),
         statuses,
@@ -400,7 +447,9 @@ export function createUserConfigBddApi(context: TestContext) {
       name: string,
       statuses: readonly (204 | 401 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroSecretsByNameContract);
+      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
+        zeroSecretsByNameContract,
+      );
       return await accept(
         client.delete({ headers: authenticate(actor), params: { name } }),
         statuses,
@@ -412,7 +461,9 @@ export function createUserConfigBddApi(context: TestContext) {
       name: string,
       statuses: readonly (204 | 401 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroVariablesByNameContract);
+      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
+        zeroVariablesByNameContract,
+      );
       return await accept(
         client.delete({ headers: authenticate(actor), params: { name } }),
         statuses,
@@ -424,7 +475,9 @@ export function createUserConfigBddApi(context: TestContext) {
       apiKeyId: string,
       statuses: readonly (204 | 401 | 404)[],
     ) {
-      const client = setupApp({ context })(apiKeysByIdContract);
+      const client = setupAppWithRoutes({ context, routes: userConfigRoutes })(
+        apiKeysByIdContract,
+      );
       return await accept(
         client.delete({
           headers: authenticate(actor),
