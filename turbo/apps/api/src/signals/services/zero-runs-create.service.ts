@@ -904,6 +904,7 @@ function buildZeroCreateAgentRunArgs(args: {
     connectorScope: {
       allowedConnectorTypes: args.allowedConnectorTypes,
       allowedCustomConnectorIds: args.allowedCustomConnectorIds,
+      source: args.triggerRun.unattended ? "zero_unattended" : "zero_agent",
     },
     validateEnvironmentReferences: false,
     zeroRunMetadata: {
@@ -950,6 +951,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
     connectorScope: {
       allowedConnectorTypes: args.allowedConnectorTypes,
       allowedCustomConnectorIds: args.allowedCustomConnectorIds,
+      source: "zero_agent",
     },
     validateEnvironmentReferences: false,
     dispatchFailedCallbacks: command.dispatchFailedCallbacks,
