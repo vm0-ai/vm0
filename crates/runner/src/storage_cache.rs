@@ -1498,6 +1498,13 @@ mod tests {
         );
     }
 
+    fn op_duration_ms(ops: &[(String, u64, bool, Option<String>)], action_type: &str) -> u64 {
+        ops.iter()
+            .find(|(key, _, _, _)| key == action_type)
+            .map(|(_, duration_ms, _, _)| *duration_ms)
+            .unwrap_or_else(|| panic!("expected {action_type} in {ops:?}"))
+    }
+
     fn home_at(temp: &tempfile::TempDir) -> HomePaths {
         HomePaths::with_root(temp.path().to_path_buf())
     }
@@ -1570,6 +1577,41 @@ mod tests {
         let cache_dir = home.storage_cache_dir(name, version);
         std::fs::create_dir_all(&cache_dir).unwrap();
         std::fs::write(cache_dir.join("archive.tar.gz"), bytes).unwrap();
+    }
+
+    #[test]
+    fn stage_metrics_total_sums_guest_write_durations() {
+        let mut telemetry = new_telemetry();
+        let mut metrics = StorageCacheStageMetrics::start();
+        let ok: RunnerResult<()> = Ok(());
+
+        metrics.record_write_result(
+            &mut telemetry,
+            STORAGE_CACHE_STAGE_SINGLE_WRITE,
+            Instant::now() - Duration::from_millis(5_000),
+            &ok,
+        );
+        metrics.record_write_result(
+            &mut telemetry,
+            STORAGE_CACHE_STAGE_BATCH_WRITE,
+            Instant::now() - Duration::from_millis(7_000),
+            &ok,
+        );
+        metrics.record_total(&mut telemetry);
+
+        let ops = telemetry.pending_ops_with_duration_snapshot();
+        assert!(
+            op_duration_ms(&ops, STORAGE_CACHE_STAGE_SINGLE_WRITE) >= 5_000,
+            "expected single write duration in {ops:?}"
+        );
+        assert!(
+            op_duration_ms(&ops, STORAGE_CACHE_STAGE_BATCH_WRITE) >= 7_000,
+            "expected batch write duration in {ops:?}"
+        );
+        assert!(
+            op_duration_ms(&ops, STORAGE_CACHE_STAGE_TOTAL) >= 12_000,
+            "expected total to include both guest writes in {ops:?}"
+        );
     }
 
     struct SamePathConcurrentWriteDetectingSandbox {
