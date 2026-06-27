@@ -3,8 +3,8 @@ use std::os::unix::fs::MetadataExt;
 use std::path::Path;
 
 use super::fs::{
-    allocated_bytes, directory_tree_allocated_bytes, has_copy_headroom, local_timestamp,
-    sparse_copy_with_timeout, workspace_cache_path_allocated_bytes,
+    allocated_bytes, has_copy_headroom, local_timestamp, sparse_copy_with_timeout,
+    workspace_cache_path_allocated_bytes,
 };
 use super::gc::gc_budget_satisfied;
 use super::lifecycle::cap_workspace_held_session_states;
@@ -3364,7 +3364,7 @@ async fn gc_dry_run_counts_temporary_only_entry_once() {
     tokio::fs::create_dir_all(&entry_dir).await.unwrap();
     let tmp = paths.session_workspace_cache_tmp_image(&key, RunId::new_v4());
     tokio::fs::write(&tmp, vec![1_u8; 4096]).await.unwrap();
-    let expected = directory_tree_allocated_bytes(&entry_dir).await;
+    let expected = workspace_cache_path_allocated_bytes(&entry_dir).await;
 
     let freed = cache.gc(true).await.unwrap();
 
@@ -3389,7 +3389,7 @@ async fn gc_dry_run_counts_unusable_entry_with_temporary_path_once() {
     tokio::fs::write(&current, b"orphan image").await.unwrap();
     let tmp = paths.session_workspace_cache_tmp_image(&key, RunId::new_v4());
     tokio::fs::write(&tmp, vec![1_u8; 4096]).await.unwrap();
-    let expected = directory_tree_allocated_bytes(&entry_dir).await;
+    let expected = workspace_cache_path_allocated_bytes(&entry_dir).await;
 
     let freed = cache.gc(true).await.unwrap();
 
@@ -3447,6 +3447,62 @@ async fn gc_dry_run_uses_pre_cleanup_freed_bytes_for_disk_pressure() {
     assert!(
         paths.session_workspace_cache_current_image(&key).exists(),
         "dry-run must not preview deleting a valid entry when temporary cleanup would relieve disk pressure"
+    );
+}
+
+#[tokio::test]
+async fn workspace_cache_path_allocated_bytes_does_not_follow_root_symlink_to_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let target = dir.path().join("target");
+    tokio::fs::create_dir_all(&target).await.unwrap();
+    tokio::fs::write(target.join("payload"), vec![1_u8; 1024 * 1024])
+        .await
+        .unwrap();
+    let link = dir.path().join("link");
+    std::os::unix::fs::symlink(&target, &link).unwrap();
+
+    let link_allocated = allocated_bytes(&fs::symlink_metadata(&link).await.unwrap());
+    let target_allocated = workspace_cache_path_allocated_bytes(&target).await;
+    let actual = workspace_cache_path_allocated_bytes(&link).await;
+
+    assert_eq!(actual, link_allocated);
+    assert!(
+        target_allocated > link_allocated,
+        "test setup should make following the symlink visibly larger"
+    );
+}
+
+#[tokio::test]
+async fn workspace_cache_path_allocated_bytes_does_not_follow_nested_symlink_to_directory() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().join("root");
+    let real_nested = root.join("real-nested");
+    tokio::fs::create_dir_all(&real_nested).await.unwrap();
+    tokio::fs::write(real_nested.join("payload"), vec![1_u8; 1024 * 1024])
+        .await
+        .unwrap();
+    let external_target = dir.path().join("external-target");
+    tokio::fs::create_dir_all(&external_target).await.unwrap();
+    tokio::fs::write(external_target.join("payload"), vec![1_u8; 8 * 1024 * 1024])
+        .await
+        .unwrap();
+    let nested_link = root.join("external-link");
+    std::os::unix::fs::symlink(&external_target, &nested_link).unwrap();
+
+    let root_allocated = allocated_bytes(&fs::symlink_metadata(&root).await.unwrap());
+    let real_nested_allocated = workspace_cache_path_allocated_bytes(&real_nested).await;
+    let nested_link_allocated = allocated_bytes(&fs::symlink_metadata(&nested_link).await.unwrap());
+    let external_target_allocated = workspace_cache_path_allocated_bytes(&external_target).await;
+    let expected = root_allocated
+        .saturating_add(real_nested_allocated)
+        .saturating_add(nested_link_allocated);
+
+    let actual = workspace_cache_path_allocated_bytes(&root).await;
+
+    assert_eq!(actual, expected);
+    assert!(
+        external_target_allocated > nested_link_allocated,
+        "test setup should make following the nested symlink visibly larger"
     );
 }
 
