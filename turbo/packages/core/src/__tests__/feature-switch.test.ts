@@ -125,11 +125,6 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.Lab]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.WorkflowsViewer]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ApiKeys]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.ChatTemplatePicker]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.VideoTemplatePicker]).toBe(true);
-    expect(staffOrgStates[FeatureSwitchKey.PresentationHtmlPptxDownload]).toBe(
-      true,
-    );
     expect(staffOrgStates[FeatureSwitchKey.GoalWorkflows]).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ConnectorAccessManagement]).toBe(
       true,
@@ -145,11 +140,6 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.Lab]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.WorkflowsViewer]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ApiKeys]).toBe(false);
-    expect(otherOrgStates[FeatureSwitchKey.ChatTemplatePicker]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.VideoTemplatePicker]).toBe(true);
-    expect(otherOrgStates[FeatureSwitchKey.PresentationHtmlPptxDownload]).toBe(
-      true,
-    );
     expect(otherOrgStates[FeatureSwitchKey.GoalWorkflows]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ConnectorAccessManagement]).toBe(
       false,
