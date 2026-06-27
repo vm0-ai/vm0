@@ -463,6 +463,17 @@ function expectApiDispatchSpanKind(
   }
 }
 
+function singleApiDispatchEvent(
+  events: readonly Record<string, unknown>[],
+  actionType: string,
+): Record<string, unknown> {
+  const matchingEvents = events.filter((event) => {
+    return event.op_type === actionType;
+  });
+  expect(matchingEvents).toHaveLength(1);
+  return matchingEvents[0]!;
+}
+
 function expectApiDispatchTimingEventsNotToLeak(
   events: readonly Record<string, unknown>[],
   forbiddenValues: readonly string[],
@@ -1871,6 +1882,24 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       timingEvents,
       API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES,
     );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_scope_source: "zero_agent",
+        stored_connector_count_bucket: "1",
+        stored_connector_secret_count_bucket: "1",
+      }),
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      "x-bdd-access",
+      "x-bdd-refresh",
+      "X_TOKEN",
+      "SLACK_TOKEN",
+    ]);
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
@@ -1926,6 +1955,164 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("does not decrypt stored connector secrets overridden by body secrets", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-overridden-access",
+      refreshToken: "x-bdd-overridden-refresh",
+    });
+    const composeName = `bdd-overridden-connector-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+
+    const kms = fakeKmsClient();
+    setSecretKmsClientForTests(kms.client);
+    onTestFinished(() => {
+      resetSecretKmsClientForTests();
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "use overridden x connector secret",
+      secrets: { X_TOKEN: "body-x-token" },
+    });
+    const decryptCalls = kms.calls.filter((call) => {
+      return call instanceof DecryptCommand;
+    });
+    expect(decryptCalls).toHaveLength(0);
+
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
+    );
+    expectApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_load_stored_connector_secret_rows",
+    ]);
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+    ]);
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_context_build_stored_connector_state",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_scope_source: "legacy_all",
+        stored_connector_count_bucket: "1",
+        stored_connector_secret_count_bucket: "0",
+      }),
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      "x-bdd-overridden-access",
+      "x-bdd-overridden-refresh",
+      "body-x-token",
+      "X_TOKEN",
+    ]);
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment?.X_TOKEN).toBe(
+      connectorPlaceholder("x", "X_TOKEN"),
+    );
+    expect(claim.secretConnectorMap ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "x")).toStrictEqual({
+      kind: "builtin",
+      name: "x",
+    });
+    expect(claim.billableFirewalls).toContain("x");
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the x claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: { Authorization: `Bearer \${{ secrets.X_TOKEN }}` },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected the overridden x firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer body-x-token",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("maps stored connector variable sources to runtime aliases for permission manifests", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "test-oauth",
+      authMethod: "oauth",
+      accessToken: "test-oauth-bdd-access",
+      refreshToken: "test-oauth-bdd-refresh",
+    });
+    const composeName = `bdd-connector-var-alias-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "use stored connector variable aliases",
+    });
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(findFirewallEntry(claim.firewalls, "test-oauth")).toStrictEqual({
+      kind: "builtin",
+      name: "test-oauth",
+      baseUrlVars: {
+        TEST_OAUTH_TENANT_ID: "test-oauth-oauth-tenantId",
+      },
+    });
+    expect(claim.environment?.TEST_OAUTH_TENANT_ID).toBe(
+      "test-oauth-oauth-tenantId",
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("injects only enabled stored connectors for Zero-backed direct runs", async () => {
     const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
@@ -1960,6 +2147,18 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expectApiDispatchActions(
       timingEvents,
       API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_scope_source: "zero_agent",
+        stored_connector_count_bucket: "1",
+        stored_connector_secret_count_bucket: "1",
+      }),
     );
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
@@ -2953,6 +3152,18 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expectApiDispatchActions(
       timingEvents,
       API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
+    );
+    expect(
+      singleApiDispatchEvent(
+        timingEvents,
+        "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+      ),
+    ).toStrictEqual(
+      expect.objectContaining({
+        connector_scope_source: "legacy_all",
+        stored_connector_count_bucket: "1",
+        stored_connector_secret_count_bucket: "1",
+      }),
     );
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);

@@ -5,6 +5,7 @@ import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { onRejection } from "../utils";
 
 type ApiDispatchTimingSpanKind = "top_level" | "nested";
+export type ApiDispatchTimingDimensions = Readonly<Record<string, string>>;
 
 export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_agent_run"
@@ -88,6 +89,7 @@ interface ApiDispatchTimingRecord {
   readonly spanKind: ApiDispatchTimingSpanKind;
   readonly durationMs: number;
   readonly timestamp: string;
+  readonly dimensions?: ApiDispatchTimingDimensions;
 }
 
 export class ApiDispatchTimingCollector {
@@ -98,12 +100,14 @@ export class ApiDispatchTimingCollector {
     spanKind: ApiDispatchTimingSpanKind,
     startedAt: number,
     finishedAt: number = now(),
+    dimensions?: ApiDispatchTimingDimensions,
   ): void {
     this.records.push({
       actionType,
       spanKind,
       durationMs: Math.max(0, finishedAt - startedAt),
       timestamp: new Date(finishedAt).toISOString(),
+      dimensions,
     });
   }
 
@@ -111,6 +115,7 @@ export class ApiDispatchTimingCollector {
     actionType: ApiDispatchTimingActionType,
     spanKind: ApiDispatchTimingSpanKind,
     operation: () => T | Promise<T>,
+    dimensions?: ApiDispatchTimingDimensions,
   ): Promise<T> {
     const startedAt = now();
     const result = await onRejection(
@@ -118,10 +123,10 @@ export class ApiDispatchTimingCollector {
         return await operation();
       })(),
       () => {
-        this.recordElapsed(actionType, spanKind, startedAt);
+        this.recordElapsed(actionType, spanKind, startedAt, now(), dimensions);
       },
     );
-    this.recordElapsed(actionType, spanKind, startedAt);
+    this.recordElapsed(actionType, spanKind, startedAt, now(), dimensions);
     return result;
   }
 
@@ -143,6 +148,7 @@ export class ApiDispatchTimingCollector {
           runId: args.runId,
           timestamp: record.timestamp,
           dimensions: {
+            ...record.dimensions,
             runner_group: args.runnerGroup,
             profile: args.profile,
             dispatch_path: args.dispatchPath,
@@ -162,9 +168,10 @@ export async function measureApiDispatchTiming<T>(
   actionType: ApiDispatchTimingActionType,
   spanKind: ApiDispatchTimingSpanKind,
   operation: () => T | Promise<T>,
+  dimensions?: ApiDispatchTimingDimensions,
 ): Promise<T> {
   if (!collector) {
     return await operation();
   }
-  return await collector.measure(actionType, spanKind, operation);
+  return await collector.measure(actionType, spanKind, operation, dimensions);
 }
