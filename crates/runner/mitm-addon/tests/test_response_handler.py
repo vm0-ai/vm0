@@ -50,11 +50,11 @@ def _prepare_legacy_connector_diagnostic_flow(tmp_path, flow, *, capture_body: b
 
 def _drain_connector_diagnostic_response_stream(flow, *, upstream_chunk: bytes = b"upstream"):
     stream = response_stream(flow)
-    assert stream(upstream_chunk) == b""
+    assert stream(upstream_chunk) == ()
     diagnostic_body = stream(b"")
     assert isinstance(diagnostic_body, bytes)
     assert json.loads(diagnostic_body)["error"] == "connector_not_configured_for_run"
-    assert stream(b"") == b""
+    assert stream(b"") == ()
     return diagnostic_body
 
 

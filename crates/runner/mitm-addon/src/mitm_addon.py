@@ -115,6 +115,7 @@ _CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS = (
 _CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT = "_connector_diagnostic_response_stream_body_sent"
 _CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_CALLBACK = "_connector_diagnostic_response_stream_callback"
 _CONNECTOR_DIAGNOSTIC_PROXY_ENTRY_LOGGED = "_connector_diagnostic_proxy_entry_logged"
+_EMPTY_RESPONSE_STREAM_CHUNKS: tuple[bytes, ...] = ()
 _GENERIC_AUTH_HEADER_NAMES = frozenset(
     (
         "authorization",
@@ -1235,11 +1236,11 @@ def _install_connector_diagnostic_response_stream(flow: http.HTTPFlow) -> bool:
         return False
     flow.metadata[_CONNECTOR_DIAGNOSTIC_RESPONSE_REPLACED_IN_HEADERS] = True
 
-    def stream_connector_diagnostic_response(chunk: bytes) -> bytes:
+    def stream_connector_diagnostic_response(chunk: bytes) -> bytes | tuple[bytes, ...]:
         if chunk:
-            return b""
+            return _EMPTY_RESPONSE_STREAM_CHUNKS
         if flow.metadata.get(_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT):
-            return b""
+            return _EMPTY_RESPONSE_STREAM_CHUNKS
         flow.metadata[_CONNECTOR_DIAGNOSTIC_RESPONSE_STREAM_BODY_SENT] = True
         return body
 
