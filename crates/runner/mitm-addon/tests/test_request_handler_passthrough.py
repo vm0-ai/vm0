@@ -7,7 +7,7 @@ import pytest
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import registry
-from tests.auth_state_helpers import has_auth_state
+from tests.auth_state_helpers import auth_cache_key, has_auth_state
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 
 
@@ -538,7 +538,7 @@ async def test_invalid_registered_vm_blocks_before_auth_injection(
         "reason": expected_reason,
     }
     auth_fetch.assert_not_called()
-    assert not has_auth_state(("", "https://api.github.com"))
+    assert not has_auth_state(auth_cache_key(run_id="", api_id="https://api.github.com"))
     assert metadata_keys.VM_RUN_ID not in flow.metadata
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"

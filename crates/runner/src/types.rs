@@ -151,8 +151,9 @@ pub struct Firewall {
 /// A single firewall API entry with base URL and auth headers for proxy-side matching.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FirewallApi {
-    /// Unique identifier for cache keying in mitm-addon. Filled by the Python
-    /// registry loader after built-in refs and inline firewalls are resolved.
+    /// Stable API identifier used as one component of mitm-addon auth cache keys.
+    /// Filled by the Python registry loader after built-in refs and inline firewalls
+    /// are resolved.
     #[serde(default)]
     pub id: String,
     pub base: String,

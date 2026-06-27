@@ -64,7 +64,11 @@ from auth import (
     try_apply_stream_safe_firewall_auth_for_requestheaders,
 )
 from body_limits import STREAM_BUFFER_LIMIT
-from firewall_auth_cache import clear_cached_firewall_headers, request_force_refresh
+from firewall_auth_cache import (
+    FirewallAuthCacheKey,
+    clear_cached_firewall_headers,
+    request_force_refresh,
+)
 from logging_utils import (
     add_firewall_metadata,
     flush_log_path,
@@ -2023,9 +2027,8 @@ def response(flow: http.HTTPFlow) -> None:
         and flow.response.status_code == _HTTP_STATUS_UNAUTHORIZED
         and flow.metadata.get(metadata_keys.FIREWALL_BASE)
     ):
-        api_id = flow.metadata.get(metadata_keys.FIREWALL_API_ID, "")
-        if api_id:
-            cache_key = (run_id, api_id)
+        cache_key = flow.metadata.get(metadata_keys.FIREWALL_AUTH_CACHE_KEY)
+        if isinstance(cache_key, FirewallAuthCacheKey):
             clear_cached_firewall_headers(cache_key)
             request_force_refresh(cache_key)
 
