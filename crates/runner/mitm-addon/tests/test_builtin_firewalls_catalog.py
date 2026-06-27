@@ -105,6 +105,24 @@ def test_cloudflare_builtin_preserves_upload_authorization_endpoints():
     }
 
 
+def test_cloudflare_builtin_maps_cf_permissions_required_operations_to_connector_api():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["cloudflare"]
+    connector_api, upload_api = firewall["apis"]
+
+    connector_rules = {
+        rule for permission in connector_api["permissions"] for rule in permission.get("rules", [])
+    }
+    upload_rules = {
+        rule for permission in upload_api["permissions"] for rule in permission.get("rules", [])
+    }
+
+    assert "POST /v4/accounts/{account_id}/ai-search/instances/{id}/search" in connector_rules
+    assert "POST /v4/accounts/{account_id}/email/sending/send" in connector_rules
+    assert "DELETE /v4/accounts/{account_id}/browser-rendering/crawl/{job_id}" in connector_rules
+    assert "POST /v4/accounts/{account_id}/ai-search/instances/{id}/search" not in upload_rules
+    assert "POST /v4/accounts/{account_id}/email/sending/send" not in upload_rules
+
+
 def test_read_like_builtin_permissions_do_not_own_mutation_methods():
     violations: list[str] = []
 
