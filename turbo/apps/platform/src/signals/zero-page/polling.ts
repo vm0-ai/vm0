@@ -286,14 +286,20 @@ export function createRunLoop(runId: string) {
       POLLED_AGENT_EVENTS_PAGE_LIMIT,
       request,
     );
-    set(internalLoopedPagedEvents$, (prev) => {
-      return [...prev, nextPage$];
-    });
-
     set(reloadRunStatus$);
 
     const lastPage = await get(nextPage$);
     signal.throwIfAborted();
+
+    if (
+      lastPage.events.length > 0 ||
+      lastPage.hasMore ||
+      lastPage.nextCursor !== null
+    ) {
+      set(internalLoopedPagedEvents$, (prev) => {
+        return [...prev, nextPage$];
+      });
+    }
 
     const finished = await get(finished$);
     signal.throwIfAborted();
