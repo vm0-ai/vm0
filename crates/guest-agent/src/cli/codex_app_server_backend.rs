@@ -4,6 +4,7 @@
 //! Codex execution continues to use `codex exec --json` unless the explicit
 //! guest env flag selects this backend.
 
+use std::future::Future;
 use std::path::PathBuf;
 
 use serde_json::{Map, Value, json};
@@ -115,8 +116,13 @@ async fn run_codex_app_server(
     let mut heartbeat_done = false;
 
     let run_result = async {
-        client.initialize().await?;
-        let thread_response = start_or_resume_thread(&mut client).await?;
+        race_with_heartbeat(client.initialize(), heartbeat_monitor, &mut heartbeat_done).await?;
+        let thread_response = race_with_heartbeat(
+            start_or_resume_thread(&mut client),
+            heartbeat_monitor,
+            &mut heartbeat_done,
+        )
+        .await?;
         let thread_id = thread_id_from_response(&thread_response)?;
         let mut thread_started_emitted = false;
 
@@ -151,9 +157,12 @@ async fn run_codex_app_server(
             thread_started_emitted = true;
         }
 
-        let turn_response = client
-            .request_value("turn/start", turn_start_params(&thread_id))
-            .await?;
+        let turn_response = race_with_heartbeat(
+            client.request_value("turn/start", turn_start_params(&thread_id)),
+            heartbeat_monitor,
+            &mut heartbeat_done,
+        )
+        .await?;
         let turn_id = turn_id_from_response(&turn_response)?;
 
         let exit_code = loop {
@@ -342,8 +351,24 @@ async fn next_notification_or_heartbeat(
     heartbeat_monitor: &mut HeartbeatMonitor,
     heartbeat_done: &mut bool,
 ) -> Result<ServerNotification, AgentError> {
+    race_with_heartbeat(
+        client.next_notification(TURN_NOTIFICATION_LABEL),
+        heartbeat_monitor,
+        heartbeat_done,
+    )
+    .await
+}
+
+async fn race_with_heartbeat<T>(
+    app_server_wait: impl Future<Output = Result<T, CodexAppServerError>>,
+    heartbeat_monitor: &mut HeartbeatMonitor,
+    heartbeat_done: &mut bool,
+) -> Result<T, AgentError> {
+    // If heartbeat wins, the caller exits the run and shuts the app-server
+    // down. We intentionally do not try to reuse a possibly half-read JSON-RPC
+    // stream after cancelling `app_server_wait`.
     tokio::select! {
-        result = client.next_notification(TURN_NOTIFICATION_LABEL) => Ok(result?),
+        result = app_server_wait => Ok(result?),
         heartbeat_result = wait_for_heartbeat(heartbeat_monitor), if !*heartbeat_done => {
             *heartbeat_done = true;
             Err(heartbeat_error(heartbeat_result))

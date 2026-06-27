@@ -18,6 +18,7 @@ enum Scenario {
     Success,
     DisconnectAfterInitialize,
     ExitOnTurnStart,
+    HangOnTurnStart,
     InterleavedNotification,
     InvalidResponseId,
     MalformedErrorResponse,
@@ -46,6 +47,7 @@ impl Scenario {
             Ok(value) => match value.as_str() {
                 "disconnect-after-initialize" => Ok(Self::DisconnectAfterInitialize),
                 "exit-on-turn-start" => Ok(Self::ExitOnTurnStart),
+                "hang-on-turn-start" => Ok(Self::HangOnTurnStart),
                 "interleaved-notification" => Ok(Self::InterleavedNotification),
                 "invalid-response-id" => Ok(Self::InvalidResponseId),
                 "malformed-error-response" => Ok(Self::MalformedErrorResponse),
@@ -330,6 +332,11 @@ impl AppServerState {
                 }
                 if self.scenario == Scenario::ExitOnTurnStart {
                     return Ok(ServerAction::Stop);
+                }
+                if self.scenario == Scenario::HangOnTurnStart {
+                    loop {
+                        thread::park();
+                    }
                 }
 
                 let Some(thread_id) = non_empty_string_param(params, "threadId") else {
