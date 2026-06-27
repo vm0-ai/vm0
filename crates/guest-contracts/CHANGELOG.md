@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.5...guest-contracts-v0.2.6) (2026-06-27)
+
+
+### Bug Fixes
+
+* guard post-result cleanup deadlines ([#19179](https://github.com/vm0-ai/vm0/issues/19179)) ([e1d2779](https://github.com/vm0-ai/vm0/commit/e1d2779ab9b32e0d195e1d5bf4d3ae7745022b5d))
+
 ## [0.2.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.4...guest-contracts-v0.2.5) (2026-06-26)
 
 

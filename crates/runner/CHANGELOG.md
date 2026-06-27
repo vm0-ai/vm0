@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.129.38](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.37...runner-rs-v0.129.38) (2026-06-27)
+
+
+### Bug Fixes
+
+* preserve Cloudflare upload authorization ([#19175](https://github.com/vm0-ai/vm0/issues/19175)) ([f2b2dd0](https://github.com/vm0-ai/vm0/commit/f2b2dd09d70093a1d14bf5cc38da2a87a2638373))
+* **runner:** avoid host archive validation in storage cache ([#19182](https://github.com/vm0-ai/vm0/issues/19182)) ([058fbf7](https://github.com/vm0-ai/vm0/commit/058fbf726513d176a3be9aafee25bad900fdf206))
+
+
+### Performance Improvements
+
+* split runner claim timing spans ([#19174](https://github.com/vm0-ai/vm0/issues/19174)) ([3d21101](https://github.com/vm0-ai/vm0/commit/3d211010ead27c689566da699414708f3a8c9fcc))
+
 ## [0.129.37](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.36...runner-rs-v0.129.37) (2026-06-27)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.13](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.12...guest-agent-v0.41.13) (2026-06-27)
+
+
+### Bug Fixes
+
+* guard post-result cleanup deadlines ([#19179](https://github.com/vm0-ai/vm0/issues/19179)) ([e1d2779](https://github.com/vm0-ai/vm0/commit/e1d2779ab9b32e0d195e1d5bf4d3ae7745022b5d))
+
 ## [0.41.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.11...guest-agent-v0.41.12) (2026-06-26)
 
 ## [0.41.11](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.10...guest-agent-v0.41.11) (2026-06-26)
