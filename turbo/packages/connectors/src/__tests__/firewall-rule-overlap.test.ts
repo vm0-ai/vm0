@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 
-import { findFirewallRuleOverlap } from "../firewall-rule-overlap";
+import { findFirewallRuleOverlap } from "./firewall-rule-overlap-helper";
 
 describe("firewall rule overlap", () => {
   it("reports exact route overlaps", () => {

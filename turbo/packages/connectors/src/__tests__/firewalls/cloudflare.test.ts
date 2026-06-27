@@ -3,7 +3,7 @@ import { beforeAll, describe, expect, it } from "vitest";
 import {
   findFirewallRuleReferenceOverlaps,
   type FirewallRuleReference,
-} from "../../firewall-rule-overlap";
+} from "../firewall-rule-overlap-helper";
 import { findMatchingPermissions } from "../../firewall-rule-matcher";
 import {
   extractSecretNamesFromApis,

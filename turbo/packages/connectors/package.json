@@ -36,10 +36,6 @@
       "import": "./src/firewall-rule-matcher.ts",
       "types": "./src/firewall-rule-matcher.ts"
     },
-    "./firewall-rule-overlap": {
-      "import": "./src/firewall-rule-overlap.ts",
-      "types": "./src/firewall-rule-overlap.ts"
-    },
     "./firewall-types": {
       "import": "./src/firewall-types.ts",
       "types": "./src/firewall-types.ts"

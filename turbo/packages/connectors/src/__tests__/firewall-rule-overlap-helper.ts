@@ -1,5 +1,5 @@
-import { validateRule } from "./firewall-expander";
-import { parseSegment, splitPathSegments } from "./segment-parser";
+import { validateRule } from "../firewall-expander";
+import { parseSegment, splitPathSegments } from "../segment-parser";
 
 const VALID_RULE_METHODS = [
   "GET",
@@ -24,7 +24,7 @@ interface ParsedRule {
   readonly segments: readonly ParsedSegment[];
 }
 
-export interface FirewallRuleOverlap {
+interface FirewallRuleOverlap {
   readonly leftRule: string;
   readonly rightRule: string;
   readonly method: string;
@@ -36,7 +36,7 @@ export interface FirewallRuleReference {
   readonly rule: string;
 }
 
-export interface FirewallRuleReferenceOverlap {
+interface FirewallRuleReferenceOverlap {
   readonly left: FirewallRuleReference;
   readonly right: FirewallRuleReference;
   readonly method: string;
