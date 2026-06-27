@@ -488,11 +488,11 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
     });
     let mut mismatched_ctx = minimal_context();
     mismatched_ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "sess-mismatch-skip-123".into(),
+        cli_agent_session_id: "sess-other-skip-123".into(),
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
-                hash: hex::encode(Sha256::digest(b"different history")),
+                hash: hex::encode(Sha256::digest(history)),
                 url: server.url("/other-history.blob?token=secret"),
                 size: Some(history.len() as u64),
             },

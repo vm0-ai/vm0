@@ -1,5 +1,7 @@
 use std::fmt;
 
+use sha2::{Digest, Sha256};
+
 use crate::types::ResumeSessionHistoryRefKind;
 
 const CLAUDE_CODE_RESTORE_FORMAT_VERSION: u8 = 1;
@@ -28,6 +30,7 @@ impl RestoredSessionFramework {
 pub(crate) struct RestoredSessionIdentity {
     framework: RestoredSessionFramework,
     restore_format_version: u8,
+    session_id_hash: String,
     history_ref_kind: ResumeSessionHistoryRefKind,
     history_hash: String,
     history_size_bytes: Option<u64>,
@@ -43,6 +46,7 @@ pub(crate) struct RestoredSessionHistoryVerification<'a> {
 impl RestoredSessionIdentity {
     pub(crate) fn new(
         framework: RestoredSessionFramework,
+        cli_agent_session_id: &str,
         history_ref_kind: ResumeSessionHistoryRefKind,
         history_hash: impl Into<String>,
         history_size_bytes: Option<u64>,
@@ -51,6 +55,7 @@ impl RestoredSessionIdentity {
         Self {
             framework,
             restore_format_version: framework.restore_format_version(),
+            session_id_hash: hex::encode(Sha256::digest(cli_agent_session_id.as_bytes())),
             history_ref_kind,
             history_hash: history_hash.into(),
             history_size_bytes,
@@ -62,6 +67,7 @@ impl RestoredSessionIdentity {
     pub(crate) fn claude_code_for_test(history_hash: impl Into<String>) -> Self {
         Self::new(
             RestoredSessionFramework::ClaudeCode,
+            "sess-restore-plan",
             ResumeSessionHistoryRefKind::Blob,
             history_hash,
             None,
@@ -129,6 +135,7 @@ impl PartialEq for RestoredSessionIdentity {
     fn eq(&self, other: &Self) -> bool {
         self.framework == other.framework
             && self.restore_format_version == other.restore_format_version
+            && self.session_id_hash == other.session_id_hash
             && self.history_ref_kind == other.history_ref_kind
             && self.history_hash == other.history_hash
     }
@@ -139,6 +146,7 @@ impl fmt::Debug for RestoredSessionIdentity {
         f.debug_struct("RestoredSessionIdentity")
             .field("framework", &self.framework)
             .field("restore_format_version", &self.restore_format_version)
+            .field("session_id_hash", &"[redacted]")
             .field("history_ref_kind", &self.history_ref_kind)
             .field("history_hash", &"[redacted]")
             .field("history_size_bytes", &self.history_size_bytes)

@@ -104,7 +104,7 @@ fn restored_session_identity_requires_valid_hash_ref() {
 }
 
 #[test]
-fn restored_session_identity_changes_with_framework_and_history_hash() {
+fn restored_session_identity_changes_with_framework_session_and_history_hash() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "claude-code".into();
     ctx.resume_session = Some(ResumeSession {
@@ -134,6 +134,21 @@ fn restored_session_identity_changes_with_framework_and_history_hash() {
     let different_hash_identity =
         RestoredSessionIdentity::from_context(&ctx).expect("different hash identity");
     assert_ne!(claude_identity, different_hash_identity);
+
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-identity-other".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: "hash-a".into(),
+                url: "https://example.com/history".into(),
+                size: Some(12),
+            },
+        },
+    });
+    let different_session_identity =
+        RestoredSessionIdentity::from_context(&ctx).expect("different session identity");
+    assert_ne!(claude_identity, different_session_identity);
 
     ctx.cli_agent_type = "codex".into();
     ctx.resume_session = Some(ResumeSession {

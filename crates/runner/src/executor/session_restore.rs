@@ -23,11 +23,13 @@ const SUBSTRING_SESSION_ID_REDACTION_MIN_LEN: usize = 8;
 impl RestoredSessionIdentity {
     pub(crate) fn from_context(context: &ExecutionContext) -> Option<Self> {
         validate_resume_session_id(context).ok()?;
-        let history_ref = context.resume_session.as_ref()?.history_ref()?;
+        let resume_session = context.resume_session.as_ref()?;
+        let history_ref = resume_session.history_ref()?;
         let framework =
             restored_session_framework(effective_cli_framework(&context.cli_agent_type));
         Some(Self::new(
             framework,
+            &resume_session.cli_agent_session_id,
             history_ref.kind,
             history_ref.hash.clone(),
             history_ref.size,
