@@ -236,9 +236,9 @@ export const setZeroActivityStepSearch$ = command(({ set }, value: string) => {
 /**
  * Active run loop for the currently selected log.
  */
-const internalActiveRunLoop$ = state<ReturnType<typeof createRunLoop> | null>(
-  null,
-);
+type ActiveRunLoop = ReturnType<typeof createRunLoop> & { runId: string };
+
+const internalActiveRunLoop$ = state<ActiveRunLoop | null>(null);
 
 /**
  * Set selected log ID directly — triggers detail fetch + event polling.
@@ -254,7 +254,7 @@ export const setupActivityLogLoop$ = command(
       return;
     }
 
-    const run = createRunLoop(runId);
+    const run = { ...createRunLoop(runId), runId };
     set(internalActiveRunLoop$, run);
     // Yield one microtask tick so React can flush the run detail panel into the
     // DOM before we trigger scrollToBottomActivityDetail$. Without this yield
@@ -301,6 +301,11 @@ export const zeroActivityDetail$ = computed(async (get) => {
 // Events — flattened from run loop's paged events
 // ---------------------------------------------------------------------------
 
+interface ZeroActivityEvents {
+  runId: string;
+  events: AgentEvent[];
+}
+
 export const zeroActivityEvents$ = computed(async (get) => {
   const run = get(internalActiveRunLoop$);
   if (!run) {
@@ -310,27 +315,46 @@ export const zeroActivityEvents$ = computed(async (get) => {
   }
   const pages = await get(run.pagedEventsList$);
   if (pages.length === 0) {
-    return [] as AgentEvent[];
+    return {
+      runId: run.runId,
+      events: [],
+    } satisfies ZeroActivityEvents;
   }
   const results = await Promise.all(
     pages.map((p) => {
       return get(p);
     }),
   );
-  return results.flatMap((r) => {
-    return r.events;
-  });
+  return {
+    runId: run.runId,
+    events: results.flatMap((r) => {
+      return r.events;
+    }),
+  } satisfies ZeroActivityEvents;
 });
+
+interface ZeroActivityVisibleMessages {
+  runId: string | null;
+  messages: GroupedMessage[];
+}
 
 export const zeroActivityVisibleMessages$ = computed(async (get) => {
   const [detail, events] = await Promise.all([
     get(zeroActivityDetail$),
     get(zeroActivityEvents$),
   ]);
-  if (!detail || !events) {
-    return [] as GroupedMessage[];
+  if (!detail || !events || events.runId !== detail.id) {
+    return {
+      runId: events?.runId ?? null,
+      messages: [],
+    } satisfies ZeroActivityVisibleMessages;
   }
-  return groupVisibleMessages(events, { framework: detail.framework });
+  return {
+    runId: detail.id,
+    messages: groupVisibleMessages(events.events, {
+      framework: detail.framework,
+    }),
+  } satisfies ZeroActivityVisibleMessages;
 });
 
 // ---------------------------------------------------------------------------

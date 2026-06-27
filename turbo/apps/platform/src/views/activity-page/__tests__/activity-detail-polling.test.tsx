@@ -27,6 +27,7 @@ import {
   loadNetworkLogsNextPage$,
   zeroActivityNetworkLogs$,
 } from "../../../signals/activity-page/activity-network-signals.ts";
+import { setupActivityLogLoop$ } from "../../../signals/activity-page/activity-signals.ts";
 import { fetchDownloadExtra$ } from "../../../signals/activity-page/activity-download.ts";
 import { pushPathSilently$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
@@ -2543,6 +2544,99 @@ describe("activity detail polling", () => {
     expect(urls).toContain("https://second.example.test/start");
     expect(urls).toContain("https://second.example.test/next");
     expect(urls).not.toContain("https://stale.example.test/old-run");
+  });
+
+  it("does not render stale step messages after changing activity", async () => {
+    const firstRunId = "a0000000-0000-4000-a000-000000000503";
+    const secondRunId = "a0000000-0000-4000-a000-000000000504";
+    const secondEventsResponse = Promise.withResolvers<void>();
+    const secondEventsRequested = Promise.withResolvers<void>();
+
+    const assistantTextEvent = (
+      sequenceNumber: number,
+      text: string,
+    ): AgentEvent => {
+      return {
+        sequenceNumber,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [{ type: "text", text }],
+          },
+        },
+        createdAt: "2026-03-10T18:30:01Z",
+      };
+    };
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ params, respond }) => {
+      const id = String(params.id);
+      return respond(
+        200,
+        makeLogDetail({
+          id,
+          displayName: id === firstRunId ? "First Activity" : "Second Activity",
+          status: "completed",
+          prompt: "Inspect stale step rendering",
+          startedAt: "2026-03-10T18:30:00Z",
+          completedAt: "2026-03-10T18:30:10Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      async ({ params, respond }) => {
+        const id = String(params.id);
+        if (id === secondRunId) {
+          secondEventsRequested.resolve();
+          await secondEventsResponse.promise;
+          return respond(200, {
+            events: [
+              assistantTextEvent(1, "new run step should render after load"),
+            ],
+            hasMore: false,
+            framework: "claude-code",
+          } satisfies AgentEventsResponse);
+        }
+
+        return respond(200, {
+          events: [assistantTextEvent(1, "old run step should not remain")],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${firstRunId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("old run step should not remain"),
+      ).toBeInTheDocument();
+    });
+
+    context.store.set(pushPathSilently$, ROUTES.activityDetail, {
+      activityRunId: secondRunId,
+    });
+    void context.store.set(setupActivityLogLoop$, context.signal);
+    await secondEventsRequested.promise;
+
+    await waitFor(() => {
+      expect(
+        screen.queryByText("old run step should not remain"),
+      ).not.toBeInTheDocument();
+    });
+
+    secondEventsResponse.resolve();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("new run step should render after load"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("shows codex fallback event rows for failed activity details", async () => {

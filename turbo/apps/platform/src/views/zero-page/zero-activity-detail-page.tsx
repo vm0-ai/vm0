@@ -401,11 +401,17 @@ function ActivityStepsContent({
   const stepSearch = useGet(zeroActivityStepSearch$);
   const setStepSearch = useSet(setZeroActivityStepSearch$);
   const visibleMessagesLoadable = useLastLoadable(zeroActivityVisibleMessages$);
-  const visibleMessages =
-    visibleMessagesLoadable.state === "hasData"
+  const visibleMessagesData =
+    visibleMessagesLoadable.state === "hasData" &&
+    visibleMessagesLoadable.data.runId === detail.id
       ? visibleMessagesLoadable.data
-      : [];
-  const visibleMessagesLoading = visibleMessagesLoadable.state === "loading";
+      : null;
+  const visibleMessages =
+    visibleMessagesData === null ? [] : visibleMessagesData.messages;
+  const visibleMessagesLoading =
+    visibleMessagesLoadable.state === "loading" ||
+    (visibleMessagesLoadable.state === "hasData" &&
+      visibleMessagesLoadable.data.runId !== detail.id);
   const { prompt, showSystemPrompt, appendSystemPrompt } = prepareRenderData(
     detail,
     features,
@@ -727,14 +733,17 @@ export function ZeroActivityDetailPage() {
   const displayName = resolveDisplayName(detail, isStale);
 
   const features = useLastResolved(featureSwitch$);
+  const eventsData =
+    eventsLoadable.state === "hasData" &&
+    eventsLoadable.data !== null &&
+    eventsLoadable.data.runId === currentRunId
+      ? eventsLoadable.data.events
+      : null;
 
-  // Skeleton until both detail and initial events are loaded.
-  // Events signal returns null when the run loop hasn't been set up yet;
-  // useLastLoadable would keep the stale null as "hasData" which correctly
-  // prevents the page from rendering with an empty steps list.
-  const eventsReady =
-    eventsLoadable.state === "hasData" && eventsLoadable.data !== null;
-  if (!detail || isStale || !eventsReady) {
+  // Skeleton until both detail and initial events are loaded for this run.
+  // useLastLoadable keeps stale data while refetching, so the events payload
+  // carries its run id and must match the current route before rendering.
+  if (!detail || isStale || eventsData === null) {
     if (detailLoadable.state === "hasError") {
       return <ActivityNotFound />;
     }
@@ -745,7 +754,7 @@ export function ZeroActivityDetailPage() {
     <ActivityDetailContent
       detail={detail}
       displayName={displayName}
-      eventsData={eventsLoadable.data ?? []}
+      eventsData={eventsData}
       features={features}
     />
   );
