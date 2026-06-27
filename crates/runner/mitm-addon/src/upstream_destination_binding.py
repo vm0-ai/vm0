@@ -137,6 +137,56 @@ def _client_binding_matches(
     )
 
 
+def diagnostic_snapshot_for_flow(
+    flow: http.HTTPFlow,
+    *,
+    allowed_kinds: frozenset[BindingKind],
+) -> dict[str, object]:
+    server = flow.server_conn
+    server_id = _connection_id(server)
+    direct_binding = _bindings_by_server_id.get(server_id) if server_id is not None else None
+
+    client_id = _connection_id(flow.client_conn)
+    client_server_ids = _server_ids_by_client_id.get(client_id, set()) if client_id else set()
+    client_bindings = [
+        binding
+        for bound_server_id in client_server_ids
+        if (binding := _bindings_by_server_id.get(bound_server_id)) is not None
+    ]
+    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
+    normalized_host = None
+    if isinstance(trusted_host, str):
+        try:
+            normalized_host = normalize_trusted_hostname(trusted_host)
+        except (UnicodeError, ValueError):
+            normalized_host = None
+    client_binding_match = any(
+        _binding_matches(
+            binding,
+            host=normalized_host,
+            port=flow.request.port,
+            allowed_kinds=allowed_kinds,
+        )
+        for binding in client_bindings
+        if normalized_host is not None
+    )
+    return {
+        "server_id": server_id or "",
+        "client_id": client_id or "",
+        "direct_binding_present": direct_binding is not None,
+        "direct_binding_host": direct_binding.host if direct_binding is not None else "",
+        "direct_binding_port": direct_binding.port if direct_binding is not None else 0,
+        "direct_binding_kinds": ",".join(sorted(direct_binding.kinds))
+        if direct_binding is not None
+        else "",
+        "client_binding_count": len(client_bindings),
+        "client_binding_match": client_binding_match,
+        "client_binding_hosts": ",".join(
+            sorted({f"{binding.host}:{binding.port}" for binding in client_bindings})[:8]
+        ),
+    }
+
+
 def flow_matches_bound_destination(
     flow: http.HTTPFlow,
     *,

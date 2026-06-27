@@ -199,6 +199,14 @@ async def test_matching_sni_and_host_blocks_firewall_auth_when_upstream_is_unbou
     [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
     assert entry["action"] == "BLOCK"
     assert entry["firewall_error"] == "upstream_destination_unbound"
+    assert entry["upstream_binding_reason"] == "connector_auth"
+    assert entry["upstream_binding_trusted_host"] == "api.github.com"
+    assert entry["upstream_binding_request_host"] == "203.0.113.10"
+    assert entry["upstream_binding_request_port"] == 443
+    assert entry["upstream_binding_server_connected"] is True
+    assert entry["upstream_binding_server_address"] == "203.0.113.10:443"
+    assert entry["upstream_binding_direct_binding_present"] is False
+    assert entry["upstream_binding_client_binding_count"] == 0
 
 
 async def test_matching_sni_and_host_retargets_unconnected_firewall_auth(

@@ -155,6 +155,7 @@ _TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
 _TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
 _STALE_TLS_ADMISSION_ERROR: Final = "stale_tls_admission"
 _UPSTREAM_DESTINATION_UNBOUND_ERROR: Final = "upstream_destination_unbound"
+_UPSTREAM_BINDING_DIAGNOSTICS = "_upstream_binding_diagnostics"
 _TRUSTED_HOST_ADDRESS_CACHE_TTL_SECONDS: Final = 60.0
 _TRUSTED_HOST_ADDRESS_CACHE_MAX_ENTRIES: Final = 512
 
@@ -1345,6 +1346,11 @@ def _http_network_log_entry(
     firewall_error = flow.metadata.get(metadata_keys.FIREWALL_ERROR)
     if isinstance(firewall_error, str):
         entry["firewall_error"] = firewall_error
+    upstream_binding_diagnostics = flow.metadata.get(_UPSTREAM_BINDING_DIAGNOSTICS)
+    if isinstance(upstream_binding_diagnostics, dict):
+        for key, value in upstream_binding_diagnostics.items():
+            if isinstance(value, (str, int, bool)):
+                entry[f"upstream_binding_{key}"] = value
     if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
         entry["browser_user_agent"] = True
     return entry
@@ -1445,11 +1451,12 @@ def _block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
 def _block_upstream_destination_unbound(
     flow: http.HTTPFlow,
     *,
-    reason: str,
+    reason: upstream_destination_binding.BindingKind,
 ) -> None:
     trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
     proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     server_address = getattr(flow.server_conn, "address", None)
+    diagnostics = _upstream_binding_diagnostics(flow, reason=reason)
     log_proxy_entry(
         proxy_log_path,
         "warn",
@@ -1460,7 +1467,9 @@ def _block_upstream_destination_unbound(
         request_host=flow.request.host,
         request_port=flow.request.port,
         server_address=server_address,
+        diagnostics=diagnostics,
     )
+    flow.metadata[_UPSTREAM_BINDING_DIAGNOSTICS] = diagnostics
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
     flow.metadata[metadata_keys.FIREWALL_ERROR] = _UPSTREAM_DESTINATION_UNBOUND_ERROR
     body: dict[str, object] = {
@@ -1479,6 +1488,41 @@ def _block_upstream_destination_unbound(
         json.dumps(body).encode(),
         {"Content-Type": "application/json"},
     )
+
+
+def _endpoint_text(address: tuple[str, int] | None) -> str:
+    if address is None:
+        return ""
+    host, port = address
+    return f"{host}:{port}"
+
+
+def _upstream_binding_diagnostics(
+    flow: http.HTTPFlow,
+    *,
+    reason: upstream_destination_binding.BindingKind,
+) -> dict[str, object]:
+    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST, "")
+    if not isinstance(trusted_host, str):
+        trusted_host = ""
+    diagnostics = upstream_destination_binding.diagnostic_snapshot_for_flow(
+        flow,
+        allowed_kinds=frozenset((reason,)),
+    )
+    diagnostics.update(
+        {
+            "reason": reason,
+            "trusted_host": trusted_host,
+            "request_host": flow.request.host,
+            "request_port": flow.request.port,
+            "server_connected": bool(getattr(flow.server_conn, "connected", False)),
+            "server_address": _endpoint_text(_server_address(flow.server_conn)),
+            "server_peername": _endpoint_text(_server_peername(flow.server_conn)),
+            "server_sockname": _endpoint_text(_connection_sockname(flow.server_conn)),
+            "client_sockname": _endpoint_text(_connection_sockname(flow.client_conn)),
+        }
+    )
+    return diagnostics
 
 
 def _client_connection_id(client: object) -> str | None:
