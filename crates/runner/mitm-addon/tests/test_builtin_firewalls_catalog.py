@@ -221,6 +221,22 @@ def _find_rule_overlaps(
     ]
 
 
+def test_firewall_rule_overlap_helper_detects_request_overlaps():
+    assert _rules_overlap(
+        "ANY /v4/pages/assets/{rest*}",
+        "POST /v4/pages/assets/upload",
+    )
+    assert _rules_overlap(
+        "POST /v4/accounts/{account_id}/workers/assets/{action}",
+        "POST /v4/accounts/{account_id}/workers/assets/upload",
+    )
+    assert not _rules_overlap(
+        "POST /v4/accounts/{account_id}/workers/dispatch/namespaces/"
+        "{dispatch_namespace}/scripts/{script_name}/assets-upload-session",
+        "POST /v4/accounts/{account_id}/workers/assets/upload",
+    )
+
+
 def test_get_existing_builtin_firewall():
     firewall = builtin_firewalls.BUILTIN_FIREWALLS.get("github")
 
