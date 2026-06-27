@@ -12,7 +12,7 @@ import { accept } from "../../lib/accept.ts";
 import {
   groupVisibleMessages,
   type GroupedMessage,
-} from "../../views/zero-page/components/log-views/log-detail-utils.ts";
+} from "./log-detail-utils.ts";
 import {
   autoScrollActivityDetail$,
   scrollToBottomActivityDetail$,

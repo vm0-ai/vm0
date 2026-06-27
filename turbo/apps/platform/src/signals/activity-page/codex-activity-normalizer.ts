@@ -1,4 +1,4 @@
-import type { AgentEvent } from "../../../../signals/zero-page/log-types.ts";
+import type { AgentEvent } from "../zero-page/log-types.ts";
 
 interface NormalizeCodexEventsOptions {
   framework?: string | null;

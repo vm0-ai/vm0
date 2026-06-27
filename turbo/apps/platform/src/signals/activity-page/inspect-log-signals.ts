@@ -8,7 +8,7 @@ import { settle } from "../utils.ts";
 import {
   groupVisibleMessages,
   type GroupedMessage,
-} from "../../views/zero-page/components/log-views/log-detail-utils.ts";
+} from "./log-detail-utils.ts";
 
 const L = logger("InspectLogSignals");
 const MAX_INSPECT_LOG_FILE_SIZE_BYTES = 25 * 1024 * 1024;
