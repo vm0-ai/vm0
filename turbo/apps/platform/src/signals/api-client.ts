@@ -1,7 +1,7 @@
 /**
- * Type-safe ts-rest API client for platform → zero API calls.
+ * Type-safe tRPC-backed API client for platform → zero API calls.
  *
- * Replaces raw fetch$ usage with typed ts-rest clients that provide
+ * Replaces raw fetch$ usage with typed tRPC-backed clients that provide
  * compile-time type checking for request/response shapes.
  */
 import { computed } from "ccstate";
@@ -9,10 +9,10 @@ import type {
   AppRouter,
   InitClientArgs,
   InitClientReturn,
-} from "@ts-rest/core";
+} from "@vm0/api-contracts/contracts/trpc-contract";
 import { clerk$ } from "./auth.ts";
 import { resolveApiBase, resolveApiBaseForTarget } from "./api-base.ts";
-import { createAuthedTsRestClient } from "./api-client-base.ts";
+import { createAuthedContractClient } from "./api-client-base.ts";
 
 /**
  * Type alias for the factory function returned by `get(zeroClient$)`.
@@ -35,9 +35,9 @@ function rebaseApiPath(path: string, apiBase: string): string {
 }
 
 /**
- * Factory signal for creating typed ts-rest clients.
+ * Factory signal for creating typed tRPC-backed clients.
  *
- * Returns a function that accepts any ts-rest contract and returns
+ * Returns a function that accepts any tRPC-backed contract and returns
  * a fully configured client with auth token injection and base URL
  * resolution.
  *
@@ -53,7 +53,7 @@ function rebaseApiPath(path: string, apiBase: string): string {
  */
 export const zeroClient$ = computed((get) => {
   return <T extends AppRouter>(contract: T, options?: ZeroClientOptions) => {
-    return createAuthedTsRestClient(contract, {
+    return createAuthedContractClient(contract, {
       baseUrl: resolveApiBase(),
       getClerk: () => {
         return get(clerk$);

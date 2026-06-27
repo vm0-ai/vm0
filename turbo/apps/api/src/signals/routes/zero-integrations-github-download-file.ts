@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { initContract } from "@ts-rest/core";
+import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import { authHeadersSchema } from "@vm0/api-contracts/contracts/base";
 import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
 import { z } from "zod";

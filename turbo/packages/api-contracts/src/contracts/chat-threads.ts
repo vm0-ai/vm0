@@ -404,6 +404,7 @@ export const chatThreadsContract = c.router({
         nextCursor: z.string().nullable(),
       }),
       401: apiErrorSchema,
+      404: apiErrorSchema,
     },
     summary:
       "List chat threads for an agent. An unknown agentId yields an empty list. Pinned threads are returned in full for the caller's org on the first page; non-pinned threads use cursor pagination with a fixed sidebar page size.",

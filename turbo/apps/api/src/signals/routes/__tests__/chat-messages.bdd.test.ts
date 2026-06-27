@@ -376,7 +376,7 @@ async function readThreadComputerUseHostId(
 }
 
 /**
- * Raw chat send through the Hono app, for statuses the ts-rest contract does
+ * Raw chat send through the Hono app, for statuses the typed contract does
  * not model (precedent: requestListAutomationsRaw in api-bdd-runs-automations).
  */
 async function requestSendMessageRaw(

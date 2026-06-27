@@ -1,4 +1,4 @@
-import { initContract } from "@ts-rest/core";
+import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import { command, computed } from "ccstate";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
@@ -91,7 +91,7 @@ describe("honoSignalHandler", () => {
     expect(response.body).toStrictEqual({ aborted: false, sameSignal: true });
   });
 
-  it("returns response-like objects without ts-rest validation", async () => {
+  it("returns response-like objects without contract validation", async () => {
     const handler$ = computed(() => {
       const response = Response.json(
         { ok: true as const },

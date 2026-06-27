@@ -1,10 +1,12 @@
 import {
   initClient,
-  tsRestFetchApi,
+  trpcRestFetchApi,
+  validateResponse,
   type AppRouter,
+  type ApiFetcherArgs,
   type InitClientArgs,
   type InitClientReturn,
-} from "@ts-rest/core";
+} from "@vm0/api-contracts/contracts/trpc-contract";
 
 import { IN_VITEST } from "../env.ts";
 import {
@@ -22,7 +24,7 @@ interface AuthedClientOptions {
   ) => Promise<string> | string;
 }
 
-export function createAuthedTsRestClient<T extends AppRouter>(
+export function createAuthedContractClient<T extends AppRouter>(
   contract: T,
   options: AuthedClientOptions,
 ): InitClientReturn<T, InitClientArgs> {
@@ -31,7 +33,7 @@ export function createAuthedTsRestClient<T extends AppRouter>(
     jsonQuery: false,
     // Validation is handled below so errors include the actual response body.
     validateResponse: false,
-    api: async (args: Parameters<typeof tsRestFetchApi>[0]) => {
+    api: async (args: ApiFetcherArgs) => {
       const clerk = await options.getClerk();
       const initialToken = (await clerk.session?.getToken()) ?? null;
       const path = options.resolvePath
@@ -39,10 +41,11 @@ export function createAuthedTsRestClient<T extends AppRouter>(
         : args.path;
 
       const requestWithToken = (token: string | null) => {
-        const headers = token
-          ? { ...args.headers, Authorization: `Bearer ${token}` }
-          : args.headers;
-        return tsRestFetchApi({ ...args, headers, path });
+        const headers = new Headers(args.headers);
+        if (token) {
+          headers.set("Authorization", `Bearer ${token}`);
+        }
+        return trpcRestFetchApi({ ...args, headers, path });
       };
 
       let response = await requestWithToken(initialToken);
@@ -58,25 +61,10 @@ export function createAuthedTsRestClient<T extends AppRouter>(
       }
 
       if (IN_VITEST) {
-        const schema = args.route.responses[response.status];
-        if (
-          schema &&
-          typeof schema === "object" &&
-          "safeParse" in schema &&
-          typeof schema.safeParse === "function"
-        ) {
-          const parsed = schema.safeParse(response.body) as
-            | { success: true; data: unknown }
-            | { success: false; error: { issues: unknown[] } };
-          if (!parsed.success) {
-            throw new Error(
-              `Response validation failed (status ${response.status}).\n` +
-                `Body: ${JSON.stringify(response.body, null, 2)}\n` +
-                `Issues: ${JSON.stringify(parsed.error.issues, null, 2)}`,
-            );
-          }
-          return { ...response, body: parsed.data };
-        }
+        return validateResponse({
+          appRoute: args.route,
+          response,
+        });
       }
 
       return response;

@@ -19,7 +19,7 @@ export class ApiRequestError extends Error {
  * Build authentication headers from a token
  */
 function buildHeaders(token: string): Record<string, string> {
-  // Note: Don't set Content-Type here - ts-rest automatically adds it for requests with body.
+  // Note: Don't set Content-Type here - the contract client adds it for requests with body.
   // Setting Content-Type for bodyless requests (GET, DELETE) can cause server-side parsing issues.
   const headers: Record<string, string> = {
     Authorization: `Bearer ${token}`,
@@ -46,7 +46,7 @@ export async function getBaseUrl(): Promise<string> {
 }
 
 /**
- * Configuration for ts-rest client initialization
+ * Configuration for contract client initialization
  */
 export async function getClientConfig() {
   const baseUrl = await getBaseUrl();

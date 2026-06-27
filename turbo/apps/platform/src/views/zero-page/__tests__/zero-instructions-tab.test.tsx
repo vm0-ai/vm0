@@ -47,6 +47,9 @@ function prepareAgentInstructions(content: string | null): void {
       displayName: "Research Agent",
       sound: null,
       avatarUrl: null,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
       visibility: "public",
     });
   });
@@ -119,6 +122,9 @@ describe("zero instructions tab", () => {
           displayName: "Research Agent",
           sound: null,
           avatarUrl: null,
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
           visibility: "public",
         });
       },

@@ -1212,7 +1212,7 @@ export function createRunsAutomationsApi(context: TestContext) {
     },
 
     // The automations list contract has no 404 response (the feature gate is
-    // meant to be indistinguishable from an unmounted route), so the ts-rest
+    // meant to be indistinguishable from an unmounted route), so the contract
     // client with throwOnUnknownStatus cannot express the gated case — read
     // the route through a raw app request instead.
     async requestListAutomationsRaw(

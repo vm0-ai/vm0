@@ -1427,7 +1427,7 @@ function octetStreamBlob(bytes: Uint8Array<ArrayBuffer>): Blob {
   return new Blob([bytes], { type: "application/octet-stream" });
 }
 
-// The ts-rest client JSON-stringifies non-FormData bodies, so PCM-bearing
+// The contract client JSON-stringifies non-FormData bodies, so PCM-bearing
 // requests go through a raw app request to keep the exact bytes.
 async function requestAudioTranscriptionRaw(
   token: string,
