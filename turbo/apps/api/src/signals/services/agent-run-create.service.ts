@@ -1868,7 +1868,6 @@ interface StoredConnectorMaterializationSnapshot {
   readonly bindingSets: readonly ConnectorEnvBindingSet[];
   readonly requirements: StoredConnectorRequirements;
   readonly secretRows: readonly StoredConnectorSecretRow[];
-  readonly variableRows: readonly StoredConnectorVariableRow[];
   readonly variables: Record<string, string> | undefined;
 }
 
@@ -2126,7 +2125,6 @@ async function loadStoredConnectorSecretRows(
 async function decryptStoredConnectorSecrets(
   rows: readonly StoredConnectorSecretRow[],
   args: {
-    readonly names: ReadonlySet<string>;
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
@@ -2341,7 +2339,6 @@ async function materializeStoredConnectorContext(
   const connectorSecrets = await decryptStoredConnectorSecrets(
     decryptRows,
     {
-      names: snapshot.requirements.secretNames,
       featureSwitchContext: args.featureSwitchContext,
       timingDimensions: args.timingDimensions,
     },
@@ -2605,7 +2602,6 @@ async function loadStoredConnectorMaterializationSnapshot(
     return {
       ...storedConnectorPlan,
       secretRows,
-      variableRows,
       variables: compactRecord(connectorVariables),
     } satisfies StoredConnectorMaterializationSnapshot;
   });
