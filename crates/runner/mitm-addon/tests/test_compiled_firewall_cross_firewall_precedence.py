@@ -119,6 +119,103 @@ def test_specific_permission_api_wins_after_earlier_unknown_same_firewall():
     assert result.api_entry["auth"] == {}
 
 
+def test_cloudflare_upload_api_preserves_auth_without_shadowing_normal_api():
+    pages_upload_token_rule = (
+        "GET /v4/accounts/{account_id}/pages/projects/{project_name}/upload-token"
+    )
+    pages_deployment_rule = (
+        "POST /v4/accounts/{account_id}/pages/projects/{project_name}/deployments"
+    )
+    dispatch_upload_session_rule = (
+        "POST /v4/accounts/{account_id}/workers/dispatch/namespaces/"
+        "{dispatch_namespace}/scripts/{script_name}/assets-upload-session"
+    )
+    fws = [
+        {
+            "name": "cloudflare",
+            "apis": [
+                {
+                    "base": "https://api.cloudflare.com/client",
+                    "auth": {"headers": {"Authorization": "Bearer connector-token"}},
+                    "permissions": [
+                        {
+                            "name": "page.write",
+                            "rules": [
+                                pages_upload_token_rule,
+                                pages_deployment_rule,
+                            ],
+                        },
+                        {
+                            "name": "workers-scripts.write",
+                            "rules": [
+                                dispatch_upload_session_rule,
+                            ],
+                        },
+                    ],
+                },
+                {
+                    "base": "https://api.cloudflare.com/client",
+                    "auth": {},
+                    "permissions": [
+                        {
+                            "name": "page.write",
+                            "rules": [
+                                "POST /v4/pages/assets/check-missing",
+                                "POST /v4/pages/assets/upload",
+                                "POST /v4/pages/assets/upsert-hashes",
+                            ],
+                        },
+                        {
+                            "name": "workers-scripts.write",
+                            "rules": [
+                                "POST /v4/accounts/{account_id}/workers/assets/upload",
+                            ],
+                        },
+                    ],
+                },
+            ],
+        },
+    ]
+    policies = {
+        "cloudflare": {
+            "allow": ["page.write", "workers-scripts.write"],
+            "deny": [],
+            "unknownPolicy": "deny",
+        }
+    }
+    compiled = compile_firewalls_or_fail(fws)
+
+    normal_result = matching.match_compiled_firewall_request(
+        "https://api.cloudflare.com/client/v4/accounts/account-id/pages/projects/project-name/deployments",
+        "POST",
+        compiled,
+        policies,
+    )
+    assert isinstance(normal_result, matching.FirewallAllow)
+    assert normal_result.permission == "page.write"
+    assert normal_result.api_entry["auth"]["headers"]["Authorization"] == ("Bearer connector-token")
+
+    pages_upload_result = matching.match_compiled_firewall_request(
+        "https://api.cloudflare.com/client/v4/pages/assets/check-missing",
+        "POST",
+        compiled,
+        policies,
+    )
+    assert isinstance(pages_upload_result, matching.FirewallAllow)
+    assert pages_upload_result.permission == "page.write"
+    assert pages_upload_result.api_entry["auth"] == {}
+
+    workers_upload_result = matching.match_compiled_firewall_request(
+        "https://api.cloudflare.com/client/v4/accounts/account-id/workers/assets/upload?base64=true",
+        "POST",
+        compiled,
+        policies,
+    )
+    assert isinstance(workers_upload_result, matching.FirewallAllow)
+    assert workers_upload_result.permission == "workers-scripts.write"
+    assert workers_upload_result.api_entry["auth"] == {}
+
+
 def test_later_denied_firewall_wins_after_earlier_unknown_allow():
     fws = [
         {

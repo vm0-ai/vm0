@@ -20,24 +20,20 @@ let cloudflareCategoryOrder: readonly string[];
 let cloudflareDefaultAllowed: readonly string[];
 let cloudflareGenerationStats: Record<string, number>;
 
-function getCloudflarePermission(name: string) {
-  const permission = firewall.apis
+function expectCloudflareRule(permissionName: string, rule: string): void {
+  const permissions = firewall.apis
     .flatMap((api) => {
       return api.permissions ?? [];
     })
-    .find((candidate) => {
-      return candidate.name === name;
+    .filter((permission) => {
+      return permission.name === permissionName;
     });
 
-  if (!permission) {
-    throw new Error(`Missing Cloudflare permission "${name}"`);
-  }
-  return permission;
-}
-
-function expectCloudflareRule(permissionName: string, rule: string): void {
-  const permission = getCloudflarePermission(permissionName);
-  expect(permission.rules).toContain(rule);
+  expect(
+    permissions.some((permission) => {
+      return permission.rules.includes(rule);
+    }),
+  ).toBe(true);
 }
 
 function expectCloudflareMatches(
@@ -79,7 +75,7 @@ describe("cloudflare firewall", () => {
 
   it("registers the Cloudflare firewall with API token auth", () => {
     expect(firewall.name).toBe("cloudflare");
-    expect(firewall.apis).toHaveLength(1);
+    expect(firewall.apis).toHaveLength(2);
     expect(firewall.apis[0]).toMatchObject({
       base: "https://api.cloudflare.com/client",
       auth: {
@@ -87,6 +83,10 @@ describe("cloudflare firewall", () => {
           Authorization: "Bearer ${{ secrets.CLOUDFLARE_TOKEN }}",
         },
       },
+    });
+    expect(firewall.apis[1]).toMatchObject({
+      base: "https://api.cloudflare.com/client",
+      auth: {},
     });
     expect(extractSecretNamesFromApis([...firewall.apis])).toStrictEqual([
       "CLOUDFLARE_TOKEN",
@@ -325,6 +325,62 @@ describe("cloudflare firewall", () => {
     );
   });
 
+  it("covers Wrangler upload endpoints with endpoint-specific auth behavior", () => {
+    const connectorApi = firewall.apis[0];
+    const authlessUploadApi = firewall.apis[1];
+
+    expect(connectorApi?.auth).toMatchObject({
+      headers: {
+        Authorization: "Bearer ${{ secrets.CLOUDFLARE_TOKEN }}",
+      },
+    });
+    expect(authlessUploadApi?.auth).toStrictEqual({});
+
+    expectCloudflareRule(
+      "page.write",
+      "GET /v4/accounts/{account_id}/pages/projects/{project_name}/upload-token",
+    );
+    expectCloudflareRule("page.write", "POST /v4/pages/assets/check-missing");
+    expectCloudflareRule("page.write", "POST /v4/pages/assets/upload");
+    expectCloudflareRule("page.write", "POST /v4/pages/assets/upsert-hashes");
+    expectCloudflareRule(
+      "workers-scripts.write",
+      "POST /v4/accounts/{account_id}/workers/dispatch/namespaces/{dispatch_namespace}/scripts/{script_name}/assets-upload-session",
+    );
+    expectCloudflareRule(
+      "workers-scripts.write",
+      "POST /v4/accounts/{account_id}/workers/assets/upload",
+    );
+
+    expectCloudflareMatches(
+      "GET",
+      "/v4/accounts/account-id/pages/projects/project-name/upload-token",
+      ["page.write"],
+    );
+    expectCloudflareMatches("POST", "/v4/pages/assets/check-missing", [
+      "page.write",
+    ]);
+    expectCloudflareMatches(
+      "POST",
+      "/v4/accounts/account-id/workers/assets/upload",
+      ["workers-scripts.write"],
+    );
+
+    const authlessRules = new Set(
+      authlessUploadApi?.permissions?.flatMap((permission) => {
+        return permission.rules;
+      }) ?? [],
+    );
+    expect(authlessRules).toStrictEqual(
+      new Set([
+        "POST /v4/pages/assets/check-missing",
+        "POST /v4/pages/assets/upload",
+        "POST /v4/pages/assets/upsert-hashes",
+        "POST /v4/accounts/{account_id}/workers/assets/upload",
+      ]),
+    );
+  });
+
   it("reports generated mapping coverage from the official OpenAPI schema", () => {
     const permissionCount = firewall.apis.reduce((count, api) => {
       return count + (api.permissions?.length ?? 0);
@@ -335,8 +391,15 @@ describe("cloudflare firewall", () => {
     expect(cloudflareGenerationStats.operationsWithCfPermissionsRequired).toBe(
       703,
     );
-    expect(cloudflareGenerationStats.mappedOperations).toBe(2655);
-    expect(cloudflareGenerationStats.unmappedOperations).toBe(495);
+    expect(cloudflareGenerationStats.openApiTokenGroupMappedOperations).toBe(
+      2655,
+    );
+    expect(cloudflareGenerationStats.supplementalOpenApiMappedOperations).toBe(
+      2,
+    );
+    expect(cloudflareGenerationStats.nonOpenApiSupplementalOperations).toBe(6);
+    expect(cloudflareGenerationStats.mappedOperations).toBe(2657);
+    expect(cloudflareGenerationStats.unmappedOperations).toBe(493);
     expect(cloudflareGenerationStats.ambiguousOperations).toBe(0);
     expect(cloudflareGenerationStats.multiGroupOperations).toBe(1673);
     expect(cloudflareGenerationStats.operationsWithPrioritizedOwners).toBe(496);
@@ -348,7 +411,7 @@ describe("cloudflare firewall", () => {
       140,
     );
     expect(cloudflareGenerationStats.readGroupsDroppedByPriority).toBe(145);
-    expect(cloudflareGenerationStats.permissionCount).toBe(213);
+    expect(cloudflareGenerationStats.permissionCount).toBe(215);
     expect(cloudflareGenerationStats.permissionCount).toBe(permissionCount);
   });
 

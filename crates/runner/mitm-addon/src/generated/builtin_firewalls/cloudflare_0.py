@@ -2331,12 +2331,15 @@ JSON_PART = r"""{
             "DELETE /v4/accounts/{account_id}/pages/projects/{project_name}/deployments/{deployment_id}",
             "POST /v4/accounts/{account_id}/pages/projects/{project_name}/deployments/{deployment_id}/retry",
             "POST /v4/accounts/{account_id}/pages/projects/{project_name}/deployments/{deployment_id}/rollback",
+            "POST /v4/accounts/{account_id}/pages/projects/{project_name}/deployments/{deployment_id}/tails",
+            "DELETE /v4/accounts/{account_id}/pages/projects/{project_name}/deployments/{deployment_id}/tails/{tail_id}",
             "POST /v4/accounts/{account_id}/pages/projects/{project_name}/domains",
             "PATCH /v4/accounts/{account_id}/pages/projects/{project_name}/domains/{domain_name}",
             "DELETE /v4/accounts/{account_id}/pages/projects/{project_name}/domains/{domain_name}",
             "POST /v4/accounts/{account_id}/pages/projects/{project_name}/purge_build_cache",
             "POST /v4/accounts/{account_id}/pages/projects/{project_name}/source",
-            "DELETE /v4/accounts/{account_id}/pages/projects/{project_name}/source"
+            "DELETE /v4/accounts/{account_id}/pages/projects/{project_name}/source",
+            "GET /v4/accounts/{account_id}/pages/projects/{project_name}/upload-token"
           ]
         },
         {
@@ -3309,9 +3312,4 @@ JSON_PART = r"""{
             "GET /v4/radar/http/summary/{dimension}",
             "GET /v4/radar/http/timeseries",
             "GET /v4/radar/http/timeseries_groups/bot_class",
-            "GET /v4/radar/http/timeseries_groups/browser",
-            "GET /v4/radar/http/timeseries_groups/browser_family",
-            "GET /v4/radar/http/timeseries_groups/device_type",
-            "GET /v4/radar/http/timeseries_groups/http_protocol",
-            "GET /v4/radar/http/timeseries_groups/http_version",
 """

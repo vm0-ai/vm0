@@ -757,6 +757,44 @@ class TestHandleFirewallRequest:
         log_text = await asyncio.to_thread(read_jsonl_text_after_flush, proxy_log_path)
         assert "Firewall https://api.github.com: api.github.com" in log_text
 
+    async def test_empty_auth_config_preserves_existing_authorization(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        flow = real_flow(
+            with_response=False,
+            host="api.cloudflare.com",
+            path="/client/v4/pages/assets/check-missing",
+            method="POST",
+        )
+        flow.request.headers["Authorization"] = "Bearer upload-jwt"
+        flow.metadata[metadata_keys.VM_RUN_ID] = "test-run"
+        api_entry = _api_entry(
+            base="https://api.cloudflare.com/client",
+            auth_config={},
+            api_id="run-1:1",
+        )
+        vm_info = _vm_info(tmp_path)
+        allow = _allow(
+            api_entry,
+            name="cloudflare",
+            permission="page.write",
+            rule="POST /v4/pages/assets/check-missing",
+            rel_path="/v4/pages/assets/check-missing",
+        )
+        token_meta = _token_meta(headers={})
+
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            mitm_ctx(),
+        ):
+            result = await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert result is auth.FirewallAuthHandlingResult.CONTINUE_UPSTREAM
+        assert flow.request.headers["Authorization"] == "Bearer upload-jwt"
+        assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+        assert flow.metadata[metadata_keys.FIREWALL_NAME] == "cloudflare"
+        assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "page.write"
+
     async def test_auth_cache_identity_tracks_request_auth_inputs(
         self, real_flow, mitm_ctx, tmp_path
     ):
