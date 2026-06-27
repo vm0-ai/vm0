@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.129.40](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.39...runner-rs-v0.129.40) (2026-06-27)
+
+
+### Performance Improvements
+
+* skip verified idle resume restore ([#19187](https://github.com/vm0-ai/vm0/issues/19187)) ([e59143c](https://github.com/vm0-ai/vm0/commit/e59143c3105988cb2416aa2853b3581d839334e1))
+
 ## [0.129.39](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.38...runner-rs-v0.129.39) (2026-06-27)
 
 
