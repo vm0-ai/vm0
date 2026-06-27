@@ -54,6 +54,7 @@ def _reset_module_state() -> Iterator[None]:
     builtin_connector_diagnostics.reset_cache_for_tests()
     registry.reset_cache_for_tests()
     upstream_destination_binding.reset_for_tests()
+    mitm_addon.reset_upstream_destination_resolution_cache_for_tests()
     mitm_addon.reset_runner_usage_flush_state_for_tests()
     mitm_addon.reset_tls_admission_state_for_tests()
     clear_auth_state()
@@ -69,6 +70,7 @@ def _reset_module_state() -> Iterator[None]:
     auth_base_forwarder.reset_forward_request_state_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
     upstream_destination_binding.reset_for_tests()
+    mitm_addon.reset_upstream_destination_resolution_cache_for_tests()
     mitm_addon.reset_tls_admission_state_for_tests()
     usage.webhook.reset_delivery_capacity_for_tests()
     usage.counters.reset_for_tests()
@@ -186,10 +188,14 @@ class _StubTLSServer:
         self,
         *,
         address: tuple[str, int],
+        peername: tuple[str, int] | None,
+        connected: bool,
         server_id: str | None,
     ) -> None:
         self.id = server_id or str(uuid.uuid4())
         self.address = address
+        self.peername = peername
+        self.connected = connected
 
 
 class _StubTLSContext:
@@ -221,11 +227,18 @@ class _StubClientHelloData:
         client_id: str | None,
         client_sni: str | None,
         server_address: tuple[str, int],
+        server_peername: tuple[str, int] | None,
+        server_connected: bool,
         server_id: str | None,
     ) -> None:
         self.context = _StubTLSContext(
             _StubTLSClient(peername, client_sni, client_id),
-            _StubTLSServer(address=server_address, server_id=server_id),
+            _StubTLSServer(
+                address=server_address,
+                peername=server_peername,
+                connected=server_connected,
+                server_id=server_id,
+            ),
         )
         self.client_hello = _StubClientHello(sni)
         self.ignore_connection = False
@@ -240,6 +253,8 @@ def make_tls_data():
         client_id: str | None = None,
         client_sni: str | None = None,
         server_address: tuple[str, int] = ("203.0.113.10", 443),
+        server_peername: tuple[str, int] | None = None,
+        server_connected: bool = False,
         server_id: str | None = None,
     ) -> _StubClientHelloData:
         return _StubClientHelloData(
@@ -248,6 +263,8 @@ def make_tls_data():
             client_id=client_id,
             client_sni=sni if client_sni is None else client_sni,
             server_address=server_address,
+            server_peername=server_peername,
+            server_connected=server_connected,
             server_id=server_id,
         )
 

@@ -13,9 +13,11 @@ This addon runs on the runner HOST (not inside VMs) and:
 
 import asyncio
 import functools
+import ipaddress
 import json
 import os
 import signal
+import socket
 import tempfile
 import threading
 import time
@@ -153,6 +155,8 @@ _TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
 _TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
 _STALE_TLS_ADMISSION_ERROR: Final = "stale_tls_admission"
 _UPSTREAM_DESTINATION_UNBOUND_ERROR: Final = "upstream_destination_unbound"
+_TRUSTED_HOST_ADDRESS_CACHE_TTL_SECONDS: Final = 60.0
+_TRUSTED_HOST_ADDRESS_CACHE_MAX_ENTRIES: Final = 512
 
 _TlsAdmissionKind = Literal[
     "valid_registry_vm",
@@ -173,6 +177,7 @@ _RequestClassificationKind = Literal[
     "allow",
 ]
 _AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
+_trusted_host_address_cache: dict[tuple[str, int], tuple[float, frozenset[str]]] = {}
 _REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
 _REQUEST_CLASSIFICATION = "_request_classification"
 _FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS = "_firewall_auth_applied_in_requestheaders"
@@ -793,14 +798,11 @@ def _has_bound_upstream_destination(
     )
 
 
-def _bind_flow_upstream_destination_if_unconnected(
+def _bind_flow_upstream_destination(
     flow: http.HTTPFlow,
     *,
     kind: upstream_destination_binding.BindingKind,
 ) -> bool:
-    if flow.server_conn.connected:
-        return False
-
     trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
     if not isinstance(trusted_host, str) or not trusted_host:
         return False
@@ -810,7 +812,16 @@ def _bind_flow_upstream_destination_if_unconnected(
         return False
 
     original_address = _server_address(flow.server_conn)
-    flow.server_conn.address = (normalized_host, flow.request.port)
+    if flow.server_conn.connected:
+        if not _server_connected_to_trusted_destination(
+            flow.server_conn,
+            host=normalized_host,
+            port=flow.request.port,
+        ):
+            return False
+    else:
+        flow.server_conn.address = (normalized_host, flow.request.port)
+
     upstream_destination_binding.record_server_binding(
         flow.server_conn,
         client=flow.client_conn,
@@ -830,7 +841,7 @@ def _ensure_bound_upstream_destination(
     allowed_kinds = frozenset((kind,))
     if _has_bound_upstream_destination(flow, allowed_kinds=allowed_kinds):
         return True
-    if not _bind_flow_upstream_destination_if_unconnected(flow, kind=kind):
+    if not _bind_flow_upstream_destination(flow, kind=kind):
         return False
     return _has_bound_upstream_destination(flow, allowed_kinds=allowed_kinds)
 
@@ -1507,6 +1518,100 @@ def _server_address(server: object) -> tuple[str, int] | None:
     return host, port
 
 
+def _server_peername(server: object) -> tuple[str, int] | None:
+    peername = getattr(server, "peername", None)
+    if not isinstance(peername, tuple) or len(peername) < _ADDRESS_PAIR_LENGTH:
+        return None
+    host, port = peername[:_ADDRESS_PAIR_LENGTH]
+    if not isinstance(host, str) or not isinstance(port, int):
+        return None
+    return host, port
+
+
+def _global_ip_address(host: str) -> str | None:
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return None
+    if not address.is_global:
+        return None
+    return str(address)
+
+
+def _resolved_trusted_host_addresses(host: str, port: int) -> frozenset[str]:
+    now = time.monotonic()
+    cache_key = (host, port)
+    cached = _trusted_host_address_cache.get(cache_key)
+    if cached is not None:
+        expires_at, cached_addresses = cached
+        if expires_at > now:
+            return cached_addresses
+        _trusted_host_address_cache.pop(cache_key, None)
+
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError:
+        return frozenset()
+
+    address_set: set[str] = set()
+    for info in infos:
+        sockaddr = info[4]
+        if not sockaddr:
+            continue
+        sockaddr_host = sockaddr[0]
+        if not isinstance(sockaddr_host, str):
+            continue
+        resolved_ip = _global_ip_address(sockaddr_host)
+        if resolved_ip is not None:
+            address_set.add(resolved_ip)
+
+    resolved_addresses = frozenset(address_set)
+    if not resolved_addresses:
+        return resolved_addresses
+
+    if len(_trusted_host_address_cache) >= _TRUSTED_HOST_ADDRESS_CACHE_MAX_ENTRIES:
+        expired_keys = [
+            key
+            for key, (expires_at, _addresses) in _trusted_host_address_cache.items()
+            if expires_at <= now
+        ]
+        for key in expired_keys:
+            _trusted_host_address_cache.pop(key, None)
+        if len(_trusted_host_address_cache) >= _TRUSTED_HOST_ADDRESS_CACHE_MAX_ENTRIES:
+            _trusted_host_address_cache.pop(next(iter(_trusted_host_address_cache)), None)
+
+    _trusted_host_address_cache[cache_key] = (
+        now + _TRUSTED_HOST_ADDRESS_CACHE_TTL_SECONDS,
+        resolved_addresses,
+    )
+    return resolved_addresses
+
+
+def _server_connected_to_trusted_destination(
+    server: object,
+    *,
+    host: str,
+    port: int,
+) -> bool:
+    peer = _server_peername(server)
+    if peer is None:
+        return False
+
+    peer_host, peer_port = peer
+    if peer_port != port:
+        return False
+
+    peer_ip = _global_ip_address(peer_host)
+    if peer_ip is None:
+        return False
+
+    return peer_ip in _resolved_trusted_host_addresses(host, port)
+
+
+def reset_upstream_destination_resolution_cache_for_tests() -> None:
+    _trusted_host_address_cache.clear()
+
+
 def _api_hostname_matches(hostname: str) -> bool:
     try:
         api_url = get_api_url()
@@ -1580,7 +1685,12 @@ def _bind_privileged_upstream_destination(
     if not kinds:
         return
 
-    server.address = (hostname, port)
+    if bool(getattr(server, "connected", False)):
+        if not _server_connected_to_trusted_destination(server, host=hostname, port=port):
+            return
+    else:
+        server.address = (hostname, port)
+
     upstream_destination_binding.record_server_binding(
         server,
         client=client,

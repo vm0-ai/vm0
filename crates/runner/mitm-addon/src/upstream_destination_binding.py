@@ -124,6 +124,9 @@ def flow_matches_bound_destination(
             and bool(binding.kinds & allowed_kinds)
         )
 
+    if bool(getattr(server, "connected", False)):
+        return False
+
     return _address_matches(normalized_host, port, getattr(server, "address", None))
 
 
