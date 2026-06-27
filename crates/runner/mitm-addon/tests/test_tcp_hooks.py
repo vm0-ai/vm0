@@ -279,17 +279,33 @@ class TestTcpLog:
         assert scheduled == []
         assert flow.messages == messages
 
-    def test_tcp_size_counter_saturates_at_network_log_max(self, tmp_path, mitm_ctx, real_tcp_flow):
-        flow = real_tcp_flow(messages=[tcp.TCPMessage(True, b"overflow")])
+    def test_tcp_size_counter_saturates_at_network_log_max(
+        self, tmp_path, monkeypatch, mitm_ctx, real_tcp_flow
+    ):
+        max_log_size = 8
+        first_client = tcp.TCPMessage(True, b"first")
+        second_client = tcp.TCPMessage(True, b"later")
+        flow = real_tcp_flow(messages=[first_client])
         log_path = str(tmp_path / "network.jsonl")
         flow.metadata[metadata_keys.VM_RUN_ID] = "run-abc-123"
         flow.metadata[metadata_keys.VM_NETWORK_LOG_PATH] = log_path
-        flow.metadata[mitm_addon._TCP_REQUEST_SIZE] = mitm_addon._MAX_SAFE_NETWORK_LOG_SIZE - 1
+        monkeypatch.setattr(mitm_addon, "_MAX_SAFE_NETWORK_LOG_SIZE", max_log_size)
+        scheduled = _capture_tcp_drains(monkeypatch)
+
+        with mitm_ctx():
+            mitm_addon.tcp_message(flow)
+
+        assert len(scheduled) == 1
+
+        _run_scheduled_tcp_drains(scheduled)
+        assert flow.messages == []
+
+        flow.messages.append(second_client)
 
         with mitm_ctx():
             mitm_addon.tcp_end(flow)
 
         [entry] = read_jsonl_entries_after_flush(Path(log_path))
-        assert entry["request_size"] == mitm_addon._MAX_SAFE_NETWORK_LOG_SIZE
+        assert entry["request_size"] == max_log_size
         assert entry["response_size"] == 0
         assert flow.messages == []
