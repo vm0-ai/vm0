@@ -103,6 +103,20 @@ async fn verify_restored_session_identity_for_reuse(
     identity: Option<RestoredSessionIdentity>,
 ) -> Option<RestoredSessionIdentity> {
     let identity = identity?;
+    let Some(requested_identity) = RestoredSessionIdentity::from_context(context) else {
+        debug!(
+            run_id = %context.run_id,
+            "restored session identity cannot be verified without a valid hash-backed resume request"
+        );
+        return None;
+    };
+    if !identity.is_verified_match_for_request(&requested_identity) {
+        debug!(
+            run_id = %context.run_id,
+            "restored session identity invalidated because it does not match the resume request"
+        );
+        return None;
+    }
     let Some(verification) = identity.guest_history_verification() else {
         debug!(
             run_id = %context.run_id,

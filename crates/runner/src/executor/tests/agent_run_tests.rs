@@ -462,6 +462,92 @@ async fn run_in_sandbox_skips_verified_session_history_restore() {
 }
 
 #[tokio::test]
+async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let history = br#"{"type":"init"}"#;
+    let server = MockServer::start_async().await;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-mismatch-skip-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: server.url("/history.blob?token=secret"),
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+    let mut mismatched_ctx = minimal_context();
+    mismatched_ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-mismatch-skip-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(b"different history")),
+                url: server.url("/other-history.blob?token=secret"),
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+    let idle_identity = RestoredSessionIdentity::from_context(&mismatched_ctx)
+        .expect("identity")
+        .with_guest_history(
+            history.len() as u64,
+            "/home/user/.claude/projects/-home-user-workspace/sess-mismatch-skip-123.jsonl",
+        );
+    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::Reused,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+            .with_session_history_restore_plan(SessionHistoryRestorePlan::SkipVerified(
+                idle_identity,
+            )),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    history_mock.assert_calls_async(1).await;
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0].path,
+        "/home/user/.claude/projects/-home-user-workspace/sess-mismatch-skip-123.jsonl"
+    );
+    assert_eq!(writes[0].content, history);
+    assert_eq!(sandbox.read_file_calls().len(), 1);
+    let ops = telemetry.pending_ops_snapshot();
+    assert!(
+        ops.iter()
+            .any(|op| op.0 == "session_history_restore_fallback_stale_idle_identity" && op.1),
+        "expected mismatch fallback telemetry, got: {ops:?}"
+    );
+    assert!(
+        ops.iter().all(|op| op.0 != "session_history_restore_skip"),
+        "mismatched identity should not record skip telemetry, got: {ops:?}"
+    );
+}
+
+#[tokio::test]
 async fn run_in_sandbox_restores_when_skip_verified_identity_is_stale_before_start() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
