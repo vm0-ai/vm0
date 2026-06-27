@@ -7,9 +7,9 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
-import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
 import { hostedTextFile } from "./helpers/api-bdd-host-files";
 import { createHostMapsBddApi } from "./helpers/api-bdd-host-maps";
+import { createMapsBillingApi } from "./helpers/api-bdd-maps-billing";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 
 /*
@@ -669,7 +669,7 @@ describe("FILE-01: hosted-site deployments through host APIs", () => {
 describe("BILL-02/CHAIN-BILLING-MEDIA: maps operations settle credits through public reads", () => {
   it("charges marked-up Google Maps prices across geocode, directions, places, and details [MAPS-A]", async () => {
     const bdd = createBddApi(context);
-    const billing = createBillingMediaApi(context);
+    const billing = createMapsBillingApi(context);
     const runs = createRunsAutomationsApi(context);
     const admin = bdd.user();
     bdd.acceptAgentStorageWrites();
@@ -901,7 +901,7 @@ describe("BILL-02/CHAIN-BILLING-MEDIA: maps operations settle credits through pu
 
   it("charges OpenStreetMap download and PNG render usage [MAPS-OSM-A]", async () => {
     const bdd = createBddApi(context);
-    const billing = createBillingMediaApi(context);
+    const billing = createMapsBillingApi(context);
     const runs = createRunsAutomationsApi(context);
     const admin = bdd.user();
     bdd.acceptAgentStorageWrites();
@@ -1028,7 +1028,7 @@ describe("CHAIN-BILLING-MEDIA/FILE-01: run-scoped zero-token attribution", () =>
   it("attributes maps usage and hosted-site artifacts to a claimed run through its real zero token [HOST-B/MAPS-B]", async () => {
     const bdd = createBddApi(context);
     const api = createHostMapsBddApi(context);
-    const billing = createBillingMediaApi(context);
+    const billing = createMapsBillingApi(context);
     const runs = createRunsAutomationsApi(context);
     const actor = bdd.user();
     bdd.acceptAgentStorageWrites();

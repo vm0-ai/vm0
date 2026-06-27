@@ -457,6 +457,60 @@ The better follow-up is to split `api-bdd-misc.ts` into narrower helper modules
 or migrate its consumers in smaller groups so dirty roots do not simultaneously
 load both the full app and a broad explicit route slice.
 
+### 24. Direct raw app route slices
+
+Change tested: replace the two remaining direct `createApp` raw requests in
+`billing-usage-media.bdd.test.ts` and `computer-use.bdd.test.ts` with
+`createAppWithRoutes` backed by exact real route arrays.
+
+Commands:
+
+- `node scripts/measure-memory.mjs --label api-tests-no-setup-app-54-roots-direct-raw-route-slices --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-no-setup-app.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-tests-direct-raw-route-slices --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-direct-raw-route-slices.json --noEmit`
+
+Results:
+
+- Static split stayed at `34 clean / 20 dirty`; both roots still reached broad
+  helper modules.
+- Exact two-root slice still OOMed, peak `2238.5 MiB`.
+- The 54-root chunk still OOMed, peak `2241.7 MiB`.
+
+Conclusion: do not keep this as an isolated change. It preserves type
+strictness and removes two direct app-factory imports, but it does not release
+any root because both files still import broad helpers. The small 54-root peak
+change is not useful without splitting those helpers first.
+
+### 25. Host/maps BDD helper route slice
+
+Change: migrate `api-bdd-host-maps.ts` from default `setupApp` to
+`setupAppWithRoutes` backed by explicit real `zeroHostRoutes` and
+`zeroMapsRoutes`. Split the `host-maps.bdd.test.ts` billing/maps dependency
+away from broad `api-bdd-billing-media.ts` into a narrow
+`api-bdd-maps-billing.ts` helper that covers only onboarding, billing status,
+and maps routes. Add `tsconfig.tests-host-maps-slice.json` as a separate strict
+test chunk instead of expanding the already-near-limit 34-root pure-context
+chunk.
+
+Commands:
+
+- `node scripts/measure-memory.mjs --label api-tests-host-maps-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-host-maps-slice.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-tests-no-setup-app-54-roots-host-maps-slice --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tests-no-setup-app.json --noEmit`
+
+Results:
+
+- Static split improved from `34 clean / 20 dirty` to
+  `35 clean / 19 dirty`; newly clean root: `host-maps.bdd.test.ts`.
+- `host-maps` standalone strict slice passed, peak `1894.2 MiB`, duration
+  `40.1s`.
+- `tests-no-setup-app` 54-root chunk still OOMed, but peak dropped to
+  `2237.2 MiB`.
+
+Conclusion: keep this change. It is a narrow, strictness-preserving helper
+split that avoids both the broad billing/media helper and the full route
+registry for a large host/maps BDD root. It also confirms the shipping path
+should add more separate strict test chunks rather than growing the 34-root
+pure-context chunk.
+
 ## Current conclusions
 
 - `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
@@ -467,15 +521,17 @@ load both the full app and a broad explicit route slice.
 - `api`: dependency dedupe/declaration boundaries and route registry reshaping
   did not solve the OOM. The effective direction is strict sequential chunks,
   and the strongest measured chunks are route leaves (`2057.9 MiB` max),
-  explicit-route tests (`1026.0 MiB` for callback-route), and route-free
-  pure-context tests (`2233.9 MiB` for 34 roots).
+  explicit-route tests (`1026.0 MiB` for callback-route), route-free
+  pure-context tests (`2233.9 MiB` for 34 roots), and the host/maps BDD chunk
+  (`1894.2 MiB`).
 - Direct route test entries are worth keeping: they eliminate every direct
   `app-factory.ts` edge in `tsconfig.tests-no-setup-app.json` without reducing
   strictness.
 - Next API work should migrate remaining BDD/setup helpers from default
   `setupApp` to explicit route arrays and `createAppWithRoutes` where possible,
   but avoid broad helper migrations that are still imported by dirty roots.
-  Good next candidates are narrower slices in `api-bdd-billing-media.ts`,
+  Good next candidates are narrower consumer-specific slices in
+  `api-bdd-billing-media.ts`,
   `api-bdd-integrations.ts` / `api-bdd-webhooks.ts`,
   `api-bdd-connectors.ts`, and `api-bdd-auth-device.ts`; for
   `api-bdd-misc.ts`, split it into narrower modules first. After that, wire
