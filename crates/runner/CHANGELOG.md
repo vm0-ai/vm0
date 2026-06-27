@@ -1,5 +1,14 @@
 # Changelog
 
+## [0.129.39](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.38...runner-rs-v0.129.39) (2026-06-27)
+
+
+### Bug Fixes
+
+* map Cloudflare permissions-required operations ([#19192](https://github.com/vm0-ai/vm0/issues/19192)) ([747d1a4](https://github.com/vm0-ai/vm0/commit/747d1a4b503eb7e85439f35721cd80ef96dc00c8))
+* **mitm-addon:** use monotonic force-refresh cooldown ([#19193](https://github.com/vm0-ai/vm0/issues/19193)) ([ca151bf](https://github.com/vm0-ai/vm0/commit/ca151bf51899ef58843c8849afe2656b83f30281))
+* stream connector diagnostic response fallback ([#19183](https://github.com/vm0-ai/vm0/issues/19183)) ([988375f](https://github.com/vm0-ai/vm0/commit/988375fa8823aeb870ae478c9aac7ce253bab8c8))
+
 ## [0.129.38](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.37...runner-rs-v0.129.38) (2026-06-27)
 
 
