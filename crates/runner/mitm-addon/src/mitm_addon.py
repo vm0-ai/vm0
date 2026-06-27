@@ -1727,6 +1727,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     allow = classification.firewall_allow
     vm_info = classification.vm_info
     auth_base = _firewall_allow_auth_base(allow) if allow is not None else None
+    _prebind_requestheaders_upstream_destination(flow, classification)
     if (
         classification.kind == "firewall_allow"
         and allow is not None

@@ -170,6 +170,41 @@ async def test_api_allow_small_bounded_body_retargets_unconnected_upstream(
     assert binding.original_address == ("203.0.113.10", 443)
 
 
+async def test_api_allow_unknown_body_length_retargets_unconnected_upstream(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_vm_without_firewalls(tmp_path),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.vm0.ai",
+        method="POST",
+        path="/api/webhooks/agent/heartbeat",
+        request_headers=headers(("Host", "api.vm0.ai")),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        assert mitm_addon.requestheaders(flow) is None
+
+        _assert_no_request_stream(flow)
+        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.ORIGINAL_URL not in flow.metadata
+        assert flow.server_conn.address == ("api.vm0.ai", 443)
+
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.vm0.ai"
+    assert binding.kinds == frozenset(("api_allow",))
+    assert binding.original_address == ("203.0.113.10", 443)
+
+
 def test_capture_enabled_browser_allow_installs_request_stream(
     tmp_path, real_flow, mitm_ctx, headers
 ):
@@ -681,6 +716,57 @@ async def test_firewall_allow_small_bounded_body_retargets_unconnected_upstream(
         method="POST",
         path="/repos/octocat/hello",
         request_headers=headers(("Host", "api.github.com"), ("Content-Length", "4")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        _assert_no_request_stream(flow)
+        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.ORIGINAL_URL not in flow.metadata
+        assert flow.server_conn.address == ("api.github.com", 443)
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer resolved"
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.github.com"
+    assert binding.kinds == frozenset(("connector_auth",))
+    assert binding.original_address == ("203.0.113.10", 443)
+
+
+async def test_firewall_allow_unknown_body_length_retargets_unconnected_upstream(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(("Host", "api.github.com")),
     )
 
     with (
