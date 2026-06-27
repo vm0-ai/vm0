@@ -197,13 +197,18 @@ function queueStripeSubscriptionCleanup(
     readonly cancel_at_period_end: boolean | null;
   },
 ): void {
-  if (subscription.status === "canceled" || subscription.cancel_at_period_end) {
+  if (subscription.status === "canceled") {
     targets.nonRenewingSubscriptionIds.add(subscription.id);
     return;
   }
 
   if (subscription.status === "trialing") {
     targets.cancelNowSubscriptionIds.add(subscription.id);
+    return;
+  }
+
+  if (subscription.cancel_at_period_end) {
+    targets.nonRenewingSubscriptionIds.add(subscription.id);
     return;
   }
 

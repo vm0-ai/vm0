@@ -3527,7 +3527,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
           {
             id: extraSubscriptionId,
             status: "trialing",
-            cancel_at_period_end: false,
+            cancel_at_period_end: true,
           },
         ],
         has_more: false,
