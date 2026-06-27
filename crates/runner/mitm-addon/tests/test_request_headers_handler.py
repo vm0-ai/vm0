@@ -133,7 +133,7 @@ async def test_capture_enabled_api_allow_falls_back_when_upstream_is_connected(
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
 
 
-async def test_capture_enabled_api_allow_uses_connected_upstream_when_dns_verified(
+async def test_capture_enabled_api_allow_uses_connected_upstream_address_when_dns_verified(
     tmp_path, real_flow, mitm_ctx, headers
 ):
     reg_path = _write_registry(
@@ -153,7 +153,6 @@ async def test_capture_enabled_api_allow_uses_connected_upstream_when_dns_verifi
         ),
     )
     flow.server_conn.state = connection.ConnectionState.OPEN
-    flow.server_conn.peername = ("198.18.20.34", 443)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),

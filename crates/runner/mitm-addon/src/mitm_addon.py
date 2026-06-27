@@ -1591,19 +1591,21 @@ def _server_connected_to_trusted_destination(
     host: str,
     port: int,
 ) -> bool:
-    peer = _server_peername(server)
-    if peer is None:
-        return False
+    for peer in (_server_peername(server), _server_address(server)):
+        if peer is None:
+            continue
 
-    peer_host, peer_port = peer
-    if peer_port != port:
-        return False
+        peer_host, peer_port = peer
+        if peer_port != port:
+            continue
 
-    peer_ip = _ip_address_text(peer_host)
-    if peer_ip is None:
-        return False
+        peer_ip = _ip_address_text(peer_host)
+        if peer_ip is None:
+            continue
 
-    return peer_ip in _resolved_trusted_host_addresses(host, port)
+        return peer_ip in _resolved_trusted_host_addresses(host, port)
+
+    return False
 
 
 def reset_upstream_destination_resolution_cache_for_tests() -> None:
