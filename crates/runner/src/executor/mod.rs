@@ -114,7 +114,7 @@ const AGENT_ABNORMAL_EXIT_DIAGNOSTIC_SCRIPT: &str =
 
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
-use crate::idle_pool::ReusableIdleSandbox;
+use crate::idle_pool::{ReusableIdleSandbox, ReusableIdleSandboxParts};
 use crate::network_log_drain::NetworkLogDrainCoordinator;
 use crate::network_log_manager::NetworkLogManager;
 use crate::network_log_manager::NetworkLogSession;
@@ -538,13 +538,14 @@ pub(crate) async fn execute_job_reuse_with_hooks(
     record_api_latency("api_to_vm_start", &context, &mut telemetry);
 
     let sandbox_id = idle_sandbox.sandbox_id();
-    let idle_parts = idle_sandbox.into_parts();
-    let idle_cli_agent_session_id = idle_parts.cli_agent_session_id;
-    let source_ip = idle_parts.source_ip;
-    let prev_storage = idle_parts.storage_fingerprints;
-    let _restored_session_identity = idle_parts.restored_session_identity;
-    let workspace_promotion = idle_parts.workspace_promotion;
-    let sandbox = idle_parts.sandbox;
+    let ReusableIdleSandboxParts {
+        sandbox,
+        cli_agent_session_id: idle_cli_agent_session_id,
+        source_ip,
+        storage_fingerprints: prev_storage,
+        restored_session_identity: _restored_session_identity,
+        workspace_promotion,
+    } = idle_sandbox.into_parts();
 
     if let Err(error) = validate_resume_session_id(&context) {
         let workspace_image = match config.workspace_cache.as_ref() {
