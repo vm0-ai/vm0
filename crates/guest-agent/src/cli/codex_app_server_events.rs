@@ -1,4 +1,27 @@
 //! Compatibility mapping from Codex app-server notifications to Codex JSONL events.
+//!
+//! This test-only module preserves the adapter contract between the Codex
+//! app-server JSON-RPC notification stream and vm0's existing Codex JSONL event
+//! consumers. It is intentionally not part of the production `guest_agent::cli`
+//! facade because the runtime app-server integration has not exposed a stable
+//! event boundary.
+//!
+//! The adapter maps selected lifecycle notifications (`thread/started`,
+//! `turn/started`, `turn/completed`), plan updates, command execution item
+//! starts, completed message/plan/reasoning/command/file-change items, and
+//! top-level warning/error notifications into the legacy JSONL event families.
+//! It normalizes app-server camelCase fields and statuses into the snake_case
+//! shape consumed downstream.
+//!
+//! Unknown methods, selected app-server delta/progress notifications, and
+//! unsupported started item types intentionally return `Ok(None)` so partial
+//! or duplicate output is not emitted. Unsupported completed item types use a
+//! generic fallback that preserves scalar fields, shallow scalar arrays, and
+//! shallow scalar object fields while bounding copied collection size.
+//!
+//! Supported notifications are fail-fast: missing params, missing required
+//! fields, invalid field types, and invalid status combinations return
+//! `CodexAppServerEventError`.
 
 use serde_json::{Map, Value, json};
 
@@ -82,20 +105,40 @@ impl PlanStepStatus {
 
 /// Error returned when a supported Codex app-server notification is malformed.
 #[derive(Debug, thiserror::Error, PartialEq, Eq)]
-pub enum CodexAppServerEventError {
+enum CodexAppServerEventError {
+    /// A supported notification omitted the `params` object.
     #[error("codex app-server notification {method} missing params")]
     MissingParams { method: String },
+    /// A supported notification omitted a field required for its JSONL event.
     #[error("codex app-server notification {method} missing field {field}")]
     MissingField { method: String, field: &'static str },
+    /// A supported notification provided a field with an invalid type, value,
+    /// or lifecycle/status combination.
     #[error("codex app-server notification {method} has invalid field {field}")]
     InvalidField { method: String, field: &'static str },
 }
 
 /// Convert a Codex app-server notification into the existing Codex JSONL event shape.
 ///
-/// Unsupported notifications and app-server delta/progress notifications return `Ok(None)`.
-/// Supported notifications with malformed required fields return an error.
-pub fn notification_to_codex_event(
+/// This preserves vm0's legacy Codex JSONL contract while Codex app-server
+/// emits JSON-RPC notifications:
+///
+/// - thread and turn lifecycle notifications emit `thread.started`,
+///   `turn.started`, and `turn.completed`.
+/// - `turn/plan/updated` emits `turn.plan.updated` with normalized plan-step
+///   statuses.
+/// - `item/started` emits only started command execution items.
+/// - `item/completed` emits completed agent message, plan, reasoning,
+///   command execution, and file change items, plus a bounded generic fallback
+///   for unsupported completed item types.
+/// - `error` emits `error` or retryable `warning`; `warning` emits a
+///   non-failure `warning`.
+/// - Unknown methods, selected delta/progress notifications, and unsupported
+///   started item types return `Ok(None)`.
+///
+/// Supported notifications with malformed required fields return
+/// `CodexAppServerEventError`.
+fn notification_to_codex_event(
     notification: &ServerNotification,
 ) -> Result<Option<Value>, CodexAppServerEventError> {
     match notification.method.as_str() {

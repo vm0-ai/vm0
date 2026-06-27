@@ -3,7 +3,6 @@
 //! This module keeps the external `guest_agent::cli` boundary stable while
 //! private submodules own focused execution policies:
 //!
-//! - `codex_app_server_events`: Codex app-server notification compatibility mapping.
 //! - `codex_setup`: pre-exec Codex auth/bootstrap.
 //! - `command`: Claude Code and Codex command construction.
 //! - `diagnostics`: bounded stderr tail collection.
@@ -18,6 +17,9 @@
 
 mod child_env;
 pub mod codex_app_server;
+// The event adapter preserves the app-server compatibility contract in tests
+// until a production app-server runtime boundary is ready to own it.
+#[cfg(test)]
 mod codex_app_server_events;
 mod codex_setup;
 mod command;
@@ -27,7 +29,6 @@ mod framework;
 mod process_group;
 mod termination;
 
-pub use codex_app_server_events::{CodexAppServerEventError, notification_to_codex_event};
 pub use codex_setup::setup_codex;
 pub use command::build_cli_command;
 pub use framework::{ClaudeResultStatus, ClaudeResultSummary};
