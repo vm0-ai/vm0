@@ -122,7 +122,7 @@ import {
 } from "../external/realtime";
 import { now, nowDate } from "../external/time";
 import { generateZeroToken } from "../auth/tokens";
-import { onRejection, settle, tapError } from "../utils";
+import { onRejection, safeSync, settle, tapError } from "../utils";
 import {
   environmentRecordToEntries,
   featureFlagsRecordToEntries,
@@ -2486,22 +2486,19 @@ function buildStoredConnectorMaterializationPlan(args: {
   };
 }
 
-async function filterStoredConnectorRows(
+function filterStoredConnectorRows(
   args: {
     readonly connectorRows: readonly StoredConnectorRuntimeRowCandidate[];
     readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
-): Promise<StoredConnectorMaterializationPlan | null> {
+): StoredConnectorMaterializationPlan | null {
   const startedAt = now();
-  const result = await settle(
-    (async () => {
-      await Promise.resolve();
-      return buildStoredConnectorMaterializationPlan(args);
-    })(),
-  );
-  if (!result.ok) {
+  const result = safeSync(() => {
+    return buildStoredConnectorMaterializationPlan(args);
+  });
+  if ("error" in result) {
     timing?.recordElapsed(
       "api_dispatch_prepare_context_filter_stored_connector_rows",
       "nested",
@@ -2514,7 +2511,7 @@ async function filterStoredConnectorRows(
     );
     throw result.error;
   }
-  const plan = result.value;
+  const plan = result.ok;
   timing?.recordElapsed(
     "api_dispatch_prepare_context_filter_stored_connector_rows",
     "nested",
