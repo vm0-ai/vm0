@@ -873,69 +873,76 @@ async function buildStorageManifestEntries(
   },
 ): Promise<StorageManifestEntries> {
   const [composeEntries, additionalEntries, artifactEntries] =
-    await Promise.all([
-      measureApiDispatchTiming(
-        args.timing,
-        "api_dispatch_prepare_storage_manifest_build_compose_entries",
-        "nested",
-        async () => {
-          return await Promise.all(
-            args.composeVolumes.map((volume) => {
-              return get(
-                buildComposeStorageEntry({
-                  db: args.db,
-                  index: args.storageIndex,
-                  bucket: args.bucket,
-                  agentOrgId: args.agentOrgId,
-                  volume,
+    await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_prepare_storage_manifest_build_entries",
+      "nested",
+      async () => {
+        return await Promise.all([
+          measureApiDispatchTiming(
+            args.timing,
+            "api_dispatch_prepare_storage_manifest_build_compose_entries",
+            "nested",
+            async () => {
+              return await Promise.all(
+                args.composeVolumes.map((volume) => {
+                  return get(
+                    buildComposeStorageEntry({
+                      db: args.db,
+                      index: args.storageIndex,
+                      bucket: args.bucket,
+                      agentOrgId: args.agentOrgId,
+                      volume,
+                    }),
+                  );
                 }),
               );
-            }),
-          );
-        },
-      ),
-      measureApiDispatchTiming(
-        args.timing,
-        "api_dispatch_prepare_storage_manifest_build_additional_entries",
-        "nested",
-        async () => {
-          return await Promise.all(
-            (args.additionalVolumes ?? []).map((volume) => {
-              return get(
-                buildAdditionalStorageEntry({
-                  db: args.db,
-                  index: args.storageIndex,
-                  bucket: args.bucket,
-                  runtimeOrgId: args.runtimeOrgId,
-                  volume,
+            },
+          ),
+          measureApiDispatchTiming(
+            args.timing,
+            "api_dispatch_prepare_storage_manifest_build_additional_entries",
+            "nested",
+            async () => {
+              return await Promise.all(
+                (args.additionalVolumes ?? []).map((volume) => {
+                  return get(
+                    buildAdditionalStorageEntry({
+                      db: args.db,
+                      index: args.storageIndex,
+                      bucket: args.bucket,
+                      runtimeOrgId: args.runtimeOrgId,
+                      volume,
+                    }),
+                  );
                 }),
               );
-            }),
-          );
-        },
-      ),
-      measureApiDispatchTiming(
-        args.timing,
-        "api_dispatch_prepare_storage_manifest_build_artifact_entries",
-        "nested",
-        async () => {
-          return await Promise.all(
-            args.artifacts.map((artifact) => {
-              return get(
-                buildArtifactEntry({
-                  db: args.db,
-                  index: args.storageIndex,
-                  bucket: args.bucket,
-                  runtimeOrgId: args.runtimeOrgId,
-                  userId: args.userId,
-                  artifact,
+            },
+          ),
+          measureApiDispatchTiming(
+            args.timing,
+            "api_dispatch_prepare_storage_manifest_build_artifact_entries",
+            "nested",
+            async () => {
+              return await Promise.all(
+                args.artifacts.map((artifact) => {
+                  return get(
+                    buildArtifactEntry({
+                      db: args.db,
+                      index: args.storageIndex,
+                      bucket: args.bucket,
+                      runtimeOrgId: args.runtimeOrgId,
+                      userId: args.userId,
+                      artifact,
+                    }),
+                  );
                 }),
               );
-            }),
-          );
-        },
-      ),
-    ]);
+            },
+          ),
+        ]);
+      },
+    );
 
   return { composeEntries, additionalEntries, artifactEntries };
 }
