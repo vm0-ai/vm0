@@ -22,6 +22,11 @@
  */
 
 import {
+  findFirewallRuleReferenceOverlaps,
+  type FirewallRuleReference,
+} from "@vm0/connectors/firewall-rule-overlap";
+
+import {
   ALL_METHODS,
   OPENAPI_PATH_KEYS,
   fetchSpec,
@@ -1179,6 +1184,46 @@ function assertUniquePermissionRules(
   );
 }
 
+function permissionRuleReferences(
+  permissions: readonly PermissionGroup[],
+): FirewallRuleReference[] {
+  return permissions.flatMap((permission) => {
+    return permission.rules.map((rule) => {
+      return {
+        permissionName: permission.name,
+        rule,
+      };
+    });
+  });
+}
+
+function assertDisjointAuthBehaviorRules(
+  connectorPermissions: readonly PermissionGroup[],
+  preserveAuthorizationPermissions: readonly PermissionGroup[],
+): void {
+  const overlaps = findFirewallRuleReferenceOverlaps(
+    permissionRuleReferences(connectorPermissions),
+    permissionRuleReferences(preserveAuthorizationPermissions),
+  );
+  if (overlaps.length === 0) return;
+
+  const examples = overlaps
+    .slice(0, 20)
+    .map((overlap) => {
+      return [
+        `  - ${overlap.method} ${overlap.path}`,
+        `    connector: ${overlap.left.permissionName}: ${overlap.left.rule}`,
+        `    preserve authorization: ${overlap.right.permissionName}: ${overlap.right.rule}`,
+      ].join("\n");
+    })
+    .join("\n");
+
+  throw new Error(
+    "Cloudflare connector-auth and preserve-authorization routes must not match the same request:\n" +
+      examples,
+  );
+}
+
 function permissionGroupsToPermissions(
   permissionGroups: Map<
     string,
@@ -1519,6 +1564,10 @@ function buildGroups(
     ...connectorPermissions,
     ...preserveAuthorizationPermissions,
   ]);
+  assertDisjointAuthBehaviorRules(
+    connectorPermissions,
+    preserveAuthorizationPermissions,
+  );
 
   stats.permissionCount =
     connectorPermissions.length + preserveAuthorizationPermissions.length;
