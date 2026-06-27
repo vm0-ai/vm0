@@ -2,6 +2,7 @@
 
 import pytest
 
+import generated.builtin_firewalls as builtin_firewalls
 import matching
 from tests.firewall_helpers import compile_firewalls_or_fail, wrap_firewalls
 
@@ -120,62 +121,7 @@ def test_specific_permission_api_wins_after_earlier_unknown_same_firewall():
 
 
 def test_cloudflare_upload_api_preserves_auth_without_shadowing_normal_api():
-    pages_upload_token_rule = (
-        "GET /v4/accounts/{account_id}/pages/projects/{project_name}/upload-token"
-    )
-    pages_deployment_rule = (
-        "POST /v4/accounts/{account_id}/pages/projects/{project_name}/deployments"
-    )
-    dispatch_upload_session_rule = (
-        "POST /v4/accounts/{account_id}/workers/dispatch/namespaces/"
-        "{dispatch_namespace}/scripts/{script_name}/assets-upload-session"
-    )
-    fws = [
-        {
-            "name": "cloudflare",
-            "apis": [
-                {
-                    "base": "https://api.cloudflare.com/client",
-                    "auth": {"headers": {"Authorization": "Bearer connector-token"}},
-                    "permissions": [
-                        {
-                            "name": "page.write",
-                            "rules": [
-                                pages_upload_token_rule,
-                                pages_deployment_rule,
-                            ],
-                        },
-                        {
-                            "name": "workers-scripts.write",
-                            "rules": [
-                                dispatch_upload_session_rule,
-                            ],
-                        },
-                    ],
-                },
-                {
-                    "base": "https://api.cloudflare.com/client",
-                    "auth": {},
-                    "permissions": [
-                        {
-                            "name": "page.write",
-                            "rules": [
-                                "POST /v4/pages/assets/check-missing",
-                                "POST /v4/pages/assets/upload",
-                                "POST /v4/pages/assets/upsert-hashes",
-                            ],
-                        },
-                        {
-                            "name": "workers-scripts.write",
-                            "rules": [
-                                "POST /v4/accounts/{account_id}/workers/assets/upload",
-                            ],
-                        },
-                    ],
-                },
-            ],
-        },
-    ]
+    fws = [builtin_firewalls.BUILTIN_FIREWALLS["cloudflare"]]
     policies = {
         "cloudflare": {
             "allow": ["page.write", "workers-scripts.write"],
@@ -193,7 +139,21 @@ def test_cloudflare_upload_api_preserves_auth_without_shadowing_normal_api():
     )
     assert isinstance(normal_result, matching.FirewallAllow)
     assert normal_result.permission == "page.write"
-    assert normal_result.api_entry["auth"]["headers"]["Authorization"] == ("Bearer connector-token")
+    assert normal_result.api_entry["auth"]["headers"]["Authorization"] == (
+        "Bearer ${{ secrets.CLOUDFLARE_TOKEN }}"
+    )
+
+    upload_token_result = matching.match_compiled_firewall_request(
+        "https://api.cloudflare.com/client/v4/accounts/account-id/pages/projects/project-name/upload-token",
+        "GET",
+        compiled,
+        policies,
+    )
+    assert isinstance(upload_token_result, matching.FirewallAllow)
+    assert upload_token_result.permission == "page.write"
+    assert upload_token_result.api_entry["auth"]["headers"]["Authorization"] == (
+        "Bearer ${{ secrets.CLOUDFLARE_TOKEN }}"
+    )
 
     pages_upload_result = matching.match_compiled_firewall_request(
         "https://api.cloudflare.com/client/v4/pages/assets/check-missing",
