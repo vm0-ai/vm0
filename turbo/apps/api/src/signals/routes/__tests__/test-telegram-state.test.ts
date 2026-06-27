@@ -24,6 +24,7 @@ import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
 import { writeDb$ } from "../../external/db";
+import { testSlackStateRoutes } from "../test-slack-state";
 import { testTelegramStateRoutes } from "../test-telegram-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
@@ -77,7 +78,7 @@ interface TelegramStateSeedResponse {
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
   const app = createAppWithRoutes({
     signal: context.signal,
-    routes: testTelegramStateRoutes,
+    routes: [...testTelegramStateRoutes, ...testSlackStateRoutes],
   });
   return Promise.resolve(app.request(path, init));
 }
