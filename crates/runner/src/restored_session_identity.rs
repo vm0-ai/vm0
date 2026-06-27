@@ -88,6 +88,14 @@ impl RestoredSessionIdentity {
                 .as_ref()
                 .is_some_and(|path| !path.is_empty())
     }
+
+    pub(crate) fn is_verified_match_for_request(&self, requested: &Self) -> bool {
+        self == requested
+            && self.has_guest_history_verification()
+            && requested
+                .history_size_bytes
+                .is_none_or(|requested_size| self.history_size_bytes == Some(requested_size))
+    }
 }
 
 impl PartialEq for RestoredSessionIdentity {
