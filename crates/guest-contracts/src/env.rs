@@ -133,24 +133,24 @@ pub const STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "VM0_STUCK_TOOL_TIMEOUT_SECS";
 /// reports a final result.
 ///
 /// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The guest-agent parses the value as `u64`;
-/// unset or unparseable values use the compiled default.
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. Unset, unparseable, or out-of-range values
+/// use the guest-agent's compiled default.
 pub const POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGTERM_GRACE_SECS";
 
 /// Guest-agent absolute cap in seconds before sending SIGTERM after the CLI
 /// reports a final result, regardless of later post-result stdout events.
 ///
 /// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The guest-agent parses the value as `u64`;
-/// unset or unparseable values use the compiled default.
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. Unset, unparseable, or out-of-range values
+/// use the guest-agent's compiled default.
 pub const POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "VM0_POST_RESULT_TOTAL_CAP_SECS";
 
 /// Guest-agent grace period in seconds before escalating from SIGTERM to
 /// SIGKILL after the CLI reports a final result.
 ///
 /// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The guest-agent parses the value as `u64`;
-/// unset or unparseable values use the compiled default.
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. Unset, unparseable, or out-of-range values
+/// use the guest-agent's compiled default.
 pub const POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGKILL_GRACE_SECS";
 
 /// Test/debug bootstrap switch that makes the guest-agent use the mock Claude
