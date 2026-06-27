@@ -165,4 +165,60 @@ describe("activity paged events", () => {
       expect(screen.getByText("Done")).toBeInTheDocument();
     });
   });
+
+  it("uses event pagination cursors so same-sequence pages are not skipped", async () => {
+    const requests: {
+      since: number | undefined;
+      cursor: string | undefined;
+    }[] = [];
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(200, makeLogDetail({ status: "completed" }));
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ query, respond }) => {
+        requests.push({ since: query.since, cursor: query.cursor });
+        if (query.cursor === "sequence:asc:0") {
+          return respond(200, {
+            events: [makeAssistantEvent(0, "Second same-sequence page")],
+            hasMore: false,
+            framework: "claude-code",
+          } satisfies AgentEventsResponse);
+        }
+        if (query.since === 0) {
+          return respond(200, {
+            events: [],
+            hasMore: false,
+            framework: "claude-code",
+          } satisfies AgentEventsResponse);
+        }
+
+        return respond(200, {
+          events: [makeAssistantEvent(0, "First same-sequence page")],
+          hasMore: true,
+          nextCursor: "sequence:asc:0",
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/activities/a0000000-0000-4000-a000-000000000099",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Test Agent" }),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("First same-sequence page")).toBeInTheDocument();
+    expect(screen.getByText("Second same-sequence page")).toBeInTheDocument();
+    expect(requests.slice(0, 2)).toStrictEqual([
+      { since: undefined, cursor: undefined },
+      { since: undefined, cursor: "sequence:asc:0" },
+    ]);
+  });
 });
