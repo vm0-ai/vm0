@@ -593,6 +593,66 @@ the current monolithic API test program's peak while that same program still
 contains the broad dirty helper set. Revisit only after the migrated root is
 excluded from the remaining dirty chunk by a sequential runner.
 
+### 29. Sequential runner feasibility: dirty test roots
+
+Change tested: do not change code; generate temporary exact-root tsconfigs for
+the remaining dirty BDD roots to see whether an `api` `check-types` runner can
+replace the monolithic test program with strict sequential chunks.
+
+Commands:
+
+- `node scripts/measure-memory.mjs --label api-tests-dirty-18-roots --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tmp-tests-dirty-roots.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-tests-dirty-a-9-roots --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tmp-tests-dirty-a.json --noEmit`
+
+Results:
+
+- Remaining dirty roots after retained helper splits: `18`.
+- The 18-root dirty chunk still OOMed, peak `2294.6 MiB`, duration `90.9s`.
+- A 9-root half containing auth-device, billing/media, connectors, computer-use,
+  and GitHub integration tests also OOMed, peak `2278.0 MiB`, duration `68.6s`.
+
+Conclusion: do not ship a runner that simply separates clean tests from dirty
+tests. The remaining dirty roots still share broad helpers that pull the full
+route registry. A safe runner must either check those roots in much smaller
+helper-family chunks or first continue the helper route-slicing work so the
+dirty roots no longer import both explicit route slices and the full app graph.
+
+### 30. Sequential runner feasibility: production entry graph
+
+Change tested: do not change code, except for one reverted registry-shape
+experiment. Check whether production can be covered by exact-file chunks and
+whether changing `ROUTES` from a giant spread array to a typed route-group
+array lowers peak memory.
+
+Commands:
+
+- `node scripts/measure-memory.mjs --label api-production-core-no-routes --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tmp-production-core-no-routes.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-production-core-chunk-1-50-files --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tmp-production-core-1.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-production-registry-flat-groups --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.production-no-vitest.json --noEmit`
+- `node scripts/measure-memory.mjs --label api-production-app-entry --json .memory-results/latest.jsonl -- pnpm -F api exec tsc -p tsconfig.tmp-production-app-entry.json --noEmit`
+
+Results:
+
+- Production excluding `src/signals/routes/**/*.ts` still OOMed, peak
+  `2274.9 MiB`.
+- The first 50-file exact production chunk also OOMed, peak `2265.8 MiB`,
+  because it included `app-factory.ts`, `index.ts`, and `server.ts`.
+- Rewriting `ROUTES` as `flattenRouteGroups([healthRoutes, authMeRoutes, ...])`
+  instead of one giant spread array was reverted: production still OOMed, peak
+  `2271.8 MiB`.
+- A minimal production app-entry chunk containing only `src/index.ts`,
+  `src/server.ts`, and `src/app-factory.ts` still OOMed, peak `2273.9 MiB`.
+
+Conclusion: production-side peak is dominated by the `app-factory.ts` to
+`signals/route.ts` full registry edge. Exact-file chunking is not enough while
+those three app-entry files import the complete registry in one program, and a
+route-group `flat()` wrapper does not materially reduce TypeScript's memory.
+The next no-strictness-loss production option is a deeper registry boundary:
+keep every route leaf strictly checked in route chunks, then make the app-entry
+program validate only the registry's `RouteEntry` boundary without rechecking
+every route leaf in the same TypeScript program. That needs a carefully audited
+implementation because a naive stub would lose type coverage.
+
 ## Current conclusions
 
 - `@vm0/app`: keep the pure type module splits from experiments 6 and 7. They
@@ -606,6 +666,12 @@ excluded from the remaining dirty chunk by a sequential runner.
   explicit-route tests (`1026.0 MiB` for callback-route), route-free
   pure-context tests (`2233.9 MiB` for 34 roots), and the host/maps BDD chunk
   (`1894.2 MiB`) plus callback-service chunk (`1651.1 MiB`).
+- A package-local sequential `api` `check-types` runner is not ready to ship as
+  a simple clean/dirty split: the remaining dirty 18-root test chunk OOMs at
+  `2294.6 MiB`, a representative dirty 9-root chunk OOMs at `2278.0 MiB`, and
+  the minimal production app-entry chunk (`index.ts`, `server.ts`,
+  `app-factory.ts`) OOMs at `2273.9 MiB` because it expands the full route
+  registry.
 - Direct route test entries are worth keeping: they eliminate every direct
   `app-factory.ts` edge in `tsconfig.tests-no-setup-app.json` without reducing
   strictness.
