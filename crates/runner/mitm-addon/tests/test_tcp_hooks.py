@@ -304,6 +304,8 @@ class TestTcpLog:
 
         with mitm_ctx():
             mitm_addon.tcp_message(flow)
+            assert len(scheduled) == 1
+            assert flow.messages == [second_client]
             mitm_addon.tcp_end(flow)
 
         [entry] = read_jsonl_entries_after_flush(Path(log_path))
