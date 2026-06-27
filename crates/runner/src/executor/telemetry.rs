@@ -11,7 +11,6 @@ use crate::types::{ExecutionContext, SandboxReuseResult};
 use crate::workspace_image_cache::WorkspaceCacheCheckoutResult;
 
 static INVALID_API_START_TIME_WARNED: AtomicBool = AtomicBool::new(false);
-const RUNNER_PRE_SPAWN_PHASE_COUNT: usize = 10;
 
 #[derive(Clone, Copy)]
 pub(crate) enum RunnerPreSpawnPhase {
@@ -28,7 +27,7 @@ pub(crate) enum RunnerPreSpawnPhase {
 }
 
 impl RunnerPreSpawnPhase {
-    const ALL: [Self; RUNNER_PRE_SPAWN_PHASE_COUNT] = [
+    const ALL: [Self; 10] = [
         Self::ResumeSessionValidation,
         Self::SessionHistoryMaterializerStart,
         Self::DeviceRateLimits,
@@ -40,21 +39,6 @@ impl RunnerPreSpawnPhase {
         Self::ActiveStatusPublish,
         Self::SpawnJobSetup,
     ];
-
-    const fn index(self) -> usize {
-        match self {
-            Self::ResumeSessionValidation => 0,
-            Self::SessionHistoryMaterializerStart => 1,
-            Self::DeviceRateLimits => 2,
-            Self::IdleReuseLookup => 3,
-            Self::HeldSessionStateRefresh => 4,
-            Self::ProviderHeldSessionUpdate => 5,
-            Self::WorkspacePromotionValidation => 6,
-            Self::IdleUnpark => 7,
-            Self::ActiveStatusPublish => 8,
-            Self::SpawnJobSetup => 9,
-        }
-    }
 
     const fn action_type(self) -> &'static str {
         match self {
@@ -74,10 +58,66 @@ impl RunnerPreSpawnPhase {
     }
 }
 
+#[derive(Clone, Copy, Default)]
+struct RunnerPreSpawnPhaseDurations {
+    resume_session_validation: Option<Duration>,
+    session_history_materializer_start: Option<Duration>,
+    device_rate_limits: Option<Duration>,
+    idle_reuse_lookup: Option<Duration>,
+    held_session_state_refresh: Option<Duration>,
+    provider_held_session_update: Option<Duration>,
+    workspace_promotion_validation: Option<Duration>,
+    idle_unpark: Option<Duration>,
+    active_status_publish: Option<Duration>,
+    spawn_job_setup: Option<Duration>,
+}
+
+impl RunnerPreSpawnPhaseDurations {
+    fn get_mut(&mut self, phase: RunnerPreSpawnPhase) -> &mut Option<Duration> {
+        match phase {
+            RunnerPreSpawnPhase::ResumeSessionValidation => &mut self.resume_session_validation,
+            RunnerPreSpawnPhase::SessionHistoryMaterializerStart => {
+                &mut self.session_history_materializer_start
+            }
+            RunnerPreSpawnPhase::DeviceRateLimits => &mut self.device_rate_limits,
+            RunnerPreSpawnPhase::IdleReuseLookup => &mut self.idle_reuse_lookup,
+            RunnerPreSpawnPhase::HeldSessionStateRefresh => &mut self.held_session_state_refresh,
+            RunnerPreSpawnPhase::ProviderHeldSessionUpdate => {
+                &mut self.provider_held_session_update
+            }
+            RunnerPreSpawnPhase::WorkspacePromotionValidation => {
+                &mut self.workspace_promotion_validation
+            }
+            RunnerPreSpawnPhase::IdleUnpark => &mut self.idle_unpark,
+            RunnerPreSpawnPhase::ActiveStatusPublish => &mut self.active_status_publish,
+            RunnerPreSpawnPhase::SpawnJobSetup => &mut self.spawn_job_setup,
+        }
+    }
+
+    fn get(self, phase: RunnerPreSpawnPhase) -> Option<Duration> {
+        match phase {
+            RunnerPreSpawnPhase::ResumeSessionValidation => self.resume_session_validation,
+            RunnerPreSpawnPhase::SessionHistoryMaterializerStart => {
+                self.session_history_materializer_start
+            }
+            RunnerPreSpawnPhase::DeviceRateLimits => self.device_rate_limits,
+            RunnerPreSpawnPhase::IdleReuseLookup => self.idle_reuse_lookup,
+            RunnerPreSpawnPhase::HeldSessionStateRefresh => self.held_session_state_refresh,
+            RunnerPreSpawnPhase::ProviderHeldSessionUpdate => self.provider_held_session_update,
+            RunnerPreSpawnPhase::WorkspacePromotionValidation => {
+                self.workspace_promotion_validation
+            }
+            RunnerPreSpawnPhase::IdleUnpark => self.idle_unpark,
+            RunnerPreSpawnPhase::ActiveStatusPublish => self.active_status_publish,
+            RunnerPreSpawnPhase::SpawnJobSetup => self.spawn_job_setup,
+        }
+    }
+}
+
 #[derive(Clone, Copy)]
 pub(crate) struct RunnerPreSpawnTiming {
     claim_returned_at: Instant,
-    phase_durations: [Option<Duration>; RUNNER_PRE_SPAWN_PHASE_COUNT],
+    phase_durations: RunnerPreSpawnPhaseDurations,
     task_enqueued_at: Option<Instant>,
 }
 
@@ -91,15 +131,13 @@ impl RunnerPreSpawnTiming {
     pub(crate) fn start_after_claim() -> Self {
         Self {
             claim_returned_at: Instant::now(),
-            phase_durations: [None; RUNNER_PRE_SPAWN_PHASE_COUNT],
+            phase_durations: RunnerPreSpawnPhaseDurations::default(),
             task_enqueued_at: None,
         }
     }
 
     pub(crate) fn record_phase(&mut self, phase: RunnerPreSpawnPhase, duration: Duration) {
-        if let Some(slot) = self.phase_durations.get_mut(phase.index()) {
-            *slot = Some(duration);
-        }
+        *self.phase_durations.get_mut(phase) = Some(duration);
     }
 
     pub(crate) fn record_phase_elapsed(&mut self, phase: RunnerPreSpawnPhase, started_at: Instant) {
@@ -116,7 +154,7 @@ impl RunnerPreSpawnTiming {
 
     fn record_collected_phases(self, telemetry: &mut JobTelemetry, executor_started_at: Instant) {
         for phase in RunnerPreSpawnPhase::ALL {
-            if let Some(Some(duration)) = self.phase_durations.get(phase.index()).copied() {
+            if let Some(duration) = self.phase_durations.get(phase) {
                 telemetry.record(phase.action_type(), duration, true, None);
             }
         }
