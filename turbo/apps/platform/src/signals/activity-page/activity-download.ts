@@ -44,6 +44,7 @@ export const fetchDownloadExtra$ = command(
         _signal,
       ),
     ]);
+    _signal.throwIfAborted();
 
     if (contextResult.status === "fulfilled" && contextResult.value) {
       extra.context = contextResult.value;

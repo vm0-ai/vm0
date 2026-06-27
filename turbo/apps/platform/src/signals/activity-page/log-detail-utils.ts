@@ -203,20 +203,7 @@ export interface GroupedMessage {
 }
 
 export function groupedMessageKey(message: GroupedMessage): string {
-  return JSON.stringify([
-    message.type,
-    String(message.sequenceNumber),
-    message.createdAt,
-    message.thinkingBlocks ?? null,
-    message.textBefore ?? null,
-    message.textAfter ?? null,
-    message.toolOperations?.map((operation) => {
-      return operation.toolUseId;
-    }) ?? null,
-    message.todoState?.map((todo) => {
-      return [todo.status, todo.content];
-    }) ?? null,
-  ]);
+  return `${message.type}-${message.sequenceNumber}-${message.createdAt}`;
 }
 
 interface GroupEventsIntoMessagesOptions {

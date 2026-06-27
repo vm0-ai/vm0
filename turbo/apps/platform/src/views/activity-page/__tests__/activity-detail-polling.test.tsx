@@ -27,6 +27,7 @@ import {
   loadNetworkLogsNextPage$,
   zeroActivityNetworkLogs$,
 } from "../../../signals/activity-page/activity-network-signals.ts";
+import { fetchDownloadExtra$ } from "../../../signals/activity-page/activity-download.ts";
 import { pushPathSilently$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 
@@ -2155,6 +2156,55 @@ describe("activity detail polling", () => {
       secondDownloadNetworkCursor,
     ]);
     expect(downloads.revokedUrls).toContain(download.url);
+  });
+
+  it("propagates abort while fetching raw download extras", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000397";
+    const controller = new AbortController();
+    const abortError = new Error("Download aborted");
+    abortError.name = "AbortError";
+    let contextRequestStarted = false;
+    let contextRequestAborted = false;
+    let networkRequestStarted = false;
+    let networkRequestAborted = false;
+
+    context.mocks.api(zeroRunContextContract.getContext, async ({ never }) => {
+      contextRequestStarted = true;
+      try {
+        return await never();
+      } finally {
+        contextRequestAborted = true;
+      }
+    });
+    context.mocks.api(
+      zeroRunNetworkLogsContract.getNetworkLogs,
+      async ({ never }) => {
+        networkRequestStarted = true;
+        try {
+          return await never();
+        } finally {
+          networkRequestAborted = true;
+        }
+      },
+    );
+
+    const promise = context.store.set(
+      fetchDownloadExtra$,
+      runId,
+      controller.signal,
+    );
+    await waitFor(() => {
+      expect(contextRequestStarted).toBeTruthy();
+      expect(networkRequestStarted).toBeTruthy();
+    });
+
+    controller.abort(abortError);
+    await expect(promise).rejects.toBe(abortError);
+
+    await waitFor(() => {
+      expect(contextRequestAborted).toBeTruthy();
+      expect(networkRequestAborted).toBeTruthy();
+    });
   });
 
   it("shows codex run steps, debug context, runner reuse, and network paging", async () => {
