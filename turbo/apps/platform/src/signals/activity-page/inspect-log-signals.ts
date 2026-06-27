@@ -5,6 +5,10 @@ import type { AgentEvent } from "../zero-page/log-types.ts";
 import { parseInspectLog, type InspectLogMeta } from "./inspect-log-parser.ts";
 import { logger } from "../log.ts";
 import { settle } from "../utils.ts";
+import {
+  groupVisibleMessages,
+  type GroupedMessage,
+} from "../../views/zero-page/components/log-views/log-detail-utils.ts";
 
 const L = logger("InspectLogSignals");
 const MAX_INSPECT_LOG_FILE_SIZE_BYTES = 25 * 1024 * 1024;
@@ -35,6 +39,20 @@ const internalInspectLogLoadGeneration$ = state(0);
 
 export const inspectLogData$ = computed((get) => {
   return get(internalInspectLogData$);
+});
+
+function inspectLogFramework(meta: InspectLogMeta | null): string | null {
+  return typeof meta?.framework === "string" ? meta.framework : null;
+}
+
+export const inspectVisibleMessages$ = computed((get) => {
+  const data = get(internalInspectLogData$);
+  if (!data) {
+    return [] as GroupedMessage[];
+  }
+  return groupVisibleMessages(data.events, {
+    framework: inspectLogFramework(data.meta),
+  });
 });
 
 export const inspectLogLoadError$ = computed((get) => {

@@ -223,6 +223,39 @@ interface GroupEventsIntoMessagesOptions {
   framework?: string | null;
 }
 
+/**
+ * Returns true if a grouped message should be shown.
+ *
+ * Claude Code emits a result event that repeats the final assistant text, so
+ * text-only assistant messages immediately before a non-empty result are
+ * hidden. Other frameworks keep the assistant message as-is.
+ */
+function isVisibleGroupedMessage(
+  message: GroupedMessage,
+  nextMessage: GroupedMessage | undefined,
+  framework?: string | null,
+): boolean {
+  if (message.type !== "assistant") {
+    return true;
+  }
+  if (!nextMessage || nextMessage.type !== "result") {
+    return true;
+  }
+  if (framework !== "claude-code") {
+    return true;
+  }
+  const result = isRecord(nextMessage.eventData)
+    ? nextMessage.eventData.result
+    : undefined;
+  if (typeof result !== "string" || result.trim().length === 0) {
+    return true;
+  }
+  return (
+    (message.thinkingBlocks?.length ?? 0) > 0 ||
+    (message.toolOperations?.length ?? 0) > 0
+  );
+}
+
 const FALLBACK_CONTENT_SEQUENCE_OFFSET_SCALE = 1_000_000;
 
 // ============ EVENT GROUPING ============
@@ -1131,6 +1164,20 @@ export function groupEventsIntoMessages(
   }
 
   return ctx.grouped;
+}
+
+export function groupVisibleMessages(
+  events: AgentEvent[],
+  options: GroupEventsIntoMessagesOptions = {},
+): GroupedMessage[] {
+  const allMessages = groupEventsIntoMessages(events, options);
+  return allMessages.filter((message, index) => {
+    return isVisibleGroupedMessage(
+      message,
+      allMessages[index + 1],
+      options.framework,
+    );
+  });
 }
 
 /**

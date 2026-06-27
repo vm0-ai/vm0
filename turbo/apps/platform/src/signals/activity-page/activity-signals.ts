@@ -10,6 +10,10 @@ import { createRunLoop } from "../zero-page/polling.ts";
 import { delay } from "signal-timers";
 import { accept } from "../../lib/accept.ts";
 import {
+  groupVisibleMessages,
+  type GroupedMessage,
+} from "../../views/zero-page/components/log-views/log-detail-utils.ts";
+import {
   autoScrollActivityDetail$,
   scrollToBottomActivityDetail$,
 } from "./activity-detail-scroll.ts";
@@ -316,6 +320,15 @@ export const zeroActivityEvents$ = computed(async (get) => {
   return results.flatMap((r) => {
     return r.events;
   });
+});
+
+export const zeroActivityVisibleMessages$ = computed(async (get) => {
+  const detail = await get(zeroActivityDetail$);
+  const events = await get(zeroActivityEvents$);
+  if (!detail || !events) {
+    return [] as GroupedMessage[];
+  }
+  return groupVisibleMessages(events, { framework: detail.framework });
 });
 
 // ---------------------------------------------------------------------------

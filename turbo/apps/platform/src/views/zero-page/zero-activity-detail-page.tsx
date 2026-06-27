@@ -47,6 +47,7 @@ import { StatusBadge } from "./components/log-views/status-badge.tsx";
 import {
   zeroActivityDetail$,
   zeroActivityEvents$,
+  zeroActivityVisibleMessages$,
   zeroActivityStepSearch$,
   setZeroActivityStepSearch$,
   formatLogTime,
@@ -54,7 +55,6 @@ import {
   currentRunId$,
 } from "../../signals/activity-page/activity-signals.ts";
 import {
-  groupEventsIntoMessages,
   groupedMessageKey,
   groupedMessageMatchesSearch,
   type GroupedMessage,
@@ -77,10 +77,6 @@ import { ZeroNoPermissionIllustration } from "./components/zero-no-permission-il
 // ---------------------------------------------------------------------------
 // Error Banner
 // ---------------------------------------------------------------------------
-
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
 
 function getErrorGuidance(error: string) {
   for (const [, guidance] of Object.entries(RUN_ERROR_GUIDANCE)) {
@@ -116,39 +112,6 @@ function RunErrorBanner({ error }: { error: string }) {
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-
-/**
- * Returns true if a grouped message should be shown.
- *
- * Claude Code emits a result event that repeats the final assistant text, so
- * text-only assistant messages immediately before a non-empty result are
- * hidden. Other frameworks keep the assistant message as-is.
- */
-export function isVisibleMessage(
-  message: GroupedMessage,
-  nextMessage: GroupedMessage | undefined,
-  framework?: string | null,
-): boolean {
-  if (message.type !== "assistant") {
-    return true;
-  }
-  if (!nextMessage || nextMessage.type !== "result") {
-    return true;
-  }
-  if (framework !== "claude-code") {
-    return true;
-  }
-  const result = isRecord(nextMessage.eventData)
-    ? nextMessage.eventData.result
-    : undefined;
-  if (typeof result !== "string" || result.trim().length === 0) {
-    return true;
-  }
-  return (
-    (message.thinkingBlocks?.length ?? 0) > 0 ||
-    (message.toolOperations?.length ?? 0) > 0
-  );
-}
 
 function ActivityBreadcrumbLink() {
   return (
@@ -365,20 +328,8 @@ function prepareRenderData(
     appendSystemPrompt: string | null;
     framework: string | null;
   },
-  rawEvents: AgentEvent[] | null,
-  stepSearch: string,
   features: Record<FeatureSwitchKey, boolean> | undefined,
 ) {
-  const events: AgentEvent[] = rawEvents ?? [];
-  const allMessages = groupEventsIntoMessages(events, {
-    framework: detail.framework,
-  });
-  const visibleMessages = allMessages.filter((message, index) => {
-    return isVisibleMessage(message, allMessages[index + 1], detail.framework);
-  });
-  const messages = visibleMessages.filter((m) => {
-    return groupedMessageMatchesSearch(m, stepSearch.trim());
-  });
   const showModelDetail = true;
   const prompt = detail.prompt ?? "";
   const appendSystemPrompt = detail.appendSystemPrompt ?? "";
@@ -386,9 +337,6 @@ function prepareRenderData(
     (features?.[FeatureSwitchKey.ZeroDebug] ?? false) &&
     appendSystemPrompt.trim().length > 0;
   return {
-    events,
-    visibleMessages,
-    messages,
     showModelDetail,
     prompt,
     appendSystemPrompt,
@@ -445,22 +393,27 @@ const SANDBOX_REUSE_LABELS = {
 
 function ActivityStepsContent({
   detail,
-  eventsData,
   features,
 }: {
   detail: LogDetail;
-  eventsData: AgentEvent[];
   features: Record<FeatureSwitchKey, boolean> | undefined;
 }) {
   const stepSearch = useGet(zeroActivityStepSearch$);
   const setStepSearch = useSet(setZeroActivityStepSearch$);
-  const {
-    visibleMessages,
-    messages,
-    prompt,
-    showSystemPrompt,
-    appendSystemPrompt,
-  } = prepareRenderData(detail, eventsData, stepSearch, features);
+  const visibleMessagesLoadable = useLastLoadable(zeroActivityVisibleMessages$);
+  const visibleMessages =
+    visibleMessagesLoadable.state === "hasData"
+      ? visibleMessagesLoadable.data
+      : [];
+  const visibleMessagesLoading = visibleMessagesLoadable.state === "loading";
+  const { prompt, showSystemPrompt, appendSystemPrompt } = prepareRenderData(
+    detail,
+    features,
+  );
+  const searchTerm = stepSearch.trim();
+  const messages = visibleMessages.filter((message) => {
+    return groupedMessageMatchesSearch(message, searchTerm);
+  });
 
   return (
     <div className="flex flex-col gap-4 pb-8 min-w-0">
@@ -495,7 +448,7 @@ function ActivityStepsContent({
         appendSystemPrompt={showSystemPrompt ? appendSystemPrompt : ""}
         messages={messages}
         stepSearch={stepSearch}
-        isLoading={false}
+        isLoading={visibleMessagesLoading}
       />
     </div>
   );
@@ -634,22 +587,14 @@ function ActivityNetworkTab() {
 function ActivityTabContent({
   activeTab,
   detail,
-  eventsData,
   features,
 }: {
   activeTab: ActivityTab;
   detail: LogDetail;
-  eventsData: AgentEvent[];
   features: Record<FeatureSwitchKey, boolean> | undefined;
 }) {
   if (activeTab === "steps") {
-    return (
-      <ActivityStepsContent
-        detail={detail}
-        eventsData={eventsData}
-        features={features}
-      />
-    );
+    return <ActivityStepsContent detail={detail} features={features} />;
   }
   if (activeTab === "context") {
     return <ActivityContextTab />;
@@ -694,12 +639,7 @@ function ActivityDetailContent({
   const setScrollContainer = useSet(setActivityDetailScrollContainer$);
 
   const events: AgentEvent[] = eventsData;
-  const { showModelDetail } = prepareRenderData(
-    detail,
-    eventsData,
-    "",
-    features,
-  );
+  const { showModelDetail } = prepareRenderData(detail, features);
   const status: LogStatus = detail.status;
   const time = formatLogTime(detail.createdAt);
   const duration = formatDuration(detail.startedAt, detail.completedAt);
@@ -766,7 +706,6 @@ function ActivityDetailContent({
             <ActivityTabContent
               activeTab={activeTab}
               detail={detail}
-              eventsData={eventsData}
               features={features}
             />
           </div>
