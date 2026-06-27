@@ -169,6 +169,13 @@ pub const USE_MOCK_CLAUDE_ENV: &str = "USE_MOCK_CLAUDE";
 /// guest-agent treats `true` or `1` as enabled.
 pub const USE_MOCK_CODEX_ENV: &str = "USE_MOCK_CODEX";
 
+/// Experimental bootstrap switch for the disabled Codex app-server backend.
+///
+/// The runner does not set this key in product paths. Tests and future rollout
+/// PRs may set it explicitly; user-provided env cannot override it because the
+/// `VM0_` namespace is runner-owned.
+pub const CODEX_APP_SERVER_BACKEND_ENV: &str = "VM0_CODEX_APP_SERVER_BACKEND";
+
 /// Optional test/debug override for the mock Claude binary path.
 ///
 /// Unset means the guest-agent uses its compiled default mock binary path.

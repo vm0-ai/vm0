@@ -139,6 +139,84 @@ async fn codex_app_server_buffers_interleaved_notifications() -> Result<(), Stri
 }
 
 #[tokio::test]
+async fn codex_app_server_next_notification_returns_buffered_notification() -> Result<(), String> {
+    let mut client = spawn_client(Some("runtime-turn-complete"))?;
+    wait_result(client.initialize(), "initialize").await?;
+
+    let started = wait_result(
+        client.request_value("thread/start", json!({})),
+        "thread/start",
+    )
+    .await?;
+    let thread_id = started["thread"]["id"]
+        .as_str()
+        .ok_or_else(|| "missing thread id".to_string())?
+        .to_string();
+
+    let notification = wait_result(
+        client.next_notification("thread/started notification"),
+        "next notification",
+    )
+    .await?;
+    assert_eq!(notification.method, "thread/started");
+    assert_eq!(
+        notification
+            .params
+            .as_ref()
+            .and_then(|params| params.pointer("/thread/id"))
+            .and_then(Value::as_str),
+        Some(thread_id.as_str())
+    );
+
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
+async fn codex_app_server_next_notification_reads_after_response() -> Result<(), String> {
+    let mut client = spawn_client(Some("runtime-turn-complete-without-thread-started"))?;
+    wait_result(client.initialize(), "initialize").await?;
+
+    let started = wait_result(
+        client.request_value("thread/start", json!({})),
+        "thread/start",
+    )
+    .await?;
+    let thread_id = started["thread"]["id"]
+        .as_str()
+        .ok_or_else(|| "missing thread id".to_string())?
+        .to_string();
+    let turn_started = wait_result(
+        client.request_value(
+            "turn/start",
+            json!({
+                "threadId": thread_id,
+                "input": [text_input("initial prompt")]
+            }),
+        ),
+        "turn/start",
+    )
+    .await?;
+    assert!(turn_started["turn"]["id"].as_str().is_some());
+
+    let notification = wait_result(
+        client.next_notification("turn notification"),
+        "next notification",
+    )
+    .await?;
+    assert_eq!(notification.method, "turn/started");
+    assert_eq!(
+        notification
+            .params
+            .as_ref()
+            .and_then(|params| params.get("threadId"))
+            .and_then(Value::as_str),
+        Some(thread_id.as_str())
+    );
+
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
 async fn codex_app_server_rejects_notification_queue_overflow() -> Result<(), String> {
     let mut client = spawn_client(Some("notification-overflow"))?;
     wait_result(client.initialize(), "initialize").await?;

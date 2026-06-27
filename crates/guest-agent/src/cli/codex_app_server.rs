@@ -36,6 +36,7 @@ pub struct CodexAppServerConfig {
     binary: PathBuf,
     codex_home: PathBuf,
     extra_env: Vec<(String, String)>,
+    current_dir: Option<PathBuf>,
 }
 
 impl CodexAppServerConfig {
@@ -44,11 +45,17 @@ impl CodexAppServerConfig {
             binary: binary.into(),
             codex_home: codex_home.into(),
             extra_env: Vec::new(),
+            current_dir: None,
         }
     }
 
     pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.extra_env.push((key.into(), value.into()));
+        self
+    }
+
+    pub fn with_current_dir(mut self, current_dir: impl Into<PathBuf>) -> Self {
+        self.current_dir = Some(current_dir.into());
         self
     }
 }
@@ -165,6 +172,9 @@ impl CodexAppServerClient {
             .stderr(Stdio::piped())
             .process_group(0)
             .kill_on_drop(true);
+        if let Some(current_dir) = config.current_dir {
+            cmd.current_dir(current_dir);
+        }
         for (key, value) in config.extra_env {
             cmd.env(key, value);
         }
@@ -325,6 +335,35 @@ impl CodexAppServerClient {
                         self.in_flight_request_id = None;
                         return Err(error);
                     }
+                }
+            }
+        }
+    }
+
+    pub async fn next_notification(
+        &mut self,
+        pending_method: &str,
+    ) -> Result<ServerNotification, CodexAppServerError> {
+        self.ensure_stream_usable()?;
+        if self.in_flight_request_id.is_some() {
+            return Err(self.poison_stream(
+                "cannot wait for app-server notification while a request is in flight",
+            ));
+        }
+        if let Some(notification) = self.pop_notification() {
+            return Ok(notification);
+        }
+
+        loop {
+            match self.read_next_message(pending_method).await? {
+                IncomingMessage::Notification { notification, .. } => return Ok(notification),
+                IncomingMessage::Request(request) => {
+                    self.reject_server_request(&request).await?;
+                }
+                IncomingMessage::Success { .. } | IncomingMessage::Error { .. } => {
+                    return Err(self.poison_stream(format!(
+                        "received response while waiting for {pending_method}"
+                    )));
                 }
             }
         }

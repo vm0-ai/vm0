@@ -35,6 +35,8 @@ enum Scenario {
     UnknownResponseBeforeResponse,
     StaleTurn,
     NoActiveTurn,
+    RuntimeTurnComplete,
+    RuntimeTurnCompleteWithoutThreadStarted,
 }
 
 impl Scenario {
@@ -63,6 +65,10 @@ impl Scenario {
                 "unknown-response-before-response" => Ok(Self::UnknownResponseBeforeResponse),
                 "stale-turn" => Ok(Self::StaleTurn),
                 "no-active-turn" => Ok(Self::NoActiveTurn),
+                "runtime-turn-complete" => Ok(Self::RuntimeTurnComplete),
+                "runtime-turn-complete-without-thread-started" => {
+                    Ok(Self::RuntimeTurnCompleteWithoutThreadStarted)
+                }
                 _ => Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!("unsupported MOCK_CODEX_APP_SERVER_SCENARIO={value:?}"),
@@ -287,6 +293,10 @@ impl AppServerState {
                         )?;
                         write_success(output, id, result)?;
                     }
+                    Scenario::RuntimeTurnComplete => {
+                        write_json_line(output, &thread_started_notification(&thread_id))?;
+                        write_success(output, id, result)?;
+                    }
                     _ => {
                         write_success(output, id, result)?;
                     }
@@ -351,6 +361,13 @@ impl AppServerState {
                     &inputs,
                 )?;
                 write_success(output, id, json!({ "turn": turn(&turn_id) }))?;
+                if matches!(
+                    self.scenario,
+                    Scenario::RuntimeTurnComplete
+                        | Scenario::RuntimeTurnCompleteWithoutThreadStarted
+                ) {
+                    write_turn_notifications(output, &thread_id, &turn_id)?;
+                }
                 Ok(ServerAction::Continue)
             }
             "turn/steer" => {
@@ -591,6 +608,69 @@ fn large_server_notification() -> Value {
     })
 }
 
+fn thread_started_notification(thread_id: &str) -> Value {
+    json!({
+        "method": "thread/started",
+        "params": {
+            "thread": thread(thread_id)
+        }
+    })
+}
+
+fn turn_started_notification(thread_id: &str, turn_id: &str) -> Value {
+    json!({
+        "method": "turn/started",
+        "params": {
+            "threadId": thread_id,
+            "turn": turn(turn_id)
+        }
+    })
+}
+
+fn assistant_item_completed_notification(thread_id: &str, turn_id: &str) -> Value {
+    json!({
+        "method": "item/completed",
+        "params": {
+            "threadId": thread_id,
+            "turnId": turn_id,
+            "completedAtMs": 2,
+            "item": {
+                "id": Uuid::now_v7().to_string(),
+                "type": "agentMessage",
+                "text": "guest-mock-codex app-server response"
+            }
+        }
+    })
+}
+
+fn turn_completed_notification(thread_id: &str, turn_id: &str) -> Value {
+    json!({
+        "method": "turn/completed",
+        "params": {
+            "threadId": thread_id,
+            "turn": completed_turn(turn_id),
+            "usage": {
+                "inputTokens": 7,
+                "outputTokens": 11,
+                "totalTokens": 18
+            }
+        }
+    })
+}
+
+fn write_turn_notifications<W: Write>(
+    output: &mut W,
+    thread_id: &str,
+    turn_id: &str,
+) -> io::Result<()> {
+    write_json_line(output, &turn_started_notification(thread_id, turn_id))?;
+    write_json_line(
+        output,
+        &assistant_item_completed_notification(thread_id, turn_id),
+    )?;
+    write_json_line(output, &turn_completed_notification(thread_id, turn_id))
+}
+
 fn server_request(id: Value) -> Value {
     json!({
         "id": id,
@@ -644,6 +724,19 @@ fn turn(turn_id: &str) -> Value {
         "startedAt": null,
         "completedAt": null,
         "durationMs": null
+    })
+}
+
+fn completed_turn(turn_id: &str) -> Value {
+    json!({
+        "id": turn_id,
+        "items": [],
+        "itemsView": "notLoaded",
+        "status": "completed",
+        "error": null,
+        "startedAt": 1,
+        "completedAt": 3,
+        "durationMs": 2
     })
 }
 

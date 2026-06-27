@@ -124,6 +124,11 @@ static USE_MOCK_CODEX: LazyLock<bool> = LazyLock::new(|| {
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false)
 });
+static USE_CODEX_APP_SERVER_BACKEND: LazyLock<bool> = LazyLock::new(|| {
+    std::env::var(guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV)
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false)
+});
 
 /// Production install location for the mock-codex binary, mirroring
 /// `DEFAULT_MOCK_CLAUDE_PATH`.
@@ -535,6 +540,10 @@ pub fn is_codex_oauth_mode() -> bool {
 /// false.
 pub fn use_mock_codex() -> bool {
     *USE_MOCK_CODEX
+}
+/// Whether the disabled Codex app-server backend is explicitly enabled.
+pub fn use_codex_app_server_backend() -> bool {
+    *USE_CODEX_APP_SERVER_BACKEND
 }
 /// Mock Codex binary path from `VM0_MOCK_CODEX_PATH`, or
 /// `DEFAULT_MOCK_CODEX_PATH` when unset.
