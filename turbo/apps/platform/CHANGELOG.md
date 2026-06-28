@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.503.0](https://github.com/vm0-ai/vm0/compare/app-v0.502.0...app-v0.503.0) (2026-06-28)
+
+
+### Features
+
+* redesign workflow trigger cards ([#19212](https://github.com/vm0-ai/vm0/issues/19212)) ([a5eb5b8](https://github.com/vm0-ai/vm0/commit/a5eb5b818a3114d6f7c04fbb1613f1d645b3bb12))
+
+
+### Bug Fixes
+
+* match slash workflows by slug prefix ([#19213](https://github.com/vm0-ai/vm0/issues/19213)) ([df4b182](https://github.com/vm0-ai/vm0/commit/df4b182a3c8dc696b8bfadc13bede06b6c9a860d))
+
 ## [0.502.0](https://github.com/vm0-ai/vm0/compare/app-v0.501.0...app-v0.502.0) (2026-06-27)
 
 
