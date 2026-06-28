@@ -247,6 +247,7 @@ async def test_capture_enabled_api_allow_uses_prior_client_binding_when_server_c
             ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
         ),
     )
+    flow.server_conn.peername = None
     flow.server_conn.state = connection.ConnectionState.OPEN
     flow.client_conn.sockname = ("198.18.20.34", 443)
 
@@ -902,6 +903,75 @@ async def test_firewall_allow_header_auth_requestheaders_falls_back_when_upstrea
     assert flow.response is not None
     assert flow.response.status_code == 403
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+
+
+async def test_firewall_allow_prior_client_binding_endpoint_mismatch_blocks(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    flow.server_conn.peername = ("203.0.113.99", 443)
+    flow.server_conn.address = ("203.0.113.99", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.client_conn.sockname = ("198.18.20.34", 443)
+
+    server_connect_server = connection.Server(address=("198.18.20.34", 443))
+    upstream_destination_binding.record_server_binding(
+        server_connect_server,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("198.18.20.34", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+        _assert_no_request_stream(flow)
+        assert "Authorization" not in flow.request.headers
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    assert (
+        flow.metadata[mitm_addon._UPSTREAM_BINDING_DIAGNOSTICS]["client_binding_endpoint_match"]
+        is False
+    )
 
 
 async def test_firewall_allow_header_auth_requestheaders_retargets_unconnected_upstream(

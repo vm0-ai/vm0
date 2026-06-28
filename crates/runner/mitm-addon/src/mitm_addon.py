@@ -1804,6 +1804,9 @@ def _bind_api_upstream_destination_from_original_address(
     client: object,
     server: connection.Server,
 ) -> bool:
+    if bool(getattr(server, "connected", False)):
+        return False
+
     api_destination = _api_destination()
     if api_destination is None:
         return False
@@ -1893,39 +1896,9 @@ def _bind_privileged_upstream_destination(
         return
 
     if bool(getattr(server, "connected", False)):
-        if kinds == frozenset(("api_allow",)):
-            # API auto-allow does not inject connector credentials. The platform
-            # API may be behind edge IPs that differ from a fresh DNS lookup, so
-            # bind the already-connected endpoint only for API-only traffic.
-            connected_address = _connected_ip_destination_endpoint(
-                server,
-                port=port,
-                extra_endpoints=(_connection_sockname(client),),
-            )
-        elif "connector_auth" in kinds:
-            # At this point a registered VM presented SNI for a configured
-            # credentialed connector authority, and request handling will still
-            # require HTTP authority to match that SNI before injecting
-            # credentials. CDN/Anycast/LB edges can differ from any fresh DNS
-            # lookup, so record the actual connected endpoint instead of
-            # treating DNS membership as the proof.
-            connected_address = _connected_ip_destination_endpoint(
-                server,
-                port=port,
-                extra_endpoints=(_connection_sockname(client),),
-            )
-        else:
-            connected_address = _connected_trusted_destination_endpoint(
-                server,
-                host=hostname,
-                port=port,
-                extra_endpoints=(_connection_sockname(client),),
-            )
-        if connected_address is None:
-            return
-        address = connected_address
-    else:
-        server.address = (hostname, port)
+        return
+
+    server.address = (hostname, port)
 
     upstream_destination_binding.record_server_binding(
         server,

@@ -70,7 +70,7 @@ class TestTlsClienthello:
         assert binding.kinds == frozenset(("api_allow",))
         assert binding.original_address == ("203.0.113.10", 443)
 
-    def test_registered_vm_binds_connected_api_edge_when_peer_misses_dns(
+    def test_registered_vm_does_not_bind_connected_api_edge_from_sni_only(
         self, registry_file, make_tls_data, mitm_ctx
     ):
         data = make_tls_data(
@@ -97,11 +97,7 @@ class TestTlsClienthello:
 
         assert data.ignore_connection is False
         assert data.context.server.address == ("76.76.21.164", 443)
-        binding = upstream_destination_binding.binding_snapshot_for_tests()[data.context.server.id]
-        assert binding.host == "pr-test-api.vm6.ai"
-        assert binding.port == 443
-        assert binding.kinds == frozenset(("api_allow",))
-        assert binding.original_address == ("76.76.21.164", 443)
+        assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
     def test_registered_vm_retargets_connector_host_from_clienthello_sni(
         self, tmp_path, make_tls_data, mitm_ctx
@@ -126,7 +122,7 @@ class TestTlsClienthello:
         assert binding.kinds == frozenset(("connector_auth",))
         assert binding.original_address == ("203.0.113.10", 443)
 
-    def test_registered_vm_binds_connected_connector_when_peer_matches_dns(
+    def test_registered_vm_does_not_bind_connected_connector_from_sni_only(
         self, tmp_path, make_tls_data, mitm_ctx
     ):
         registry_file = _write_github_firewall_registry(tmp_path)
@@ -149,12 +145,9 @@ class TestTlsClienthello:
             mitm_addon.tls_clienthello(data)
 
         assert data.context.server.address == ("140.82.112.5", 443)
-        binding = upstream_destination_binding.binding_snapshot_for_tests()[data.context.server.id]
-        assert binding.host == "api.github.com"
-        assert binding.kinds == frozenset(("connector_auth",))
-        assert binding.original_address == ("140.82.112.5", 443)
+        assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
-    def test_registered_vm_binds_connected_connector_when_peer_misses_dns(
+    def test_registered_vm_does_not_bind_connected_connector_when_peer_misses_dns(
         self, tmp_path, make_tls_data, mitm_ctx
     ):
         registry_file = _write_github_firewall_registry(tmp_path)
@@ -177,10 +170,7 @@ class TestTlsClienthello:
             mitm_addon.tls_clienthello(data)
 
         assert data.context.server.address == ("140.82.112.5", 443)
-        binding = upstream_destination_binding.binding_snapshot_for_tests()[data.context.server.id]
-        assert binding.host == "api.github.com"
-        assert binding.kinds == frozenset(("connector_auth",))
-        assert binding.original_address == ("140.82.112.5", 443)
+        assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
     def test_client_disconnect_clears_clienthello_binding(
         self, registry_file, make_tls_data, mitm_ctx

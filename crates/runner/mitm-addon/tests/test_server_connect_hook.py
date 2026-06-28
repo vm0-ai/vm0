@@ -111,7 +111,7 @@ def test_server_connect_retargets_api_allow_host(registry_file, mitm_ctx):
     assert binding.kinds == frozenset(("api_allow",))
 
 
-def test_server_connect_binds_connected_api_edge_when_peer_misses_dns(registry_file, mitm_ctx):
+def test_server_connect_does_not_bind_connected_api_edge_from_sni_only(registry_file, mitm_ctx):
     data = _data(
         client_ip="10.200.0.1",
         sni="pr-test-api.vm6.ai",
@@ -131,13 +131,10 @@ def test_server_connect_binds_connected_api_edge_when_peer_misses_dns(registry_f
         mitm_addon.server_connect(data)
 
     assert data.server.address == ("76.76.21.164", 443)
-    binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
-    assert binding.host == "pr-test-api.vm6.ai"
-    assert binding.kinds == frozenset(("api_allow",))
-    assert binding.original_address == ("76.76.21.164", 443)
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
-def test_server_connect_binds_connected_connector_when_peer_misses_dns(tmp_path, mitm_ctx):
+def test_server_connect_does_not_bind_connected_connector_from_sni_only(tmp_path, mitm_ctx):
     reg_path = _write_github_firewall_registry(tmp_path)
     data = _data(
         sni="api.github.com",
@@ -157,10 +154,7 @@ def test_server_connect_binds_connected_connector_when_peer_misses_dns(tmp_path,
         mitm_addon.server_connect(data)
 
     assert data.server.address == ("140.82.112.5", 443)
-    binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
-    assert binding.host == "api.github.com"
-    assert binding.kinds == frozenset(("connector_auth",))
-    assert binding.original_address == ("140.82.112.5", 443)
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 def test_server_connect_binds_api_host_from_original_address(registry_file, mitm_ctx):
@@ -181,6 +175,31 @@ def test_server_connect_binds_api_host_from_original_address(registry_file, mitm
     assert binding.host == "pr-test-api.vm6.ai"
     assert binding.kinds == frozenset(("api_allow",))
     assert binding.original_address == ("198.18.20.34", 443)
+
+
+def test_server_connect_does_not_bind_connected_api_host_from_original_address(
+    registry_file, mitm_ctx
+):
+    data = _data(
+        client_ip="10.200.0.1",
+        sni="",
+        address=("198.18.20.34", 443),
+        server_peername=("198.18.20.34", 443),
+        server_connected=True,
+    )
+
+    with (
+        mitm_ctx(registry_path=str(registry_file), api_url="https://pr-test-api.vm6.ai"),
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))],
+        ),
+    ):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("198.18.20.34", 443)
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 def test_server_connect_binds_api_host_from_transparent_sockname(registry_file, mitm_ctx):

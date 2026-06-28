@@ -62,6 +62,29 @@ def _endpoint_matches(left: object, right: tuple[str, int]) -> bool:
     return left_key is not None and left_key == right_key
 
 
+def _endpoint_matches_any(
+    endpoint: object,
+    bindings: tuple[UpstreamDestinationBinding, ...],
+) -> bool:
+    return any(
+        _endpoint_matches(endpoint, binding.original_address)
+        for binding in bindings
+        if binding.original_address is not None
+    )
+
+
+def _is_authoritative_connected_address(endpoint: object) -> bool:
+    endpoint_pair = _address_pair(endpoint)
+    if endpoint_pair is None:
+        return False
+    endpoint_host, _endpoint_port = endpoint_pair
+    try:
+        endpoint_ip = ipaddress.ip_address(endpoint_host)
+    except ValueError:
+        return False
+    return not endpoint_ip.is_loopback and not endpoint_ip.is_unspecified
+
+
 def _associate_server_with_client(server_id: str, client: object | None) -> None:
     client_id = _connection_id(client)
     if client_id is None:
@@ -205,16 +228,15 @@ def _client_binding_matches_connected_endpoint(
     server: object,
     bindings: tuple[UpstreamDestinationBinding, ...],
 ) -> bool:
-    endpoints = (
-        getattr(server, "peername", None),
-        getattr(server, "address", None),
-        getattr(client, "sockname", None),
-    )
-    return any(
-        any(_endpoint_matches(endpoint, binding.original_address) for endpoint in endpoints)
-        for binding in bindings
-        if binding.original_address is not None
-    )
+    peername = getattr(server, "peername", None)
+    if _is_authoritative_connected_address(peername):
+        return _endpoint_matches_any(peername, bindings)
+
+    server_address = getattr(server, "address", None)
+    if _is_authoritative_connected_address(server_address):
+        return _endpoint_matches_any(server_address, bindings)
+
+    return _endpoint_matches_any(getattr(client, "sockname", None), bindings)
 
 
 def diagnostic_snapshot_for_flow(
