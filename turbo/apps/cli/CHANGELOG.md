@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.213.3](https://github.com/vm0-ai/vm0/compare/cli-v9.213.2...cli-v9.213.3) (2026-06-28)
+
+
+### Bug Fixes
+
+* bind workflow creation to current chat thread ([#19247](https://github.com/vm0-ai/vm0/issues/19247)) ([e656035](https://github.com/vm0-ai/vm0/commit/e6560354593174dcb2389013b3afe29cd31ffabc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.124.2
+    * @vm0/core bumped to 8.374.2
+
 ## [9.213.2](https://github.com/vm0-ai/vm0/compare/cli-v9.213.1...cli-v9.213.2) (2026-06-28)
 
 

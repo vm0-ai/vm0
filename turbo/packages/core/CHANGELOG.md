@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.374.2](https://github.com/vm0-ai/vm0/compare/core-v8.374.1...core-v8.374.2) (2026-06-28)
+
+
+### Bug Fixes
+
+* **api:** deploy API for runtime dependency releases ([#19243](https://github.com/vm0-ai/vm0/issues/19243)) ([ba51114](https://github.com/vm0-ai/vm0/commit/ba5111415aab9e1cc3076e1d0ad60a551a9f87cf))
+* block schedule automation writes behind workflow trigger switch ([#19248](https://github.com/vm0-ai/vm0/issues/19248)) ([6b1cf5f](https://github.com/vm0-ai/vm0/commit/6b1cf5f2dc5f062c3d3c39a4763ad89fb337d1dc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.2
+
 ## [8.374.1](https://github.com/vm0-ai/vm0/compare/core-v8.374.0...core-v8.374.1) (2026-06-28)
 
 
