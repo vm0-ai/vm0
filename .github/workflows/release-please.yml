@@ -1292,6 +1292,7 @@ jobs:
         migrate-production,
       ]
     if: >-
+      always() &&
       !failure() && !cancelled() &&
       needs.release-please.outputs.api_deploy_required == 'true' &&
       (needs.release-please.outputs.api_release_created != 'true' ||

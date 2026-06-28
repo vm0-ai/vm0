@@ -37,6 +37,25 @@ function apiRuntimeWorkspaceDependencyPaths(): string[] {
     });
 }
 
+function workflowJobBlock(workflow: string, jobName: string): string {
+  const jobStart = workflow.indexOf(`  ${jobName}:\n`);
+  if (jobStart === -1) {
+    throw new Error(`Missing workflow job: ${jobName}`);
+  }
+
+  const afterJobStart = workflow.slice(jobStart + `  ${jobName}:\n`.length);
+  const nextJobOffset = afterJobStart.search(/\n  [a-zA-Z0-9_-]+:\n/);
+
+  if (nextJobOffset === -1) {
+    return workflow.slice(jobStart);
+  }
+
+  return workflow.slice(
+    jobStart,
+    jobStart + `  ${jobName}:\n`.length + nextJobOffset,
+  );
+}
+
 describe("release-please API deployment graph", () => {
   it("keeps every release package in the manifest", () => {
     const releaseConfig = readJson<ReleasePleaseConfig>(
@@ -92,6 +111,23 @@ describe("release-please API deployment graph", () => {
     expect(workflow).toContain(
       "if: $" +
         "{{ needs.release-please.outputs.api_deploy_required == 'true' }}",
+    );
+
+    const promoteApiProductionJob = workflowJobBlock(
+      workflow,
+      "promote-api-production",
+    );
+
+    expect(promoteApiProductionJob).toContain("migrate-production");
+    expect(promoteApiProductionJob).toContain("always() &&");
+    expect(promoteApiProductionJob).toContain(
+      "needs.release-please.outputs.api_deploy_required == 'true'",
+    );
+    expect(promoteApiProductionJob).toContain(
+      "needs.release-please.outputs.api_release_created != 'true'",
+    );
+    expect(promoteApiProductionJob).toContain(
+      "needs.migrate-production.result == 'success'",
     );
   });
 });
