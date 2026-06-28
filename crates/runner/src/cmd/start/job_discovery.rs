@@ -547,13 +547,20 @@ async fn try_reuse_from_pool(
 mod tests {
     use super::*;
 
+    use super::super::StartLoopTestObserver;
+    use super::super::job_lifecycle::{ActiveBudgetLease, CompletionPayload, RunCleanupState};
+    use super::super::sandbox_finalization::{FinalizeContext, finalize_sandbox_for_completion};
     use crate::http::HttpClientConfig;
     use crate::idle_pool::test_support::ParkedIdleCandidateBuilder;
-    use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkResult};
+    use crate::idle_pool::{IdlePool, IdlePoolConfig, ParkResult, ParkingGate};
+    use crate::network_log_drain::NetworkLogDrainCoordinator;
+    use crate::provider::CompletionAuth;
     use crate::resource_budget::ResourceBudget;
     use crate::status::IdleVm;
     use crate::test_fixtures::execution_context_for_test;
     use crate::types::{ResumeSession, ResumeSessionHistory, ResumeSessionHistoryRef};
+    use sandbox::SandboxFactory;
+    use sandbox_mock::{MockSandbox, MockSandboxFactory};
 
     fn read_active_run_phase(path: &std::path::Path) -> String {
         let raw = std::fs::read_to_string(path).unwrap();
@@ -631,6 +638,81 @@ mod tests {
         *sandbox
     }
 
+    async fn reusable_sandbox_parked_by_finalizer(
+        restored_session_identity: Option<RestoredSessionIdentity>,
+    ) -> ReusableIdleSandbox {
+        let dir = tempfile::tempdir().unwrap();
+        let status = Arc::new(StatusTracker::new(
+            dir.path().join("status.json"),
+            4,
+            None,
+            None,
+        ));
+        status.write_initial().await;
+        let parking_gate = ParkingGate::new_open();
+        let idle_pool: SharedIdlePool =
+            Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
+                IdlePoolConfig {
+                    default_timeout: std::time::Duration::from_secs(300),
+                    max_idle: 10,
+                },
+                parking_gate.clone(),
+            )));
+        let budget = Arc::new(ResourceBudget::new(2, 4096, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+
+        let _completion_ready = finalize_sandbox_for_completion(
+            Some(Box::new(MockSandbox::new("restore-plan-finalizer"))),
+            ActiveBudgetLease::new(lease),
+            CompletionPayload::new(
+                run_id,
+                0,
+                None,
+                sandbox_id,
+                SandboxReuseResult::PoolMiss,
+                CompletionAuth::local(),
+            ),
+            FinalizeContext {
+                run_id,
+                sandbox_id,
+                profile_name: "vm0/default".into(),
+                cli_agent_session_id: Some("sess-restore-plan".into()),
+                discovered_cli_agent_session_id: None,
+                restored_session_identity,
+                source_ip: "10.0.0.1".into(),
+                network_log_session: None,
+                workspace_image: None,
+                workspace_image_size_bytes: 0,
+                storage_fingerprints: crate::storage_fingerprints::StorageFingerprints::default(),
+                device_rate_limits: None,
+                factory: Arc::new(Box::new(MockSandboxFactory::new()) as Box<dyn SandboxFactory>),
+                idle_pool: Arc::clone(&idle_pool),
+                status,
+                park_notify: Arc::new(tokio::sync::Notify::new()),
+                parking_gate,
+                network_log_drain: NetworkLogDrainCoordinator::noop(),
+                exit_code: 0,
+                cancel: RunCancellationHandle::new(),
+                cleanup_state: RunCleanupState::new(),
+                outer_job_panic: None,
+                test_observer: StartLoopTestObserver::default(),
+            },
+        )
+        .await;
+
+        let entry = idle_pool
+            .lock()
+            .await
+            .take("sess-restore-plan")
+            .expect("finalizer should park reusable sandbox");
+        let IdleUnparkResult::Reused { sandbox, .. } = entry.try_unpark().await else {
+            panic!("finalized idle entry should unpark");
+        };
+        *sandbox
+    }
+
     #[tokio::test]
     async fn publish_active_run_status_writes_preparing_after_reuse_miss_snapshot() {
         let dir = tempfile::tempdir().unwrap();
@@ -701,6 +783,39 @@ mod tests {
                 );
             }
             _ => panic!("matching reused identity should skip restore"),
+        }
+    }
+
+    #[tokio::test]
+    async fn restore_plan_skips_identity_parked_by_finalizer() {
+        let http = test_http_client();
+        let context = context_with_history_ref("history-hash-a");
+        let restored_identity = RestoredSessionIdentity::from_context(&context)
+            .unwrap()
+            .with_guest_history(
+                12,
+                "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
+            );
+        let reusable_sandbox =
+            reusable_sandbox_parked_by_finalizer(Some(restored_identity.clone())).await;
+        let cancel = RunCancellationHandle::new();
+        let mut timing = RunnerPreSpawnTiming::start_after_claim();
+
+        let plan = build_session_history_restore_plan(
+            &http,
+            &context,
+            true,
+            &cancel,
+            Some(&reusable_sandbox),
+            SandboxReuseResult::Reused,
+            &mut timing,
+        );
+
+        match plan {
+            SessionHistoryRestorePlan::SkipVerified(identity) => {
+                assert_eq!(identity, restored_identity);
+            }
+            _ => panic!("finalizer-parked restored identity should skip restore"),
         }
     }
 
@@ -906,6 +1021,35 @@ mod tests {
                 );
             }
             _ => panic!("missing reused identity should fall back to restore"),
+        }
+    }
+
+    #[tokio::test]
+    async fn restore_plan_falls_back_when_finalizer_parked_without_identity() {
+        let http = test_http_client();
+        let context = context_with_history_ref("history-hash-a");
+        let reusable_sandbox = reusable_sandbox_parked_by_finalizer(None).await;
+        let cancel = RunCancellationHandle::new();
+        let mut timing = RunnerPreSpawnTiming::start_after_claim();
+
+        let plan = build_session_history_restore_plan(
+            &http,
+            &context,
+            true,
+            &cancel,
+            Some(&reusable_sandbox),
+            SandboxReuseResult::Reused,
+            &mut timing,
+        );
+
+        match plan {
+            SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
+                assert_eq!(
+                    fallback,
+                    Some(SessionHistoryRestoreFallback::MissingIdleIdentity)
+                );
+            }
+            _ => panic!("finalizer-parked missing identity should fall back to restore"),
         }
     }
 
