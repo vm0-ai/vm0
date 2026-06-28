@@ -762,7 +762,9 @@ def _prebind_bounded_requestheaders_upstream_destination(flow: http.HTTPFlow) ->
         if _api_hostname_matches(trusted_authority.host) and not flow.request.path.startswith(
             "/api/test/"
         ):
-            _ensure_bound_upstream_destination(flow, kind="api_allow")
+            classification = _classify_request(flow)
+            if classification.kind == "api_allow":
+                _ensure_bound_upstream_destination(flow, kind="api_allow")
             return
         if _has_bound_upstream_destination(
             flow,

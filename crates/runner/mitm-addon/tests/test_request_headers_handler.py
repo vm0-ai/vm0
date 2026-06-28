@@ -446,6 +446,32 @@ async def test_api_allow_unknown_body_length_retargets_unconnected_upstream(
     assert binding.original_address == ("203.0.113.10", 443)
 
 
+def test_api_allow_bounded_prebind_ignores_unregistered_client(
+    registry_file, real_flow, mitm_ctx, headers
+):
+    flow = real_flow(
+        with_response=False,
+        client_ip="192.168.99.99",
+        host="203.0.113.10",
+        sni="api.vm0.ai",
+        method="POST",
+        path="/api/webhooks/agent/heartbeat",
+        request_headers=headers(
+            ("Host", "api.vm0.ai"),
+            ("Content-Length", "4"),
+        ),
+    )
+
+    with mitm_ctx(registry_path=str(registry_file), api_url="https://api.vm0.ai"):
+        assert mitm_addon.requestheaders(flow) is None
+
+    _assert_no_request_stream(flow)
+    assert metadata_keys.VM_RUN_ID not in flow.metadata
+    assert metadata_keys.ORIGINAL_URL not in flow.metadata
+    assert flow.server_conn.address == ("203.0.113.10", 443)
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
 async def test_test_connector_bounded_requestheaders_uses_connector_binding(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
