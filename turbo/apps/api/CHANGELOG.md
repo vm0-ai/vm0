@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.186.1](https://github.com/vm0-ai/vm0/compare/api-v1.186.0...api-v1.186.1) (2026-06-28)
+
+
+### Bug Fixes
+
+* avoid workflow detail fanout on automations page ([#19239](https://github.com/vm0-ai/vm0/issues/19239)) ([c7f4116](https://github.com/vm0-ai/vm0/commit/c7f411634ce894d449b75dd6206157613fb2ff6e))
+
+
+### Performance Improvements
+
+* add zero run origin timing attribution ([#19235](https://github.com/vm0-ai/vm0/issues/19235)) ([a726e89](https://github.com/vm0-ai/vm0/commit/a726e894d0f8bbc80f7a3a882d45ee4985d860f4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.1
+    * @vm0/core bumped to 8.374.1
+    * @vm0/db bumped to 1.76.3
+
 ## [1.186.0](https://github.com/vm0-ai/vm0/compare/api-v1.185.1...api-v1.186.0) (2026-06-28)
 
 

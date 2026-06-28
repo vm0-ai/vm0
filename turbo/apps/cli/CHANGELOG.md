@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.213.1](https://github.com/vm0-ai/vm0/compare/cli-v9.213.0...cli-v9.213.1) (2026-06-28)
+
+
+### Bug Fixes
+
+* check workflow connector authorization in doctor ([#19238](https://github.com/vm0-ai/vm0/issues/19238)) ([d3833ad](https://github.com/vm0-ai/vm0/commit/d3833ad53ea475f884d01695b413d38af8af7434))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.124.1
+    * @vm0/core bumped to 8.374.1
+
 ## [9.213.0](https://github.com/vm0-ai/vm0/compare/cli-v9.212.4...cli-v9.213.0) (2026-06-28)
 
 

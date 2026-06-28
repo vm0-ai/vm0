@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.504.1](https://github.com/vm0-ai/vm0/compare/app-v0.504.0...app-v0.504.1) (2026-06-28)
+
+
+### Bug Fixes
+
+* align automation agent picker modal ([#19232](https://github.com/vm0-ai/vm0/issues/19232)) ([10f1edc](https://github.com/vm0-ai/vm0/commit/10f1edc525aa49bbe3d6966ba98c4410d6e07489))
+* avoid workflow detail fanout on automations page ([#19239](https://github.com/vm0-ai/vm0/issues/19239)) ([c7f4116](https://github.com/vm0-ai/vm0/commit/c7f411634ce894d449b75dd6206157613fb2ff6e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.1
+    * @vm0/core bumped to 8.374.1
+
 ## [0.504.0](https://github.com/vm0-ai/vm0/compare/app-v0.503.0...app-v0.504.0) (2026-06-28)
 
 
