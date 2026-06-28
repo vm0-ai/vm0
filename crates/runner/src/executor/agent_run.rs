@@ -473,6 +473,12 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             match verify_restored_session_identity_for_reuse(sandbox, context, Some(identity)).await
             {
                 Some(identity) => {
+                    telemetry.record(
+                        "session_history_identity_reuse_hit",
+                        Duration::ZERO,
+                        true,
+                        None,
+                    );
                     telemetry.record("session_history_restore_skip", Duration::ZERO, true, None);
                     restored_session_identity = Some(identity);
                     None
@@ -503,6 +509,14 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         } => {
             if let Some(fallback) = fallback {
                 telemetry.record(fallback.action_type(), Duration::ZERO, true, None);
+                if matches!(fallback, SessionHistoryRestoreFallback::MissingIdleIdentity) {
+                    telemetry.record(
+                        "session_history_identity_reuse_missing",
+                        Duration::ZERO,
+                        true,
+                        None,
+                    );
+                }
             }
             Some(materializer)
         }
@@ -1007,6 +1021,14 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         restored_session_identity =
             verify_restored_session_identity_for_reuse(sandbox, context, restored_session_identity)
                 .await;
+        if restored_session_identity.is_some() {
+            telemetry.record(
+                "session_history_identity_restored",
+                Duration::ZERO,
+                true,
+                None,
+            );
+        }
     }
 
     let agent_result = match failure {
