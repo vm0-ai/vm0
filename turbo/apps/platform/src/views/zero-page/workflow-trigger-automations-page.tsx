@@ -19,7 +19,7 @@ import {
   IconPlus,
   IconRepeat,
 } from "@tabler/icons-react";
-import { Button, cn } from "@vm0/ui";
+import { Button } from "@vm0/ui";
 import {
   Dialog,
   DialogContent,
@@ -422,29 +422,6 @@ function EmptyTriggers({ onAdd }: { readonly onAdd: () => void }) {
   );
 }
 
-function WorkflowAutomationStepPills({ step }: { readonly step: 1 | 2 }) {
-  return (
-    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-      <span
-        className={cn(
-          "inline-flex h-7 items-center rounded-full px-3",
-          step === 1 ? "bg-gray-50 text-foreground" : "text-muted-foreground",
-        )}
-      >
-        1 Agent
-      </span>
-      <span
-        className={cn(
-          "inline-flex h-7 items-center rounded-full px-3",
-          step === 2 ? "bg-gray-50 text-foreground" : "text-muted-foreground",
-        )}
-      >
-        2 Trigger
-      </span>
-    </div>
-  );
-}
-
 function AgentSelectionStep({
   agents,
   onSelectAgent,
@@ -666,10 +643,6 @@ function CreateWorkflowAutomationDialog() {
             Choose the agent and trigger type for this workflow.
           </DialogDescription>
         </DialogHeader>
-
-        <div className="px-5 pb-3">
-          <WorkflowAutomationStepPills step={step} />
-        </div>
 
         {step === 1 ? (
           <AgentSelectionStep agents={agents} onSelectAgent={selectAgent} />
