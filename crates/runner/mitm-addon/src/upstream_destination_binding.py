@@ -151,6 +151,41 @@ def add_server_binding_kind_if_matching(
     return True
 
 
+def refresh_server_binding_connected_address_if_matching(
+    server: object,
+    *,
+    client: object | None = None,
+    host: str,
+    port: int,
+    kind: BindingKind,
+    connected_address: tuple[str, int],
+) -> bool:
+    server_id = _connection_id(server)
+    if server_id is None:
+        return False
+    binding = _bindings_by_server_id.get(server_id)
+    if binding is None:
+        return False
+    normalized_host = normalize_trusted_hostname(host)
+    if binding.host != normalized_host or binding.port != port:
+        return False
+    connected_pair = _address_pair(connected_address)
+    if connected_pair is None or _endpoint_ip_key(connected_pair[0]) is None:
+        return False
+
+    refreshed_binding = UpstreamDestinationBinding(
+        host=binding.host,
+        port=binding.port,
+        kinds=binding.kinds | frozenset((kind,)),
+        original_address=connected_pair,
+    )
+    if not _server_binding_matches_current_destination(server, refreshed_binding):
+        return False
+    _bindings_by_server_id[server_id] = refreshed_binding
+    _associate_server_with_client(server_id, client)
+    return True
+
+
 def forget_server_binding(server: object) -> None:
     server_id = _connection_id(server)
     if server_id is not None:

@@ -831,13 +831,34 @@ def _bind_flow_upstream_destination(
         return False
 
     if has_server_binding:
-        return upstream_destination_binding.add_server_binding_kind_if_matching(
+        if upstream_destination_binding.add_server_binding_kind_if_matching(
             flow.server_conn,
             client=flow.client_conn,
             host=normalized_host,
             port=flow.request.port,
             kind=kind,
-        )
+        ):
+            return True
+        if flow.server_conn.connected:
+            connected_address = _connected_verified_tls_destination_endpoint(
+                flow.server_conn,
+                host=normalized_host,
+                port=flow.request.port,
+                extra_endpoints=(_connection_sockname(flow.client_conn),),
+            )
+            if connected_address is None:
+                return False
+            return (
+                upstream_destination_binding.refresh_server_binding_connected_address_if_matching(
+                    flow.server_conn,
+                    client=flow.client_conn,
+                    host=normalized_host,
+                    port=flow.request.port,
+                    kind=kind,
+                    connected_address=connected_address,
+                )
+            )
+        return False
 
     if flow.server_conn.connected:
         connected_address = _connected_verified_tls_destination_endpoint(
