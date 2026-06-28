@@ -6,12 +6,18 @@ import {
   IconAlertTriangle,
   IconBan,
   IconCheck,
-  IconGitBranch,
   IconLoader2,
+  IconRoute,
 } from "@tabler/icons-react";
-import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import type {
+  UserPermissionGrantExpiresIn,
+  UserPermissionGrantResponse,
+} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
-import { isFirewallMetadataConnectorType } from "@vm0/connectors/firewall-metadata";
+import {
+  isFirewallMetadataConnectorType,
+  type FirewallPermissionDetailMetadata,
+} from "@vm0/connectors/firewall-metadata";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import { firewallPermissionMetadataByConnector } from "../../signals/firewall-permission-metadata.ts";
@@ -61,7 +67,7 @@ function TargetPill({
         />
       ) : (
         <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted/60 text-muted-foreground">
-          <IconGitBranch size={18} stroke={1.7} />
+          <IconRoute size={18} stroke={1.7} />
         </span>
       )}
       <span className="text-sm font-medium text-foreground">{displayName}</span>
@@ -81,6 +87,54 @@ type PermissionGrantTarget =
       id: string;
       displayName: string;
     };
+
+type PermissionAllowAgent = {
+  displayName?: string | null;
+  avatarUrl?: string | null;
+} | null;
+
+type PermissionAllowWorkflow = {
+  id: string;
+  displayName?: string | null;
+  name: string;
+} | null;
+
+function resolvePermissionGrantTarget({
+  agentId,
+  agent,
+  workflow,
+  workflowScope,
+}: {
+  agentId: string;
+  agent: PermissionAllowAgent;
+  workflow: PermissionAllowWorkflow;
+  workflowScope: boolean;
+}): { target: PermissionGrantTarget } | { message: string } {
+  if (workflowScope) {
+    if (!workflow) {
+      return { message: "Workflow not found" };
+    }
+    return {
+      target: {
+        kind: "workflow",
+        id: workflow.id,
+        displayName: workflow.displayName ?? workflow.name,
+      },
+    };
+  }
+
+  if (!agent) {
+    return { message: "Agent not found" };
+  }
+  return {
+    target: {
+      kind: "agent",
+      id: agentId,
+      displayName: agent.displayName ?? agentId,
+      avatarUrl: agent.avatarUrl ?? null,
+    },
+  };
+}
 
 function ConnectorPermissionCard({
   connectorRef,
@@ -225,6 +279,77 @@ function resolveUserName(
   return "there";
 }
 
+function anyLoadableIsLoading(
+  loadables: readonly { state: string }[],
+): boolean {
+  return loadables.some((loadable) => {
+    return loadable.state === "loading";
+  });
+}
+
+function permissionAllowLoadErrorMessage({
+  workflowScope,
+  targetState,
+  grantsState,
+  metadataState,
+}: {
+  workflowScope: boolean;
+  targetState: string;
+  grantsState: string;
+  metadataState: string;
+}): string | null {
+  if (targetState === "hasError") {
+    return workflowScope ? "Failed to load workflow" : "Failed to load agent";
+  }
+  if (grantsState === "hasError") {
+    return "Failed to load permission grants";
+  }
+  if (metadataState === "hasError") {
+    return "Failed to load permission metadata";
+  }
+  return null;
+}
+
+function resolveExistingPermissionGrantResult({
+  action,
+  connectorRef,
+  expiresIn,
+  focusedPermission,
+  grants,
+  metadata,
+}: {
+  action: "allow" | "deny";
+  connectorRef: string;
+  expiresIn: UserPermissionGrantExpiresIn | null;
+  focusedPermission: Permission;
+  grants: readonly UserPermissionGrantResponse[];
+  metadata: FirewallPermissionDetailMetadata;
+}): { expiresAt?: string | null } | null {
+  const effectivePolicy = resolveUserPermissionGrantPolicy(
+    grants,
+    metadata,
+    focusedPermission.name,
+  );
+  const explicitGrant = grants.find((grant) => {
+    return (
+      grant.connectorRef === connectorRef &&
+      grant.permission === focusedPermission.name &&
+      grant.action === action
+    );
+  });
+  const requestedExpirationAlreadyApplies =
+    action !== "allow" ||
+    requestedUserPermissionGrantExpirationAlreadyApplies({
+      expiresIn,
+      currentExpiresAt: explicitGrant?.expiresAt,
+    });
+
+  if (effectivePolicy !== action || !requestedExpirationAlreadyApplies) {
+    return null;
+  }
+  return { expiresAt: explicitGrant?.expiresAt };
+}
+
 function ConfirmGrantCard({
   target,
   connectorRef,
@@ -358,41 +483,44 @@ function PermissionAllowDoctorPage({
     firewallPermissionMetadataByConnector({ connectorType: ref }),
   );
   const workflowScope = workflowId !== null;
+  const targetLoadable = workflowScope ? workflowLoadable : agentLoadable;
 
   if (
-    (workflowScope
-      ? workflowLoadable.state === "loading"
-      : agentLoadable.state === "loading") ||
-    userLoadable.state === "loading" ||
-    grantsLoadable.state === "loading" ||
-    metadataLoadable.state === "loading"
+    anyLoadableIsLoading([
+      targetLoadable,
+      userLoadable,
+      grantsLoadable,
+      metadataLoadable,
+    ])
   ) {
     return <LoadingCard />;
   }
 
-  if (!workflowScope && agentLoadable.state === "hasError") {
-    return <ErrorMessage message="Failed to load agent" />;
-  }
-  if (workflowScope && workflowLoadable.state === "hasError") {
-    return <ErrorMessage message="Failed to load workflow" />;
-  }
-  if (grantsLoadable.state === "hasError") {
-    return <ErrorMessage message="Failed to load permission grants" />;
-  }
-  if (metadataLoadable.state === "hasError") {
-    return <ErrorMessage message="Failed to load permission metadata" />;
+  const loadErrorMessage = permissionAllowLoadErrorMessage({
+    workflowScope,
+    targetState: targetLoadable.state,
+    grantsState: grantsLoadable.state,
+    metadataState: metadataLoadable.state,
+  });
+  if (loadErrorMessage) {
+    return <ErrorMessage message={loadErrorMessage} />;
   }
 
   const agent = agentLoadable.state === "hasData" ? agentLoadable.data : null;
   const workflow =
     workflowLoadable.state === "hasData" ? workflowLoadable.data : null;
-  if (!workflowScope && !agent) {
-    return <ErrorMessage message="Agent not found" />;
+  const targetResult = resolvePermissionGrantTarget({
+    agentId,
+    agent,
+    workflow,
+    workflowScope,
+  });
+  if ("message" in targetResult) {
+    return <ErrorMessage message={targetResult.message} />;
   }
-  if (workflowScope && !workflow) {
-    return <ErrorMessage message="Workflow not found" />;
-  }
-  const metadata = metadataLoadable.data;
+
+  const metadata =
+    metadataLoadable.state === "hasData" ? metadataLoadable.data : null;
   if (!metadata) {
     return <ErrorMessage message={`Unknown connector: ${ref}`} />;
   }
@@ -403,29 +531,19 @@ function PermissionAllowDoctorPage({
   }
 
   const grants = grantsLoadable.state === "hasData" ? grantsLoadable.data : [];
-  const effectivePolicy = resolveUserPermissionGrantPolicy(
+  const existingGrantResult = resolveExistingPermissionGrantResult({
+    action,
+    connectorRef: ref,
+    expiresIn: initialExpiresIn,
+    focusedPermission,
     grants,
     metadata,
-    focusedPermission.name,
-  );
-  const explicitGrant = grants.find((grant) => {
-    return (
-      grant.connectorRef === ref &&
-      grant.permission === focusedPermission.name &&
-      grant.action === action
-    );
   });
-  const requestedExpirationAlreadyApplies =
-    action !== "allow" ||
-    requestedUserPermissionGrantExpirationAlreadyApplies({
-      expiresIn: initialExpiresIn,
-      currentExpiresAt: explicitGrant?.expiresAt,
-    });
-  if (effectivePolicy === action && requestedExpirationAlreadyApplies) {
+  if (existingGrantResult) {
     return (
       <ResultCard
         action={action}
-        expiresAt={explicitGrant?.expiresAt}
+        expiresAt={existingGrantResult.expiresAt}
         showExpiry={action === "allow"}
       />
     );
@@ -433,23 +551,9 @@ function PermissionAllowDoctorPage({
 
   const currentUser =
     userLoadable.state === "hasData" ? userLoadable.data : undefined;
-  const target: PermissionGrantTarget =
-    workflowScope && workflow
-      ? {
-          kind: "workflow",
-          id: workflow.id,
-          displayName: workflow.displayName ?? workflow.name,
-        }
-      : {
-          kind: "agent",
-          id: agentId,
-          displayName: agent?.displayName ?? agentId,
-          avatarUrl: agent?.avatarUrl ?? null,
-        };
-
   return (
     <ConfirmGrantCard
-      target={target}
+      target={targetResult.target}
       connectorRef={ref}
       permission={focusedPermission}
       action={action}

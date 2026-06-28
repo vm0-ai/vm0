@@ -43,6 +43,7 @@ import {
   IconMessageCircle,
   IconPackage,
   IconPresentation,
+  IconRoute,
   IconSearch,
   IconTag,
   IconTarget,
@@ -6893,7 +6894,7 @@ function WorkflowUserMessage({
             aria-label="Workflow trigger"
             className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
           >
-            <IconGitBranch size={15} stroke={1.8} className="shrink-0" />
+            <IconRoute size={15} stroke={1.8} className="shrink-0" />
             <span>Workflow trigger</span>
           </div>
           {linked ? (
