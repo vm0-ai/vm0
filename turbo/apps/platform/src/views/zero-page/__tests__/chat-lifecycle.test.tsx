@@ -3060,11 +3060,27 @@ describe("chat lifecycle", () => {
     });
 
     const sidebar = screen.getByTestId("automation-sidebar");
-    // The workflow trigger card shows its name and description.
     expect(within(sidebar).getByText("Nightly sync")).toBeInTheDocument();
+    expect(within(sidebar).getByText("View")).toBeInTheDocument();
+    expect(within(sidebar).getAllByText("Schedule").length).toBeGreaterThan(0);
+    expect(within(sidebar).getByText("Every 1 minute")).toBeInTheDocument();
+    expect(within(sidebar).getByText("Last run")).toBeInTheDocument();
+    expect(within(sidebar).getByText("No runs yet")).toBeInTheDocument();
+    expect(within(sidebar).getAllByText("Next run").length).toBeGreaterThan(0);
     expect(
-      within(sidebar).getByText("Sync the changelog every night"),
-    ).toBeInTheDocument();
+      within(sidebar).getAllByText("No upcoming run").length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(sidebar).queryByText("Authorization"),
+    ).not.toBeInTheDocument();
+
+    click(within(sidebar).getAllByText("Edit").at(-1)!);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Edit trigger" }),
+      ).toBeInTheDocument();
+    });
   });
 
   it("folds goal-state markers into the goal row beneath the queued messages", async () => {

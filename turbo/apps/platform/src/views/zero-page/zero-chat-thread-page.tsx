@@ -1,5 +1,6 @@
 import type {
   CSSProperties,
+  FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
@@ -49,7 +50,6 @@ import {
   IconClock,
   IconCoins,
   IconHourglass,
-  IconKey,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -61,6 +61,12 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   Popover,
   PopoverContent,
   PopoverTrigger,
@@ -76,6 +82,10 @@ import type {
   GenerationTemplateRequest,
   ChatThreadGithubPr,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  ChatThreadWorkflowTrigger,
+  ZeroWorkflowSchedule,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
@@ -192,8 +202,11 @@ import {
 import {
   headerAutomationMenu$,
   headerWorkflowTriggersForThread,
+  runHeaderWorkflowTriggerNow$,
   reloadHeaderAutomationMenu$,
-  toggleWorkflowTriggerEnabled$,
+  updateHeaderWorkflowGmailLabelAppliedTrigger$,
+  updateHeaderWorkflowGmailNewMessageTrigger$,
+  updateHeaderWorkflowScheduleTrigger$,
   automationsForThread,
   type HeaderAutomationEntry,
   type HeaderWorkflowTriggerEntry,
@@ -201,8 +214,10 @@ import {
 import { pauseChatThreadGoal$ } from "../../signals/chat-page/chat-goal.ts";
 import {
   closeHeaderAutomationSidebar$,
+  currentEditingHeaderWorkflowTriggerId$,
   currentHeaderAutomationThreadId$,
   openHeaderAutomationSidebar$,
+  setEditingHeaderWorkflowTriggerId$,
 } from "../../signals/chat-page/header-automation-sidebar.ts";
 import {
   runAutomationNow$,
@@ -216,9 +231,21 @@ import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { WORKFLOW_DETAIL_TAB_PARAM } from "../../signals/workflows-page/workflows-signals.ts";
 import {
+  atTimeInTimezone,
+  cronWallTimeInTimezone,
+} from "../../signals/zero-page/cron.ts";
+import {
+  buildGmailLabelAppliedEventConfig,
+  buildGmailNewMessageEventConfig,
+  GMAIL_TEXT_FIELDS,
+  gmailMatcherDefaultValue,
   gmailTriggerSummary,
   gmailTriggerTitle,
 } from "../workflows-page/workflow-shared.tsx";
+import {
+  WorkflowTriggerCard,
+  type WorkflowTriggerCardRow,
+} from "../workflows-page/workflow-trigger-card.tsx";
 
 import type {
   EnrichedChatMessage,
@@ -2011,6 +2038,127 @@ function formatHeaderWorkflowTriggerRun(value: string | null): string {
   });
 }
 
+function formatHeaderWorkflowTriggerNextRun(value: string | null): string {
+  if (!value) {
+    return "No upcoming run";
+  }
+  return formatHeaderWorkflowTriggerRun(value);
+}
+
+function formatHeaderClockTime(hour: number, minute: number): string {
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  return `${h12}:${String(minute).padStart(2, "0")} ${ampm}`;
+}
+
+function formatHeaderIntervalSeconds(seconds: number): string {
+  if (seconds % 3600 === 0) {
+    const hours = seconds / 3600;
+    return `Every ${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  if (seconds % 60 === 0) {
+    const minutes = seconds / 60;
+    return `Every ${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+  }
+  return `Every ${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+}
+
+function headerCronRuleLabel(
+  cronExpression: string,
+  sourceTimezone: string,
+  displayTimezone: string,
+): string {
+  const [minutePart, hourPart, dayOfMonth = "*", , dayOfWeek = "*"] =
+    cronExpression.split(" ");
+  const minute = Number(minutePart);
+  const hour = Number(hourPart);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    return `${cronExpression} (${sourceTimezone})`;
+  }
+  const converted = cronWallTimeInTimezone(
+    hour,
+    minute,
+    sourceTimezone,
+    displayTimezone,
+  );
+  const time = formatHeaderClockTime(converted.hour, converted.minute);
+  if (dayOfMonth !== "*") {
+    return `Every month on day ${dayOfMonth} at ${time}`;
+  }
+  if (dayOfWeek === "1-5") {
+    return `Every weekday at ${time}`;
+  }
+  if (dayOfWeek !== "*") {
+    const dayNames: Readonly<Record<string, string>> = {
+      "0": "Sunday",
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday",
+    };
+    const days = dayOfWeek
+      .split(",")
+      .map((day) => {
+        return dayNames[day];
+      })
+      .filter(Boolean)
+      .join(", ");
+    return days ? `Every week on ${days} at ${time}` : `Every week at ${time}`;
+  }
+  return `Every day at ${time}`;
+}
+
+function headerWorkflowTriggerRule(
+  trigger: HeaderWorkflowTriggerEntry,
+): string {
+  const source = trigger.trigger;
+  if (source.kind !== "schedule") {
+    return gmailTriggerTitle(source);
+  }
+  const schedule = source.schedule;
+  if (schedule.type === "loop") {
+    return formatHeaderIntervalSeconds(schedule.intervalSeconds);
+  }
+  if (schedule.type === "once") {
+    const { date, hour, minute } = atTimeInTimezone(
+      schedule.atTime,
+      trigger.timezone,
+    );
+    return `Once on ${date} at ${formatHeaderClockTime(hour, minute)}`;
+  }
+  return headerCronRuleLabel(
+    schedule.cronExpression,
+    schedule.timezone,
+    trigger.timezone,
+  );
+}
+
+function headerWorkflowTriggerRows(
+  trigger: HeaderWorkflowTriggerEntry,
+): readonly WorkflowTriggerCardRow[] {
+  const rows: WorkflowTriggerCardRow[] = [
+    {
+      label: trigger.trigger.kind === "schedule" ? "Schedule" : "Trigger",
+      value: headerWorkflowTriggerRule(trigger),
+    },
+    {
+      label: "Last run",
+      value: formatHeaderWorkflowTriggerRun(trigger.trigger.lastRunAt),
+    },
+    {
+      label: "Next run",
+      value: formatHeaderWorkflowTriggerNextRun(trigger.trigger.nextRunAt),
+    },
+  ];
+  const matchSummary = gmailTriggerSummary(trigger.trigger);
+  if (matchSummary) {
+    rows.splice(1, 0, { label: "Match", value: matchSummary });
+  }
+  return rows;
+}
+
 function HeaderAutomationSidebarCard({
   automation,
 }: {
@@ -2132,151 +2280,462 @@ function HeaderAutomationSidebarCard({
   );
 }
 
-function HeaderWorkflowTriggerDetails({
-  trigger,
-}: {
-  readonly trigger: HeaderWorkflowTriggerEntry;
-}) {
-  const triggerTitle = gmailTriggerTitle(trigger.trigger);
-  const triggerSummary = gmailTriggerSummary(trigger.trigger);
-  const summaryLabel =
-    trigger.trigger.kind === "event" &&
-    trigger.trigger.eventType === "gmail-label-applied"
-      ? "Label"
-      : "Match";
-  const summaryValue =
-    trigger.trigger.kind === "event" &&
-    trigger.trigger.eventType === "gmail-label-applied"
-      ? trigger.trigger.eventConfig.labelName
-      : triggerSummary;
-
-  return (
-    <dl className="mt-3 text-xs">
-      <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
-        <dt className="shrink-0 text-muted-foreground">Trigger</dt>
-        <dd className="min-w-0 truncate text-right font-medium text-foreground">
-          {triggerTitle}
-        </dd>
-      </div>
-      {summaryValue ? (
-        <div className="flex items-center justify-between gap-3 border-b border-border/50 py-2.5">
-          <dt className="shrink-0 text-muted-foreground">{summaryLabel}</dt>
-          <dd className="min-w-0 truncate text-right font-medium text-foreground">
-            {summaryValue}
-          </dd>
-        </div>
-      ) : null}
-      <div className="flex items-center justify-between gap-3 py-2.5">
-        <dt className="shrink-0 text-muted-foreground">Last run</dt>
-        <dd className="min-w-0 truncate text-right font-medium text-foreground">
-          {formatHeaderWorkflowTriggerRun(trigger.trigger.lastRunAt)}
-        </dd>
-      </div>
-    </dl>
-  );
-}
-
-function HeaderWorkflowTriggerActions({
-  trigger,
-}: {
-  readonly trigger: HeaderWorkflowTriggerEntry;
-}) {
-  return (
-    <div className="mt-4 grid min-w-0 grid-cols-2 gap-2">
-      <Link
-        pathname={ROUTES.agentWorkflowDetail}
-        options={{
-          pathParams: {
-            agentId: trigger.workflowAgentId,
-            workflowId: trigger.workflowId,
-          },
-          searchParams: new URLSearchParams({
-            [WORKFLOW_DETAIL_TAB_PARAM]: "authorization",
-          }),
-        }}
-        className="zero-btn-morandi inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent"
-      >
-        <IconKey size={13} stroke={1.5} />
-        Authorization
-      </Link>
-      <Link
-        pathname={ROUTES.agentWorkflowDetail}
-        options={{
-          pathParams: {
-            agentId: trigger.workflowAgentId,
-            workflowId: trigger.workflowId,
-          },
-          searchParams: new URLSearchParams({
-            [WORKFLOW_DETAIL_TAB_PARAM]: "triggers",
-          }),
-        }}
-        className="zero-btn-morandi inline-flex h-8 items-center justify-center gap-1.5 rounded-lg border px-3 text-xs font-medium text-foreground transition-colors hover:bg-accent"
-      >
-        <IconArrowUpRight size={13} stroke={1.5} />
-        Triggers
-      </Link>
-    </div>
-  );
-}
-
 function HeaderWorkflowTriggerCard({
   trigger,
 }: {
   trigger: HeaderWorkflowTriggerEntry;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [togglingLoadable, toggleEnabledTracked] = useLoadableSet(
-    toggleWorkflowTriggerEnabled$,
+  const editingTriggerId = useGet(currentEditingHeaderWorkflowTriggerId$);
+  const setEditingTriggerId = useSet(setEditingHeaderWorkflowTriggerId$);
+  const [runningLoadable, runNow] = useLoadableSet(
+    runHeaderWorkflowTriggerNow$,
   );
-  const toggling = togglingLoadable.state === "loading";
+  const running = runningLoadable.state === "loading";
   const title = trigger.workflowDisplayName?.trim() || trigger.workflowName;
-  const description = trigger.workflowDescription?.trim();
-
-  const toggleEnabled = (enabled: boolean) => {
-    detach(
-      toggleEnabledTracked({ triggerId: trigger.id, enabled }, pageSignal),
-      Reason.DomCallback,
-      "toggle workflow trigger enabled",
-    );
-  };
+  const rows = headerWorkflowTriggerRows(trigger);
+  const editing = editingTriggerId === trigger.id;
 
   return (
-    <article
-      className={cn(
-        "rounded-lg border border-border bg-background p-4 transition-colors",
-        !trigger.enabled && "opacity-75",
-      )}
-    >
-      <div className="flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <p
-            className={cn(
-              "line-clamp-1 text-sm font-medium leading-snug",
-              trigger.enabled ? "text-foreground" : "text-muted-foreground",
-            )}
-          >
-            {title}
-          </p>
-          {description ? (
-            <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
-              {description}
-            </p>
-          ) : null}
-        </div>
-        <LoadingSwitch
-          checked={trigger.enabled}
-          loading={toggling}
-          onCheckedChange={toggleEnabled}
-          ariaLabel={`${trigger.enabled ? "Disable" : "Enable"} ${title}`}
-        />
+    <div className="min-w-0">
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
+        <p className="min-w-0 truncate text-sm font-normal leading-snug text-muted-foreground">
+          {title}
+        </p>
+        <Link
+          pathname={ROUTES.agentWorkflowDetail}
+          options={{
+            pathParams: {
+              agentId: trigger.workflowAgentId,
+              workflowId: trigger.workflowId,
+            },
+            searchParams: new URLSearchParams({
+              [WORKFLOW_DETAIL_TAB_PARAM]: "triggers",
+            }),
+          }}
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
+        >
+          View
+          <IconArrowUpRight size={12} stroke={1.5} />
+        </Link>
       </div>
-
-      <HeaderWorkflowTriggerDetails trigger={trigger} />
-      <HeaderWorkflowTriggerActions trigger={trigger} />
-    </article>
+      <WorkflowTriggerCard
+        rows={rows}
+        dimmed={!trigger.enabled}
+        actions={
+          <>
+            <button
+              type="button"
+              className="rounded-md px-1 py-1 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+              onClick={() => {
+                setEditingTriggerId(trigger.id);
+              }}
+            >
+              Edit
+            </button>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="zero-btn-morandi h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-medium"
+              disabled={running}
+              onClick={() => {
+                detach(
+                  runNow(trigger.id, pageSignal),
+                  Reason.DomCallback,
+                  "run header workflow trigger now",
+                );
+              }}
+            >
+              {running ? (
+                <IconLoader2 size={13} className="animate-spin" />
+              ) : (
+                <IconPlayerPlay size={13} stroke={1.5} />
+              )}
+              {running ? "Starting..." : "Run now"}
+            </Button>
+          </>
+        }
+      />
+      <HeaderWorkflowTriggerEditDialog
+        trigger={trigger.trigger}
+        displayTimezone={trigger.timezone}
+        open={editing}
+        onOpenChange={(open) => {
+          setEditingTriggerId(open ? trigger.id : null);
+        }}
+      />
+    </div>
   );
 }
 
+function HeaderWorkflowTriggerEditDialog({
+  trigger,
+  displayTimezone,
+  open,
+  onOpenChange,
+}: {
+  readonly trigger: ChatThreadWorkflowTrigger;
+  readonly displayTimezone: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className={
+          trigger.kind === "event" && trigger.eventType === "gmail-new-message"
+            ? "max-w-2xl"
+            : ""
+        }
+      >
+        <DialogHeader>
+          <DialogTitle>Edit trigger</DialogTitle>
+          <DialogDescription>Update this workflow trigger.</DialogDescription>
+        </DialogHeader>
+        {trigger.kind === "schedule" ? (
+          <HeaderScheduleTriggerEditForm
+            trigger={trigger}
+            displayTimezone={displayTimezone}
+            onDone={() => {
+              onOpenChange(false);
+            }}
+          />
+        ) : null}
+        {trigger.kind === "event" &&
+        trigger.eventType === "gmail-new-message" ? (
+          <HeaderGmailNewMessageTriggerEditForm
+            trigger={trigger}
+            onDone={() => {
+              onOpenChange(false);
+            }}
+          />
+        ) : null}
+        {trigger.kind === "event" &&
+        trigger.eventType === "gmail-label-applied" ? (
+          <HeaderGmailLabelTriggerEditForm
+            trigger={trigger}
+            onDone={() => {
+              onOpenChange(false);
+            }}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const HEADER_TRIGGER_FIELD_CLASS =
+  "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none transition-colors focus:border-primary disabled:opacity-60";
+
+function localDateTimeInputValue(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hour}:${minute}`;
+}
+
+function scheduleFromHeaderTriggerForm(
+  trigger: Extract<ChatThreadWorkflowTrigger, { kind: "schedule" }>,
+  form: FormData,
+): ZeroWorkflowSchedule | null {
+  const schedule = trigger.schedule;
+  if (schedule.type === "loop") {
+    const intervalSeconds = Number(form.get("intervalSeconds"));
+    return Number.isInteger(intervalSeconds) && intervalSeconds > 0
+      ? { type: "loop", intervalSeconds }
+      : null;
+  }
+  if (schedule.type === "once") {
+    const rawAtTime = String(form.get("atTime") ?? "");
+    if (!rawAtTime) {
+      return null;
+    }
+    const atTime = new Date(rawAtTime);
+    return Number.isNaN(atTime.getTime())
+      ? null
+      : {
+          type: "once",
+          atTime: atTime.toISOString(),
+          timezone: schedule.timezone,
+        };
+  }
+  const cronExpression = String(form.get("cronExpression") ?? "").trim();
+  return cronExpression
+    ? {
+        type: "cron",
+        cronExpression,
+        timezone: schedule.timezone,
+      }
+    : null;
+}
+
+function HeaderScheduleTriggerEditForm({
+  trigger,
+  displayTimezone,
+  onDone,
+}: {
+  readonly trigger: Extract<ChatThreadWorkflowTrigger, { kind: "schedule" }>;
+  readonly displayTimezone: string;
+  readonly onDone: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [updateLoadable, updateTrigger] = useLoadableSet(
+    updateHeaderWorkflowScheduleTrigger$,
+  );
+  const saving = updateLoadable.state === "loading";
+  const schedule = trigger.schedule;
+
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        const scheduleValue = scheduleFromHeaderTriggerForm(
+          trigger,
+          new FormData(event.currentTarget),
+        );
+        if (!scheduleValue) {
+          return;
+        }
+        detach(
+          (async () => {
+            await updateTrigger(
+              { triggerId: trigger.id, schedule: scheduleValue },
+              pageSignal,
+            );
+            onDone();
+          })(),
+          Reason.DomCallback,
+          "update header workflow schedule trigger",
+        );
+      }}
+    >
+      {schedule.type === "loop" ? (
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Interval seconds
+          <input
+            name="intervalSeconds"
+            aria-label="Interval seconds"
+            type="number"
+            min="1"
+            defaultValue={schedule.intervalSeconds}
+            disabled={saving}
+            className={HEADER_TRIGGER_FIELD_CLASS}
+          />
+        </label>
+      ) : null}
+      {schedule.type === "once" ? (
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Run at
+          <input
+            name="atTime"
+            aria-label="Run at"
+            type="datetime-local"
+            defaultValue={localDateTimeInputValue(schedule.atTime)}
+            disabled={saving}
+            className={HEADER_TRIGGER_FIELD_CLASS}
+          />
+          <span>Displays in {displayTimezone}</span>
+        </label>
+      ) : null}
+      {schedule.type === "cron" ? (
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Cron expression
+          <input
+            name="cronExpression"
+            aria-label="Cron expression"
+            defaultValue={schedule.cronExpression}
+            disabled={saving}
+            className={HEADER_TRIGGER_FIELD_CLASS}
+          />
+          <span>Runs in {schedule.timezone}</span>
+        </label>
+      ) : null}
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={saving}
+          onClick={onDone}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving}>
+          {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
+          Save trigger
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+function HeaderGmailNewMessageTriggerEditForm({
+  trigger,
+  onDone,
+}: {
+  readonly trigger: Extract<
+    ChatThreadWorkflowTrigger,
+    { eventType: "gmail-new-message" }
+  >;
+  readonly onDone: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [updateLoadable, updateTrigger] = useLoadableSet(
+    updateHeaderWorkflowGmailNewMessageTrigger$,
+  );
+  const saving = updateLoadable.state === "loading";
+
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        detach(
+          (async () => {
+            await updateTrigger(
+              {
+                triggerId: trigger.id,
+                eventConfig: buildGmailNewMessageEventConfig(
+                  form,
+                  trigger.eventConfig,
+                ),
+              },
+              pageSignal,
+            );
+            onDone();
+          })(),
+          Reason.DomCallback,
+          "update header workflow Gmail trigger",
+        );
+      }}
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        {GMAIL_TEXT_FIELDS.map(({ field, label }) => {
+          return (
+            <div key={field} className="grid grid-cols-2 gap-2">
+              <input
+                name={`${field}Contains`}
+                aria-label={`${label} contains`}
+                defaultValue={gmailMatcherDefaultValue(
+                  trigger.eventConfig,
+                  field,
+                  "contains",
+                )}
+                disabled={saving}
+                placeholder={`${label} contains`}
+                className={HEADER_TRIGGER_FIELD_CLASS}
+              />
+              <input
+                name={`${field}DoesNotContain`}
+                aria-label={`${label} does not contain`}
+                defaultValue={gmailMatcherDefaultValue(
+                  trigger.eventConfig,
+                  field,
+                  "doesNotContain",
+                )}
+                disabled={saving}
+                placeholder={`${label} does not contain`}
+                className={HEADER_TRIGGER_FIELD_CLASS}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={saving}
+          onClick={onDone}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving}>
+          {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
+          Save trigger
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+function HeaderGmailLabelTriggerEditForm({
+  trigger,
+  onDone,
+}: {
+  readonly trigger: Extract<
+    ChatThreadWorkflowTrigger,
+    { eventType: "gmail-label-applied" }
+  >;
+  readonly onDone: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [updateLoadable, updateTrigger] = useLoadableSet(
+    updateHeaderWorkflowGmailLabelAppliedTrigger$,
+  );
+  const saving = updateLoadable.state === "loading";
+
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        const eventConfig = buildGmailLabelAppliedEventConfig(
+          new FormData(event.currentTarget),
+        );
+        if (!eventConfig) {
+          return;
+        }
+        detach(
+          (async () => {
+            await updateTrigger(
+              { triggerId: trigger.id, eventConfig },
+              pageSignal,
+            );
+            onDone();
+          })(),
+          Reason.DomCallback,
+          "update header workflow Gmail label trigger",
+        );
+      }}
+    >
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Label name
+        <input
+          name="labelName"
+          aria-label="Label name"
+          required
+          defaultValue={trigger.eventConfig.labelName}
+          disabled={saving}
+          placeholder="Support"
+          className={HEADER_TRIGGER_FIELD_CLASS}
+        />
+      </label>
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={saving}
+          onClick={onDone}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving}>
+          {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
+          Save trigger
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
 function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
   const automationsLoadable = useLastLoadable(headerAutomationMenu$);
   const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);

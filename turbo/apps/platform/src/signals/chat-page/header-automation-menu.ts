@@ -5,6 +5,7 @@ import {
   type ChatThreadWorkflowTrigger,
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
+  type ZeroWorkflowSchedule,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -12,7 +13,6 @@ import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
 import {
   listAutomations,
   listThreadWorkflowTriggers,
-  setWorkflowTriggerEnabled,
 } from "../zero-page/automations-api.ts";
 import { automationToTimeString } from "../zero-page/zero-automations.ts";
 
@@ -83,8 +83,8 @@ export interface HeaderWorkflowTriggerEntry {
   readonly workflowAgentId: string;
   readonly workflowName: string;
   readonly workflowDisplayName: string | null;
-  readonly workflowDescription: string | null;
   readonly summary: string;
+  readonly timezone: string;
   readonly trigger: ChatThreadWorkflowTrigger;
 }
 
@@ -119,6 +119,10 @@ function createHeaderWorkflowTriggersFactory(): (
         const triggers = await listThreadWorkflowTriggers(get(zeroClient$), {
           threadId,
         });
+        const prefs = await get(userPreferences$);
+        const displayTz =
+          prefs?.timezone ??
+          new Intl.DateTimeFormat().resolvedOptions().timeZone;
         return triggers.map((trigger) => {
           return {
             id: trigger.id,
@@ -128,8 +132,8 @@ function createHeaderWorkflowTriggersFactory(): (
             workflowAgentId: trigger.workflow.agentId,
             workflowName: trigger.workflow.name,
             workflowDisplayName: trigger.workflow.displayName,
-            workflowDescription: trigger.workflow.description,
             summary: workflowTriggerSummary(trigger),
+            timezone: displayTz,
             trigger,
           };
         });
@@ -143,18 +147,24 @@ function createHeaderWorkflowTriggersFactory(): (
 export const headerWorkflowTriggersForThread =
   createHeaderWorkflowTriggersFactory();
 
-/**
- * Enable/disable a thread's workflow trigger from the sidebar toggle,
- * then refetch so the card reflects the new state. The backend also publishes
- * the realtime signal so other open clients refresh.
- */
-export const toggleWorkflowTriggerEnabled$ = command(
+export const updateHeaderWorkflowScheduleTrigger$ = command(
   async (
     { get, set },
-    params: { readonly triggerId: string; readonly enabled: boolean },
+    params: {
+      readonly triggerId: string;
+      readonly schedule: ZeroWorkflowSchedule;
+    },
     signal: AbortSignal,
   ) => {
-    await setWorkflowTriggerEnabled(get(zeroClient$), params);
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.update({
+        params: { id: params.triggerId },
+        body: { schedule: params.schedule },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
     signal.throwIfAborted();
     set(reloadHeaderAutomationMenu$);
   },
@@ -177,6 +187,21 @@ export const updateHeaderWorkflowGmailNewMessageTrigger$ = command(
         fetchOptions: { signal },
       }),
       [200],
+    );
+    signal.throwIfAborted();
+    set(reloadHeaderAutomationMenu$);
+  },
+);
+
+export const runHeaderWorkflowTriggerNow$ = command(
+  async ({ get, set }, triggerId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.run({
+        params: { id: triggerId },
+        fetchOptions: { signal },
+      }),
+      [201],
     );
     signal.throwIfAborted();
     set(reloadHeaderAutomationMenu$);

@@ -32,7 +32,6 @@ import {
   IconLoader2,
   IconMail,
   IconMessageCircle,
-  IconPencil,
   IconPlayerPause,
   IconPlayerPlay,
   IconPlus,
@@ -196,9 +195,12 @@ import {
 import {
   agentLabel,
   isMarkdownPath,
-  triggerKindLabel,
   workflowTitle,
 } from "./workflow-shared.tsx";
+import {
+  WorkflowTriggerCard,
+  type WorkflowTriggerCardRow,
+} from "./workflow-trigger-card.tsx";
 
 const FIELD_CLASS =
   "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none focus:border-primary";
@@ -2187,6 +2189,19 @@ function buildTriggerSchedule(
       };
 }
 
+function localDateTimeInputValue(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hour}:${minute}`;
+}
+
 function formTextValue(form: FormData, name: string): string | undefined {
   const value = form.get(name);
   if (typeof value !== "string") {
@@ -2593,7 +2608,7 @@ function CreateScheduleTriggerDialog({
             cronFields={cronFields}
             setCronFields={setCronFields}
             displayTimezone={displayTimezone}
-            creating={creating}
+            disabled={creating}
           />
 
           <DialogFooter>
@@ -2625,13 +2640,17 @@ function ScheduleTriggerFields({
   cronFields,
   setCronFields,
   displayTimezone,
-  creating,
+  disabled,
+  defaultIntervalSeconds,
+  defaultAtTime,
 }: {
   readonly scheduleType: ZeroWorkflowScheduleType;
   readonly cronFields: WorkflowCronFields;
   readonly setCronFields: (fields: WorkflowCronFields) => void;
   readonly displayTimezone: string;
-  readonly creating: boolean;
+  readonly disabled: boolean;
+  readonly defaultIntervalSeconds?: number;
+  readonly defaultAtTime?: string;
 }) {
   if (scheduleType === "loop") {
     return (
@@ -2642,8 +2661,8 @@ function ScheduleTriggerFields({
           aria-label="Interval seconds"
           type="number"
           min="1"
-          defaultValue="3600"
-          disabled={creating}
+          defaultValue={String(defaultIntervalSeconds ?? 3600)}
+          disabled={disabled}
           className={FIELD_CLASS}
         />
       </label>
@@ -2658,7 +2677,8 @@ function ScheduleTriggerFields({
           name="atTime"
           aria-label="Run at"
           type="datetime-local"
-          disabled={creating}
+          defaultValue={defaultAtTime}
+          disabled={disabled}
           className={FIELD_CLASS}
         />
         <span className="text-xs text-muted-foreground">
@@ -2673,7 +2693,7 @@ function ScheduleTriggerFields({
       fields={cronFields}
       onChange={setCronFields}
       displayTimezone={displayTimezone}
-      disabled={creating}
+      disabled={disabled}
     />
   );
 }
@@ -3355,165 +3375,66 @@ function TriggerRow({
   const editingTriggerId = useGet(editingWorkflowTriggerId$);
   const setEditingTriggerId = useSet(setEditingWorkflowTriggerId$);
   const editing = editingTriggerId === trigger.id;
-  const title = workflowScheduleTitle(trigger, displayTimezone);
-  const detailRows = triggerDetailRows(trigger, displayTimezone);
-  const TriggerIcon =
-    trigger.kind === "schedule"
-      ? IconClock
-      : isGmailWorkflowTrigger(trigger)
-        ? IconMail
-        : IconLink;
+  const rows = triggerCardRows(trigger, displayTimezone);
 
   return (
-    <article
-      className={cn(
-        "zero-card p-4 transition-colors",
-        !trigger.enabled && "bg-muted/20",
-      )}
-    >
-      <div className="flex min-w-0 items-start gap-3">
-        <span className="flex size-8 shrink-0 items-center justify-center rounded-md border border-border/60 bg-muted/30 text-muted-foreground">
-          <TriggerIcon size={15} stroke={1.5} />
-        </span>
-        <div className="min-w-0 flex-1">
-          <div className="flex min-w-0 flex-wrap items-start justify-between gap-3">
-            <div className="min-w-0">
-              <div className="flex min-w-0 items-center gap-2">
-                <h3
-                  className={cn(
-                    "min-w-0 truncate text-sm font-medium leading-5",
-                    trigger.enabled
-                      ? "text-foreground"
-                      : "text-muted-foreground",
-                  )}
-                >
-                  {title}
-                </h3>
-                <span
-                  className={cn(
-                    "shrink-0 rounded-full px-1.5 py-0.5 text-[10px] font-medium",
-                    trigger.enabled
-                      ? "bg-emerald-500/10 text-emerald-700"
-                      : "bg-muted text-muted-foreground",
-                  )}
-                >
-                  {trigger.enabled ? "Enabled" : "Paused"}
-                </span>
-              </div>
-              <p className="mt-0.5 truncate text-xs text-muted-foreground">
-                {triggerKindLabel(trigger)}
-              </p>
-            </div>
-          </div>
-          <dl className="mt-3 divide-y divide-border/50 text-xs">
-            {detailRows.map((row) => {
-              return (
-                <div
-                  key={row.label}
-                  className="flex min-w-0 items-center justify-between gap-3 py-2 first:pt-0 last:pb-0"
-                >
-                  <dt className="shrink-0 text-muted-foreground">
-                    {row.label}
-                  </dt>
-                  <dd className="min-w-0 truncate text-right font-medium text-foreground">
-                    {row.value}
-                  </dd>
-                </div>
-              );
-            })}
-          </dl>
-          {canManage ? (
+    <>
+      <WorkflowTriggerCard
+        rows={rows}
+        dimmed={!trigger.enabled}
+        actions={
+          canManage ? (
             <TriggerControls
               trigger={trigger}
-              editing={editing}
               displayTimezone={displayTimezone}
             />
-          ) : null}
-          {canManage && trigger.kind === "schedule" && editing ? (
-            <UpdateScheduleTriggerForm
-              trigger={trigger}
-              displayTimezone={displayTimezone}
-              onCancel={() => {
-                setEditingTriggerId(null);
-              }}
-            />
-          ) : null}
-          {canManage &&
-          trigger.kind === "event" &&
-          trigger.eventType === "gmail-new-message" &&
-          editing ? (
-            <UpdateGmailNewMessageTriggerForm
-              trigger={trigger}
-              onCancel={() => {
-                setEditingTriggerId(null);
-              }}
-            />
-          ) : null}
-          {canManage &&
-          trigger.kind === "event" &&
-          trigger.eventType === "gmail-label-applied" &&
-          editing ? (
-            <UpdateGmailLabelAppliedTriggerForm
-              trigger={trigger}
-              onCancel={() => {
-                setEditingTriggerId(null);
-              }}
-            />
-          ) : null}
-        </div>
-      </div>
-    </article>
+          ) : null
+        }
+      />
+      {canManage ? (
+        <EditWorkflowTriggerDialog
+          trigger={trigger}
+          displayTimezone={displayTimezone}
+          open={editing}
+          onOpenChange={(open) => {
+            if (!open) {
+              setEditingTriggerId(null);
+            }
+          }}
+        />
+      ) : null}
+    </>
   );
 }
 
-function triggerDetailRows(
+function triggerCardRows(
   trigger: ZeroWorkflowTriggerSummary,
   displayTimezone: string,
-): readonly {
-  readonly label: string;
-  readonly value: ReactNode;
-}[] {
-  const rows: {
-    readonly label: string;
-    readonly value: ReactNode;
-  }[] = [
+): readonly WorkflowTriggerCardRow[] {
+  const rows: WorkflowTriggerCardRow[] = [
+    {
+      label: trigger.kind === "schedule" ? "Schedule" : "Trigger",
+      value: workflowScheduleTitle(trigger, displayTimezone),
+    },
     {
       label: "Last run",
       value: formatWorkflowTriggerRun(trigger.lastRunAt, displayTimezone),
     },
-  ];
-
-  if (trigger.nextRunAt) {
-    rows.unshift({
+    {
       label: "Next run",
-      value: formatWorkflowTriggerRun(trigger.nextRunAt, displayTimezone),
-    });
-  }
+      value: formatWorkflowTriggerNextRun(trigger.nextRunAt, displayTimezone),
+    },
+  ];
 
   const matchSummary = workflowTriggerSummary(trigger);
   if (matchSummary) {
-    rows.unshift({ label: "Match", value: matchSummary });
+    rows.splice(1, 0, { label: "Match", value: matchSummary });
   }
 
   if (isWebhookWorkflowTrigger(trigger)) {
-    rows.unshift({
+    rows.splice(1, 0, {
       label: "Webhook",
       value: trigger.webhookUrl,
-    });
-  }
-
-  if (trigger.chatThreadId) {
-    rows.unshift({
-      label: "Thread",
-      value: (
-        <Link
-          pathname={ROUTES.chat}
-          options={{ pathParams: { threadId: trigger.chatThreadId } }}
-          className="text-xs font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
-        >
-          Open thread
-        </Link>
-      ),
     });
   }
 
@@ -3540,26 +3461,15 @@ function formatWorkflowTriggerRun(
   });
 }
 
-function triggerEditLabel(trigger: ZeroWorkflowTriggerSummary): string {
-  if (trigger.kind === "schedule") {
-    return "Edit schedule";
+function formatWorkflowTriggerNextRun(
+  value: string | null,
+  displayTimezone: string,
+): string {
+  if (!value) {
+    return "No upcoming run";
   }
 
-  return trigger.eventType === "gmail-label-applied"
-    ? "Edit label"
-    : "Edit match";
-}
-
-function TriggerEditIcon({
-  trigger,
-}: {
-  readonly trigger: ZeroWorkflowTriggerSummary;
-}) {
-  if (trigger.kind === "schedule") {
-    return <IconClock size={13} stroke={1.5} />;
-  }
-
-  return <IconPencil size={13} stroke={1.5} />;
+  return formatWorkflowTriggerRun(value, displayTimezone);
 }
 
 function TriggerToggleIcon({ enabled }: { readonly enabled: boolean }) {
@@ -3572,11 +3482,9 @@ function TriggerToggleIcon({ enabled }: { readonly enabled: boolean }) {
 
 function TriggerControls({
   trigger,
-  editing,
   displayTimezone,
 }: {
   readonly trigger: ZeroWorkflowTriggerSummary;
-  readonly editing: boolean;
   readonly displayTimezone: string;
 }) {
   const pageSignal = useGet(pageSignal$);
@@ -3594,40 +3502,15 @@ function TriggerControls({
     deleteLoadable.state === "loading" ||
     runNowLoadable.state === "loading";
   const running = runNowLoadable.state === "loading";
-  const canEdit =
-    isGmailWorkflowTrigger(trigger) ||
-    (trigger.kind === "schedule" && trigger.schedule.type === "cron");
+  const canEdit = canEditWorkflowTrigger(trigger);
 
   return (
-    <div className="mt-3 flex min-w-0 flex-wrap items-center justify-end gap-2 border-t border-border/50 pt-3">
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={busy}
-        className="zero-btn-morandi h-8 gap-1.5 rounded-lg px-3 text-xs font-medium"
-        onClick={() => {
-          detach(
-            runNow(trigger.id, pageSignal),
-            Reason.DomCallback,
-            "run workflow trigger now",
-          );
-        }}
-      >
-        {running ? (
-          <IconLoader2 size={13} className="animate-spin" />
-        ) : (
-          <IconPlayerPlay size={13} stroke={1.5} />
-        )}
-        <span>{running ? "Starting..." : "Trigger now"}</span>
-      </Button>
-      {canEdit && !editing ? (
-        <Button
+    <>
+      {canEdit ? (
+        <button
           type="button"
-          variant="outline"
-          size="sm"
           disabled={busy}
-          className="zero-btn-morandi h-8 gap-1.5 rounded-lg px-3 text-xs font-medium"
+          className="rounded-md px-1 py-1 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline disabled:opacity-60"
           onClick={() => {
             if (
               trigger.kind === "schedule" &&
@@ -3640,43 +3523,129 @@ function TriggerControls({
             setEditingTriggerId(trigger.id);
           }}
         >
-          <TriggerEditIcon trigger={trigger} />
-          <span>{triggerEditLabel(trigger)}</span>
-        </Button>
+          Edit
+        </button>
       ) : null}
-      <Button
-        type="button"
-        variant="outline"
-        size="sm"
-        disabled={busy}
-        className="zero-btn-morandi h-8 gap-1.5 rounded-lg px-3 text-xs font-medium"
-        onClick={() => {
-          detach(
-            setEnabled(
-              { triggerId: trigger.id, enabled: !trigger.enabled },
-              pageSignal,
-            ),
-            Reason.DomCallback,
-          );
-        }}
+      <div className="ml-auto flex min-w-0 flex-wrap items-center justify-end gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          className="zero-btn-morandi h-8 gap-1.5 rounded-lg px-3 text-xs font-medium"
+          onClick={() => {
+            detach(
+              runNow(trigger.id, pageSignal),
+              Reason.DomCallback,
+              "run workflow trigger now",
+            );
+          }}
+        >
+          {running ? (
+            <IconLoader2 size={13} className="animate-spin" />
+          ) : (
+            <IconPlayerPlay size={13} stroke={1.5} />
+          )}
+          <span>{running ? "Starting..." : "Run now"}</span>
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          disabled={busy}
+          className="zero-btn-morandi h-8 gap-1.5 rounded-lg px-3 text-xs font-medium"
+          onClick={() => {
+            detach(
+              setEnabled(
+                { triggerId: trigger.id, enabled: !trigger.enabled },
+                pageSignal,
+              ),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <TriggerToggleIcon enabled={trigger.enabled} />
+          <span>{trigger.enabled ? "Pause" : "Resume"}</span>
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="sm"
+          disabled={busy}
+          className="h-8 gap-1.5 rounded-lg px-3 text-xs font-medium text-destructive/80 hover:bg-destructive/10 hover:text-destructive"
+          onClick={() => {
+            detach(deleteTrigger(trigger.id, pageSignal), Reason.DomCallback);
+          }}
+        >
+          <IconTrash size={13} stroke={1.5} />
+          <span>Delete</span>
+        </Button>
+      </div>
+    </>
+  );
+}
+
+function canEditWorkflowTrigger(trigger: ZeroWorkflowTriggerSummary): boolean {
+  return trigger.kind === "schedule" || isGmailWorkflowTrigger(trigger);
+}
+
+function editWorkflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
+  if (trigger.kind === "schedule") {
+    return "Edit schedule";
+  }
+
+  return trigger.eventType === "gmail-label-applied"
+    ? "Edit label"
+    : "Edit match";
+}
+
+function EditWorkflowTriggerDialog({
+  trigger,
+  displayTimezone,
+  open,
+  onOpenChange,
+}: {
+  readonly trigger: ZeroWorkflowTriggerSummary;
+  readonly displayTimezone: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const close = () => {
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className={isGmailWorkflowTrigger(trigger) ? "max-w-2xl" : ""}
       >
-        <TriggerToggleIcon enabled={trigger.enabled} />
-        <span>{trigger.enabled ? "Pause" : "Resume"}</span>
-      </Button>
-      <Button
-        type="button"
-        variant="ghost"
-        size="sm"
-        disabled={busy}
-        className="h-8 gap-1.5 rounded-lg px-3 text-xs font-medium text-destructive/80 hover:text-destructive"
-        onClick={() => {
-          detach(deleteTrigger(trigger.id, pageSignal), Reason.DomCallback);
-        }}
-      >
-        <IconTrash size={13} stroke={1.5} />
-        <span>Delete</span>
-      </Button>
-    </div>
+        <DialogHeader>
+          <DialogTitle>{editWorkflowTriggerTitle(trigger)}</DialogTitle>
+          <DialogDescription>Update this trigger.</DialogDescription>
+        </DialogHeader>
+        {trigger.kind === "schedule" ? (
+          <UpdateScheduleTriggerForm
+            trigger={trigger}
+            displayTimezone={displayTimezone}
+            onCancel={close}
+          />
+        ) : null}
+        {trigger.kind === "event" &&
+        trigger.eventType === "gmail-new-message" ? (
+          <UpdateGmailNewMessageTriggerForm
+            trigger={trigger}
+            onCancel={close}
+          />
+        ) : null}
+        {trigger.kind === "event" &&
+        trigger.eventType === "gmail-label-applied" ? (
+          <UpdateGmailLabelAppliedTriggerForm
+            trigger={trigger}
+            onCancel={close}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
   );
 }
 
@@ -3696,18 +3665,25 @@ function UpdateScheduleTriggerForm({
     updateWorkflowScheduleTrigger$,
   );
   const saving = updateLoadable.state === "loading";
+  const schedule = trigger.schedule;
 
   return (
     <form
       aria-label="Update schedule trigger"
-      className="mt-2 rounded-md border border-border/60 bg-background/70 p-2"
+      className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
-        const cronExpression = buildUtcCronExpressionFromFields(
-          cronFields,
+        const form = new FormData(event.currentTarget);
+        const scheduleValue = buildTriggerSchedule(
+          schedule.type,
+          {
+            cronFields,
+            intervalSeconds: String(form.get("intervalSeconds") ?? ""),
+            atTime: String(form.get("atTime") ?? ""),
+          },
           displayTimezone,
         );
-        if (!cronExpression) {
+        if (!scheduleValue) {
           return;
         }
         detach(
@@ -3715,11 +3691,7 @@ function UpdateScheduleTriggerForm({
             await updateScheduleTrigger(
               {
                 triggerId: trigger.id,
-                schedule: {
-                  type: "cron",
-                  cronExpression,
-                  timezone: TRIGGER_TIMEZONE,
-                },
+                schedule: scheduleValue,
               },
               pageSignal,
             );
@@ -3729,37 +3701,39 @@ function UpdateScheduleTriggerForm({
         );
       }}
     >
-      <WorkflowCronFieldsForm
-        fields={cronFields}
-        onChange={setCronFields}
+      <ScheduleTriggerFields
+        scheduleType={schedule.type}
+        cronFields={cronFields}
+        setCronFields={setCronFields}
         displayTimezone={displayTimezone}
+        defaultIntervalSeconds={
+          schedule.type === "loop" ? schedule.intervalSeconds : undefined
+        }
+        defaultAtTime={
+          schedule.type === "once"
+            ? localDateTimeInputValue(schedule.atTime)
+            : undefined
+        }
         disabled={saving}
       />
-      <div className="mt-2 flex items-center gap-2">
-        <button
-          type="submit"
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
           disabled={saving}
-          className={cn(
-            "zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs",
-            saving ? "cursor-not-allowed opacity-60" : "",
-          )}
+          onClick={onCancel}
         >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving}>
           {saving ? (
             <IconLoader2 size={13} className="animate-spin" />
           ) : (
             <IconClock size={13} stroke={1.5} />
           )}
           <span>Save schedule</span>
-        </button>
-        <button
-          type="button"
-          disabled={saving}
-          className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
-      </div>
+        </Button>
+      </DialogFooter>
     </form>
   );
 }
@@ -3783,7 +3757,7 @@ function UpdateGmailNewMessageTriggerForm({
   return (
     <form
       aria-label="Update Gmail new message trigger"
-      className="mt-2 rounded-md border border-border/60 bg-background/70 p-2"
+      className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
@@ -3837,31 +3811,24 @@ function UpdateGmailNewMessageTriggerForm({
           );
         })}
       </div>
-      <div className="mt-2 flex items-center gap-2">
-        <button
-          type="submit"
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
           disabled={saving}
-          className={cn(
-            "zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs",
-            saving ? "cursor-not-allowed opacity-60" : "",
-          )}
+          onClick={onCancel}
         >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving}>
           {saving ? (
             <IconLoader2 size={13} className="animate-spin" />
           ) : (
             <IconMail size={13} stroke={1.5} />
           )}
           <span>Save match</span>
-        </button>
-        <button
-          type="button"
-          disabled={saving}
-          className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
-      </div>
+        </Button>
+      </DialogFooter>
     </form>
   );
 }
@@ -3885,7 +3852,7 @@ function UpdateGmailLabelAppliedTriggerForm({
   return (
     <form
       aria-label="Update Gmail label trigger"
-      className="mt-2 rounded-md border border-border/60 bg-background/70 p-2"
+      className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
         const form = new FormData(event.currentTarget);
@@ -3920,31 +3887,24 @@ function UpdateGmailLabelAppliedTriggerForm({
           className={TRIGGER_FIELD_CLASS}
         />
       </label>
-      <div className="mt-2 flex items-center gap-2">
-        <button
-          type="submit"
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
           disabled={saving}
-          className={cn(
-            "zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs",
-            saving ? "cursor-not-allowed opacity-60" : "",
-          )}
+          onClick={onCancel}
         >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving}>
           {saving ? (
             <IconLoader2 size={13} className="animate-spin" />
           ) : (
             <IconMail size={13} stroke={1.5} />
           )}
           <span>Save label</span>
-        </button>
-        <button
-          type="button"
-          disabled={saving}
-          className="text-xs text-muted-foreground transition-colors hover:text-foreground disabled:opacity-60"
-          onClick={onCancel}
-        >
-          Cancel
-        </button>
-      </div>
+        </Button>
+      </DialogFooter>
     </form>
   );
 }
