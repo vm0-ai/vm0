@@ -459,21 +459,21 @@ function AgentSelectionStep({
 
   if (agents.length === 0) {
     return (
-      <>
+      <div className="flex min-h-0 flex-1 flex-col">
         <AgentDialogSearch query={query} setQuery={setQuery} />
-        <div className="px-5 pb-5">
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
           <p className="px-1 py-2 text-xs text-muted-foreground">
             No agents yet
           </p>
         </div>
-      </>
+      </div>
     );
   }
 
   return (
-    <>
+    <div className="flex min-h-0 flex-1 flex-col">
       <AgentDialogSearch query={query} setQuery={setQuery} />
-      <div className="max-h-[min(520px,65vh)] overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto pb-2">
         {filteredPinned.length > 0 ? (
           <AgentDialogSection label="Pinned">
             {filteredPinned.map((agent) => {
@@ -527,7 +527,7 @@ function AgentSelectionStep({
           </div>
         ) : null}
       </div>
-    </>
+    </div>
   );
 }
 
@@ -541,7 +541,7 @@ function TriggerSelectionStep({
   const selectedAgentName = selectedAgent?.displayName ?? "Selected agent";
   return (
     <div className="grid gap-2">
-      <div className="mb-2 flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-gray-50 p-2.5">
+      <div className="mb-2 flex min-w-0 items-center gap-2 px-1 py-1">
         {selectedAgent ? (
           <AgentAvatarImg
             name={selectedAgent.id}
@@ -599,7 +599,7 @@ function WorkflowAutomationDialogFooter({
   readonly onCancel: () => void;
 }) {
   return (
-    <DialogFooter className="px-5 pb-5 pt-3">
+    <DialogFooter className="shrink-0 border-t border-border/60 bg-card px-5 py-4">
       {step === 2 ? (
         <Button
           type="button"
@@ -652,8 +652,8 @@ function CreateWorkflowAutomationDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="zero-app w-[calc(100vw-2rem)] gap-0 p-0 sm:max-w-xl">
-        <DialogHeader className="px-5 pb-3 pt-5">
+      <DialogContent className="zero-app !flex max-h-[min(720px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] !flex-col !overflow-hidden gap-0 p-0 sm:max-w-xl">
+        <DialogHeader className="shrink-0 px-5 pb-3 pt-5">
           <DialogTitle className="text-base font-semibold">
             Add automation
           </DialogTitle>
@@ -665,7 +665,7 @@ function CreateWorkflowAutomationDialog() {
         {step === 1 ? (
           <AgentSelectionStep agents={agents} onSelectAgent={selectAgent} />
         ) : (
-          <div className="px-5">
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
             <TriggerSelectionStep
               selectedAgent={selectedAgent}
               onSelectOption={startWorkflowCreation}
