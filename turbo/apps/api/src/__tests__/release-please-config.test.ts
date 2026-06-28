@@ -44,7 +44,7 @@ function workflowJobBlock(workflow: string, jobName: string): string {
   }
 
   const afterJobStart = workflow.slice(jobStart + `  ${jobName}:\n`.length);
-  const nextJobOffset = afterJobStart.search(/\n  [a-zA-Z0-9_-]+:\n/);
+  const nextJobOffset = afterJobStart.search(/\n {2}[a-zA-Z0-9_-]+:\n/);
 
   if (nextJobOffset === -1) {
     return workflow.slice(jobStart);
