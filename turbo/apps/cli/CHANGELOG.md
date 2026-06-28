@@ -1,5 +1,12 @@
 # Changelog
 
+## [9.213.2](https://github.com/vm0-ai/vm0/compare/cli-v9.213.1...cli-v9.213.2) (2026-06-28)
+
+
+### Performance Improvements
+
+* speed up zero cli startup ([#19241](https://github.com/vm0-ai/vm0/issues/19241)) ([2f921c1](https://github.com/vm0-ai/vm0/commit/2f921c183cbe70fce86e332209e167335fb0002f))
+
 ## [9.213.1](https://github.com/vm0-ai/vm0/compare/cli-v9.213.0...cli-v9.213.1) (2026-06-28)
 
 
