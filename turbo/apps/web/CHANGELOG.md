@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.444.2](https://github.com/vm0-ai/vm0/compare/web-v12.444.1...web-v12.444.2) (2026-06-28)
+
+
+### Bug Fixes
+
+* avoid workflow detail fanout on automations page ([#19239](https://github.com/vm0-ai/vm0/issues/19239)) ([c7f4116](https://github.com/vm0-ai/vm0/commit/c7f411634ce894d449b75dd6206157613fb2ff6e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.1
+
 ## [12.444.1](https://github.com/vm0-ai/vm0/compare/web-v12.444.0...web-v12.444.1) (2026-06-28)
 
 

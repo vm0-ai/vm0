@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.129.42](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.41...runner-rs-v0.129.42) (2026-06-28)
+
+
+### Performance Improvements
+
+* add session history identity telemetry ([#19236](https://github.com/vm0-ai/vm0/issues/19236)) ([0963504](https://github.com/vm0-ai/vm0/commit/0963504370133cc323f1bf97af5a8b027f8f0423))
+
 ## [0.129.41](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.40...runner-rs-v0.129.41) (2026-06-27)
 
 
