@@ -891,6 +891,11 @@ async def test_firewall_allow_header_auth_requestheaders_falls_back_when_upstrea
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))],
+        ),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
         await await_requestheaders_result(requestheaders_result)
@@ -903,6 +908,70 @@ async def test_firewall_allow_header_auth_requestheaders_falls_back_when_upstrea
     assert flow.response is not None
     assert flow.response.status_code == 403
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+
+
+async def test_firewall_allow_header_auth_uses_connected_upstream_when_dns_verified(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="172.66.0.243",
+        sni="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    flow.server_conn.peername = ("172.66.0.243", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("172.66.0.243", 443))],
+        ),
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+
+        assert callable(flow.request.stream)
+        assert metadata_keys.REQUEST_STREAM_BUFFER in flow.metadata
+        assert flow.server_conn.address == ("172.66.0.243", 443)
+        assert flow.request.headers["Authorization"] == "Bearer resolved"
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] is True
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.github.com"
+    assert binding.kinds == frozenset(("connector_auth",))
+    assert binding.original_address == ("172.66.0.243", 443)
 
 
 async def test_firewall_allow_prior_client_binding_endpoint_mismatch_blocks(
@@ -1124,6 +1193,65 @@ async def test_firewall_allow_small_bounded_body_retargets_unconnected_upstream(
     assert binding.host == "api.github.com"
     assert binding.kinds == frozenset(("connector_auth",))
     assert binding.original_address == ("203.0.113.10", 443)
+
+
+async def test_firewall_allow_small_bounded_body_uses_connected_upstream_when_dns_verified(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="172.66.0.243",
+        sni="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(("Host", "api.github.com"), ("Content-Length", "4")),
+    )
+    flow.server_conn.peername = ("172.66.0.243", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("172.66.0.243", 443))],
+        ),
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        _assert_no_request_stream(flow)
+        assert metadata_keys.VM_RUN_ID not in flow.metadata
+        assert metadata_keys.ORIGINAL_URL not in flow.metadata
+        assert flow.server_conn.address == ("172.66.0.243", 443)
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer resolved"
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.github.com"
+    assert binding.kinds == frozenset(("connector_auth",))
+    assert binding.original_address == ("172.66.0.243", 443)
 
 
 async def test_firewall_allow_unknown_body_length_retargets_unconnected_upstream(

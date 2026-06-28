@@ -293,7 +293,7 @@ async def test_matching_sni_and_host_records_binding_when_unconnected_address_al
     assert binding.original_address == ("api.github.com", 443)
 
 
-async def test_matching_sni_and_host_blocks_connected_firewall_auth_without_early_binding(
+async def test_matching_sni_and_host_blocks_connected_firewall_auth_when_dns_misses(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
     reg_path = _write_github_firewall_registry(tmp_path)
@@ -314,7 +314,7 @@ async def test_matching_sni_and_host_blocks_connected_firewall_auth_without_earl
         patch.object(
             mitm_addon.socket,
             "getaddrinfo",
-            side_effect=AssertionError("connector request fallback must not use fresh DNS"),
+            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))],
         ),
     ):
         await mitm_addon.request(flow)

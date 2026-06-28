@@ -836,8 +836,6 @@ def _bind_flow_upstream_destination(
                 port=flow.request.port,
                 extra_endpoints=(_connection_sockname(flow.client_conn),),
             )
-        elif kind == "connector_auth":
-            return False
         else:
             connected_address = _connected_trusted_destination_endpoint(
                 flow.server_conn,
