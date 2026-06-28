@@ -6,6 +6,7 @@ import {
   type ChatThreadWorkflowTrigger,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
+  type ZeroWorkflowTriggerAutomationEntry,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroWorkflowUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
@@ -413,6 +414,16 @@ function mockWorkflowTriggerExists(triggerId: string): boolean {
 
 function workflowTriggerListHandlers() {
   return [
+    mockApi(zeroWorkflowTriggersContract.listWorkspace, ({ respond }) => {
+      const entries: ZeroWorkflowTriggerAutomationEntry[] =
+        mockWorkflows.flatMap((workflow) => {
+          return workflow.triggers.map((trigger) => {
+            return { workflow: summary(workflow), trigger };
+          });
+        });
+      return respond(200, entries);
+    }),
+
     mockApi(zeroWorkflowTriggersContract.list, ({ params, respond }) => {
       const workflow = mockWorkflows.find((item) => {
         return item.id === params.workflowId;

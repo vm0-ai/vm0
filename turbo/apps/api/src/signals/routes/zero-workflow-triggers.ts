@@ -17,6 +17,7 @@ import {
   enableWorkflowTrigger$,
   getWorkflowTrigger,
   listThreadBoundWorkflowTriggers,
+  listWorkspaceWorkflowTriggers,
   loadWorkflowTriggers,
   runOwnedWorkflowTriggerNow$,
   updateWorkflowTrigger$,
@@ -75,6 +76,16 @@ function triggerErrorResponse(
 
 const createTriggerBody$ = bodyResultOf(zeroWorkflowTriggersContract.create);
 const updateTriggerBody$ = bodyResultOf(zeroWorkflowTriggersContract.update);
+
+const listWorkspaceTriggersInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const db = get(db$);
+  const triggers = await listWorkspaceWorkflowTriggers(db, {
+    orgId: auth.orgId,
+    member: memberFromAuth(auth),
+  });
+  return { status: 200 as const, body: [...triggers] };
+});
 
 const listChatThreadTriggersInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -308,6 +319,10 @@ const runTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 export const zeroWorkflowTriggersRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroWorkflowTriggersContract.listWorkspace,
+    handler: authRoute(workflowReadAuth, listWorkspaceTriggersInner$),
+  },
   {
     route: zeroWorkflowTriggersContract.listForChatThread,
     handler: authRoute(workflowReadAuth, listChatThreadTriggersInner$),
