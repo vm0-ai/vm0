@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.374.0](https://github.com/vm0-ai/vm0/compare/core-v8.373.4...core-v8.374.0) (2026-06-28)
+
+
+### Features
+
+* add workflow trigger automations page ([#19222](https://github.com/vm0-ai/vm0/issues/19222)) ([f653fba](https://github.com/vm0-ai/vm0/commit/f653fbaf15fa08364b2e802828582b63d5ca1c18))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.0
+    * @vm0/connectors bumped to 1.111.0
+
 ## [8.373.4](https://github.com/vm0-ai/vm0/compare/core-v8.373.3...core-v8.373.4) (2026-06-27)
 
 

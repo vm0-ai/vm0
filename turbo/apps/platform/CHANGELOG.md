@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.504.0](https://github.com/vm0-ai/vm0/compare/app-v0.503.0...app-v0.504.0) (2026-06-28)
+
+
+### Features
+
+* add workflow permission request cards ([#19224](https://github.com/vm0-ai/vm0/issues/19224)) ([7e4907c](https://github.com/vm0-ai/vm0/commit/7e4907c3bb7e7d0a9043686a3cd56f5fc38fa799))
+* add workflow trigger automations page ([#19222](https://github.com/vm0-ai/vm0/issues/19222)) ([f653fba](https://github.com/vm0-ai/vm0/commit/f653fbaf15fa08364b2e802828582b63d5ca1c18))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.0
+    * @vm0/connectors bumped to 1.111.0
+    * @vm0/core bumped to 8.374.0
+
 ## [0.503.0](https://github.com/vm0-ai/vm0/compare/app-v0.502.0...app-v0.503.0) (2026-06-28)
 
 
