@@ -588,7 +588,13 @@ function selectOptionByLabel(
   option: string | RegExp,
   container: HTMLElement,
 ): void {
-  click(within(container).getByLabelText(label));
+  const control =
+    within(container)
+      .getAllByLabelText(label)
+      .find((element) => {
+        return element.getAttribute("role") === "combobox";
+      }) ?? within(container).getByLabelText(label);
+  click(control);
   click(screen.getByRole("option", { name: option }));
 }
 
@@ -692,8 +698,10 @@ describe("workflow detail page", () => {
       expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
     });
     expect(search()).toBe("?tab=triggers");
-    expect(screen.getByText("Enabled")).toBeInTheDocument();
-    expect(screen.getByText("Open thread")).toBeInTheDocument();
+    expect(screen.getByText("Schedule")).toBeInTheDocument();
+    expect(screen.getAllByText("Last run").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Next run").length).toBeGreaterThan(0);
+    expect(buttonByText("Run now")).toBeInTheDocument();
     click(buttonByText("Info"));
     await waitFor(() => {
       expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
@@ -904,9 +912,9 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
-      expect(buttonByText("Trigger now")).toBeInTheDocument();
+      expect(buttonByText("Run now")).toBeInTheDocument();
     });
-    click(buttonByText("Trigger now"));
+    click(buttonByText("Run now"));
 
     await waitFor(() => {
       expect(runTriggerIds).toStrictEqual(["workflow-trigger-weekday-brief"]);
@@ -1108,7 +1116,7 @@ describe("workflow detail page", () => {
       expect(buttonByText("Add trigger")).toBeInTheDocument();
     });
     click(buttonByText("Add trigger"));
-    click(menuItemByText(/Schedule/u));
+    click(menuItemByText(/Scheduled time/u));
 
     const createTriggerForm = await screen.findByRole("form", {
       name: "Add schedule trigger",
@@ -1125,6 +1133,40 @@ describe("workflow detail page", () => {
           type: "cron",
           cronExpression: "0 1 * * *",
           timezone: "UTC",
+        },
+      });
+    });
+  });
+
+  it("creates an interval trigger from the trigger menu", async () => {
+    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowTrigger((body) => {
+      createBodies.push(body);
+    });
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("triggers"),
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add trigger")).toBeInTheDocument();
+    });
+    click(buttonByText("Add trigger"));
+    click(menuItemByText(/^Interval/u));
+
+    const createTriggerForm = await screen.findByRole("form", {
+      name: "Add interval trigger",
+    });
+    selectOptionByLabel("Every", "30 minutes", createTriggerForm);
+    click(buttonByText("Add interval", createTriggerForm));
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        schedule: {
+          type: "loop",
+          intervalSeconds: 1800,
         },
       });
     });
@@ -1163,7 +1205,7 @@ describe("workflow detail page", () => {
       expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Edit schedule"));
+    click(buttonByText("Edit"));
 
     const updateTriggerForm = screen.getByRole("form", {
       name: "Update schedule trigger",
@@ -1180,6 +1222,59 @@ describe("workflow detail page", () => {
             type: "cron",
             cronExpression: "45 8 * * 1-5",
             timezone: "UTC",
+          },
+        },
+      });
+    });
+  });
+
+  it("updates a loop schedule trigger from the edit dialog", async () => {
+    const updateBodies: {
+      readonly triggerId: string;
+      readonly body: ZeroWorkflowTriggerUpdateRequest;
+    }[] = [];
+    const workflow = {
+      ...salesResearch(),
+      triggers: [
+        {
+          ...weekdayWorkflowTrigger(),
+          schedule: {
+            type: "loop",
+            intervalSeconds: 3600,
+          },
+          scheduleSummary: "Every 3600s",
+        } satisfies WorkflowScheduleTriggerSummary,
+      ],
+    };
+    mockWorkflowApis([workflow]);
+    mockUpdateWorkflowTrigger((triggerId, body) => {
+      updateBodies.push({ triggerId, body });
+    });
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("triggers"),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Every 1 hour")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Edit"));
+
+    const updateTriggerForm = screen.getByRole("form", {
+      name: "Update schedule trigger",
+    });
+    selectOptionByLabel("Every", "30 minutes", updateTriggerForm);
+    fireEvent.submit(updateTriggerForm);
+
+    await waitFor(() => {
+      expect(updateBodies.at(-1)).toStrictEqual({
+        triggerId: "workflow-trigger-weekday-brief",
+        body: {
+          schedule: {
+            type: "loop",
+            intervalSeconds: 1800,
           },
         },
       });
@@ -1223,7 +1318,7 @@ describe("workflow detail page", () => {
       );
     });
 
-    click(screen.getByText("Edit match"));
+    click(buttonByText("Edit"));
 
     const updateTriggerForm = screen.getByRole("form", {
       name: "Update Gmail new message trigger",
@@ -1282,7 +1377,7 @@ describe("workflow detail page", () => {
       expect(screen.getByText("Gmail label applied")).toBeInTheDocument();
     });
 
-    click(screen.getByText("Edit label"));
+    click(buttonByText("Edit"));
 
     const updateTriggerForm = screen.getByRole("form", {
       name: "Update Gmail label trigger",

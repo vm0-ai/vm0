@@ -24,6 +24,36 @@ export function agentLabel(workflow: {
   return workflow.agentDisplayName ?? workflow.agentName ?? workflow.agentId;
 }
 
+const WORKFLOW_INTERVAL_SECONDS_OPTIONS = [5, 15, 30, 60].map((minutes) => {
+  return minutes * 60;
+});
+
+export function getWorkflowIntervalSecondOptions(
+  currentSeconds?: number,
+): readonly number[] {
+  if (
+    currentSeconds === undefined ||
+    WORKFLOW_INTERVAL_SECONDS_OPTIONS.includes(currentSeconds)
+  ) {
+    return WORKFLOW_INTERVAL_SECONDS_OPTIONS;
+  }
+  return [...WORKFLOW_INTERVAL_SECONDS_OPTIONS, currentSeconds].sort((a, b) => {
+    return a - b;
+  });
+}
+
+export function formatWorkflowIntervalSeconds(seconds: number): string {
+  if (seconds % 3600 === 0) {
+    const hours = seconds / 3600;
+    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  if (seconds % 60 === 0) {
+    const minutes = seconds / 60;
+    return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+  }
+  return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+}
+
 export function triggerKindLabel(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.kind === "schedule") {
     return "Schedule trigger";

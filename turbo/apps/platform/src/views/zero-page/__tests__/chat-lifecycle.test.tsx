@@ -32,6 +32,10 @@ import {
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
+  zeroWorkflowTriggersContract,
+  type ZeroWorkflowTriggerUpdateRequest,
+} from "@vm0/api-contracts/contracts/zero-workflows";
+import {
   createMockAutomationView,
   createMockWorkflowTrigger,
   setMockWorkflowTriggers,
@@ -399,6 +403,41 @@ function mockAutomationThread(): void {
   ]);
 }
 
+function mockWorkflowTriggerUpdate(
+  onUpdate: (triggerId: string, body: ZeroWorkflowTriggerUpdateRequest) => void,
+): void {
+  context.mocks.api(
+    zeroWorkflowTriggersContract.update,
+    ({ body, params, respond }) => {
+      onUpdate(params.id, body);
+      if ("schedule" in body) {
+        return respond(
+          200,
+          createMockWorkflowTrigger({
+            id: params.id,
+            chatThreadId: AUTOMATION_THREAD_ID,
+            kind: "schedule",
+            schedule: body.schedule,
+          }),
+        );
+      }
+      return respond(
+        200,
+        createMockWorkflowTrigger({
+          id: params.id,
+          chatThreadId: AUTOMATION_THREAD_ID,
+          kind: "event",
+          eventType:
+            body.eventConfig.event === "label_applied"
+              ? "gmail-label-applied"
+              : "gmail-new-message",
+          eventConfig: body.eventConfig,
+        }),
+      );
+    },
+  );
+}
+
 function mockServerQueuedThreadStories(): void {
   const threads = [
     {
@@ -708,14 +747,56 @@ function setupGithubPrTrackingPage(): void {
   });
 }
 
-function buttonByText(text: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
+function buttonByText(text: string, container?: ParentNode): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
   });
   if (!button) {
     throw new Error(`${text} button not found`);
   }
   return button;
+}
+
+function selectOptionByLabel(
+  label: string,
+  option: string | RegExp,
+  container: HTMLElement,
+): void {
+  const control =
+    within(container)
+      .getAllByLabelText(label)
+      .find((element) => {
+        return element.getAttribute("role") === "combobox";
+      }) ?? within(container).getByLabelText(label);
+  click(control);
+  click(screen.getByRole("option", { name: option }));
+}
+
+async function openAutomationSidebarWithWorkflowTrigger(
+  trigger: ReturnType<typeof createMockWorkflowTrigger>,
+): Promise<HTMLElement> {
+  mockAutomationThread();
+  setMockWorkflowTriggers([trigger]);
+  context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+    return respond(200, { runs: [] });
+  });
+
+  detachedSetupPage({
+    context,
+    path: `/chats/${AUTOMATION_THREAD_ID}`,
+  });
+
+  await waitFor(() => {
+    expect(buttonByLabel("Automations")).toBeInTheDocument();
+  });
+
+  click(buttonByLabel("Automations"));
+
+  await waitFor(() => {
+    expect(screen.getByTestId("automation-sidebar")).toBeInTheDocument();
+  });
+
+  return screen.getByTestId("automation-sidebar");
 }
 
 function buttonByLabel(label: string): HTMLElement {
@@ -3060,11 +3141,162 @@ describe("chat lifecycle", () => {
     });
 
     const sidebar = screen.getByTestId("automation-sidebar");
-    // The workflow trigger card shows its name and description.
     expect(within(sidebar).getByText("Nightly sync")).toBeInTheDocument();
+    expect(within(sidebar).getByText("View")).toBeInTheDocument();
+    expect(within(sidebar).getAllByText("Schedule").length).toBeGreaterThan(0);
+    expect(within(sidebar).getByText("Every 1 minute")).toBeInTheDocument();
+    expect(within(sidebar).getByText("Last run")).toBeInTheDocument();
+    expect(within(sidebar).getByText("No runs yet")).toBeInTheDocument();
+    expect(within(sidebar).getAllByText("Next run").length).toBeGreaterThan(0);
     expect(
-      within(sidebar).getByText("Sync the changelog every night"),
-    ).toBeInTheDocument();
+      within(sidebar).getAllByText("No upcoming run").length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(sidebar).queryByText("Authorization"),
+    ).not.toBeInTheDocument();
+
+    click(within(sidebar).getAllByText("Edit").at(-1)!);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Edit trigger" }),
+      ).toBeInTheDocument();
+    });
+    const editDialog = screen.getByRole("dialog", { name: "Edit trigger" });
+    expect(
+      within(editDialog).getByRole("combobox", { name: "Every" }),
+    ).toHaveTextContent("1 minute");
+    expect(
+      within(editDialog).queryByLabelText("Interval seconds"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("updates a schedule workflow trigger from the sidebar", async () => {
+    const updateBodies: {
+      readonly triggerId: string;
+      readonly body: ZeroWorkflowTriggerUpdateRequest;
+    }[] = [];
+    const sidebar = await openAutomationSidebarWithWorkflowTrigger(
+      createMockWorkflowTrigger({
+        id: "e0000001-0000-4000-a000-000000000003",
+        chatThreadId: AUTOMATION_THREAD_ID,
+        kind: "schedule",
+        schedule: { type: "loop", intervalSeconds: 3600 },
+        scheduleSummary: "Every 3600s",
+      }),
+    );
+    mockWorkflowTriggerUpdate((triggerId, body) => {
+      updateBodies.push({ triggerId, body });
+    });
+
+    click(within(sidebar).getAllByText("Edit").at(-1)!);
+
+    const dialog = await screen.findByRole("dialog", { name: "Edit trigger" });
+    selectOptionByLabel("Every", "30 minutes", dialog);
+    click(buttonByText("Save trigger", dialog));
+
+    await waitFor(() => {
+      expect(updateBodies.at(-1)).toStrictEqual({
+        triggerId: "e0000001-0000-4000-a000-000000000003",
+        body: {
+          schedule: {
+            type: "loop",
+            intervalSeconds: 1800,
+          },
+        },
+      });
+    });
+  });
+
+  it("updates a Gmail workflow trigger match from the sidebar", async () => {
+    const updateBodies: {
+      readonly triggerId: string;
+      readonly body: ZeroWorkflowTriggerUpdateRequest;
+    }[] = [];
+    const sidebar = await openAutomationSidebarWithWorkflowTrigger(
+      createMockWorkflowTrigger({
+        id: "e0000001-0000-4000-a000-000000000004",
+        chatThreadId: AUTOMATION_THREAD_ID,
+        kind: "event",
+        eventType: "gmail-new-message",
+        eventConfig: {
+          provider: "gmail",
+          event: "new_message",
+          match: {
+            subject: { doesNotContain: "newsletter" },
+          },
+        },
+      }),
+    );
+    mockWorkflowTriggerUpdate((triggerId, body) => {
+      updateBodies.push({ triggerId, body });
+    });
+
+    click(within(sidebar).getAllByText("Edit").at(-1)!);
+
+    const dialog = await screen.findByRole("dialog", { name: "Edit trigger" });
+    await fill(within(dialog).getByLabelText("From contains"), "@acme.com");
+    await fill(within(dialog).getByLabelText("Body contains"), "invoice");
+    click(buttonByText("Save trigger", dialog));
+
+    await waitFor(() => {
+      expect(updateBodies.at(-1)).toStrictEqual({
+        triggerId: "e0000001-0000-4000-a000-000000000004",
+        body: {
+          eventConfig: {
+            provider: "gmail",
+            event: "new_message",
+            match: {
+              from: { contains: "@acme.com" },
+              subject: { doesNotContain: "newsletter" },
+              body: { contains: "invoice" },
+            },
+          },
+        },
+      });
+    });
+  });
+
+  it("updates a Gmail label workflow trigger from the sidebar", async () => {
+    const updateBodies: {
+      readonly triggerId: string;
+      readonly body: ZeroWorkflowTriggerUpdateRequest;
+    }[] = [];
+    const sidebar = await openAutomationSidebarWithWorkflowTrigger(
+      createMockWorkflowTrigger({
+        id: "e0000001-0000-4000-a000-000000000005",
+        chatThreadId: AUTOMATION_THREAD_ID,
+        kind: "event",
+        eventType: "gmail-label-applied",
+        eventConfig: {
+          provider: "gmail",
+          event: "label_applied",
+          labelName: "Support",
+        },
+      }),
+    );
+    mockWorkflowTriggerUpdate((triggerId, body) => {
+      updateBodies.push({ triggerId, body });
+    });
+
+    click(within(sidebar).getAllByText("Edit").at(-1)!);
+
+    const dialog = await screen.findByRole("dialog", { name: "Edit trigger" });
+    await fill(within(dialog).getByLabelText("Label name"), "Escalated");
+    click(buttonByText("Save trigger", dialog));
+
+    await waitFor(() => {
+      expect(updateBodies.at(-1)).toStrictEqual({
+        triggerId: "e0000001-0000-4000-a000-000000000005",
+        body: {
+          eventConfig: {
+            provider: "gmail",
+            event: "label_applied",
+            labelName: "Escalated",
+          },
+        },
+      });
+    });
   });
 
   it("folds goal-state markers into the goal row beneath the queued messages", async () => {
