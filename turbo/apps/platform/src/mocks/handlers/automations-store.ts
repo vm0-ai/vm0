@@ -9,6 +9,10 @@ type MockWorkflowTriggerOverrides = Partial<
   Omit<ChatThreadWorkflowTrigger, "workflow">
 > & {
   readonly eventType?: "gmail-new-message" | "gmail-label-applied";
+  readonly eventConfig?: Extract<
+    ChatThreadWorkflowTrigger,
+    { kind: "event" }
+  >["eventConfig"];
   readonly workflow?: Partial<ChatThreadWorkflowTrigger["workflow"]>;
 };
 
