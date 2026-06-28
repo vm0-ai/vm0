@@ -8,13 +8,21 @@ import { reloadChatThreads$ } from "../chat-page/chat-message.ts";
 import { fetchAllOrgAutomations$ } from "../zero-page/zero-automations.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { initAutomationListTab$ } from "./automation-list-tab.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { reloadWorkflows$ } from "../workflows-page/workflows-signals.ts";
 
 export const setupAutomationsPage$ = command(
-  async ({ set }, signal: AbortSignal) => {
+  async ({ get, set }, signal: AbortSignal) => {
     set(updatePage$, createElement(ZeroAutomationsPage), "sidebar");
     set(updateDocumentTitle$, "Automations");
-    set(initAutomationListTab$);
-    await set(fetchAllOrgAutomations$, signal);
+    const features = get(featureSwitch$);
+    if (features[FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]) {
+      set(reloadWorkflows$);
+    } else {
+      set(initAutomationListTab$);
+      await set(fetchAllOrgAutomations$, signal);
+    }
     signal.throwIfAborted();
     await set(hideAppSkeleton$, signal);
 

@@ -51,6 +51,7 @@ export enum FeatureSwitchKey {
   ChatSlashWorkflowCommands = "chatSlashWorkflowCommands",
   WorkflowGmailEventTriggers = "workflowGmailEventTriggers",
   WorkflowWebhookTriggers = "workflowWebhookTriggers",
+  SwitchScheduleAutomationToWorkflowTrigger = "switchScheduleAutomationToWorkflowTrigger",
   GoalWorkflows = "goalWorkflows",
   ComputerUseDelegatedAuthorization = "computerUseDelegatedAuthorization",
   ConnectorAccessManagement = "connectorAccessManagement",
