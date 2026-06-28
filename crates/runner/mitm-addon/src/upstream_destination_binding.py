@@ -138,6 +138,8 @@ def add_server_binding_kind_if_matching(
     normalized_host = normalize_trusted_hostname(host)
     if binding.host != normalized_host or binding.port != port:
         return False
+    if not _server_binding_matches_current_destination(server, binding):
+        return False
     if kind not in binding.kinds:
         _bindings_by_server_id[server_id] = UpstreamDestinationBinding(
             host=binding.host,
@@ -197,6 +199,15 @@ def _binding_matches(
     allowed_kinds: frozenset[BindingKind],
 ) -> bool:
     return binding.host == host and binding.port == port and bool(binding.kinds & allowed_kinds)
+
+
+def _server_binding_matches_current_destination(
+    server: object,
+    binding: UpstreamDestinationBinding,
+) -> bool:
+    if bool(getattr(server, "connected", False)):
+        return True
+    return _address_matches(binding.host, binding.port, getattr(server, "address", None))
 
 
 def _matching_client_bindings(
@@ -322,7 +333,7 @@ def flow_matches_bound_destination(
             host=normalized_host,
             port=port,
             allowed_kinds=allowed_kinds,
-        )
+        ) and _server_binding_matches_current_destination(server, binding)
 
     matching_client_bindings = _matching_client_bindings(
         flow.client_conn,

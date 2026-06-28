@@ -377,6 +377,70 @@ async def test_api_allow_current_server_binding_mismatch_blocks_even_with_prior_
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
 
 
+async def test_firewall_allow_current_server_binding_address_mismatch_blocks(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.99",
+        sni="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    flow.server_conn.address = ("203.0.113.99", 443)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("172.66.0.243", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+        _assert_no_request_stream(flow)
+        assert "Authorization" not in flow.request.headers
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    diagnostics = flow.metadata[mitm_addon._UPSTREAM_BINDING_DIAGNOSTICS]
+    assert diagnostics["direct_binding_present"] is True
+    assert diagnostics["server_connected"] is False
+    assert diagnostics["server_address"] == "203.0.113.99:443"
+
+
 async def test_api_allow_small_bounded_body_retargets_unconnected_upstream(
     tmp_path, real_flow, mitm_ctx, headers
 ):
