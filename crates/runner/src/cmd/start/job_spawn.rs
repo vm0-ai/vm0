@@ -6,7 +6,7 @@
 
 use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
-use std::time::Instant;
+use std::time::{Duration, Instant};
 
 use agent_diagnostics::{CliTerminationDiagnostic, FailureClass, FailureDiagnostic, FailureReason};
 use futures_util::FutureExt;
@@ -282,7 +282,7 @@ impl FinalizationPhase {
             outcome,
             exit_code,
             err,
-            telemetry,
+            mut telemetry,
         } = executor_result;
         let executor::ExecuteOutcome {
             failure: _,
@@ -293,6 +293,8 @@ impl FinalizationPhase {
             discovered_cli_agent_session_id,
             restored_session_identity,
         } = outcome;
+        let has_restored_session_identity = restored_session_identity.is_some();
+        let cleanup_state_after_finalize = cleanup_state.clone();
 
         let completion_payload = CompletionPayload::new(
             run_id,
@@ -338,12 +340,33 @@ impl FinalizationPhase {
             },
         )
         .await;
+        record_session_history_identity_park_telemetry(
+            &mut telemetry,
+            cleanup_state_after_finalize.disposition(),
+            has_restored_session_identity,
+        );
 
         FinalizedJob {
             completion_ready,
             telemetry,
         }
     }
+}
+
+fn record_session_history_identity_park_telemetry(
+    telemetry: &mut JobTelemetry,
+    disposition: RunCleanupDisposition,
+    has_restored_session_identity: bool,
+) {
+    if !matches!(disposition, RunCleanupDisposition::IdlePoolOwned) {
+        return;
+    }
+    let action_type = if has_restored_session_identity {
+        "session_history_identity_parked"
+    } else {
+        "session_history_identity_park_missing"
+    };
+    telemetry.record(action_type, Duration::ZERO, true, None);
 }
 
 struct CompletionPhase {
@@ -951,6 +974,7 @@ mod tests {
         FailureClass, FailureDetailSource, PromptMetadata, SessionHistoryStatus,
     };
     use sandbox::SandboxId;
+    use sandbox_mock::MockSandbox;
     use tracing::Level;
     use tracing_subscriber::prelude::*;
     use tracing_test_support::{CapturedEvent, CapturedEvents};
@@ -958,11 +982,14 @@ mod tests {
     use super::super::idle_lifecycle::SharedIdlePool;
     use super::super::job_lifecycle::RunCleanupState;
     use super::super::orphan_reap::OrphanedActiveRuns;
+    use crate::http::{HttpClient, HttpClientConfig};
     use crate::idle_pool::{
-        IdlePool, IdlePoolConfig, ParkResult, test_support::ParkedIdleCandidateBuilder,
+        IdlePool, IdlePoolConfig, IdleUnparkResult, ParkResult,
+        test_support::ParkedIdleCandidateBuilder,
     };
     use crate::ids::RunId;
     use crate::resource_budget::ResourceBudget;
+    use crate::restored_session_identity::RestoredSessionIdentity;
     use crate::status::StatusTracker;
 
     fn job_failure_diagnostic(failure_reason: Option<FailureReason>) -> FailureDiagnostic {
@@ -1005,6 +1032,118 @@ mod tests {
         assert_eq!(value, expected, "field {field} mismatch; event={event:#?}");
     }
 
+    fn test_http_client() -> HttpClient {
+        HttpClient::new(HttpClientConfig {
+            api_url: "http://localhost".into(),
+            vercel_bypass: None,
+        })
+        .unwrap()
+    }
+
+    fn test_budget_lease() -> (Arc<ResourceBudget>, BudgetLease) {
+        let budget = Arc::new(ResourceBudget::new(8, 32768, 1.0, 0));
+        let lease = ResourceBudget::try_reserve_lease(&budget, 2, 4096).unwrap();
+        (budget, lease)
+    }
+
+    fn assert_telemetry_action(telemetry: &JobTelemetry, action: &str) {
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(
+            ops.iter().any(|op| op.0 == action && op.1),
+            "expected telemetry action {action}, got: {ops:?}"
+        );
+    }
+
+    struct FinalizationTelemetryFixture {
+        _dir: tempfile::TempDir,
+        status: Arc<StatusTracker>,
+        idle_pool: SharedIdlePool,
+        parking_gate: ParkingGate,
+        park_notify: Arc<tokio::sync::Notify>,
+    }
+
+    impl FinalizationTelemetryFixture {
+        async fn new() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let status = Arc::new(StatusTracker::new(
+                dir.path().join("status.json"),
+                4,
+                None,
+                None,
+            ));
+            status.write_initial().await;
+            let parking_gate = ParkingGate::new_open();
+            let idle_pool = Arc::new(tokio::sync::Mutex::new(IdlePool::new_with_parking_gate(
+                IdlePoolConfig {
+                    default_timeout: Duration::from_secs(300),
+                    max_idle: 10,
+                },
+                parking_gate.clone(),
+            )));
+
+            Self {
+                _dir: dir,
+                status,
+                idle_pool,
+                parking_gate,
+                park_notify: Arc::new(tokio::sync::Notify::new()),
+            }
+        }
+
+        fn finalization_phase(
+            &self,
+            run_id: RunId,
+            sandbox_id: SandboxId,
+            session_id: &str,
+            active_lease: BudgetLease,
+            cleanup_state: RunCleanupState,
+        ) -> FinalizationPhase {
+            FinalizationPhase {
+                run_id,
+                sandbox_id,
+                completion_auth: CompletionAuth::local(),
+                active_lease,
+                reuse_result: SandboxReuseResult::PoolMiss,
+                workspace_disk_mb: 0,
+                profile_name: "vm0/default".into(),
+                cli_agent_session_id: Some(session_id.into()),
+                storage_fingerprints: StorageFingerprints::default(),
+                device_rate_limits: None,
+                factory: Arc::new(Box::new(sandbox_mock::MockSandboxFactory::new())),
+                idle_pool: Arc::clone(&self.idle_pool),
+                status: Arc::clone(&self.status),
+                park_notify: Arc::clone(&self.park_notify),
+                parking_gate: self.parking_gate.clone(),
+                network_log_drain: NetworkLogDrainCoordinator::noop(),
+                cancel: RunCancellationHandle::new(),
+                cleanup_state,
+                outer_job_panic: None,
+                test_observer: StartLoopTestObserver::default(),
+            }
+        }
+    }
+
+    fn executor_phase_outcome(
+        run_id: RunId,
+        sandbox_name: &str,
+        restored_session_identity: Option<RestoredSessionIdentity>,
+    ) -> ExecutorPhaseOutcome {
+        ExecutorPhaseOutcome {
+            outcome: executor::ExecuteOutcome {
+                failure: None,
+                sandbox: Some(Box::new(MockSandbox::new(sandbox_name))),
+                source_ip: "10.0.0.1".into(),
+                network_log_session: None,
+                workspace_image: None,
+                discovered_cli_agent_session_id: None,
+                restored_session_identity,
+            },
+            exit_code: 0,
+            err: None,
+            telemetry: JobTelemetry::new(test_http_client(), run_id, "sandbox-token".into()),
+        }
+    }
+
     #[test]
     fn generic_zero_exit_code_normalizes_to_generic_failure() {
         let failure = executor::ExecutionFailure::new(0, "", None);
@@ -1041,6 +1180,95 @@ mod tests {
                 panic!("expected runner job timeout failure kind")
             }
         }
+    }
+
+    #[tokio::test]
+    async fn finalization_records_identity_parked_when_idle_pool_receives_restored_identity() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cleanup_state = RunCleanupState::new();
+        let identity = RestoredSessionIdentity::claude_code_for_test("history-hash-a")
+            .with_guest_history(
+                12,
+                "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
+            );
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            "sess-restore-plan",
+            lease,
+            cleanup_state.clone(),
+        );
+
+        let finalized = finalization
+            .finalize(executor_phase_outcome(
+                run_id,
+                "identity-parked",
+                Some(identity.clone()),
+            ))
+            .await;
+
+        assert_telemetry_action(&finalized.telemetry, "session_history_identity_parked");
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::IdlePoolOwned,
+        );
+        let entry = fixture
+            .idle_pool
+            .lock()
+            .await
+            .take("sess-restore-plan")
+            .expect("parked sandbox should be in idle pool");
+        let IdleUnparkResult::Reused { sandbox, .. } = entry.try_unpark().await else {
+            panic!("parked sandbox should unpark");
+        };
+        assert_eq!(sandbox.restored_session_identity(), Some(&identity));
+    }
+
+    #[tokio::test]
+    async fn finalization_records_identity_park_missing_when_parked_without_restored_identity() {
+        let fixture = FinalizationTelemetryFixture::new().await;
+        let (_budget, lease) = test_budget_lease();
+        let run_id = RunId::new_v4();
+        let sandbox_id = SandboxId::new_v4();
+        let cleanup_state = RunCleanupState::new();
+        let session_id = "sess-park-missing";
+        let finalization = fixture.finalization_phase(
+            run_id,
+            sandbox_id,
+            session_id,
+            lease,
+            cleanup_state.clone(),
+        );
+
+        let finalized = finalization
+            .finalize(executor_phase_outcome(
+                run_id,
+                "identity-park-missing",
+                None,
+            ))
+            .await;
+
+        assert_telemetry_action(
+            &finalized.telemetry,
+            "session_history_identity_park_missing",
+        );
+        assert_eq!(
+            cleanup_state.disposition(),
+            RunCleanupDisposition::IdlePoolOwned,
+        );
+        let entry = fixture
+            .idle_pool
+            .lock()
+            .await
+            .take(session_id)
+            .expect("parked sandbox should be in idle pool");
+        let IdleUnparkResult::Reused { sandbox, .. } = entry.try_unpark().await else {
+            panic!("parked sandbox should unpark");
+        };
+        assert!(sandbox.restored_session_identity().is_none());
     }
 
     #[test]
