@@ -119,6 +119,7 @@ describe("zero doctor check-connector command", () => {
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("GH_TOKEN", "");
+    vi.stubEnv("ZERO_TOKEN", "");
   });
 
   function getOutput(): string {
@@ -421,6 +422,121 @@ describe("zero doctor check-connector command", () => {
       const output = getOutput();
       expect(output).toContain("connected and active");
       expect(output).toContain("authorized for this agent");
+    });
+
+    it("should use workflow authorization inside workflow-triggered runs", async () => {
+      const workflowId = "11111111-1111-4111-8111-111111111111";
+      const triggerId = "22222222-2222-4222-8222-222222222222";
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_WORKFLOW_ID", workflowId);
+      vi.stubEnv("ZERO_WORKFLOW_TRIGGER_ID", triggerId);
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(connectedResponse);
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/workflows/:id/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: [] });
+          },
+        ),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json(
+              { error: { message: "wrong scope", code: "WRONG_SCOPE" } },
+              { status: 500 },
+            );
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [],
+            networkPolicies: null,
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+        "--check-permission",
+        "contents:read",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("Workflow authorization");
+      expect(output).toContain(
+        `The GitHub connector is not authorized for this workflow (${workflowId}).`,
+      );
+      expect(output).toContain(
+        `/agents/agent-abc-123/workflows/${workflowId}/permissions?`,
+      );
+      expect(output).toContain("ref=github");
+      expect(output).toContain(`triggerId=${triggerId}`);
+      expect(output).toContain("not the agent's connector authorization");
+      expect(output).toContain("Check the workflow authorization settings");
+      expect(output).not.toContain("Agent authorization");
+      expect(output).not.toContain(
+        "/connectors/github/authorize?agentId=agent-abc-123",
+      );
+      expect(output).not.toContain("fully permissive");
+    });
+
+    it("should report workflow authorization when the workflow enabled the connector", async () => {
+      const workflowId = "11111111-1111-4111-8111-111111111111";
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_WORKFLOW_ID", workflowId);
+      vi.stubEnv(
+        "ZERO_WORKFLOW_TRIGGER_ID",
+        "22222222-2222-4222-8222-222222222222",
+      );
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(connectedResponse);
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/workflows/:id/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: ["github"] });
+          },
+        ),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json(
+              { error: { message: "wrong scope", code: "WRONG_SCOPE" } },
+              { status: 500 },
+            );
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json(runContextResponse);
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain(
+        `The GitHub connector is authorized for this workflow (${workflowId}).`,
+      );
+      expect(output).not.toContain("authorized for this agent");
+      expect(output).not.toContain("Agent authorization");
     });
   });
 

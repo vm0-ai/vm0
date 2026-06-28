@@ -32,6 +32,7 @@ import {
   searchZeroConnectors,
 } from "../../../lib/api/domains/zero-connectors";
 import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
+import { getZeroWorkflowUserConnectors } from "../../../lib/api/domains/zero-workflows";
 import { getZeroRunContext } from "../../../lib/api/domains/zero-runs";
 import { withErrorHandler } from "../../../lib/command";
 import { toPlatformUrl } from "./platform-url";
@@ -51,6 +52,17 @@ interface DiagContext {
   connectorAvailable: boolean;
   platformOrigin: string;
   agentId: string | undefined;
+  triggerContext: TriggerContext | undefined;
+}
+
+interface TriggerContext {
+  readonly workflowId: string;
+  readonly triggerId: string;
+}
+
+interface RunConnectorState {
+  readonly networkPolicies: NetworkPolicies | null;
+  readonly configuredForRun: boolean | null;
 }
 
 interface DiagnosticRoutingConfig {
@@ -283,6 +295,23 @@ async function getCurrentRunContext(): Promise<RunContextResponse | null> {
   return await getZeroRunContext(runId);
 }
 
+function resolveTriggerContext(): TriggerContext | undefined {
+  const workflowId = process.env.ZERO_WORKFLOW_ID;
+  const triggerId = process.env.ZERO_WORKFLOW_TRIGGER_ID;
+  return workflowId && triggerId ? { workflowId, triggerId } : undefined;
+}
+
+function workflowPermissionUrl(ctx: DiagContext): string | null {
+  if (!ctx.agentId || !ctx.triggerContext) {
+    return null;
+  }
+  const params = new URLSearchParams({
+    ref: ctx.connectorType,
+    triggerId: ctx.triggerContext.triggerId,
+  });
+  return `${ctx.platformOrigin}/agents/${ctx.agentId}/workflows/${ctx.triggerContext.workflowId}/permissions?${params.toString()}`;
+}
+
 function checkEnvName(ctx: DiagContext): boolean {
   console.log("## Step 1: Sandbox environment name");
   console.log("");
@@ -317,9 +346,11 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
 
   const [connector, enabledTypes] = await Promise.all([
     getZeroConnector(ctx.connectorType),
-    ctx.agentId
-      ? getZeroAgentUserConnectors(ctx.agentId)
-      : Promise.resolve(null),
+    ctx.triggerContext
+      ? getZeroWorkflowUserConnectors(ctx.triggerContext.workflowId)
+      : ctx.agentId
+        ? getZeroAgentUserConnectors(ctx.agentId)
+        : Promise.resolve(null),
   ]);
 
   const isConnected = connector !== null;
@@ -338,7 +369,10 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
     );
   } else if (!isConnected) {
     console.log(`The ${ctx.label} connector is not connected.`);
-    if (ctx.agentId && hasPermission) {
+    if (ctx.triggerContext) {
+      const connectUrl = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/connect`;
+      console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
+    } else if (ctx.agentId && hasPermission) {
       const connectUrl = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/connect?agentId=${ctx.agentId}`;
       console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
     } else if (!ctx.agentId) {
@@ -359,15 +393,38 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
   }
   console.log("");
 
-  // 2b: Agent authorization — user must authorize the agent to use this connector
   console.log(
-    `### 2b: Agent authorization (user must authorize agent to use this connector)`,
+    ctx.triggerContext
+      ? `### 2b: Workflow authorization (user must authorize workflow to use this connector)`
+      : `### 2b: Agent authorization (user must authorize agent to use this connector)`,
   );
   console.log("");
   if (!ctx.connectorAvailable) {
     console.log(
       `Skipped — the ${ctx.label} connector is not available for this account.`,
     );
+  } else if (ctx.triggerContext) {
+    const url = workflowPermissionUrl(ctx);
+    if (hasPermission) {
+      console.log(
+        isConnected
+          ? `The ${ctx.label} connector is authorized for this workflow (${ctx.triggerContext.workflowId}).`
+          : `The ${ctx.label} connector is authorized for this workflow (${ctx.triggerContext.workflowId}), but it is not connected.`,
+      );
+    } else {
+      console.log(
+        isConnected
+          ? `The ${ctx.label} connector is not authorized for this workflow (${ctx.triggerContext.workflowId}).`
+          : `The ${ctx.label} connector needs to be connected and authorized for this workflow (${ctx.triggerContext.workflowId}).`,
+      );
+      if (url) {
+        console.log(`Authorize it at: [Authorize ${ctx.label}](${url})`);
+      } else {
+        console.log(
+          "ZERO_AGENT_ID is not set — cannot build a workflow authorization link.",
+        );
+      }
+    }
   } else if (!ctx.agentId) {
     console.log("ZERO_AGENT_ID is not set — cannot check agent authorization.");
   } else if (isExpired) {
@@ -391,6 +448,11 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
     );
     console.log(`Authorize it at: [Authorize ${ctx.label}](${url})`);
   }
+  console.log(
+    ctx.triggerContext
+      ? `This is a workflow-triggered run, so ${ctx.label} access is scoped by the workflow's authorization settings, not the agent's connector authorization.`
+      : `This is an interactive/agent-scoped run, so ${ctx.label} access is scoped by the agent's connector authorization.`,
+  );
   console.log("");
 
   return { isConnected, isExpired, hasPermission };
@@ -399,7 +461,7 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
 async function checkConnectorDomains(
   ctx: DiagContext,
   preloadedRunContext?: RunContextResponse | null,
-): Promise<NetworkPolicies | null> {
+): Promise<RunConnectorState> {
   // 2c: Registered base URLs — connector defines which URL prefixes get credential replacement
   console.log(
     `### 2c: Registered base URLs (credential replacement only applies to URLs matching these prefixes)`,
@@ -415,18 +477,18 @@ async function checkConnectorDomains(
       "Cannot determine run ID from ZERO_TOKEN — skipping base URL check.",
     );
     console.log("");
-    return null;
+    return { networkPolicies: null, configuredForRun: null };
   }
 
-  await printConnectorDomains(ctx, runContext);
+  const configuredForRun = await printConnectorDomains(ctx, runContext);
   console.log("");
-  return runContext.networkPolicies;
+  return { networkPolicies: runContext.networkPolicies, configuredForRun };
 }
 
 async function printConnectorDomains(
   ctx: DiagContext,
   runContext: RunContextResponse,
-): Promise<void> {
+): Promise<boolean> {
   const matchingEntry = runContext.firewalls.find((fw) => {
     return fw.name === ctx.connectorType;
   });
@@ -438,7 +500,7 @@ async function printConnectorDomains(
     console.log(
       "This means no base URLs are registered for credential replacement for this connector.",
     );
-    return;
+    return false;
   }
   const routingConfig = await runContextFirewallRoutingConfig(matchingEntry);
   if (!routingConfig) {
@@ -448,7 +510,7 @@ async function printConnectorDomains(
     console.log(
       "This means no base URLs are registered for credential replacement for this connector.",
     );
-    return;
+    return false;
   }
 
   console.log(
@@ -468,6 +530,7 @@ async function printConnectorDomains(
   if (secretNames.length > 0) {
     console.log(`Credentials resolved from: ${secretNames.join(", ")}`);
   }
+  return true;
 }
 
 function checkPermissionPolicy(
@@ -475,6 +538,7 @@ function checkPermissionPolicy(
   label: string,
   permissionName: string,
   networkPolicies: NetworkPolicies | null,
+  configuredForRun: boolean | null,
 ): void {
   console.log("## Step 3: Permission policy check");
   console.log("");
@@ -497,6 +561,16 @@ function checkPermissionPolicy(
   const connectorPolicies = networkPolicies[connectorType];
 
   if (!connectorPolicies) {
+    if (configuredForRun === false) {
+      console.log(
+        `No policy entry found because the ${label} connector is not configured for this run.`,
+      );
+      console.log(
+        "Requests for this connector cannot receive credentials in the current run.",
+      );
+      console.log("");
+      return;
+    }
     console.log(
       `No policy entry found for the ${label} connector in this run's network policies.`,
     );
@@ -548,6 +622,7 @@ async function resolvePermissionFromUrl(
   matchedBase: string,
   routingConfig: DiagnosticRoutingConfig | undefined,
   networkPolicies: NetworkPolicies | null,
+  configuredForRun: boolean | null,
 ): Promise<void> {
   console.log("## Step 3: Permission policy check (auto-detected from URL)");
   console.log("");
@@ -598,6 +673,16 @@ async function resolvePermissionFromUrl(
   const connectorPolicies = networkPolicies[connectorType];
 
   if (!connectorPolicies) {
+    if (configuredForRun === false) {
+      console.log(
+        `No policy entry found because the ${label} connector is not configured for this run.`,
+      );
+      console.log(
+        "Requests for this connector cannot receive credentials in the current run.",
+      );
+      console.log("");
+      return;
+    }
     console.log(
       `No policy entry found for the ${label} connector. All requests are fully permissive (allowed).`,
     );
@@ -751,15 +836,24 @@ How connectors work:
         connectorAvailable,
         platformOrigin: platformUrl.origin,
         agentId: process.env.ZERO_AGENT_ID || undefined,
+        triggerContext: resolveTriggerContext(),
       };
 
       checkEnvName(ctx);
       const { isConnected, isExpired, hasPermission } =
         await checkConnectorStatus(ctx);
-      const networkPolicies = await checkConnectorDomains(ctx, runContext);
+      const { networkPolicies, configuredForRun } = await checkConnectorDomains(
+        ctx,
+        runContext,
+      );
 
       // Summary for Step 2
-      if (isConnected && !isExpired && hasPermission) {
+      if (configuredForRun === false) {
+        const scope = ctx.triggerContext ? "workflow" : "agent";
+        console.log(
+          `Steps 1-2 summary: The ${label} connector is not configured for this run. Check the ${scope} authorization settings, then start a new run after updating them.`,
+        );
+      } else if (isConnected && !isExpired && hasPermission) {
         console.log(
           `Steps 1-2 summary: The ${label} connector is connected, active, and authorized. Outbound requests to the registered base URLs will have credentials injected at the network boundary.`,
         );
@@ -777,6 +871,7 @@ How connectors work:
           urlLookup.matchedBase,
           urlLookup.routingConfig,
           networkPolicies,
+          configuredForRun,
         );
       } else if (opts.checkPermission) {
         // --env-name mode with explicit --check-permission
@@ -785,6 +880,7 @@ How connectors work:
           label,
           opts.checkPermission,
           networkPolicies,
+          configuredForRun,
         );
       }
 

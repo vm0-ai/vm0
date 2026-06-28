@@ -124,6 +124,7 @@ export {
   deleteWorkflow,
   copyWorkflow,
   runWorkflow,
+  getZeroWorkflowUserConnectors,
   listWorkflowTriggers,
   createWorkflowTrigger,
   getWorkflowTrigger,
