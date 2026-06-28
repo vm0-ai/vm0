@@ -70,6 +70,11 @@ import {
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -237,7 +242,9 @@ import {
 import {
   buildGmailLabelAppliedEventConfig,
   buildGmailNewMessageEventConfig,
+  formatWorkflowIntervalSeconds,
   GMAIL_TEXT_FIELDS,
+  getWorkflowIntervalSecondOptions,
   gmailMatcherDefaultValue,
   gmailTriggerSummary,
   gmailTriggerTitle,
@@ -2518,18 +2525,10 @@ function HeaderScheduleTriggerEditForm({
       }}
     >
       {schedule.type === "loop" ? (
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-          Interval seconds
-          <input
-            name="intervalSeconds"
-            aria-label="Interval seconds"
-            type="number"
-            min="1"
-            defaultValue={schedule.intervalSeconds}
-            disabled={saving}
-            className={HEADER_TRIGGER_FIELD_CLASS}
-          />
-        </label>
+        <HeaderIntervalField
+          disabled={saving}
+          defaultIntervalSeconds={schedule.intervalSeconds}
+        />
       ) : null}
       {schedule.type === "once" ? (
         <label className="flex flex-col gap-1 text-xs text-muted-foreground">
@@ -2573,6 +2572,40 @@ function HeaderScheduleTriggerEditForm({
         </Button>
       </DialogFooter>
     </form>
+  );
+}
+
+function HeaderIntervalField({
+  disabled,
+  defaultIntervalSeconds,
+}: {
+  readonly disabled: boolean;
+  readonly defaultIntervalSeconds: number;
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+      Every
+      <Select
+        name="intervalSeconds"
+        defaultValue={String(defaultIntervalSeconds)}
+        disabled={disabled}
+      >
+        <SelectTrigger className="h-9 w-full" aria-label="Every">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {getWorkflowIntervalSecondOptions(defaultIntervalSeconds).map(
+            (seconds) => {
+              return (
+                <SelectItem key={seconds} value={String(seconds)}>
+                  {formatWorkflowIntervalSeconds(seconds)}
+                </SelectItem>
+              );
+            },
+          )}
+        </SelectContent>
+      </Select>
+    </label>
   );
 }
 

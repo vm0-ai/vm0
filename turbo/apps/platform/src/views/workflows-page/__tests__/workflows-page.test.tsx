@@ -588,7 +588,13 @@ function selectOptionByLabel(
   option: string | RegExp,
   container: HTMLElement,
 ): void {
-  click(within(container).getByLabelText(label));
+  const control =
+    within(container)
+      .getAllByLabelText(label)
+      .find((element) => {
+        return element.getAttribute("role") === "combobox";
+      }) ?? within(container).getByLabelText(label);
+  click(control);
   click(screen.getByRole("option", { name: option }));
 }
 
@@ -1110,7 +1116,7 @@ describe("workflow detail page", () => {
       expect(buttonByText("Add trigger")).toBeInTheDocument();
     });
     click(buttonByText("Add trigger"));
-    click(menuItemByText(/Schedule/u));
+    click(menuItemByText(/Scheduled time/u));
 
     const createTriggerForm = await screen.findByRole("form", {
       name: "Add schedule trigger",
@@ -1127,6 +1133,40 @@ describe("workflow detail page", () => {
           type: "cron",
           cronExpression: "0 1 * * *",
           timezone: "UTC",
+        },
+      });
+    });
+  });
+
+  it("creates an interval trigger from the trigger menu", async () => {
+    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowTrigger((body) => {
+      createBodies.push(body);
+    });
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("triggers"),
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add trigger")).toBeInTheDocument();
+    });
+    click(buttonByText("Add trigger"));
+    click(menuItemByText(/^Interval/u));
+
+    const createTriggerForm = await screen.findByRole("form", {
+      name: "Add interval trigger",
+    });
+    selectOptionByLabel("Every", "30 minutes", createTriggerForm);
+    click(buttonByText("Add interval", createTriggerForm));
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        schedule: {
+          type: "loop",
+          intervalSeconds: 1800,
         },
       });
     });
@@ -1217,7 +1257,7 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Every 3600s")).toBeInTheDocument();
+      expect(screen.getByText("Every 1 hour")).toBeInTheDocument();
     });
 
     click(buttonByText("Edit"));
@@ -1225,10 +1265,7 @@ describe("workflow detail page", () => {
     const updateTriggerForm = screen.getByRole("form", {
       name: "Update schedule trigger",
     });
-    await fill(
-      within(updateTriggerForm).getByLabelText("Interval seconds"),
-      "7200",
-    );
+    selectOptionByLabel("Every", "30 minutes", updateTriggerForm);
     fireEvent.submit(updateTriggerForm);
 
     await waitFor(() => {
@@ -1237,7 +1274,7 @@ describe("workflow detail page", () => {
         body: {
           schedule: {
             type: "loop",
-            intervalSeconds: 7200,
+            intervalSeconds: 1800,
           },
         },
       });

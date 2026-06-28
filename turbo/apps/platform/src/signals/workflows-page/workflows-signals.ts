@@ -8,7 +8,6 @@ import {
   type GmailNewMessageEventConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
-  type ZeroWorkflowScheduleType,
   type ZeroWorkflowSummary,
   type ZeroWorkflowTriggerSummary,
   type ZeroWorkflowUpdateRequest,
@@ -35,7 +34,8 @@ export type WorkflowDetailTab =
   | "instructions"
   | "info";
 type WorkflowTriggerCreateDialog =
-  | "schedule"
+  | "interval"
+  | "scheduled"
   | "gmail"
   | "gmail-label"
   | "webhook"
@@ -130,7 +130,6 @@ const internalWorkflowMetadataPatch$ = state<WorkflowMetadataPatch | null>(
 );
 const internalWorkflowTriggerCreateDialog$ =
   state<WorkflowTriggerCreateDialog>(null);
-const internalScheduleTriggerType$ = state<ZeroWorkflowScheduleType>("cron");
 const internalCreatedWorkflowWebhookTrigger$ =
   state<WorkflowWebhookTriggerSummary | null>(null);
 const internalCreateScheduleCronFields$ = state<WorkflowCronFields>(
@@ -194,7 +193,6 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalWorkflowMetadataPatch$, null);
   set(internalWorkflowTriggerCreateDialog$, null);
   set(internalCreatedWorkflowWebhookTrigger$, null);
-  set(internalScheduleTriggerType$, "cron");
   set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
   set(internalEditingScheduleCronFields$, defaultWorkflowCronFields());
 });
@@ -251,20 +249,9 @@ export const setWorkflowTriggerCreateDialog$ = command(
     if (dialog !== "webhook") {
       set(internalCreatedWorkflowWebhookTrigger$, null);
     }
-    if (dialog === "schedule") {
-      set(internalScheduleTriggerType$, "cron");
+    if (dialog === "scheduled") {
       set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
     }
-  },
-);
-
-export const scheduleTriggerType$ = computed((get) => {
-  return get(internalScheduleTriggerType$);
-});
-
-export const setScheduleTriggerType$ = command(
-  ({ set }, scheduleType: ZeroWorkflowScheduleType) => {
-    set(internalScheduleTriggerType$, scheduleType);
   },
 );
 

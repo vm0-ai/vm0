@@ -35,6 +35,7 @@ import {
   IconPlayerPause,
   IconPlayerPlay,
   IconPlus,
+  IconRepeat,
   IconShieldLock,
   IconTrash,
   IconUpload,
@@ -93,13 +94,11 @@ import {
   reloadWorkflows$,
   resetWorkflowMetadataForm$,
   runWorkflowTriggerNow$,
-  scheduleTriggerType$,
   selectedWorkflowFilePath$,
   setCreateScheduleCronFields$,
   setCreatedWorkflowWebhookTrigger$,
   setEditingScheduleCronFields$,
   setEditingWorkflowTriggerId$,
-  setScheduleTriggerType$,
   setSelectedWorkflowFilePath$,
   setWorkflowActionDialog$,
   setWorkflowAuthorizedConnectors$,
@@ -194,6 +193,8 @@ import {
 } from "../team-page/zero-job-detail-page.tsx";
 import {
   agentLabel,
+  formatWorkflowIntervalSeconds,
+  getWorkflowIntervalSecondOptions,
   isMarkdownPath,
   workflowTitle,
 } from "./workflow-shared.tsx";
@@ -2114,7 +2115,7 @@ function workflowScheduleTitle(
   }
   const schedule = trigger.schedule;
   if (schedule.type === "loop") {
-    return `Every ${schedule.intervalSeconds}s`;
+    return `Every ${formatWorkflowIntervalSeconds(schedule.intervalSeconds)}`;
   }
   if (schedule.type === "once") {
     const { date, hour, minute } = atTimeInTimezone(
@@ -2339,7 +2340,12 @@ function gmailMatcherDefaultValue(
   return config.match?.[field]?.[key] ?? "";
 }
 
-type TriggerCreateDialogKind = "schedule" | "gmail" | "gmail-label" | "webhook";
+type TriggerCreateDialogKind =
+  | "interval"
+  | "scheduled"
+  | "gmail"
+  | "gmail-label"
+  | "webhook";
 
 function TriggerCreateMenu({
   onSelect,
@@ -2363,7 +2369,25 @@ function TriggerCreateMenu({
         <DropdownMenuItem
           className="items-start gap-2 py-2"
           onSelect={() => {
-            onSelect("schedule");
+            onSelect("interval");
+          }}
+        >
+          <IconRepeat
+            size={15}
+            stroke={1.5}
+            className="mt-0.5 shrink-0 text-muted-foreground"
+          />
+          <span className="min-w-0">
+            <span className="block text-sm font-medium">Interval</span>
+            <span className="block text-xs text-muted-foreground">
+              Run this workflow on a fixed interval.
+            </span>
+          </span>
+        </DropdownMenuItem>
+        <DropdownMenuItem
+          className="items-start gap-2 py-2"
+          onSelect={() => {
+            onSelect("scheduled");
           }}
         >
           <IconClock
@@ -2372,7 +2396,7 @@ function TriggerCreateMenu({
             className="mt-0.5 shrink-0 text-muted-foreground"
           />
           <span className="min-w-0">
-            <span className="block text-sm font-medium">Schedule</span>
+            <span className="block text-sm font-medium">Scheduled time</span>
             <span className="block text-xs text-muted-foreground">
               Run this workflow from a time rule.
             </span>
@@ -2490,12 +2514,19 @@ function TriggersSection({
           </div>
         )}
       </div>
-      <CreateScheduleTriggerDialog
+      <CreateIntervalTriggerDialog
+        workflowId={detail.id}
+        open={createDialog === "interval"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "interval" : null);
+        }}
+      />
+      <CreateScheduledTriggerDialog
         workflowId={detail.id}
         displayTimezone={displayTimezone}
-        open={createDialog === "schedule"}
+        open={createDialog === "scheduled"}
         onOpenChange={(open) => {
-          setCreateDialog(open ? "schedule" : null);
+          setCreateDialog(open ? "scheduled" : null);
         }}
       />
       <CreateGmailNewMessageTriggerDialog
@@ -2523,7 +2554,87 @@ function TriggersSection({
   );
 }
 
-function CreateScheduleTriggerDialog({
+function CreateIntervalTriggerDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [createLoadable, createScheduleTrigger] = useLoadableSet(
+    createWorkflowScheduleTrigger$,
+  );
+  const creating = createLoadable.state === "loading";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add interval trigger</DialogTitle>
+          <DialogDescription>
+            Choose how often this workflow should run.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label="Add interval trigger"
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            const schedule = buildTriggerSchedule(
+              "loop",
+              {
+                cronFields: defaultWorkflowCronFields(),
+                intervalSeconds: String(form.get("intervalSeconds") ?? ""),
+                atTime: "",
+              },
+              TRIGGER_TIMEZONE,
+            );
+            if (!schedule) {
+              return;
+            }
+            detach(
+              (async () => {
+                await createScheduleTrigger(
+                  { workflowId, schedule },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <WorkflowIntervalField disabled={creating} />
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : null}
+              Add interval
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CreateScheduledTriggerDialog({
   workflowId,
   displayTimezone,
   open,
@@ -2534,8 +2645,6 @@ function CreateScheduleTriggerDialog({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
-  const scheduleType = useGet(scheduleTriggerType$);
-  const setScheduleType = useSet(setScheduleTriggerType$);
   const cronFields = useGet(createScheduleCronFields$);
   const setCronFields = useSet(setCreateScheduleCronFields$);
   const pageSignal = useGet(pageSignal$);
@@ -2560,10 +2669,10 @@ function CreateScheduleTriggerDialog({
             event.preventDefault();
             const form = new FormData(event.currentTarget);
             const schedule = buildTriggerSchedule(
-              scheduleType,
+              "cron",
               {
                 cronFields,
-                intervalSeconds: String(form.get("intervalSeconds") ?? ""),
+                intervalSeconds: "",
                 atTime: String(form.get("atTime") ?? ""),
               },
               displayTimezone,
@@ -2583,28 +2692,8 @@ function CreateScheduleTriggerDialog({
             );
           }}
         >
-          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-            Schedule type
-            <Select
-              value={scheduleType}
-              disabled={creating}
-              onValueChange={(value) => {
-                setScheduleType(value as ZeroWorkflowScheduleType);
-              }}
-            >
-              <SelectTrigger className="h-9 w-full">
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                <SelectItem value="cron">Repeat with cron</SelectItem>
-                <SelectItem value="loop">Loop every interval</SelectItem>
-                <SelectItem value="once">Run once</SelectItem>
-              </SelectContent>
-            </Select>
-          </label>
-
           <ScheduleTriggerFields
-            scheduleType={scheduleType}
+            scheduleType="cron"
             cronFields={cronFields}
             setCronFields={setCronFields}
             displayTimezone={displayTimezone}
@@ -2654,18 +2743,10 @@ function ScheduleTriggerFields({
 }) {
   if (scheduleType === "loop") {
     return (
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        Interval seconds
-        <input
-          name="intervalSeconds"
-          aria-label="Interval seconds"
-          type="number"
-          min="1"
-          defaultValue={String(defaultIntervalSeconds ?? 3600)}
-          disabled={disabled}
-          className={FIELD_CLASS}
-        />
-      </label>
+      <WorkflowIntervalField
+        disabled={disabled}
+        defaultIntervalSeconds={defaultIntervalSeconds}
+      />
     );
   }
 
@@ -2695,6 +2776,40 @@ function ScheduleTriggerFields({
       displayTimezone={displayTimezone}
       disabled={disabled}
     />
+  );
+}
+
+function WorkflowIntervalField({
+  disabled,
+  defaultIntervalSeconds = 15 * 60,
+}: {
+  readonly disabled: boolean;
+  readonly defaultIntervalSeconds?: number;
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+      Every
+      <Select
+        name="intervalSeconds"
+        defaultValue={String(defaultIntervalSeconds)}
+        disabled={disabled}
+      >
+        <SelectTrigger className="h-9 w-full" aria-label="Every">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {getWorkflowIntervalSecondOptions(defaultIntervalSeconds).map(
+            (seconds) => {
+              return (
+                <SelectItem key={seconds} value={String(seconds)}>
+                  {formatWorkflowIntervalSeconds(seconds)}
+                </SelectItem>
+              );
+            },
+          )}
+        </SelectContent>
+      </Select>
+    </label>
   );
 }
 

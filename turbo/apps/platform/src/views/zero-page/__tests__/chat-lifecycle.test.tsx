@@ -3081,6 +3081,13 @@ describe("chat lifecycle", () => {
         screen.getByRole("dialog", { name: "Edit trigger" }),
       ).toBeInTheDocument();
     });
+    const editDialog = screen.getByRole("dialog", { name: "Edit trigger" });
+    expect(
+      within(editDialog).getByRole("combobox", { name: "Every" }),
+    ).toHaveTextContent("1 minute");
+    expect(
+      within(editDialog).queryByLabelText("Interval seconds"),
+    ).not.toBeInTheDocument();
   });
 
   it("folds goal-state markers into the goal row beneath the queued messages", async () => {
