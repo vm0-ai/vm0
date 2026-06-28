@@ -85,6 +85,7 @@ Notes:
 
         const workflow = await createWorkflow({
           agentId,
+          chatThreadId: process.env.ZERO_CHAT_THREAD_ID || undefined,
           name,
           instruction,
           files,

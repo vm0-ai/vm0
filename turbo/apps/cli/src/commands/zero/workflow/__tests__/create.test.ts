@@ -17,6 +17,7 @@ import { createCommand } from "../create";
 import chalk from "chalk";
 
 const AGENT_ID = "11111111-1111-1111-1111-111111111111";
+const CHAT_THREAD_ID = "33333333-3333-4333-8333-333333333333";
 
 const mockWorkflow = {
   id: "22222222-2222-2222-2222-222222222222",
@@ -48,6 +49,7 @@ describe("zero workflow create command", () => {
     vi.stubEnv("VM0_API_URL", "http://localhost:3000");
     vi.stubEnv("VM0_TOKEN", "test-token");
     vi.stubEnv("ZERO_AGENT_ID", "");
+    vi.stubEnv("ZERO_CHAT_THREAD_ID", "");
 
     workflowDir = join(tmpdir(), `test-workflow-${Date.now()}`);
     mkdirSync(workflowDir, { recursive: true });
@@ -139,6 +141,33 @@ describe("zero workflow create command", () => {
       ]);
 
       expect(capturedBody?.agentId).toBe(AGENT_ID);
+    });
+
+    it("should forward ZERO_CHAT_THREAD_ID when creating from a chat thread", async () => {
+      vi.stubEnv("ZERO_AGENT_ID", AGENT_ID);
+      vi.stubEnv("ZERO_CHAT_THREAD_ID", CHAT_THREAD_ID);
+
+      let capturedBody: Record<string, unknown> | undefined;
+      server.use(
+        http.post(
+          "http://localhost:3000/api/zero/workflows",
+          async ({ request }) => {
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(mockWorkflow, { status: 201 });
+          },
+        ),
+      );
+
+      await createCommand.parseAsync([
+        "node",
+        "cli",
+        "my-workflow",
+        "--instruction",
+        "Do things",
+      ]);
+
+      expect(capturedBody?.agentId).toBe(AGENT_ID);
+      expect(capturedBody?.chatThreadId).toBe(CHAT_THREAD_ID);
     });
   });
 

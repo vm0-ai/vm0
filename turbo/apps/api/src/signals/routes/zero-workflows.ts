@@ -14,8 +14,12 @@ import {
 import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+import {
+  workflowUserTriggerThreads,
+  zeroWorkflows,
+} from "@vm0/db/schema/zero-workflow";
 import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
 import { and, eq, ne } from "drizzle-orm";
 
@@ -167,6 +171,30 @@ async function requirePublicWorkflowSlugAvailable(
     : null;
 }
 
+async function loadMatchingWorkflowCreationThreadId(
+  db: Db,
+  args: {
+    readonly userId: string;
+    readonly agentId: string;
+    readonly chatThreadId: string;
+  },
+): Promise<string | null> {
+  const [thread] = await db
+    .select({ id: chatThreads.id })
+    .from(chatThreads)
+    .where(
+      and(
+        eq(chatThreads.id, args.chatThreadId),
+        eq(chatThreads.userId, args.userId),
+        eq(chatThreads.agentComposeId, args.agentId),
+      ),
+    )
+    .limit(1)
+    .for("update");
+
+  return thread?.id ?? null;
+}
+
 const createWorkflowBody$ = bodyResultOf(
   zeroWorkflowsCollectionContract.create,
 );
@@ -239,21 +267,47 @@ const createWorkflowInner$ = command(
       }
     }
 
-    const [inserted] = await writeDb
-      .insert(zeroWorkflows)
-      .values({
-        orgId: auth.orgId,
-        agentId: agent.id,
-        name: body.name,
-        visibility,
-        instruction: body.instruction ?? null,
-        ownerUserId: auth.userId,
-        displayName: body.displayName ?? null,
-        description: body.description ?? null,
-        createdBy: auth.userId,
-        updatedBy: auth.userId,
-      })
-      .returning({ id: zeroWorkflows.id });
+    const currentTime = nowDate();
+    const inserted = await writeDb.transaction(async (tx) => {
+      const [workflow] = await tx
+        .insert(zeroWorkflows)
+        .values({
+          orgId: auth.orgId,
+          agentId: agent.id,
+          name: body.name,
+          visibility,
+          instruction: body.instruction ?? null,
+          ownerUserId: auth.userId,
+          displayName: body.displayName ?? null,
+          description: body.description ?? null,
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+          createdAt: currentTime,
+          updatedAt: currentTime,
+        })
+        .returning({ id: zeroWorkflows.id });
+
+      if (workflow && body.chatThreadId) {
+        const chatThreadId = await loadMatchingWorkflowCreationThreadId(tx, {
+          userId: auth.userId,
+          agentId: agent.id,
+          chatThreadId: body.chatThreadId,
+        });
+
+        if (chatThreadId) {
+          await tx.insert(workflowUserTriggerThreads).values({
+            orgId: auth.orgId,
+            userId: auth.userId,
+            workflowId: workflow.id,
+            chatThreadId,
+            createdAt: currentTime,
+            updatedAt: currentTime,
+          });
+        }
+      }
+
+      return workflow;
+    });
     signal.throwIfAborted();
     if (!inserted) {
       throw new Error("Failed to create workflow");
