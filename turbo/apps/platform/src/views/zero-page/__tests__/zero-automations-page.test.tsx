@@ -445,8 +445,11 @@ describe("zero automations page", () => {
     const dialog = await screen.findByRole("dialog");
     expect(within(dialog).getByText("1 Agent")).toBeInTheDocument();
     expect(within(dialog).getByText("Zero")).toBeInTheDocument();
+    expect(
+      within(dialog).queryByLabelText("Pin to sidebar"),
+    ).not.toBeInTheDocument();
 
-    click(buttonByText("Next", dialog));
+    click(buttonByText("Zero", dialog));
     await waitFor(() => {
       expect(within(dialog).getByText("2 Trigger")).toBeInTheDocument();
       expect(within(dialog).getByText("Fixed interval")).toBeInTheDocument();
