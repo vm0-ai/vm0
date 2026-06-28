@@ -866,8 +866,14 @@ def _ensure_bound_upstream_destination(
     kind: upstream_destination_binding.BindingKind,
 ) -> bool:
     allowed_kinds = frozenset((kind,))
-    if _has_bound_upstream_destination(flow, allowed_kinds=allowed_kinds):
+    has_bound_destination = _has_bound_upstream_destination(flow, allowed_kinds=allowed_kinds)
+    if has_bound_destination and (
+        upstream_destination_binding.has_server_binding(flow.server_conn)
+        or bool(getattr(flow.server_conn, "connected", False))
+    ):
         return True
+    # If has_bound_destination is true here, it is only an unconnected address
+    # match. That is retargetable, not durable proof for later keepalive reuse.
     if not _bind_flow_upstream_destination(flow, kind=kind):
         return False
     return _has_bound_upstream_destination(flow, allowed_kinds=allowed_kinds)
