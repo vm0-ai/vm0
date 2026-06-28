@@ -124,6 +124,8 @@ const ZERO_WORKFLOW_TRIGGERS_REWRITE_SOURCE =
   "/api/zero/workflows/:name/triggers";
 const ZERO_WORKFLOW_TRIGGERS_PATH_RE =
   /^\/api\/zero\/workflows\/[^/]+\/triggers$/;
+const ZERO_WORKFLOW_TRIGGER_LIST_REWRITE_SOURCE = "/api/zero/workflow-triggers";
+const ZERO_WORKFLOW_TRIGGER_LIST_PATH_RE = /^\/api\/zero\/workflow-triggers$/;
 const ZERO_WORKFLOW_TRIGGER_BY_ID_REWRITE_SOURCE = `/api/zero/workflow-triggers/:id(${UUID_PATH_SEGMENT_PATTERN})`;
 const ZERO_WORKFLOW_TRIGGER_BY_ID_PATH_RE = new RegExp(
   `^/api/zero/workflow-triggers/${UUID_PATH_SEGMENT_PATTERN}$`,
@@ -1434,6 +1436,11 @@ export const API_BACKEND_REWRITES = [
     ZERO_WORKFLOW_TRIGGERS_REWRITE_SOURCE,
     "/api/zero/workflows/:name/triggers",
     ZERO_WORKFLOW_TRIGGERS_PATH_RE,
+  ],
+  [
+    ZERO_WORKFLOW_TRIGGER_LIST_REWRITE_SOURCE,
+    "/api/zero/workflow-triggers",
+    ZERO_WORKFLOW_TRIGGER_LIST_PATH_RE,
   ],
   [
     ZERO_WORKFLOW_TRIGGER_ENABLE_REWRITE_SOURCE,

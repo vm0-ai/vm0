@@ -2681,6 +2681,15 @@ describe("API backend rewrite proxy behavior", () => {
     ).toBe(true);
   });
 
+  it("matches the zero workflow trigger list rewrite path exactly", () => {
+    expect(matchesApiBackendRewritePath("/api/zero/workflow-triggers")).toBe(
+      true,
+    );
+    expect(
+      matchesApiBackendRewritePath("/api/zero/workflow-triggers/extra"),
+    ).toBe(false);
+  });
+
   it("matches the zero workflow trigger run rewrite path exactly", () => {
     expect(
       matchesApiBackendRewritePath(
