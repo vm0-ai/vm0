@@ -6,6 +6,7 @@ import {
   automationTriggersContract,
 } from "@vm0/api-contracts/contracts/automations";
 import { cronExecuteAutomationsContract } from "@vm0/api-contracts/contracts/cron";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -14,6 +15,7 @@ import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
 import { and, asc, eq, inArray } from "drizzle-orm";
@@ -44,6 +46,8 @@ const mocks = createZeroRouteMocks(context);
 
 const SESSION_HEADERS = { authorization: "Bearer clerk-session" } as const;
 const CRON_SECRET = "test-cron-secret";
+const SCHEDULE_AUTOMATION_DISABLED_MESSAGE =
+  "Schedule automation has been disabled. Use zero workflow trigger to create scheduled tasks.";
 // Keep global-cron fixtures invisible to parallel test workers using real time.
 const ISOLATED_CRON_POLL_TIME_MS = Date.UTC(2099, 0, 1, 0, 0, 0);
 
@@ -118,6 +122,21 @@ async function seedFixture(): Promise<AutomationsFixture> {
   await trackCreatedAutomations(Promise.resolve(fixture));
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return fixture;
+}
+
+async function enableScheduleAutomationToWorkflowTriggerSwitch(
+  fixture: AutomationsFixture,
+): Promise<void> {
+  await store
+    .set(writeDb$)
+    .insert(userFeatureSwitches)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      switches: {
+        [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
+      },
+    });
 }
 
 interface CreateArgs {
@@ -221,6 +240,36 @@ describe("Automations API", () => {
     });
   });
 
+  it("rejects creating an automation when schedule automations are switched to workflow triggers", async () => {
+    const fixture = await seedFixture();
+    await enableScheduleAutomationToWorkflowTriggerSwitch(fixture);
+
+    const response = await accept(
+      mainApi().create({
+        headers: SESSION_HEADERS,
+        body: {
+          name: "daily-digest",
+          agentId: fixture.composeId,
+          instruction: "Summarize the day.",
+          trigger: { kind: "cron", cronExpression: "0 9 * * *" },
+        },
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: SCHEDULE_AUTOMATION_DISABLED_MESSAGE,
+      code: "FORBIDDEN",
+    });
+
+    const rows = await store
+      .set(writeDb$)
+      .select({ id: automations.id })
+      .from(automations)
+      .where(eq(automations.orgId, fixture.orgId));
+    expect(rows).toHaveLength(0);
+  });
+
   it("creates an automation with a first cron trigger via sugar", async () => {
     const fixture = await seedFixture();
 
@@ -254,6 +303,81 @@ describe("Automations API", () => {
       throw new Error("Expected a cron trigger");
     }
     expect(disabledTrigger.nextRunAt).toBeNull();
+  });
+
+  it("rejects enabling a disabled automation when schedule automations are switched to workflow triggers", async () => {
+    const fixture = await seedFixture();
+    const created = await createAutomation({
+      name: "paused-digest",
+      agentId: fixture.composeId,
+      enabled: false,
+      trigger: { kind: "cron", cronExpression: "0 9 * * *" },
+    });
+    await enableScheduleAutomationToWorkflowTriggerSwitch(fixture);
+
+    const response = await accept(
+      refApi().enable({
+        headers: SESSION_HEADERS,
+        params: { ref: created.automation.id },
+        body: {},
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: SCHEDULE_AUTOMATION_DISABLED_MESSAGE,
+      code: "FORBIDDEN",
+    });
+
+    const [row] = await store
+      .set(writeDb$)
+      .select({ enabled: automations.enabled })
+      .from(automations)
+      .where(eq(automations.id, created.automation.id));
+    expect(row?.enabled).toBeFalsy();
+  });
+
+  it("rejects enabling a disabled automation trigger when schedule automations are switched to workflow triggers", async () => {
+    const fixture = await seedFixture();
+    const created = await createAutomation({
+      name: "paused-trigger-digest",
+      agentId: fixture.composeId,
+      trigger: { kind: "cron", cronExpression: "0 9 * * *" },
+    });
+    const [trigger] = created.automation.triggers;
+    if (!trigger) {
+      throw new Error("Expected a trigger");
+    }
+    await accept(
+      triggerApi().disable({
+        headers: SESSION_HEADERS,
+        params: { id: trigger.id },
+        body: {},
+      }),
+      [200],
+    );
+    await enableScheduleAutomationToWorkflowTriggerSwitch(fixture);
+
+    const response = await accept(
+      triggerApi().enable({
+        headers: SESSION_HEADERS,
+        params: { id: trigger.id },
+        body: {},
+      }),
+      [403],
+    );
+
+    expect(response.body.error).toStrictEqual({
+      message: SCHEDULE_AUTOMATION_DISABLED_MESSAGE,
+      code: "FORBIDDEN",
+    });
+
+    const [row] = await store
+      .set(writeDb$)
+      .select({ enabled: automationTriggers.enabled })
+      .from(automationTriggers)
+      .where(eq(automationTriggers.id, trigger.id));
+    expect(row?.enabled).toBeFalsy();
   });
 
   it("creates and updates one-time triggers by interpreting local atTime in timezone", async () => {
