@@ -434,6 +434,7 @@ export const zeroWorkflowTriggerAutomationListResponseSchema = z.array(
 
 export const zeroWorkflowCreateRequestSchema = z.object({
   agentId: z.string().uuid(),
+  chatThreadId: z.string().uuid().optional(),
   name: zeroWorkflowNameSchema,
   instruction: workflowInstructionSchema.optional(),
   files: workflowFilesSchema.optional(),

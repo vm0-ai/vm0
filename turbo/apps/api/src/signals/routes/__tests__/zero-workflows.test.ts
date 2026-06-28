@@ -229,6 +229,137 @@ describe("zero workflows", () => {
     );
   });
 
+  it("binds a newly created workflow to the current matching agent chat thread", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Thread Agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+    const [thread] = await db
+      .insert(chatThreads)
+      .values({
+        userId: fixture.userId,
+        agentComposeId: agent.agentId,
+        title: "Current chat",
+      })
+      .returning({ id: chatThreads.id });
+    if (!thread) {
+      throw new Error("Failed to seed current chat thread");
+    }
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const created = await accept(
+      collectionClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: agent.agentId,
+          chatThreadId: thread.id,
+          name: "thread-workflow",
+          displayName: "Thread Workflow",
+          instruction: "# thread workflow",
+        },
+      }),
+      [201],
+    );
+
+    const [binding] = await db
+      .select({ chatThreadId: workflowUserTriggerThreads.chatThreadId })
+      .from(workflowUserTriggerThreads)
+      .where(
+        and(
+          eq(workflowUserTriggerThreads.orgId, fixture.orgId),
+          eq(workflowUserTriggerThreads.userId, fixture.userId),
+          eq(workflowUserTriggerThreads.workflowId, created.body.id),
+        ),
+      );
+    expect(binding?.chatThreadId).toBe(thread.id);
+
+    const prepared = await accept(
+      detailClient().chatThread({
+        headers: authHeaders(),
+        params: { workflowId: created.body.id },
+      }),
+      [200],
+    );
+    expect(prepared.body.chatThreadId).toBe(thread.id);
+  });
+
+  it("does not bind a newly created workflow to a chat thread from another agent", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const sourceAgent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Source Agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    const targetAgent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Target Agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+    const [thread] = await db
+      .insert(chatThreads)
+      .values({
+        userId: fixture.userId,
+        agentComposeId: sourceAgent.agentId,
+        title: "Source chat",
+      })
+      .returning({ id: chatThreads.id });
+    if (!thread) {
+      throw new Error("Failed to seed source chat thread");
+    }
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const created = await accept(
+      collectionClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: targetAgent.agentId,
+          chatThreadId: thread.id,
+          name: "target-workflow",
+          displayName: "Target Workflow",
+          instruction: "# target workflow",
+        },
+      }),
+      [201],
+    );
+
+    const bindings = await db
+      .select({ chatThreadId: workflowUserTriggerThreads.chatThreadId })
+      .from(workflowUserTriggerThreads)
+      .where(
+        and(
+          eq(workflowUserTriggerThreads.orgId, fixture.orgId),
+          eq(workflowUserTriggerThreads.userId, fixture.userId),
+          eq(workflowUserTriggerThreads.workflowId, created.body.id),
+        ),
+      );
+    expect(bindings).toStrictEqual([]);
+  });
+
   it("enforces public workflow slug uniqueness per agent while allowing private overrides", async () => {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),

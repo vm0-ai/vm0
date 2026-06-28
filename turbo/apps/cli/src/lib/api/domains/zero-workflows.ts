@@ -26,6 +26,7 @@ export async function listWorkflows(query: {
 
 export async function createWorkflow(body: {
   agentId: string;
+  chatThreadId?: string;
   name: string;
   instruction?: string;
   files?: WorkflowFileEntry[];
