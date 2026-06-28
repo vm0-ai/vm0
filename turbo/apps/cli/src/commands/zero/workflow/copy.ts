@@ -2,6 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { copyWorkflow } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+import { formatWorkflowAgentName } from "./format";
 
 export const copyCommand = new Command()
   .name("copy")
@@ -20,8 +21,9 @@ Examples:
         const workflow = await copyWorkflow(workflowId, options.toAgent);
 
         console.log(chalk.green(`✓ Workflow "${workflow.name}" copied`));
-        console.log(`  ID:     ${workflow.id}`);
-        console.log(`  Agent:  ${workflow.agentName ?? workflow.agentId}`);
+        console.log(`  ID:           ${workflow.id}`);
+        console.log(`  Agent Name:   ${formatWorkflowAgentName(workflow)}`);
+        console.log(`  Agent ID:     ${workflow.agentId}`);
         console.log();
         console.log(`View it: zero workflow view ${workflow.id}`);
       },

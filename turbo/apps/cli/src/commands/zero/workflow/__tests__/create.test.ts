@@ -111,6 +111,8 @@ describe("zero workflow create command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("my-workflow");
       expect(logCalls).toContain("created");
+      expect(logCalls).toContain("Agent Name:   My Agent");
+      expect(logCalls).toContain(`Agent ID:     ${AGENT_ID}`);
       expect(logCalls).toContain("1 file(s)");
     });
 
