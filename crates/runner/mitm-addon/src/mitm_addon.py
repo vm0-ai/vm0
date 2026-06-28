@@ -818,7 +818,19 @@ def _bind_flow_upstream_destination(
         return False
 
     original_address = _server_address(flow.server_conn)
-    if upstream_destination_binding.has_server_binding(flow.server_conn):
+    has_server_binding = upstream_destination_binding.has_server_binding(flow.server_conn)
+    requires_connected_platform_connector_auth_fallback = (
+        kind == "connector_auth"
+        and _api_hostname_matches(normalized_host)
+        and (has_server_binding or bool(getattr(flow.server_conn, "connected", False)))
+    )
+    if (
+        requires_connected_platform_connector_auth_fallback
+        and not _request_allows_connected_platform_connector_auth_fallback(flow)
+    ):
+        return False
+
+    if has_server_binding:
         return upstream_destination_binding.add_server_binding_kind_if_matching(
             flow.server_conn,
             client=flow.client_conn,
@@ -828,12 +840,6 @@ def _bind_flow_upstream_destination(
         )
 
     if flow.server_conn.connected:
-        if (
-            kind == "connector_auth"
-            and _api_hostname_matches(normalized_host)
-            and not _request_allows_connected_platform_connector_auth_fallback(flow)
-        ):
-            return False
         connected_address = _connected_verified_tls_destination_endpoint(
             flow.server_conn,
             host=normalized_host,
