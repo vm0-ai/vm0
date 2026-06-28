@@ -4659,9 +4659,10 @@ describe("chat lifecycle", () => {
     });
 
     await user.click(await screen.findByLabelText("Connectors"));
-    await user.click(
-      await screen.findByRole("switch", { name: "Connect Studio Mac" }),
-    );
+    const hostsGroup = await screen.findByRole("group", {
+      name: "Computer Use hosts",
+    });
+    await user.click(within(hostsGroup).getByText("Studio Mac"));
     await waitFor(() => {
       expect(updatedComputerUseHostId).toBe(hostId);
     });
