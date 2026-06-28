@@ -170,7 +170,7 @@ def refresh_server_binding_connected_address_if_matching(
     if binding.host != normalized_host or binding.port != port:
         return False
     connected_pair = _address_pair(connected_address)
-    if connected_pair is None or _endpoint_ip_key(connected_pair[0]) is None:
+    if connected_pair is None or not _is_authoritative_connected_address(connected_pair):
         return False
 
     refreshed_binding = UpstreamDestinationBinding(
@@ -294,7 +294,10 @@ def _client_binding_matches_connected_endpoint(
     if _is_authoritative_connected_address(server_address):
         return _endpoint_matches_any(server_address, bindings)
 
-    return _endpoint_matches_any(getattr(client, "sockname", None), bindings)
+    client_sockname = getattr(client, "sockname", None)
+    if _is_authoritative_connected_address(client_sockname):
+        return _endpoint_matches_any(client_sockname, bindings)
+    return False
 
 
 def diagnostic_snapshot_for_flow(

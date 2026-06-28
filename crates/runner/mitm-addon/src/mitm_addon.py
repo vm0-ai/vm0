@@ -1759,11 +1759,11 @@ def _connected_ip_destination_endpoint(
         if peer is None:
             continue
 
-        peer_host, peer_port = peer
+        _peer_host, peer_port = peer
         if peer_port != port:
             continue
 
-        if _ip_address_text(peer_host) is not None:
+        if _is_authoritative_connected_endpoint(peer):
             return peer
 
     return None
