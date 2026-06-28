@@ -468,6 +468,7 @@ export interface CreateAgentRunArgs {
   readonly enforceVm0Credits?: boolean;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly timing?: ApiDispatchTimingCollector;
+  readonly timingDimensions?: ApiDispatchTimingDimensions;
 }
 
 interface ConnectorRuntimeContext {
@@ -4605,6 +4606,7 @@ function dispatchRun(
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly timing: ApiDispatchTimingCollector;
+    readonly timingDimensions: ApiDispatchTimingDimensions | undefined;
   },
 ): Computed<Promise<DerivedPersistenceResult>> {
   return computed(async (get): Promise<DerivedPersistenceResult> => {
@@ -4702,6 +4704,7 @@ function dispatchRun(
         runnerGroup: payload.runnerGroup,
         profile: payload.profile,
         dispatchPath: "direct",
+        ...(args.timingDimensions ? { dimensions: args.timingDimensions } : {}),
         ...(args.body.triggerSource
           ? { triggerSource: args.body.triggerSource }
           : {}),
@@ -5703,6 +5706,7 @@ function completePendingRun(input: {
             userTimezone: input.context.userTimezone,
             featureSwitchContext: input.context.featureSwitchContext,
             timing: input.timing,
+            timingDimensions: input.args.timingDimensions,
           }),
         ),
       );

@@ -40,6 +40,7 @@ import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
   type ApiDispatchTimingActionType,
+  type ApiDispatchTimingDimensions,
 } from "./api-dispatch-timing.service";
 import { loadAgentConnectorScope } from "./agent-connector-scope.service";
 import { loadActiveUserPermissionGrants } from "./zero-user-permission-grants.service";
@@ -48,6 +49,11 @@ import type { InternalRunCallbackKind } from "./internal-run-callback";
 
 type ZeroRunCreateBody = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 type WorkflowConnectorRefs = readonly string[];
+type ZeroRunOrigin =
+  | "zero_run"
+  | "workflow_trigger"
+  | "goal_continuation"
+  | "zero_integration";
 
 const DISALLOWED_TOOLS = [
   "CronCreate",
@@ -561,6 +567,28 @@ function buildZeroRunExtraEnvironment(args: {
   };
 }
 
+function zeroRunTimingDimensions(
+  origin: ZeroRunOrigin,
+): ApiDispatchTimingDimensions {
+  return { zero_run_origin: origin };
+}
+
+function zeroRunOrigin(args: {
+  readonly command: CreateZeroRunCommandArgs;
+  readonly triggerRun: Awaited<ReturnType<typeof resolveTriggerRunContext>>;
+}): ZeroRunOrigin {
+  if (
+    args.triggerRun.unattended ||
+    args.command.zeroRunMetadata?.workflowTriggerId
+  ) {
+    return "workflow_trigger";
+  }
+  if (args.command.zeroRunMetadata?.goalId) {
+    return "goal_continuation";
+  }
+  return "zero_run";
+}
+
 /**
  * Resolves the firewall policies for a run.
  *
@@ -913,6 +941,12 @@ function buildZeroCreateAgentRunArgs(args: {
     },
     dispatchFailedCallbacks: command.dispatchFailedCallbacks,
     timing: args.timing,
+    timingDimensions: zeroRunTimingDimensions(
+      zeroRunOrigin({
+        command,
+        triggerRun: args.triggerRun,
+      }),
+    ),
   };
 }
 
@@ -956,6 +990,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
     validateEnvironmentReferences: false,
     dispatchFailedCallbacks: command.dispatchFailedCallbacks,
     timing: args.timing,
+    timingDimensions: zeroRunTimingDimensions("zero_integration"),
   };
 }
 

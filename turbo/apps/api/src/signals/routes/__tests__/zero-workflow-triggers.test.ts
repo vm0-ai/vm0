@@ -57,6 +57,25 @@ function detailClient() {
   return setupApp({ context })(zeroWorkflowsDetailContract);
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event) && event.run_id === runId;
+    });
+  });
+}
+
 const WORKFLOW_NAME = "trigger-workflow";
 const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
 const GMAIL_EMAIL = "workflow-user@example.com";
@@ -1252,6 +1271,15 @@ describe("zero workflow triggers", () => {
       workflowTriggerId: created.body.id,
       triggerSource: "workflow-schedule",
     });
+    expect(sandboxOperationEventsForRun(run.body.runId)).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_agent_run",
+          trigger_source: "workflow-schedule",
+          zero_run_origin: "workflow_trigger",
+        }),
+      ]),
+    );
 
     const [trigger] = await db
       .select({
