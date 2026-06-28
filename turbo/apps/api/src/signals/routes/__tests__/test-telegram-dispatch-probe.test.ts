@@ -365,6 +365,7 @@ describe("POST /api/test/telegram-dispatch-probe", () => {
           op_type: "api_dispatch_pre_create_agent_run",
           span_kind: "top_level",
           trigger_source: "telegram",
+          zero_run_origin: "zero_integration",
         }),
         expect.objectContaining({
           op_type: "api_dispatch_pre_create_zero_entrypoint_gap",

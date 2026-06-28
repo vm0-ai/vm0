@@ -4,6 +4,7 @@ import { createStore } from "ccstate";
 import { and, eq, inArray } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { afterEach, describe, expect, it } from "vitest";
+import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
@@ -1690,13 +1691,51 @@ async function seedGoalForThread(args: {
   });
 }
 
+async function addAnthropicKeyToCompose(composeId: string): Promise<void> {
+  await store
+    .set(writeDb$)
+    .update(agentComposeVersions)
+    .set({
+      content: {
+        version: "1.0",
+        agents: {
+          "test-agent": {
+            framework: "claude-code",
+            environment: { ANTHROPIC_API_KEY: "test-key" },
+          },
+        },
+      },
+    })
+    .where(eq(agentComposeVersions.composeId, composeId));
+}
+
 function pushPayload(call: readonly unknown[] | undefined): unknown {
   const raw = call?.[1];
   return JSON.parse(typeof raw === "string" ? raw : "{}");
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event) && event.run_id === runId;
+    });
+  });
+}
+
 describe("dispatchRunCallbacks$ goal push notification gating", () => {
   it("suppresses the push while an active goal keeps looping", async () => {
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const fixture = await seedChatCallbackRun({ status: "completed" });
     await enablePushDelivery(fixture.userId);
     await seedGoalForThread({
@@ -1707,6 +1746,7 @@ describe("dispatchRunCallbacks$ goal push notification gating", () => {
       objective: "Keep the changelog up to date",
       status: "active",
     });
+    await addAnthropicKeyToCompose(fixture.composeId);
     mockChatOutput("Made progress this turn.");
     mockChatOpenRouterCompletions();
     await store.set(
@@ -1732,6 +1772,33 @@ describe("dispatchRunCallbacks$ goal push notification gating", () => {
     await flushWaitUntilForTest();
 
     expect(context.mocks.webpush.sendNotification).not.toHaveBeenCalled();
+    const [continuationRun] = await db
+      .select({
+        id: zeroRuns.id,
+        goalId: zeroRuns.goalId,
+        triggerSource: zeroRuns.triggerSource,
+      })
+      .from(zeroRuns)
+      .where(
+        and(
+          eq(zeroRuns.chatThreadId, fixture.threadId),
+          eq(zeroRuns.triggerSource, "workflow-event"),
+        ),
+      )
+      .limit(1);
+    if (!continuationRun) {
+      throw new Error("Expected goal continuation to create a run");
+    }
+    expect(continuationRun.goalId).not.toBeNull();
+    expect(sandboxOperationEventsForRun(continuationRun.id)).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_agent_run",
+          trigger_source: "workflow-event",
+          zero_run_origin: "goal_continuation",
+        }),
+      ]),
+    );
   });
 
   it("sends the push once the goal reaches a terminal state", async () => {
