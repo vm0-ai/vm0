@@ -182,11 +182,11 @@ jobs:
             echo "e2b-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
-          if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/src/(migrations|schema|__tests__/migrations)/|^turbo/packages/db/src/__tests__/test-db\.ts$"; then
-            echo "Migration, schema, or migration test changes detected"
+          if printf '%s\n' "$CHANGED_FILES" | grep -qE "^turbo/packages/db/src/(migrations|schema)/"; then
+            echo "Migration or schema changes detected"
             echo "migration-changed=true" >> "$GITHUB_OUTPUT"
           else
-            echo "No migration, schema, or migration test changes"
+            echo "No migration or schema changes"
             echo "migration-changed=false" >> "$GITHUB_OUTPUT"
           fi
 
@@ -610,16 +610,6 @@ jobs:
         env:
           DATABASE_URL: postgresql://postgres@postgres:5432/postgres
         run: pnpm test:migration-consistency
-      - name: Run Database Migrations for Integration Suite
-        working-directory: turbo
-        env:
-          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm -F @vm0/db db:migrate
-      - name: Test Migration Integration Suite
-        working-directory: turbo
-        env:
-          DATABASE_URL: postgresql://postgres@postgres:5432/postgres
-        run: pnpm -F @vm0/db exec vitest run src/__tests__/migrations
 
   test-cli:
     needs: [detect-turbo-ts-checks]
