@@ -1,5 +1,23 @@
 # Changelog
 
+## [1.186.2](https://github.com/vm0-ai/vm0/compare/api-v1.186.1...api-v1.186.2) (2026-06-28)
+
+
+### Bug Fixes
+
+* **api:** deploy API for runtime dependency releases ([#19243](https://github.com/vm0-ai/vm0/issues/19243)) ([ba51114](https://github.com/vm0-ai/vm0/commit/ba5111415aab9e1cc3076e1d0ad60a551a9f87cf))
+* bind workflow creation to current chat thread ([#19247](https://github.com/vm0-ai/vm0/issues/19247)) ([e656035](https://github.com/vm0-ai/vm0/commit/e6560354593174dcb2389013b3afe29cd31ffabc))
+* block schedule automation writes behind workflow trigger switch ([#19248](https://github.com/vm0-ai/vm0/issues/19248)) ([6b1cf5f](https://github.com/vm0-ai/vm0/commit/6b1cf5f2dc5f062c3d3c39a4763ad89fb337d1dc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.2
+    * @vm0/core bumped to 8.374.2
+    * @vm0/db bumped to 1.76.4
+
 ## [1.186.1](https://github.com/vm0-ai/vm0/compare/api-v1.186.0...api-v1.186.1) (2026-06-28)
 
 
