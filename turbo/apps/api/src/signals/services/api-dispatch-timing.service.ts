@@ -137,6 +137,7 @@ export class ApiDispatchTimingCollector {
     readonly profile: string;
     readonly dispatchPath: "direct";
     readonly triggerSource?: TriggerSource;
+    readonly dimensions?: ApiDispatchTimingDimensions;
   }): void {
     const records = this.records.splice(0);
     recordSandboxOperations(
@@ -149,6 +150,7 @@ export class ApiDispatchTimingCollector {
           runId: args.runId,
           timestamp: record.timestamp,
           dimensions: {
+            ...args.dimensions,
             ...record.dimensions,
             runner_group: args.runnerGroup,
             profile: args.profile,

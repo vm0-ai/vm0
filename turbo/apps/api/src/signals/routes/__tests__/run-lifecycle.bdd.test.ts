@@ -1894,6 +1894,7 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
         connector_scope_source: "zero_agent",
         stored_connector_count_bucket: "1",
         stored_connector_secret_count_bucket: "1",
+        zero_run_origin: "zero_run",
       }),
     );
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
@@ -2012,17 +2013,19 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expectNoApiDispatchActions(timingEvents, [
       "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
     ]);
-    expect(
-      singleApiDispatchEvent(
-        timingEvents,
-        "api_dispatch_prepare_context_build_stored_connector_state",
-      ),
-    ).toStrictEqual(
+    const buildStoredConnectorStateEvent = singleApiDispatchEvent(
+      timingEvents,
+      "api_dispatch_prepare_context_build_stored_connector_state",
+    );
+    expect(buildStoredConnectorStateEvent).toStrictEqual(
       expect.objectContaining({
         connector_scope_source: "legacy_all",
         stored_connector_count_bucket: "1",
         stored_connector_secret_count_bucket: "0",
       }),
+    );
+    expect(buildStoredConnectorStateEvent).not.toHaveProperty(
+      "zero_run_origin",
     );
     expectApiDispatchTimingEventsNotToLeak(timingEvents, [
       "x-bdd-overridden-access",
