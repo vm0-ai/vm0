@@ -3807,6 +3807,56 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("renders workflow trigger user messages with an inline marker", async () => {
+    const threadId = "thread-workflow-user-message-marker";
+    const workflowPrompt = "/daily-workflow";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Workflow user message marker",
+      chatMessages: [
+        {
+          id: "msg-workflow-marker-user",
+          role: "user",
+          content: workflowPrompt,
+          runId: "f0000001-0000-4000-a000-00000000083c",
+          triggerSource: "workflow-event",
+          workflowSnapshot: {
+            id: "f0000001-0000-4000-a000-000000000831",
+            agentId: "c0000000-0000-4000-a000-000000000001",
+            name: "daily-workflow",
+            displayName: "Daily workflow",
+            description: "Daily workflow summary",
+            triggerId: "f0000001-0000-4000-a000-000000000832",
+            triggerBrief: "Gmail label applied",
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-workflow-marker-assistant",
+          role: "assistant",
+          content: "Workflow result",
+          runId: "f0000001-0000-4000-a000-00000000083c",
+          triggerSource: "workflow-event",
+          createdAt: "2026-06-09T10:00:30Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Workflow trigger")).toBeInTheDocument();
+      expect(
+        screen.getByText("Daily workflow · Gmail label applied"),
+      ).toBeInTheDocument();
+      expect(screen.queryByText(workflowPrompt)).not.toBeInTheDocument();
+    });
+  });
+
   it("shows template labels on historical user messages", async () => {
     const threadId = "template-message-history";
     const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;

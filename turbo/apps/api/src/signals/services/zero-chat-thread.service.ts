@@ -92,6 +92,10 @@ type ChatMessageRow = {
   readonly workflowName: string | null;
   readonly workflowDisplayName: string | null;
   readonly workflowDescription: string | null;
+  readonly workflowId: string | null;
+  readonly workflowAgentId: string | null;
+  readonly workflowTriggerId: string | null;
+  readonly workflowTriggerBrief: string | null;
 };
 
 type ChatSearchMessageRow = {
@@ -169,6 +173,26 @@ const messageColumns = {
   interruptsRunId: chatMessages.interruptsRunId,
   automationId: chatMessages.automationId,
   automationTitle: chatMessages.automationTitle,
+  workflowId: sql<string | null>`(
+    SELECT "zero_workflows"."id"
+    FROM "zero_runs"
+    INNER JOIN "zero_workflow_triggers"
+      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflows"
+      ON "zero_workflows"."id" = "zero_workflow_triggers"."workflow_id"
+    WHERE "zero_runs"."id" = "chat_messages"."run_id"
+    LIMIT 1
+  )`,
+  workflowAgentId: sql<string | null>`(
+    SELECT "zero_workflows"."agent_id"
+    FROM "zero_runs"
+    INNER JOIN "zero_workflow_triggers"
+      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    INNER JOIN "zero_workflows"
+      ON "zero_workflows"."id" = "zero_workflow_triggers"."workflow_id"
+    WHERE "zero_runs"."id" = "chat_messages"."run_id"
+    LIMIT 1
+  )`,
   workflowName: sql<string | null>`(
     SELECT "zero_workflows"."name"
     FROM "zero_runs"
@@ -196,6 +220,42 @@ const messageColumns = {
       ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
     INNER JOIN "zero_workflows"
       ON "zero_workflows"."id" = "zero_workflow_triggers"."workflow_id"
+    WHERE "zero_runs"."id" = "chat_messages"."run_id"
+    LIMIT 1
+  )`,
+  workflowTriggerId: sql<string | null>`(
+    SELECT "zero_workflow_triggers"."id"
+    FROM "zero_runs"
+    INNER JOIN "zero_workflow_triggers"
+      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    WHERE "zero_runs"."id" = "chat_messages"."run_id"
+    LIMIT 1
+  )`,
+  workflowTriggerBrief: sql<string | null>`(
+    SELECT CASE
+      WHEN "zero_workflow_triggers"."kind" = 'schedule'
+        AND "zero_workflow_triggers"."schedule_type" = 'cron'
+        THEN "zero_workflow_triggers"."cron_expression" || ' (' || "zero_workflow_triggers"."timezone" || ')'
+      WHEN "zero_workflow_triggers"."kind" = 'schedule'
+        AND "zero_workflow_triggers"."schedule_type" = 'loop'
+        THEN 'Every ' || "zero_workflow_triggers"."interval_seconds" || 's'
+      WHEN "zero_workflow_triggers"."kind" = 'schedule'
+        AND "zero_workflow_triggers"."schedule_type" = 'once'
+        THEN 'Once at ' || "zero_workflow_triggers"."at_time"
+      WHEN "zero_workflow_triggers"."kind" = 'event'
+        AND "zero_workflow_triggers"."event_type" = 'gmail-label-applied'
+        THEN 'Gmail label applied'
+      WHEN "zero_workflow_triggers"."kind" = 'event'
+        AND "zero_workflow_triggers"."event_type" = 'gmail-new-message'
+        THEN 'Gmail new message'
+      WHEN "zero_workflow_triggers"."kind" = 'event'
+        AND "zero_workflow_triggers"."event_type" = 'webhook-received'
+        THEN 'Webhook trigger'
+      ELSE NULL
+    END
+    FROM "zero_runs"
+    INNER JOIN "zero_workflow_triggers"
+      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
@@ -455,9 +515,13 @@ function toPagedMessage(
       row.workflowName === null
         ? undefined
         : {
+            id: row.workflowId ?? undefined,
+            agentId: row.workflowAgentId ?? undefined,
             name: row.workflowName,
             displayName: row.workflowDisplayName,
             description: row.workflowDescription,
+            triggerId: row.workflowTriggerId ?? undefined,
+            triggerBrief: row.workflowTriggerBrief,
           };
 
     const role = messageRoleSchema.parse(row.role);
