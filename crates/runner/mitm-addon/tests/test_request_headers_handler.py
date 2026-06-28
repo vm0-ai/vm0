@@ -446,6 +446,56 @@ async def test_api_allow_unknown_body_length_retargets_unconnected_upstream(
     assert binding.original_address == ("203.0.113.10", 443)
 
 
+async def test_test_connector_bounded_requestheaders_uses_connector_binding(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        client_ip="10.200.0.5",
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="test-oauth",
+            api_entry={
+                "base": "https://api.vm0.ai/api/test/oauth-provider",
+                "auth": {"headers": {"Authorization": "Bearer x"}},
+                "permissions": [{"name": "echo", "rules": ["GET /echo"]}],
+            },
+            network_policy={
+                "allow": ["echo"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.vm0.ai",
+        path="/api/test/oauth-provider/echo",
+        request_headers=headers(("Host", "api.vm0.ai")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        _assert_no_request_stream(flow)
+        assert flow.server_conn.address == ("api.vm0.ai", 443)
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer resolved"
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.vm0.ai"
+    assert binding.kinds == frozenset(("connector_auth",))
+    assert binding.original_address == ("203.0.113.10", 443)
+
+
 def test_capture_enabled_browser_allow_installs_request_stream(
     tmp_path, real_flow, mitm_ctx, headers
 ):

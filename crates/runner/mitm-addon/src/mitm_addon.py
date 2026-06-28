@@ -759,7 +759,9 @@ def _prebind_bounded_requestheaders_upstream_destination(flow: http.HTTPFlow) ->
         except AuthorityValidationError:
             return
         flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = trusted_authority.host
-        if _api_hostname_matches(trusted_authority.host):
+        if _api_hostname_matches(trusted_authority.host) and not flow.request.path.startswith(
+            "/api/test/"
+        ):
             _ensure_bound_upstream_destination(flow, kind="api_allow")
             return
         if _has_bound_upstream_destination(
