@@ -206,7 +206,21 @@ def _server_binding_matches_current_destination(
     binding: UpstreamDestinationBinding,
 ) -> bool:
     if bool(getattr(server, "connected", False)):
-        return True
+        peername = getattr(server, "peername", None)
+        if _is_authoritative_connected_address(peername):
+            return binding.original_address is not None and _endpoint_matches(
+                peername,
+                binding.original_address,
+            )
+
+        server_address = getattr(server, "address", None)
+        if _is_authoritative_connected_address(server_address):
+            return binding.original_address is not None and _endpoint_matches(
+                server_address,
+                binding.original_address,
+            )
+
+        return _address_matches(binding.host, binding.port, server_address)
     return _address_matches(binding.host, binding.port, getattr(server, "address", None))
 
 
