@@ -462,6 +462,16 @@ async fn run_in_sandbox_skips_verified_session_history_restore() {
     let ops = telemetry.pending_ops_snapshot();
     assert!(
         ops.iter()
+            .any(|op| op.0 == "session_history_identity_reuse_hit" && op.1),
+        "expected identity reuse hit telemetry, got: {ops:?}"
+    );
+    assert!(
+        ops.iter()
+            .all(|op| op.0 != "session_history_identity_restored"),
+        "skip path should not record newly restored identity telemetry, got: {ops:?}"
+    );
+    assert!(
+        ops.iter()
             .any(|op| op.0 == "session_history_restore_skip" && op.1),
         "expected skip telemetry, got: {ops:?}"
     );
@@ -877,6 +887,91 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
     assert!(
         ops.iter().any(|op| op.0 == "session_restore" && op.1),
         "expected restore telemetry, got: {ops:?}"
+    );
+    assert!(
+        ops.iter()
+            .any(|op| op.0 == "session_history_identity_restored" && op.1),
+        "expected restored identity telemetry, got: {ops:?}"
+    );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let history = br#"{"type":"init"}"#;
+    let server = MockServer::start_async().await;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: "sess-missing-identity-123".into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: server.url("/history.blob?token=secret"),
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
+    let materializer = SessionHistoryMaterializer::start_cancellable(
+        &config.http,
+        ctx.resume_session.as_ref(),
+        tokio_util::sync::CancellationToken::new(),
+    );
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::Reused,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+            .with_session_history_restore_plan(SessionHistoryRestorePlan::Prestarted {
+                materializer,
+                fallback: Some(SessionHistoryRestoreFallback::MissingIdleIdentity),
+            }),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    assert!(result.restored_session_identity.is_some());
+    history_mock.assert_calls_async(1).await;
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert_eq!(
+        writes[0].path,
+        "/home/user/.claude/projects/-home-user-workspace/sess-missing-identity-123.jsonl"
+    );
+    assert_eq!(writes[0].content, history);
+    let ops = telemetry.pending_ops_snapshot();
+    assert!(
+        ops.iter()
+            .any(|op| { op.0 == "session_history_restore_fallback_missing_idle_identity" && op.1 }),
+        "expected missing identity fallback telemetry, got: {ops:?}"
+    );
+    assert!(
+        ops.iter()
+            .any(|op| op.0 == "session_history_identity_reuse_missing" && op.1),
+        "expected identity reuse missing telemetry, got: {ops:?}"
+    );
+    assert!(
+        ops.iter()
+            .any(|op| op.0 == "session_history_identity_restored" && op.1),
+        "expected restored identity telemetry, got: {ops:?}"
     );
 }
 
