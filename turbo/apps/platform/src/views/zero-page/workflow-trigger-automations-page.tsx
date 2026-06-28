@@ -99,7 +99,7 @@ const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
     description: "Run a workflow every few minutes or hours.",
     Icon: IconRepeat,
     prompt:
-      "I'd like to create an interval triggered workflow. Help me define the workflow, create the interval trigger, check the required connectors, and grant only the permissions it needs.",
+      "I'd like to set up an interval workflow trigger that runs every few minutes or hours. Help me define the workflow.",
   },
   {
     kind: "scheduled",
@@ -108,7 +108,7 @@ const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
       "Run a workflow on a daily, weekly, monthly, or custom cron schedule.",
     Icon: IconCalendarTime,
     prompt:
-      "I'd like to create a schedule triggered workflow. Help me define the workflow, create the schedule trigger, check the required connectors, and grant only the permissions it needs.",
+      "I'd like to set up a scheduled workflow trigger that runs on a daily, weekly, monthly, or custom cron schedule. Help me define the workflow.",
   },
   {
     kind: "webhook",
@@ -116,7 +116,7 @@ const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
     description: "Run a workflow when an inbound webhook is received.",
     Icon: IconLink,
     prompt:
-      "I'd like to create a web triggered workflow. Help me define the workflow, create the webhook trigger, check any connector needs, and grant only the permissions it needs.",
+      "I'd like to set up a webhook workflow trigger that runs when an inbound webhook is received. Help me define the workflow.",
   },
   {
     kind: "gmail-new-message",
@@ -124,7 +124,7 @@ const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
     description: "Run a workflow when a matching Gmail message arrives.",
     Icon: IconMail,
     prompt:
-      "I'd like to create an email triggered workflow that runs when a Gmail message matches my criteria. Help me define the workflow, create the Gmail trigger, check my Gmail connector, and grant only the permissions it needs.",
+      "I'd like to set up an email workflow trigger that runs when a Gmail message matches my criteria. Help me define the workflow.",
   },
   {
     kind: "gmail-label-applied",
@@ -132,7 +132,7 @@ const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
     description: "Run a workflow when a Gmail label is applied.",
     Icon: IconMail,
     prompt:
-      "I'd like to create an email-label triggered workflow that runs when a Gmail label is applied. Help me define the workflow, create the Gmail label trigger, check my Gmail connector, and grant only the permissions it needs.",
+      "I'd like to set up an email-label workflow trigger that runs when a Gmail label is applied. Help me define the workflow.",
   },
 ] as const;
 
