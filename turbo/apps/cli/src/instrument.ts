@@ -1,6 +1,3 @@
-import * as Sentry from "@sentry/node";
-import * as os from "node:os";
-
 declare const __CLI_VERSION__: string;
 declare const __DEFAULT_SENTRY_DSN__: string;
 
@@ -44,6 +41,11 @@ function isOperationalError(error: unknown): boolean {
 }
 
 if (DSN) {
+  const [Sentry, os] = await Promise.all([
+    import("@sentry/node"),
+    import("node:os"),
+  ]);
+
   Sentry.init({
     dsn: DSN,
     environment: process.env.SENTRY_ENVIRONMENT ?? "production",

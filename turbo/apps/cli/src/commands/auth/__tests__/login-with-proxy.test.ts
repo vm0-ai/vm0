@@ -95,7 +95,7 @@ describe("auth login: proxy configuration", () => {
       await import("../../../lib/network/proxy");
     const { loginCommand } = await import("../login");
 
-    configureGlobalProxyFromEnv();
+    await configureGlobalProxyFromEnv();
     await loginCommand.parseAsync(["node", "cli"]);
 
     expect(mockConsoleLog).toHaveBeenCalledWith(
@@ -110,7 +110,7 @@ describe("auth login: proxy configuration", () => {
       await import("../../../lib/network/proxy");
     const { loginCommand } = await import("../login");
 
-    configureGlobalProxyFromEnv();
+    await configureGlobalProxyFromEnv();
 
     await expect(loginCommand.parseAsync(["node", "cli"])).rejects.toThrow(
       "process.exit called",

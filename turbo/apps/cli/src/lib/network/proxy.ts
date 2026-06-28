@@ -1,5 +1,3 @@
-import { EnvHttpProxyAgent, setGlobalDispatcher } from "undici";
-
 interface ProxyConfig {
   httpProxy?: string;
   httpsProxy?: string;
@@ -51,7 +49,7 @@ function getProxyConfigFromEnv(): ProxyConfig | null {
   return config;
 }
 
-export function configureGlobalProxyFromEnv(): void {
+export async function configureGlobalProxyFromEnv(): Promise<void> {
   if (configured) {
     return;
   }
@@ -62,6 +60,7 @@ export function configureGlobalProxyFromEnv(): void {
   }
 
   try {
+    const { EnvHttpProxyAgent, setGlobalDispatcher } = await import("undici");
     const dispatcher = new EnvHttpProxyAgent(config);
     setGlobalDispatcher(dispatcher);
     configured = true;
