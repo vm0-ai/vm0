@@ -424,43 +424,60 @@ describe("zero automations page", () => {
     expect(screen.getByText("Webhook trigger")).toBeInTheDocument();
   });
 
-  it("starts workflow-trigger creation from the add automation modal", async () => {
-    mockWorkflowTriggerStory();
+  it.each([
+    ["Fixed interval", /interval triggered workflow/u],
+    ["Fixed schedule", /schedule triggered workflow/u],
+    ["Web trigger", /web triggered workflow/u],
+    ["New email", /email triggered workflow that runs when a Gmail message/u],
+    ["Email label", /email-label triggered workflow/u],
+  ])(
+    "starts workflow-trigger creation with the %s prompt",
+    async (triggerName, promptPattern) => {
+      mockWorkflowTriggerStory();
 
-    detachedSetupPage({
-      context,
-      path: "/automations",
-      featureSwitches: {
-        [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
-      },
-    });
+      detachedSetupPage({
+        context,
+        path: "/automations",
+        featureSwitches: {
+          [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
+        },
+      });
 
-    await waitFor(() => {
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "Automations" }),
+        ).toBeInTheDocument();
+      });
+
+      click(buttonByText("Add automation"));
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).queryByText("1 Agent")).not.toBeInTheDocument();
+      expect(within(dialog).queryByText("2 Trigger")).not.toBeInTheDocument();
+      expect(within(dialog).getByText("Zero")).toBeInTheDocument();
       expect(
-        screen.getByRole("heading", { name: "Automations" }),
-      ).toBeInTheDocument();
-    });
+        within(dialog).queryByLabelText("Pin to sidebar"),
+      ).not.toBeInTheDocument();
 
-    click(buttonByText("Add automation"));
-    const dialog = await screen.findByRole("dialog");
-    expect(within(dialog).getByText("1 Agent")).toBeInTheDocument();
-    expect(within(dialog).getByText("Zero")).toBeInTheDocument();
+      click(buttonByText("Zero", dialog));
+      await waitFor(() => {
+        expect(within(dialog).queryByText("1 Agent")).not.toBeInTheDocument();
+        expect(within(dialog).queryByText("2 Trigger")).not.toBeInTheDocument();
+        expect(
+          within(dialog).getByText("What do you want me to do?"),
+        ).toBeInTheDocument();
+        expect(within(dialog).getByText(triggerName)).toBeInTheDocument();
+      });
 
-    click(buttonByText("Next", dialog));
-    await waitFor(() => {
-      expect(within(dialog).getByText("2 Trigger")).toBeInTheDocument();
-      expect(within(dialog).getByText("Fixed interval")).toBeInTheDocument();
-    });
+      click(within(dialog).getByText(triggerName));
 
-    click(within(dialog).getByText("Fixed interval"));
-
-    await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${zeroAgentId}/chat`);
-    });
-    await expect(
-      screen.findByDisplayValue(/interval triggered workflow/u),
-    ).resolves.toBeInTheDocument();
-  });
+      await waitFor(() => {
+        expect(pathname()).toBe(`/agents/${zeroAgentId}/chat`);
+      });
+      await expect(
+        screen.findByDisplayValue(promptPattern),
+      ).resolves.toBeInTheDocument();
+    },
+  );
 
   it("shows scheduled work in the calendar", async () => {
     mockAutomationsPageStory();
