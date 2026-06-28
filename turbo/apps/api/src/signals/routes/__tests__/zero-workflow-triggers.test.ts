@@ -902,6 +902,44 @@ describe("zero workflow triggers", () => {
     });
   });
 
+  it("schedules updated loop triggers from the last run interval", async () => {
+    mockNow(Date.parse("2026-06-28T06:00:00.000Z"));
+    const { workflowId } = await setupFixture();
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          schedule: { type: "loop", intervalSeconds: 600 },
+        },
+      }),
+      [201],
+    );
+
+    await store
+      .set(writeDb$)
+      .update(zeroWorkflowTriggers)
+      .set({
+        lastRunAt: new Date("2026-06-28T06:05:00.000Z"),
+        nextRunAt: null,
+      })
+      .where(eq(zeroWorkflowTriggers.id, created.body.id));
+
+    mockNow(Date.parse("2026-06-28T06:10:00.000Z"));
+    const updated = await accept(
+      triggersClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: {
+          schedule: { type: "loop", intervalSeconds: 3600 },
+        },
+      }),
+      [200],
+    );
+
+    expect(updated.body.nextRunAt).toBe("2026-06-28T07:05:00.000Z");
+  });
+
   it("clears next run on disable and recomputes it on enable", async () => {
     const { workflowId } = await setupFixture();
     const created = await accept(
@@ -938,6 +976,42 @@ describe("zero workflow triggers", () => {
     );
     expect(enabled.body.enabled).toBeTruthy();
     expect(enabled.body.nextRunAt).toBeTruthy();
+  });
+
+  it("keeps enabled loop triggers scheduled from the last run interval", async () => {
+    mockNow(Date.parse("2026-06-28T06:00:00.000Z"));
+    const { workflowId } = await setupFixture();
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          schedule: { type: "loop", intervalSeconds: 1800 },
+        },
+      }),
+      [201],
+    );
+
+    await store
+      .set(writeDb$)
+      .update(zeroWorkflowTriggers)
+      .set({
+        lastRunAt: new Date("2026-06-28T06:05:00.000Z"),
+        nextRunAt: null,
+      })
+      .where(eq(zeroWorkflowTriggers.id, created.body.id));
+
+    mockNow(Date.parse("2026-06-28T06:10:00.000Z"));
+    const enabled = await accept(
+      triggersClient().enable({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [200],
+    );
+
+    expect(enabled.body.enabled).toBeTruthy();
+    expect(enabled.body.nextRunAt).toBe("2026-06-28T06:35:00.000Z");
   });
 
   it("treats a deleted workflow's trigger as not found on enable", async () => {

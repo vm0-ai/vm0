@@ -182,6 +182,7 @@ function resolveNextRunAt(
   schedule: ZeroWorkflowSchedule,
   enabled: boolean,
   now: Date,
+  lastRunAt: Date | null = null,
 ): Date | null {
   if (!enabled) {
     return null;
@@ -192,7 +193,21 @@ function resolveNextRunAt(
   if (schedule.type === "once") {
     return parseOnceAtTime(schedule);
   }
-  return now;
+  return resolveLoopNextRunAt(schedule.intervalSeconds, now, lastRunAt);
+}
+
+function resolveLoopNextRunAt(
+  intervalSeconds: number,
+  now: Date,
+  lastRunAt: Date | null,
+): Date {
+  if (!lastRunAt) {
+    return now;
+  }
+  const nextFromLastRun = new Date(
+    lastRunAt.getTime() + intervalSeconds * 1000,
+  );
+  return nextFromLastRun.getTime() > now.getTime() ? nextFromLastRun : now;
 }
 
 function summarizeSchedule(schedule: ZeroWorkflowSchedule): string {
@@ -1170,7 +1185,12 @@ export const updateWorkflowTrigger$ = command(
       return { kind: "bad-request", message: scheduleError };
     }
     const cols = scheduleToColumns(args.schedule);
-    const nextRunAt = resolveNextRunAt(args.schedule, trigger.enabled, now);
+    const nextRunAt = resolveNextRunAt(
+      args.schedule,
+      trigger.enabled,
+      now,
+      trigger.lastRunAt,
+    );
 
     const [row] = await writeDb
       .update(zeroWorkflowTriggers)
@@ -1378,7 +1398,7 @@ export const enableWorkflowTrigger$ = command(
     const now = nowDate();
     const nextRunAt =
       trigger.kind === "schedule"
-        ? resolveNextRunAt(rowToSchedule(trigger), true, now)
+        ? resolveNextRunAt(rowToSchedule(trigger), true, now, trigger.lastRunAt)
         : trigger.nextRunAt;
     if (trigger.kind === "event" && trigger.eventType === "gmail-new-message") {
       const featureEnabled = await get(
