@@ -62,6 +62,21 @@ def _endpoint_matches(left: object, right: tuple[str, int]) -> bool:
     return left_key is not None and left_key == right_key
 
 
+def _associate_server_with_client(server_id: str, client: object | None) -> None:
+    client_id = _connection_id(client)
+    if client_id is None:
+        return
+    existing_client_id = _client_id_by_server_id.get(server_id)
+    if existing_client_id is not None and existing_client_id != client_id:
+        server_ids = _server_ids_by_client_id.get(existing_client_id)
+        if server_ids is not None:
+            server_ids.discard(server_id)
+            if not server_ids:
+                _server_ids_by_client_id.pop(existing_client_id, None)
+    _client_id_by_server_id[server_id] = client_id
+    _server_ids_by_client_id.setdefault(client_id, set()).add(server_id)
+
+
 def record_server_binding(
     server: object,
     *,
@@ -80,18 +95,35 @@ def record_server_binding(
         kinds=kinds,
         original_address=original_address,
     )
-    client_id = _connection_id(client)
-    if client_id is None:
-        return
-    existing_client_id = _client_id_by_server_id.get(server_id)
-    if existing_client_id is not None and existing_client_id != client_id:
-        server_ids = _server_ids_by_client_id.get(existing_client_id)
-        if server_ids is not None:
-            server_ids.discard(server_id)
-            if not server_ids:
-                _server_ids_by_client_id.pop(existing_client_id, None)
-    _client_id_by_server_id[server_id] = client_id
-    _server_ids_by_client_id.setdefault(client_id, set()).add(server_id)
+    _associate_server_with_client(server_id, client)
+
+
+def add_server_binding_kind_if_matching(
+    server: object,
+    *,
+    client: object | None = None,
+    host: str,
+    port: int,
+    kind: BindingKind,
+) -> bool:
+    server_id = _connection_id(server)
+    if server_id is None:
+        return False
+    binding = _bindings_by_server_id.get(server_id)
+    if binding is None:
+        return False
+    normalized_host = normalize_trusted_hostname(host)
+    if binding.host != normalized_host or binding.port != port:
+        return False
+    if kind not in binding.kinds:
+        _bindings_by_server_id[server_id] = UpstreamDestinationBinding(
+            host=binding.host,
+            port=binding.port,
+            kinds=binding.kinds | frozenset((kind,)),
+            original_address=binding.original_address,
+        )
+    _associate_server_with_client(server_id, client)
+    return True
 
 
 def forget_server_binding(server: object) -> None:

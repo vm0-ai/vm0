@@ -23,6 +23,28 @@ _BROWSER_USER_AGENT = (
 )
 
 
+def _write_test_oauth_registry(tmp_path):
+    return _write_registry(
+        tmp_path,
+        client_ip="10.200.0.5",
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="test-oauth",
+            api_entry={
+                "base": "https://api.vm0.ai/api/test/oauth-provider",
+                "auth": {"headers": {"Authorization": "Bearer x"}},
+                "permissions": [{"name": "echo", "rules": ["GET /echo"]}],
+            },
+            network_policy={
+                "allow": ["echo"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+
+
 def _bind_flow_upstream(
     flow,
     *,
@@ -501,25 +523,7 @@ async def test_matching_sni_and_host_allows_authenticated_connected_vm0_api_edge
 async def test_matching_sni_and_host_allows_test_connector_on_authenticated_api_edge(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
 ):
-    reg_path = _write_registry(
-        tmp_path,
-        client_ip="10.200.0.5",
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            firewall_name="test-oauth",
-            api_entry={
-                "base": "https://api.vm0.ai/api/test/oauth-provider",
-                "auth": {"headers": {"Authorization": "Bearer x"}},
-                "permissions": [{"name": "echo", "rules": ["GET /echo"]}],
-            },
-            network_policy={
-                "allow": ["echo"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "deny",
-            },
-        ),
-    )
+    reg_path = _write_test_oauth_registry(tmp_path)
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -554,28 +558,98 @@ async def test_matching_sni_and_host_allows_test_connector_on_authenticated_api_
     assert binding.original_address == ("203.0.113.10", 443)
 
 
+async def test_test_connector_extends_existing_api_allow_binding(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+):
+    reg_path = _write_test_oauth_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.vm0.ai",
+        path="/api/test/oauth-provider/echo",
+        request_headers=headers(
+            ("Host", "api.vm0.ai"),
+            ("x-vm0-test-endpoint-bypass", "preview-secret"),
+        ),
+    )
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="api.vm0.ai",
+        port=443,
+        kinds=frozenset(("api_allow",)),
+        original_address=("203.0.113.10", 443),
+    )
+    monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            side_effect=AssertionError("existing binding should not use fresh DNS"),
+        ),
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer x"
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.vm0.ai"
+    assert binding.kinds == frozenset(("api_allow", "connector_auth"))
+    assert binding.original_address == ("203.0.113.10", 443)
+
+
+async def test_test_connector_rejects_mismatched_existing_binding(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+):
+    reg_path = _write_test_oauth_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.vm0.ai",
+        path="/api/test/oauth-provider/echo",
+        request_headers=headers(
+            ("Host", "api.vm0.ai"),
+            ("x-vm0-test-endpoint-bypass", "preview-secret"),
+        ),
+    )
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=443,
+        kinds=frozenset(("api_allow",)),
+        original_address=("203.0.113.10", 443),
+    )
+    monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    assert "Authorization" not in flow.request.headers
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.github.com"
+    assert binding.kinds == frozenset(("api_allow",))
+
+
 async def test_matching_sni_and_host_blocks_test_connector_api_edge_without_bypass(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
 ):
-    reg_path = _write_registry(
-        tmp_path,
-        client_ip="10.200.0.5",
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            firewall_name="test-oauth",
-            api_entry={
-                "base": "https://api.vm0.ai/api/test/oauth-provider",
-                "auth": {"headers": {"Authorization": "Bearer x"}},
-                "permissions": [{"name": "echo", "rules": ["GET /echo"]}],
-            },
-            network_policy={
-                "allow": ["echo"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "deny",
-            },
-        ),
-    )
+    reg_path = _write_test_oauth_registry(tmp_path)
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",

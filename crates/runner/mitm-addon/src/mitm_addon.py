@@ -815,10 +815,16 @@ def _bind_flow_upstream_destination(
     except (UnicodeError, ValueError):
         return False
 
-    if upstream_destination_binding.has_server_binding(flow.server_conn):
-        return False
-
     original_address = _server_address(flow.server_conn)
+    if upstream_destination_binding.has_server_binding(flow.server_conn):
+        return upstream_destination_binding.add_server_binding_kind_if_matching(
+            flow.server_conn,
+            client=flow.client_conn,
+            host=normalized_host,
+            port=flow.request.port,
+            kind=kind,
+        )
+
     if flow.server_conn.connected:
         if _api_hostname_matches(
             normalized_host
