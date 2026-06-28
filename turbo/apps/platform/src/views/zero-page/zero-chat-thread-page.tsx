@@ -43,6 +43,7 @@ import {
   IconMessageCircle,
   IconPackage,
   IconPresentation,
+  IconRoute,
   IconSearch,
   IconTag,
   IconTarget,
@@ -234,7 +235,10 @@ import { openRenameChatThreadDialog$ } from "../../signals/zero-page/zero-sideba
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
-import { WORKFLOW_DETAIL_TAB_PARAM } from "../../signals/workflows-page/workflows-signals.ts";
+import {
+  WORKFLOW_DETAIL_TAB_PARAM,
+  workflowDetail,
+} from "../../signals/workflows-page/workflows-signals.ts";
 import {
   atTimeInTimezone,
   cronWallTimeInTimezone,
@@ -306,6 +310,7 @@ import {
   findPermissionInMetadata,
   resolveUserPermissionGrantPolicy,
   userPermissionGrantsByAgent,
+  userPermissionGrantsByWorkflow,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import type { FirewallPermissionDetailMetadata } from "@vm0/connectors/firewall-metadata";
 import { firewallPermissionMetadataByConnector } from "../../signals/firewall-permission-metadata.ts";
@@ -3831,6 +3836,7 @@ function runGroupFoldWorkflowLabel(fold: RunGroupFold): string | null {
   for (const message of runGroupFoldMessages(fold)) {
     const workflowSnapshot = message.workflowSnapshot;
     const label =
+      workflowSnapshot?.triggerBrief?.trim() ||
       workflowSnapshot?.description?.trim() ||
       workflowSnapshot?.displayName?.trim() ||
       workflowSnapshot?.name?.trim();
@@ -3854,6 +3860,7 @@ function isGoalUserMessage(
     message.role === "user" &&
     message.isGoalRun === true &&
     !hasAutomationMessageMetadata(message) &&
+    !hasWorkflowMessageMetadata(message) &&
     (message.content?.trim().length ?? 0) > 0
   );
 }
@@ -5453,7 +5460,8 @@ interface LoadableLike<T> {
 
 type ApplyUserPermissionGrantFn = (
   params: {
-    agentId: string;
+    agentId?: string;
+    workflowId?: string;
     connectorRef: string;
     permission: string;
     action: PermissionAction;
@@ -5784,7 +5792,9 @@ function createPermissionActionHandler(params: {
         detach(
           params.applyGrant(
             {
-              agentId: params.block.agentId,
+              ...(params.block.scope === "workflow" && params.block.workflowId
+                ? { workflowId: params.block.workflowId }
+                : { agentId: params.block.agentId }),
               connectorRef: params.block.connectorRef,
               permission: permissionName,
               action: params.block.action,
@@ -5804,6 +5814,7 @@ function createPermissionActionHandler(params: {
 function PermissionActionCardContent({
   block,
   connectorLabel,
+  targetLabel,
   actionLabel,
   permissionName,
   buttonState,
@@ -5815,6 +5826,7 @@ function PermissionActionCardContent({
 }: {
   block: PermissionActionBlock;
   connectorLabel: string;
+  targetLabel: string | null;
   actionLabel: string;
   permissionName: string;
   buttonState: PermissionActionButtonState;
@@ -5844,6 +5856,7 @@ function PermissionActionCardContent({
           </div>
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
             {actionLabel} {permissionName}
+            {targetLabel ? ` for ${targetLabel}` : ""}
           </div>
           {expiryText && (
             <div className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
@@ -5871,7 +5884,19 @@ function PermissionActionCardContent({
   );
 }
 
-function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
+function PermissionActionCardForTarget({
+  block,
+  hasTarget,
+  targetLabel,
+  targetLoadableState,
+  userGrantsLoadable,
+}: {
+  block: PermissionActionBlock;
+  hasTarget: boolean;
+  targetLabel: string | null;
+  targetLoadableState: string;
+  userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
+}) {
   const pageSignal = useGet(pageSignal$);
   const config = CONNECTOR_TYPES[block.connectorRef];
   const expirationAvailable = block.action === "allow";
@@ -5882,25 +5907,17 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
     expiresInByScope[durationScope] ??
     block.expiresIn ??
     DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
-  const agentLoadable = useLastLoadable(agentById(block.agentId));
   const permissionMetadataLoadable = useLoadable(
     firewallPermissionMetadataByConnector({
       connectorType: block.connectorRef,
     }),
   );
   const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
-  const userGrantsLoadable = useLoadable(
-    userPermissionGrantsByAgent({
-      agentId: block.agentId,
-    }),
-  );
-  const hasAgent =
-    agentLoadable.state === "hasData" && Boolean(agentLoadable.data);
   const existingGrant = permissionActionUserGrant(userGrantsLoadable, block);
   const actionState = createPermissionActionCardViewState({
     block,
-    hasAgent,
-    agentLoadableState: agentLoadable.state,
+    hasAgent: hasTarget,
+    agentLoadableState: targetLoadableState,
     permissionMetadataLoadable,
     userGrantsLoadable,
     grantLoadableState: grantLoadable.state,
@@ -5916,6 +5933,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
     <PermissionActionCardContent
       block={block}
       connectorLabel={config.label}
+      targetLabel={block.scope === "workflow" ? targetLabel : null}
       actionLabel={actionState.actionLabel}
       permissionName={actionState.focusedPermission?.name ?? block.permission}
       buttonState={actionState.buttonState}
@@ -5928,7 +5946,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
       onClick={createPermissionActionHandler({
         block,
         pageSignal,
-        hasAgent,
+        hasAgent: hasTarget,
         focusedPermission: actionState.focusedPermission,
         state: actionState.buttonState,
         finished: actionState.finished,
@@ -5938,6 +5956,70 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
       })}
     />
   );
+}
+
+function AgentPermissionActionCard({
+  block,
+}: {
+  block: PermissionActionBlock;
+}) {
+  const agentLoadable = useLastLoadable(agentById(block.agentId));
+  const userGrantsLoadable = useLoadable(
+    userPermissionGrantsByAgent({
+      agentId: block.agentId,
+    }),
+  );
+  const agent = agentLoadable.state === "hasData" ? agentLoadable.data : null;
+  const targetLabel = agent?.displayName ?? block.agentId;
+  return (
+    <PermissionActionCardForTarget
+      block={block}
+      hasTarget={Boolean(agent)}
+      targetLabel={targetLabel}
+      targetLoadableState={agentLoadable.state}
+      userGrantsLoadable={userGrantsLoadable}
+    />
+  );
+}
+
+function WorkflowPermissionActionCard({
+  block,
+  workflowId,
+}: {
+  block: PermissionActionBlock;
+  workflowId: string;
+}) {
+  const workflowLoadable = useLastLoadable(workflowDetail(workflowId));
+  const userGrantsLoadable = useLoadable(
+    userPermissionGrantsByWorkflow({
+      workflowId,
+    }),
+  );
+  const workflow =
+    workflowLoadable.state === "hasData" ? workflowLoadable.data : null;
+  const targetLabel =
+    workflow?.displayName ?? workflow?.name ?? "this workflow";
+  return (
+    <PermissionActionCardForTarget
+      block={block}
+      hasTarget={Boolean(workflow)}
+      targetLabel={targetLabel}
+      targetLoadableState={workflowLoadable.state}
+      userGrantsLoadable={userGrantsLoadable}
+    />
+  );
+}
+
+function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
+  if (block.scope === "workflow" && block.workflowId) {
+    return (
+      <WorkflowPermissionActionCard
+        block={block}
+        workflowId={block.workflowId}
+      />
+    );
+  }
+  return <AgentPermissionActionCard block={block} />;
 }
 
 function ChatConnectorActionConnectModal() {
@@ -6406,6 +6488,20 @@ function hasAutomationMessageMetadata(message: EnrichedChatMessage): boolean {
   );
 }
 
+function isWorkflowUserMessage(
+  message: EnrichedChatMessage,
+): message is EnrichedChatMessage & { role: "user" } {
+  return (
+    message.role === "user" &&
+    hasWorkflowMessageMetadata(message) &&
+    !hasAutomationMessageMetadata(message)
+  );
+}
+
+function hasWorkflowMessageMetadata(message: EnrichedChatMessage): boolean {
+  return message.workflowSnapshot !== undefined;
+}
+
 function automationMessageLabel(
   message: EnrichedChatMessage & { role: "user" },
 ): string {
@@ -6415,6 +6511,38 @@ function automationMessageLabel(
     message.automationTitle?.trim() ||
     "Automation run"
   );
+}
+
+function workflowSnapshotTitle(
+  workflowSnapshot: NonNullable<EnrichedChatMessage["workflowSnapshot"]>,
+): string {
+  return (
+    workflowSnapshot.displayName?.trim() ||
+    workflowSnapshot.name.trim() ||
+    "Workflow"
+  );
+}
+
+function workflowMessageBrief(
+  workflowSnapshot: NonNullable<EnrichedChatMessage["workflowSnapshot"]>,
+): string | null {
+  const brief =
+    workflowSnapshot.triggerBrief?.trim() ||
+    workflowSnapshot.description?.trim() ||
+    "";
+  return brief.length > 0 ? brief : null;
+}
+
+function workflowMessageLabel(
+  message: EnrichedChatMessage & { role: "user" },
+): string {
+  const workflowSnapshot = message.workflowSnapshot;
+  if (!workflowSnapshot) {
+    return "Workflow";
+  }
+  const title = workflowSnapshotTitle(workflowSnapshot);
+  const brief = workflowMessageBrief(workflowSnapshot);
+  return brief ? `${title} · ${brief}` : title;
 }
 
 function resolveAttachments(
@@ -6736,6 +6864,64 @@ function AutomationUserMessage({
   );
 }
 
+function WorkflowUserMessage({
+  message,
+}: {
+  message: EnrichedChatMessage & { role: "user" };
+}) {
+  const workflowSnapshot = message.workflowSnapshot;
+  if (!workflowSnapshot) {
+    return null;
+  }
+  const workflowLabel = workflowMessageLabel(message);
+  const bubbleClassName =
+    "zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden transition-colors duration-150";
+  const body = (
+    <div className={bubbleClassName}>
+      <div className="px-4 py-3">{workflowLabel}</div>
+    </div>
+  );
+  const workflowAgentId = workflowSnapshot.agentId;
+  const workflowId = workflowSnapshot.id;
+  const linked = workflowAgentId !== undefined && workflowId !== undefined;
+
+  return (
+    <div data-role="user" className="group">
+      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
+        <div className="flex w-full flex-col items-end">
+          <div
+            aria-label="Workflow trigger"
+            className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
+          >
+            <IconRoute size={15} stroke={1.8} className="shrink-0" />
+            <span>Workflow trigger</span>
+          </div>
+          {linked ? (
+            <Link
+              pathname={ROUTES.agentWorkflowDetail}
+              options={{
+                pathParams: {
+                  agentId: workflowAgentId,
+                  workflowId,
+                },
+              }}
+              className="contents"
+              aria-label={`Open workflow ${workflowSnapshotTitle(
+                workflowSnapshot,
+              )}`}
+            >
+              {body}
+            </Link>
+          ) : (
+            body
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GoalUserMessage({
   bodyBlocks,
   openLightbox,
@@ -6833,6 +7019,10 @@ function PagedUserMessage({
         automationLabel={automationMessageLabel(message)}
       />
     );
+  }
+
+  if (isWorkflowUserMessage(message)) {
+    return <WorkflowUserMessage message={message} />;
   }
 
   if (isGoalUserMessage(message)) {

@@ -57,7 +57,7 @@ describe("zero doctor permission-change command", () => {
     expect(logCalls).not.toContain("admin approval");
   });
 
-  it("deep-links to the workflow authorization tab inside an unattended trigger run", async () => {
+  it("deep-links to the workflow permission page inside an unattended trigger run", async () => {
     vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
     vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
     vi.stubEnv("ZERO_WORKFLOW_ID", "wf-789");
@@ -73,8 +73,11 @@ describe("zero doctor permission-change command", () => {
     ]);
 
     const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
-    expect(logCalls).toContain("/agents/agent-abc-123/workflows/wf-789?");
-    expect(logCalls).toContain("tab=authorization");
+    expect(logCalls).toContain(
+      "/agents/agent-abc-123/workflows/wf-789/permissions?",
+    );
+    expect(logCalls).toContain("triggerId=trig-456");
+    expect(logCalls).not.toContain("tab=authorization");
     expect(logCalls).toContain("ref=slack");
     expect(logCalls).toContain(
       `permission=${encodeURIComponent(SLACK_READ_PERMISSION)}`,

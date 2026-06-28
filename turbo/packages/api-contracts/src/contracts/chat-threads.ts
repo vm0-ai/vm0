@@ -237,9 +237,13 @@ const pagedChatMessageBaseSchema = z.object({
     .optional(),
   workflowSnapshot: z
     .object({
+      id: z.string().uuid().optional(),
+      agentId: z.string().uuid().optional(),
       name: z.string(),
       displayName: z.string().nullable(),
       description: z.string().nullable(),
+      triggerId: z.string().uuid().optional(),
+      triggerBrief: z.string().nullable().optional(),
     })
     .optional(),
   createdAt: z.string(),

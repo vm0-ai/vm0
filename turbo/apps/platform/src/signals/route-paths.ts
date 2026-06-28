@@ -8,6 +8,8 @@ export const ROUTES = {
   agentPermissions: "/agents/:agentId/permissions",
   agentWorkflows: "/agents/:agentId/workflows",
   agentWorkflowDetail: "/agents/:agentId/workflows/:workflowId",
+  agentWorkflowPermissions:
+    "/agents/:agentId/workflows/:workflowId/permissions",
   agentWorkflowTriggerPermissions:
     "/agents/:agentId/workflows/:workflowId/triggers/:triggerId/permissions",
   activities: "/activities",
