@@ -367,9 +367,10 @@ export const allWorkflowTriggerEntries$ = computed(
     get(internalWorkflowReload$);
     const collectionClient = get(zeroClient$)(zeroWorkflowsCollectionContract);
     const detailClient = get(zeroClient$)(zeroWorkflowsDetailContract);
-    const workflowsResult = await accept(collectionClient.list({ query: {} }), [
-      200,
-    ]);
+    const workflowsResult = await accept(
+      collectionClient.list({ query: {} }),
+      [200],
+    );
 
     const details = await Promise.all(
       workflowsResult.body.map(async (workflow) => {

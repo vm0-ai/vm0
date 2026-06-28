@@ -60,7 +60,9 @@ function createAgent(id: string, displayName: string): TeamComposeItem {
   };
 }
 
-function workflowSummary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
+function workflowSummary(
+  workflow: ZeroWorkflowDetailResponse,
+): ZeroWorkflowSummary {
   return {
     id: workflow.id,
     agentId: workflow.agentId,

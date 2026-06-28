@@ -90,7 +90,8 @@ const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
   {
     kind: "scheduled",
     title: "Fixed schedule",
-    description: "Run a workflow on a daily, weekly, monthly, or custom cron schedule.",
+    description:
+      "Run a workflow on a daily, weekly, monthly, or custom cron schedule.",
     Icon: IconCalendarTime,
     prompt:
       "I'd like to create a schedule triggered workflow. Help me define the workflow, create the schedule trigger, check the required connectors, and grant only the permissions it needs.",
@@ -127,7 +128,10 @@ function formatClockTime(hour: number, minute: number): string {
   return `${h12}:${String(minute).padStart(2, "0")} ${ampm}`;
 }
 
-function formatTriggerDate(value: string | null, displayTimezone: string): string {
+function formatTriggerDate(
+  value: string | null,
+  displayTimezone: string,
+): string {
   if (!value) {
     return "No runs yet";
   }
@@ -384,11 +388,7 @@ function TriggerGridSkeleton() {
   );
 }
 
-function EmptyTriggers({
-  onAdd,
-}: {
-  readonly onAdd: () => void;
-}) {
+function EmptyTriggers({ onAdd }: { readonly onAdd: () => void }) {
   return (
     <div className="zero-card flex min-h-56 flex-col items-center justify-center px-6 py-10 text-center">
       <p className="text-sm font-medium text-foreground">No triggers yet</p>
@@ -434,11 +434,7 @@ function AgentOption({
   );
 }
 
-function WorkflowAutomationStepPills({
-  step,
-}: {
-  readonly step: 1 | 2;
-}) {
+function WorkflowAutomationStepPills({ step }: { readonly step: 1 | 2 }) {
   return (
     <div className="flex items-center gap-2 text-sm text-muted-foreground">
       <span
@@ -560,7 +556,12 @@ function WorkflowAutomationDialogFooter({
   return (
     <DialogFooter>
       {step === 2 ? (
-        <Button type="button" variant="outline" className="gap-1.5" onClick={onBack}>
+        <Button
+          type="button"
+          variant="outline"
+          className="gap-1.5"
+          onClick={onBack}
+        >
           <IconArrowLeft size={14} stroke={1.5} />
           Back
         </Button>
