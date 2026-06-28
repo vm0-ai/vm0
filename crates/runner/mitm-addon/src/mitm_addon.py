@@ -1613,6 +1613,33 @@ def _ip_address_text(host: str) -> str | None:
     return str(address)
 
 
+def _is_authoritative_connected_endpoint(endpoint: tuple[str, int] | None) -> bool:
+    if endpoint is None:
+        return False
+    endpoint_host, _endpoint_port = endpoint
+    try:
+        endpoint_ip = ipaddress.ip_address(endpoint_host)
+    except ValueError:
+        return False
+    return not endpoint_ip.is_loopback and not endpoint_ip.is_unspecified
+
+
+def _connected_destination_candidate_endpoints(
+    server: object,
+    *,
+    extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
+) -> tuple[tuple[str, int] | None, ...]:
+    peername = _server_peername(server)
+    if _is_authoritative_connected_endpoint(peername):
+        return (peername,)
+
+    server_address = _server_address(server)
+    if _is_authoritative_connected_endpoint(server_address):
+        return (server_address,)
+
+    return (peername, server_address, *extra_endpoints)
+
+
 def _resolved_trusted_host_addresses(host: str, port: int) -> frozenset[str]:
     now = time.monotonic()
     cache_key = (host, port)
@@ -1669,7 +1696,10 @@ def _connected_trusted_destination_endpoint(
     port: int,
     extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
 ) -> tuple[str, int] | None:
-    for peer in (_server_peername(server), _server_address(server), *extra_endpoints):
+    for peer in _connected_destination_candidate_endpoints(
+        server,
+        extra_endpoints=extra_endpoints,
+    ):
         if peer is None:
             continue
 
@@ -1693,7 +1723,10 @@ def _connected_ip_destination_endpoint(
     port: int,
     extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
 ) -> tuple[str, int] | None:
-    for peer in (_server_peername(server), _server_address(server), *extra_endpoints):
+    for peer in _connected_destination_candidate_endpoints(
+        server,
+        extra_endpoints=extra_endpoints,
+    ):
         if peer is None:
             continue
 

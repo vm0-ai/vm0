@@ -529,6 +529,7 @@ async def test_matching_sni_and_host_allows_authenticated_connected_vm0_api_edge
             ("Host", "api.vm0.ai"),
         ),
     )
+    flow.server_conn.peername = ("203.0.113.10", 443)
     flow.server_conn.state = connection.ConnectionState.OPEN
 
     with (
@@ -564,6 +565,7 @@ async def test_matching_sni_and_host_allows_test_connector_on_authenticated_api_
             ("x-vm0-test-endpoint-bypass", "preview-secret"),
         ),
     )
+    flow.server_conn.peername = ("203.0.113.10", 443)
     flow.server_conn.state = connection.ConnectionState.OPEN
     monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
