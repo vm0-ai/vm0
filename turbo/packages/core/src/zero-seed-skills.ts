@@ -45,6 +45,7 @@ export const SEED_SKILLS: readonly string[] = [
   "sql-cookbook",
   "stats-methods",
   "status-updates",
+  "workflow-setup",
 ] as const;
 
 /**
