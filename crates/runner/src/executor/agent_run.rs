@@ -468,6 +468,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 
     let mut session_restore_diagnostics = None;
     let mut restored_session_identity = None;
+    let mut produced_restored_session_identity = false;
     let session_history_materializer = match session_history_restore_plan {
         SessionHistoryRestorePlan::SkipVerified(identity) => {
             match verify_restored_session_identity_for_reuse(sandbox, context, Some(identity)).await
@@ -576,6 +577,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             );
             let diagnostics = result?;
             restored_session_identity = diagnostics.restored_session_identity.clone();
+            produced_restored_session_identity = restored_session_identity.is_some();
             session_restore_diagnostics = Some(diagnostics);
         }
     }
@@ -1021,7 +1023,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         restored_session_identity =
             verify_restored_session_identity_for_reuse(sandbox, context, restored_session_identity)
                 .await;
-        if restored_session_identity.is_some() {
+        if produced_restored_session_identity && restored_session_identity.is_some() {
             telemetry.record(
                 "session_history_identity_restored",
                 Duration::ZERO,

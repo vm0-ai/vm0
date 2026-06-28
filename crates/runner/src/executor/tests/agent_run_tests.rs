@@ -467,8 +467,8 @@ async fn run_in_sandbox_skips_verified_session_history_restore() {
     );
     assert!(
         ops.iter()
-            .any(|op| op.0 == "session_history_identity_restored" && op.1),
-        "expected restored identity telemetry, got: {ops:?}"
+            .all(|op| op.0 != "session_history_identity_restored"),
+        "skip path should not record newly restored identity telemetry, got: {ops:?}"
     );
     assert!(
         ops.iter()
