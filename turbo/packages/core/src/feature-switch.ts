@@ -291,6 +291,12 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Replace the /automations schedule list and calendar with a workflow-trigger surface and route new automation setup into triggered workflow creation.",
+    enabled: false,
+  },
   [FeatureSwitchKey.GoalWorkflows]: {
     maintainer: "ethan@vm0.ai",
     description:
