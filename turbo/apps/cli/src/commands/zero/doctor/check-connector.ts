@@ -312,6 +312,140 @@ function workflowPermissionUrl(ctx: DiagContext): string | null {
   return `${ctx.platformOrigin}/agents/${ctx.agentId}/workflows/${ctx.triggerContext.workflowId}/permissions?${params.toString()}`;
 }
 
+function printConnectorConnectionStatus(
+  ctx: DiagContext,
+  isConnected: boolean,
+  isExpired: boolean,
+  hasPermission: boolean,
+): void {
+  console.log(
+    `### 2a: Connector status (user must configure via OAuth login or API key)`,
+  );
+  console.log("");
+  if (!ctx.connectorAvailable) {
+    console.log(
+      `The ${ctx.label} connector is not available for this account.`,
+    );
+  } else if (!isConnected) {
+    console.log(`The ${ctx.label} connector is not connected.`);
+    if (ctx.triggerContext) {
+      const connectUrl = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/connect`;
+      console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
+    } else if (ctx.agentId && hasPermission) {
+      const connectUrl = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/connect?agentId=${ctx.agentId}`;
+      console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
+    } else if (!ctx.agentId) {
+      // No agentId: can't scope the authorize page, so fall back to a plain
+      // connect link. With agentId, 2b's Authorize link performs the initial
+      // OAuth connect before granting permission — one link covers both steps.
+      const connectUrl = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/connect`;
+      console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
+    }
+  } else if (isExpired) {
+    const url = `${ctx.platformOrigin}/connectors`;
+    console.log(
+      `The ${ctx.label} connector is connected but has expired and needs to be reconnected.`,
+    );
+    console.log(`Reconnect it at: [Reconnect ${ctx.label}](${url})`);
+  } else {
+    console.log(`The ${ctx.label} connector is connected and active.`);
+  }
+  console.log("");
+}
+
+function printWorkflowAuthorizationStatus(
+  ctx: DiagContext & { readonly triggerContext: TriggerContext },
+  isConnected: boolean,
+  hasPermission: boolean,
+): void {
+  const url = workflowPermissionUrl(ctx);
+  if (hasPermission) {
+    console.log(
+      isConnected
+        ? `The ${ctx.label} connector is authorized for this workflow (${ctx.triggerContext.workflowId}).`
+        : `The ${ctx.label} connector is authorized for this workflow (${ctx.triggerContext.workflowId}), but it is not connected.`,
+    );
+    return;
+  }
+
+  console.log(
+    isConnected
+      ? `The ${ctx.label} connector is not authorized for this workflow (${ctx.triggerContext.workflowId}).`
+      : `The ${ctx.label} connector needs to be connected and authorized for this workflow (${ctx.triggerContext.workflowId}).`,
+  );
+  if (url) {
+    console.log(`Authorize it at: [Authorize ${ctx.label}](${url})`);
+  } else {
+    console.log(
+      "ZERO_AGENT_ID is not set — cannot build a workflow authorization link.",
+    );
+  }
+}
+
+function printAgentAuthorizationStatus(
+  ctx: DiagContext,
+  isConnected: boolean,
+  isExpired: boolean,
+  hasPermission: boolean,
+): void {
+  if (!ctx.agentId) {
+    console.log("ZERO_AGENT_ID is not set — cannot check agent authorization.");
+  } else if (isExpired) {
+    // The /authorize page treats an expired connector as "already connected"
+    // and won't re-trigger OAuth. Defer to 2a's Reconnect link in that case.
+    console.log(
+      `Skipped — agent authorization can only be checked once the ${ctx.label} connector is reconnected (see 2a).`,
+    );
+  } else if (hasPermission) {
+    console.log(
+      isConnected
+        ? `The ${ctx.label} connector is authorized for this agent.`
+        : `The ${ctx.label} connector is authorized for this agent, but it is not connected.`,
+    );
+  } else {
+    const url = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/authorize?agentId=${ctx.agentId}`;
+    console.log(
+      isConnected
+        ? `The ${ctx.label} connector is not authorized for this agent (${ctx.agentId}).`
+        : `The ${ctx.label} connector needs to be connected and authorized for this agent (${ctx.agentId}).`,
+    );
+    console.log(`Authorize it at: [Authorize ${ctx.label}](${url})`);
+  }
+}
+
+function printConnectorAuthorizationStatus(
+  ctx: DiagContext,
+  isConnected: boolean,
+  isExpired: boolean,
+  hasPermission: boolean,
+): void {
+  console.log(
+    ctx.triggerContext
+      ? `### 2b: Workflow authorization (user must authorize workflow to use this connector)`
+      : `### 2b: Agent authorization (user must authorize agent to use this connector)`,
+  );
+  console.log("");
+  if (!ctx.connectorAvailable) {
+    console.log(
+      `Skipped — the ${ctx.label} connector is not available for this account.`,
+    );
+  } else if (ctx.triggerContext) {
+    printWorkflowAuthorizationStatus(
+      { ...ctx, triggerContext: ctx.triggerContext },
+      isConnected,
+      hasPermission,
+    );
+  } else {
+    printAgentAuthorizationStatus(ctx, isConnected, isExpired, hasPermission);
+  }
+  console.log(
+    ctx.triggerContext
+      ? `This is a workflow-triggered run, so ${ctx.label} access is scoped by the workflow's authorization settings, not the agent's connector authorization.`
+      : `This is an interactive/agent-scoped run, so ${ctx.label} access is scoped by the agent's connector authorization.`,
+  );
+  console.log("");
+}
+
 function checkEnvName(ctx: DiagContext): boolean {
   console.log("## Step 1: Sandbox environment name");
   console.log("");
@@ -358,102 +492,8 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
   const hasPermission =
     enabledTypes !== null && enabledTypes.includes(ctx.connectorType);
 
-  // 2a: Connector status — user must have configured the connector (OAuth or API token)
-  console.log(
-    `### 2a: Connector status (user must configure via OAuth login or API key)`,
-  );
-  console.log("");
-  if (!ctx.connectorAvailable) {
-    console.log(
-      `The ${ctx.label} connector is not available for this account.`,
-    );
-  } else if (!isConnected) {
-    console.log(`The ${ctx.label} connector is not connected.`);
-    if (ctx.triggerContext) {
-      const connectUrl = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/connect`;
-      console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
-    } else if (ctx.agentId && hasPermission) {
-      const connectUrl = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/connect?agentId=${ctx.agentId}`;
-      console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
-    } else if (!ctx.agentId) {
-      // No agentId: can't scope the authorize page, so fall back to a plain
-      // connect link. With agentId, 2b's Authorize link performs the initial
-      // OAuth connect before granting permission — one link covers both steps.
-      const connectUrl = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/connect`;
-      console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
-    }
-  } else if (isExpired) {
-    const url = `${ctx.platformOrigin}/connectors`;
-    console.log(
-      `The ${ctx.label} connector is connected but has expired and needs to be reconnected.`,
-    );
-    console.log(`Reconnect it at: [Reconnect ${ctx.label}](${url})`);
-  } else {
-    console.log(`The ${ctx.label} connector is connected and active.`);
-  }
-  console.log("");
-
-  console.log(
-    ctx.triggerContext
-      ? `### 2b: Workflow authorization (user must authorize workflow to use this connector)`
-      : `### 2b: Agent authorization (user must authorize agent to use this connector)`,
-  );
-  console.log("");
-  if (!ctx.connectorAvailable) {
-    console.log(
-      `Skipped — the ${ctx.label} connector is not available for this account.`,
-    );
-  } else if (ctx.triggerContext) {
-    const url = workflowPermissionUrl(ctx);
-    if (hasPermission) {
-      console.log(
-        isConnected
-          ? `The ${ctx.label} connector is authorized for this workflow (${ctx.triggerContext.workflowId}).`
-          : `The ${ctx.label} connector is authorized for this workflow (${ctx.triggerContext.workflowId}), but it is not connected.`,
-      );
-    } else {
-      console.log(
-        isConnected
-          ? `The ${ctx.label} connector is not authorized for this workflow (${ctx.triggerContext.workflowId}).`
-          : `The ${ctx.label} connector needs to be connected and authorized for this workflow (${ctx.triggerContext.workflowId}).`,
-      );
-      if (url) {
-        console.log(`Authorize it at: [Authorize ${ctx.label}](${url})`);
-      } else {
-        console.log(
-          "ZERO_AGENT_ID is not set — cannot build a workflow authorization link.",
-        );
-      }
-    }
-  } else if (!ctx.agentId) {
-    console.log("ZERO_AGENT_ID is not set — cannot check agent authorization.");
-  } else if (isExpired) {
-    // The /authorize page treats an expired connector as "already connected"
-    // and won't re-trigger OAuth. Defer to 2a's Reconnect link in that case.
-    console.log(
-      `Skipped — agent authorization can only be checked once the ${ctx.label} connector is reconnected (see 2a).`,
-    );
-  } else if (hasPermission) {
-    console.log(
-      isConnected
-        ? `The ${ctx.label} connector is authorized for this agent.`
-        : `The ${ctx.label} connector is authorized for this agent, but it is not connected.`,
-    );
-  } else {
-    const url = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/authorize?agentId=${ctx.agentId}`;
-    console.log(
-      isConnected
-        ? `The ${ctx.label} connector is not authorized for this agent (${ctx.agentId}).`
-        : `The ${ctx.label} connector needs to be connected and authorized for this agent (${ctx.agentId}).`,
-    );
-    console.log(`Authorize it at: [Authorize ${ctx.label}](${url})`);
-  }
-  console.log(
-    ctx.triggerContext
-      ? `This is a workflow-triggered run, so ${ctx.label} access is scoped by the workflow's authorization settings, not the agent's connector authorization.`
-      : `This is an interactive/agent-scoped run, so ${ctx.label} access is scoped by the agent's connector authorization.`,
-  );
-  console.log("");
+  printConnectorConnectionStatus(ctx, isConnected, isExpired, hasPermission);
+  printConnectorAuthorizationStatus(ctx, isConnected, isExpired, hasPermission);
 
   return { isConnected, isExpired, hasPermission };
 }
