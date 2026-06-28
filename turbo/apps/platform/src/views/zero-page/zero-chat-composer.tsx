@@ -5398,14 +5398,8 @@ function ConnectorsPopoverButton({
               <div className="flex max-h-64 min-h-0 flex-col overflow-y-auto">
                 {visibleConnectors.map((item) => {
                   return (
-                    <div
+                    <label
                       key={item.type}
-                      onClick={onDomEventFn(async () => {
-                        if (savingType === item.type) {
-                          return;
-                        }
-                        await onToggle(item.type, !item.authorized);
-                      })}
                       className="flex cursor-pointer items-center gap-2 px-3 py-2 hover:bg-muted/50 transition-colors"
                     >
                       <span className="flex h-4 w-4 shrink-0 items-center justify-center">
@@ -5414,23 +5408,16 @@ function ConnectorsPopoverButton({
                       <span className="text-sm flex-1 truncate text-foreground">
                         {item.label}
                       </span>
-                      <span
-                        className="flex shrink-0 items-center"
-                        onClick={(event) => {
-                          event.stopPropagation();
-                        }}
-                      >
-                        <LoadingSwitch
-                          checked={item.authorized}
-                          onCheckedChange={onDomEventFn(async (checked) => {
-                            await onToggle(item.type, checked);
-                          })}
-                          loading={savingType === item.type}
-                          ariaLabel={`${item.authorized ? "Remove" : "Add"} ${item.label}`}
-                          size="sm"
-                        />
-                      </span>
-                    </div>
+                      <LoadingSwitch
+                        checked={item.authorized}
+                        onCheckedChange={onDomEventFn(async (checked) => {
+                          await onToggle(item.type, checked);
+                        })}
+                        loading={savingType === item.type}
+                        ariaLabel={`${item.authorized ? "Remove" : "Add"} ${item.label}`}
+                        size="sm"
+                      />
+                    </label>
                   );
                 })}
               </div>
