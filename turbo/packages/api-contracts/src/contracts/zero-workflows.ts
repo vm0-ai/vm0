@@ -424,6 +424,14 @@ export const zeroWorkflowListResponseSchema = z.array(
   zeroWorkflowSummarySchema,
 );
 
+export const zeroWorkflowTriggerAutomationEntrySchema = z.object({
+  workflow: zeroWorkflowSummarySchema,
+  trigger: zeroWorkflowTriggerSummarySchema,
+});
+export const zeroWorkflowTriggerAutomationListResponseSchema = z.array(
+  zeroWorkflowTriggerAutomationEntrySchema,
+);
+
 export const zeroWorkflowCreateRequestSchema = z.object({
   agentId: z.string().uuid(),
   name: zeroWorkflowNameSchema,
@@ -683,6 +691,17 @@ const triggerIdParams = z.object({ id: z.string().uuid() });
 const chatThreadIdParams = z.object({ threadId: z.string().min(1) });
 
 export const zeroWorkflowTriggersContract = c.router({
+  listWorkspace: {
+    method: "GET",
+    path: "/api/zero/workflow-triggers",
+    headers: authHeadersSchema,
+    responses: {
+      200: zeroWorkflowTriggerAutomationListResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "List the caller's workflow triggers across visible workflows",
+  },
   listForChatThread: {
     method: "GET",
     path: "/api/zero/chat-threads/:threadId/workflow-triggers",
@@ -835,6 +854,9 @@ export type ZeroWorkflowChatThreadResponse = z.infer<
 >;
 export type ZeroWorkflowRunResponse = z.infer<
   typeof zeroWorkflowRunResponseSchema
+>;
+export type ZeroWorkflowTriggerAutomationEntry = z.infer<
+  typeof zeroWorkflowTriggerAutomationEntrySchema
 >;
 export type ZeroWorkflowsCollectionContract =
   typeof zeroWorkflowsCollectionContract;

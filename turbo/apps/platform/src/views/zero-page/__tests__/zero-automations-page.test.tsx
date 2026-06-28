@@ -5,8 +5,7 @@ import {
   automationsMainContract,
 } from "@vm0/api-contracts/contracts/automations";
 import {
-  zeroWorkflowsCollectionContract,
-  zeroWorkflowsDetailContract,
+  zeroWorkflowTriggersContract,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
   type ZeroWorkflowTriggerSummary,
@@ -185,19 +184,19 @@ function mockWorkflowTriggerStory(): void {
     createAgent(researchAgentId, "Research Agent"),
   ]);
   context.mocks.data.userPreferences({ timezone: "UTC" });
-  context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
-    return respond(200, workflows.map(workflowSummary));
-  });
-  context.mocks.api(zeroWorkflowsDetailContract.get, ({ params, respond }) => {
-    const workflow = workflows.find((candidate) => {
-      return candidate.id === params.workflowId;
-    });
-    return workflow
-      ? respond(200, workflow)
-      : respond(404, {
-          error: { message: "Workflow not found", code: "NOT_FOUND" },
-        });
-  });
+  context.mocks.api(
+    zeroWorkflowTriggersContract.listWorkspace,
+    ({ respond }) => {
+      return respond(
+        200,
+        workflows.flatMap((workflow) => {
+          return workflow.triggers.map((trigger) => {
+            return { workflow: workflowSummary(workflow), trigger };
+          });
+        }),
+      );
+    },
+  );
 }
 
 function buttonByText(

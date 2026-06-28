@@ -550,6 +550,86 @@ describe("zero workflow triggers", () => {
     );
   });
 
+  it("lists owned workflow triggers across visible workflows", async () => {
+    const { fixture, agentId, workflowId } = await setupFixture();
+    const { agentId: secondAgentId } = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        name: "second-trigger-agent",
+        workflowNames: [WORKFLOW_NAME],
+        composeContent: {
+          version: "1",
+          agents: {
+            "second-trigger-agent": {
+              framework: "claude-code",
+              environment: { ANTHROPIC_API_KEY: "test-key" },
+            },
+          },
+        },
+      },
+      context.signal,
+    );
+    const secondWorkflowId = await loadWorkflowId(fixture, secondAgentId);
+
+    const first = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { schedule: { type: "loop", intervalSeconds: 60 } },
+      }),
+      [201],
+    );
+    const second = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId: secondWorkflowId },
+        body: {
+          schedule: {
+            type: "cron",
+            cronExpression: "0 10 * * *",
+            timezone: "UTC",
+          },
+        },
+      }),
+      [201],
+    );
+
+    const listed = await accept(
+      triggersClient().listWorkspace({ headers: authHeaders() }),
+      [200],
+    );
+
+    expect(
+      listed.body.map((entry) => {
+        return {
+          triggerId: entry.trigger.id,
+          workflowId: entry.workflow.id,
+          workflowName: entry.workflow.name,
+          agentId: entry.workflow.agentId,
+        };
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining([
+        {
+          triggerId: first.body.id,
+          workflowId,
+          workflowName: WORKFLOW_NAME,
+          agentId,
+        },
+        {
+          triggerId: second.body.id,
+          workflowId: secondWorkflowId,
+          workflowName: WORKFLOW_NAME,
+          agentId: secondAgentId,
+        },
+      ]),
+    );
+    expect("files" in listed.body[0]!.workflow).toBeFalsy();
+    expect("fileContents" in listed.body[0]!.workflow).toBeFalsy();
+  });
+
   it("creates webhook event triggers with a signed endpoint secret shown once", async () => {
     const { fixture, workflowId } = await setupFixture();
     await enableWebhookWorkflowTriggers(fixture);

@@ -8,6 +8,7 @@ import {
   type WebhookReceivedEventConfig,
   type ZeroWorkflowEventType,
   type ZeroWorkflowSchedule,
+  type ZeroWorkflowTriggerAutomationEntry,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { parseScheduledAtTime } from "@vm0/core/timezone";
@@ -29,6 +30,8 @@ import { isValidTimeZone, safeSync } from "../utils";
 import { calculateNextRun } from "./automations/time-trigger";
 import {
   loadVisibleWorkflowById,
+  visibleWorkflowCondition,
+  workflowSummary,
   type WorkflowMember,
 } from "./zero-workflow-data.service";
 import {
@@ -486,6 +489,82 @@ export async function loadWorkflowTriggers(
   );
   return summaries.flatMap((summary) => {
     return summary ? [summary] : [];
+  });
+}
+
+/**
+ * List the caller's workflow triggers across every visible workflow in one
+ * lightweight projection for the /automations surface. This deliberately avoids
+ * workflow detail loading, so it does not read workflow volume files from R2.
+ */
+export async function listWorkspaceWorkflowTriggers(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly member: WorkflowMember;
+  },
+): Promise<readonly ZeroWorkflowTriggerAutomationEntry[]> {
+  const rows = await db
+    .select({
+      trigger: zeroWorkflowTriggers,
+      workflow: zeroWorkflows,
+      agent: {
+        id: zeroAgents.id,
+        owner: zeroAgents.owner,
+        visibility: zeroAgents.visibility,
+        name: zeroAgents.name,
+        displayName: zeroAgents.displayName,
+      },
+      chatThreadId: workflowUserTriggerThreads.chatThreadId,
+    })
+    .from(zeroWorkflowTriggers)
+    .innerJoin(
+      zeroWorkflows,
+      eq(zeroWorkflows.id, zeroWorkflowTriggers.workflowId),
+    )
+    .innerJoin(zeroAgents, eq(zeroAgents.id, zeroWorkflows.agentId))
+    .leftJoin(
+      workflowUserTriggerThreads,
+      and(
+        eq(workflowUserTriggerThreads.orgId, zeroWorkflowTriggers.orgId),
+        eq(workflowUserTriggerThreads.userId, zeroWorkflowTriggers.ownerUserId),
+        eq(
+          workflowUserTriggerThreads.workflowId,
+          zeroWorkflowTriggers.workflowId,
+        ),
+      ),
+    )
+    .where(
+      and(
+        eq(zeroWorkflowTriggers.orgId, args.orgId),
+        eq(zeroWorkflowTriggers.ownerUserId, args.member.userId),
+        visibleWorkflowCondition(args.member),
+      ),
+    )
+    .orderBy(asc(zeroWorkflowTriggers.createdAt), asc(zeroWorkflowTriggers.id));
+
+  const entries = await Promise.all(
+    rows.map(
+      async (row): Promise<ZeroWorkflowTriggerAutomationEntry | null> => {
+        const trigger = await rowToPublicSummary(db, row.trigger, {
+          chatThreadId: row.chatThreadId ?? null,
+        });
+        if (!trigger) {
+          return null;
+        }
+        return {
+          workflow: workflowSummary({
+            workflow: row.workflow,
+            agent: row.agent,
+            member: args.member,
+          }),
+          trigger,
+        };
+      },
+    ),
+  );
+  return entries.flatMap((entry) => {
+    return entry ? [entry] : [];
   });
 }
 

@@ -9,6 +9,7 @@ import {
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowSummary,
+  type ZeroWorkflowTriggerAutomationEntry,
   type ZeroWorkflowTriggerSummary,
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -44,20 +45,7 @@ type WorkflowWebhookTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
-export interface WorkflowTriggerAutomationEntry {
-  readonly workflow: Pick<
-    ZeroWorkflowSummary,
-    | "id"
-    | "agentId"
-    | "agentName"
-    | "agentDisplayName"
-    | "name"
-    | "displayName"
-    | "description"
-    | "canManage"
-  >;
-  readonly trigger: ZeroWorkflowTriggerSummary;
-}
+export type WorkflowTriggerAutomationEntry = ZeroWorkflowTriggerAutomationEntry;
 export const WORKFLOW_DETAIL_TAB_PARAM = "tab";
 export const WORKFLOW_DETAIL_FILE_PARAM = "file";
 
@@ -365,61 +353,24 @@ export const composerWorkflows$ = computed(
 export const allWorkflowTriggerEntries$ = computed(
   async (get): Promise<readonly WorkflowTriggerAutomationEntry[]> => {
     get(internalWorkflowReload$);
-    const collectionClient = get(zeroClient$)(zeroWorkflowsCollectionContract);
-    const detailClient = get(zeroClient$)(zeroWorkflowsDetailContract);
-    const workflowsResult = await accept(
-      collectionClient.list({ query: {} }),
-      [200],
-    );
-
-    const details = await Promise.all(
-      workflowsResult.body.map(async (workflow) => {
-        const detailResult = await accept(
-          detailClient.get({ params: { workflowId: workflow.id } }),
-          [200, 404],
-        );
-        if (detailResult.status === 404) {
-          return null;
-        }
-        return detailResult.body;
-      }),
-    );
-
-    return details
-      .flatMap((detail): WorkflowTriggerAutomationEntry[] => {
-        if (!detail) {
-          return [];
-        }
-        const workflow = {
-          id: detail.id,
-          agentId: detail.agentId,
-          agentName: detail.agentName,
-          agentDisplayName: detail.agentDisplayName,
-          name: detail.name,
-          displayName: detail.displayName,
-          description: detail.description,
-          canManage: detail.canManage,
-        };
-        return detail.triggers.map((trigger) => {
-          return { workflow, trigger };
-        });
-      })
-      .sort((a, b) => {
-        if (a.trigger.enabled !== b.trigger.enabled) {
-          return a.trigger.enabled ? -1 : 1;
-        }
-        const aNext = a.trigger.nextRunAt ?? "";
-        const bNext = b.trigger.nextRunAt ?? "";
-        if (aNext && bNext && aNext !== bNext) {
-          return aNext.localeCompare(bNext);
-        }
-        if (aNext !== bNext) {
-          return aNext ? -1 : 1;
-        }
-        const aTitle = a.workflow.displayName ?? a.workflow.name;
-        const bTitle = b.workflow.displayName ?? b.workflow.name;
-        return aTitle.localeCompare(bTitle);
-      });
+    const triggerClient = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const triggerResult = await accept(triggerClient.listWorkspace(), [200]);
+    return [...triggerResult.body].sort((a, b) => {
+      if (a.trigger.enabled !== b.trigger.enabled) {
+        return a.trigger.enabled ? -1 : 1;
+      }
+      const aNext = a.trigger.nextRunAt ?? "";
+      const bNext = b.trigger.nextRunAt ?? "";
+      if (aNext && bNext && aNext !== bNext) {
+        return aNext.localeCompare(bNext);
+      }
+      if (aNext !== bNext) {
+        return aNext ? -1 : 1;
+      }
+      const aTitle = a.workflow.displayName ?? a.workflow.name;
+      const bTitle = b.workflow.displayName ?? b.workflow.name;
+      return aTitle.localeCompare(bTitle);
+    });
   },
 );
 
