@@ -1,13 +1,11 @@
 import { randomUUID } from "node:crypto";
-import { readFileSync } from "node:fs";
 
 import { inArray, sql } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
-import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -19,13 +17,17 @@ import {
 
 import { db, uniqueId } from "../test-db";
 
-const migrationSql = readFileSync(
-  new URL(
-    "../../migrations/0497_backfill_chat_run_groups.sql",
-    import.meta.url,
-  ),
-  "utf8",
-);
+/**
+ * Integration test for the migration 0508 backfill body.
+ *
+ * The migration itself has already run against the test DB (the
+ * `zero_workflow_triggers.run_group_id` column is gone), so re-running the DDL
+ * is not possible. We seed rows that look like they pre-date the backfill — a
+ * workflow-trigger run and its chat message still carrying a stale group id —
+ * execute the backfill's UPDATE body verbatim, and assert that the trigger id
+ * becomes the run group id for both the run and the message, while non-workflow
+ * rows are left untouched.
+ */
 
 class RollbackMigrationTestTransaction extends Error {}
 
@@ -78,15 +80,26 @@ async function insertRun(
   return run!.id;
 }
 
-describe("migration 0497 backfill chat run groups", () => {
-  it("backfills historical run groups from automation and workflow provenance", async () => {
+// The backfill body from `0508_workflow_trigger_run_group_uses_trigger_id.sql`
+// (DDL omitted — the column is already dropped on the migrated test DB).
+const backfillSql = sql.raw(`
+UPDATE "zero_runs"
+SET "run_group_id" = "zero_runs"."workflow_trigger_id"
+WHERE "zero_runs"."workflow_trigger_id" IS NOT NULL;
+UPDATE "chat_messages"
+SET "run_group_id" = "zero_runs"."workflow_trigger_id"
+FROM "zero_runs"
+WHERE "chat_messages"."run_id" = "zero_runs"."id"
+  AND "zero_runs"."workflow_trigger_id" IS NOT NULL;
+`);
+
+describe("migration 0508 backfill workflow trigger run groups", () => {
+  it("repoints workflow-trigger runs and messages to the trigger id", async () => {
     await runInRollbackTransaction(async (tx) => {
       const orgId = uniqueId("org");
       const userId = uniqueId("user");
-      const automationRunGroupId = randomUUID();
-      const workflowRunGroupId = randomUUID();
-      const preservedRunGroupId = randomUUID();
-      const preservedMessageRunGroupId = randomUUID();
+      const staleRunGroupId = randomUUID();
+      const staleMessageGroupId = randomUUID();
 
       const [compose] = await tx
         .insert(agentComposes)
@@ -121,29 +134,6 @@ describe("migration 0497 backfill chat run groups", () => {
         })
         .returning({ id: chatThreads.id });
 
-      const [automation] = await tx
-        .insert(automations)
-        .values({
-          orgId,
-          userId,
-          name: uniqueId("automation"),
-          instruction: "run the historical automation",
-          agentId: compose!.id,
-          chatThreadId: thread!.id,
-          interpreterKind: "default",
-          runGroupId: automationRunGroupId,
-        })
-        .returning({ id: automations.id });
-
-      const [automationTrigger] = await tx
-        .insert(automationTriggers)
-        .values({
-          automationId: automation!.id,
-          kind: "loop",
-          intervalSeconds: 60,
-        })
-        .returning({ id: automationTriggers.id });
-
       const [workflow] = await tx
         .insert(zeroWorkflows)
         .values({
@@ -165,32 +155,9 @@ describe("migration 0497 backfill chat run groups", () => {
           kind: "event",
           eventType: "gmail-new-message",
           eventConfig: { source: "migration-test" },
-          runGroupId: workflowRunGroupId,
         })
         .returning({ id: zeroWorkflowTriggers.id });
 
-      const directAutomationRunId = await insertRun(tx, {
-        orgId,
-        userId,
-        sessionId: session!.id,
-        threadId: thread!.id,
-        prompt: "direct automation run",
-        zeroRun: {
-          triggerSource: "automation",
-          automationId: automation!.id,
-        },
-      });
-      const triggerOnlyRunId = await insertRun(tx, {
-        orgId,
-        userId,
-        sessionId: session!.id,
-        threadId: thread!.id,
-        prompt: "trigger-only automation run",
-        zeroRun: {
-          triggerSource: "automation",
-          triggerId: automationTrigger!.id,
-        },
-      });
       const workflowRunId = await insertRun(tx, {
         orgId,
         userId,
@@ -200,18 +167,7 @@ describe("migration 0497 backfill chat run groups", () => {
         zeroRun: {
           triggerSource: "workflow",
           workflowTriggerId: workflowTrigger!.id,
-        },
-      });
-      const preservedRunId = await insertRun(tx, {
-        orgId,
-        userId,
-        sessionId: session!.id,
-        threadId: thread!.id,
-        prompt: "already grouped run",
-        zeroRun: {
-          triggerSource: "automation",
-          automationId: automation!.id,
-          runGroupId: preservedRunGroupId,
+          runGroupId: staleRunGroupId,
         },
       });
       const manualRunId = await insertRun(tx, {
@@ -225,55 +181,19 @@ describe("migration 0497 backfill chat run groups", () => {
         },
       });
 
-      const messageIds = {
-        directAutomation: randomUUID(),
-        triggerOnly: randomUUID(),
-        workflow: randomUUID(),
-        queuedAutomation: randomUUID(),
-        preserved: randomUUID(),
-        manual: randomUUID(),
-      };
-
+      const workflowMessageId = randomUUID();
+      const manualMessageId = randomUUID();
       await tx.insert(chatMessages).values([
         {
-          id: messageIds.directAutomation,
-          chatThreadId: thread!.id,
-          runId: directAutomationRunId,
-          automationId: automation!.id,
-          role: "user",
-          content: "direct automation message",
-        },
-        {
-          id: messageIds.triggerOnly,
-          chatThreadId: thread!.id,
-          runId: triggerOnlyRunId,
-          role: "assistant",
-          content: "trigger-only assistant message",
-        },
-        {
-          id: messageIds.workflow,
+          id: workflowMessageId,
           chatThreadId: thread!.id,
           runId: workflowRunId,
           role: "assistant",
           content: "workflow assistant message",
+          runGroupId: staleMessageGroupId,
         },
         {
-          id: messageIds.queuedAutomation,
-          chatThreadId: thread!.id,
-          automationId: automation!.id,
-          role: "user",
-          content: "queued automation chip",
-        },
-        {
-          id: messageIds.preserved,
-          chatThreadId: thread!.id,
-          runId: preservedRunId,
-          role: "assistant",
-          content: "already grouped message",
-          runGroupId: preservedMessageRunGroupId,
-        },
-        {
-          id: messageIds.manual,
+          id: manualMessageId,
           chatThreadId: thread!.id,
           runId: manualRunId,
           role: "assistant",
@@ -281,8 +201,7 @@ describe("migration 0497 backfill chat run groups", () => {
         },
       ]);
 
-      await tx.execute(sql.raw(migrationSql));
-      await tx.execute(sql.raw(migrationSql));
+      await tx.execute(backfillSql);
 
       const runRows = await tx
         .select({
@@ -290,27 +209,14 @@ describe("migration 0497 backfill chat run groups", () => {
           runGroupId: zeroRuns.runGroupId,
         })
         .from(zeroRuns)
-        .where(
-          inArray(zeroRuns.id, [
-            directAutomationRunId,
-            triggerOnlyRunId,
-            workflowRunId,
-            preservedRunId,
-            manualRunId,
-          ]),
-        );
+        .where(inArray(zeroRuns.id, [workflowRunId, manualRunId]));
       const runGroupByRunId = new Map(
         runRows.map((row) => {
           return [row.id, row.runGroupId];
         }),
       );
 
-      expect(runGroupByRunId.get(directAutomationRunId)).toBe(
-        automationRunGroupId,
-      );
-      expect(runGroupByRunId.get(triggerOnlyRunId)).toBe(automationRunGroupId);
-      expect(runGroupByRunId.get(workflowRunId)).toBe(workflowRunGroupId);
-      expect(runGroupByRunId.get(preservedRunId)).toBe(preservedRunGroupId);
+      expect(runGroupByRunId.get(workflowRunId)).toBe(workflowTrigger!.id);
       expect(runGroupByRunId.get(manualRunId)).toBeNull();
 
       const messageRows = await tx
@@ -319,29 +225,17 @@ describe("migration 0497 backfill chat run groups", () => {
           runGroupId: chatMessages.runGroupId,
         })
         .from(chatMessages)
-        .where(inArray(chatMessages.id, Object.values(messageIds)));
+        .where(inArray(chatMessages.id, [workflowMessageId, manualMessageId]));
       const runGroupByMessageId = new Map(
         messageRows.map((row) => {
           return [row.id, row.runGroupId];
         }),
       );
 
-      expect(runGroupByMessageId.get(messageIds.directAutomation)).toBe(
-        automationRunGroupId,
+      expect(runGroupByMessageId.get(workflowMessageId)).toBe(
+        workflowTrigger!.id,
       );
-      expect(runGroupByMessageId.get(messageIds.triggerOnly)).toBe(
-        automationRunGroupId,
-      );
-      expect(runGroupByMessageId.get(messageIds.workflow)).toBe(
-        workflowRunGroupId,
-      );
-      expect(runGroupByMessageId.get(messageIds.queuedAutomation)).toBe(
-        automationRunGroupId,
-      );
-      expect(runGroupByMessageId.get(messageIds.preserved)).toBe(
-        preservedMessageRunGroupId,
-      );
-      expect(runGroupByMessageId.get(messageIds.manual)).toBeNull();
+      expect(runGroupByMessageId.get(manualMessageId)).toBeNull();
     });
   });
 });
