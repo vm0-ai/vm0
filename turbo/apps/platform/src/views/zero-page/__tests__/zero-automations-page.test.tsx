@@ -424,14 +424,29 @@ describe("zero automations page", () => {
   });
 
   it.each([
-    ["Fixed interval", /interval triggered workflow/u],
-    ["Fixed schedule", /schedule triggered workflow/u],
-    ["Web trigger", /web triggered workflow/u],
-    ["New email", /email triggered workflow that runs when a Gmail message/u],
-    ["Email label", /email-label triggered workflow/u],
+    [
+      "Fixed interval",
+      "I'd like to set up an interval workflow trigger that runs every few minutes or hours. Help me define the workflow.",
+    ],
+    [
+      "Fixed schedule",
+      "I'd like to set up a scheduled workflow trigger that runs on a daily, weekly, monthly, or custom cron schedule. Help me define the workflow.",
+    ],
+    [
+      "Web trigger",
+      "I'd like to set up a webhook workflow trigger that runs when an inbound webhook is received. Help me define the workflow.",
+    ],
+    [
+      "New email",
+      "I'd like to set up an email workflow trigger that runs when a Gmail message matches my criteria. Help me define the workflow.",
+    ],
+    [
+      "Email label",
+      "I'd like to set up an email-label workflow trigger that runs when a Gmail label is applied. Help me define the workflow.",
+    ],
   ])(
     "starts workflow-trigger creation with the %s prompt",
-    async (triggerName, promptPattern) => {
+    async (triggerName, prompt) => {
       mockWorkflowTriggerStory();
 
       detachedSetupPage({
@@ -473,7 +488,7 @@ describe("zero automations page", () => {
         expect(pathname()).toBe(`/agents/${zeroAgentId}/chat`);
       });
       await expect(
-        screen.findByDisplayValue(promptPattern),
+        screen.findByDisplayValue(prompt),
       ).resolves.toBeInTheDocument();
     },
   );
