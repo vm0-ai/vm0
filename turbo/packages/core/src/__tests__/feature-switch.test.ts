@@ -53,6 +53,12 @@ describe("isFeatureEnabled", () => {
         orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
       }),
     ).toBe(true);
+    expect(
+      isFeatureEnabled(
+        FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger,
+        { orgId: "org_3ANttyrbWYJk6JKRSTRLEsbsDLe" },
+      ),
+    ).toBe(true);
   });
 
   it("should return false when orgId does not match enabledOrgIdHashes", () => {
@@ -75,6 +81,12 @@ describe("isFeatureEnabled", () => {
       isFeatureEnabled(FeatureSwitchKey.GoalWorkflows, {
         orgId: "org_nonexistent",
       }),
+    ).toBe(false);
+    expect(
+      isFeatureEnabled(
+        FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger,
+        { orgId: "org_nonexistent" },
+      ),
     ).toBe(false);
   });
 
@@ -129,6 +141,11 @@ describe("getAllFeatureStates", () => {
     expect(staffOrgStates[FeatureSwitchKey.ConnectorAccessManagement]).toBe(
       true,
     );
+    expect(
+      staffOrgStates[
+        FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger
+      ],
+    ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
@@ -144,6 +161,11 @@ describe("getAllFeatureStates", () => {
     expect(otherOrgStates[FeatureSwitchKey.ConnectorAccessManagement]).toBe(
       false,
     );
+    expect(
+      otherOrgStates[
+        FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger
+      ],
+    ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,

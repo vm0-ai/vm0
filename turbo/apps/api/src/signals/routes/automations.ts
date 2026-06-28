@@ -6,6 +6,8 @@ import {
   type AutomationResponse,
   type AutomationTriggerResponse,
 } from "@vm0/api-contracts/contracts/automations";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
 
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -27,10 +29,20 @@ import {
   type AutomationTriggerRow,
   type AutomationView,
 } from "../services/automations.service";
+import { userFeatureSwitchOverrides } from "../services/feature-switches.service";
 import type { RouteEntry } from "../route-entry";
 
 const NOT_FOUND_MESSAGE = "Resource not found";
 const AMBIGUOUS_MESSAGE = "Ambiguous name, use the id";
+const SCHEDULE_AUTOMATION_DISABLED_MESSAGE =
+  "Schedule automation has been disabled. Use zero workflow trigger to create scheduled tasks.";
+
+function forbidden(message: string) {
+  return {
+    status: 403 as const,
+    body: { error: { message, code: "FORBIDDEN" as const } },
+  };
+}
 
 function triggerResponse(
   trigger: AutomationTriggerRow,
@@ -95,8 +107,28 @@ function automationResponse(view: AutomationView): AutomationResponse {
   };
 }
 
+const scheduleAutomationToWorkflowTriggerEnabled$ = command(async ({ get }) => {
+  const auth = get(organizationAuthContext$);
+  const overrides = await get(
+    userFeatureSwitchOverrides(auth.orgId, auth.userId),
+  );
+  return isFeatureEnabled(
+    FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger,
+    { orgId: auth.orgId, userId: auth.userId, overrides },
+  );
+});
+
+function scheduleAutomationDisabled() {
+  return forbidden(SCHEDULE_AUTOMATION_DISABLED_MESSAGE);
+}
+
 const createInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  if (await set(scheduleAutomationToWorkflowTriggerEnabled$)) {
+    return scheduleAutomationDisabled();
+  }
+  signal.throwIfAborted();
+
   const bodyResult = await get(bodyResultOf(automationsMainContract.create));
   signal.throwIfAborted();
   if (!bodyResult.ok) {
@@ -232,6 +264,11 @@ function makeSetEnabledInner(enabled: boolean) {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(automationsByRefContract.enable));
 
+    if (enabled && (await set(scheduleAutomationToWorkflowTriggerEnabled$))) {
+      return scheduleAutomationDisabled();
+    }
+    signal.throwIfAborted();
+
     if (enabled && auth.orgRole !== undefined) {
       await set(
         upsertMemberRoleCache$,
@@ -352,6 +389,11 @@ function makeSetTriggerEnabledInner(enabled: boolean) {
   return command(async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const params = get(pathParamsOf(automationTriggersContract.enable));
+
+    if (enabled && (await set(scheduleAutomationToWorkflowTriggerEnabled$))) {
+      return scheduleAutomationDisabled();
+    }
+    signal.throwIfAborted();
 
     const result = await set(
       setTriggerEnabled$,
