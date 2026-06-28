@@ -3557,6 +3557,13 @@
       "when": 1782569786068,
       "tag": "0507_workflow_user_trigger_threads",
       "breakpoints": true
+    },
+    {
+      "idx": 508,
+      "version": "7",
+      "when": 1782618975408,
+      "tag": "0508_workflow_trigger_run_group_uses_trigger_id",
+      "breakpoints": true
     }
   ]
 }
