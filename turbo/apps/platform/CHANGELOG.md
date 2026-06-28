@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.502.0](https://github.com/vm0-ai/vm0/compare/app-v0.501.0...app-v0.502.0) (2026-06-27)
+
+
+### Features
+
+* share workflow trigger chat threads ([#19208](https://github.com/vm0-ai/vm0/issues/19208)) ([6f47f8e](https://github.com/vm0-ai/vm0/commit/6f47f8ee081c2d2033c74e2a384d92a609d05642))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.123.0
+    * @vm0/core bumped to 8.373.4
+
 ## [0.501.0](https://github.com/vm0-ai/vm0/compare/app-v0.500.2...app-v0.501.0) (2026-06-27)
 
 

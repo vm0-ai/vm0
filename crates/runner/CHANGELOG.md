@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.129.41](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.40...runner-rs-v0.129.41) (2026-06-27)
+
+
+### Performance Improvements
+
+* rename runner storage manifest metric ([#19205](https://github.com/vm0-ai/vm0/issues/19205)) ([8523b1e](https://github.com/vm0-ai/vm0/commit/8523b1eb13186a5b2513028c15447f9d2ed78619))
+
 ## [0.129.40](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.39...runner-rs-v0.129.40) (2026-06-27)
 
 

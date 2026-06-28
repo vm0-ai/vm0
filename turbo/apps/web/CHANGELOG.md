@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.444.0](https://github.com/vm0-ai/vm0/compare/web-v12.443.3...web-v12.444.0) (2026-06-27)
+
+
+### Features
+
+* share workflow trigger chat threads ([#19208](https://github.com/vm0-ai/vm0/issues/19208)) ([6f47f8e](https://github.com/vm0-ai/vm0/commit/6f47f8ee081c2d2033c74e2a384d92a609d05642))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.123.0
+
 ## [12.443.3](https://github.com/vm0-ai/vm0/compare/web-v12.443.2...web-v12.443.3) (2026-06-27)
 
 

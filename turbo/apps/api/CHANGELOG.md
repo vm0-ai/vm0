@@ -1,5 +1,32 @@
 # Changelog
 
+## [1.185.0](https://github.com/vm0-ai/vm0/compare/api-v1.184.3...api-v1.185.0) (2026-06-27)
+
+
+### Features
+
+* share workflow trigger chat threads ([#19208](https://github.com/vm0-ai/vm0/issues/19208)) ([6f47f8e](https://github.com/vm0-ai/vm0/commit/6f47f8ee081c2d2033c74e2a384d92a609d05642))
+
+
+### Refactoring
+
+* reduce fallback slop in media contracts ([#19209](https://github.com/vm0-ai/vm0/issues/19209)) ([e0b4f47](https://github.com/vm0-ai/vm0/commit/e0b4f47deda2876191f0891e778354f21896be3b))
+
+
+### Performance Improvements
+
+* add storage manifest entry build timing ([#19206](https://github.com/vm0-ai/vm0/issues/19206)) ([b5d8cc8](https://github.com/vm0-ai/vm0/commit/b5d8cc8fdb40b9aadfd6789d4290b48761084a4b))
+* reduce stored connector decrypt work ([#19202](https://github.com/vm0-ai/vm0/issues/19202)) ([10e8bf0](https://github.com/vm0-ai/vm0/commit/10e8bf00115804ad27cd9a4388787cf6e79573b9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.123.0
+    * @vm0/core bumped to 8.373.4
+    * @vm0/db bumped to 1.76.0
+
 ## [1.184.3](https://github.com/vm0-ai/vm0/compare/api-v1.184.2...api-v1.184.3) (2026-06-27)
 
 
