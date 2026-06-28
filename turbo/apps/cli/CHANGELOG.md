@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.213.0](https://github.com/vm0-ai/vm0/compare/cli-v9.212.4...cli-v9.213.0) (2026-06-28)
+
+
+### Features
+
+* add workflow permission request cards ([#19224](https://github.com/vm0-ai/vm0/issues/19224)) ([7e4907c](https://github.com/vm0-ai/vm0/commit/7e4907c3bb7e7d0a9043686a3cd56f5fc38fa799))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.124.0
+    * @vm0/connectors bumped to 1.111.0
+    * @vm0/core bumped to 8.374.0
+
 ## [9.212.4](https://github.com/vm0-ai/vm0/compare/cli-v9.212.3...cli-v9.212.4) (2026-06-27)
 
 
