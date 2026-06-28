@@ -757,6 +757,21 @@ function buttonByText(text: string, container?: ParentNode): HTMLElement {
   return button;
 }
 
+function selectOptionByLabel(
+  label: string,
+  option: string | RegExp,
+  container: HTMLElement,
+): void {
+  const control =
+    within(container)
+      .getAllByLabelText(label)
+      .find((element) => {
+        return element.getAttribute("role") === "combobox";
+      }) ?? within(container).getByLabelText(label);
+  click(control);
+  click(screen.getByRole("option", { name: option }));
+}
+
 async function openAutomationSidebarWithWorkflowTrigger(
   trigger: ReturnType<typeof createMockWorkflowTrigger>,
 ): Promise<HTMLElement> {
@@ -3177,7 +3192,7 @@ describe("chat lifecycle", () => {
     click(within(sidebar).getAllByText("Edit").at(-1)!);
 
     const dialog = await screen.findByRole("dialog", { name: "Edit trigger" });
-    await fill(within(dialog).getByLabelText("Interval seconds"), "7200");
+    selectOptionByLabel("Every", "30 minutes", dialog);
     click(buttonByText("Save trigger", dialog));
 
     await waitFor(() => {
@@ -3186,7 +3201,7 @@ describe("chat lifecycle", () => {
         body: {
           schedule: {
             type: "loop",
-            intervalSeconds: 7200,
+            intervalSeconds: 1800,
           },
         },
       });
