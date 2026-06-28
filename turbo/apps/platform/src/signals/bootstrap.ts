@@ -32,7 +32,6 @@ import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page
 import { setupAgentsPage$ } from "./agents-page/agents-page-setup.ts";
 import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts";
 import { setupWorkflowDetailPage$ } from "./workflows-page/workflow-detail-page-setup.ts";
-import { WORKFLOW_DETAIL_TAB_PARAM } from "./workflows-page/workflows-signals.ts";
 import { setupMemoryPage$ } from "./memory-page/memory-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
 import { setupPreferencesPage$ } from "./preferences-page/preferences-page-setup.ts";
@@ -102,17 +101,20 @@ const setupWorkflowTriggerPermissionsRedirect$ = command(({ get, set }) => {
   const params = get(pathParams$) ?? {};
   const agentId = params.agentId;
   const workflowId = params.workflowId;
+  const triggerId = params.triggerId;
   if (typeof agentId !== "string" || typeof workflowId !== "string") {
     set(detachedNavigateTo$, ROUTES.agents, { replace: true });
     return;
   }
   const targetSearchParams = new URLSearchParams(get(searchParams$));
-  targetSearchParams.set(WORKFLOW_DETAIL_TAB_PARAM, "authorization");
-  set(detachedNavigateTo$, ROUTES.agentWorkflowDetail, {
+  if (typeof triggerId === "string" && !targetSearchParams.has("triggerId")) {
+    targetSearchParams.set("triggerId", triggerId);
+  }
+  set(detachedNavigateTo$, ROUTES.agentWorkflowPermissions, {
     pathParams: {
       agentId,
       workflowId,
-    } as RouterPathParams<typeof ROUTES.agentWorkflowDetail>,
+    } as RouterPathParams<typeof ROUTES.agentWorkflowPermissions>,
     searchParams: targetSearchParams,
     replace: true,
   });
@@ -186,6 +188,10 @@ const ROUTE_CONFIG = [
   },
   {
     path: ROUTES.agentPermissions,
+    setup: setupAuthPageWrapper(setupPermissionAllowPage$),
+  },
+  {
+    path: ROUTES.agentWorkflowPermissions,
     setup: setupAuthPageWrapper(setupPermissionAllowPage$),
   },
   {

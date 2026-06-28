@@ -161,13 +161,13 @@ async function outputPermissionChangeMessage(
 
   // Trigger-fired runs configure permissions on the workflow-user grant store,
   // shared by all triggers the same user owns for the workflow. Deep-link to
-  // the workflow Authorization tab for the relevant connector and permission.
+  // the workflow permission page for the relevant connector and permission.
   if (triggerContext && agentId) {
     const workflowUrlParams = new URLSearchParams({
-      tab: "authorization",
       ref: connectorRef,
       permission,
       action: action === "enable" ? "allow" : "deny",
+      triggerId: triggerContext.triggerId,
     });
     if (action === "enable") {
       workflowUrlParams.set(
@@ -175,7 +175,7 @@ async function outputPermissionChangeMessage(
         duration ?? DEFAULT_PERMISSION_GRANT_DURATION,
       );
     }
-    const workflowUrl = `${platformOrigin}/agents/${agentId}/workflows/${triggerContext.workflowId}?${workflowUrlParams.toString()}`;
+    const workflowUrl = `${platformOrigin}/agents/${agentId}/workflows/${triggerContext.workflowId}/permissions?${workflowUrlParams.toString()}`;
     printSensitivePermissionGuidance(connectorRef, permission, action);
     printPermissionActionMessage({
       action,

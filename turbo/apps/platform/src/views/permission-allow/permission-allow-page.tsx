@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Button } from "@vm0/ui";
@@ -5,6 +6,7 @@ import {
   IconAlertTriangle,
   IconBan,
   IconCheck,
+  IconGitBranch,
   IconLoader2,
 } from "@tabler/icons-react";
 import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -23,6 +25,8 @@ import {
   permissionAllowPermission$,
   permissionAllowRef$,
   permissionAllowUserPermissionGrants$,
+  permissionAllowWorkflow$,
+  permissionAllowWorkflowId$,
   resolveUserPermissionGrantPolicy,
   type Permission,
   applyUserPermissionGrant$,
@@ -40,24 +44,43 @@ import { PermissionGrantDurationSelect } from "../components/permission-grant-du
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 
-function AgentPill({
+function TargetPill({
   avatarUrl,
   displayName,
 }: {
-  avatarUrl: string | null;
+  avatarUrl?: string | null;
   displayName: string;
 }) {
   return (
     <div className="w-full rounded-lg border border-border bg-muted/30 pl-2 pr-8 py-3 flex items-center gap-2">
-      <AvatarFromUrl
-        avatarUrl={avatarUrl}
-        alt=""
-        className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
-      />
+      {avatarUrl !== undefined ? (
+        <AvatarFromUrl
+          avatarUrl={avatarUrl}
+          alt=""
+          className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
+        />
+      ) : (
+        <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-muted/60 text-muted-foreground">
+          <IconGitBranch size={18} stroke={1.7} />
+        </span>
+      )}
       <span className="text-sm font-medium text-foreground">{displayName}</span>
     </div>
   );
 }
+
+type PermissionGrantTarget =
+  | {
+      kind: "agent";
+      id: string;
+      displayName: string;
+      avatarUrl: string | null;
+    }
+  | {
+      kind: "workflow";
+      id: string;
+      displayName: string;
+    };
 
 function ConnectorPermissionCard({
   connectorRef,
@@ -171,7 +194,7 @@ function ResultCard({
   );
 }
 
-function StatusMessage({ children }: { children: React.ReactNode }) {
+function StatusMessage({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-1 items-center justify-center text-muted-foreground">
       {children}
@@ -203,26 +226,22 @@ function resolveUserName(
 }
 
 function ConfirmGrantCard({
-  agentId,
+  target,
   connectorRef,
   permission,
   action,
   initialExpiresIn,
-  agentDisplayName,
-  agentAvatarUrl,
   userName,
 }: {
-  agentId: string;
+  target: PermissionGrantTarget;
   connectorRef: string;
   permission: Permission;
   action: "allow" | "deny";
   initialExpiresIn: UserPermissionGrantExpiresIn | null;
-  agentDisplayName: string;
-  agentAvatarUrl: string | null;
   userName: string;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const durationScope = `${agentId}\u0000${connectorRef}\u0000${permission.name}\u0000${action}\u0000${initialExpiresIn ?? ""}`;
+  const durationScope = `${target.kind}\u0000${target.id}\u0000${connectorRef}\u0000${permission.name}\u0000${action}\u0000${initialExpiresIn ?? ""}`;
   const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
   const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
   const expiresIn =
@@ -247,7 +266,9 @@ function ConfirmGrantCard({
     detach(
       applyGrant(
         {
-          agentId,
+          ...(target.kind === "workflow"
+            ? { workflowId: target.id }
+            : { agentId: target.id }),
           connectorRef,
           permission: permission.name,
           action,
@@ -266,12 +287,12 @@ function ConfirmGrantCard({
 
         <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-4 px-[26px]">
           <p className="text-center text-lg font-medium leading-7 text-foreground">
-            {`Hey ${userName}, you're updating your permissions for ${agentDisplayName}.`}
+            {`Hey ${userName}, you're updating your permissions for ${target.displayName}.`}
           </p>
 
-          <AgentPill
-            avatarUrl={agentAvatarUrl}
-            displayName={agentDisplayName}
+          <TargetPill
+            avatarUrl={target.kind === "agent" ? target.avatarUrl : undefined}
+            displayName={target.displayName}
           />
 
           <div className="w-full flex flex-col gap-3">
@@ -316,26 +337,32 @@ function ConfirmGrantCard({
 
 function PermissionAllowDoctorPage({
   agentId,
+  workflowId,
   ref,
   permission,
   action,
   initialExpiresIn,
 }: {
   agentId: string;
+  workflowId: string | null;
   ref: string;
   permission: string;
   action: "allow" | "deny";
   initialExpiresIn: UserPermissionGrantExpiresIn | null;
 }) {
   const agentLoadable = useLastLoadable(permissionAllowAgent$);
+  const workflowLoadable = useLastLoadable(permissionAllowWorkflow$);
   const userLoadable = useLastLoadable(user$);
   const grantsLoadable = useLastLoadable(permissionAllowUserPermissionGrants$);
   const metadataLoadable = useLoadable(
     firewallPermissionMetadataByConnector({ connectorType: ref }),
   );
+  const workflowScope = workflowId !== null;
 
   if (
-    agentLoadable.state === "loading" ||
+    (workflowScope
+      ? workflowLoadable.state === "loading"
+      : agentLoadable.state === "loading") ||
     userLoadable.state === "loading" ||
     grantsLoadable.state === "loading" ||
     metadataLoadable.state === "loading"
@@ -343,8 +370,11 @@ function PermissionAllowDoctorPage({
     return <LoadingCard />;
   }
 
-  if (agentLoadable.state === "hasError") {
+  if (!workflowScope && agentLoadable.state === "hasError") {
     return <ErrorMessage message="Failed to load agent" />;
+  }
+  if (workflowScope && workflowLoadable.state === "hasError") {
+    return <ErrorMessage message="Failed to load workflow" />;
   }
   if (grantsLoadable.state === "hasError") {
     return <ErrorMessage message="Failed to load permission grants" />;
@@ -353,9 +383,14 @@ function PermissionAllowDoctorPage({
     return <ErrorMessage message="Failed to load permission metadata" />;
   }
 
-  const agent = agentLoadable.data;
-  if (!agent) {
+  const agent = agentLoadable.state === "hasData" ? agentLoadable.data : null;
+  const workflow =
+    workflowLoadable.state === "hasData" ? workflowLoadable.data : null;
+  if (!workflowScope && !agent) {
     return <ErrorMessage message="Agent not found" />;
+  }
+  if (workflowScope && !workflow) {
+    return <ErrorMessage message="Workflow not found" />;
   }
   const metadata = metadataLoadable.data;
   if (!metadata) {
@@ -398,16 +433,27 @@ function PermissionAllowDoctorPage({
 
   const currentUser =
     userLoadable.state === "hasData" ? userLoadable.data : undefined;
+  const target: PermissionGrantTarget =
+    workflowScope && workflow
+      ? {
+          kind: "workflow",
+          id: workflow.id,
+          displayName: workflow.displayName ?? workflow.name,
+        }
+      : {
+          kind: "agent",
+          id: agentId,
+          displayName: agent?.displayName ?? agentId,
+          avatarUrl: agent?.avatarUrl ?? null,
+        };
 
   return (
     <ConfirmGrantCard
-      agentId={agentId}
+      target={target}
       connectorRef={ref}
       permission={focusedPermission}
       action={action}
       initialExpiresIn={initialExpiresIn}
-      agentDisplayName={agent.displayName ?? agentId}
-      agentAvatarUrl={agent.avatarUrl}
       userName={resolveUserName(currentUser)}
     />
   );
@@ -415,6 +461,7 @@ function PermissionAllowDoctorPage({
 
 export function PermissionAllowPage() {
   const agentId = useGet(permissionAllowAgentId$);
+  const workflowId = useGet(permissionAllowWorkflowId$);
   const ref = useGet(permissionAllowRef$);
   const permission = useGet(permissionAllowPermission$);
   const actionParam = useGet(permissionAllowActionParam$);
@@ -442,6 +489,7 @@ export function PermissionAllowPage() {
   return (
     <PermissionAllowDoctorPage
       agentId={agentId}
+      workflowId={workflowId}
       ref={ref}
       permission={permission}
       action={action ?? "allow"}

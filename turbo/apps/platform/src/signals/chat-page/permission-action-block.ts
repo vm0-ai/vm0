@@ -9,7 +9,10 @@ type PermissionAction = "allow" | "deny";
 type PlatformHostTarget = "api" | "www" | "app" | "platform";
 
 export interface PermissionActionDescriptor {
+  scope: "agent" | "workflow";
   agentId: string;
+  workflowId: string | null;
+  triggerId: string | null;
   connectorRef: FirewallMetadataConnectorType;
   permission: string;
   action: PermissionAction;
@@ -28,7 +31,10 @@ export type PermissionActionBlock = PermissionActionDescriptor & {
 };
 
 function permissionActionHref(descriptor: PermissionActionDescriptor): string {
-  const path = `/agents/${encodeURIComponent(descriptor.agentId)}/permissions`;
+  const path =
+    descriptor.scope === "workflow" && descriptor.workflowId
+      ? `/agents/${encodeURIComponent(descriptor.agentId)}/workflows/${encodeURIComponent(descriptor.workflowId)}/permissions`
+      : `/agents/${encodeURIComponent(descriptor.agentId)}/permissions`;
   return descriptor.search ? `${path}?${descriptor.search}` : path;
 }
 
@@ -152,8 +158,18 @@ export function parsePermissionActionUrl(
     return null;
   }
 
-  const match = url.pathname.match(/^\/agents\/([^/]+)\/permissions$/);
-  const agentId = match?.[1];
+  const workflowMatch = url.pathname.match(
+    /^\/agents\/([^/]+)\/workflows\/([^/]+)(?:\/triggers\/([^/]+))?\/permissions$/,
+  );
+  const agentMatch = url.pathname.match(/^\/agents\/([^/]+)\/permissions$/);
+  const agentId = workflowMatch?.[1] ?? agentMatch?.[1];
+  const workflowId = workflowMatch?.[2] ?? null;
+  const triggerId =
+    workflowMatch?.[3] ?? url.searchParams.get("triggerId") ?? null;
+  const normalizedSearchParams = new URLSearchParams(url.searchParams);
+  if (triggerId && !normalizedSearchParams.has("triggerId")) {
+    normalizedSearchParams.set("triggerId", triggerId);
+  }
   const connectorRef = url.searchParams.get("ref");
   const permission = url.searchParams.get("permission");
   const action = url.searchParams.get("action") ?? "allow";
@@ -176,7 +192,10 @@ export function parsePermissionActionUrl(
   }
 
   return {
+    scope: workflowId ? "workflow" : "agent",
     agentId,
+    workflowId,
+    triggerId,
     connectorRef,
     permission,
     action,
@@ -184,7 +203,7 @@ export function parsePermissionActionUrl(
     path,
     reason,
     expiresIn,
-    search: url.searchParams.toString(),
+    search: normalizedSearchParams.toString(),
     originalUrl: value,
   };
 }
