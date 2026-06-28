@@ -71,7 +71,10 @@ function isActivePreviousRunStatus(status: string): boolean {
 function workflowTriggerRunMetadata(trigger: TriggerRow) {
   return {
     workflowTriggerId: trigger.id,
-    runGroupId: trigger.runGroupId,
+    // The trigger id is the run group id: all runs fired by the same trigger
+    // share a group for chat folding, and `zero_runs.workflow_trigger_id`
+    // already carries the same value as a row-level reference.
+    runGroupId: trigger.id,
   };
 }
 
@@ -279,7 +282,7 @@ export const runWorkflowTriggerNow$ = command(
       runId: result.body.runId,
       prompt,
       appendQueueMarker: result.body.status === "queued",
-      runGroupId: trigger.runGroupId,
+      runGroupId: trigger.id,
     });
     signal.throwIfAborted();
 

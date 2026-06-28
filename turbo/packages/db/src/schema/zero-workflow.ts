@@ -165,7 +165,6 @@ export const zeroWorkflowTriggers = pgTable(
   "zero_workflow_triggers",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    runGroupId: uuid("run_group_id").defaultRandom().notNull(),
     orgId: text("org_id").notNull(),
     workflowId: uuid("workflow_id")
       .notNull()
@@ -205,7 +204,6 @@ export const zeroWorkflowTriggers = pgTable(
     return [
       index("idx_zero_workflow_triggers_workflow").on(table.workflowId),
       index("idx_zero_workflow_triggers_org").on(table.orgId),
-      uniqueIndex("idx_zero_workflow_triggers_run_group").on(table.runGroupId),
       // Partial index for the time poller: enabled triggers with a due next run.
       index("idx_zero_workflow_triggers_next_run")
         .on(table.nextRunAt)
