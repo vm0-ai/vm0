@@ -487,6 +487,93 @@ async def test_matching_sni_and_host_allows_connected_firewall_auth_after_retarg
     assert binding.original_address == ("140.82.112.5", 443)
 
 
+async def test_matching_sni_and_host_allows_connected_firewall_auth_with_verified_tls_no_peername(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        path="/repos",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+    flow.server_conn.address = ("api.github.com", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.peername = None
+    flow.client_conn.sockname = ("140.82.112.5", 443)
+    _mark_upstream_tls_verified(flow, sni="api.github.com")
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("203.0.113.10", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            side_effect=AssertionError("verified retargeted binding must not use fresh DNS"),
+        ),
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer x"
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.original_address == ("140.82.112.5", 443)
+
+
+async def test_matching_sni_and_host_blocks_connected_firewall_auth_without_endpoint_proof(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        path="/repos",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+    flow.server_conn.address = ("api.github.com", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.peername = None
+    flow.client_conn.sockname = ("127.0.0.1", 8080)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("203.0.113.10", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            side_effect=AssertionError("unverified direct binding must not use fresh DNS"),
+        ),
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    assert "Authorization" not in flow.request.headers
+
+
 async def test_matching_sni_and_host_blocks_connected_firewall_auth_with_stale_binding_peer(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):

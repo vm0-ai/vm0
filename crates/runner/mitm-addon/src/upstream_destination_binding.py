@@ -179,8 +179,6 @@ def refresh_server_binding_connected_address_if_matching(
         kinds=binding.kinds | frozenset((kind,)),
         original_address=connected_pair,
     )
-    if not _server_binding_matches_current_destination(server, refreshed_binding):
-        return False
     _bindings_by_server_id[server_id] = refreshed_binding
     _associate_server_with_client(server_id, client)
     return True
@@ -255,7 +253,7 @@ def _server_binding_matches_current_destination(
                 binding.original_address,
             )
 
-        return _address_matches(binding.host, binding.port, server_address)
+        return False
     return _address_matches(binding.host, binding.port, getattr(server, "address", None))
 
 

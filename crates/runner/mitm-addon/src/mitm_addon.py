@@ -898,9 +898,7 @@ def _ensure_bound_upstream_destination(
         return True
     # If has_bound_destination is true here, it is only an unconnected address
     # match. That is retargetable, not durable proof for later keepalive reuse.
-    if not _bind_flow_upstream_destination(flow, kind=kind):
-        return False
-    return _has_bound_upstream_destination(flow, allowed_kinds=allowed_kinds)
+    return _bind_flow_upstream_destination(flow, kind=kind)
 
 
 def _auth_base_body_header_check(flow: http.HTTPFlow) -> _AuthBaseBodyCheck:
