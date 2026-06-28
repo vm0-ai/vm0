@@ -1,5 +1,19 @@
 # Changelog
 
+## [1.185.1](https://github.com/vm0-ai/vm0/compare/api-v1.185.0...api-v1.185.1) (2026-06-28)
+
+
+### Refactoring
+
+* use trigger id as run group id for workflow triggers ([#19215](https://github.com/vm0-ai/vm0/issues/19215)) ([8ce95b7](https://github.com/vm0-ai/vm0/commit/8ce95b7a7ca0e6c28d355899b0c368f21c5a42b4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.76.1
+
 ## [1.185.0](https://github.com/vm0-ai/vm0/compare/api-v1.184.3...api-v1.185.0) (2026-06-27)
 
 
