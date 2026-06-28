@@ -972,9 +972,7 @@ async def test_test_connector_without_bypass_does_not_extend_existing_api_allow_
     assert flow.response.status_code == 403
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
     assert "Authorization" not in flow.request.headers
-    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.vm0.ai"
-    assert binding.kinds == frozenset(("api_allow",))
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 async def test_test_connector_rejects_stale_unconnected_api_allow_binding(
@@ -1014,9 +1012,7 @@ async def test_test_connector_rejects_stale_unconnected_api_allow_binding(
     assert flow.response.status_code == 403
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
     assert "Authorization" not in flow.request.headers
-    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.vm0.ai"
-    assert binding.kinds == frozenset(("api_allow",))
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 async def test_test_connector_rejects_mismatched_existing_binding(
@@ -1056,9 +1052,7 @@ async def test_test_connector_rejects_mismatched_existing_binding(
     assert flow.response.status_code == 403
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
     assert "Authorization" not in flow.request.headers
-    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
-    assert binding.host == "api.github.com"
-    assert binding.kinds == frozenset(("api_allow",))
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 async def test_matching_sni_and_host_blocks_test_connector_api_edge_without_bypass(

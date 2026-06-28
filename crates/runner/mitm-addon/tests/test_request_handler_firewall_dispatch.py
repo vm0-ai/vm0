@@ -12,6 +12,7 @@ import auth_base_forwarder
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_streaming
+import upstream_destination_binding
 import usage
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.jsonl_log_helpers import (
@@ -64,8 +65,10 @@ def _assert_fal_local_connector_diagnostic(flow):
 def _write_auth_base_firewall_registry(
     tmp_path,
     *,
+    auth_config: dict[str, object] | None = None,
     vm_fields: dict[str, object] | None = None,
 ):
+    auth_config = auth_config or {"headers": {}, "base": "${{ secrets.WEBHOOK_URL }}"}
     return _write_registry(
         tmp_path,
         vm_info=_single_firewall_vm(
@@ -73,7 +76,7 @@ def _write_auth_base_firewall_registry(
             firewall_name="webhook",
             api_entry={
                 "base": "https://placeholder.example.com",
-                "auth": {"headers": {}, "base": "${{ secrets.WEBHOOK_URL }}"},
+                "auth": auth_config,
                 "permissions": [{"name": "send", "rules": ["ANY /"]}],
             },
             network_policy={
@@ -881,6 +884,10 @@ async def test_auth_base_requestheaders_rejects_oversized_content_length_before_
 ):
     reg_path = _write_auth_base_firewall_registry(
         tmp_path,
+        auth_config={
+            "headers": {"Authorization": "Bearer ${{ secrets.WEBHOOK_TOKEN }}"},
+            "base": "${{ secrets.WEBHOOK_URL }}",
+        },
         vm_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
@@ -911,6 +918,7 @@ async def test_auth_base_requestheaders_rejects_oversized_content_length_before_
     assert flow.error.msg == Error.KILLED_MESSAGE
     assert flow.live is False
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_base_request_body_too_large"
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
     network_log_text = read_jsonl_text_after_flush(tmp_path / "net.jsonl")
     network_log_entry = json.loads(network_log_text)
@@ -1247,7 +1255,13 @@ async def test_auth_base_requestheaders_accepts_body_at_limit(
 async def test_auth_base_requestheaders_admission_released_after_success(
     tmp_path, real_flow, mitm_ctx, headers
 ):
-    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    reg_path = _write_auth_base_firewall_registry(
+        tmp_path,
+        auth_config={
+            "headers": {"Authorization": "Bearer ${{ secrets.WEBHOOK_TOKEN }}"},
+            "base": "${{ secrets.WEBHOOK_URL }}",
+        },
+    )
     request_body = b"x" * (mitm_addon.STREAM_BUFFER_LIMIT + 1)
     flow = real_flow(
         with_response=False,
@@ -1262,7 +1276,7 @@ async def test_auth_base_requestheaders_admission_released_after_success(
         request_body=request_body,
     )
     token_meta = {
-        "headers": {},
+        "headers": {"Authorization": "Bearer resolved"},
         "base": "https://real.example.com/webhook",
         "resolved_secrets": ["WEBHOOK_URL"],
         "refreshed_connectors": [],
@@ -1285,6 +1299,7 @@ async def test_auth_base_requestheaders_admission_released_after_success(
     assert flow.response is not None
     assert flow.response.status_code == 202
     assert flow.response.content == b"accepted"
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
     assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
 

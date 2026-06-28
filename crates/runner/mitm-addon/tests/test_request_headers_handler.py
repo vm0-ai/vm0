@@ -448,6 +448,7 @@ async def test_firewall_allow_current_server_binding_address_mismatch_blocks(
     assert diagnostics["direct_binding_present"] is True
     assert diagnostics["server_connected"] is False
     assert diagnostics["server_address"] == "203.0.113.99:443"
+    assert flow.server_conn.id not in upstream_destination_binding.binding_snapshot_for_tests()
 
 
 async def test_api_allow_small_bounded_body_retargets_unconnected_upstream(
@@ -1552,6 +1553,7 @@ async def test_firewall_allow_header_auth_failure_falls_back_to_request_hook(
     assert flow.response is not None
     assert flow.response.status_code == 424
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "connector_not_configured"
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 async def test_firewall_allow_header_auth_cancellation_restores_probe_state(

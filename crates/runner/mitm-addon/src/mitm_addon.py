@@ -1508,6 +1508,7 @@ def _block_upstream_destination_unbound(
     proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     server_address = getattr(flow.server_conn, "address", None)
     diagnostics = _upstream_binding_diagnostics(flow, reason=reason)
+    upstream_destination_binding.forget_server_binding(flow.server_conn)
     log_proxy_entry(
         proxy_log_path,
         "warn",
@@ -2118,6 +2119,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
             )
         flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+        upstream_destination_binding.forget_server_binding(flow.server_conn)
         flow.kill()
         return None
 
@@ -2147,6 +2149,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
             )
             flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
             flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+            upstream_destination_binding.forget_server_binding(flow.server_conn)
             flow.kill()
             return None
         try:
@@ -2347,6 +2350,8 @@ async def request(flow: http.HTTPFlow) -> None:
                 _is_model_provider_usage_observable(allow.name, vm_info),
             )
             auth_result = await handle_firewall_request(flow, allow, vm_info)
+            if auth_result is not FirewallAuthHandlingResult.CONTINUE_UPSTREAM:
+                upstream_destination_binding.forget_server_binding(flow.server_conn)
             if auth_result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
                 # Local firewall/auth errors never reach a provider. They only
                 # need pre-tracking to keep shutdown from racing while auth is
