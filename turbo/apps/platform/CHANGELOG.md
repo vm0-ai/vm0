@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.504.2](https://github.com/vm0-ai/vm0/compare/app-v0.504.1...app-v0.504.2) (2026-06-28)
+
+
+### Bug Fixes
+
+* **app:** simplify workflow trigger creation prompts ([#19244](https://github.com/vm0-ai/vm0/issues/19244)) ([8b5680a](https://github.com/vm0-ai/vm0/commit/8b5680a78427aae3691a1f83a68e536f5d5084ac))
+
 ## [0.504.1](https://github.com/vm0-ai/vm0/compare/app-v0.504.0...app-v0.504.1) (2026-06-28)
 
 
