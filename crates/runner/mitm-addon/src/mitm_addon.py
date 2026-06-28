@@ -828,21 +828,18 @@ def _bind_flow_upstream_destination(
         )
 
     if flow.server_conn.connected:
-        if _api_hostname_matches(
-            normalized_host
-        ) and _request_allows_connected_platform_api_edge_fallback(flow, kind=kind):
-            connected_address = _connected_ip_destination_endpoint(
-                flow.server_conn,
-                port=flow.request.port,
-                extra_endpoints=(_connection_sockname(flow.client_conn),),
-            )
-        else:
-            connected_address = _connected_trusted_destination_endpoint(
-                flow.server_conn,
-                host=normalized_host,
-                port=flow.request.port,
-                extra_endpoints=(_connection_sockname(flow.client_conn),),
-            )
+        if (
+            kind == "connector_auth"
+            and _api_hostname_matches(normalized_host)
+            and not _request_allows_connected_platform_connector_auth_fallback(flow)
+        ):
+            return False
+        connected_address = _connected_verified_tls_destination_endpoint(
+            flow.server_conn,
+            host=normalized_host,
+            port=flow.request.port,
+            extra_endpoints=(_connection_sockname(flow.client_conn),),
+        )
         if connected_address is None:
             return False
         original_address = connected_address
@@ -1689,32 +1686,39 @@ def _resolved_trusted_host_addresses(host: str, port: int) -> frozenset[str]:
     return resolved_addresses
 
 
-def _connected_trusted_destination_endpoint(
+def _connected_verified_tls_destination_endpoint(
     server: object,
     *,
     host: str,
     port: int,
     extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
 ) -> tuple[str, int] | None:
-    for peer in _connected_destination_candidate_endpoints(
+    if bool(getattr(getattr(ctx, "options", object()), "ssl_insecure", False)):
+        return None
+    if not bool(getattr(server, "tls_established", False)):
+        return None
+    if getattr(server, "error", None):
+        return None
+    server_sni = getattr(server, "sni", None)
+    if not isinstance(server_sni, str):
+        return None
+    try:
+        normalized_sni = normalize_trusted_hostname(server_sni)
+    except (UnicodeError, ValueError):
+        return None
+    if normalized_sni != host:
+        return None
+    if not getattr(server, "certificate_list", ()):
+        return None
+
+    # mitmproxy verifies the upstream certificate against server.sni when
+    # ssl_insecure is false. At this point the connected IP is authenticated as
+    # the same host we plan to bind, so CDN/Anycast DNS drift does not matter.
+    return _connected_ip_destination_endpoint(
         server,
+        port=port,
         extra_endpoints=extra_endpoints,
-    ):
-        if peer is None:
-            continue
-
-        peer_host, peer_port = peer
-        if peer_port != port:
-            continue
-
-        peer_ip = _ip_address_text(peer_host)
-        if peer_ip is None:
-            continue
-
-        if peer_ip in _resolved_trusted_host_addresses(host, port):
-            return peer
-
-    return None
+    )
 
 
 def _connected_ip_destination_endpoint(
@@ -1740,15 +1744,6 @@ def _connected_ip_destination_endpoint(
     return None
 
 
-def _request_has_platform_api_edge_authorization(flow: http.HTTPFlow) -> bool:
-    if not flow.request.path.startswith("/api/webhooks/agent/"):
-        return False
-    sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY)
-    if not isinstance(sandbox_token, str) or not sandbox_token:
-        return False
-    return flow.request.headers.get("Authorization") == f"Bearer {sandbox_token}"
-
-
 def _request_has_platform_test_endpoint_bypass(flow: http.HTTPFlow) -> bool:
     if not flow.request.path.startswith("/api/test/"):
         return False
@@ -1758,24 +1753,12 @@ def _request_has_platform_test_endpoint_bypass(flow: http.HTTPFlow) -> bool:
     return flow.request.headers.get(_TEST_ENDPOINT_BYPASS_HEADER) == expected_bypass
 
 
-def _request_allows_connected_platform_api_edge_fallback(
-    flow: http.HTTPFlow,
-    *,
-    kind: upstream_destination_binding.BindingKind,
-) -> bool:
-    if kind == "api_allow":
-        # Agent webhooks carry the per-job sandbox token and never inject
-        # connector credentials. This request-stage fallback handles
-        # load-balanced API edge IPs when earlier connection hooks did not
-        # leave a binding.
-        return _request_has_platform_api_edge_authorization(flow)
-    if kind == "connector_auth":
-        # Synthetic test providers live on the platform API preview host but
-        # intentionally exercise connector auth injection instead of API
-        # auto-allow. Keep this fallback limited to test endpoints gated by the
-        # same internal bypass secret that the API route validates.
-        return _request_has_platform_test_endpoint_bypass(flow)
-    return False
+def _request_allows_connected_platform_connector_auth_fallback(flow: http.HTTPFlow) -> bool:
+    # Synthetic test providers live on the platform API preview host but
+    # intentionally exercise connector auth injection instead of API auto-allow.
+    # Keep this fallback limited to test endpoints gated by the same internal
+    # bypass secret that the API route validates.
+    return _request_has_platform_test_endpoint_bypass(flow)
 
 
 def reset_upstream_destination_resolution_cache_for_tests() -> None:

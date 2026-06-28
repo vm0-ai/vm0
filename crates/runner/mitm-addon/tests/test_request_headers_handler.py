@@ -26,6 +26,13 @@ _BROWSER_USER_AGENT = (
 )
 
 
+def _mark_upstream_tls_verified(flow, *, sni: str) -> None:
+    flow.server_conn.sni = sni
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
+
+
 def _request_stream(flow):
     stream = flow.request.stream
     assert callable(stream)
@@ -128,7 +135,7 @@ async def test_capture_enabled_api_allow_blocks_connected_unbound_edge_upstream(
         patch.object(
             mitm_addon.socket,
             "getaddrinfo",
-            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))],
+            side_effect=AssertionError("unverified connected edge must not use fresh DNS"),
         ),
     ):
         mitm_addon.requestheaders(flow)
@@ -164,13 +171,14 @@ async def test_capture_enabled_api_allow_uses_authenticated_connected_edge_upstr
     )
     flow.server_conn.peername = ("203.0.113.10", 443)
     flow.server_conn.state = connection.ConnectionState.OPEN
+    _mark_upstream_tls_verified(flow, sni="api.vm0.ai")
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         patch.object(
             mitm_addon.socket,
             "getaddrinfo",
-            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))],
+            side_effect=AssertionError("verified connected edge must not use fresh DNS"),
         ),
     ):
         mitm_addon.requestheaders(flow)
@@ -185,7 +193,7 @@ async def test_capture_enabled_api_allow_uses_authenticated_connected_edge_upstr
     assert binding.original_address == ("203.0.113.10", 443)
 
 
-async def test_capture_enabled_api_allow_uses_connected_upstream_address_when_dns_verified(
+async def test_capture_enabled_api_allow_uses_connected_upstream_address_when_tls_verified(
     tmp_path, real_flow, mitm_ctx, headers
 ):
     reg_path = _write_registry(
@@ -208,13 +216,14 @@ async def test_capture_enabled_api_allow_uses_connected_upstream_address_when_dn
     flow.server_conn.peername = None
     flow.client_conn.sockname = ("198.18.20.34", 443)
     flow.server_conn.state = connection.ConnectionState.OPEN
+    _mark_upstream_tls_verified(flow, sni="api.vm0.ai")
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
         patch.object(
             mitm_addon.socket,
             "getaddrinfo",
-            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("198.18.20.34", 443))],
+            side_effect=AssertionError("verified connected edge must not use fresh DNS"),
         ),
     ):
         mitm_addon.requestheaders(flow)
@@ -977,7 +986,7 @@ async def test_firewall_allow_header_auth_requestheaders_falls_back_when_upstrea
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
 
 
-async def test_firewall_allow_header_auth_uses_connected_upstream_when_dns_verified(
+async def test_firewall_allow_header_auth_uses_connected_upstream_when_tls_verified(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
     reg_path = _write_registry(
@@ -1012,6 +1021,7 @@ async def test_firewall_allow_header_auth_uses_connected_upstream_when_dns_verif
     )
     flow.server_conn.peername = ("172.66.0.243", 443)
     flow.server_conn.state = connection.ConnectionState.OPEN
+    _mark_upstream_tls_verified(flow, sni="api.github.com")
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -1019,7 +1029,7 @@ async def test_firewall_allow_header_auth_uses_connected_upstream_when_dns_verif
         patch.object(
             mitm_addon.socket,
             "getaddrinfo",
-            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("172.66.0.243", 443))],
+            side_effect=AssertionError("verified connected connector must not use fresh DNS"),
         ),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -1041,7 +1051,7 @@ async def test_firewall_allow_header_auth_uses_connected_upstream_when_dns_verif
     assert binding.original_address == ("172.66.0.243", 443)
 
 
-async def test_firewall_allow_header_auth_blocks_when_connected_peer_misses_dns(
+async def test_firewall_allow_header_auth_blocks_without_verified_connected_tls(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
     reg_path = _write_registry(
@@ -1084,7 +1094,7 @@ async def test_firewall_allow_header_auth_blocks_when_connected_peer_misses_dns(
         patch.object(
             mitm_addon.socket,
             "getaddrinfo",
-            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("172.66.0.243", 443))],
+            side_effect=AssertionError("unverified connected connector must not use fresh DNS"),
         ),
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
@@ -1322,7 +1332,7 @@ async def test_firewall_allow_small_bounded_body_retargets_unconnected_upstream(
     assert binding.original_address == ("203.0.113.10", 443)
 
 
-async def test_firewall_allow_small_bounded_body_uses_connected_upstream_when_dns_verified(
+async def test_firewall_allow_small_bounded_body_uses_connected_upstream_when_tls_verified(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
     reg_path = _write_registry(
@@ -1354,6 +1364,7 @@ async def test_firewall_allow_small_bounded_body_uses_connected_upstream_when_dn
     )
     flow.server_conn.peername = ("172.66.0.243", 443)
     flow.server_conn.state = connection.ConnectionState.OPEN
+    _mark_upstream_tls_verified(flow, sni="api.github.com")
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -1361,7 +1372,7 @@ async def test_firewall_allow_small_bounded_body_uses_connected_upstream_when_dn
         patch.object(
             mitm_addon.socket,
             "getaddrinfo",
-            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("172.66.0.243", 443))],
+            side_effect=AssertionError("verified connected connector must not use fresh DNS"),
         ),
     ):
         assert mitm_addon.requestheaders(flow) is None
@@ -1381,7 +1392,7 @@ async def test_firewall_allow_small_bounded_body_uses_connected_upstream_when_dn
     assert binding.original_address == ("172.66.0.243", 443)
 
 
-async def test_firewall_allow_small_bounded_body_blocks_when_connected_peer_misses_dns(
+async def test_firewall_allow_small_bounded_body_blocks_without_verified_connected_tls(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
     reg_path = _write_registry(
@@ -1421,7 +1432,7 @@ async def test_firewall_allow_small_bounded_body_blocks_when_connected_peer_miss
         patch.object(
             mitm_addon.socket,
             "getaddrinfo",
-            return_value=[(socket.AF_INET, socket.SOCK_STREAM, 0, "", ("172.66.0.243", 443))],
+            side_effect=AssertionError("unverified connected connector must not use fresh DNS"),
         ),
     ):
         assert mitm_addon.requestheaders(flow) is None
