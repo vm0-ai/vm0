@@ -1,5 +1,9 @@
-import type { ReactNode } from "react";
-import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import {
+  useGet,
+  useLastLoadable,
+  useLastResolved,
+  useSet,
+} from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import type { ZeroWorkflowTriggerSummary } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -15,7 +19,7 @@ import {
   IconPlus,
   IconRepeat,
 } from "@tabler/icons-react";
-import { Button, cn } from "@vm0/ui";
+import { Button } from "@vm0/ui";
 import {
   Dialog,
   DialogContent,
@@ -30,8 +34,10 @@ import { agents$ } from "../../signals/agent.ts";
 import {
   selectedWorkflowAutomationAgentId$,
   setSelectedWorkflowAutomationAgentId$,
+  setWorkflowAutomationAgentQuery$,
   setWorkflowAutomationDialogOpen$,
   setWorkflowAutomationDialogStep$,
+  workflowAutomationAgentQuery$,
   workflowAutomationDialogOpen$,
   workflowAutomationDialogStep$,
 } from "../../signals/automation-page/workflow-trigger-automation-dialog.ts";
@@ -49,8 +55,16 @@ import {
   cronWallTimeInTimezone,
 } from "../../signals/zero-page/cron.ts";
 import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
+import { pinnedAgentIds$ } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
+import {
+  AgentDialogAgentButton,
+  agentDialogMatchesQuery,
+  AgentDialogSearch,
+  AgentDialogSection,
+} from "./zero-sidebar-dialogs.tsx";
+import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import {
   agentLabel,
   formatWorkflowIntervalSeconds,
@@ -409,107 +423,142 @@ function EmptyTriggers({ onAdd }: { readonly onAdd: () => void }) {
   );
 }
 
-function AgentOption({
-  selected,
-  onSelect,
-  children,
-}: {
-  readonly selected: boolean;
-  readonly onSelect: () => void;
-  readonly children: ReactNode;
-}) {
-  return (
-    <button
-      type="button"
-      className={cn(
-        "flex min-h-12 w-full min-w-0 items-center justify-between rounded-lg border px-3 py-2 text-left text-sm transition-colors",
-        selected
-          ? "border-primary/40 bg-primary/5 text-foreground"
-          : "border-border/60 text-foreground hover:bg-gray-50",
-      )}
-      onClick={onSelect}
-    >
-      {children}
-    </button>
-  );
-}
-
-function WorkflowAutomationStepPills({ step }: { readonly step: 1 | 2 }) {
-  return (
-    <div className="flex items-center gap-2 text-sm text-muted-foreground">
-      <span
-        className={cn(
-          "inline-flex h-7 items-center rounded-full px-3",
-          step === 1 ? "bg-gray-50 text-foreground" : "text-muted-foreground",
-        )}
-      >
-        1 Agent
-      </span>
-      <span
-        className={cn(
-          "inline-flex h-7 items-center rounded-full px-3",
-          step === 2 ? "bg-gray-50 text-foreground" : "text-muted-foreground",
-        )}
-      >
-        2 Trigger
-      </span>
-    </div>
-  );
-}
-
 function AgentSelectionStep({
   agents,
-  selectedAgentId,
   onSelectAgent,
 }: {
   readonly agents: readonly TeamComposeItem[];
-  readonly selectedAgentId: string;
   readonly onSelectAgent: (agentId: string) => void;
 }) {
+  const query = useGet(workflowAutomationAgentQuery$);
+  const setQuery = useSet(setWorkflowAutomationAgentQuery$);
+  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
+  const pinned = pinnedIds
+    .map((id) => {
+      return agents.find((agent) => {
+        return agent.id === id;
+      });
+    })
+    .filter((agent): agent is TeamComposeItem => {
+      return agent !== undefined;
+    });
+  const unpinned = agents.filter((agent) => {
+    return !pinnedIds.includes(agent.id);
+  });
+  const trimmedQuery = query.trim().toLowerCase();
+  const filteredPinned = trimmedQuery
+    ? pinned.filter((agent) => {
+        return agentDialogMatchesQuery(agent, trimmedQuery);
+      })
+    : pinned;
+  const filteredUnpinned = trimmedQuery
+    ? unpinned.filter((agent) => {
+        return agentDialogMatchesQuery(agent, trimmedQuery);
+      })
+    : unpinned;
+
   if (agents.length === 0) {
     return (
-      <div className="rounded-lg border border-border/60 px-3 py-8 text-center text-sm text-muted-foreground">
-        No agents yet
+      <div className="flex min-h-0 flex-1 flex-col">
+        <AgentDialogSearch query={query} setQuery={setQuery} />
+        <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
+          <p className="px-1 py-2 text-xs text-muted-foreground">
+            No agents yet
+          </p>
+        </div>
       </div>
     );
   }
 
   return (
-    <div className="grid gap-2">
-      {agents.map((agent) => {
-        const selected = selectedAgentId === agent.id;
-        return (
-          <AgentOption
-            key={agent.id}
-            selected={selected}
-            onSelect={() => {
-              onSelectAgent(agent.id);
-            }}
+    <div className="flex min-h-0 flex-1 flex-col">
+      <AgentDialogSearch query={query} setQuery={setQuery} />
+      <div className="min-h-0 flex-1 overflow-y-auto pb-2">
+        {filteredPinned.length > 0 ? (
+          <AgentDialogSection label="Pinned">
+            {filteredPinned.map((agent) => {
+              return (
+                <div
+                  key={agent.id}
+                  className="flex items-center gap-2 rounded-lg px-1 py-2 transition-colors hover:bg-accent"
+                >
+                  <AgentDialogAgentButton
+                    agent={agent}
+                    onSelect={() => {
+                      onSelectAgent(agent.id);
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </AgentDialogSection>
+        ) : null}
+
+        {filteredUnpinned.length > 0 ? (
+          <AgentDialogSection
+            label={filteredPinned.length > 0 ? "Others" : "Agents"}
+            className="pb-3"
           >
-            <span className="min-w-0 truncate">
-              {agent.displayName ?? agent.id}
-            </span>
-            <span className="ml-3 shrink-0 text-xs text-muted-foreground">
-              {selected ? "Selected" : "Select"}
-            </span>
-          </AgentOption>
-        );
-      })}
+            {filteredUnpinned.map((agent) => {
+              return (
+                <div
+                  key={agent.id}
+                  className="flex items-center gap-2 rounded-lg px-1 py-2 transition-colors hover:bg-accent"
+                >
+                  <AgentDialogAgentButton
+                    agent={agent}
+                    onSelect={() => {
+                      onSelectAgent(agent.id);
+                    }}
+                  />
+                </div>
+              );
+            })}
+          </AgentDialogSection>
+        ) : null}
+
+        {trimmedQuery &&
+        filteredPinned.length === 0 &&
+        filteredUnpinned.length === 0 ? (
+          <div className="px-5 pb-5">
+            <p className="px-1 py-2 text-xs text-muted-foreground">
+              No agents found
+            </p>
+          </div>
+        ) : null}
+      </div>
     </div>
   );
 }
 
 function TriggerSelectionStep({
-  selectedAgentName,
+  selectedAgent,
   onSelectOption,
 }: {
-  readonly selectedAgentName: string;
+  readonly selectedAgent: TeamComposeItem | null;
   readonly onSelectOption: (option: WorkflowAutomationOption) => void;
 }) {
+  const selectedAgentName = selectedAgent?.displayName ?? "Selected agent";
   return (
     <div className="grid gap-2">
-      <div className="mb-1 text-sm text-muted-foreground">
-        {selectedAgentName}
+      <div className="mb-2 flex min-w-0 items-center gap-2 px-1 py-1">
+        {selectedAgent ? (
+          <AgentAvatarImg
+            name={selectedAgent.id}
+            alt={selectedAgentName}
+            className="h-8 w-8 shrink-0 rounded-lg bg-gray-100 object-cover object-top"
+          />
+        ) : (
+          <span className="h-8 w-8 shrink-0 rounded-lg bg-gray-100" />
+        )}
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium text-foreground">
+            {selectedAgentName}
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">
+            What do you want me to do?
+          </span>
+        </span>
       </div>
       {WORKFLOW_AUTOMATION_OPTIONS.map((option) => {
         const Icon = option.Icon;
@@ -542,19 +591,15 @@ function TriggerSelectionStep({
 
 function WorkflowAutomationDialogFooter({
   step,
-  selectedAgentId,
   onBack,
   onCancel,
-  onNext,
 }: {
   readonly step: 1 | 2;
-  readonly selectedAgentId: string;
   readonly onBack: () => void;
   readonly onCancel: () => void;
-  readonly onNext: () => void;
 }) {
   return (
-    <DialogFooter>
+    <DialogFooter className="shrink-0 border-t border-border/60 bg-card px-5 py-4">
       {step === 2 ? (
         <Button
           type="button"
@@ -569,11 +614,6 @@ function WorkflowAutomationDialogFooter({
       <Button type="button" variant="outline" onClick={onCancel}>
         Cancel
       </Button>
-      {step === 1 ? (
-        <Button type="button" disabled={!selectedAgentId} onClick={onNext}>
-          Next
-        </Button>
-      ) : null}
     </DialogFooter>
   );
 }
@@ -588,11 +628,16 @@ function CreateWorkflowAutomationDialog() {
   const selectedAgentIdState = useGet(selectedWorkflowAutomationAgentId$);
   const setSelectedAgentId = useSet(setSelectedWorkflowAutomationAgentId$);
   const navigate = useSet(detachedNavigateTo$);
-  const selectedAgentId = selectedAgentIdState || agents[0]?.id || "";
+  const selectedAgentId = selectedAgentIdState;
   const selectedAgent =
     agents.find((agent) => {
       return agent.id === selectedAgentId;
     }) ?? null;
+
+  const selectAgent = (agentId: string) => {
+    setSelectedAgentId(agentId);
+    setStep(2);
+  };
 
   const startWorkflowCreation = (option: WorkflowAutomationOption) => {
     if (!selectedAgentId) {
@@ -607,40 +652,34 @@ function CreateWorkflowAutomationDialog() {
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
-      <DialogContent className="max-w-2xl">
-        <DialogHeader>
-          <DialogTitle>Add automation</DialogTitle>
-          <DialogDescription>
-            Choose the agent and trigger type for this workflow automation.
+      <DialogContent className="zero-app !flex max-h-[min(720px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] !flex-col !overflow-hidden gap-0 p-0 sm:max-w-xl">
+        <DialogHeader className="shrink-0 px-5 pb-3 pt-5">
+          <DialogTitle className="text-base font-semibold">
+            Add automation
+          </DialogTitle>
+          <DialogDescription className="mt-1 text-sm text-muted-foreground">
+            Choose the agent and trigger type for this workflow.
           </DialogDescription>
         </DialogHeader>
 
-        <WorkflowAutomationStepPills step={step} />
-
         {step === 1 ? (
-          <AgentSelectionStep
-            agents={agents}
-            selectedAgentId={selectedAgentId}
-            onSelectAgent={setSelectedAgentId}
-          />
+          <AgentSelectionStep agents={agents} onSelectAgent={selectAgent} />
         ) : (
-          <TriggerSelectionStep
-            selectedAgentName={selectedAgent?.displayName ?? "Selected agent"}
-            onSelectOption={startWorkflowCreation}
-          />
+          <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
+            <TriggerSelectionStep
+              selectedAgent={selectedAgent}
+              onSelectOption={startWorkflowCreation}
+            />
+          </div>
         )}
 
         <WorkflowAutomationDialogFooter
           step={step}
-          selectedAgentId={selectedAgentId}
           onBack={() => {
             setStep(1);
           }}
           onCancel={() => {
             setOpen(false);
-          }}
-          onNext={() => {
-            setStep(2);
           }}
         />
       </DialogContent>
