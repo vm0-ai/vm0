@@ -64,6 +64,7 @@ import {
   AgentDialogSearch,
   AgentDialogSection,
 } from "./zero-sidebar-dialogs.tsx";
+import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import {
   agentLabel,
   formatWorkflowIntervalSeconds,
@@ -531,16 +532,33 @@ function AgentSelectionStep({
 }
 
 function TriggerSelectionStep({
-  selectedAgentName,
+  selectedAgent,
   onSelectOption,
 }: {
-  readonly selectedAgentName: string;
+  readonly selectedAgent: TeamComposeItem | null;
   readonly onSelectOption: (option: WorkflowAutomationOption) => void;
 }) {
+  const selectedAgentName = selectedAgent?.displayName ?? "Selected agent";
   return (
     <div className="grid gap-2">
-      <div className="mb-1 text-sm text-muted-foreground">
-        {selectedAgentName}
+      <div className="mb-2 flex min-w-0 items-center gap-2 rounded-lg border border-border/60 bg-gray-50 p-2.5">
+        {selectedAgent ? (
+          <AgentAvatarImg
+            name={selectedAgent.id}
+            alt={selectedAgentName}
+            className="h-8 w-8 shrink-0 rounded-lg bg-gray-100 object-cover object-top"
+          />
+        ) : (
+          <span className="h-8 w-8 shrink-0 rounded-lg bg-gray-100" />
+        )}
+        <span className="min-w-0">
+          <span className="block truncate text-sm font-medium text-foreground">
+            {selectedAgentName}
+          </span>
+          <span className="block truncate text-xs text-muted-foreground">
+            What do you want me to do?
+          </span>
+        </span>
       </div>
       {WORKFLOW_AUTOMATION_OPTIONS.map((option) => {
         const Icon = option.Icon;
@@ -649,7 +667,7 @@ function CreateWorkflowAutomationDialog() {
         ) : (
           <div className="px-5">
             <TriggerSelectionStep
-              selectedAgentName={selectedAgent?.displayName ?? "Selected agent"}
+              selectedAgent={selectedAgent}
               onSelectOption={startWorkflowCreation}
             />
           </div>

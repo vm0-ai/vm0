@@ -462,6 +462,9 @@ describe("zero automations page", () => {
       await waitFor(() => {
         expect(within(dialog).queryByText("1 Agent")).not.toBeInTheDocument();
         expect(within(dialog).queryByText("2 Trigger")).not.toBeInTheDocument();
+        expect(
+          within(dialog).getByText("What do you want me to do?"),
+        ).toBeInTheDocument();
         expect(within(dialog).getByText(triggerName)).toBeInTheDocument();
       });
 
