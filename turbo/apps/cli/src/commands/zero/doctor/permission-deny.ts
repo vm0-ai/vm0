@@ -78,6 +78,9 @@ function parseDeniedUrl(url: string): URL {
     if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
       throw invalidUrlError();
     }
+    if (parsed.username !== "" || parsed.password !== "") {
+      throw invalidUrlError();
+    }
     return parsed;
   } catch {
     throw invalidUrlError();
@@ -119,6 +122,21 @@ function baseUrlTemplateToPattern(base: string): string | null {
     return `{${name}}`;
   });
   return pattern.includes("://") ? pattern : null;
+}
+
+function connectorRefHostToken(connectorRef: string): string {
+  return connectorRef.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
+}
+
+function hostnameMatchesConnectorRef(url: URL, connectorRef: string): boolean {
+  const token = connectorRefHostToken(connectorRef);
+  if (token.length < 3) return false;
+  return (url.hostname || "")
+    .toLowerCase()
+    .split(/[^a-z0-9]+/)
+    .some((part) => {
+      return part === token;
+    });
 }
 
 function matchApiBaseUrl(
@@ -163,6 +181,8 @@ function matchApiBaseUrl(
 
 function findBestBaseMatch(
   url: string,
+  deniedUrl: URL,
+  connectorRef: string,
   apis: readonly { readonly base: string }[],
 ): PermissionDenyBaseMatch | null {
   let bestMatch: PermissionDenyBaseMatch | null = null;
@@ -179,13 +199,13 @@ function findBestBaseMatch(
     return name !== null && !process.env[name];
   });
   if (unresolvedWholeBaseApis.length !== 1) return null;
+  if (!hostnameMatchesConnectorRef(deniedUrl, connectorRef)) return null;
 
-  const parsed = new URL(url);
   const api = unresolvedWholeBaseApis[0]!;
   return {
     apiBase: api.base,
     displayBase: api.base,
-    relativePath: parsed.pathname || "/",
+    relativePath: deniedUrl.pathname || "/",
     score: 0,
   };
 }
@@ -278,7 +298,12 @@ Notes:
 
         const label =
           getFirewallPermissionSummary(connectorRef)?.label ?? connectorRef;
-        const match = findBestBaseMatch(opts.url, metadata.apis);
+        const match = findBestBaseMatch(
+          opts.url,
+          deniedUrl,
+          connectorRef,
+          metadata.apis,
+        );
         if (!match) {
           throw new Error(
             `No registered ${label} base URL matches the provided URL.`,

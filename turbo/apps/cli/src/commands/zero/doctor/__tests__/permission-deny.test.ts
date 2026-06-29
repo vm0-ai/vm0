@@ -342,6 +342,50 @@ describe("zero doctor permission-deny command", () => {
       expect(mockConsoleLog).not.toHaveBeenCalled();
     });
 
+    it("should not use opaque base fallback for unrelated hosts", async () => {
+      await expect(async () => {
+        await permissionDenyCommand.parseAsync([
+          "node",
+          "cli",
+          "reap",
+          "--method",
+          "GET",
+          "--url",
+          "https://example.com/v1/accounts",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "No registered Reap base URL matches the provided URL.",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleLog).not.toHaveBeenCalled();
+    });
+
+    it("should not use opaque base fallback for connector substrings in host labels", async () => {
+      await expect(async () => {
+        await permissionDenyCommand.parseAsync([
+          "node",
+          "cli",
+          "reap",
+          "--method",
+          "GET",
+          "--url",
+          "https://notreap.example.com/v1/accounts",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "No registered Reap base URL matches the provided URL.",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleLog).not.toHaveBeenCalled();
+    });
+
     it("should not ignore configured env base URL variable mismatches", async () => {
       vi.stubEnv("QUICKBOOKS_REALM_ID", "999");
 
@@ -432,6 +476,28 @@ describe("zero doctor permission-deny command", () => {
       expect(mockConsoleLog).not.toHaveBeenCalled();
     });
 
+    it("should reject URLs with userinfo", async () => {
+      await expect(async () => {
+        await permissionDenyCommand.parseAsync([
+          "node",
+          "cli",
+          "slack",
+          "--method",
+          "GET",
+          "--url",
+          "https://user:secret@slack.com/api/conversations.list",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "permission-deny requires --url to be a valid absolute http or https URL.",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleLog).not.toHaveBeenCalled();
+    });
+
     it("should reject invalid HTTP methods", async () => {
       await expect(async () => {
         await permissionDenyCommand.parseAsync([
@@ -473,6 +539,25 @@ describe("zero doctor permission-deny command", () => {
         ),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should preserve raw encoded paths when matching the selected base", async () => {
+      await permissionDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--method",
+        "GET",
+        "--url",
+        "https://slack.com/api/%2e%2e/conversations.list",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        "Slack permission filtered GET /%2e%2e/conversations.list relative to base URL https://slack.com/api",
+      );
+      expect(logCalls).toContain("No named permission was found");
+      expect(mockConsoleError).not.toHaveBeenCalled();
     });
 
     it("should not echo URL query strings in diagnostic output", async () => {
