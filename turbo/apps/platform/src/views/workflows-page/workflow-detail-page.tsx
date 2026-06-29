@@ -22,6 +22,7 @@ import {
   IconAlertTriangle,
   IconArrowRight,
   IconBrandGithub,
+  IconCalendarTime,
   IconChevronDown,
   IconClock,
   IconCopy,
@@ -2528,6 +2529,48 @@ function TriggerCreateMenuItem({
   );
 }
 
+function GithubLabelTriggerCreateMenuItem({
+  onSelect,
+}: {
+  readonly onSelect: () => void;
+}) {
+  return (
+    <TriggerCreateMenuItem
+      title="GitHub label applied"
+      description="Run when an issue or pull request gets a label."
+      icon={
+        <IconBrandGithub
+          size={15}
+          stroke={1.5}
+          className="mt-0.5 shrink-0 text-muted-foreground"
+        />
+      }
+      onSelect={onSelect}
+    />
+  );
+}
+
+function GoogleCalendarTriggerCreateMenuItem({
+  onSelect,
+}: {
+  readonly onSelect: () => void;
+}) {
+  return (
+    <TriggerCreateMenuItem
+      title="Google Calendar event"
+      description="Run when a new calendar event is created."
+      icon={
+        <IconCalendarTime
+          size={15}
+          stroke={1.5}
+          className="mt-0.5 shrink-0 text-muted-foreground"
+        />
+      }
+      onSelect={onSelect}
+    />
+  );
+}
+
 function TriggerCreateMenu({
   onSelect,
   githubLabelTriggersEnabled,
@@ -2622,32 +2665,14 @@ function TriggerCreateMenu({
           }}
         />
         {githubLabelTriggersEnabled ? (
-          <TriggerCreateMenuItem
-            title="GitHub label applied"
-            description="Run when an issue or pull request gets a label."
-            icon={
-              <IconBrandGithub
-                size={15}
-                stroke={1.5}
-                className="mt-0.5 shrink-0 text-muted-foreground"
-              />
-            }
+          <GithubLabelTriggerCreateMenuItem
             onSelect={() => {
               onSelect("github-label");
             }}
           />
         ) : null}
         {googleCalendarTriggersEnabled ? (
-          <TriggerCreateMenuItem
-            title="Google Calendar event"
-            description="Run when a new calendar event is created."
-            icon={
-              <IconCalendarTime
-                size={15}
-                stroke={1.5}
-                className="mt-0.5 shrink-0 text-muted-foreground"
-              />
-            }
+          <GoogleCalendarTriggerCreateMenuItem
             onSelect={() => {
               onSelect("google-calendar");
             }}

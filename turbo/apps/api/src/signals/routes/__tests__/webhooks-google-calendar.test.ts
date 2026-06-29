@@ -155,8 +155,7 @@ function configureGoogleCalendarApiMock(args: {
         );
         return HttpResponse.json({
           items: args.incrementalItems ?? [],
-          nextSyncToken:
-            args.incrementalNextSyncToken ?? "calendar-sync-next",
+          nextSyncToken: args.incrementalNextSyncToken ?? "calendar-sync-next",
         });
       },
     ),
@@ -330,9 +329,7 @@ describe("POST /api/webhooks/google-calendar", () => {
       })
       .from(googleCalendarProcessedEvents)
       .where(eq(googleCalendarProcessedEvents.triggerId, created.body.id));
-    expect(processed).toStrictEqual([
-      { calendarEventId: "event-created-1" },
-    ]);
+    expect(processed).toStrictEqual([{ calendarEventId: "event-created-1" }]);
 
     const snapshots = await db
       .select({
@@ -340,9 +337,7 @@ describe("POST /api/webhooks/google-calendar", () => {
       })
       .from(googleCalendarEventSnapshots)
       .where(eq(googleCalendarEventSnapshots.watchStateId, watch.id));
-    expect(snapshots).toStrictEqual([
-      { calendarEventId: "event-created-1" },
-    ]);
+    expect(snapshots).toStrictEqual([{ calendarEventId: "event-created-1" }]);
 
     const [updatedWatch] = await db
       .select({ syncToken: googleCalendarWatchStates.syncToken })

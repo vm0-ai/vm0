@@ -72,6 +72,7 @@ import {
 } from "./zero-workflow-user-trigger-thread.service";
 
 type TriggerRow = typeof zeroWorkflowTriggers.$inferSelect;
+type WorkflowRow = typeof zeroWorkflows.$inferSelect;
 type GmailWorkflowEventType = Extract<
   ZeroWorkflowEventType,
   "gmail-new-message" | "gmail-label-applied"
@@ -107,6 +108,13 @@ type WorkflowTriggerRunNowResult =
     }
   | TriggerActionFailure
   | Exclude<RunWorkflowTriggerResult, { readonly kind: "ok" }>;
+
+interface CreateEventTriggerWorkflowContext {
+  readonly db: Db;
+  readonly workflowId: string;
+  readonly agentId: string;
+  readonly workflowTitle: string;
+}
 
 interface ScheduleColumns {
   readonly scheduleType: ZeroWorkflowScheduleType;
@@ -616,6 +624,94 @@ export async function listWorkspaceWorkflowTriggers(
   });
 }
 
+function chatThreadTriggerFromSummary(args: {
+  readonly workflow: WorkflowRow;
+  readonly summary: ZeroWorkflowTriggerSummary | null;
+  readonly chatThreadId: string | null;
+}): readonly ChatThreadWorkflowTrigger[] {
+  const { workflow, summary, chatThreadId } = args;
+  if (!summary || chatThreadId === null) {
+    return [];
+  }
+  const base = {
+    id: summary.id,
+    enabled: summary.enabled,
+    chatThreadId,
+    nextRunAt: summary.nextRunAt,
+    lastRunAt: summary.lastRunAt,
+    ownerUserId: summary.ownerUserId,
+    workflow: {
+      id: workflow.id,
+      agentId: workflow.agentId,
+      name: workflow.name,
+      displayName: workflow.displayName,
+      description: workflow.description,
+    },
+  };
+  if (summary.kind === "schedule") {
+    return [
+      {
+        ...base,
+        kind: "schedule",
+        schedule: summary.schedule,
+        scheduleSummary: summary.scheduleSummary,
+      },
+    ];
+  }
+  if (summary.kind !== "event") {
+    return [];
+  }
+  if (summary.eventType === "gmail-new-message") {
+    return [
+      {
+        ...base,
+        kind: "event",
+        eventType: "gmail-new-message",
+        eventConfig: summary.eventConfig,
+        schedule: null,
+        scheduleSummary: null,
+      },
+    ];
+  }
+  if (summary.eventType === "gmail-label-applied") {
+    return [
+      {
+        ...base,
+        kind: "event",
+        eventType: "gmail-label-applied",
+        eventConfig: summary.eventConfig,
+        schedule: null,
+        scheduleSummary: null,
+      },
+    ];
+  }
+  if (summary.eventType === "github-label-applied") {
+    return [
+      {
+        ...base,
+        kind: "event",
+        eventType: "github-label-applied",
+        eventConfig: summary.eventConfig,
+        schedule: null,
+        scheduleSummary: null,
+      },
+    ];
+  }
+  if (summary.eventType === "google-calendar-event-created") {
+    return [
+      {
+        ...base,
+        kind: "event",
+        eventType: "google-calendar-event-created",
+        eventConfig: summary.eventConfig,
+        schedule: null,
+        scheduleSummary: null,
+      },
+    ];
+  }
+  return [];
+}
+
 /**
  * List workflow triggers the caller owns that are bound to a chat thread,
  * joined with the workflow identity needed by the chat sidebar.
@@ -666,94 +762,9 @@ export async function listThreadBoundWorkflowTriggers(
     }),
   );
 
-  return summaries.flatMap<ChatThreadWorkflowTrigger>(
-    ({
-      workflow,
-      summary,
-      chatThreadId,
-    }): readonly ChatThreadWorkflowTrigger[] => {
-      if (!summary || chatThreadId === null) {
-        return [];
-      }
-      const base = {
-        id: summary.id,
-        enabled: summary.enabled,
-        chatThreadId,
-        nextRunAt: summary.nextRunAt,
-        lastRunAt: summary.lastRunAt,
-        ownerUserId: summary.ownerUserId,
-        workflow: {
-          id: workflow.id,
-          agentId: workflow.agentId,
-          name: workflow.name,
-          displayName: workflow.displayName,
-          description: workflow.description,
-        },
-      };
-      if (summary.kind === "schedule") {
-        return [
-          {
-            ...base,
-            kind: "schedule",
-            schedule: summary.schedule,
-            scheduleSummary: summary.scheduleSummary,
-          },
-        ];
-      }
-      if (summary.kind !== "event") {
-        return [];
-      }
-      if (summary.eventType === "gmail-new-message") {
-        return [
-          {
-            ...base,
-            kind: "event",
-            eventType: "gmail-new-message",
-            eventConfig: summary.eventConfig,
-            schedule: null,
-            scheduleSummary: null,
-          },
-        ];
-      }
-      if (summary.eventType === "gmail-label-applied") {
-        return [
-          {
-            ...base,
-            kind: "event",
-            eventType: "gmail-label-applied",
-            eventConfig: summary.eventConfig,
-            schedule: null,
-            scheduleSummary: null,
-          },
-        ];
-      }
-      if (summary.eventType === "github-label-applied") {
-        return [
-          {
-            ...base,
-            kind: "event",
-            eventType: "github-label-applied",
-            eventConfig: summary.eventConfig,
-            schedule: null,
-            scheduleSummary: null,
-          },
-        ];
-      }
-      if (summary.eventType === "google-calendar-event-created") {
-        return [
-          {
-            ...base,
-            kind: "event",
-            eventType: "google-calendar-event-created",
-            eventConfig: summary.eventConfig,
-            schedule: null,
-            scheduleSummary: null,
-          },
-        ];
-      }
-      return [];
-    },
-  );
+  return summaries.flatMap((summary) => {
+    return chatThreadTriggerFromSummary(summary);
+  });
 }
 
 /**
@@ -1065,6 +1076,82 @@ async function insertScheduleTrigger(
   });
 }
 
+async function createWebhookEventTriggerForWorkflow(args: {
+  readonly context: CreateEventTriggerWorkflowContext;
+  readonly input: CreateWebhookEventTriggerInput;
+  readonly signal: AbortSignal;
+}): Promise<TriggerResult> {
+  const summary = await insertWebhookEventTrigger(args.context.db, {
+    input: args.input,
+    workflowId: args.context.workflowId,
+    agentId: args.context.agentId,
+    workflowTitle: args.context.workflowTitle,
+    currentTime: nowDate(),
+  });
+  args.signal.throwIfAborted();
+  return { kind: "ok", summary };
+}
+
+async function createGithubLabelEventTriggerForWorkflow(args: {
+  readonly context: CreateEventTriggerWorkflowContext;
+  readonly input: CreateGithubEventTriggerInput;
+  readonly signal: AbortSignal;
+}): Promise<TriggerResult> {
+  const preparedConfig = await prepareGithubLabelEventConfigForPersist(
+    args.context.db,
+    {
+      orgId: args.input.orgId,
+      userId: args.input.member.userId,
+      eventConfig: args.input.eventConfig,
+    },
+  );
+  args.signal.throwIfAborted();
+  if (preparedConfig.kind !== "ok") {
+    return preparedConfig;
+  }
+
+  const summary = await insertWorkflowEventTrigger(args.context.db, {
+    input: { ...args.input, eventConfig: preparedConfig.eventConfig },
+    workflowId: args.context.workflowId,
+    agentId: args.context.agentId,
+    workflowTitle: args.context.workflowTitle,
+    currentTime: nowDate(),
+  });
+  args.signal.throwIfAborted();
+  return { kind: "ok", summary };
+}
+
+async function createGoogleCalendarEventTriggerForWorkflow(args: {
+  readonly context: CreateEventTriggerWorkflowContext;
+  readonly input: CreateGoogleCalendarEventTriggerInput;
+  readonly signal: AbortSignal;
+}): Promise<TriggerResult> {
+  const preparedConfig = googleCalendarEventCreatedEventConfigSchema.parse(
+    args.input.eventConfig,
+  );
+  const watchResult = await ensureGoogleCalendarWatchForUser({
+    db: args.context.db,
+    orgId: args.input.orgId,
+    userId: args.input.member.userId,
+    calendarId: preparedConfig.calendarId,
+    signal: args.signal,
+  });
+  args.signal.throwIfAborted();
+  if (watchResult.kind !== "ok") {
+    return { kind: "bad-request", message: watchResult.message };
+  }
+
+  const summary = await insertWorkflowEventTrigger(args.context.db, {
+    input: { ...args.input, eventConfig: preparedConfig },
+    workflowId: args.context.workflowId,
+    agentId: args.context.agentId,
+    workflowTitle: args.context.workflowTitle,
+    currentTime: nowDate(),
+  });
+  args.signal.throwIfAborted();
+  return { kind: "ok", summary };
+}
+
 const createEventTriggerForWorkflow$ = command(
   async (
     { get },
@@ -1093,15 +1180,11 @@ const createEventTriggerForWorkflow$ = command(
         };
       }
 
-      const summary = await insertWebhookEventTrigger(args.db, {
+      return await createWebhookEventTriggerForWorkflow({
+        context: args,
         input,
-        workflowId: args.workflowId,
-        agentId: args.agentId,
-        workflowTitle: args.workflowTitle,
-        currentTime: nowDate(),
+        signal,
       });
-      signal.throwIfAborted();
-      return { kind: "ok", summary };
     }
 
     if (input.eventType === "github-label-applied") {
@@ -1119,28 +1202,11 @@ const createEventTriggerForWorkflow$ = command(
         };
       }
 
-      const preparedConfig = await prepareGithubLabelEventConfigForPersist(
-        args.db,
-        {
-          orgId: input.orgId,
-          userId: input.member.userId,
-          eventConfig: input.eventConfig,
-        },
-      );
-      signal.throwIfAborted();
-      if (preparedConfig.kind !== "ok") {
-        return preparedConfig;
-      }
-
-      const summary = await insertWorkflowEventTrigger(args.db, {
-        input: { ...input, eventConfig: preparedConfig.eventConfig },
-        workflowId: args.workflowId,
-        agentId: args.agentId,
-        workflowTitle: args.workflowTitle,
-        currentTime: nowDate(),
+      return await createGithubLabelEventTriggerForWorkflow({
+        context: args,
+        input,
+        signal,
       });
-      signal.throwIfAborted();
-      return { kind: "ok", summary };
     }
 
     if (input.eventType === "google-calendar-event-created") {
@@ -1158,30 +1224,11 @@ const createEventTriggerForWorkflow$ = command(
         };
       }
 
-      const preparedConfig = googleCalendarEventCreatedEventConfigSchema.parse(
-        input.eventConfig,
-      );
-      const watchResult = await ensureGoogleCalendarWatchForUser({
-        db: args.db,
-        orgId: input.orgId,
-        userId: input.member.userId,
-        calendarId: preparedConfig.calendarId,
+      return await createGoogleCalendarEventTriggerForWorkflow({
+        context: args,
+        input,
         signal,
       });
-      signal.throwIfAborted();
-      if (watchResult.kind !== "ok") {
-        return { kind: "bad-request", message: watchResult.message };
-      }
-
-      const summary = await insertWorkflowEventTrigger(args.db, {
-        input: { ...input, eventConfig: preparedConfig },
-        workflowId: args.workflowId,
-        agentId: args.agentId,
-        workflowTitle: args.workflowTitle,
-        currentTime: nowDate(),
-      });
-      signal.throwIfAborted();
-      return { kind: "ok", summary };
     }
 
     const featureEnabled = await get(

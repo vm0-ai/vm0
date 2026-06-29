@@ -4,9 +4,7 @@ import { command, computed } from "ccstate";
 import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
-import {
-  googleCalendarEventCreatedEventConfigSchema,
-} from "@vm0/api-contracts/contracts/zero-workflows";
+import { googleCalendarEventCreatedEventConfigSchema } from "@vm0/api-contracts/contracts/zero-workflows";
 import { refreshGoogleToken } from "@vm0/connectors/auth-providers/oauth/google";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -475,7 +473,9 @@ async function resolveGoogleCalendarAccess(args: {
       access: {
         connectorId: connector.id,
         emailAddress: connector.externalEmail,
-        accessToken: await decryptStoredSecretValue(accessSecret.encryptedValue),
+        accessToken: await decryptStoredSecretValue(
+          accessSecret.encryptedValue,
+        ),
       },
     };
   }
@@ -510,9 +510,7 @@ function calendarApiUrl(path: string): string {
 }
 
 function calendarEventsUrl(calendarId: string): string {
-  return calendarApiUrl(
-    `/calendars/${encodeURIComponent(calendarId)}/events`,
-  );
+  return calendarApiUrl(`/calendars/${encodeURIComponent(calendarId)}/events`);
 }
 
 function googleCalendarWebhookUrl(): string {
@@ -581,7 +579,7 @@ function watchExpirationDate(
   expiration: string | number | undefined,
   currentTime: Date,
 ): Date {
-  const millis = expiration === undefined ? NaN : Number(expiration);
+  const millis = expiration === undefined ? Number.NaN : Number(expiration);
   if (Number.isFinite(millis)) {
     return new Date(millis);
   }
@@ -594,7 +592,9 @@ async function watchCalendarEvents(args: {
   readonly channelId: string;
   readonly channelToken: string;
   readonly signal: AbortSignal;
-}): Promise<GoogleCalendarFetchResult<z.infer<typeof calendarWatchResponseSchema>>> {
+}): Promise<
+  GoogleCalendarFetchResult<z.infer<typeof calendarWatchResponseSchema>>
+> {
   return await googleCalendarFetchJson(
     calendarWatchResponseSchema,
     args.accessToken,
@@ -650,6 +650,10 @@ type CalendarEventsListResult =
     }
   | { readonly kind: "stale_cursor" }
   | { readonly kind: "calendar_error"; readonly message: string };
+type CalendarEventsListOk = Extract<
+  CalendarEventsListResult,
+  { readonly kind: "ok" }
+>;
 
 async function listCalendarEvents(args: {
   readonly accessToken: string;
@@ -739,25 +743,25 @@ function eventPromptContext(
   };
 }
 
-function eventSnapshotValue(event: GoogleCalendarEvent): Record<string, unknown> {
-  return JSON.parse(
-    JSON.stringify({
-      id: event.id,
-      etag: event.etag,
-      status: event.status,
-      eventType: event.eventType,
-      summary: event.summary,
-      htmlLink: event.htmlLink,
-      start: event.start,
-      end: event.end,
-      organizer: event.organizer,
-      attendees: event.attendees,
-      created: event.created,
-      updated: event.updated,
-      recurringEventId: event.recurringEventId,
-      originalStartTime: event.originalStartTime,
-    }),
-  ) as Record<string, unknown>;
+function eventSnapshotValue(
+  event: GoogleCalendarEvent,
+): Record<string, unknown> {
+  return structuredClone({
+    id: event.id,
+    etag: event.etag,
+    status: event.status,
+    eventType: event.eventType,
+    summary: event.summary,
+    htmlLink: event.htmlLink,
+    start: event.start,
+    end: event.end,
+    organizer: event.organizer,
+    attendees: event.attendees,
+    created: event.created,
+    updated: event.updated,
+    recurringEventId: event.recurringEventId,
+    originalStartTime: event.originalStartTime,
+  }) as Record<string, unknown>;
 }
 
 function eventSnapshotRow(args: {
@@ -928,7 +932,8 @@ async function registerCalendarWatch(args: {
   if (watch.kind !== "ok") {
     return {
       kind: "bad_request",
-      message: "Failed to register Google Calendar watch for event trigger setup",
+      message:
+        "Failed to register Google Calendar watch for event trigger setup",
     };
   }
 
@@ -994,10 +999,7 @@ async function registerCalendarWatch(args: {
     return baseline;
   }
 
-  if (
-    args.previousState &&
-    args.previousState.channelId !== channelId
-  ) {
+  if (args.previousState && args.previousState.channelId !== channelId) {
     await stopCalendarChannel({
       accessToken: args.access.accessToken,
       channelId: args.previousState.channelId,
@@ -1100,14 +1102,8 @@ async function loadCalendarWatchStateForNotification(args: {
     .from(googleCalendarWatchStates)
     .where(
       and(
-        eq(
-          googleCalendarWatchStates.channelId,
-          args.notification.channelId,
-        ),
-        eq(
-          googleCalendarWatchStates.resourceId,
-          args.notification.resourceId,
-        ),
+        eq(googleCalendarWatchStates.channelId, args.notification.channelId),
+        eq(googleCalendarWatchStates.resourceId, args.notification.resourceId),
         eq(
           googleCalendarWatchStates.channelToken,
           args.notification.channelToken,
@@ -1357,6 +1353,64 @@ async function dispatchCreatedCalendarEvents(args: {
   return { kind: "ok", dispatched, duplicates };
 }
 
+async function dispatchGoogleCalendarChanges(args: {
+  readonly db: Db;
+  readonly state: GoogleCalendarWatchStateRow;
+  readonly notification: GoogleCalendarWebhookNotification;
+  readonly changes: CalendarEventsListOk;
+  readonly startRun: GoogleCalendarRunStarter;
+  readonly signal: AbortSignal;
+}): Promise<GoogleCalendarDispatchStateResult> {
+  const knownIds = await loadKnownCalendarEventIds({
+    db: args.db,
+    watchStateId: args.state.id,
+    events: args.changes.events,
+    signal: args.signal,
+  });
+  const createdEvents = args.changes.events.filter((event) => {
+    return event.status !== "cancelled" && !knownIds.has(event.id);
+  });
+
+  const triggers = await loadGoogleCalendarEventTriggers({
+    db: args.db,
+    state: args.state,
+    signal: args.signal,
+  });
+  const result = await dispatchCreatedCalendarEvents({
+    db: args.db,
+    state: args.state,
+    notification: args.notification,
+    events: createdEvents,
+    triggers,
+    startRun: args.startRun,
+    signal: args.signal,
+  });
+  if (result.kind !== "ok") {
+    return result;
+  }
+
+  const currentTime = nowDate();
+  await upsertCalendarEventSnapshots({
+    db: args.db,
+    watchStateId: args.state.id,
+    events: args.changes.events,
+    currentTime,
+    signal: args.signal,
+  });
+
+  await args.db
+    .update(googleCalendarWatchStates)
+    .set({
+      syncToken: args.changes.nextSyncToken,
+      needsRewatch: false,
+      updatedAt: currentTime,
+    })
+    .where(eq(googleCalendarWatchStates.id, args.state.id));
+  args.signal.throwIfAborted();
+
+  return result;
+}
+
 async function dispatchGoogleCalendarWatchState(args: {
   readonly db: Db;
   readonly state: GoogleCalendarWatchStateRow;
@@ -1452,54 +1506,14 @@ async function dispatchGoogleCalendarWatchState(args: {
     return { kind: "ok", dispatched: 0, duplicates: 0 };
   }
 
-  const knownIds = await loadKnownCalendarEventIds({
-    db: args.db,
-    watchStateId: args.state.id,
-    events: changes.events,
-    signal: args.signal,
-  });
-  const createdEvents = changes.events.filter((event) => {
-    return event.status !== "cancelled" && !knownIds.has(event.id);
-  });
-
-  const triggers = await loadGoogleCalendarEventTriggers({
-    db: args.db,
-    state: args.state,
-    signal: args.signal,
-  });
-  const result = await dispatchCreatedCalendarEvents({
+  return await dispatchGoogleCalendarChanges({
     db: args.db,
     state: args.state,
     notification: args.notification,
-    events: createdEvents,
-    triggers,
+    changes,
     startRun: args.startRun,
     signal: args.signal,
   });
-  if (result.kind !== "ok") {
-    return result;
-  }
-
-  const currentTime = nowDate();
-  await upsertCalendarEventSnapshots({
-    db: args.db,
-    watchStateId: args.state.id,
-    events: changes.events,
-    currentTime,
-    signal: args.signal,
-  });
-
-  await args.db
-    .update(googleCalendarWatchStates)
-    .set({
-      syncToken: changes.nextSyncToken,
-      needsRewatch: false,
-      updatedAt: currentTime,
-    })
-    .where(eq(googleCalendarWatchStates.id, args.state.id));
-  args.signal.throwIfAborted();
-
-  return result;
 }
 
 export const dispatchGoogleCalendarWebhook$ = command(

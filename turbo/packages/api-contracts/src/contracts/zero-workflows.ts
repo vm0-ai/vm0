@@ -451,11 +451,13 @@ export const zeroWorkflowGoogleCalendarEventCreatedTriggerCreateRequestSchema =
   z.object({
     kind: z.literal("event"),
     eventType: z.literal("google-calendar-event-created"),
-    eventConfig: googleCalendarEventCreatedEventConfigSchema.optional().default({
-      provider: "google-calendar",
-      event: "event_created",
-      calendarId: "primary",
-    }),
+    eventConfig: googleCalendarEventCreatedEventConfigSchema
+      .optional()
+      .default({
+        provider: "google-calendar",
+        event: "event_created",
+        calendarId: "primary",
+      }),
     enabled: z.boolean().optional(),
   });
 
