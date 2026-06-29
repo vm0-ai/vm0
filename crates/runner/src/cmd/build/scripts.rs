@@ -639,6 +639,7 @@ fi
     #[cfg(unix)]
     #[test]
     fn verify_script_does_not_treat_host_executables_as_rootfs_executables() {
+        use std::os::unix::fs::PermissionsExt;
         use std::os::unix::fs::symlink;
         use std::process::Command;
 
@@ -652,16 +653,35 @@ fi
 
         let rootfs = tempfile::tempdir().unwrap();
         std::fs::create_dir_all(rootfs.path().join("bin")).unwrap();
+        std::fs::create_dir_all(rootfs.path().join("usr/bin")).unwrap();
         symlink("/bin/bash", rootfs.path().join("bin/awk")).unwrap();
+        let non_executable = rootfs.path().join("usr/bin/not-executable");
+        std::fs::write(&non_executable, b"#!/bin/sh\n").unwrap();
+        let mut perms = std::fs::metadata(&non_executable).unwrap().permissions();
+        perms.set_mode(0o644);
+        std::fs::set_permissions(&non_executable, perms).unwrap();
+        std::fs::create_dir(rootfs.path().join("usr/bin/dir-command")).unwrap();
 
         let script = format!(
             r#"
 set -euo pipefail
 {verifier_functions}
-errors=()
-check_required_executable /bin/awk awk
-test "${{#errors[@]}}" -eq 1
-test "${{errors[0]}}" = "awk not found or not executable at /bin/awk"
+assert_check_error() {{
+  local path="$1" name="$2" expected="$3"
+  errors=()
+  check_required_executable "$path" "$name"
+  test "${{#errors[@]}}" -eq 1
+  test "${{errors[0]}}" = "$expected"
+}}
+assert_check_error /bin/awk awk "awk not found or not executable at /bin/awk"
+assert_check_error \
+  /usr/bin/not-executable \
+  not-executable \
+  "not-executable not found or not executable at /usr/bin/not-executable"
+assert_check_error \
+  /usr/bin/dir-command \
+  dir-command \
+  "dir-command not found or not executable at /usr/bin/dir-command"
 "#
         );
         let output = Command::new("bash")
