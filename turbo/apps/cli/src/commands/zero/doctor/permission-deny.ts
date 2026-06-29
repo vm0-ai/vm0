@@ -1,5 +1,9 @@
 import { Command, Option } from "commander";
-import { findMatchingRoutingPermissions } from "@vm0/connectors/firewall-rule-matcher";
+import {
+  type FirewallBaseUrlMatch,
+  findMatchingRoutingPermissions,
+  matchFirewallBaseUrl,
+} from "@vm0/connectors/firewall-rule-matcher";
 import { getFirewallPermissionSummary } from "@vm0/connectors/firewall-metadata";
 import { loadFirewallRoutingMetadata } from "@vm0/connectors/firewall-metadata/routing";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
@@ -11,6 +15,64 @@ import {
 
 function unknownPermissionChangeCommand(connectorRef: string): string {
   return `zero doctor permission-change ${connectorRef} --permission ${UNKNOWN_PERMISSION_GRANT} --enable --duration 1h`;
+}
+
+interface PermissionDenyOptions {
+  readonly method: string;
+  readonly url?: string;
+  readonly path?: string;
+}
+
+function pathOnlyError(): Error {
+  return new Error(
+    "permission-deny now requires --url because method/path alone can match the wrong API base.",
+  );
+}
+
+function urlPath(url: string): string | undefined {
+  try {
+    return new URL(url).pathname;
+  } catch {
+    return undefined;
+  }
+}
+
+function findBestBaseMatch(
+  url: string,
+  apis: readonly { readonly base: string }[],
+): FirewallBaseUrlMatch | null {
+  let bestMatch: FirewallBaseUrlMatch | null = null;
+  for (const api of apis) {
+    const match = matchFirewallBaseUrl(url, api.base);
+    if (match && (!bestMatch || match.score > bestMatch.score)) {
+      bestMatch = match;
+    }
+  }
+  return bestMatch;
+}
+
+function printPermissionChangeGuidance(
+  connectorRef: string,
+  permissions: readonly string[],
+): void {
+  const sortedPermissions = [...permissions].sort();
+  if (sortedPermissions.length === 1) {
+    const permission = sortedPermissions[0]!;
+    console.log(`This is covered by the "${permission}" permission.`);
+    console.log(
+      `To allow this permission, run: zero doctor permission-change ${connectorRef} --permission ${permission} --enable --duration 1h`,
+    );
+    return;
+  }
+
+  console.log(
+    `This is covered by these permissions: ${sortedPermissions.join(", ")}.`,
+  );
+  for (const permission of sortedPermissions) {
+    console.log(
+      `To allow ${permission}, run: zero doctor permission-change ${connectorRef} --permission ${permission} --enable --duration 1h`,
+    );
+  }
 }
 
 export const permissionDenyCommand = new Command()
@@ -25,26 +87,38 @@ export const permissionDenyCommand = new Command()
       "The denied HTTP method",
     ).makeOptionMandatory(),
   )
-  .addOption(
-    new Option("--path <path>", "The denied path").makeOptionMandatory(),
-  )
+  .addOption(new Option("--url <url>", "The denied full URL (required)"))
+  .addOption(new Option("--path <path>", "Deprecated: use --url").hideHelp())
   .addHelpText(
     "after",
     `
 Examples:
-  zero doctor permission-deny github --method GET --path /repos/owner/repo/pulls
-  zero doctor permission-deny slack --method POST --path /chat.postMessage
-  zero doctor permission-deny computer-use --method POST --path /computer-use/list-apps
+  zero doctor permission-deny github --method GET --url https://api.github.com/repos/owner/repo/pulls
+  zero doctor permission-deny slack --method POST --url https://slack.com/api/chat.postMessage
+  zero doctor permission-deny youtube --method PUT --url https://youtube.googleapis.com/upload/youtube/v3/videos
 
 Notes:
   - Identifies which named permission covers a denied request
+  - Requires the full denied URL because method/path alone can match the wrong API base
   - Use permission-change to request or enable the permission
   - Permission-change enable requests default to --duration 1h; pick 24h, 7d, or always only when appropriate`,
   )
   .action(
     withErrorHandler(
-      async (connectorRef: string, opts: { method: string; path: string }) => {
-        if (isComputerUsePermissionTarget({ connectorRef, path: opts.path })) {
+      async (connectorRef: string, opts: PermissionDenyOptions) => {
+        if (opts.path !== undefined) {
+          throw pathOnlyError();
+        }
+        if (!opts.url) {
+          throw pathOnlyError();
+        }
+
+        if (
+          isComputerUsePermissionTarget({
+            connectorRef,
+            path: urlPath(opts.url),
+          })
+        ) {
           printComputerUsePermissionGuidance();
           return;
         }
@@ -56,15 +130,23 @@ Notes:
 
         const label =
           getFirewallPermissionSummary(connectorRef)?.label ?? connectorRef;
+        const match = findBestBaseMatch(opts.url, metadata.apis);
+        if (!match) {
+          throw new Error(
+            `No registered ${label} base URL matches the provided URL.`,
+          );
+        }
+
+        const method = opts.method.toUpperCase();
         const permissions = findMatchingRoutingPermissions(
-          opts.method,
-          opts.path,
+          method,
+          match.relativePath,
           metadata.apis,
-          { serviceName: connectorRef },
+          { apiBase: match.displayBase, serviceName: connectorRef },
         );
 
         console.log(
-          `The ${label} permission filtered ${opts.method} ${opts.path}.`,
+          `The ${label} permission filtered ${method} ${match.relativePath} relative to base URL ${match.displayBase}.`,
         );
 
         if (permissions.length === 0) {
@@ -78,28 +160,7 @@ Notes:
           return;
         }
 
-        // Count total rules per permission name across all APIs
-        const ruleCount = new Map<string, number>();
-        for (const api of metadata.apis) {
-          for (const route of api.routes) {
-            ruleCount.set(
-              route.permissionName,
-              (ruleCount.get(route.permissionName) ?? 0) + 1,
-            );
-          }
-        }
-
-        // Pick the permission with the fewest rules (most specific)
-        const permission = permissions.reduce((narrowest, current) => {
-          return (ruleCount.get(current) ?? Infinity) <
-            (ruleCount.get(narrowest) ?? Infinity)
-            ? current
-            : narrowest;
-        });
-        console.log(`This is covered by the "${permission}" permission.`);
-        console.log(
-          `To allow this permission, run: zero doctor permission-change ${connectorRef} --permission ${permission} --enable --duration 1h`,
-        );
+        printPermissionChangeGuidance(connectorRef, permissions);
       },
     ),
   );

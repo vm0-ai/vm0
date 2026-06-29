@@ -41,8 +41,8 @@ describe("zero doctor permission-deny command", () => {
         "slack",
         "--method",
         "GET",
-        "--path",
-        "/conversations.list",
+        "--url",
+        "https://slack.com/api/conversations.list",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -68,8 +68,8 @@ describe("zero doctor permission-deny command", () => {
         "slack",
         "--method",
         "DELETE",
-        "--path",
-        "/some/nonexistent/endpoint/that/will/never/match",
+        "--url",
+        "https://slack.com/api/some/nonexistent/endpoint/that/will/never/match",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -90,8 +90,8 @@ describe("zero doctor permission-deny command", () => {
           "unknown_service",
           "--method",
           "GET",
-          "--path",
-          "/foo",
+          "--url",
+          "https://api.example.com/foo",
         ]);
       }).rejects.toThrow("process.exit called");
 
@@ -110,8 +110,8 @@ describe("zero doctor permission-deny command", () => {
         "computer-use",
         "--method",
         "POST",
-        "--path",
-        "/computer-use/list-apps",
+        "--url",
+        "https://zero.local/computer-use/list-apps",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -131,8 +131,8 @@ describe("zero doctor permission-deny command", () => {
         "agent",
         "--method",
         "POST",
-        "--path",
-        "/computer-use/list-apps",
+        "--url",
+        "https://zero.local/computer-use/list-apps",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -151,8 +151,8 @@ describe("zero doctor permission-deny command", () => {
         "slack",
         "--method",
         "POST",
-        "--path",
-        "/chat.postMessage",
+        "--url",
+        "https://slack.com/api/chat.postMessage",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -174,8 +174,8 @@ describe("zero doctor permission-deny command", () => {
         "gmail",
         "--method",
         "POST",
-        "--path",
-        "/v1/users/me/messages/send",
+        "--url",
+        "https://gmail.googleapis.com/gmail/v1/users/me/messages/send",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -183,6 +183,117 @@ describe("zero doctor permission-deny command", () => {
       expect(logCalls).toContain(
         "--permission messages.send --enable --duration 1h",
       );
+    });
+  });
+
+  describe("base-aware URL matching", () => {
+    it("should identify videos.write for the normal YouTube metadata update base", async () => {
+      await permissionDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "youtube",
+        "--method",
+        "PUT",
+        "--url",
+        "https://youtube.googleapis.com/youtube/v3/videos",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        "YouTube permission filtered PUT /v3/videos relative to base URL https://youtube.googleapis.com/youtube",
+      );
+      expect(logCalls).toContain('covered by the "videos.write"');
+      expect(logCalls).toContain(
+        "zero doctor permission-change youtube --permission videos.write --enable --duration 1h",
+      );
+    });
+
+    it("should not report normal-base videos.write for the YouTube upload base", async () => {
+      await permissionDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "youtube",
+        "--method",
+        "PUT",
+        "--url",
+        "https://youtube.googleapis.com/upload/youtube/v3/videos",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        "YouTube permission filtered PUT /v3/videos relative to base URL https://youtube.googleapis.com/upload/youtube",
+      );
+      expect(logCalls).not.toContain('"videos.write"');
+      expect(
+        logCalls.includes("No named permission was found") ||
+          logCalls.includes('"videos.create"'),
+      ).toBe(true);
+    });
+
+    it("should reject path-only diagnostics", async () => {
+      await expect(async () => {
+        await permissionDenyCommand.parseAsync([
+          "node",
+          "cli",
+          "youtube",
+          "--method",
+          "PUT",
+          "--path",
+          "/v3/videos",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "permission-deny now requires --url because method/path alone can match the wrong API base.",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleLog).not.toHaveBeenCalled();
+    });
+
+    it("should reject URLs outside the selected connector bases", async () => {
+      await expect(async () => {
+        await permissionDenyCommand.parseAsync([
+          "node",
+          "cli",
+          "slack",
+          "--method",
+          "GET",
+          "--url",
+          "https://example.com/conversations.list",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "No registered Slack base URL matches the provided URL.",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should not echo URL query strings in diagnostic output", async () => {
+      await permissionDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "slack",
+        "--method",
+        "POST",
+        "--url",
+        "https://slack.com/api/chat.postMessage?token=secret-token",
+      ]);
+
+      const output = [
+        ...mockConsoleLog.mock.calls.flat(),
+        ...mockConsoleError.mock.calls.flat(),
+      ].join("\n");
+      expect(output).toContain(
+        "Slack permission filtered POST /chat.postMessage relative to base URL https://slack.com/api",
+      );
+      expect(output).toContain('covered by the "chat:write"');
+      expect(output).not.toContain("secret-token");
+      expect(output).not.toContain("token=");
     });
   });
 
@@ -194,8 +305,8 @@ describe("zero doctor permission-deny command", () => {
         "slack",
         "--method",
         "GET",
-        "--path",
-        "/conversations.list",
+        "--url",
+        "https://slack.com/api/conversations.list",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -213,8 +324,8 @@ describe("zero doctor permission-deny command", () => {
         "slack",
         "--method",
         "PATCH",
-        "--path",
-        "/totally/unknown/endpoint",
+        "--url",
+        "https://slack.com/api/totally/unknown/endpoint",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
@@ -237,8 +348,8 @@ describe("zero doctor permission-deny command", () => {
         "slack",
         "--method",
         "GET",
-        "--path",
-        "/conversations.list",
+        "--url",
+        "https://slack.com/api/conversations.list",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
