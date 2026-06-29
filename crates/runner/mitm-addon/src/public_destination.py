@@ -73,6 +73,12 @@ def validate_runtime_destination_host(destination_host: object) -> RuntimeDestin
             destination_host=normalized_destination,
             reason="missing_destination",
         )
+    if normalized_destination != destination_host:
+        return RuntimeDestinationCheck(
+            allowed=False,
+            destination_host=destination_host,
+            reason="invalid_destination",
+        )
 
     try:
         ip = ipaddress.ip_address(normalized_destination)
