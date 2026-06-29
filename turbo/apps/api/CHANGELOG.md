@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.186.4](https://github.com/vm0-ai/vm0/compare/api-v1.186.3...api-v1.186.4) (2026-06-29)
+
+
+### Bug Fixes
+
+* copy workflow runtime configuration ([#19252](https://github.com/vm0-ai/vm0/issues/19252)) ([aa7dfdf](https://github.com/vm0-ai/vm0/commit/aa7dfdfe4db634174c43cdffb7ec94457f24e0cf))
+
 ## [1.186.3](https://github.com/vm0-ai/vm0/compare/api-v1.186.2...api-v1.186.3) (2026-06-28)
 
 

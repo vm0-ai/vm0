@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.504.5](https://github.com/vm0-ai/vm0/compare/app-v0.504.4...app-v0.504.5) (2026-06-29)
+
+
+### Bug Fixes
+
+* copy workflow runtime configuration ([#19252](https://github.com/vm0-ai/vm0/issues/19252)) ([aa7dfdf](https://github.com/vm0-ai/vm0/commit/aa7dfdfe4db634174c43cdffb7ec94457f24e0cf))
+
 ## [0.504.4](https://github.com/vm0-ai/vm0/compare/app-v0.504.3...app-v0.504.4) (2026-06-28)
 
 
