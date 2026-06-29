@@ -16,6 +16,9 @@ interface AutoRechargeSeedValues {
   readonly threshold?: number | null;
   readonly amount?: number | null;
   readonly tier?: string;
+  readonly credits?: number;
+  readonly stripeCustomerId?: string | null;
+  readonly stripeSubscriptionId?: string | null;
   readonly pendingAt?: Date | null;
 }
 
@@ -34,6 +37,13 @@ export const seedAutoRechargeOrg$ = command(
       autoRechargeEnabled: values.enabled ?? false,
       autoRechargeThreshold: values.threshold ?? null,
       autoRechargeAmount: values.amount ?? null,
+      ...(values.credits !== undefined ? { credits: values.credits } : {}),
+      ...(values.stripeCustomerId !== undefined
+        ? { stripeCustomerId: values.stripeCustomerId }
+        : {}),
+      ...(values.stripeSubscriptionId !== undefined
+        ? { stripeSubscriptionId: values.stripeSubscriptionId }
+        : {}),
       ...(values.tier !== undefined ? { tier: values.tier } : {}),
       ...(values.pendingAt !== undefined
         ? { autoRechargePendingAt: values.pendingAt }

@@ -1,13 +1,10 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 
 import { integrationsSlackMessageContract } from "@vm0/api-contracts/contracts/integrations";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { writeDb$ } from "../../external/db";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
@@ -60,17 +57,6 @@ function sandboxToken(args: {
     iat: seconds,
     exp: seconds + 60,
   });
-}
-
-async function setRunSelectedModel(
-  runId: string,
-  selectedModel: string,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .update(zeroRuns)
-    .set({ selectedModel })
-    .where(eq(zeroRuns.id, runId));
 }
 
 describe("POST /api/zero/integrations/slack/message", () => {
@@ -410,10 +396,10 @@ describe("POST /api/zero/integrations/slack/message", () => {
         composeId,
         automationId,
         triggerSource: "automation",
+        selectedModel: "claude-sonnet-4-6",
       },
       context.signal,
     );
-    await setRunSelectedModel(runId, "claude-sonnet-4-6");
 
     const { slackUserId } = await store.set(
       seedSlackOrgConnection$,

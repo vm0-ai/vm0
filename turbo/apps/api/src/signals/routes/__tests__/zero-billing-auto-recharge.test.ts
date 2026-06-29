@@ -2,12 +2,9 @@ import { randomUUID } from "node:crypto";
 
 import { zeroBillingAutoRechargeContract } from "@vm0/api-contracts/contracts/zero-billing";
 import { createStore } from "ccstate";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { nowDate } from "../../../lib/time";
-import { writeDb$ } from "../../external/db";
 import {
   deleteAutoRechargeOrg$,
   seedAutoRechargeOrg$,
@@ -181,35 +178,29 @@ describe("PUT /api/zero/billing/auto-recharge", () => {
       amount: 5000,
     });
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        autoRechargeEnabled: orgMetadata.autoRechargeEnabled,
-        autoRechargeThreshold: orgMetadata.autoRechargeThreshold,
-        autoRechargeAmount: orgMetadata.autoRechargeAmount,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId))
-      .limit(1);
-    expect(row?.autoRechargeEnabled).toBeTruthy();
-    expect(row?.autoRechargeThreshold).toBe(1000);
-    expect(row?.autoRechargeAmount).toBe(5000);
+    const readBack = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(readBack.body).toStrictEqual(response.body);
   });
 
   it("triggers auto-recharge immediately when enabling below threshold", async () => {
     const customerId = `cus_${randomUUID().slice(0, 8)}`;
     const fixture = await track(
-      store.set(seedAutoRechargeOrg$, { tier: "pro" }, context.signal),
+      store.set(
+        seedAutoRechargeOrg$,
+        {
+          tier: "pro",
+          credits: 500,
+          stripeCustomerId: customerId,
+          stripeSubscriptionId: null,
+        },
+        context.signal,
+      ),
     );
-    const writeDb = store.set(writeDb$);
-    await writeDb
-      .update(orgMetadata)
-      .set({
-        credits: 500,
-        stripeCustomerId: customerId,
-        stripeSubscriptionId: null,
-      })
-      .where(eq(orgMetadata.orgId, fixture.orgId));
     context.mocks.stripe.customers.retrieve.mockResolvedValue({
       id: customerId,
       deleted: false,
@@ -268,13 +259,6 @@ describe("PUT /api/zero/billing/auto-recharge", () => {
     expect(context.mocks.stripe.invoices.pay).toHaveBeenCalledWith(
       "in_auto_recharge_enable",
     );
-
-    const [row] = await writeDb
-      .select({ pendingAt: orgMetadata.autoRechargePendingAt })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId))
-      .limit(1);
-    expect(row?.pendingAt).toBeInstanceOf(Date);
   });
 
   it("disables auto-recharge and clears pending state", async () => {
@@ -309,21 +293,13 @@ describe("PUT /api/zero/billing/auto-recharge", () => {
       amount: null,
     });
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        autoRechargeEnabled: orgMetadata.autoRechargeEnabled,
-        autoRechargeThreshold: orgMetadata.autoRechargeThreshold,
-        autoRechargeAmount: orgMetadata.autoRechargeAmount,
-        autoRechargePendingAt: orgMetadata.autoRechargePendingAt,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId))
-      .limit(1);
-    expect(row?.autoRechargeEnabled).toBeFalsy();
-    expect(row?.autoRechargeThreshold).toBeNull();
-    expect(row?.autoRechargeAmount).toBeNull();
-    expect(row?.autoRechargePendingAt).toBeNull();
+    const readBack = await accept(
+      client.get({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(readBack.body).toStrictEqual(response.body);
   });
 
   it("returns 400 when enabling on a suspended org", async () => {

@@ -51,6 +51,7 @@ interface SeedRunArgs {
   readonly result?: Record<string, unknown> | null;
   readonly error?: string | null;
   readonly lastEventSequence?: number | null;
+  readonly selectedModel?: string | null;
 }
 
 interface SeedAutomationArgs {
@@ -374,6 +375,7 @@ export const seedRun$ = command(
       triggerSource: args.triggerSource ?? "cli",
       automationId: args.automationId ?? null,
       chatThreadId: args.chatThreadId ?? null,
+      selectedModel: args.selectedModel ?? null,
     });
     signal.throwIfAborted();
     return { runId: run.id };
