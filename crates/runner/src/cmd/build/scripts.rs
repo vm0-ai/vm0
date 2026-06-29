@@ -503,8 +503,8 @@ exit 1
             "verify-rootfs.sh should declare readlink as a host dependency for safe symlink resolution"
         );
         assert!(
-            !VERIFY_SCRIPT.contains(r#"sudo chroot "$MOUNT_DIR" /bin/sh"#),
-            "verify-rootfs.sh must not execute binaries from the image it is verifying"
+            !VERIFY_SCRIPT.contains(r#"chroot "$MOUNT_DIR""#),
+            "verify-rootfs.sh must not chroot into the image it is verifying"
         );
 
         for (group, command_paths) in [
