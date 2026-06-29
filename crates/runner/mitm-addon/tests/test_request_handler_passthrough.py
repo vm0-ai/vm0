@@ -7,6 +7,7 @@ import pytest
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import registry
+import upstream_destination_binding
 from tests.auth_state_helpers import auth_cache_key, has_auth_state
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 
@@ -147,6 +148,8 @@ async def test_vm0_api_test_paths_skip_auto_allow(
     assert (
         flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.vm0.ai/api/test/oauth-provider"
     )
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.kinds == frozenset(("connector_auth",))
 
 
 async def test_vm0_api_non_test_paths_auto_allow_before_firewall_auth(
@@ -185,6 +188,8 @@ async def test_vm0_api_non_test_paths_auto_allow_before_firewall_auth(
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
     assert "Authorization" not in flow.request.headers
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.kinds == frozenset(("api_allow",))
 
 
 async def test_registry_unavailable_blocks_before_auth_injection(tmp_path, real_flow, mitm_ctx):
