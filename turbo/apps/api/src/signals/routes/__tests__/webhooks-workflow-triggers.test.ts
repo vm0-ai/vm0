@@ -1,7 +1,13 @@
 import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
+import {
+  zeroWorkflowTriggers,
+  zeroWorkflows,
+} from "@vm0/db/schema/zero-workflow";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { onTestFinished } from "vitest";
@@ -9,6 +15,7 @@ import { onTestFinished } from "vitest";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
+import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
 import {
@@ -44,6 +51,7 @@ function triggersClient() {
 
 async function setupFixture(): Promise<{
   readonly fixture: WorkflowsFixture;
+  readonly agentId: string;
   readonly workflowId: string;
 }> {
   const fixture = await store.set(
@@ -59,6 +67,15 @@ async function setupFixture(): Promise<{
       userId: fixture.userId,
       name: "webhook-trigger-agent",
       workflowNames: [WORKFLOW_NAME],
+      composeContent: {
+        version: "1",
+        agents: {
+          "webhook-trigger-agent": {
+            framework: "claude-code",
+            environment: { ANTHROPIC_API_KEY: "test-key" },
+          },
+        },
+      },
     },
     context.signal,
   );
@@ -77,7 +94,40 @@ async function setupFixture(): Promise<{
     throw new Error("Expected the agent to own the seeded workflow");
   }
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-  return { fixture, workflowId: workflow.id };
+  return { fixture, agentId, workflowId: workflow.id };
+}
+
+async function markTriggerWithActiveRun(args: {
+  readonly fixture: WorkflowsFixture;
+  readonly agentId: string;
+  readonly triggerId: string;
+}): Promise<string> {
+  const db = store.set(writeDb$);
+  const [session] = await db
+    .insert(agentSessions)
+    .values({
+      userId: args.fixture.userId,
+      orgId: args.fixture.orgId,
+      agentComposeId: args.agentId,
+    })
+    .returning({ id: agentSessions.id });
+  const [run] = await db
+    .insert(agentRuns)
+    .values({
+      userId: args.fixture.userId,
+      orgId: args.fixture.orgId,
+      sessionId: session!.id,
+      status: "running",
+      prompt: "active event run",
+    })
+    .returning({ id: agentRuns.id });
+
+  await db
+    .update(zeroWorkflowTriggers)
+    .set({ lastRunId: run!.id })
+    .where(eq(zeroWorkflowTriggers.id, args.triggerId));
+
+  return run!.id;
 }
 
 async function enableWebhookWorkflowTriggers(
@@ -241,5 +291,69 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     );
 
     expect(response.status).toBe(401);
+  });
+
+  it("starts an event run when the trigger's previous run is still active", async () => {
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+    const { fixture, agentId, workflowId } = await setupFixture();
+    await track(Promise.resolve(fixture));
+    await enableWebhookWorkflowTriggers(fixture);
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { kind: "event", eventType: "webhook-received" },
+      }),
+      [201],
+    );
+    if (
+      created.body.kind !== "event" ||
+      created.body.eventType !== "webhook-received" ||
+      !created.body.webhookSecret
+    ) {
+      throw new Error("Expected a webhook trigger with a one-time secret");
+    }
+
+    const token = new URL(created.body.webhookUrl).pathname.split("/").at(-1);
+    if (!token) {
+      throw new Error("Expected webhook URL token");
+    }
+    const activeRunId = await markTriggerWithActiveRun({
+      fixture,
+      agentId,
+      triggerId: created.body.id,
+    });
+
+    const response = await postWorkflowWebhook({
+      token,
+      rawBody: JSON.stringify({ event: "active-run" }),
+      secret: created.body.webhookSecret,
+    });
+
+    expect(response.status).toBe(200);
+    expect(response.body).toMatchObject({
+      success: true,
+      duplicate: false,
+      runId: expect.any(String),
+    });
+
+    const db = store.set(writeDb$);
+    const runs = await db
+      .select({ id: zeroRuns.id, triggerSource: zeroRuns.triggerSource })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.workflowTriggerId, created.body.id));
+    expect(runs).toHaveLength(1);
+    expect(runs[0]?.triggerSource).toBe("workflow-event");
+
+    const [trigger] = await db
+      .select({
+        lastRunId: zeroWorkflowTriggers.lastRunId,
+        lastRunAt: zeroWorkflowTriggers.lastRunAt,
+      })
+      .from(zeroWorkflowTriggers)
+      .where(eq(zeroWorkflowTriggers.id, created.body.id));
+    expect(trigger?.lastRunId).toBe(activeRunId);
+    expect(trigger?.lastRunAt).toBeInstanceOf(Date);
   });
 });
