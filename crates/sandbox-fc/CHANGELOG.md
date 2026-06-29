@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.37.77](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.76...sandbox-fc-v0.37.77) (2026-06-29)
+
+
+### Refactoring
+
+* **sandbox-fc:** extract state and snapshot restore helpers ([#19343](https://github.com/vm0-ai/vm0/issues/19343)) ([e16fffa](https://github.com/vm0-ai/vm0/commit/e16fffa9e056194b0951cb2c0ce7569356ba3fb4))
+
 ## [0.37.76](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.75...sandbox-fc-v0.37.76) (2026-06-29)
 
 ## [0.37.75](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.74...sandbox-fc-v0.37.75) (2026-06-29)
