@@ -1,23 +1,22 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  type BillingStatusResponse,
   zeroBillingCheckoutContract,
   zeroBillingConcurrencyCheckoutContract,
   zeroBillingConcurrencySubscriptionContract,
   zeroBillingCreditCheckoutContract,
+  zeroBillingStatusContract,
 } from "@vm0/api-contracts/contracts/zero-billing";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
+import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
+import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 import { createStore } from "ccstate";
-import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
-import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
@@ -30,6 +29,17 @@ const TEST_PRICE_PRO = "price_test_pro";
 const TEST_PRICE_TEAM = "price_test_team";
 const TEST_PRICE_CUSTOM_CREDITS = "price_test_custom_credits";
 const TEST_PRICE_CONCURRENCY = "price_test_concurrency";
+const STRIPE_WEBHOOK_SECRET = "whsec_checkout_test";
+
+interface BillingOrgFixture {
+  readonly orgId: string;
+  readonly userId: string;
+}
+
+interface SubscriptionFixture extends BillingOrgFixture {
+  readonly customerId: string;
+  readonly subscriptionId: string;
+}
 
 function setZeroPrice(): void {
   mockEnv("ZERO_PRICE_PRO", TEST_PRICE_PRO);
@@ -59,39 +69,228 @@ function zeroToken(args: {
   });
 }
 
-async function seedOrgRow(values?: {
-  readonly onboardingPaymentPending?: boolean;
-  readonly stripeCustomerId?: string;
-  readonly stripeSubscriptionId?: string;
-  readonly subscriptionStatus?: string;
-  readonly tier?: string;
-}): Promise<{
-  readonly orgId: string;
-  readonly userId: string;
-}> {
-  const orgId = `org_${randomUUID()}`;
-  const userId = `user_${randomUUID()}`;
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(orgMetadata).values({
-    orgId,
-    onboardingPaymentPending: values?.onboardingPaymentPending ?? false,
-    stripeCustomerId: values?.stripeCustomerId,
-    stripeSubscriptionId: values?.stripeSubscriptionId,
-    subscriptionStatus: values?.subscriptionStatus,
-    tier: values?.tier,
-  });
-  return { orgId, userId };
+function createOrgFixture(): BillingOrgFixture {
+  return {
+    orgId: `org_${randomUUID()}`,
+    userId: `user_${randomUUID()}`,
+  };
 }
 
-async function deleteOrgRow(orgId: string): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .delete(orgConcurrencySubscriptions)
-    .where(eq(orgConcurrencySubscriptions.orgId, orgId));
-  await writeDb
-    .delete(orgConcurrencyEntitlements)
-    .where(eq(orgConcurrencyEntitlements.orgId, orgId));
-  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
+function authenticateOrg(
+  fixture: BillingOrgFixture,
+  role: "org:admin" | "org:member" = "org:admin",
+): void {
+  mocks.clerk.session(fixture.userId, fixture.orgId, role);
+}
+
+function mockClerkOrganization(fixture: BillingOrgFixture): void {
+  context.mocks.clerk.organizations.getOrganization.mockResolvedValue({
+    id: fixture.orgId,
+    slug: `billing-${fixture.orgId.slice(-8)}`,
+    name: "Billing Checkout Test Org",
+    createdBy: fixture.userId,
+  });
+}
+
+async function readBillingStatus(
+  fixture: BillingOrgFixture,
+): Promise<BillingStatusResponse> {
+  authenticateOrg(fixture);
+  const response = await accept(
+    setupApp({ context })(zeroBillingStatusContract).get({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
+  return response.body;
+}
+
+async function createOnboardingPaymentPendingOrg(): Promise<BillingOrgFixture> {
+  const fixture = createOrgFixture();
+  authenticateOrg(fixture);
+  await accept(
+    setupApp({ context })(onboardingSetupContract).setup({
+      headers: { authorization: "Bearer clerk-session" },
+      body: { displayName: "Billing Checkout Test Agent" },
+    }),
+    [200, 409],
+  );
+  return fixture;
+}
+
+async function createStripeCustomerOrgForFixture(
+  fixture: BillingOrgFixture,
+  customerId: string,
+): Promise<void> {
+  authenticateOrg(fixture);
+  context.mocks.stripe.customers.create.mockResolvedValueOnce({
+    id: customerId,
+  });
+  context.mocks.stripe.checkout.sessions.create.mockResolvedValueOnce({
+    url: "https://checkout.stripe.com/session/setup-customer",
+  });
+
+  await accept(
+    setupApp({ context })(zeroBillingCheckoutContract).create({
+      headers: { authorization: "Bearer clerk-session" },
+      body: {
+        tier: "pro",
+        successUrl: `${APP_ORIGIN}/billing?billing=success`,
+        cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
+      },
+    }),
+    [200],
+  );
+}
+
+async function createSubscriptionOrg(args: {
+  readonly tier: "pro" | "team";
+  readonly customerId?: string;
+  readonly subscriptionId?: string;
+  readonly subscriptionStatus?: string;
+  readonly periodEndUnix?: number;
+  readonly cancelAtPeriodEnd?: boolean;
+}): Promise<SubscriptionFixture> {
+  const fixture = createOrgFixture();
+  const customerId = args.customerId ?? `cus_${randomUUID().slice(0, 8)}`;
+  const subscriptionId =
+    args.subscriptionId ?? `sub_${randomUUID().slice(0, 8)}`;
+  const periodEndUnix =
+    args.periodEndUnix ?? Math.floor(now() / 1000) + 30 * 86_400;
+  const priceId = args.tier === "team" ? TEST_PRICE_TEAM : TEST_PRICE_PRO;
+  mockClerkOrganization(fixture);
+  mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
+  context.mocks.stripe.customers.retrieve.mockResolvedValueOnce({
+    id: customerId,
+    metadata: { orgId: fixture.orgId },
+  });
+  context.mocks.stripe.subscriptions.retrieve.mockResolvedValueOnce({
+    id: subscriptionId,
+    status: args.subscriptionStatus ?? "active",
+    customer: customerId,
+    cancel_at_period_end: args.cancelAtPeriodEnd ?? false,
+    cancel_at: null,
+    schedule: null,
+    trial_end: null,
+    metadata: {},
+    items: {
+      data: [
+        {
+          price: { id: priceId },
+          current_period_end: periodEndUnix,
+        },
+      ],
+    },
+  });
+
+  const event = {
+    type: "invoice.paid",
+    data: {
+      object: {
+        id: `in_${randomUUID().slice(0, 8)}`,
+        customer: customerId,
+        metadata: {},
+        parent: {
+          subscription_details: {
+            subscription: subscriptionId,
+            metadata: {},
+          },
+        },
+        lines: {
+          data: [
+            {
+              price: { id: priceId },
+              parent: { type: "subscription_item_details" },
+              period: {
+                start: periodEndUnix - 30 * 86_400,
+                end: periodEndUnix,
+              },
+            },
+          ],
+        },
+      },
+    },
+  };
+  context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
+  await accept(
+    setupApp({ context })(webhookStripeContract).post({
+      body: JSON.stringify(event),
+      extraHeaders: { "stripe-signature": "t=1,v1=checkout-test" },
+    }),
+    [200],
+  );
+  const status = await readBillingStatus(fixture);
+  expect(status.tier).toBe(args.tier);
+  expect(status.subscriptionStatus).toBe(args.subscriptionStatus ?? "active");
+  expect(status.hasSubscription).toBeTruthy();
+  return { ...fixture, customerId, subscriptionId };
+}
+
+async function createConcurrencySubscriptionOrg(args: {
+  readonly subscriptionId: string;
+  readonly slots: number;
+  readonly periodEnd: Date;
+}): Promise<BillingOrgFixture> {
+  const fixture = createOrgFixture();
+  const customerId = `cus_${randomUUID().slice(0, 8)}`;
+  const periodEndUnix = Math.floor(args.periodEnd.getTime() / 1000);
+  mockClerkOrganization(fixture);
+  mockOptionalEnv("STRIPE_WEBHOOK_SECRET", STRIPE_WEBHOOK_SECRET);
+  context.mocks.stripe.customers.retrieve.mockResolvedValueOnce({
+    id: customerId,
+    metadata: { orgId: fixture.orgId },
+  });
+
+  const event = {
+    type: "invoice.paid",
+    data: {
+      object: {
+        id: `in_${randomUUID().slice(0, 8)}`,
+        customer: customerId,
+        metadata: { purpose: "concurrency_subscription" },
+        parent: {
+          subscription_details: {
+            subscription: args.subscriptionId,
+            metadata: { purpose: "concurrency_subscription" },
+          },
+        },
+        lines: {
+          data: [
+            {
+              id: `il_${randomUUID().slice(0, 8)}`,
+              quantity: args.slots,
+              price: { id: TEST_PRICE_CONCURRENCY },
+              parent: { type: "subscription_item_details" },
+              period: {
+                start: periodEndUnix - 30 * 86_400,
+                end: periodEndUnix,
+              },
+            },
+          ],
+        },
+      },
+    },
+  };
+  context.mocks.stripe.webhooks.constructEvent.mockReturnValueOnce(event);
+  await accept(
+    setupApp({ context })(webhookStripeContract).post({
+      body: JSON.stringify(event),
+      extraHeaders: { "stripe-signature": "t=1,v1=checkout-test" },
+    }),
+    [200],
+  );
+  const status = await readBillingStatus(fixture);
+  expect(status.concurrencySubscriptions).toEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        id: args.subscriptionId,
+        quantity: args.slots,
+        currentPeriodEnd: args.periodEnd.toISOString(),
+        cancelAtPeriodEnd: false,
+      }),
+    ]),
+  );
+  return fixture;
 }
 
 async function seedMemberRole(args: {
@@ -103,45 +302,33 @@ async function seedMemberRole(args: {
 }
 
 describe("POST /api/zero/billing/checkout", () => {
-  const createdOrgIds: string[] = [];
-
   beforeEach(() => {
     setZeroPrice();
   });
 
-  afterEach(async () => {
-    while (createdOrgIds.length > 0) {
-      const orgId = createdOrgIds.pop();
-      if (orgId) {
-        await deleteOrgRow(orgId);
-      }
-    }
-  });
-
   async function trackedSeed(): Promise<{ orgId: string; userId: string }> {
-    const fixture = await seedOrgRow();
-    createdOrgIds.push(fixture.orgId);
-    return fixture;
+    return createOrgFixture();
   }
 
   async function trackedBillingSeed(values: {
     readonly stripeCustomerId: string;
     readonly stripeSubscriptionId: string;
     readonly subscriptionStatus: string;
-    readonly tier: string;
+    readonly tier: "pro" | "team";
   }): Promise<{ orgId: string; userId: string }> {
-    const fixture = await seedOrgRow(values);
-    createdOrgIds.push(fixture.orgId);
-    return fixture;
+    return createSubscriptionOrg({
+      customerId: values.stripeCustomerId,
+      subscriptionId: values.stripeSubscriptionId,
+      subscriptionStatus: values.subscriptionStatus,
+      tier: values.tier,
+    });
   }
 
   async function trackedPendingSeed(): Promise<{
     orgId: string;
     userId: string;
   }> {
-    const fixture = await seedOrgRow({ onboardingPaymentPending: true });
-    createdOrgIds.push(fixture.orgId);
-    return fixture;
+    return createOnboardingPaymentPendingOrg();
   }
 
   it("returns 503 when STRIPE_SECRET_KEY is not configured", async () => {
@@ -727,19 +914,8 @@ describe("POST /api/zero/billing/checkout", () => {
 });
 
 describe("POST /api/zero/billing/checkout/complete", () => {
-  const createdOrgIds: string[] = [];
-
   beforeEach(() => {
     setZeroPrice();
-  });
-
-  afterEach(async () => {
-    while (createdOrgIds.length > 0) {
-      const orgId = createdOrgIds.pop();
-      if (orgId) {
-        await deleteOrgRow(orgId);
-      }
-    }
   });
 
   async function trackedSeed(values?: {
@@ -747,11 +923,30 @@ describe("POST /api/zero/billing/checkout/complete", () => {
     readonly stripeCustomerId?: string;
     readonly stripeSubscriptionId?: string;
     readonly subscriptionStatus?: string;
-    readonly tier?: string;
+    readonly tier?: "pro" | "team";
   }): Promise<{ orgId: string; userId: string }> {
-    const fixture = await seedOrgRow(values);
-    createdOrgIds.push(fixture.orgId);
-    return fixture;
+    if (values?.stripeSubscriptionId && values.tier) {
+      return createSubscriptionOrg({
+        customerId: values.stripeCustomerId,
+        subscriptionId: values.stripeSubscriptionId,
+        subscriptionStatus: values.subscriptionStatus,
+        tier: values.tier,
+      });
+    }
+    if (values?.stripeCustomerId) {
+      const fixture = values.onboardingPaymentPending
+        ? await createOnboardingPaymentPendingOrg()
+        : createOrgFixture();
+      if (!values.onboardingPaymentPending) {
+        authenticateOrg(fixture);
+      }
+      await createStripeCustomerOrgForFixture(fixture, values.stripeCustomerId);
+      return fixture;
+    }
+    if (values?.onboardingPaymentPending) {
+      return createOnboardingPaymentPendingOrg();
+    }
+    return createOrgFixture();
   }
 
   it("records a completed subscription checkout while waiting for invoice payment", async () => {
@@ -796,26 +991,12 @@ describe("POST /api/zero/billing/checkout/complete", () => {
 
     expect(response.body).toStrictEqual({ completed: false });
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        tier: orgMetadata.tier,
-        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-        subscriptionStatus: orgMetadata.subscriptionStatus,
-        onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
-        currentPeriodEnd: orgMetadata.currentPeriodEnd,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId))
-      .limit(1);
-
-    expect(row).toStrictEqual({
-      tier: "pro-suspend",
-      stripeSubscriptionId: subscriptionId,
-      subscriptionStatus: "trialing",
-      onboardingPaymentPending: true,
-      currentPeriodEnd: null,
-    });
+    const status = await readBillingStatus(fixture);
+    expect(status.tier).toBe("pro-suspend");
+    expect(status.hasSubscription).toBeTruthy();
+    expect(status.subscriptionStatus).toBe("trialing");
+    expect(status.onboardingPaymentPending).toBeTruthy();
+    expect(status.currentPeriodEnd).toBeNull();
   });
 
   it("keeps checkout pending when the subscription is incomplete", async () => {
@@ -860,26 +1041,12 @@ describe("POST /api/zero/billing/checkout/complete", () => {
 
     expect(response.body).toStrictEqual({ completed: false });
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        tier: orgMetadata.tier,
-        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-        subscriptionStatus: orgMetadata.subscriptionStatus,
-        onboardingPaymentPending: orgMetadata.onboardingPaymentPending,
-        currentPeriodEnd: orgMetadata.currentPeriodEnd,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId))
-      .limit(1);
-
-    expect(row).toStrictEqual({
-      tier: "pro-suspend",
-      stripeSubscriptionId: subscriptionId,
-      subscriptionStatus: "incomplete",
-      onboardingPaymentPending: true,
-      currentPeriodEnd: null,
-    });
+    const status = await readBillingStatus(fixture);
+    expect(status.tier).toBe("pro-suspend");
+    expect(status.hasSubscription).toBeTruthy();
+    expect(status.subscriptionStatus).toBe("incomplete");
+    expect(status.onboardingPaymentPending).toBeTruthy();
+    expect(status.currentPeriodEnd).toBeNull();
   });
 
   it("allows completion when the same subscription is already stored", async () => {
@@ -978,22 +1145,10 @@ describe("POST /api/zero/billing/checkout/complete", () => {
       },
     });
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        tier: orgMetadata.tier,
-        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-        subscriptionStatus: orgMetadata.subscriptionStatus,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId))
-      .limit(1);
-
-    expect(row).toStrictEqual({
-      tier: "team",
-      stripeSubscriptionId: existingSubscriptionId,
-      subscriptionStatus: "active",
-    });
+    const status = await readBillingStatus(fixture);
+    expect(status.tier).toBe("team");
+    expect(status.hasSubscription).toBeTruthy();
+    expect(status.subscriptionStatus).toBe("active");
   });
 
   it("returns completed false while Stripe has not completed the session", async () => {
@@ -1060,25 +1215,12 @@ describe("POST /api/zero/billing/checkout/complete", () => {
 });
 
 describe("POST /api/zero/billing/concurrency-checkout", () => {
-  const createdOrgIds: string[] = [];
-
   beforeEach(() => {
     setZeroPrice();
   });
 
-  afterEach(async () => {
-    while (createdOrgIds.length > 0) {
-      const orgId = createdOrgIds.pop();
-      if (orgId) {
-        await deleteOrgRow(orgId);
-      }
-    }
-  });
-
   async function trackedSeed(): Promise<{ orgId: string; userId: string }> {
-    const fixture = await seedOrgRow();
-    createdOrgIds.push(fixture.orgId);
-    return fixture;
+    return createOrgFixture();
   }
 
   it("creates concurrency subscription checkout with the requested quantity", async () => {
@@ -1211,29 +1353,14 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
   });
 
   it("cancels an active concurrency subscription at period end", async () => {
-    const fixture = await trackedSeed();
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const subscriptionId = `sub_${randomUUID()}`;
     const periodEnd = new Date("2099-05-20T00:00:00Z");
-    const writeDb = store.set(writeDb$);
-    await writeDb.insert(orgConcurrencyEntitlements).values({
-      orgId: fixture.orgId,
-      stripeSubscriptionId: subscriptionId,
-      stripeInvoiceId: `in_${randomUUID()}`,
-      stripeInvoiceLineId: `il_${randomUUID()}`,
-      stripePriceId: TEST_PRICE_CONCURRENCY,
+    const fixture = await createConcurrencySubscriptionOrg({
+      subscriptionId,
       slots: 2,
-      startsAt: new Date("2026-01-01T00:00:00Z"),
-      expiresAt: periodEnd,
+      periodEnd,
     });
-    await writeDb.insert(orgConcurrencySubscriptions).values({
-      orgId: fixture.orgId,
-      stripeSubscriptionId: subscriptionId,
-      stripePriceId: TEST_PRICE_CONCURRENCY,
-      slots: 2,
-      subscriptionStatus: "active",
-      currentPeriodEnd: periodEnd,
-    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     context.mocks.stripe.subscriptions.update.mockResolvedValue({
       id: subscriptionId,
     });
@@ -1259,41 +1386,25 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       subscriptionId,
       { cancel_at_period_end: true },
     );
-    const [storedSubscription] = await writeDb
-      .select({
-        cancelAtPeriodEnd: orgConcurrencySubscriptions.cancelAtPeriodEnd,
-      })
-      .from(orgConcurrencySubscriptions)
-      .where(
-        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
-      );
-    expect(storedSubscription?.cancelAtPeriodEnd).toBeTruthy();
+    const status = await readBillingStatus(fixture);
+    expect(status.concurrencySubscriptions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: subscriptionId,
+          cancelAtPeriodEnd: true,
+        }),
+      ]),
+    );
   });
 
   it("restores an active concurrency subscription renewal", async () => {
-    const fixture = await trackedSeed();
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const subscriptionId = `sub_${randomUUID()}`;
-    const writeDb = store.set(writeDb$);
-    await writeDb.insert(orgConcurrencyEntitlements).values({
-      orgId: fixture.orgId,
-      stripeSubscriptionId: subscriptionId,
-      stripeInvoiceId: `in_${randomUUID()}`,
-      stripeInvoiceLineId: `il_${randomUUID()}`,
-      stripePriceId: TEST_PRICE_CONCURRENCY,
+    const fixture = await createConcurrencySubscriptionOrg({
+      subscriptionId,
       slots: 2,
-      startsAt: new Date("2026-01-01T00:00:00Z"),
-      expiresAt: new Date("2099-05-20T00:00:00Z"),
+      periodEnd: new Date("2099-05-20T00:00:00Z"),
     });
-    await writeDb.insert(orgConcurrencySubscriptions).values({
-      orgId: fixture.orgId,
-      stripeSubscriptionId: subscriptionId,
-      stripePriceId: TEST_PRICE_CONCURRENCY,
-      slots: 2,
-      subscriptionStatus: "active",
-      currentPeriodEnd: new Date("2099-05-20T00:00:00Z"),
-      cancelAtPeriodEnd: true,
-    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     context.mocks.stripe.subscriptions.update.mockResolvedValue({
       id: subscriptionId,
     });
@@ -1301,6 +1412,20 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     const client = setupApp({ context })(
       zeroBillingConcurrencySubscriptionContract,
     );
+
+    await accept(
+      client.cancel({
+        params: { subscriptionId },
+        body: {},
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    context.mocks.stripe.subscriptions.update.mockClear();
+
+    context.mocks.stripe.subscriptions.update.mockResolvedValue({
+      id: subscriptionId,
+    });
 
     const response = await accept(
       client.restore({
@@ -1316,15 +1441,15 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       subscriptionId,
       { cancel_at_period_end: false },
     );
-    const [storedSubscription] = await writeDb
-      .select({
-        cancelAtPeriodEnd: orgConcurrencySubscriptions.cancelAtPeriodEnd,
-      })
-      .from(orgConcurrencySubscriptions)
-      .where(
-        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
-      );
-    expect(storedSubscription?.cancelAtPeriodEnd).toBeFalsy();
+    const status = await readBillingStatus(fixture);
+    expect(status.concurrencySubscriptions).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: subscriptionId,
+          cancelAtPeriodEnd: false,
+        }),
+      ]),
+    );
   });
 
   it("returns 404 when restoring a concurrency subscription outside the org", async () => {
@@ -1371,25 +1496,12 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
 });
 
 describe("POST /api/zero/billing/credit-checkout", () => {
-  const createdOrgIds: string[] = [];
-
   beforeEach(() => {
     setZeroPrice();
   });
 
-  afterEach(async () => {
-    while (createdOrgIds.length > 0) {
-      const orgId = createdOrgIds.pop();
-      if (orgId) {
-        await deleteOrgRow(orgId);
-      }
-    }
-  });
-
   async function trackedSeed(): Promise<{ orgId: string; userId: string }> {
-    const fixture = await seedOrgRow();
-    createdOrgIds.push(fixture.orgId);
-    return fixture;
+    return createOrgFixture();
   }
 
   function mockCustomCreditCheckoutPrice(checkoutPriceId: string): void {
