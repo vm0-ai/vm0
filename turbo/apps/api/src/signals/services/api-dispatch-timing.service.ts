@@ -80,8 +80,14 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_prepare_storage_manifest_load_storage_index"
   | "api_dispatch_prepare_storage_manifest_build_entries"
   | "api_dispatch_prepare_storage_manifest_build_compose_entries"
+  | "api_dispatch_prepare_storage_manifest_resolve_compose_versions"
+  | "api_dispatch_prepare_storage_manifest_generate_compose_urls"
   | "api_dispatch_prepare_storage_manifest_build_additional_entries"
+  | "api_dispatch_prepare_storage_manifest_resolve_additional_versions"
+  | "api_dispatch_prepare_storage_manifest_generate_additional_urls"
   | "api_dispatch_prepare_storage_manifest_build_artifact_entries"
+  | "api_dispatch_prepare_storage_manifest_resolve_artifact_versions"
+  | "api_dispatch_prepare_storage_manifest_generate_artifact_urls"
   | "api_dispatch_prepare_storage_manifest_assemble"
   | "api_dispatch_build_stored_execution_context";
 
