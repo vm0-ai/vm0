@@ -37,6 +37,7 @@ const SALES_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000201";
 const OPS_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000202";
 const OTHER_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000203";
 const PENDING_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000204";
+const COPIED_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000205";
 const GMAIL_TRIGGER_ID = "workflow-trigger-gmail-new-message";
 const GMAIL_LABEL_TRIGGER_ID = "workflow-trigger-gmail-label-applied";
 const WORKFLOW_CHAT_THREAD_ID = "00000000-0000-4000-a000-000000000300";
@@ -416,6 +417,25 @@ function mockWorkflowApis(
   );
 }
 
+function mockDeleteWorkflow(
+  workflows: ZeroWorkflowDetailResponse[],
+  onDelete: (workflowId: string) => void | Promise<void>,
+): void {
+  context.mocks.api(
+    zeroWorkflowsDetailContract.delete,
+    async ({ params, respond }) => {
+      await onDelete(params.workflowId);
+      const index = workflows.findIndex((workflow) => {
+        return workflow.id === params.workflowId;
+      });
+      if (index !== -1) {
+        workflows.splice(index, 1);
+      }
+      return respond(204);
+    },
+  );
+}
+
 function mockConnectedTriggerConnectors(): void {
   context.mocks.data.connectors([
     {
@@ -518,6 +538,22 @@ function mockRunWorkflowTrigger(onRun: (triggerId: string) => void): void {
       chatThreadId: TRIGGER_RUN_THREAD_ID,
     });
   });
+}
+
+function mockDisableWorkflowTrigger(
+  onDisable: (triggerId: string) => void,
+): void {
+  context.mocks.api(
+    zeroWorkflowTriggersContract.disable,
+    ({ params, respond }) => {
+      onDisable(params.id);
+      return respond(200, {
+        ...weekdayWorkflowTrigger(),
+        id: params.id,
+        enabled: false,
+      });
+    },
+  );
 }
 
 function mockOpenWorkflowChat(onOpen: (workflowId: string) => void): void {
@@ -790,6 +826,175 @@ describe("workflow detail page", () => {
     expect(pageText.indexOf("Delete workflow")).toBeLessThan(
       pageText.indexOf("Created by"),
     );
+  });
+
+  it("shows source and target actions after copying a workflow", async () => {
+    const workflows = [salesResearch()];
+    const copiedWorkflow: ZeroWorkflowDetailResponse = {
+      ...salesResearch(),
+      id: COPIED_WORKFLOW_ID,
+      agentId: OTHER_AGENT_ID,
+      agentName: "support-bot",
+      agentDisplayName: "Support Bot",
+      visibility: "private",
+      triggers: [],
+    };
+    const copyGate = context.mocks.deferred<void>();
+    const copyRequests: {
+      readonly workflowId: string;
+      readonly toAgentId: string;
+    }[] = [];
+    const disabledTriggerIds: string[] = [];
+    mockAgentPageApis();
+    mockWorkflowApis(workflows);
+    mockDisableWorkflowTrigger((triggerId) => {
+      disabledTriggerIds.push(triggerId);
+    });
+    context.mocks.api(
+      zeroWorkflowsDetailContract.copy,
+      async ({ params, body, respond }) => {
+        copyRequests.push({
+          workflowId: params.workflowId,
+          toAgentId: body.toAgentId,
+        });
+        await copyGate.promise;
+        workflows.push(copiedWorkflow);
+        return respond(201, summary(copiedWorkflow));
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("info"),
+    });
+
+    await waitFor(() => {
+      expect(buttonByText(/^Copy workflow$/)).toBeInTheDocument();
+    });
+    click(buttonByText(/^Copy workflow$/));
+    await waitFor(() => {
+      expect(buttonByText(/Support Bot/)).toBeInTheDocument();
+    });
+    click(buttonByText(/Support Bot/));
+
+    await waitFor(() => {
+      expect(copyRequests).toStrictEqual([
+        { workflowId: SALES_WORKFLOW_ID, toAgentId: OTHER_AGENT_ID },
+      ]);
+    });
+    expect(
+      screen.getByText(
+        "Copying Sales Research from Research Bot to Support Bot.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Copy to another agent as a new private workflow."),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Public target agent")).toBeInTheDocument();
+
+    copyGate.resolve();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Workflow copied to Support Bot"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Source")).toBeInTheDocument();
+    expect(screen.getByText("Target")).toBeInTheDocument();
+    expect(buttonByText(/Pause source triggers/)).toBeInTheDocument();
+    expect(buttonByText(/Delete source workflow/)).toBeInTheDocument();
+    expect(buttonByText(/View target workflow/)).toBeInTheDocument();
+
+    click(buttonByText(/Pause source triggers/));
+    expect(buttonByText(/Pause source triggers/)).toBeDisabled();
+    expect(
+      buttonByText(/Pause source triggers/).querySelector(".animate-spin"),
+    ).not.toBeNull();
+    await waitFor(() => {
+      expect(disabledTriggerIds).toStrictEqual([
+        "workflow-trigger-weekday-brief",
+      ]);
+    });
+    expect(
+      screen.getByText("Source triggers are paused on Research Bot"),
+    ).toBeInTheDocument();
+
+    click(buttonByText(/View target workflow/));
+    await waitFor(() => {
+      expect(pathname()).toBe(
+        `/agents/${OTHER_AGENT_ID}/workflows/${COPIED_WORKFLOW_ID}`,
+      );
+    });
+  });
+
+  it("deletes the source workflow from copied workflow actions", async () => {
+    const workflows = [salesResearch()];
+    const copiedWorkflow: ZeroWorkflowDetailResponse = {
+      ...salesResearch(),
+      id: COPIED_WORKFLOW_ID,
+      agentId: OTHER_AGENT_ID,
+      agentName: "support-bot",
+      agentDisplayName: "Support Bot",
+      visibility: "private",
+      triggers: [],
+    };
+    const deleteGate = context.mocks.deferred<void>();
+    const deletedWorkflowIds: string[] = [];
+    mockAgentPageApis();
+    mockWorkflowApis(workflows);
+    mockDeleteWorkflow(workflows, async (workflowId) => {
+      deletedWorkflowIds.push(workflowId);
+      await deleteGate.promise;
+    });
+    context.mocks.api(zeroWorkflowsDetailContract.copy, ({ respond }) => {
+      workflows.push(copiedWorkflow);
+      return respond(201, summary(copiedWorkflow));
+    });
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("info"),
+    });
+
+    await waitFor(() => {
+      expect(buttonByText(/^Copy workflow$/)).toBeInTheDocument();
+    });
+    click(buttonByText(/^Copy workflow$/));
+    await waitFor(() => {
+      expect(buttonByText(/Support Bot/)).toBeInTheDocument();
+    });
+    click(buttonByText(/Support Bot/));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Workflow copied to Support Bot"),
+      ).toBeInTheDocument();
+    });
+    expect(buttonByText(/Pause source triggers/)).not.toBeDisabled();
+    click(buttonByText(/Delete source workflow/));
+
+    await waitFor(() => {
+      expect(deletedWorkflowIds).toStrictEqual([SALES_WORKFLOW_ID]);
+    });
+    expect(buttonByText(/Pause source triggers/)).toBeDisabled();
+    expect(buttonByText(/Delete source workflow/)).toBeDisabled();
+    expect(
+      buttonByText(/Delete source workflow/).querySelector(".animate-spin"),
+    ).not.toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "Delete workflow" }),
+    ).not.toBeInTheDocument();
+
+    deleteGate.resolve();
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${AGENT_ID}/workflows`);
+    });
+    expect(
+      workflows.some((workflow) => {
+        return workflow.id === SALES_WORKFLOW_ID;
+      }),
+    ).toBeFalsy();
   });
 
   it("prefills and updates workflow metadata from the info tab", async () => {
