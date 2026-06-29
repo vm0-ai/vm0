@@ -1,5 +1,35 @@
 # Changelog
 
+## [0.505.0](https://github.com/vm0-ai/vm0/compare/app-v0.504.8...app-v0.505.0) (2026-06-29)
+
+
+### Features
+
+* restore one-time workflow trigger ui ([#19326](https://github.com/vm0-ai/vm0/issues/19326)) ([d265803](https://github.com/vm0-ai/vm0/commit/d265803036887abef7f617719585817552f3cba2))
+
+
+### Bug Fixes
+
+* hide workflow dirty state without edit permission ([#19309](https://github.com/vm0-ai/vm0/issues/19309)) ([4c6dd49](https://github.com/vm0-ai/vm0/commit/4c6dd494370345f009176381d0680fcbe98cfd28))
+* improve workflow copy action states ([#19302](https://github.com/vm0-ai/vm0/issues/19302)) ([211d91e](https://github.com/vm0-ai/vm0/commit/211d91ee21c96354df48606f6db05f4f8f8264f1))
+* show already allowed permission grants ([#19324](https://github.com/vm0-ai/vm0/issues/19324)) ([ac4ff73](https://github.com/vm0-ai/vm0/commit/ac4ff7349dd4c24998303c740a2a996a0abe4988))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.6
+    * @vm0/connectors bumped to 1.112.1
+    * @vm0/core bumped to 8.374.6
+
+## [0.504.8](https://github.com/vm0-ai/vm0/compare/app-v0.504.7...app-v0.504.8) (2026-06-29)
+
+
+### Bug Fixes
+
+* shorten goal message label ([#19306](https://github.com/vm0-ai/vm0/issues/19306)) ([3082607](https://github.com/vm0-ai/vm0/commit/3082607aa23b52ab5c59209ce235fcb4abc33a1b))
+
 ## [0.504.7](https://github.com/vm0-ai/vm0/compare/app-v0.504.6...app-v0.504.7) (2026-06-29)
 
 

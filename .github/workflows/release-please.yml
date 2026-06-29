@@ -25,7 +25,6 @@ jobs:
     outputs:
       releases_created: ${{ steps.release.outputs.releases_created }}
       cli_release_created: ${{ steps.release.outputs['turbo/apps/cli--release_created'] }}
-      web_release_created: ${{ steps.release.outputs['turbo/apps/web--release_created'] }}
       api_release_created: ${{ steps.release.outputs['turbo/apps/api--release_created'] }}
       core_release_created: ${{ steps.release.outputs['turbo/packages/core--release_created'] }}
       api_contracts_release_created: ${{ steps.release.outputs['turbo/packages/api-contracts--release_created'] }}
@@ -38,7 +37,6 @@ jobs:
       api_runtime_dependency_release_created: ${{ steps.release.outputs['turbo/packages/core--release_created'] == 'true' || steps.release.outputs['turbo/packages/api-contracts--release_created'] == 'true' || steps.release.outputs['turbo/packages/connectors--release_created'] == 'true' }}
       api_deploy_required: ${{ steps.release.outputs['turbo/apps/api--release_created'] == 'true' || steps.release.outputs['turbo/packages/core--release_created'] == 'true' || steps.release.outputs['turbo/packages/api-contracts--release_created'] == 'true' || steps.release.outputs['turbo/packages/connectors--release_created'] == 'true' }}
       runner_rs_version: ${{ steps.release.outputs['crates/runner--version'] }}
-      web_version: ${{ steps.release.outputs['turbo/apps/web--version'] }}
       api_version: ${{ steps.release.outputs['turbo/apps/api--version'] }}
       app_version: ${{ steps.release.outputs['turbo/apps/platform--version'] }}
       desktop_version: ${{ steps.release.outputs['turbo/apps/desktop--version'] }}
@@ -703,124 +701,6 @@ jobs:
                   text: "*Database Migration* ❌ Migration failed\n📦 Version: `${{ needs.release-please.outputs.api_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/api-v${{ needs.release-please.outputs.api_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
   # Build web app production deployment (Staged - prod-eligible, not serving traffic)
-  build-web-production:
-    needs: release-please
-    if: ${{ needs.release-please.outputs.web_release_created == 'true' }}
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    outputs:
-      deployment_url: ${{ steps.deploy.outputs.url }}
-    permissions:
-      contents: read
-      id-token: write
-    environment: production
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Notify Slack - Starting
-        id: slack-start
-        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.3
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*Web App* building staged production deployment..."
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*Web App* building staged production deployment...\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
-
-      - name: Record start time
-        id: timer
-        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Fetch production Doppler OAuth config
-        id: doppler-oauth
-        uses: dopplerhq/secrets-fetch-action@v2.0.0
-        with:
-          auth-method: oidc
-          doppler-identity-id: ${{ vars.DOPPLER_SERVICE_IDENTITY_ID }}
-          doppler-project: vm0
-          doppler-config: prd
-
-      - name: Resolve Web production environment
-        id: web-production-env
-        uses: ./.github/actions/web-api-env
-        with:
-          app: web
-          environment: production
-          web-url: https://www.vm0.ai
-          app-url: https://app.vm0.ai
-          api-url: ${{ vars.VM0_API_URL }}
-        env:
-          REPO_VARS_JSON: ${{ toJSON(vars) }}
-          REPO_SECRETS_JSON: ${{ toJSON(secrets) }}
-          DOPPLER_SECRETS_JSON: ${{ toJSON(steps.doppler-oauth.outputs) }}
-
-      - name: Build Web Staged Production Deployment
-        id: deploy
-        uses: ./.github/actions/vercel-deploy
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
-          environment: production
-          deployment-env: web
-          prebuilt: "true"
-          skip-domain: "true"
-          skip-start: "true"
-          skip-finish: "true"
-          environment-file: ${{ steps.web-production-env.outputs.file }}
-
-      - name: Calculate duration
-        id: duration
-        if: ${{ always() && steps.timer.outputs.start }}
-        run: |
-          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
-          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
-          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
-          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
-          else text="${s}s"; fi
-          echo "text=$text" >> "$GITHUB_OUTPUT"
-
-      - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Web App* ✅ Staged build ready (not yet serving)"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*Web App* ✅ Staged build ready (not yet serving)\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
-
-      - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Web App* ❌ Staged build failed"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*Web App* ❌ Staged build failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
-
-  # Build API production deployment (Staged - prod-eligible, not serving traffic)
   build-api-production:
     needs: release-please
     if: ${{ needs.release-please.outputs.api_deploy_required == 'true' }}
@@ -1104,7 +984,6 @@ jobs:
                   type: mrkdwn
                   text: "*Host Worker* ❌ Deploy failed\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
 
-  # Promote web staged deployment to production (traffic switch)
   # Fan-in barrier: all build-phase and release validation jobs must finish
   # (success or skipped) before any promote-phase job starts. If any build or
   # validation fails, this job fails, which in turn blocks every promote via
@@ -1113,7 +992,6 @@ jobs:
     needs:
       - release-please
       - validate-db-release-coupling
-      - build-web-production
       - build-api-production
       - build-app-production
       - build-runner-release-assets
@@ -1153,136 +1031,6 @@ jobs:
 
   # Promote web staged deployment to production. If the same release run also
   # promotes API, wait for API traffic to be live first.
-  promote-web-production:
-    needs:
-      [
-        release-please,
-        builds-complete,
-        build-web-production,
-        promote-api-production,
-      ]
-    if: >-
-      always() &&
-      needs.release-please.outputs.web_release_created == 'true' &&
-      needs.builds-complete.result == 'success' &&
-      needs.build-web-production.result == 'success' &&
-      (needs.release-please.outputs.api_deploy_required != 'true' ||
-       needs.promote-api-production.result == 'success')
-    runs-on: ubuntu-latest
-    container:
-      image: ghcr.io/vm0-ai/vm0-toolchain:20260622
-    outputs:
-      deployment_url: ${{ needs.build-web-production.outputs.deployment_url }}
-      vercel_dashboard_url: ${{ steps.vercel-dashboard.outputs.url }}
-    permissions:
-      contents: read
-      deployments: write
-    environment: production
-    steps:
-      - uses: actions/checkout@v7
-      - uses: ./.github/actions/toolchain-init
-
-      - name: Start GitHub Deployment
-        id: deployment
-        uses: bobheadxi/deployments@v1
-        with:
-          step: start
-          token: ${{ github.token }}
-          env: web/production
-          ref: ${{ github.ref }}
-          desc: Promoting web staged deployment to production
-
-      - name: Notify Slack - Starting
-        id: slack-start
-        if: ${{ vars.SLACK_RELEASE_CHANNEL_ID != '' }}
-        uses: slackapi/slack-github-action@v3.0.3
-        with:
-          method: chat.postMessage
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            text: "*Web App* promoting staged deployment to production..."
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*Web App* promoting staged deployment to production...\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>"
-
-      - name: Record start time
-        id: timer
-        run: echo "start=$(date +%s)" >> "$GITHUB_OUTPUT"
-
-      - name: Promote Web Deployment
-        uses: ./.github/actions/vercel-promote
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          vercel-org-id: ${{ vars.VERCEL_TEAM_ID }}
-          vercel-project-id: ${{ vars.VERCEL_PROJECT_ID_WEB }}
-          deployment-url: ${{ needs.build-web-production.outputs.deployment_url }}
-
-      - name: Resolve Vercel dashboard URL
-        id: vercel-dashboard
-        if: ${{ needs.build-web-production.outputs.deployment_url != '' }}
-        uses: ./.github/actions/vercel-dashboard-url
-        with:
-          vercel-token: ${{ secrets.VERCEL_TOKEN }}
-          deployment-url: ${{ needs.build-web-production.outputs.deployment_url }}
-
-      - name: Finish GitHub Deployment
-        if: always()
-        uses: bobheadxi/deployments@v1
-        with:
-          step: finish
-          token: ${{ github.token }}
-          status: ${{ job.status }}
-          env: ${{ steps.deployment.outputs.env }}
-          env_url: ${{ steps.vercel-dashboard.outputs.url }}
-          deployment_id: ${{ steps.deployment.outputs.deployment_id }}
-
-      - name: Calculate duration
-        id: duration
-        if: ${{ always() && steps.timer.outputs.start }}
-        run: |
-          elapsed=$(( $(date +%s) - ${{ steps.timer.outputs.start }} ))
-          h=$((elapsed / 3600)) m=$(( (elapsed % 3600) / 60 )) s=$((elapsed % 60))
-          if [ $h -gt 0 ]; then text="${h}h ${m}m ${s}s"
-          elif [ $m -gt 0 ]; then text="${m}m ${s}s"
-          else text="${s}s"; fi
-          echo "text=$text" >> "$GITHUB_OUTPUT"
-
-      - name: Notify Slack - Success
-        if: ${{ success() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Web App* ✅ Promoted to production"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*Web App* ✅ Promoted to production\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔄 <${{ github.server_url }}/${{ github.repository }}/issues/${{ vars.ROLLBACK_ISSUE_NUMBER }}|Rollback Dashboard>"
-
-      - name: Notify Slack - Failure
-        if: ${{ failure() && steps.slack-start.outputs.ts }}
-        uses: slackapi/slack-github-action@v3.0.3
-        with:
-          method: chat.update
-          token: ${{ secrets.CI_SLACK_BOT_TOKEN }}
-          payload: |
-            channel: ${{ vars.SLACK_RELEASE_CHANNEL_ID }}
-            ts: "${{ steps.slack-start.outputs.ts }}"
-            text: "*Web App* ❌ Promote failed — DB at new schema, traffic on old code"
-            blocks:
-              - type: section
-                text:
-                  type: mrkdwn
-                  text: "*Web App* ❌ Promote failed\n📦 Version: `${{ needs.release-please.outputs.web_version }}`\n⏱️ `${{ steps.duration.outputs.text }}`\n🔗 <${{ github.server_url }}/${{ github.repository }}/releases/tag/web-v${{ needs.release-please.outputs.web_version }}|View Release>\n🔗 <${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}|View Logs>"
-
-  # Promote API staged deployment to production (vm0-api project only; no api.vm0.ai alias)
   promote-api-production:
     needs:
       [
@@ -1655,14 +1403,13 @@ jobs:
     needs:
       [
         release-please,
-        promote-web-production,
         promote-api-production,
         promote-app-production,
         promote-runner-production,
       ]
     if: >-
       always() &&
-      (needs.promote-web-production.result == 'success' ||
+      (
        needs.promote-api-production.result == 'success' ||
        needs.promote-app-production.result == 'success' ||
        needs.promote-runner-production.result == 'success')
@@ -1675,104 +1422,25 @@ jobs:
         with:
           fetch-depth: 0
 
-      - name: Detect migration safety
-        id: migration-safety
-        env:
-          WEB_VERSION: ${{ needs.release-please.outputs.web_version }}
-        run: |
-          if [ -z "$WEB_VERSION" ]; then
-            echo "indicator=safe" >> "$GITHUB_OUTPUT"
-            echo "details=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          CURRENT_TAG="web-v${WEB_VERSION}"
-
-          # Find previous web tag
-          PREV_TAG=$(git tag --list 'web-v*' --sort=-version:refname | grep -A1 "^${CURRENT_TAG}$" | tail -1)
-
-          if [ -z "$PREV_TAG" ] || [ "$PREV_TAG" = "$CURRENT_TAG" ]; then
-            echo "indicator=safe" >> "$GITHUB_OUTPUT"
-            echo "details=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Find new migration files. During the one-time ownership move from
-          # apps/web to packages/db, unchanged historical SQL files should not
-          # count as newly introduced migrations.
-          CANDIDATE_MIGRATIONS=$(git diff --name-only --diff-filter=AM "$PREV_TAG".."$CURRENT_TAG" -- turbo/packages/db/src/migrations/ | grep '\.sql$' || true)
-          NEW_MIGRATIONS_FILE=$(mktemp)
-          while IFS= read -r FILE; do
-            if [ -z "$FILE" ]; then
-              continue
-            fi
-            BASENAME=$(basename "$FILE")
-            OLD_FILE="turbo/apps/web/src/db/migrations/$BASENAME"
-            if git cat-file -e "$PREV_TAG:$OLD_FILE" 2>/dev/null &&
-              git cat-file -e "$CURRENT_TAG:$FILE" 2>/dev/null &&
-              git show "$PREV_TAG:$OLD_FILE" | cmp -s - <(git show "$CURRENT_TAG:$FILE"); then
-              continue
-            fi
-            echo "$FILE" >> "$NEW_MIGRATIONS_FILE"
-          done <<< "$CANDIDATE_MIGRATIONS"
-
-          if [ ! -s "$NEW_MIGRATIONS_FILE" ]; then
-            echo "indicator=safe" >> "$GITHUB_OUTPUT"
-            echo "details=" >> "$GITHUB_OUTPUT"
-            exit 0
-          fi
-
-          # Check for destructive operations
-          DESTRUCTIVE=false
-          FILENAMES=""
-          while IFS= read -r FILE; do
-            BASENAME=$(basename "$FILE")
-            FILENAMES="${FILENAMES:+$FILENAMES, }$BASENAME"
-            if git show "$CURRENT_TAG:$FILE" 2>/dev/null | grep -qiE 'DROP\s+(COLUMN|TABLE|INDEX)|RENAME\s+(COLUMN|TABLE)|ALTER.*DROP'; then
-              DESTRUCTIVE=true
-            fi
-          done < "$NEW_MIGRATIONS_FILE"
-
-          # Check for major version bump
-          PREV_MAJOR=$(echo "$PREV_TAG" | sed 's/web-v//' | cut -d. -f1)
-          CURR_MAJOR=$(echo "$WEB_VERSION" | cut -d. -f1)
-
-          if [ "$DESTRUCTIVE" = true ]; then
-            SAFETY="destructive"
-          elif [ "$PREV_MAJOR" != "$CURR_MAJOR" ]; then
-            SAFETY="major"
-          else
-            SAFETY="migration"
-          fi
-
-          echo "indicator=$SAFETY" >> "$GITHUB_OUTPUT"
-          echo "details=$FILENAMES" >> "$GITHUB_OUTPUT"
-
       - name: Build dashboard entry
         id: entry
         env:
-          WEB_VERSION: ${{ needs.release-please.outputs.web_version }}
           API_VERSION: ${{ needs.release-please.outputs.api_version }}
           APP_VERSION: ${{ needs.release-please.outputs.app_version }}
           RUNNER_VERSION: ${{ needs.release-please.outputs.runner_rs_version }}
-          WEB_RESULT: ${{ needs.promote-web-production.result }}
           API_RESULT: ${{ needs.promote-api-production.result }}
           APP_RESULT: ${{ needs.promote-app-production.result }}
           RUNNER_RESULT: ${{ needs.promote-runner-production.result }}
-          WEB_DASHBOARD_URL: ${{ needs.promote-web-production.outputs.vercel_dashboard_url }}
           API_DASHBOARD_URL: ${{ needs.promote-api-production.outputs.vercel_dashboard_url }}
           APP_DASHBOARD_URL: ${{ needs.promote-app-production.outputs.vercel_dashboard_url }}
-          SAFETY: ${{ steps.migration-safety.outputs.indicator }}
-          MIGRATION_FILES: ${{ steps.migration-safety.outputs.details }}
+          SAFETY: safe
+          MIGRATION_FILES: ""
           RUNNER_ROLLBACK_URL: ${{ github.server_url }}/${{ github.repository }}/actions/workflows/rollback-runner.yml
         run: |
           DATE=$(date -u +%Y-%m-%d)
 
           # Build title parts
           TITLE_PARTS=""
-          if [ "$WEB_RESULT" = "success" ] && [ -n "$WEB_VERSION" ]; then
-            TITLE_PARTS="web v${WEB_VERSION}"
-          fi
           if [ "$API_RESULT" = "success" ] && [ -n "$API_VERSION" ]; then
             TITLE_PARTS="${TITLE_PARTS:+$TITLE_PARTS / }api v${API_VERSION}"
           fi
@@ -1783,7 +1451,7 @@ jobs:
             TITLE_PARTS="${TITLE_PARTS:+$TITLE_PARTS / }runner v${RUNNER_VERSION}"
           fi
 
-          # Web/API/app migration-safety indicator (applies to web/API/app rollbacks)
+          # API/app migration-safety indicator.
           case "$SAFETY" in
             destructive)
               INDICATOR="🔴 **Warning: destructive migration** ($MIGRATION_FILES)"
@@ -1811,16 +1479,6 @@ jobs:
 
           # Build table rows
           ROWS=""
-          if [ -n "$WEB_VERSION" ]; then
-            if [ "$WEB_RESULT" = "success" ] && [ -n "$WEB_DASHBOARD_URL" ]; then
-              append_row "| web | v${WEB_VERSION} | [Rollback in Vercel](${WEB_DASHBOARD_URL}) |"
-            elif [ "$WEB_RESULT" = "success" ]; then
-              append_row "| web | v${WEB_VERSION} | _URL unavailable_ |"
-            else
-              append_row "| web | v${WEB_VERSION} | ❌ Deploy failed |"
-            fi
-          fi
-
           if [ -n "$API_VERSION" ]; then
             if [ "$API_RESULT" = "success" ] && [ -n "$API_DASHBOARD_URL" ]; then
               append_row "| api | v${API_VERSION} | [Rollback in Vercel](${API_DASHBOARD_URL}) |"
@@ -1856,17 +1514,17 @@ jobs:
           # Build full entry.
           # - The migration-safety INDICATOR only describes DB migrations
           #   (see Detect migration safety step), so suppress it for release
-          #   cycles with no web/api/app changes — otherwise a runner-only
+          #   cycles with no api/app changes — otherwise a runner-only
           #   release would print a misleading "🟢 Safe to rollback".
           # - Runner has no auto-computed compatibility indicator. We print
           #   a static advisory whenever the release includes runner so the
           #   operator doesn't silently treat runner rollbacks the same as
-          #   web/app (which are Vercel-level atomic flips). Deliberately
+          #   app (which are Vercel-level atomic flips). Deliberately
           #   NOT naming specific compat surfaces — that would encourage a
           #   checklist mindset and miss cases the list doesn't anticipate.
           {
             echo "### ${DATE} — ${TITLE_PARTS}"
-            if [ -n "$WEB_VERSION" ] || [ -n "$API_VERSION" ] || [ -n "$APP_VERSION" ]; then
+            if [ -n "$API_VERSION" ] || [ -n "$APP_VERSION" ]; then
               echo "${INDICATOR}"
             fi
             if [ -n "$RUNNER_VERSION" ]; then

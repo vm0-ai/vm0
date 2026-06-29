@@ -93,6 +93,12 @@ function workflowTriggerSummary(trigger: ChatThreadWorkflowTrigger): string {
     if (trigger.eventType === "gmail-new-message") {
       return "Gmail new message";
     }
+    if (trigger.eventType === "gmail-label-applied") {
+      return "Gmail label applied";
+    }
+    if (trigger.eventType === "github-label-applied") {
+      return "GitHub label applied";
+    }
     return "Event";
   }
   return trigger.scheduleSummary ?? "Schedule";

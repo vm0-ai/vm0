@@ -26,7 +26,7 @@ test("sign in through onboarding handoff to chat page", async ({ page }) => {
   await clerkSetup();
   await setupClerkTestingToken({ page });
 
-  // Navigate to app — redirects to www sign-in
+  // Navigate to app, which redirects to the hosted auth sign-in surface.
   await page.goto(appUrl, { waitUntil: "domcontentloaded" });
   await page.waitForURL((url) => url.pathname.includes("/sign-in"), {
     timeout: 30_000,

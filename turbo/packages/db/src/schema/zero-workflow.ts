@@ -147,6 +147,7 @@ export type ZeroWorkflowTriggerKind = "schedule" | "event";
 export type ZeroWorkflowEventType =
   | "gmail-new-message"
   | "gmail-label-applied"
+  | "github-label-applied"
   | "webhook-received";
 export type ZeroWorkflowEventConfig = Record<string, unknown>;
 
@@ -222,7 +223,7 @@ export const zeroWorkflowTriggers = pgTable(
           )
           OR (
             kind = 'event'
-            AND event_type IN ('gmail-new-message', 'gmail-label-applied', 'webhook-received')
+            AND event_type IN ('gmail-new-message', 'gmail-label-applied', 'github-label-applied', 'webhook-received')
             AND event_config IS NOT NULL
             AND schedule_type IS NULL
             AND cron_expression IS NULL
@@ -291,6 +292,43 @@ export const zeroWorkflowWebhookDeliveries = pgTable(
       index("idx_zero_workflow_webhook_deliveries_received").on(
         table.triggerId,
         table.receivedAt,
+      ),
+    ];
+  },
+);
+
+export const zeroWorkflowGithubProcessedEvents = pgTable(
+  "zero_workflow_github_processed_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    triggerId: uuid("trigger_id")
+      .notNull()
+      .references(
+        () => {
+          return zeroWorkflowTriggers.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    githubDeliveryId: varchar("github_delivery_id", { length: 255 }).notNull(),
+    repo: varchar("repo", { length: 255 }).notNull(),
+    subjectType: varchar("subject_type", { length: 32 }).notNull(),
+    subjectNumber: integer("subject_number").notNull(),
+    action: varchar("action", { length: 64 }).notNull(),
+    labelNameNormalized: varchar("label_name_normalized", {
+      length: 255,
+    }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("idx_zero_workflow_github_processed_delivery").on(
+        table.triggerId,
+        table.githubDeliveryId,
+      ),
+      index("idx_zero_workflow_github_processed_subject").on(
+        table.repo,
+        table.subjectType,
+        table.subjectNumber,
       ),
     ];
   },

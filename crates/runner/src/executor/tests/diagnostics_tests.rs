@@ -3,7 +3,10 @@ use std::os::unix::fs::{PermissionsExt, symlink};
 use std::path::Path;
 use std::path::PathBuf;
 
-use agent_diagnostics::{FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureDiagnostic};
+use guest_contracts::diagnostics::{
+    AgentFramework, FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureClass, FailureDetailSource,
+    FailureDiagnostic, FailureReason, PromptMetadata, SessionHistoryStatus,
+};
 use sandbox::{ExecTermination, ProcessExit, ProcessOutputChunk};
 use sandbox_mock::MockSandbox;
 
@@ -113,9 +116,9 @@ fn bootstrap_abnormal_exit_diagnostics_allow_captured_stderr_without_resource_pr
     ));
 
     let diagnostic = FailureDiagnostic::new(
-        agent_diagnostics::FailureClass::CliNonzero,
-        agent_diagnostics::AgentFramework::ClaudeCode,
-        agent_diagnostics::PromptMetadata::from_prompt("/help"),
+        FailureClass::CliNonzero,
+        AgentFramework::ClaudeCode,
+        PromptMetadata::from_prompt("/help"),
     );
     assert!(!should_log_agent_bootstrap_abnormal_exit_diagnostics(
         false,
@@ -420,14 +423,14 @@ async fn read_guest_cli_agent_session_id_rejects_overlong_content() {
 async fn read_guest_failure_diagnostic_file_returns_valid_diagnostic() {
     let sandbox = MockSandbox::new("test");
     let diagnostic = FailureDiagnostic::new(
-        agent_diagnostics::FailureClass::CliNonzero,
-        agent_diagnostics::AgentFramework::ClaudeCode,
-        agent_diagnostics::PromptMetadata::from_prompt("/help"),
+        FailureClass::CliNonzero,
+        AgentFramework::ClaudeCode,
+        PromptMetadata::from_prompt("/help"),
     )
     .with_cli_exit_code(1)
-    .with_failure_detail_source(agent_diagnostics::FailureDetailSource::ClaudeResult)
-    .with_failure_reason(agent_diagnostics::FailureReason::ProviderOverloaded)
-    .with_session_history_status(agent_diagnostics::SessionHistoryStatus::Present);
+    .with_failure_detail_source(FailureDetailSource::ClaudeResult)
+    .with_failure_reason(FailureReason::ProviderOverloaded)
+    .with_session_history_status(SessionHistoryStatus::Present);
     sandbox.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
 
     let read = read_guest_failure_diagnostic_file(&sandbox, RunId::nil()).await;
@@ -480,9 +483,9 @@ async fn read_guest_failure_diagnostic_file_returns_none_on_malformed_json() {
 async fn read_guest_failure_diagnostic_file_returns_none_on_unsupported_schema() {
     let sandbox = MockSandbox::new("test");
     let mut diagnostic = FailureDiagnostic::new(
-        agent_diagnostics::FailureClass::CliNonzero,
-        agent_diagnostics::AgentFramework::ClaudeCode,
-        agent_diagnostics::PromptMetadata::from_prompt("/help"),
+        FailureClass::CliNonzero,
+        AgentFramework::ClaudeCode,
+        PromptMetadata::from_prompt("/help"),
     );
     diagnostic.schema_version = FAILURE_DIAGNOSTIC_SCHEMA_VERSION + 1;
     sandbox.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));

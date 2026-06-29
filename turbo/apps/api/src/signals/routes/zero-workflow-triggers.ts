@@ -157,15 +157,25 @@ const createTriggerInner$ = command(
               },
               signal,
             )
-          : await set(
-              createWorkflowTrigger$,
-              {
-                ...triggerInputBase,
-                eventType: bodyResult.data.eventType,
-                eventConfig: bodyResult.data.eventConfig,
-              },
-              signal,
-            );
+          : bodyResult.data.eventType === "github-label-applied"
+            ? await set(
+                createWorkflowTrigger$,
+                {
+                  ...triggerInputBase,
+                  eventType: bodyResult.data.eventType,
+                  eventConfig: bodyResult.data.eventConfig,
+                },
+                signal,
+              )
+            : await set(
+                createWorkflowTrigger$,
+                {
+                  ...triggerInputBase,
+                  eventType: bodyResult.data.eventType,
+                  eventConfig: bodyResult.data.eventConfig,
+                },
+                signal,
+              );
     signal.throwIfAborted();
     if (result.kind === "ok") {
       return { status: 201 as const, body: result.summary };

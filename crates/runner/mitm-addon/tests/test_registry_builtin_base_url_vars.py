@@ -4,6 +4,7 @@ import json
 from unittest.mock import MagicMock, patch
 
 import registry
+import registry_firewalls
 from tests.registry_helpers import write_builtin_firewall_registry
 
 
@@ -22,7 +23,7 @@ def install_test_builtin_firewall(
     if host_policy is not None:
         api["hostPolicy"] = host_policy
     monkeypatch.setattr(
-        registry,
+        registry_firewalls,
         "BUILTIN_FIREWALLS",
         {
             name: {
