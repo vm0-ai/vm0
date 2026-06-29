@@ -433,6 +433,10 @@ describe("zero automations page", () => {
       "I'd like to set up a scheduled workflow trigger that runs on a daily, weekly, monthly, or custom cron schedule. Help me define the workflow.",
     ],
     [
+      "One-time run",
+      "I'd like to set up a one-time workflow trigger that runs at a specific date and time. Help me define the workflow.",
+    ],
+    [
       "Web trigger",
       "I'd like to set up a webhook workflow trigger that runs when an inbound webhook is received. Help me define the workflow.",
     ],

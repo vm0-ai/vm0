@@ -2375,9 +2375,40 @@ function gmailMatcherDefaultValue(
 type TriggerCreateDialogKind =
   | "interval"
   | "scheduled"
+  | "once"
   | "gmail"
   | "gmail-label"
   | "webhook";
+
+interface TriggerCreateMenuItemProps {
+  readonly Icon: typeof IconClock;
+  readonly title: string;
+  readonly description: string;
+  readonly onSelect: () => void;
+}
+
+function TriggerCreateMenuItem({
+  Icon,
+  title,
+  description,
+  onSelect,
+}: TriggerCreateMenuItemProps) {
+  return (
+    <DropdownMenuItem className="items-start gap-2 py-2" onSelect={onSelect}>
+      <Icon
+        size={15}
+        stroke={1.5}
+        className="mt-0.5 shrink-0 text-muted-foreground"
+      />
+      <span className="min-w-0">
+        <span className="block text-sm font-medium">{title}</span>
+        <span className="block text-xs text-muted-foreground">
+          {description}
+        </span>
+      </span>
+    </DropdownMenuItem>
+  );
+}
 
 function TriggerCreateMenu({
   onSelect,
@@ -2398,99 +2429,55 @@ function TriggerCreateMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuItem
-          className="items-start gap-2 py-2"
+        <TriggerCreateMenuItem
+          Icon={IconRepeat}
+          title="Interval"
+          description="Run this workflow on a fixed interval."
           onSelect={() => {
             onSelect("interval");
           }}
-        >
-          <IconRepeat
-            size={15}
-            stroke={1.5}
-            className="mt-0.5 shrink-0 text-muted-foreground"
-          />
-          <span className="min-w-0">
-            <span className="block text-sm font-medium">Interval</span>
-            <span className="block text-xs text-muted-foreground">
-              Run this workflow on a fixed interval.
-            </span>
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="items-start gap-2 py-2"
+        />
+        <TriggerCreateMenuItem
+          Icon={IconClock}
+          title="Scheduled time"
+          description="Run this workflow from a time rule."
           onSelect={() => {
             onSelect("scheduled");
           }}
-        >
-          <IconClock
-            size={15}
-            stroke={1.5}
-            className="mt-0.5 shrink-0 text-muted-foreground"
-          />
-          <span className="min-w-0">
-            <span className="block text-sm font-medium">Scheduled time</span>
-            <span className="block text-xs text-muted-foreground">
-              Run this workflow from a time rule.
-            </span>
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="items-start gap-2 py-2"
+        />
+        <TriggerCreateMenuItem
+          Icon={IconClock}
+          title="One-time run"
+          description="Run this workflow once at a date and time."
+          onSelect={() => {
+            onSelect("once");
+          }}
+        />
+        <TriggerCreateMenuItem
+          Icon={IconMail}
+          title="Gmail new message"
+          description="Run this workflow from matching email."
           onSelect={() => {
             onSelect("gmail");
           }}
-        >
-          <IconMail
-            size={15}
-            stroke={1.5}
-            className="mt-0.5 shrink-0 text-muted-foreground"
-          />
-          <span className="min-w-0">
-            <span className="block text-sm font-medium">Gmail new message</span>
-            <span className="block text-xs text-muted-foreground">
-              Run this workflow from matching email.
-            </span>
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="items-start gap-2 py-2"
+        />
+        <TriggerCreateMenuItem
+          Icon={IconMail}
+          title="Gmail label applied"
+          description="Run when a named Gmail label is applied."
           onSelect={() => {
             onSelect("gmail-label");
           }}
-        >
-          <IconMail
-            size={15}
-            stroke={1.5}
-            className="mt-0.5 shrink-0 text-muted-foreground"
-          />
-          <span className="min-w-0">
-            <span className="block text-sm font-medium">
-              Gmail label applied
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Run when a named Gmail label is applied.
-            </span>
-          </span>
-        </DropdownMenuItem>
+        />
         {webhookTriggersEnabled ? (
-          <DropdownMenuItem
-            className="items-start gap-2 py-2"
+          <TriggerCreateMenuItem
+            Icon={IconLink}
+            title="Webhook"
+            description="Run this workflow from a signed POST."
             onSelect={() => {
               onSelect("webhook");
             }}
-          >
-            <IconLink
-              size={15}
-              stroke={1.5}
-              className="mt-0.5 shrink-0 text-muted-foreground"
-            />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium">Webhook</span>
-              <span className="block text-xs text-muted-foreground">
-                Run this workflow from a signed POST.
-              </span>
-            </span>
-          </DropdownMenuItem>
+          />
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -2559,6 +2546,14 @@ function TriggersSection({
         open={createDialog === "scheduled"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "scheduled" : null);
+        }}
+      />
+      <CreateOnceTriggerDialog
+        workflowId={detail.id}
+        displayTimezone={displayTimezone}
+        open={createDialog === "once"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "once" : null);
         }}
       />
       <CreateGmailNewMessageTriggerDialog
@@ -2756,6 +2751,95 @@ function CreateScheduledTriggerDialog({
   );
 }
 
+function CreateOnceTriggerDialog({
+  workflowId,
+  displayTimezone,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly displayTimezone: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const setCronFields = useSet(setCreateScheduleCronFields$);
+  const [createLoadable, createScheduleTrigger] = useLoadableSet(
+    createWorkflowScheduleTrigger$,
+  );
+  const creating = createLoadable.state === "loading";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add one-time trigger</DialogTitle>
+          <DialogDescription>
+            Choose the date and time for this workflow to run once.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label="Add one-time trigger"
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            const schedule = buildTriggerSchedule(
+              "once",
+              {
+                cronFields: defaultWorkflowCronFields(),
+                intervalSeconds: "",
+                atTime: String(form.get("atTime") ?? ""),
+              },
+              displayTimezone,
+            );
+            if (!schedule) {
+              return;
+            }
+            detach(
+              (async () => {
+                await createScheduleTrigger(
+                  { workflowId, schedule },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <ScheduleTriggerFields
+            scheduleType="once"
+            cronFields={defaultWorkflowCronFields()}
+            setCronFields={setCronFields}
+            displayTimezone={displayTimezone}
+            disabled={creating}
+          />
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : null}
+              Add one-time run
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ScheduleTriggerFields({
   scheduleType,
   cronFields,
@@ -2795,7 +2879,7 @@ function ScheduleTriggerFields({
           className={FIELD_CLASS}
         />
         <span className="text-xs text-muted-foreground">
-          Uses {TRIGGER_TIMEZONE}.
+          Displays in {displayTimezone}.
         </span>
       </label>
     );
