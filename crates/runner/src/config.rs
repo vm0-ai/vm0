@@ -15,7 +15,7 @@
 //! 4. Callers derive runtime objects (e.g. [`sandbox::FactoryConfig`]) from
 //!    the loaded config.
 //!
-//! # Image identity: two image-identity hashes per profile
+//! # Image identity: two scoped hashes per profile
 //! Each [`ProfileConfig`] carries two hashes with different scopes. They are
 //! image identities, not just artifact byte digests: cache versions and local
 //! build inputs can also affect them.
