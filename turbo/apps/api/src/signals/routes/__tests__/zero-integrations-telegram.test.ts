@@ -256,11 +256,7 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     const userId = `user_${randomUUID()}`;
     const otherOrgId = `org_${randomUUID()}`;
 
-    await store.set(
-      seedOrgMembership$,
-      { orgId, userId, seedOrgCache: false },
-      context.signal,
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
 
     const ownerBotId = newTelegramBotId();
     const orgBotId = newTelegramBotId();
@@ -376,11 +372,7 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
 
-    await store.set(
-      seedOrgMembership$,
-      { orgId, userId, seedOrgCache: false },
-      context.signal,
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
 
     const token = mintZeroToken({
       userId,
@@ -432,11 +424,7 @@ describe("GET /api/integrations/telegram", () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
 
-    await store.set(
-      seedOrgMembership$,
-      { orgId, userId, seedOrgCache: false },
-      context.signal,
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
 
     const token = mintZeroToken({
       userId,
@@ -475,11 +463,7 @@ describe("GET /api/integrations/telegram", () => {
     const userId = `user_${randomUUID()}`;
     const customBotId = newTelegramBotId();
 
-    await store.set(
-      seedOrgMembership$,
-      { orgId, userId, seedOrgCache: false },
-      context.signal,
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
 
     context.mocks.telegram.getMe.mockResolvedValue({
       id: Number(customBotId),
@@ -570,11 +554,7 @@ describe("GET /api/integrations/telegram", () => {
     const userId = `user_${randomUUID()}`;
     const botId = newTelegramBotId();
 
-    await store.set(
-      seedOrgMembership$,
-      { orgId, userId, seedOrgCache: false },
-      context.signal,
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
 
     context.mocks.telegram.getMe.mockResolvedValue({
       id: Number(botId) + 1,
@@ -620,11 +600,7 @@ describe("GET /api/integrations/telegram", () => {
     const userId = `user_${randomUUID()}`;
     const otherOrgId = `org_${randomUUID()}`;
 
-    await store.set(
-      seedOrgMembership$,
-      { orgId, userId, seedOrgCache: false },
-      context.signal,
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
 
     const linkedBotId = newTelegramBotId();
     const unlinkedBotId = newTelegramBotId();
@@ -762,11 +738,7 @@ describe("GET /api/integrations/telegram/:botId", () => {
   }> {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    await store.set(
-      seedOrgMembership$,
-      { orgId, userId, seedOrgCache: false },
-      context.signal,
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
 
     const botId = newTelegramBotId();
     const ownerUserId = args.ownerUserId ?? userId;
@@ -1011,11 +983,7 @@ describe("GET /api/integrations/telegram/link", () => {
   }> {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    await store.set(
-      seedOrgMembership$,
-      { orgId, userId, seedOrgCache: false },
-      context.signal,
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
     return {
       token: mintZeroToken({
         userId,
@@ -1285,11 +1253,7 @@ describe("POST /api/integrations/telegram/link", () => {
   }> {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    await store.set(
-      seedOrgMembership$,
-      { orgId, userId, seedOrgCache: false },
-      context.signal,
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
     fixtures.push(freezeTelegramFixture(makeTelegramFixtureBuilder(orgId)));
     mocks.clerk.session(userId, orgId);
     return {
@@ -1972,11 +1936,7 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
   }> {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    await store.set(
-      seedOrgMembership$,
-      { orgId, userId, seedOrgCache: false },
-      context.signal,
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
 
     return {
       orgId,
@@ -2108,11 +2068,7 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
   it("streams a signed custom bot avatar without auth", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    await store.set(
-      seedOrgMembership$,
-      { orgId, userId, seedOrgCache: false },
-      context.signal,
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
 
     const botId = newTelegramBotId();
     const builder = makeTelegramFixtureBuilder(orgId);
@@ -2207,11 +2163,7 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
   it("returns fallback svg when Telegram has no avatar", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    await store.set(
-      seedOrgMembership$,
-      { orgId, userId, seedOrgCache: false },
-      context.signal,
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
 
     const botId = "tg-bot-no-avatar";
     const builder = makeTelegramFixtureBuilder(orgId);
@@ -2310,11 +2262,7 @@ describe("GET /api/zero/integrations/telegram/download-file", () => {
   }> {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    await store.set(
-      seedOrgMembership$,
-      { orgId, userId, seedOrgCache: false },
-      context.signal,
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
 
     const builder = makeTelegramFixtureBuilder(orgId);
     const installation = await store.set(
@@ -2343,11 +2291,7 @@ describe("GET /api/zero/integrations/telegram/download-file", () => {
   async function seedReadToken(): Promise<string> {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    await store.set(
-      seedOrgMembership$,
-      { orgId, userId, seedOrgCache: false },
-      context.signal,
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
     return mintZeroToken({
       userId,
       orgId,

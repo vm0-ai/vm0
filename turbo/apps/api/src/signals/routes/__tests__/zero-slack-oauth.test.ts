@@ -90,11 +90,7 @@ async function seedMembership(
   userId: string,
   role: "admin" | "member" = "admin",
 ): Promise<void> {
-  await store.set(
-    seedOrgMembership$,
-    { orgId, userId, role, seedOrgCache: false },
-    context.signal,
-  );
+  await store.set(seedOrgMembership$, { orgId, userId, role }, context.signal);
 }
 
 describe("Slack OAuth API routes", () => {

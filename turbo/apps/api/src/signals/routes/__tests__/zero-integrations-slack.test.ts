@@ -639,7 +639,6 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
         orgId: seeded.orgId,
         userId: seeded.userId,
         role: "admin",
-        seedOrgCache: false,
       },
       context.signal,
     );

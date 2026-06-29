@@ -50,11 +50,7 @@ async function mintFileReadToken(): Promise<{
 }> {
   const orgId = `org_${randomUUID()}`;
   const userId = `user_${randomUUID()}`;
-  await store.set(
-    seedOrgMembership$,
-    { orgId, userId, seedOrgCache: false },
-    context.signal,
-  );
+  await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
   return {
     orgId,
     userId,

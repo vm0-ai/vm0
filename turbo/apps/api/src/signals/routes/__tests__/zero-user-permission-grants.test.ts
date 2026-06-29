@@ -44,7 +44,6 @@ async function seedMember(args: {
       orgId: args.orgId,
       userId: args.userId,
       role: args.role ?? "member",
-      seedOrgCache: false,
     },
     context.signal,
   );

@@ -99,11 +99,7 @@ async function seedMemberRole(args: {
   readonly userId: string;
   readonly role: "admin" | "member";
 }): Promise<void> {
-  await store.set(
-    seedOrgMembership$,
-    { ...args, seedOrgCache: false },
-    context.signal,
-  );
+  await store.set(seedOrgMembership$, args, context.signal);
 }
 
 describe("POST /api/zero/billing/checkout", () => {
