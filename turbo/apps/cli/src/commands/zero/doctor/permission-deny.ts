@@ -77,8 +77,25 @@ function parseDeniedMethod(method: string): string {
   return upperMethod;
 }
 
+function rawAuthorityContainsBackslash(url: string): boolean {
+  const schemeEnd = url.indexOf("://");
+  if (schemeEnd === -1) return false;
+
+  const authorityStart = schemeEnd + 3;
+  let authorityEnd = url.length;
+  for (const delimiter of ["/", "?", "#"]) {
+    const index = url.indexOf(delimiter, authorityStart);
+    if (index !== -1) authorityEnd = Math.min(authorityEnd, index);
+  }
+  return url.slice(authorityStart, authorityEnd).includes("\\");
+}
+
 function parseDeniedUrl(url: string): URL {
-  if (!url.includes("://") || /\s/.test(url) || url.includes("\\")) {
+  if (
+    !url.includes("://") ||
+    /\s/.test(url) ||
+    rawAuthorityContainsBackslash(url)
+  ) {
     throw invalidUrlError();
   }
 

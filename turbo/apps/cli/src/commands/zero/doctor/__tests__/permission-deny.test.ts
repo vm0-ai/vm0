@@ -483,6 +483,32 @@ describe("zero doctor permission-deny command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
+    it("should reject raw path backslashes as unsafe paths", async () => {
+      await expect(async () => {
+        await permissionDenyCommand.parseAsync([
+          "node",
+          "cli",
+          "reap",
+          "--method",
+          "GET",
+          "--url",
+          "https://sandbox.api.reap.global/v1\\accounts?token=secret",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      const output = [
+        ...mockConsoleLog.mock.calls.flat(),
+        ...mockConsoleError.mock.calls.flat(),
+      ].join("\n");
+      expect(output).toContain(
+        "permission-deny cannot diagnose unsafe URL paths because they are blocked before permission policy evaluation.",
+      );
+      expect(output).not.toContain('covered by the "read"');
+      expect(output).not.toContain("secret");
+      expect(output).not.toContain("token=");
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should not ignore configured env base URL variable mismatches", async () => {
       vi.stubEnv("QUICKBOOKS_REALM_ID", "999");
 
@@ -583,6 +609,28 @@ describe("zero doctor permission-deny command", () => {
           "GET",
           "--url",
           "https://user:secret@slack.com/api/conversations.list",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "permission-deny requires --url to be a valid absolute http or https URL.",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleLog).not.toHaveBeenCalled();
+    });
+
+    it("should reject raw authority backslashes before URL parser normalization", async () => {
+      await expect(async () => {
+        await permissionDenyCommand.parseAsync([
+          "node",
+          "cli",
+          "slack",
+          "--method",
+          "GET",
+          "--url",
+          "https://slack.com\\evil.example/api/conversations.list",
         ]);
       }).rejects.toThrow("process.exit called");
 
