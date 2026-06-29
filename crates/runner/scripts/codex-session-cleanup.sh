@@ -93,7 +93,7 @@ check_scan_budget() {
 ensure_scannable_session_dir() {
   dir="$1"
   if [ ! -r "$dir" ] || [ ! -x "$dir" ]; then
-    echo "cannot scan codex session directory: $dir" >&2
+    echo "cannot scan codex session directory" >&2
     exit 1
   fi
 }
@@ -105,7 +105,14 @@ session_filename_matches() {
       ;;
   esac
   case "$name" in
-    *"$id_lc"*.jsonl|*"$id_lc"*.jsonl.zst|*"$id_lc"*.jsonl.vm0tmp-*|*"$id_lc"*.jsonl.zst.vm0tmp-*|*"$id_no_dashes_lc"*.jsonl|*"$id_no_dashes_lc"*.jsonl.zst|*"$id_no_dashes_lc"*.jsonl.vm0tmp-*|*"$id_no_dashes_lc"*.jsonl.zst.vm0tmp-*)
+    *"$id_lc"*.jsonl|\
+    *"$id_lc"*.jsonl.zst|\
+    *"$id_lc"*.jsonl.vm0tmp-*|\
+    *"$id_lc"*.jsonl.zst.vm0tmp-*|\
+    *"$id_no_dashes_lc"*.jsonl|\
+    *"$id_no_dashes_lc"*.jsonl.zst|\
+    *"$id_no_dashes_lc"*.jsonl.vm0tmp-*|\
+    *"$id_no_dashes_lc"*.jsonl.zst.vm0tmp-*)
       return 0
       ;;
   esac
@@ -118,7 +125,7 @@ delete_matching_session_entry() {
   fi
   if session_filename_matches "$path"; then
     rm -f -- "$path" || {
-      echo "failed to delete codex session file: $path" >&2
+      echo "failed to delete codex session file" >&2
       exit 1
     }
   fi
