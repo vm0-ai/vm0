@@ -257,6 +257,7 @@ async def test_public_destination_requestheaders_blocks_before_early_auth(
         method="POST",
         extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
     )
+    flow.request.stream = True
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
