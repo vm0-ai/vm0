@@ -317,6 +317,14 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
     flow = real_flow(
         with_response=False, client_ip="10.200.0.5", host="api.github.com", path="/orgs"
     )
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("api.github.com", 443),
+    )
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         await mitm_addon.request(flow)
@@ -339,6 +347,7 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["name"] == "github"
     assert proxy_log_entry["reason"] == "unknown_endpoint"
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 async def test_firewall_malformed_config_block_reports_reason(

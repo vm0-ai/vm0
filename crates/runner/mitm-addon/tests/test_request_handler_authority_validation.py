@@ -95,6 +95,14 @@ async def test_rejects_spoofed_host_before_firewall_auth(
         path="/repos",
         request_headers=headers(("Host", "api.github.com")),
     )
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=request_port,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("203.0.113.10", request_port),
+    )
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -116,6 +124,7 @@ async def test_rejects_spoofed_host_before_firewall_auth(
     }
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 async def test_authority_validation_deny_response_logs_network_target(
