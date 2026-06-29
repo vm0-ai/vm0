@@ -672,6 +672,28 @@ def _public_destination_denial(
     )
 
 
+def _firewall_allow_uses_public_destination(allow: matching.FirewallAllow) -> bool:
+    host_policy = allow.api_entry.get("hostPolicy")
+    return isinstance(host_policy, dict) and host_policy.get("kind") == "publicDestination"
+
+
+def _current_public_destination_denial(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+) -> _PublicDestinationDenial | None:
+    trusted_authority_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
+    if not isinstance(trusted_authority_host, str) or not trusted_authority_host:
+        try:
+            trusted_authority_host = get_trusted_authority(flow).host
+        except AuthorityValidationError:
+            trusted_authority_host = ""
+    return _public_destination_denial(
+        flow,
+        allow,
+        trusted_authority_host=trusted_authority_host,
+    )
+
+
 def _classify_request(flow: http.HTTPFlow) -> _RequestClassification:
     client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
     tls_admission = _tls_admission_for_client(flow.client_conn)
@@ -825,6 +847,9 @@ def _should_stream_capture_request(classification: _RequestClassification) -> bo
 
 def _should_try_firewall_stream_capture_request(classification: _RequestClassification) -> bool:
     if classification.kind != "firewall_allow":
+        return False
+    allow = classification.firewall_allow
+    if allow is None or _firewall_allow_uses_public_destination(allow):
         return False
     vm_info = classification.vm_info
     return isinstance(vm_info, dict) and bool(vm_info.get("captureNetworkBodies", False))
@@ -2730,6 +2755,12 @@ async def request(flow: http.HTTPFlow) -> None:
             allow = classification.firewall_allow
             vm_info = classification.vm_info
             if allow is None or vm_info is None:
+                return
+            public_destination_denial = _current_public_destination_denial(flow, allow)
+            if public_destination_denial is not None:
+                auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+                _release_tracked_usage_flow(flow)
+                _block_public_destination_denied(flow, public_destination_denial)
                 return
             if flow.metadata.get(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS):
                 return

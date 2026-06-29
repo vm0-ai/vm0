@@ -442,6 +442,46 @@ async def test_public_destination_ignores_stale_prebound_public_original_destina
     )
 
 
+async def test_public_destination_revalidates_connected_peer_after_requestheaders_prebind(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="93.184.216.34",
+        method="POST",
+        extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        assert "Authorization" not in flow.request.headers
+        assert flow.server_conn.address == ("service.example.com", 443)
+
+        flow.server_conn.peername = ("10.0.0.1", 443)
+        flow.server_conn.state = connection.ConnectionState.OPEN
+        flow.server_conn.sni = "service.example.com"
+        flow.server_conn.timestamp_tls_setup = 1.0
+        flow.server_conn.certificate_list = (object(),)
+        flow.server_conn.error = None
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+
+
 @pytest.mark.parametrize("request_stream", [False, True])
 async def test_public_destination_requestheaders_blocks_before_early_auth(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, request_stream
