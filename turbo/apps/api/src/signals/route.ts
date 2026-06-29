@@ -3,7 +3,6 @@ import { healthContract } from "@vm0/api-contracts/contracts/health";
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
 import { automationsRoutes } from "./routes/automations";
-import { agentComposesMetadataRoutes } from "./routes/agent-composes-metadata";
 import { agentComposesReadRoutes } from "./routes/agent-composes-read";
 import { agentComposesRoutes } from "./routes/agent-composes";
 import { agentRunsCancelRoutes } from "./routes/agent-runs-cancel";
@@ -215,7 +214,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...agentCheckpointsRoutes,
   ...agentComposesReadRoutes,
   ...agentComposesByIdRoutes,
-  ...agentComposesMetadataRoutes,
   ...agentComposesRoutes,
   ...agentRunsCreateRoutes,
   ...agentRunsCancelRoutes,
