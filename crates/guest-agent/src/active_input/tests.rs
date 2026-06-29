@@ -160,6 +160,44 @@ fn active_input_capacity_counts_pending_inputs() {
 }
 
 #[tokio::test]
+async fn active_input_can_release_capacity_for_sink_without_replay() {
+    let runtime = enabled_runtime();
+    let controller = runtime.controller();
+    let mut writer = runtime.into_writer();
+
+    for index in 0..ACTIVE_INPUT_QUEUE_CAPACITY {
+        let message_id = format!("msg-{index}");
+        assert_eq!(
+            controller
+                .handle_control_payload(&message_id, br#"{"type":"active-input","text":"hello"}"#),
+            ActiveInputControlOutcome::Accepted
+        );
+        let frame = writer
+            .next_frame()
+            .await
+            .expect("active input frame should be queued");
+        writer.mark_writing(&frame.uuid);
+        writer.mark_written_without_replay(&frame.uuid);
+        assert_not_pending(&controller, &frame.uuid);
+    }
+
+    assert!(matches!(
+        controller.handle_control_payload("msg-0", br#"{"type":"active-input","text":"duplicate"}"#),
+        ActiveInputControlOutcome::Rejected { diagnostic }
+            if diagnostic == "active input message id is duplicate"
+    ));
+    assert_eq!(
+        controller.handle_control_payload("msg-next", br#"{"type":"active-input","text":"next"}"#),
+        ActiveInputControlOutcome::Accepted
+    );
+    let frame = writer
+        .next_frame()
+        .await
+        .expect("new active input frame should be queued after delivered frames release capacity");
+    assert_eq!(frame.message_id, "msg-next");
+}
+
+#[tokio::test]
 async fn active_input_bounds_seen_message_id_cache() {
     let runtime = enabled_runtime();
     let controller = runtime.controller();

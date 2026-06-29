@@ -37,7 +37,9 @@ enum Scenario {
     UnknownResponseBeforeResponse,
     StaleTurn,
     NoActiveTurn,
+    ExitOnTurnSteer,
     RuntimeTurnComplete,
+    RuntimeTurnCompleteAfterSteer,
     RuntimeTurnCompleteWithoutThreadStarted,
     ResumeDifferentThreadId,
     ResumeRpcErrorWithThreadId,
@@ -73,7 +75,9 @@ impl Scenario {
                 "unknown-response-before-response" => Ok(Self::UnknownResponseBeforeResponse),
                 "stale-turn" => Ok(Self::StaleTurn),
                 "no-active-turn" => Ok(Self::NoActiveTurn),
+                "exit-on-turn-steer" => Ok(Self::ExitOnTurnSteer),
                 "runtime-turn-complete" => Ok(Self::RuntimeTurnComplete),
+                "runtime-turn-complete-after-steer" => Ok(Self::RuntimeTurnCompleteAfterSteer),
                 "runtime-turn-complete-without-thread-started" => {
                     Ok(Self::RuntimeTurnCompleteWithoutThreadStarted)
                 }
@@ -438,6 +442,9 @@ impl AppServerState {
                     write_error(output, id, INVALID_REQUEST, "app server is not initialized")?;
                     return Ok(ServerAction::Continue);
                 }
+                if self.scenario == Scenario::ExitOnTurnSteer {
+                    return Ok(ServerAction::Stop);
+                }
                 let Some(expected_turn_id) = string_param(params, "expectedTurnId") else {
                     write_error(output, id, INVALID_REQUEST, "missing expectedTurnId")?;
                     return Ok(ServerAction::Continue);
@@ -493,6 +500,9 @@ impl AppServerState {
                     params,
                 )?;
                 write_success(output, id, json!({ "turnId": active_turn_id }))?;
+                if self.scenario == Scenario::RuntimeTurnCompleteAfterSteer {
+                    write_turn_notifications(output, &thread_id, &active_turn_id)?;
+                }
                 Ok(ServerAction::Continue)
             }
             "mock/inputs" => {
@@ -888,6 +898,7 @@ fn persist_input_events(
                 "turn_request_approval_policy": turn_params.get("approvalPolicy"),
                 "turn_request_approvals_reviewer": turn_params.get("approvalsReviewer"),
                 "turn_request_sandbox_policy": turn_params.get("sandboxPolicy"),
+                "turn_request_client_user_message_id": turn_params.get("clientUserMessageId"),
             })
         })
         .collect::<Vec<_>>();

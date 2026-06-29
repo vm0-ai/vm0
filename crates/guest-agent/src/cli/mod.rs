@@ -427,13 +427,13 @@ async fn execute_cli_inner(
     active_input: ActiveInputWriter,
 ) -> Result<CliExecutionResult, AgentError> {
     if matches!(framework, env::Framework::Codex) && env::use_codex_app_server_backend() {
-        if active_input.is_enabled() {
-            return Err(AgentError::Execution(
-                "codex app-server backend does not support active input".to_string(),
-            ));
-        }
-        return codex_app_server_backend::execute_codex_app_server(masker, heartbeat_monitor, http)
-            .await;
+        return codex_app_server_backend::execute_codex_app_server(
+            masker,
+            heartbeat_monitor,
+            http,
+            active_input,
+        )
+        .await;
     }
 
     let behavior = CliFrameworkBehavior::new(framework);

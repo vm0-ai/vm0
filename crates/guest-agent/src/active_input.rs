@@ -508,6 +508,13 @@ impl ActiveInputController {
         }
     }
 
+    /// Mark a writer-owned frame delivered by a sink that will not emit a
+    /// replayed user event back through CLI stdout.
+    pub fn mark_written_without_replay(&self, uuid: &str) {
+        let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
+        state.remove_pending_by_uuid(uuid);
+    }
+
     pub fn mark_writing(&self, uuid: &str) {
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
         if let Some(input) = state.pending_by_uuid.get_mut(uuid)
@@ -627,6 +634,10 @@ impl ActiveInputWriter {
 
     pub fn mark_written(&self, uuid: &str) {
         self.controller.mark_written(uuid);
+    }
+
+    pub fn mark_written_without_replay(&self, uuid: &str) {
+        self.controller.mark_written_without_replay(uuid);
     }
 
     pub fn mark_writing(&self, uuid: &str) {
