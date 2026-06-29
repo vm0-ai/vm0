@@ -121,6 +121,7 @@ interface ZeroRunMetadata {
   readonly automationId?: string;
   readonly triggerId?: string;
   readonly workflowTriggerId?: string;
+  readonly triggerBrief?: string;
   readonly runGroupId?: string;
   readonly goalId?: string;
 }
