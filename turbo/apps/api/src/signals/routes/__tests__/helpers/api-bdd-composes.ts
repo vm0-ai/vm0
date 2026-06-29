@@ -3,7 +3,6 @@ import { randomUUID } from "node:crypto";
 import {
   agentComposeApiContentSchema,
   composesByIdContract,
-  composesListContract,
   composesMainContract,
   composesVersionsContract,
 } from "@vm0/api-contracts/contracts/composes";
@@ -201,12 +200,6 @@ export function createComposesBddApi(context: TestContext) {
     );
   }
 
-  function listClient() {
-    return setupAppWithRoutes({ context, routes: composeRoutes })(
-      composesListContract,
-    );
-  }
-
   function versionsClient() {
     return setupAppWithRoutes({ context, routes: composeRoutes })(
       composesVersionsContract,
@@ -325,16 +318,6 @@ export function createComposesBddApi(context: TestContext) {
           headers: authenticate(auth),
           query: { name },
         }),
-        statuses,
-      );
-    },
-
-    async requestListComposes<TStatus extends ListStatus>(
-      auth: ComposeAuth,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        listClient().list({ headers: authenticate(auth), query: {} }),
         statuses,
       );
     },

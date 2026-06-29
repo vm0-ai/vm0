@@ -1,14 +1,10 @@
 import { computed, type Computed } from "ccstate";
-import type {
-  ComposeListItem,
-  ComposeResponse,
-} from "@vm0/api-contracts/contracts/composes";
+import type { ComposeResponse } from "@vm0/api-contracts/contracts/composes";
 import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, desc, eq, like } from "drizzle-orm";
+import { and, eq, like } from "drizzle-orm";
 
 import { badRequestMessage, notFound } from "../../lib/error";
 import { db$ } from "../external/db";
@@ -127,41 +123,6 @@ export function agentComposeById(args: {
     }
 
     return composeResponse(row);
-  });
-}
-
-export function agentComposeList(
-  orgId: string,
-): Computed<Promise<{ readonly composes: readonly ComposeListItem[] }>> {
-  return computed(async (get) => {
-    const rows = await get(db$)
-      .select({
-        id: agentComposes.id,
-        name: agentComposes.name,
-        headVersionId: agentComposes.headVersionId,
-        updatedAt: agentComposes.updatedAt,
-        displayName: zeroAgents.displayName,
-        description: zeroAgents.description,
-        sound: zeroAgents.sound,
-      })
-      .from(agentComposes)
-      .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
-      .where(eq(agentComposes.orgId, orgId))
-      .orderBy(desc(agentComposes.updatedAt));
-
-    return {
-      composes: rows.map((row) => {
-        return {
-          id: row.id,
-          name: row.name,
-          displayName: row.displayName,
-          description: row.description,
-          sound: row.sound,
-          headVersionId: row.headVersionId,
-          updatedAt: row.updatedAt.toISOString(),
-        };
-      }),
-    };
   });
 }
 

@@ -458,36 +458,9 @@ const composeListItemSchema = z.object({
   updatedAt: z.string(),
 });
 
-/**
- * Composes list route contract (/api/agent/composes/list)
- */
-export const composesListContract = c.router({
-  /**
-   * GET /api/agent/composes/list
-   * List all agent composes for an org
-   * Uses the authenticated user's active org.
-   */
-  list: {
-    method: "GET",
-    path: "/api/agent/composes/list",
-    headers: authHeadersSchema,
-    query: z.object({}),
-    responses: {
-      200: z.object({
-        composes: z.array(composeListItemSchema),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-    },
-    summary: "List all agent composes for an org",
-  },
-});
-
 export type ComposesMainContract = typeof composesMainContract;
 export type ComposesByIdContract = typeof composesByIdContract;
 export type ComposesVersionsContract = typeof composesVersionsContract;
-export type ComposesListContract = typeof composesListContract;
 
 // Export schemas for reuse
 export {
