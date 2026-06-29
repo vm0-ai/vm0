@@ -127,7 +127,7 @@ class TestOpenAIResponsesSseUsageExtractor:
 
         assert usage == {}
 
-    def test_named_unknown_event_with_large_known_non_usage_type_is_ignored(self):
+    def test_named_unknown_event_with_large_known_non_usage_type_recovers_for_next_event(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         large_delta = b'{"type":"response.output_text.delta","delta":"' + b"x" * 100_000 + b'"}'
 
@@ -139,8 +139,13 @@ class TestOpenAIResponsesSseUsageExtractor:
         )
         parse(b"event: response.future_delta\n")
         parse(b"data: " + large_delta + b"\n\n")
+        parse(
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.4","usage":{"output_tokens":6}}}\n\n'
+        )
 
-        assert usage == {}
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 6
 
     def test_named_terminal_event_with_known_non_usage_type_is_ignored(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
