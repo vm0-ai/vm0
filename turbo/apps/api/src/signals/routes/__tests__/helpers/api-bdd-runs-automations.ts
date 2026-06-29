@@ -839,6 +839,16 @@ export function createRunsAutomationsApi(context: TestContext) {
       return { providerId };
     },
 
+    async readBillingStatus(actor: ApiTestUser) {
+      const response = await accept(
+        runsAutomationApp(context)(zeroBillingStatusContract).get({
+          headers: authenticate(context, actor),
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
     async requestCreateRun(
       actor: ApiTestUser | null,
       body: ZeroRunRequest,
