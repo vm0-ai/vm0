@@ -533,6 +533,27 @@ async fn restore_session_fails_when_codex_cleanup_fails() {
 }
 
 #[tokio::test]
+async fn restore_session_fails_when_codex_cleanup_exceeds_scan_budget() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let session =
+        ResumeSession::inline("019e9154-c304-70f0-adde-36efb1be1701".into(), "{}\n".into());
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        1,
+        Vec::new(),
+        b"codex session cleanup exceeded scan budget".to_vec(),
+    )));
+
+    let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
+
+    let message = err.to_string();
+    assert!(message.contains("codex session cleanup failed"));
+    assert!(message.contains("codex session cleanup exceeded scan budget"));
+    assert!(sandbox.write_file_calls().is_empty());
+}
+
+#[tokio::test]
 async fn restore_session_redacts_codex_cleanup_failure_output() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
@@ -906,12 +927,18 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
             .cmd
             .contains("codex restore directory is a symlink")
     );
+    assert!(exec_calls[0].cmd.contains("scan_budget="));
     assert!(
         exec_calls[0]
             .cmd
-            .contains("find \"$root\" \\( -type f -o -type l \\)")
+            .contains("scan_session_tree \"$root\" validate")
     );
-    assert!(exec_calls[0].cmd.contains("-iname"));
+    assert!(
+        exec_calls[0]
+            .cmd
+            .contains("scan_session_tree \"$root\" delete")
+    );
+    assert!(exec_calls[0].cmd.contains("session_filename_matches"));
     assert!(exec_calls[0].cmd.contains(".jsonl.zst"));
     assert!(exec_calls[0].cmd.contains(".jsonl.vm0tmp-*"));
     assert!(exec_calls[0].cmd.contains("id_no_dashes"));
@@ -921,7 +948,7 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
             .contains("VM0_CODEX_RESTORE_SESSION_FILENAME_KEY")
     );
     assert!(!exec_calls[0].cmd.contains("tr -d"));
-    assert!(exec_calls[0].cmd.contains("-delete"));
+    assert!(exec_calls[0].cmd.contains("rm -f --"));
 }
 
 fn capture_restore_events<F>(future: F) -> (F::Output, Vec<CapturedEvent>)

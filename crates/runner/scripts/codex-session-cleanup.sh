@@ -63,15 +63,89 @@ if [ "${#id_no_dashes}" -ne 32 ]; then
   echo "invalid codex restore session id" >&2
   exit 1
 fi
+scan_budget="${VM0_CODEX_SESSION_CLEANUP_SCAN_BUDGET:-16384}"
+case "$scan_budget" in
+  ""|*[!0123456789]*)
+    echo "invalid codex session cleanup scan budget" >&2
+    exit 1
+    ;;
+esac
+case "$scan_budget" in
+  ???????*)
+    echo "invalid codex session cleanup scan budget" >&2
+    exit 1
+    ;;
+esac
+if [ "$scan_budget" -eq 0 ]; then
+  echo "invalid codex session cleanup scan budget" >&2
+  exit 1
+fi
+id_lc=$(printf '%s' "$id" | tr '[:upper:]' '[:lower:]')
+id_no_dashes_lc=$(printf '%s' "$id_no_dashes" | tr '[:upper:]' '[:lower:]')
+scanned_entries=0
+check_scan_budget() {
+  scanned_entries=$((scanned_entries + 1))
+  if [ "$scanned_entries" -gt "$scan_budget" ]; then
+    echo "codex session cleanup exceeded scan budget" >&2
+    exit 1
+  fi
+}
+ensure_scannable_session_dir() {
+  dir="$1"
+  if [ ! -r "$dir" ] || [ ! -x "$dir" ]; then
+    echo "cannot scan codex session directory: $dir" >&2
+    exit 1
+  fi
+}
+session_filename_matches() {
+  name="${1##*/}"
+  case "$name" in
+    *[ABCDEFGHIJKLMNOPQRSTUVWXYZ]*)
+      name=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
+      ;;
+  esac
+  case "$name" in
+    *"$id_lc"*.jsonl|*"$id_lc"*.jsonl.zst|*"$id_lc"*.jsonl.vm0tmp-*|*"$id_lc"*.jsonl.zst.vm0tmp-*|*"$id_no_dashes_lc"*.jsonl|*"$id_no_dashes_lc"*.jsonl.zst|*"$id_no_dashes_lc"*.jsonl.vm0tmp-*|*"$id_no_dashes_lc"*.jsonl.zst.vm0tmp-*)
+      return 0
+      ;;
+  esac
+  return 1
+}
+delete_matching_session_entry() {
+  path="$1"
+  if [ ! -f "$path" ] && [ ! -L "$path" ]; then
+    return
+  fi
+  if session_filename_matches "$path"; then
+    rm -f -- "$path" || {
+      echo "failed to delete codex session file: $path" >&2
+      exit 1
+    }
+  fi
+}
+# Codex resume can see matching session files anywhere below sessions; the
+# explicit entry budget keeps that required duplicate cleanup bounded.
+scan_session_tree() {
+  dir="$1"
+  action="$2"
+  ensure_scannable_session_dir "$dir"
+  for path in "$dir"/* "$dir"/.[!.]* "$dir"/..?*; do
+    if [ ! -e "$path" ] && [ ! -L "$path" ]; then
+      continue
+    fi
+    check_scan_budget
+    case "$action" in
+      delete)
+        delete_matching_session_entry "$path"
+        ;;
+    esac
+    if [ -d "$path" ] && [ ! -L "$path" ]; then
+      scan_session_tree "$path" "$action"
+    fi
+  done
+}
 if [ -d "$root" ]; then
-  find "$root" \( -type f -o -type l \) \( \
-    -iname "*${id}*.jsonl" -o \
-    -iname "*${id}*.jsonl.zst" -o \
-    -iname "*${id}*.jsonl.vm0tmp-*" -o \
-    -iname "*${id}*.jsonl.zst.vm0tmp-*" -o \
-    -iname "*${id_no_dashes}*.jsonl" -o \
-    -iname "*${id_no_dashes}*.jsonl.zst" -o \
-    -iname "*${id_no_dashes}*.jsonl.vm0tmp-*" -o \
-    -iname "*${id_no_dashes}*.jsonl.zst.vm0tmp-*" \
-  \) -delete
+  scan_session_tree "$root" validate
+  scanned_entries=0
+  scan_session_tree "$root" delete
 fi
