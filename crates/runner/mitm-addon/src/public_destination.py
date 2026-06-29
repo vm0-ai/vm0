@@ -4,7 +4,7 @@ import ipaddress
 from dataclasses import dataclass
 from typing import Literal
 
-from authority_utils import percent_decode_host
+from host_normalization import normalize_idna_hostname
 
 _IPV4_NON_PUBLIC_RANGES = (
     (0x00000000, 0x00FFFFFF),
@@ -31,7 +31,6 @@ _HOST_DOT_EQUIVALENT_TRANSLATION = str.maketrans(
 )
 _IPV4_HEX_PREFIX = "0x"
 _IPV4_LITERAL_MAX_COMPONENTS = 4
-_PERCENT_DECODED_IP_LITERAL_SYNTAX_CHARS = frozenset((".", "[", "]", ":"))
 _IPV6_GLOBAL_UNICAST_FIRST_MIN = 0x2000
 _IPV6_GLOBAL_UNICAST_FIRST_MAX = 0x3FFF
 _IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST = 0x2001
@@ -62,21 +61,29 @@ class RuntimeDestinationCheck:
 
 
 def public_ip_literal_is_public(hostname: str) -> bool | None:
-    """Return public-IP status for IP-like input, or None for ordinary hostnames."""
+    """Return public-IP status for IP-like/malformed input, or None for ordinary hostnames."""
     ip_text = hostname.strip()
-    if ip_text.startswith("[") and ip_text.endswith("]"):
-        ip_text = ip_text[1:-1]
-    decoded_ip_text = percent_decode_host(
-        ip_text,
-        syntax_chars=_PERCENT_DECODED_IP_LITERAL_SYNTAX_CHARS,
-    )
-    if decoded_ip_text.invalid_encoding or decoded_ip_text.decoded_syntax:
+    if not ip_text or ip_text != hostname:
         return False
-    ip_text = decoded_ip_text.value
+    bracketed = ip_text.startswith("[") or ip_text.endswith("]")
+    if bracketed:
+        if not (ip_text.startswith("[") and ip_text.endswith("]")):
+            return False
+        ip_text = ip_text[1:-1]
+        if not ip_text:
+            return False
+    if "%" in ip_text:
+        return False
     try:
         ip = ipaddress.ip_address(ip_text)
     except ValueError:
+        if bracketed:
+            return False
         if _looks_like_legacy_ipv4_literal(ip_text):
+            return False
+        try:
+            normalize_idna_hostname(ip_text)
+        except (UnicodeError, ValueError):
             return False
         return None
     return _ip_address_is_public(ip)

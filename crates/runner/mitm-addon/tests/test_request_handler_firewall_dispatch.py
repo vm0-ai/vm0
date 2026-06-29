@@ -406,9 +406,55 @@ async def test_public_destination_blocks_legacy_ipv4_host_despite_public_origina
 
 @pytest.mark.parametrize(
     "destination_host",
-    ["127%2e0%2e0%2e1", "example%2ecom", "127%zz0.0.1"],
+    [
+        "127%2e0%2e0%2e1",
+        "example%2ecom",
+        "example%252ecom",
+        "example%2dcom",
+        "ex%61mple.com",
+        "127%zz0.0.1",
+    ],
 )
 async def test_public_destination_blocks_percent_encoded_host_despite_public_original(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, destination_host
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host=destination_host)
+    flow.server_conn.address = ("service.example.com", 443)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("93.184.216.34", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host=destination_host,
+        reason="invalid_destination",
+    )
+
+
+@pytest.mark.parametrize(
+    "destination_host",
+    [
+        "example/com",
+        "example:443",
+        "example@evil.com",
+        "[service.example.com]",
+        " service.example.com ",
+    ],
+)
+async def test_public_destination_blocks_malformed_host_despite_public_original(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, destination_host
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
