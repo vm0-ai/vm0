@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.9](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.8...guest-contracts-v0.2.9) (2026-06-29)
+
+
+### Refactoring
+
+* merge agent diagnostics into guest contracts ([#19317](https://github.com/vm0-ai/vm0/issues/19317)) ([e36a711](https://github.com/vm0-ai/vm0/commit/e36a71168939a1b692a1ab80005d984697a77fe4))
+
 ## [0.2.8](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.7...guest-contracts-v0.2.8) (2026-06-29)
 
 

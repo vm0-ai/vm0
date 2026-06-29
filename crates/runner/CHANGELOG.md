@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.130.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.3...runner-rs-v0.130.4) (2026-06-29)
+
+
+### Bug Fixes
+
+* cover youtube upload media put firewall routes ([#19325](https://github.com/vm0-ai/vm0/issues/19325)) ([a5e6829](https://github.com/vm0-ai/vm0/commit/a5e6829848c743e9be7698d71c640fddcb680f27))
+* **runner:** verify sandbox runtime commands in rootfs ([#19295](https://github.com/vm0-ai/vm0/issues/19295)) ([6724b4f](https://github.com/vm0-ai/vm0/commit/6724b4feb90c14a992a1c430200fec6e39f8c021))
+
+
+### Refactoring
+
+* merge agent diagnostics into guest contracts ([#19317](https://github.com/vm0-ai/vm0/issues/19317)) ([e36a711](https://github.com/vm0-ai/vm0/commit/e36a71168939a1b692a1ab80005d984697a77fe4))
+
+
+### Performance Improvements
+
+* **mitm-addon:** offload server_connect dns lookups ([#19313](https://github.com/vm0-ai/vm0/issues/19313)) ([3c6d3bd](https://github.com/vm0-ai/vm0/commit/3c6d3bdf73514fc35525f5f58100bb7fb71361d8))
+
 ## [0.130.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.2...runner-rs-v0.130.3) (2026-06-29)
 
 ## [0.130.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.1...runner-rs-v0.130.2) (2026-06-29)
