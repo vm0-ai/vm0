@@ -17,6 +17,7 @@ const TEST_OAUTH_CLIENT = {
 const TEST_OAUTH_AUTH_CODE_GRANT = {
   kind: "auth-code",
   scopes: ["read"],
+  callbackOrigin: "api",
   outputs: {
     accessToken: "$secrets.TEST_OAUTH_ACCESS_TOKEN",
     refreshToken: "$secrets.TEST_OAUTH_REFRESH_TOKEN",
@@ -27,6 +28,7 @@ const TEST_OAUTH_AUTH_CODE_GRANT = {
 const TEST_OAUTH_API_AUTH_CODE_GRANT = {
   kind: "auth-code",
   scopes: ["read"],
+  callbackOrigin: "api",
   outputs: {
     initialAccessToken: "$secrets.TEST_OAUTH_API_ACCESS_TOKEN",
     initialRefreshToken: "$secrets.TEST_OAUTH_API_REFRESH_TOKEN",
