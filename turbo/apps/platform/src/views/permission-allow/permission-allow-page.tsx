@@ -351,6 +351,7 @@ function ConfirmGrantCard({
     DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
   const expirationAvailable = action === "allow";
   const saving = grantLoadable.state === "loading";
+  const saveError = grantLoadable.state === "hasError";
 
   const handleSave = () => {
     detach(
@@ -408,7 +409,13 @@ function ConfirmGrantCard({
           )}
         </div>
 
-        <div className="w-[500px] max-w-[calc(100vw-96px)] px-[26px]">
+        <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col gap-3 px-[26px]">
+          {saveError && (
+            <div className="flex items-center justify-center gap-2 text-sm font-medium text-destructive">
+              <IconAlertTriangle size={16} />
+              <span>Couldn’t update permissions</span>
+            </div>
+          )}
           <Button
             type="button"
             onClick={handleSave}

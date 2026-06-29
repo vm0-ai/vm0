@@ -60,10 +60,19 @@ function encodeBase64UrlJson(value: unknown): string {
     .replace(/=+$/u, "");
 }
 
+function queryButtonByText(
+  text: string,
+  container: ParentNode,
+): HTMLElement | null {
+  return (
+    queryAllByRoleFast("button", container).find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+    }) ?? null
+  );
+}
+
 function buttonByText(text: string, container: ParentNode): HTMLElement {
-  const button = queryAllByRoleFast("button", container).find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
+  const button = queryButtonByText(text, container);
   if (!button) {
     throw new Error(`${text} button not found`);
   }
@@ -499,6 +508,62 @@ describe("chat message action cards", () => {
     });
   });
 
+  it("shows permission status loading outside the action button", async () => {
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
+    let resolveList: () => void = () => {
+      throw new Error("Permission grant list request did not start");
+    };
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.list,
+      async ({ deferred, respond }) => {
+        const listDeferred = deferred<void>();
+        resolveList = () => {
+          listDeferred.resolve();
+        };
+        await listDeferred.promise;
+        return respond(200, []);
+      },
+    );
+
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-permission-status-loading`,
+      threadTitle: "Permission status loading",
+      chatMessages: [
+        {
+          id: "msg-user-permission-status-loading",
+          role: "user",
+          content: "Allow Gmail message writes",
+          runId: "run-permission-status-loading",
+          createdAt: "2026-06-09T11:00:00Z",
+        },
+        {
+          id: "msg-assistant-permission-status-loading-card",
+          role: "assistant",
+          content: permissionAuthorizeUrl,
+          runId: "run-permission-status-loading",
+          createdAt: "2026-06-09T11:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-permission-status-loading`,
+    });
+
+    const permissionCard = await screen.findByTestId("permission-action-card");
+    expect(
+      within(permissionCard).getByText("Checking permission status..."),
+    ).toBeInTheDocument();
+    expect(
+      queryButtonByText("Checking permission status...", permissionCard),
+    ).toBeNull();
+    expect(queryButtonByText("Confirm", permissionCard)).toBeNull();
+
+    resolveList();
+    await waitForButtonByText("Confirm", permissionCard);
+  });
+
   it("does not retry non-transient permission action loading failures", async () => {
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
     let listRequests = 0;
@@ -541,10 +606,78 @@ describe("chat message action cards", () => {
     const permissionCard = await screen.findByTestId("permission-action-card");
     await waitFor(() => {
       expect(
-        buttonByText("Failed to load permissions", permissionCard),
-      ).toBeDisabled();
+        within(permissionCard).getByText("Couldn’t load permission status"),
+      ).toBeInTheDocument();
     });
+    expect(
+      queryButtonByText("Failed to load permissions", permissionCard),
+    ).toBeNull();
+    expect(
+      queryButtonByText("Couldn’t load permission status", permissionCard),
+    ).toBeNull();
+    expect(queryButtonByText("Confirm", permissionCard)).toBeNull();
     expect(listRequests).toBe(1);
+  });
+
+  it("shows permission save failures outside the action button", async () => {
+    const user = userEvent.setup({ delay: null });
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.apply, ({ respond }) => {
+      return respond(403, {
+        error: {
+          code: "FORBIDDEN",
+          message: "Forbidden",
+        },
+      });
+    });
+
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-permission-save-error`,
+      threadTitle: "Permission save error",
+      chatMessages: [
+        {
+          id: "msg-user-permission-save-error",
+          role: "user",
+          content: "Allow Gmail message writes",
+          runId: "run-permission-save-error",
+          createdAt: "2026-06-09T11:00:00Z",
+        },
+        {
+          id: "msg-assistant-permission-save-error-card",
+          role: "assistant",
+          content: permissionAuthorizeUrl,
+          runId: "run-permission-save-error",
+          createdAt: "2026-06-09T11:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-permission-save-error`,
+    });
+
+    const permissionCard = await screen.findByTestId("permission-action-card");
+    await confirmPermissionAction(user, permissionCard);
+
+    await waitFor(() => {
+      expect(
+        within(permissionCard).getByText("Couldn’t update permissions"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      queryButtonByText("Couldn’t update permissions", permissionCard),
+    ).toBeNull();
+    await waitForButtonByText("Confirm", permissionCard);
+    expect(
+      within(permissionCard).queryByText("Permissions updated"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(permissionCard).queryByText("Already allowed"),
+    ).not.toBeInTheDocument();
   });
 
   it("lets users change permission duration before confirming", async () => {

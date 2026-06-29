@@ -5443,19 +5443,20 @@ function ComputerUseAuthorizationCard({
   );
 }
 
-interface PermissionActionButtonState {
-  hasAgent: boolean;
-  hasPermission: boolean;
-  loading: boolean;
-  loadError: boolean;
-  saving: boolean;
-  saveDone: boolean;
-  alreadyApplied: boolean;
-}
-
 type PermissionAction = "allow" | "deny";
 
 type PermissionActionUserGrant = UserPermissionGrantResponse;
+
+type PermissionActionCardStatus =
+  | { kind: "loading" }
+  | { kind: "load-error" }
+  | { kind: "save-error" }
+  | { kind: "ready" }
+  | { kind: "saving" }
+  | { kind: "saved" }
+  | { kind: "already-applied" }
+  | { kind: "missing-target" }
+  | { kind: "missing-permission" };
 
 interface LoadableLike<T> {
   state: string;
@@ -5482,46 +5483,16 @@ function permissionActionVerb(action: PermissionAction): string {
   return action === "allow" ? "Allow" : "Deny";
 }
 
-function permissionActionButtonLabel(
-  state: PermissionActionButtonState,
-): string {
-  if (state.loading) {
-    return "Checking permissions";
-  }
-  if (state.loadError) {
-    return "Failed to load permissions";
-  }
-  if (!state.hasPermission) {
-    return "Unknown permission";
-  }
-  if (state.saving) {
-    return "Saving...";
-  }
-  return "Confirm";
-}
-
-function permissionActionButtonDisabled(
-  state: PermissionActionButtonState,
-): boolean {
-  return (
-    state.loading ||
-    state.loadError ||
-    state.saving ||
-    !state.hasAgent ||
-    !state.hasPermission
-  );
-}
-
 function permissionActionStatusText(
-  state: PermissionActionButtonState,
+  status: PermissionActionCardStatus,
   action: "allow" | "deny",
 ): { label: string; className: string } | null {
-  if (state.saveDone) {
+  if (status.kind === "saved") {
     return action === "allow"
       ? { label: "Permissions updated", className: "text-green-600" }
       : { label: "Permission denied", className: "text-destructive" };
   }
-  if (state.alreadyApplied) {
+  if (status.kind === "already-applied") {
     return action === "allow"
       ? { label: "Already allowed", className: "text-green-600" }
       : { label: "Already denied", className: "text-destructive" };
@@ -5530,36 +5501,105 @@ function permissionActionStatusText(
 }
 
 function PermissionActionButton({
-  state,
-  action,
+  status,
   onClick,
 }: {
-  state: PermissionActionButtonState;
-  action: "allow" | "deny";
+  status: PermissionActionCardStatus;
   onClick: () => void;
 }) {
-  const status = permissionActionStatusText(state, action);
-  if (status) {
-    return (
-      <span
-        className={`shrink-0 text-[0.9375rem] font-medium ${status.className}`}
-      >
-        {status.label}
-      </span>
-    );
+  if (
+    status.kind !== "ready" &&
+    status.kind !== "saving" &&
+    status.kind !== "save-error"
+  ) {
+    return null;
   }
 
+  const saving = status.kind === "saving";
   return (
     <button
       type="button"
-      disabled={permissionActionButtonDisabled(state)}
+      disabled={saving}
       onClick={onClick}
       className="inline-flex h-9 w-full shrink-0 items-center justify-center gap-2 rounded-lg border border-border bg-background px-3 text-[0.9375rem] font-medium text-foreground transition-colors hover:bg-accent sm:w-auto"
     >
-      {state.saving && <IconLoader2 size={15} className="animate-spin" />}
-      {permissionActionButtonLabel(state)}
+      {saving && <IconLoader2 size={15} className="animate-spin" />}
+      {saving ? "Saving..." : "Confirm"}
     </button>
   );
+}
+
+function PermissionActionTerminalStatus({
+  status,
+  action,
+}: {
+  status: PermissionActionCardStatus;
+  action: "allow" | "deny";
+}) {
+  const text = permissionActionStatusText(status, action);
+  if (!text) {
+    return null;
+  }
+  return (
+    <span className={`shrink-0 text-[0.9375rem] font-medium ${text.className}`}>
+      {text.label}
+    </span>
+  );
+}
+
+function PermissionActionInlineStatus({
+  status,
+}: {
+  status: PermissionActionCardStatus;
+}) {
+  switch (status.kind) {
+    case "loading": {
+      return (
+        <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+          <IconLoader2 size={13} className="animate-spin" />
+          <span>Checking permission status...</span>
+        </div>
+      );
+    }
+    case "load-error": {
+      return (
+        <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
+          <IconAlertCircle size={13} />
+          <span>Couldn’t load permission status</span>
+        </div>
+      );
+    }
+    case "save-error": {
+      return (
+        <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
+          <IconAlertCircle size={13} />
+          <span>Couldn’t update permissions</span>
+        </div>
+      );
+    }
+    case "missing-target": {
+      return (
+        <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
+          <IconAlertCircle size={13} />
+          <span>Agent not found</span>
+        </div>
+      );
+    }
+    case "missing-permission": {
+      return (
+        <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
+          <IconAlertCircle size={13} />
+          <span>Unknown permission</span>
+        </div>
+      );
+    }
+    case "ready":
+    case "saving":
+    case "saved":
+    case "already-applied": {
+      return null;
+    }
+  }
 }
 
 function isPermissionActionLoading(params: {
@@ -5639,44 +5679,41 @@ function permissionActionUserGrant(
   });
 }
 
-function createPermissionActionButtonState(params: {
+function createPermissionActionCardStatus(params: {
   hasAgent: boolean;
   hasPermission: boolean;
   loading: boolean;
   loadError: boolean;
   saving: boolean;
-  alreadyApplied: boolean;
   saveDone: boolean;
-}): PermissionActionButtonState {
-  return {
-    hasAgent: params.hasAgent,
-    hasPermission: params.hasPermission,
-    loading: params.loading,
-    loadError: params.loadError,
-    saving: params.saving,
-    saveDone: params.saveDone,
-    alreadyApplied: params.alreadyApplied,
-  };
-}
-
-function createPermissionActionCardButtonState(params: {
-  hasAgent: boolean;
-  focusedPermission: { name: string } | undefined;
-  loading: boolean;
-  loadError: boolean;
-  saving: boolean;
-  saveDone: boolean;
+  saveError: boolean;
   alreadyApplied: boolean;
-}): PermissionActionButtonState {
-  return createPermissionActionButtonState({
-    hasAgent: params.hasAgent,
-    hasPermission: Boolean(params.focusedPermission),
-    loading: params.loading,
-    loadError: params.loadError,
-    saving: params.saving,
-    saveDone: params.saveDone,
-    alreadyApplied: params.alreadyApplied,
-  });
+}): PermissionActionCardStatus {
+  if (params.loading) {
+    return { kind: "loading" };
+  }
+  if (params.loadError) {
+    return { kind: "load-error" };
+  }
+  if (!params.hasAgent) {
+    return { kind: "missing-target" };
+  }
+  if (!params.hasPermission) {
+    return { kind: "missing-permission" };
+  }
+  if (params.saving) {
+    return { kind: "saving" };
+  }
+  if (params.saveDone) {
+    return { kind: "saved" };
+  }
+  if (params.saveError) {
+    return { kind: "save-error" };
+  }
+  if (params.alreadyApplied) {
+    return { kind: "already-applied" };
+  }
+  return { kind: "ready" };
 }
 
 function createPermissionActionCardViewState(params: {
@@ -5711,6 +5748,7 @@ function createPermissionActionCardViewState(params: {
   const saving = isPermissionActionSaving({
     grantLoading: params.grantLoadableState === "loading",
   });
+  const saveError = params.grantLoadableState === "hasError";
   const userGrantPolicy = permissionActionUserGrantPolicy(
     params.userGrantsLoadable,
     params.block,
@@ -5722,39 +5760,28 @@ function createPermissionActionCardViewState(params: {
     action: params.block.action,
   });
   const saveDone = params.grantLoadableState === "hasData";
-  const buttonState = createPermissionActionCardButtonState({
+  const status = createPermissionActionCardStatus({
     hasAgent: params.hasAgent,
-    focusedPermission,
+    hasPermission: Boolean(focusedPermission),
     loading,
     loadError,
     saving,
     saveDone,
+    saveError,
     alreadyApplied,
   });
   return {
     actionLabel,
-    buttonState,
+    status,
     focusedPermission,
-    finished: saveDone,
   };
 }
 
 function runPermissionAction(params: {
-  hasAgent: boolean;
-  focusedPermission: { name: string } | undefined;
-  state: PermissionActionButtonState;
-  finished: boolean;
+  status: PermissionActionCardStatus;
   runUserGrant: () => void;
 }): void {
-  if (
-    !params.hasAgent ||
-    !params.focusedPermission ||
-    params.state.loading ||
-    params.state.loadError ||
-    params.state.saving ||
-    params.state.alreadyApplied ||
-    params.finished
-  ) {
+  if (params.status.kind !== "ready" && params.status.kind !== "save-error") {
     return;
   }
 
@@ -5764,10 +5791,8 @@ function runPermissionAction(params: {
 function createPermissionActionHandler(params: {
   block: PermissionActionBlock;
   pageSignal: AbortSignal;
-  hasAgent: boolean;
   focusedPermission: { name: string } | undefined;
-  state: PermissionActionButtonState;
-  finished: boolean;
+  status: PermissionActionCardStatus;
   expirationAvailable: boolean;
   expiresIn: UserPermissionGrantExpiresIn;
   applyGrant: ApplyUserPermissionGrantFn;
@@ -5776,10 +5801,7 @@ function createPermissionActionHandler(params: {
     const permissionName =
       params.focusedPermission?.name ?? params.block.permission;
     runPermissionAction({
-      hasAgent: params.hasAgent,
-      focusedPermission: params.focusedPermission,
-      state: params.state,
-      finished: params.finished,
+      status: params.status,
       runUserGrant: () => {
         detach(
           params.applyGrant(
@@ -5806,7 +5828,7 @@ function PermissionActionCardContent({
   connectorLabel,
   actionLabel,
   permissionName,
-  buttonState,
+  status,
   expirationAvailable,
   expiresIn,
   onExpiresInChange,
@@ -5817,7 +5839,7 @@ function PermissionActionCardContent({
   connectorLabel: string;
   actionLabel: string;
   permissionName: string;
-  buttonState: PermissionActionButtonState;
+  status: PermissionActionCardStatus;
   expirationAvailable: boolean;
   expiresIn: UserPermissionGrantExpiresIn;
   onExpiresInChange: (value: UserPermissionGrantExpiresIn) => void;
@@ -5828,7 +5850,10 @@ function PermissionActionCardContent({
     ? permissionGrantExpiryText(expiresAt)
     : null;
   const showDurationSelect =
-    expirationAvailable && !buttonState.alreadyApplied && !buttonState.saveDone;
+    expirationAvailable &&
+    (status.kind === "ready" ||
+      status.kind === "saving" ||
+      status.kind === "save-error");
   return (
     <div
       data-testid="permission-action-card"
@@ -5845,6 +5870,7 @@ function PermissionActionCardContent({
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
             {actionLabel} {permissionName}
           </div>
+          <PermissionActionInlineStatus status={status} />
           {expiryText && (
             <div className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
               {expiryText}
@@ -5857,15 +5883,12 @@ function PermissionActionCardContent({
           <PermissionGrantDurationSelect
             value={expiresIn}
             onValueChange={onExpiresInChange}
-            disabled={buttonState.loading || buttonState.saving}
+            disabled={status.kind === "saving"}
             ariaLabel="Permission duration"
           />
         )}
-        <PermissionActionButton
-          state={buttonState}
-          action={block.action}
-          onClick={onClick}
-        />
+        <PermissionActionTerminalStatus status={status} action={block.action} />
+        <PermissionActionButton status={status} onClick={onClick} />
       </div>
     </div>
   );
@@ -5918,7 +5941,7 @@ function PermissionActionCardForTarget({
       connectorLabel={config.label}
       actionLabel={actionState.actionLabel}
       permissionName={actionState.focusedPermission?.name ?? block.permission}
-      buttonState={actionState.buttonState}
+      status={actionState.status}
       expirationAvailable={expirationAvailable}
       expiresIn={expiresIn}
       onExpiresInChange={(value) => {
@@ -5928,10 +5951,8 @@ function PermissionActionCardForTarget({
       onClick={createPermissionActionHandler({
         block,
         pageSignal,
-        hasAgent: hasTarget,
         focusedPermission: actionState.focusedPermission,
-        state: actionState.buttonState,
-        finished: actionState.finished,
+        status: actionState.status,
         expirationAvailable,
         expiresIn,
         applyGrant,
