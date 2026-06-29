@@ -363,8 +363,7 @@ describe("zero goals", () => {
 
     expect(response.body).toStrictEqual({
       objective,
-      objectiveBrief:
-        "# Ship goals\n\nKeep the release moving with **daily** checks.",
+      objectiveBrief: "Ship goals",
       status: "active",
     });
   });
