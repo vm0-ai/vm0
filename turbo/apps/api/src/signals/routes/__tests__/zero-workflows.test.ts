@@ -9,8 +9,12 @@ import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import {
   workflowUserTriggerThreads,
+  zeroWorkflowTriggers,
+  zeroWorkflowWebhookTriggers,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
+import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
+import { workflowUserPermissionGrants } from "@vm0/db/schema/workflow-user-permission-grant";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
@@ -820,6 +824,282 @@ describe("zero workflows", () => {
     expect(copyableAgentIds).toStrictEqual(
       [sourceAgent.agentId, targetAgent.agentId].sort(),
     );
+  });
+
+  it("copies caller-owned workflow triggers, connector access, and permission grants", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const sourceAgent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Source Agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    const targetAgent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Target Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const created = await accept(
+      collectionClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: sourceAgent.agentId,
+          name: "runtime-config-workflow",
+          displayName: "Runtime Config Workflow",
+          instruction: "# runtime config workflow",
+        },
+      }),
+      [201],
+    );
+    const workflowId = created.body.id;
+
+    const otherUserId = `user_${randomUUID()}`;
+    const grantExpiresAt = new Date("2099-01-01T00:00:00.000Z");
+    const nextRunAt = new Date("2099-01-01T09:00:00.000Z");
+    await db.insert(workflowUserConnectors).values([
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        workflowId,
+        connectorType: "gmail",
+      },
+      {
+        orgId: fixture.orgId,
+        userId: otherUserId,
+        workflowId,
+        connectorType: "slack",
+      },
+    ]);
+    await db.insert(workflowUserPermissionGrants).values([
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        workflowId,
+        connectorRef: "gmail",
+        permission: "messages.read",
+        action: "allow",
+        expiresAt: grantExpiresAt,
+      },
+      {
+        orgId: fixture.orgId,
+        userId: otherUserId,
+        workflowId,
+        connectorRef: "slack",
+        permission: "chat.write",
+        action: "allow",
+      },
+    ]);
+
+    const [sourceScheduleTrigger] = await db
+      .insert(zeroWorkflowTriggers)
+      .values({
+        orgId: fixture.orgId,
+        workflowId,
+        ownerUserId: fixture.userId,
+        kind: "schedule",
+        eventType: null,
+        eventConfig: null,
+        scheduleType: "cron",
+        cronExpression: "0 9 * * *",
+        intervalSeconds: null,
+        atTime: null,
+        timezone: "Asia/Shanghai",
+        enabled: true,
+        nextRunAt,
+        lastRunAt: new Date("2026-01-01T00:00:00.000Z"),
+        lastRunId: randomUUID(),
+        consecutiveFailures: 2,
+      })
+      .returning({ id: zeroWorkflowTriggers.id });
+    const [sourceWebhookTrigger] = await db
+      .insert(zeroWorkflowTriggers)
+      .values({
+        orgId: fixture.orgId,
+        workflowId,
+        ownerUserId: fixture.userId,
+        kind: "event",
+        eventType: "webhook-received",
+        eventConfig: {
+          provider: "webhook",
+          event: "received",
+          auth: { mode: "hmac-sha256" },
+        },
+        scheduleType: null,
+        cronExpression: null,
+        intervalSeconds: null,
+        atTime: null,
+        timezone: "UTC",
+        enabled: false,
+        nextRunAt: null,
+      })
+      .returning({ id: zeroWorkflowTriggers.id });
+    if (!sourceScheduleTrigger || !sourceWebhookTrigger) {
+      throw new Error("Failed to seed source workflow triggers");
+    }
+    const sourceWebhookTokenHash = `source-${randomUUID()}`;
+    await db.insert(zeroWorkflowWebhookTriggers).values({
+      triggerId: sourceWebhookTrigger.id,
+      tokenHash: sourceWebhookTokenHash,
+      encryptedToken: "source-encrypted-token",
+      encryptedSecret: "source-encrypted-secret",
+      secretLastFour: "1234",
+    });
+    await db.insert(zeroWorkflowTriggers).values({
+      orgId: fixture.orgId,
+      workflowId,
+      ownerUserId: otherUserId,
+      kind: "schedule",
+      eventType: null,
+      eventConfig: null,
+      scheduleType: "loop",
+      cronExpression: null,
+      intervalSeconds: 300,
+      atTime: null,
+      timezone: "UTC",
+      enabled: true,
+      nextRunAt,
+    });
+
+    const copied = await accept(
+      detailClient().copy({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [201],
+    );
+
+    const copiedConnectors = await db
+      .select({ connectorType: workflowUserConnectors.connectorType })
+      .from(workflowUserConnectors)
+      .where(
+        and(
+          eq(workflowUserConnectors.orgId, fixture.orgId),
+          eq(workflowUserConnectors.userId, fixture.userId),
+          eq(workflowUserConnectors.workflowId, copied.body.id),
+        ),
+      );
+    expect(
+      copiedConnectors.map((row) => {
+        return row.connectorType;
+      }),
+    ).toStrictEqual(["gmail"]);
+
+    const copiedGrants = await db
+      .select()
+      .from(workflowUserPermissionGrants)
+      .where(
+        and(
+          eq(workflowUserPermissionGrants.orgId, fixture.orgId),
+          eq(workflowUserPermissionGrants.userId, fixture.userId),
+          eq(workflowUserPermissionGrants.workflowId, copied.body.id),
+        ),
+      );
+    expect(copiedGrants).toHaveLength(1);
+    expect(copiedGrants[0]).toMatchObject({
+      connectorRef: "gmail",
+      permission: "messages.read",
+      action: "allow",
+    });
+    expect(copiedGrants[0]?.expiresAt?.toISOString()).toBe(
+      grantExpiresAt.toISOString(),
+    );
+
+    const copiedTriggers = await db
+      .select()
+      .from(zeroWorkflowTriggers)
+      .where(
+        and(
+          eq(zeroWorkflowTriggers.orgId, fixture.orgId),
+          eq(zeroWorkflowTriggers.ownerUserId, fixture.userId),
+          eq(zeroWorkflowTriggers.workflowId, copied.body.id),
+        ),
+      );
+    expect(copiedTriggers).toHaveLength(2);
+    const copiedScheduleTrigger = copiedTriggers.find((trigger) => {
+      return trigger.kind === "schedule";
+    });
+    const copiedWebhookTrigger = copiedTriggers.find((trigger) => {
+      return (
+        trigger.kind === "event" && trigger.eventType === "webhook-received"
+      );
+    });
+    if (!copiedScheduleTrigger || !copiedWebhookTrigger) {
+      throw new Error("Expected copied schedule and webhook triggers");
+    }
+    expect(copiedScheduleTrigger.id).not.toBe(sourceScheduleTrigger.id);
+    expect(copiedScheduleTrigger).toMatchObject({
+      scheduleType: "cron",
+      cronExpression: "0 9 * * *",
+      timezone: "Asia/Shanghai",
+      enabled: true,
+      lastRunAt: null,
+      lastRunId: null,
+      consecutiveFailures: 0,
+    });
+    expect(copiedScheduleTrigger.nextRunAt?.toISOString()).toBe(
+      nextRunAt.toISOString(),
+    );
+    expect(copiedWebhookTrigger.id).not.toBe(sourceWebhookTrigger.id);
+    expect(copiedWebhookTrigger).toMatchObject({
+      eventType: "webhook-received",
+      enabled: false,
+      nextRunAt: null,
+      lastRunAt: null,
+      lastRunId: null,
+      consecutiveFailures: 0,
+    });
+
+    const [copiedWebhookConfig] = await db
+      .select()
+      .from(zeroWorkflowWebhookTriggers)
+      .where(
+        eq(zeroWorkflowWebhookTriggers.triggerId, copiedWebhookTrigger.id),
+      );
+    expect(copiedWebhookConfig?.tokenHash).toBeDefined();
+    expect(copiedWebhookConfig?.tokenHash).not.toBe(sourceWebhookTokenHash);
+    expect(copiedWebhookConfig?.encryptedSecret).toBe(
+      "source-encrypted-secret",
+    );
+    expect(copiedWebhookConfig?.secretLastFour).toBe("1234");
+
+    const leakedTriggers = await db
+      .select()
+      .from(zeroWorkflowTriggers)
+      .where(
+        and(
+          eq(zeroWorkflowTriggers.orgId, fixture.orgId),
+          eq(zeroWorkflowTriggers.ownerUserId, otherUserId),
+          eq(zeroWorkflowTriggers.workflowId, copied.body.id),
+        ),
+      );
+    expect(leakedTriggers).toHaveLength(0);
+    const leakedGrants = await db
+      .select()
+      .from(workflowUserPermissionGrants)
+      .where(
+        and(
+          eq(workflowUserPermissionGrants.orgId, fixture.orgId),
+          eq(workflowUserPermissionGrants.userId, otherUserId),
+          eq(workflowUserPermissionGrants.workflowId, copied.body.id),
+        ),
+      );
+    expect(leakedGrants).toHaveLength(0);
   });
 
   it("gets or creates the shared workflow chat thread with a slash prompt", async () => {
