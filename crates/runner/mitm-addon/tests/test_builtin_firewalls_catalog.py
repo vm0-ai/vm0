@@ -425,7 +425,7 @@ def test_youtube_builtin_allows_resumable_video_media_put_as_create():
         {
             "youtube": {
                 "allow": ["videos.create"],
-                "deny": [],
+                "deny": ["videos.write"],
                 "unknownPolicy": "deny",
             }
         },
