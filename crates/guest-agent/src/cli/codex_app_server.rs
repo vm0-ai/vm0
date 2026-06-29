@@ -412,11 +412,9 @@ impl CodexAppServerClient {
         let child_exited = self.try_finish_child_wait()?.is_some();
         if self.wait_rx.is_some() && !child_exited {
             self.sigterm_process_group();
+            self.sigkill_process_group();
             if !self.wait_for_child(SHUTDOWN_SIGKILL_GRACE).await? {
-                self.sigkill_process_group();
-                if !self.wait_for_child(SHUTDOWN_SIGKILL_GRACE).await? {
-                    return Err(CodexAppServerError::ShutdownTimeout);
-                }
+                return Err(CodexAppServerError::ShutdownTimeout);
             }
         }
 

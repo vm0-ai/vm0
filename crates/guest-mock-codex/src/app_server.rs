@@ -28,6 +28,7 @@ enum Scenario {
     HangOnThreadStart,
     MalformedStdout,
     HangOnStdinEof,
+    SigtermDeafOnStdinEof,
     NullIdServerRequestBeforeResponse,
     NotificationOverflow,
     OversizedStdout,
@@ -57,6 +58,7 @@ impl Scenario {
                 "hang-on-thread-start" => Ok(Self::HangOnThreadStart),
                 "malformed-stdout" => Ok(Self::MalformedStdout),
                 "hang-on-stdin-eof" => Ok(Self::HangOnStdinEof),
+                "sigterm-deaf-on-stdin-eof" => Ok(Self::SigtermDeafOnStdinEof),
                 "null-id-server-request-before-response" => {
                     Ok(Self::NullIdServerRequestBeforeResponse)
                 }
@@ -158,6 +160,12 @@ impl AppServerState {
             Scenario::HangOnStdinEof => loop {
                 thread::park();
             },
+            Scenario::SigtermDeafOnStdinEof => {
+                ignore_sigterm();
+                loop {
+                    thread::park();
+                }
+            }
             Scenario::StderrHolderOnStdinEof => {
                 spawn_stderr_holder()?;
             }
@@ -863,3 +871,13 @@ fn write_json_line<W: Write>(output: &mut W, value: &Value) -> io::Result<()> {
     writeln!(output)?;
     output.flush()
 }
+
+#[cfg(unix)]
+fn ignore_sigterm() {
+    unsafe {
+        libc::signal(libc::SIGTERM, libc::SIG_IGN);
+    }
+}
+
+#[cfg(not(unix))]
+fn ignore_sigterm() {}
