@@ -11,11 +11,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteSlackIntegrationFixture$,
   seedSlackOrgInstallation$,
@@ -76,7 +72,6 @@ interface RunScopedContext {
 
 describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
   const slackFixtures: SlackIntegrationFixture[] = [];
-  const memberships: OrgMembershipFixture[] = [];
   const insightFixtures: UsageInsightFixture[] = [];
 
   function actorFor(args: { readonly orgId: string; readonly userId: string }) {
@@ -128,12 +123,6 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
         await store.set(deleteUsageInsightFixture$, fixture, context.signal);
       }
     }
-    while (memberships.length > 0) {
-      const membership = memberships.pop();
-      if (membership) {
-        await store.set(deleteOrgMembership$, membership, context.signal);
-      }
-    }
   });
 
   function mockSlackFileInfo(fileId: string): void {
@@ -157,12 +146,11 @@ describe("POST /api/zero/integrations/slack/upload-file/complete", () => {
   }> {
     const orgId = `org_${randomUUID().slice(0, 8)}`;
     const userId = `user_${randomUUID().slice(0, 8)}`;
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, role: "admin" },
       context.signal,
     );
-    memberships.push(membership);
     insightFixtures.push({ orgId, userId });
     return { orgId, userId };
   }

@@ -16,10 +16,7 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
   deleteUsageInsightFixture$,
@@ -182,7 +179,6 @@ describe("zero user permission grants", () => {
       const fixture = fixtures.pop();
       if (fixture) {
         await store.set(deleteUsageInsightFixture$, fixture, context.signal);
-        await store.set(deleteOrgMembership$, fixture, context.signal);
       }
     }
   });

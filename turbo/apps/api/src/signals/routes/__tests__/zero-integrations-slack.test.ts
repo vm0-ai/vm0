@@ -23,11 +23,7 @@ import { writeDb$ } from "../../external/db";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { ROUTES } from "../../route";
 import { SlackFileFetchError } from "../../external/slack-file-fetcher";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -549,11 +545,6 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
       return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
     },
   );
-  const trackOrgMembership = createFixtureTracker<OrgMembershipFixture>(
-    (fixture) => {
-      return store.set(deleteOrgMembership$, fixture, context.signal);
-    },
-  );
   const mocks = createZeroRouteMocks(context);
 
   beforeEach(() => {
@@ -642,17 +633,15 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
 
   it("publishes uninstalled App Home then deletes installation and connections", async () => {
     const seeded = await seedUninstallContext();
-    await trackOrgMembership(
-      store.set(
-        seedOrgMembership$,
-        {
-          orgId: seeded.orgId,
-          userId: seeded.userId,
-          role: "admin",
-          seedOrgCache: false,
-        },
-        context.signal,
-      ),
+    await store.set(
+      seedOrgMembership$,
+      {
+        orgId: seeded.orgId,
+        userId: seeded.userId,
+        role: "admin",
+        seedOrgCache: false,
+      },
+      context.signal,
     );
     mocks.clerk.session(seeded.userId, seeded.orgId, "org:admin");
     const client = setupApp({ context })(zeroIntegrationsSlackContract);
@@ -791,11 +780,6 @@ describe("GET /api/zero/integrations/slack/download-file", () => {
       return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
     },
   );
-  const trackMembership = createFixtureTracker<OrgMembershipFixture>(
-    (fixture) => {
-      return store.set(deleteOrgMembership$, fixture, context.signal);
-    },
-  );
   const mocks = createZeroRouteMocks(context);
 
   async function seedDownloadContext(
@@ -805,9 +789,7 @@ describe("GET /api/zero/integrations/slack/download-file", () => {
   ): Promise<{ readonly token: string }> {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    await trackMembership(
-      store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
 
     if (args.withInstallation !== false) {
       await trackSlackFixture(

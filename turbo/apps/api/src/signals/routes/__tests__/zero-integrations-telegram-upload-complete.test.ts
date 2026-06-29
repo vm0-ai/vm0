@@ -13,11 +13,7 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteTelegramFixture$,
   seedTelegramInstallation$,
@@ -62,7 +58,6 @@ interface UploadCompleteFixture extends TelegramFixture {
   readonly userId: string;
   readonly runId: string;
   readonly threadId: string;
-  readonly membership: OrgMembershipFixture;
 }
 
 function actorFor(args: {
@@ -123,7 +118,7 @@ async function visibleUploadedFiles(args: {
 async function seedSendableContext(): Promise<UploadCompleteFixture> {
   const orgId = `org_${randomUUID().slice(0, 8)}`;
   const userId = `user_${randomUUID().slice(0, 8)}`;
-  const membership = await store.set(
+  await store.set(
     seedOrgMembership$,
     { orgId, userId, role: "admin" },
     context.signal,
@@ -145,13 +140,11 @@ async function seedSendableContext(): Promise<UploadCompleteFixture> {
     userId,
     runId,
     threadId,
-    membership,
   };
 }
 
 describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
   const fixtures: UploadCompleteFixture[] = [];
-  const memberships: OrgMembershipFixture[] = [];
 
   afterEach(async () => {
     while (fixtures.length > 0) {
@@ -160,18 +153,11 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
         await store.set(deleteTelegramFixture$, fixture, context.signal);
       }
     }
-    while (memberships.length > 0) {
-      const membership = memberships.pop();
-      if (membership) {
-        await store.set(deleteOrgMembership$, membership, context.signal);
-      }
-    }
   });
 
   it("sends the uploaded file URL through the requested Telegram bot", async () => {
     const fixture = await seedSendableContext();
     fixtures.push(fixture);
-    memberships.push(fixture.membership);
 
     const uploadId = randomUUID();
     const telegramFileId = `tg-doc-${randomUUID().slice(0, 8)}`;
@@ -261,12 +247,11 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
     const orgId = `org_${randomUUID().slice(0, 8)}`;
     const userId = `user_${randomUUID().slice(0, 8)}`;
     const runId = `run_${randomUUID()}`;
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, role: "admin" },
       context.signal,
     );
-    memberships.push(membership);
 
     const client = setupApp({ context })(
       integrationsTelegramUploadCompleteContract,
@@ -323,7 +308,6 @@ describe("POST /api/zero/integrations/telegram/upload-file/complete", () => {
   it("returns 400 when Telegram rejects the sendDocument call", async () => {
     const fixture = await seedSendableContext();
     fixtures.push(fixture);
-    memberships.push(fixture.membership);
 
     const uploadId = randomUUID();
     const s3Key = `artifacts/${fixture.userId}/${uploadId}/report.pdf`;

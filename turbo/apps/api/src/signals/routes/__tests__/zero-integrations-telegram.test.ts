@@ -21,11 +21,7 @@ import { mockEnv } from "../../../lib/env";
 import { now } from "../../external/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { buildTelegramBotAvatarUrl } from "../../external/telegram-avatar";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteTelegramFixture$,
   freezeTelegramFixture,
@@ -211,7 +207,6 @@ async function officialTelegramUserLink(args: {
 
 describe("GET /api/zero/integrations/telegram/bots", () => {
   const fixtures: TelegramFixture[] = [];
-  const memberships: OrgMembershipFixture[] = [];
 
   beforeEach(() => {
     configureOfficialBotEnv();
@@ -222,12 +217,6 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
       const fixture = fixtures.pop();
       if (fixture) {
         await store.set(deleteTelegramFixture$, fixture, context.signal);
-      }
-    }
-    while (memberships.length > 0) {
-      const membership = memberships.pop();
-      if (membership) {
-        await store.set(deleteOrgMembership$, membership, context.signal);
       }
     }
   });
@@ -281,12 +270,11 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     const userId = `user_${randomUUID()}`;
     const otherOrgId = `org_${randomUUID()}`;
 
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, seedOrgCache: false },
       context.signal,
     );
-    memberships.push(membership);
 
     const ownerBotId = newTelegramBotId();
     const orgBotId = newTelegramBotId();
@@ -402,12 +390,11 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
 
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, seedOrgCache: false },
       context.signal,
     );
-    memberships.push(membership);
 
     const token = mintZeroToken({
       userId,
@@ -433,7 +420,6 @@ describe("GET /api/zero/integrations/telegram/bots", () => {
 
 describe("GET /api/integrations/telegram", () => {
   const fixtures: TelegramFixture[] = [];
-  const memberships: OrgMembershipFixture[] = [];
 
   beforeEach(() => {
     configureOfficialBotEnv();
@@ -444,12 +430,6 @@ describe("GET /api/integrations/telegram", () => {
       const fixture = fixtures.pop();
       if (fixture) {
         await store.set(deleteTelegramFixture$, fixture, context.signal);
-      }
-    }
-    while (memberships.length > 0) {
-      const membership = memberships.pop();
-      if (membership) {
-        await store.set(deleteOrgMembership$, membership, context.signal);
       }
     }
   });
@@ -466,12 +446,11 @@ describe("GET /api/integrations/telegram", () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
 
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, seedOrgCache: false },
       context.signal,
     );
-    memberships.push(membership);
 
     const token = mintZeroToken({
       userId,
@@ -510,12 +489,11 @@ describe("GET /api/integrations/telegram", () => {
     const userId = `user_${randomUUID()}`;
     const customBotId = newTelegramBotId();
 
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, seedOrgCache: false },
       context.signal,
     );
-    memberships.push(membership);
 
     context.mocks.telegram.getMe.mockResolvedValue({
       id: Number(customBotId),
@@ -606,12 +584,11 @@ describe("GET /api/integrations/telegram", () => {
     const userId = `user_${randomUUID()}`;
     const botId = newTelegramBotId();
 
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, seedOrgCache: false },
       context.signal,
     );
-    memberships.push(membership);
 
     context.mocks.telegram.getMe.mockResolvedValue({
       id: Number(botId) + 1,
@@ -657,12 +634,11 @@ describe("GET /api/integrations/telegram", () => {
     const userId = `user_${randomUUID()}`;
     const otherOrgId = `org_${randomUUID()}`;
 
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, seedOrgCache: false },
       context.signal,
     );
-    memberships.push(membership);
 
     const linkedBotId = newTelegramBotId();
     const unlinkedBotId = newTelegramBotId();
@@ -772,7 +748,6 @@ describe("GET /api/integrations/telegram", () => {
 
 describe("GET /api/integrations/telegram/:botId", () => {
   const fixtures: TelegramFixture[] = [];
-  const memberships: OrgMembershipFixture[] = [];
 
   beforeEach(() => {
     configureOfficialBotEnv();
@@ -784,12 +759,6 @@ describe("GET /api/integrations/telegram/:botId", () => {
       const fixture = fixtures.pop();
       if (fixture) {
         await store.set(deleteTelegramFixture$, fixture, context.signal);
-      }
-    }
-    while (memberships.length > 0) {
-      const membership = memberships.pop();
-      if (membership) {
-        await store.set(deleteOrgMembership$, membership, context.signal);
       }
     }
   });
@@ -807,12 +776,11 @@ describe("GET /api/integrations/telegram/:botId", () => {
   }> {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, seedOrgCache: false },
       context.signal,
     );
-    memberships.push(membership);
 
     const botId = newTelegramBotId();
     const ownerUserId = args.ownerUserId ?? userId;
@@ -1035,7 +1003,6 @@ describe("GET /api/integrations/telegram/:botId", () => {
 
 describe("GET /api/integrations/telegram/link", () => {
   const fixtures: TelegramFixture[] = [];
-  const memberships: OrgMembershipFixture[] = [];
 
   beforeEach(() => {
     configureOfficialBotEnv();
@@ -1049,12 +1016,6 @@ describe("GET /api/integrations/telegram/link", () => {
         await store.set(deleteTelegramFixture$, fixture, context.signal);
       }
     }
-    while (memberships.length > 0) {
-      const membership = memberships.pop();
-      if (membership) {
-        await store.set(deleteOrgMembership$, membership, context.signal);
-      }
-    }
   });
 
   async function seedLinkContext(): Promise<{
@@ -1064,12 +1025,11 @@ describe("GET /api/integrations/telegram/link", () => {
   }> {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, seedOrgCache: false },
       context.signal,
     );
-    memberships.push(membership);
     return {
       token: mintZeroToken({
         userId,
@@ -1317,7 +1277,6 @@ describe("GET /api/integrations/telegram/link", () => {
 
 describe("POST /api/integrations/telegram/link", () => {
   const fixtures: TelegramFixture[] = [];
-  const memberships: OrgMembershipFixture[] = [];
 
   beforeEach(() => {
     configureOfficialBotEnv();
@@ -1331,12 +1290,6 @@ describe("POST /api/integrations/telegram/link", () => {
         await store.set(deleteTelegramFixture$, fixture, context.signal);
       }
     }
-    while (memberships.length > 0) {
-      const membership = memberships.pop();
-      if (membership) {
-        await store.set(deleteOrgMembership$, membership, context.signal);
-      }
-    }
   });
 
   async function seedLinkContext(): Promise<{
@@ -1346,12 +1299,11 @@ describe("POST /api/integrations/telegram/link", () => {
   }> {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, seedOrgCache: false },
       context.signal,
     );
-    memberships.push(membership);
     fixtures.push(freezeTelegramFixture(makeTelegramFixtureBuilder(orgId)));
     mocks.clerk.session(userId, orgId);
     return {
@@ -2016,7 +1968,6 @@ describe("POST /api/integrations/telegram/link", () => {
 
 describe("GET /api/integrations/telegram/:botId/avatar", () => {
   const fixtures: TelegramFixture[] = [];
-  const memberships: OrgMembershipFixture[] = [];
 
   beforeEach(() => {
     configureOfficialBotEnv();
@@ -2027,12 +1978,6 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
       const fixture = fixtures.pop();
       if (fixture) {
         await store.set(deleteTelegramFixture$, fixture, context.signal);
-      }
-    }
-    while (memberships.length > 0) {
-      const membership = memberships.pop();
-      if (membership) {
-        await store.set(deleteOrgMembership$, membership, context.signal);
       }
     }
   });
@@ -2049,12 +1994,11 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
   }> {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, seedOrgCache: false },
       context.signal,
     );
-    memberships.push(membership);
 
     return {
       orgId,
@@ -2186,12 +2130,11 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
   it("streams a signed custom bot avatar without auth", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, seedOrgCache: false },
       context.signal,
     );
-    memberships.push(membership);
 
     const botId = newTelegramBotId();
     const builder = makeTelegramFixtureBuilder(orgId);
@@ -2286,12 +2229,11 @@ describe("GET /api/integrations/telegram/:botId/avatar", () => {
   it("returns fallback svg when Telegram has no avatar", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, seedOrgCache: false },
       context.signal,
     );
-    memberships.push(membership);
 
     const botId = "tg-bot-no-avatar";
     const builder = makeTelegramFixtureBuilder(orgId);
@@ -2353,7 +2295,6 @@ describe("GET /api/integrations/telegram/auth-callback", () => {
 
 describe("GET /api/zero/integrations/telegram/download-file", () => {
   const fixtures: TelegramFixture[] = [];
-  const memberships: OrgMembershipFixture[] = [];
   const downloadPath = "/api/zero/integrations/telegram/download-file";
 
   beforeEach(() => {
@@ -2365,12 +2306,6 @@ describe("GET /api/zero/integrations/telegram/download-file", () => {
       const fixture = fixtures.pop();
       if (fixture) {
         await store.set(deleteTelegramFixture$, fixture, context.signal);
-      }
-    }
-    while (memberships.length > 0) {
-      const membership = memberships.pop();
-      if (membership) {
-        await store.set(deleteOrgMembership$, membership, context.signal);
       }
     }
   });
@@ -2397,12 +2332,11 @@ describe("GET /api/zero/integrations/telegram/download-file", () => {
   }> {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, seedOrgCache: false },
       context.signal,
     );
-    memberships.push(membership);
 
     const builder = makeTelegramFixtureBuilder(orgId);
     const installation = await store.set(
@@ -2431,12 +2365,11 @@ describe("GET /api/zero/integrations/telegram/download-file", () => {
   async function seedReadToken(): Promise<string> {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, seedOrgCache: false },
       context.signal,
     );
-    memberships.push(membership);
     return mintZeroToken({
       userId,
       orgId,

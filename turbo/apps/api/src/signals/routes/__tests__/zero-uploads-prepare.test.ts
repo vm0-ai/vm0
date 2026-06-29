@@ -8,16 +8,9 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { createBddApi } from "./helpers/api-bdd";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 
 const context = testContext();
 const store = createStore();
@@ -33,10 +26,6 @@ function validBody() {
 }
 
 describe("POST /api/zero/uploads/prepare", () => {
-  const track = createFixtureTracker<OrgMembershipFixture>(async (fixture) => {
-    await store.set(deleteOrgMembership$, fixture, context.signal);
-  });
-
   it("returns 401 when unauthenticated", async () => {
     const client = setupApp({ context })(zeroUploadsContract);
     const response = await accept(
@@ -50,9 +39,7 @@ describe("POST /api/zero/uploads/prepare", () => {
     const userId = `user_${randomUUID().slice(0, 8)}`;
     const orgId = `org_${randomUUID().slice(0, 8)}`;
     const runId = `run_${randomUUID()}`;
-    await track(
-      store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
       scope: "zero",

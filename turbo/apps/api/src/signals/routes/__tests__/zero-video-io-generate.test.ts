@@ -27,10 +27,7 @@ import { builtInGenerationUsageIdempotencyKey } from "../../services/built-in-ge
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
 import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import { zeroVideoIoGenerateRoutes } from "../zero-video-io-generate";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -466,7 +463,6 @@ async function deleteVideoFixture(fixture: VideoFixture): Promise<void> {
     );
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
   await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
-  await store.set(deleteOrgMembership$, fixture, context.signal);
 }
 
 describe("POST /api/zero/video-io/generate", () => {

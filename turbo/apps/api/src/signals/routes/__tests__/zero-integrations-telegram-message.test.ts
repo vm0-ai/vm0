@@ -14,11 +14,7 @@ import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteTelegramFixture$,
   seedTelegramInstallation$,
@@ -86,7 +82,6 @@ interface TelegramMessageFixture extends TelegramFixture {
   readonly telegramBotId: string;
   readonly userId: string;
   readonly runId: string;
-  readonly membership: OrgMembershipFixture;
 }
 
 async function seedSendableContext(args: {
@@ -97,7 +92,7 @@ async function seedSendableContext(args: {
 
   // Seed the org/member cache so the auth pipeline's role lookup hits the
   // cache instead of trying to call out to Clerk.
-  const membership = await store.set(
+  await store.set(
     seedOrgMembership$,
     { orgId, userId, role: "admin" },
     context.signal,
@@ -139,7 +134,6 @@ async function seedSendableContext(args: {
     userIds: [userId],
     userId,
     runId,
-    membership,
   };
 }
 
@@ -148,10 +142,7 @@ describe("POST /api/zero/integrations/telegram/message", () => {
 
   function trackFixture(fixture: TelegramMessageFixture): void {
     fixtures.push(fixture);
-    memberships.push(fixture.membership);
   }
-
-  const memberships: OrgMembershipFixture[] = [];
 
   // afterEach guarantees cleanup even when an assertion fails mid-test.
   afterEach(async () => {
@@ -159,12 +150,6 @@ describe("POST /api/zero/integrations/telegram/message", () => {
       const fixture = fixtures.pop();
       if (fixture) {
         await store.set(deleteTelegramFixture$, fixture, context.signal);
-      }
-    }
-    while (memberships.length > 0) {
-      const membership = memberships.pop();
-      if (membership) {
-        await store.set(deleteOrgMembership$, membership, context.signal);
       }
     }
   });
@@ -366,12 +351,11 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     const orgId = `org_${randomUUID().slice(0, 8)}`;
     const userId = `user_${randomUUID().slice(0, 8)}`;
     const runId = `run_${randomUUID()}`;
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, role: "admin" },
       context.signal,
     );
-    memberships.push(membership);
 
     const client = setupApp({ context })(integrationsTelegramMessageContract);
     const response = await accept(
