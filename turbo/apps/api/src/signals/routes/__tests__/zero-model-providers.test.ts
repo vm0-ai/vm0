@@ -8,15 +8,10 @@ import {
 } from "@vm0/api-contracts/contracts/zero-model-providers";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import { modelProviders } from "@vm0/db/schema/model-provider";
-import { secrets } from "@vm0/db/schema/secret";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
-import {
-  decryptSecretForTests,
-  encryptSecretForTests,
-} from "./helpers/encrypt-secret";
 import {
   deleteOrgModelProviders$,
   seedOrgModelProvider$,
@@ -95,41 +90,6 @@ function makeAuthJson(overrides?: {
   });
 }
 
-async function findOrgModelProviderSecret(
-  orgId: string,
-  name: string,
-): Promise<string | undefined> {
-  const writeDb = store.set(writeDb$);
-  const [row] = await writeDb
-    .select({ encryptedValue: secrets.encryptedValue })
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.orgId, orgId),
-        eq(secrets.userId, ORG_SENTINEL_USER_ID),
-        eq(secrets.name, name),
-        eq(secrets.type, "model-provider"),
-      ),
-    )
-    .limit(1);
-
-  return row ? decryptSecretForTests(row.encryptedValue) : undefined;
-}
-
-async function insertOrgModelProviderSecret(
-  orgId: string,
-  name: string,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(secrets).values({
-    orgId,
-    userId: ORG_SENTINEL_USER_ID,
-    name,
-    type: "model-provider",
-    encryptedValue: encryptSecretForTests(`${name}-value`),
-  });
-}
-
 async function setOrgModelProviderStale(
   orgId: string,
   type: string,
@@ -148,40 +108,6 @@ async function setOrgModelProviderStale(
         eq(modelProviders.type, type),
       ),
     );
-}
-
-async function readOrgModelProviderState(
-  orgId: string,
-  type: string,
-): Promise<{
-  readonly selectedModel: string | null;
-  readonly tokenExpiresAt: Date | null;
-  readonly workspaceName: string | null;
-  readonly planType: string | null;
-  readonly needsReconnect: boolean;
-  readonly lastRefreshErrorCode: string | null;
-} | null> {
-  const writeDb = store.set(writeDb$);
-  const [row] = await writeDb
-    .select({
-      selectedModel: modelProviders.selectedModel,
-      tokenExpiresAt: modelProviders.tokenExpiresAt,
-      workspaceName: modelProviders.workspaceName,
-      planType: modelProviders.planType,
-      needsReconnect: modelProviders.needsReconnect,
-      lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
-    })
-    .from(modelProviders)
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        eq(modelProviders.type, type),
-      ),
-    )
-    .limit(1);
-
-  return row ?? null;
 }
 
 describe("GET /api/zero/model-providers", () => {
@@ -247,19 +173,17 @@ describe("GET /api/zero/model-providers", () => {
     const userId = `user_${randomUUID()}`;
     await track(Promise.resolve({ orgId }));
 
-    await store.set(
-      seedOrgModelProvider$,
-      {
-        orgId,
-        type: "anthropic-api-key",
-        isDefault: false,
-        secretName: "ANTHROPIC_API_KEY",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(userId, orgId);
+    mocks.clerk.session(userId, orgId, "org:admin");
 
     const client = setupApp({ context })(zeroModelProvidersMainContract);
+
+    await accept(
+      client.upsert({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { type: "anthropic-api-key", secret: "sk-ant-test" },
+      }),
+      [201],
+    );
 
     const response = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
@@ -275,19 +199,17 @@ describe("GET /api/zero/model-providers", () => {
     const userId = `user_${randomUUID()}`;
     await track(Promise.resolve({ orgId }));
 
-    await store.set(
-      seedOrgModelProvider$,
-      {
-        orgId,
-        type: "anthropic-api-key",
-        isDefault: false,
-        secretName: "ANTHROPIC_API_KEY",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(userId, orgId);
+    mocks.clerk.session(userId, orgId, "org:admin");
 
     const client = setupApp({ context })(zeroModelProvidersMainContract);
+
+    await accept(
+      client.upsert({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { type: "anthropic-api-key", secret: "sk-ant-test" },
+      }),
+      [201],
+    );
 
     const response = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
@@ -302,29 +224,24 @@ describe("GET /api/zero/model-providers", () => {
     const userId = `user_${randomUUID()}`;
     await track(Promise.resolve({ orgId }));
 
-    await store.set(
-      seedOrgModelProvider$,
-      {
-        orgId,
-        type: "anthropic-api-key",
-        isDefault: false,
-        secretName: "ANTHROPIC_API_KEY",
-      },
-      context.signal,
-    );
-    await store.set(
-      seedOrgModelProvider$,
-      {
-        orgId,
-        type: "claude-code-oauth-token",
-        isDefault: false,
-        secretName: "CLAUDE_CODE_OAUTH_TOKEN",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(userId, orgId);
+    mocks.clerk.session(userId, orgId, "org:admin");
 
     const client = setupApp({ context })(zeroModelProvidersMainContract);
+
+    await accept(
+      client.upsert({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { type: "anthropic-api-key", secret: "sk-ant-test" },
+      }),
+      [201],
+    );
+    await accept(
+      client.upsert({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { type: "claude-code-oauth-token", secret: "sk-claude-test" },
+      }),
+      [201],
+    );
 
     const response = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
@@ -350,19 +267,17 @@ describe("GET /api/zero/model-providers", () => {
     const userId = `user_${randomUUID()}`;
     await track(Promise.resolve({ orgId }));
 
-    await store.set(
-      seedOrgModelProvider$,
-      {
-        orgId,
-        type: "anthropic-api-key",
-        isDefault: false,
-        secretName: "ANTHROPIC_API_KEY",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(userId, orgId);
+    mocks.clerk.session(userId, orgId, "org:admin");
 
     const client = setupApp({ context })(zeroModelProvidersMainContract);
+
+    await accept(
+      client.upsert({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { type: "anthropic-api-key", secret: "sk-ant-test" },
+      }),
+      [201],
+    );
 
     const response = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
@@ -401,19 +316,22 @@ describe("GET /api/zero/model-providers", () => {
   it("surfaces OAuth refresh state on listed providers", async () => {
     const fixture = uniqueOrgUser("zmp-list-stale");
     await track(Promise.resolve({ orgId: fixture.orgId }));
-    await store.set(
-      seedOrgModelProvider$,
-      {
-        orgId: fixture.orgId,
-        type: "codex-oauth-token",
-        authMethod: "auth_json",
-      },
-      context.signal,
-    );
-    await setOrgModelProviderStale(fixture.orgId, "codex-oauth-token");
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
     const client = setupApp({ context })(zeroModelProvidersMainContract);
+
+    await accept(
+      client.upsert({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          type: "codex-oauth-token",
+          authMethod: "auth_json",
+          secrets: { CODEX_AUTH_JSON: makeAuthJson() },
+        },
+      }),
+      [201],
+    );
+    await setOrgModelProviderStale(fixture.orgId, "codex-oauth-token");
 
     const response = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
@@ -516,9 +434,18 @@ describe("POST /api/zero/model-providers", () => {
     expect(second.body.provider.id).toBe(first.body.provider.id);
     expect(second.body.provider.selectedModel).toBeNull();
     expect(second.body.provider.isDefault).toBeFalsy();
-    await expect(
-      findOrgModelProviderSecret(fixture.orgId, "ANTHROPIC_API_KEY"),
-    ).resolves.toBe("sk-ant-v2");
+
+    const list = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    const provider = list.body.modelProviders.find(
+      (candidate: ModelProviderResponse) => {
+        return candidate.type === "anthropic-api-key";
+      },
+    );
+    expect(provider?.id).toBe(first.body.provider.id);
+    expect(provider?.secretName).toBe("ANTHROPIC_API_KEY");
   });
 
   it("rejects whitespace-only org single-secret provider secrets", async () => {
@@ -541,9 +468,15 @@ describe("POST /api/zero/model-providers", () => {
     expect(response.body.error.message).toBe(
       'Provider "openrouter-api-key" requires a non-empty secret',
     );
-    await expect(
-      readOrgModelProviderState(fixture.orgId, "openrouter-api-key"),
-    ).resolves.toBeNull();
+    const list = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      list.body.modelProviders.find((provider: ModelProviderResponse) => {
+        return provider.type === "openrouter-api-key";
+      }),
+    ).toBeUndefined();
   });
 
   it("creates org-level AWS Bedrock multi-auth provider", async () => {
@@ -577,9 +510,23 @@ describe("POST /api/zero/model-providers", () => {
         "AWS_REGION",
       ]),
     );
-    await expect(
-      findOrgModelProviderSecret(fixture.orgId, "AWS_SECRET_ACCESS_KEY"),
-    ).resolves.toBe("test-secret-key");
+    const list = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    const provider = list.body.modelProviders.find(
+      (candidate: ModelProviderResponse) => {
+        return candidate.type === "aws-bedrock";
+      },
+    );
+    expect(provider?.authMethod).toBe("access-keys");
+    expect(provider?.secretNames).toStrictEqual(
+      expect.arrayContaining([
+        "AWS_ACCESS_KEY_ID",
+        "AWS_SECRET_ACCESS_KEY",
+        "AWS_REGION",
+      ]),
+    );
   });
 
   it("rejects invalid multi-auth shape for single-secret providers", async () => {
@@ -697,7 +644,7 @@ describe("POST /api/zero/model-providers", () => {
     expect(response.body.provider.selectedModel).toBeNull();
   });
 
-  it("handles codex auth_json paste and never stores the raw blob", async () => {
+  it("handles codex auth_json paste", async () => {
     const fixture = uniqueOrgUser("zmp-codex-paste");
     await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
@@ -719,21 +666,7 @@ describe("POST /api/zero/model-providers", () => {
     expect(response.body.provider.authMethod).toBe("auth_json");
     expect(response.body.provider.workspaceName).toBe("Org Acme");
     expect(response.body.provider.planType).toBe("plus");
-    await expect(
-      findOrgModelProviderSecret(fixture.orgId, "CHATGPT_REFRESH_TOKEN"),
-    ).resolves.toBe("rt_org_synthetic_high_entropy");
-    await expect(
-      findOrgModelProviderSecret(fixture.orgId, "CHATGPT_ACCOUNT_ID"),
-    ).resolves.toBe("ws_acct_from_id_token_org");
-    await expect(
-      findOrgModelProviderSecret(fixture.orgId, "CODEX_AUTH_JSON"),
-    ).resolves.toBeUndefined();
-    await expect(
-      findOrgModelProviderSecret(fixture.orgId, "codex_auth_json"),
-    ).resolves.toBeUndefined();
-    await expect(
-      readOrgModelProviderState(fixture.orgId, "codex-oauth-token"),
-    ).resolves.toMatchObject({
+    expect(response.body.provider).toMatchObject({
       workspaceName: "Org Acme",
       planType: "plus",
       needsReconnect: false,
@@ -831,11 +764,16 @@ describe("POST /api/zero/model-providers", () => {
       [201],
     );
     await setOrgModelProviderStale(fixture.orgId, "codex-oauth-token");
-    const stale = await readOrgModelProviderState(
-      fixture.orgId,
-      "codex-oauth-token",
+    const stale = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
     );
-    expect(stale?.needsReconnect).toBeTruthy();
+    const staleProvider = stale.body.modelProviders.find(
+      (provider: ModelProviderResponse) => {
+        return provider.type === "codex-oauth-token";
+      },
+    );
+    expect(staleProvider?.needsReconnect).toBeTruthy();
 
     const freshAccess = makeJwt({
       exp: Math.floor(now() / 1000) + 7200,
@@ -857,10 +795,9 @@ describe("POST /api/zero/model-providers", () => {
       }),
       [200],
     );
+    expect(repaste.body.created).toBeFalsy();
     expect(repaste.body.provider.needsReconnect).toBeFalsy();
-    await expect(
-      findOrgModelProviderSecret(fixture.orgId, "CHATGPT_REFRESH_TOKEN"),
-    ).resolves.toBe("rt_fresh_org");
+    expect(repaste.body.provider.lastRefreshErrorCode).toBeNull();
   });
 });
 
@@ -932,23 +869,25 @@ describe("DELETE /api/zero/model-providers/:type", () => {
     expect(response.body.error.message).toBe("Resource not found");
   });
 
-  it("deletes a legacy provider row and its secret", async () => {
+  it("deletes an org single-secret provider", async () => {
     const fixture = uniqueOrgUser("zmp-delete-legacy");
     await track(Promise.resolve({ orgId: fixture.orgId }));
-    await store.set(
-      seedOrgModelProvider$,
-      {
-        orgId: fixture.orgId,
-        type: "anthropic-api-key",
-        secretName: "ANTHROPIC_API_KEY",
-      },
-      context.signal,
-    );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersByTypeContract);
+    const mainClient = setupApp({ context })(zeroModelProvidersMainContract);
+    const byTypeClient = setupApp({ context })(
+      zeroModelProvidersByTypeContract,
+    );
+
+    await accept(
+      mainClient.upsert({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { type: "anthropic-api-key", secret: "sk-ant-test" },
+      }),
+      [201],
+    );
 
     const response = await accept(
-      client.delete({
+      byTypeClient.delete({
         headers: { authorization: "Bearer clerk-session" },
         params: { type: "anthropic-api-key" },
       }),
@@ -956,76 +895,73 @@ describe("DELETE /api/zero/model-providers/:type", () => {
     );
     expect(response.body).toBeUndefined();
 
-    const writeDb = store.set(writeDb$);
-    await expect(
-      writeDb
-        .select({ id: modelProviders.id })
-        .from(modelProviders)
-        .where(
-          and(
-            eq(modelProviders.orgId, fixture.orgId),
-            eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-            eq(modelProviders.type, "anthropic-api-key"),
-          ),
-        ),
-    ).resolves.toStrictEqual([]);
-    await expect(
-      findOrgModelProviderSecret(fixture.orgId, "ANTHROPIC_API_KEY"),
-    ).resolves.toBeUndefined();
+    const list = await accept(
+      mainClient.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      list.body.modelProviders.find((provider: ModelProviderResponse) => {
+        return provider.type === "anthropic-api-key";
+      }),
+    ).toBeUndefined();
+
+    const deletedAgain = await accept(
+      byTypeClient.delete({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { type: "anthropic-api-key" },
+      }),
+      [404],
+    );
+    expect(deletedAgain.body.error.message).toBe("Resource not found");
   });
 
-  it("deletes a codex auth_json provider row and its auth-method secrets", async () => {
+  it("deletes a codex auth_json provider", async () => {
     const fixture = uniqueOrgUser("zmp-delete-multiauth");
     await track(Promise.resolve({ orgId: fixture.orgId }));
-    await store.set(
-      seedOrgModelProvider$,
-      {
-        orgId: fixture.orgId,
-        type: "codex-oauth-token",
-        authMethod: "auth_json",
-      },
-      context.signal,
-    );
-    await insertOrgModelProviderSecret(fixture.orgId, "CHATGPT_ACCESS_TOKEN");
-    await insertOrgModelProviderSecret(fixture.orgId, "CHATGPT_REFRESH_TOKEN");
-    await insertOrgModelProviderSecret(fixture.orgId, "CHATGPT_ACCOUNT_ID");
-    await insertOrgModelProviderSecret(fixture.orgId, "CHATGPT_ID_TOKEN");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersByTypeContract);
+    const mainClient = setupApp({ context })(zeroModelProvidersMainContract);
+    const byTypeClient = setupApp({ context })(
+      zeroModelProvidersByTypeContract,
+    );
 
     await accept(
-      client.delete({
+      mainClient.upsert({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          type: "codex-oauth-token",
+          authMethod: "auth_json",
+          secrets: { CODEX_AUTH_JSON: makeAuthJson() },
+        },
+      }),
+      [201],
+    );
+
+    await accept(
+      byTypeClient.delete({
         headers: { authorization: "Bearer clerk-session" },
         params: { type: "codex-oauth-token" },
       }),
       [204],
     );
 
-    const writeDb = store.set(writeDb$);
-    await expect(
-      writeDb
-        .select({ id: modelProviders.id })
-        .from(modelProviders)
-        .where(
-          and(
-            eq(modelProviders.orgId, fixture.orgId),
-            eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-            eq(modelProviders.type, "codex-oauth-token"),
-          ),
-        ),
-    ).resolves.toStrictEqual([]);
-    await expect(
-      findOrgModelProviderSecret(fixture.orgId, "CHATGPT_ACCESS_TOKEN"),
-    ).resolves.toBeUndefined();
-    await expect(
-      findOrgModelProviderSecret(fixture.orgId, "CHATGPT_REFRESH_TOKEN"),
-    ).resolves.toBeUndefined();
-    await expect(
-      findOrgModelProviderSecret(fixture.orgId, "CHATGPT_ACCOUNT_ID"),
-    ).resolves.toBeUndefined();
-    await expect(
-      findOrgModelProviderSecret(fixture.orgId, "CHATGPT_ID_TOKEN"),
-    ).resolves.toBeUndefined();
+    const list = await accept(
+      mainClient.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    expect(
+      list.body.modelProviders.find((provider: ModelProviderResponse) => {
+        return provider.type === "codex-oauth-token";
+      }),
+    ).toBeUndefined();
+
+    const deletedAgain = await accept(
+      byTypeClient.delete({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { type: "codex-oauth-token" },
+      }),
+      [404],
+    );
+    expect(deletedAgain.body.error.message).toBe("Resource not found");
   });
 
   it("does not promote another provider when deleting an old default row", async () => {
@@ -1051,28 +987,28 @@ describe("DELETE /api/zero/model-providers/:type", () => {
       context.signal,
     );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
-    const client = setupApp({ context })(zeroModelProvidersByTypeContract);
+    const mainClient = setupApp({ context })(zeroModelProvidersMainContract);
+    const byTypeClient = setupApp({ context })(
+      zeroModelProvidersByTypeContract,
+    );
 
     await accept(
-      client.delete({
+      byTypeClient.delete({
         headers: { authorization: "Bearer clerk-session" },
         params: { type: "anthropic-api-key" },
       }),
       [204],
     );
 
-    const writeDb = store.set(writeDb$);
-    const [remaining] = await writeDb
-      .select({ isDefault: modelProviders.isDefault })
-      .from(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.orgId, fixture.orgId),
-          eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-          eq(modelProviders.type, "openai-api-key"),
-        ),
-      )
-      .limit(1);
+    const list = await accept(
+      mainClient.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+    const remaining = list.body.modelProviders.find(
+      (provider: ModelProviderResponse) => {
+        return provider.type === "openai-api-key";
+      },
+    );
     expect(remaining?.isDefault).toBeFalsy();
   });
 });
