@@ -15,6 +15,11 @@ interface PermissionDrawerUiState {
   readonly scrolled: boolean;
 }
 
+interface InitialPermissionDrawerUiState {
+  readonly draft?: PermissionDraftIntent;
+  readonly search?: string;
+}
+
 interface PermissionDrawerApplyOptions {
   readonly metadata: FirewallPermissionDetailMetadata;
 }
@@ -33,13 +38,14 @@ interface ApplyPermissionDrawerParams {
 
 function emptyPermissionDrawerUiState(
   key: string | null,
+  initial?: InitialPermissionDrawerUiState,
 ): PermissionDrawerUiState {
   return {
     key,
-    draft: createEmptyPermissionDraftIntent(),
+    draft: initial?.draft ?? createEmptyPermissionDraftIntent(),
     expandedGroups: new Set(),
     visibleCounts: {},
-    search: "",
+    search: initial?.search ?? "",
     scrolled: false,
   };
 }
@@ -47,15 +53,21 @@ function emptyPermissionDrawerUiState(
 export function permissionDrawerUiStateForKey(
   current: PermissionDrawerUiState,
   key: string,
+  initial?: InitialPermissionDrawerUiState,
 ): PermissionDrawerUiState {
-  return current.key === key ? current : emptyPermissionDrawerUiState(key);
+  return current.key === key
+    ? current
+    : emptyPermissionDrawerUiState(key, initial);
 }
 
 function stateForKey(
   current: PermissionDrawerUiState,
   key: string,
+  initial?: InitialPermissionDrawerUiState,
 ): PermissionDrawerUiState {
-  return current.key === key ? current : emptyPermissionDrawerUiState(key);
+  return current.key === key
+    ? current
+    : emptyPermissionDrawerUiState(key, initial);
 }
 
 const internalPermissionDrawerUiState$ = state<PermissionDrawerUiState>(
@@ -71,8 +83,13 @@ export const updatePermissionDrawerDraft$ = command(
     { get, set },
     key: string,
     update: (current: PermissionDraftIntent) => PermissionDraftIntent,
+    initial?: InitialPermissionDrawerUiState,
   ) => {
-    const current = stateForKey(get(internalPermissionDrawerUiState$), key);
+    const current = stateForKey(
+      get(internalPermissionDrawerUiState$),
+      key,
+      initial,
+    );
     set(internalPermissionDrawerUiState$, {
       ...current,
       draft: update(current.draft),
@@ -81,8 +98,17 @@ export const updatePermissionDrawerDraft$ = command(
 );
 
 export const togglePermissionDrawerGroup$ = command(
-  ({ get, set }, key: string, category: string) => {
-    const current = stateForKey(get(internalPermissionDrawerUiState$), key);
+  (
+    { get, set },
+    key: string,
+    category: string,
+    initial?: InitialPermissionDrawerUiState,
+  ) => {
+    const current = stateForKey(
+      get(internalPermissionDrawerUiState$),
+      key,
+      initial,
+    );
     const expandedGroups = new Set(current.expandedGroups);
     if (expandedGroups.has(category)) {
       expandedGroups.delete(category);
@@ -97,8 +123,18 @@ export const togglePermissionDrawerGroup$ = command(
 );
 
 export const showMorePermissionDrawerRows$ = command(
-  ({ get, set }, key: string, rowKey: string, pageSize: number) => {
-    const current = stateForKey(get(internalPermissionDrawerUiState$), key);
+  (
+    { get, set },
+    key: string,
+    rowKey: string,
+    pageSize: number,
+    initial?: InitialPermissionDrawerUiState,
+  ) => {
+    const current = stateForKey(
+      get(internalPermissionDrawerUiState$),
+      key,
+      initial,
+    );
     set(internalPermissionDrawerUiState$, {
       ...current,
       visibleCounts: {
@@ -110,8 +146,17 @@ export const showMorePermissionDrawerRows$ = command(
 );
 
 export const setPermissionDrawerSearch$ = command(
-  ({ get, set }, key: string, search: string) => {
-    const current = stateForKey(get(internalPermissionDrawerUiState$), key);
+  (
+    { get, set },
+    key: string,
+    search: string,
+    initial?: InitialPermissionDrawerUiState,
+  ) => {
+    const current = stateForKey(
+      get(internalPermissionDrawerUiState$),
+      key,
+      initial,
+    );
     const visibleCounts = { ...current.visibleCounts };
     delete visibleCounts.permissions;
     set(internalPermissionDrawerUiState$, {
@@ -123,8 +168,17 @@ export const setPermissionDrawerSearch$ = command(
 );
 
 export const setPermissionDrawerScrolled$ = command(
-  ({ get, set }, key: string, scrolled: boolean) => {
-    const current = stateForKey(get(internalPermissionDrawerUiState$), key);
+  (
+    { get, set },
+    key: string,
+    scrolled: boolean,
+    initial?: InitialPermissionDrawerUiState,
+  ) => {
+    const current = stateForKey(
+      get(internalPermissionDrawerUiState$),
+      key,
+      initial,
+    );
     set(internalPermissionDrawerUiState$, {
       ...current,
       scrolled,

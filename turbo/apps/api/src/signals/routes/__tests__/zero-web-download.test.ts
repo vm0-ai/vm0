@@ -3,11 +3,12 @@ import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 
-import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { zeroWebDownloadRoutes } from "../zero-web-download";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 import {
   deleteOrgMembership$,
@@ -144,7 +145,10 @@ function requestDownload(args: {
   const headers: Record<string, string> = args.token
     ? { authorization: `Bearer ${args.token}` }
     : {};
-  const app = createApp({ signal: context.signal });
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: zeroWebDownloadRoutes,
+  });
   return Promise.resolve(
     app.request(`${ROUTE}${search}`, { method: "GET", headers }),
   );

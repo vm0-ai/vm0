@@ -12,7 +12,7 @@ import {
   completeClaudeCodeDeviceAuth$,
   startClaudeCodeDeviceAuth,
 } from "../services/claude-code-device-auth.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const modelProviderWriteAuth = {
   requireOrganization: true,

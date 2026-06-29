@@ -49,7 +49,7 @@ import {
   unavailableUserConnectorTypes,
   userConnectorAvailability,
 } from "../services/connector-availability.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const PUBLIC_AGENT_LIMIT = 7;
 

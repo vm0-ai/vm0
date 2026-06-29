@@ -9,7 +9,7 @@ CLERK_PUBLISHABLE_KEY=op://Development/clerk/CLERK_PUBLISHABLE_KEY
 VM0_API_URL=https://api.vm7.ai:8443
 VM0_WEB_URL=https://www.vm7.ai:8443
 APP_URL=https://app.vm7.ai:8443
-PAID_ONBOARDING_URL=https://so.vm7.ai:8443
+ONBOARDING_URL=https://www.vm7.ai:8443
 
 # Optional: Atom redeem service for onboarding codes
 ATOM_URL=https://tunnel-yuma-atom-api.vm7.ai
@@ -210,6 +210,7 @@ STRIPE_SECRET_KEY=op://Development/stripe/STRIPE_SECRET_KEY
 STRIPE_WEBHOOK_SECRET=op://Development/stripe/STRIPE_WEBHOOK_SECRET
 ZERO_PRICE_PRO=op://Development/stripe/ZERO_PRICE_PRO
 ZERO_PRICE_TEAM=op://Development/stripe/ZERO_PRICE_TEAM
+ATOM_GRANT_PRICE=op://Development/stripe/ATOM_GRANT_PRICE
 ZERO_PRICE_CUSTOM_CREDITS=op://Development/stripe/ZERO_PRICE_CUSTOM_CREDITS
 ZERO_PRICE_CONCURRENCY=op://Development/stripe/ZERO_PRICE_CONCURRENCY
 ZERO_ONE_TIME_CAMPAIGN=op://Development/stripe/ZERO_ONE_TIME_CAMPAIGN

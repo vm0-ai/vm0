@@ -41,6 +41,7 @@ apps/*/next-env.d.ts
 npm-debug.log*
 yarn-debug.log*
 yarn-error.log*
+.memory-results/
 
 # Misc
 .DS_Store

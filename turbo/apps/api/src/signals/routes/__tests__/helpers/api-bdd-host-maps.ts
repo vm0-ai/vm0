@@ -11,11 +11,11 @@ import {
 } from "@vm0/api-contracts/contracts/zero-host";
 import { zeroMapsContract } from "@vm0/api-contracts/contracts/zero-maps";
 
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import type { RouteEntry } from "../../../route-entry";
+import { zeroHostRoutes } from "../../zero-host";
+import { zeroMapsRoutes } from "../../zero-maps";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -110,13 +110,24 @@ function notFoundS3Error(key: string): Error {
   return error;
 }
 
+const hostMapsRoutes: readonly RouteEntry[] = [
+  ...zeroHostRoutes,
+  ...zeroMapsRoutes,
+];
+
 export function createHostMapsBddApi(context: TestContext) {
   function hostClient() {
-    return setupApp({ context })(zeroHostContract);
+    return setupAppWithRoutes({
+      context,
+      routes: hostMapsRoutes,
+    })(zeroHostContract);
   }
 
   function mapsClient() {
-    return setupApp({ context })(zeroMapsContract);
+    return setupAppWithRoutes({
+      context,
+      routes: hostMapsRoutes,
+    })(zeroMapsContract);
   }
 
   return {

@@ -1,11 +1,13 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import {
+  workflowUserTriggerThreads,
   zeroWorkflowTriggers,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
 import { command } from "ccstate";
-import { and, eq, isNotNull, lte } from "drizzle-orm";
+import { and, eq, lte } from "drizzle-orm";
 
 import { logger } from "../../lib/log";
 import { writeDb$, type Db } from "../external/db";
@@ -19,6 +21,8 @@ import {
   type RunFailure,
   type TriggerRow,
 } from "./zero-workflow-trigger-run.service";
+import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
+import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
 
 const log = logger("api:zero-workflow-trigger-poller");
 
@@ -28,6 +32,15 @@ const DUE_BATCH_LIMIT = 200;
 interface ExecuteResult {
   readonly executed: number;
   readonly skipped: number;
+}
+
+interface DueWorkflowTriggerRow {
+  readonly trigger: TriggerRow;
+  readonly agentId: string;
+  readonly workflowName: string;
+  readonly workflowDisplayName: string | null;
+  readonly chatThreadId: string | null;
+  readonly userTimezone: string | null;
 }
 
 function isRunFailure(error: unknown): error is RunFailure {
@@ -186,6 +199,75 @@ async function recordPreRunFailure(
   }
 }
 
+async function ensureDueWorkflowTriggerChatThread(
+  db: Db,
+  row: DueWorkflowTriggerRow,
+  currentTime: Date,
+): Promise<string> {
+  if (row.chatThreadId) {
+    return row.chatThreadId;
+  }
+  return await db.transaction(async (tx) => {
+    return await ensureWorkflowUserTriggerThread(tx, {
+      orgId: row.trigger.orgId,
+      userId: row.trigger.ownerUserId,
+      workflowId: row.trigger.workflowId,
+      agentId: row.agentId,
+      workflowTitle: row.workflowDisplayName ?? row.workflowName,
+      currentTime,
+    });
+  });
+}
+
+async function dueWorkflowTriggerRows(
+  db: Db,
+  currentTime: Date,
+  signal: AbortSignal,
+): Promise<DueWorkflowTriggerRow[]> {
+  const rows = await db
+    .select({
+      trigger: zeroWorkflowTriggers,
+      agentId: zeroWorkflows.agentId,
+      workflowName: zeroWorkflows.name,
+      workflowDisplayName: zeroWorkflows.displayName,
+      chatThreadId: workflowUserTriggerThreads.chatThreadId,
+      userTimezone: orgMembersMetadata.timezone,
+    })
+    .from(zeroWorkflowTriggers)
+    .innerJoin(
+      zeroWorkflows,
+      eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
+    )
+    .leftJoin(
+      workflowUserTriggerThreads,
+      and(
+        eq(workflowUserTriggerThreads.orgId, zeroWorkflowTriggers.orgId),
+        eq(workflowUserTriggerThreads.userId, zeroWorkflowTriggers.ownerUserId),
+        eq(
+          workflowUserTriggerThreads.workflowId,
+          zeroWorkflowTriggers.workflowId,
+        ),
+      ),
+    )
+    .leftJoin(
+      orgMembersMetadata,
+      and(
+        eq(orgMembersMetadata.orgId, zeroWorkflowTriggers.orgId),
+        eq(orgMembersMetadata.userId, zeroWorkflowTriggers.ownerUserId),
+      ),
+    )
+    .where(
+      and(
+        eq(zeroWorkflowTriggers.enabled, true),
+        eq(zeroWorkflowTriggers.kind, "schedule"),
+        lte(zeroWorkflowTriggers.nextRunAt, currentTime),
+      ),
+    )
+    .limit(DUE_BATCH_LIMIT);
+  signal.throwIfAborted();
+  return rows;
+}
+
 /**
  * Time poller over `zero_workflow_triggers`, run from the
  * execute-workflow-triggers cron route. Mirrors the automation poller: scan
@@ -199,38 +281,11 @@ export const executeDueWorkflowTriggers$ = command(
     const db = set(writeDb$);
     const currentTime = nowDate();
 
-    const rows = await db
-      .select({
-        trigger: zeroWorkflowTriggers,
-        agentId: zeroWorkflows.agentId,
-        workflowName: zeroWorkflows.name,
-      })
-      .from(zeroWorkflowTriggers)
-      .innerJoin(
-        zeroWorkflows,
-        eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
-      )
-      .where(
-        and(
-          eq(zeroWorkflowTriggers.enabled, true),
-          eq(zeroWorkflowTriggers.kind, "schedule"),
-          isNotNull(zeroWorkflowTriggers.chatThreadId),
-          lte(zeroWorkflowTriggers.nextRunAt, currentTime),
-        ),
-      )
-      .limit(DUE_BATCH_LIMIT);
-    signal.throwIfAborted();
-
+    const rows = await dueWorkflowTriggerRows(db, currentTime, signal);
     let executed = 0;
     let skipped = 0;
 
     for (const row of rows) {
-      const due: DueWorkflowTrigger = {
-        trigger: row.trigger,
-        agentId: row.agentId,
-        workflowName: row.workflowName,
-      };
-
       const ownerIsMember = await hasOrgMembership(db, {
         orgId: row.trigger.orgId,
         userId: row.trigger.ownerUserId,
@@ -274,12 +329,36 @@ export const executeDueWorkflowTriggers$ = command(
         continue;
       }
 
+      const chatThreadId = await ensureDueWorkflowTriggerChatThread(
+        db,
+        row,
+        currentTime,
+      );
+      signal.throwIfAborted();
+
+      const due: DueWorkflowTrigger = {
+        trigger: claimed,
+        agentId: row.agentId,
+        workflowName: row.workflowName,
+        chatThreadId,
+      };
+
       const runResult = await settle(
         set(
           runWorkflowTriggerNow$,
           {
             due,
             apiStartTime: now(),
+            triggerBrief:
+              buildWorkflowScheduleTriggerBrief({
+                createdAt: currentTime,
+                scheduleType: claimed.scheduleType,
+                cronExpression: claimed.cronExpression,
+                intervalSeconds: claimed.intervalSeconds,
+                atTime: claimed.atTime,
+                triggerTimezone: claimed.timezone,
+                userTimezone: row.userTimezone,
+              }) ?? undefined,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
           },
           signal,

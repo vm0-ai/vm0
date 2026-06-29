@@ -5,6 +5,8 @@ import ts from "typescript";
 
 import { collectAndValidatePermissions } from "@vm0/connectors/firewall-expander";
 import {
+  firewallAuthInjectsCredentials,
+  firewallBaseUrlTemplateNeedsHostPolicy,
   firewallConfigSchema,
   type FirewallConfig,
   type FirewallPolicyValue,
@@ -23,7 +25,12 @@ const FIREWALL_CONFIG_KEYS = new Set([
   "apis",
   "placeholders",
 ]);
-const FIREWALL_API_KEYS = new Set(["base", "auth", "permissions"]);
+const FIREWALL_API_KEYS = new Set([
+  "base",
+  "hostPolicy",
+  "auth",
+  "permissions",
+]);
 const FIREWALL_AUTH_KEYS = new Set(["headers", "base", "query", "awsSigv4"]);
 const FIREWALL_AWS_SIGV4_AUTH_KEYS = new Set([
   "accessKeyId",
@@ -193,8 +200,26 @@ function parseGeneratedFirewallConfig(
         .join("; ")}`,
     );
   }
+  validateCredentialedDynamicHostPolicies(type, result.data);
   collectAndValidatePermissions(result.data);
   return result.data;
+}
+
+function validateCredentialedDynamicHostPolicies(
+  type: FirewallConnectorType,
+  firewall: FirewallConfig,
+): void {
+  for (const [apiIndex, api] of firewall.apis.entries()) {
+    if (
+      firewallAuthInjectsCredentials(api.auth) &&
+      firewallBaseUrlTemplateNeedsHostPolicy(api.base) &&
+      api.hostPolicy === undefined
+    ) {
+      throw new Error(
+        `Credentialed dynamic base URL requires hostPolicy for ${type}.apis[${apiIndex}]: ${api.base}`,
+      );
+    }
+  }
 }
 
 function firewallPermissionNames(firewall: FirewallConfig): Set<string> {

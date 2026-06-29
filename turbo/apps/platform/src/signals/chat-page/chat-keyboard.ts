@@ -6,7 +6,7 @@ import {
   loadLeftThread$,
   loadRightThread$,
 } from "./chat-thread-panes.ts";
-import type { ChatThreadSignals } from "./create-chat-thread.ts";
+import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onRef } from "../utils.ts";
 

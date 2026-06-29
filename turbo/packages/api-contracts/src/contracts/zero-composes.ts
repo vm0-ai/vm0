@@ -71,8 +71,7 @@ export const zeroComposesByIdContract = c.router({
 /**
  * Zero composes metadata contract (PATCH /api/zero/composes/:id/metadata)
  * Separate sub-contract so adding the typed PATCH route doesn't force
- * apps/web's existing tsr.router for zeroComposesByIdContract to also
- * implement it (web's metadata route is non-ts-rest).
+ * zeroComposesByIdContract consumers to also implement it.
  */
 export const zeroComposesMetadataContract = c.router({
   update: {

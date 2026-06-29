@@ -11,8 +11,8 @@ import { fetchAllNetworkLogs } from "./activity-network-signals.ts";
 const L = logger("ActivityDownload");
 
 /**
- * Fetch context and network data for a run, silently returning null on failure.
- * Used to enrich JSON downloads without blocking or causing errors on load.
+ * Fetch optional context and network data for a run. Failures leave the
+ * corresponding extra field absent so JSON downloads still complete.
  */
 export const fetchDownloadExtra$ = command(
   async (
@@ -25,15 +25,16 @@ export const fetchDownloadExtra$ = command(
   }> => {
     const extra: { context?: unknown; networkLogs?: unknown } = {};
 
-    const fetchContextBody = async (): Promise<unknown> => {
-      const { body } = await accept(
+    const fetchContextBody = async (): Promise<unknown | undefined> => {
+      const result = await accept(
         get(zeroClient$)(zeroRunContextContract).getContext({
           params: { id: runId },
           fetchOptions: { signal: _signal },
         }),
-        [200],
+        [200, 404],
+        { toast: false },
       );
-      return body;
+      return result.status === 200 ? result.body : undefined;
     };
 
     const [contextResult, networkResult] = await Promise.allSettled([
@@ -42,8 +43,10 @@ export const fetchDownloadExtra$ = command(
         get(zeroClient$)(zeroRunNetworkLogsContract),
         runId,
         _signal,
+        { toast: false },
       ),
     ]);
+    _signal.throwIfAborted();
 
     if (contextResult.status === "fulfilled" && contextResult.value) {
       extra.context = contextResult.value;

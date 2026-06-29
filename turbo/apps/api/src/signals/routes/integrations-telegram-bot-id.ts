@@ -20,7 +20,7 @@ import { telegramIntegrationBotStatus } from "../services/zero-telegram-data.ser
 import { logger } from "../../lib/log";
 import { nowDate } from "../../lib/time";
 import { settle } from "../utils";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const log = logger("api:telegram:integration-bot");
 

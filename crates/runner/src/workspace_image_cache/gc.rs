@@ -9,8 +9,8 @@ use crate::types::MAX_HELD_SESSION_STATES;
 
 use super::entry::is_cache_key_name;
 use super::fs::{
-    allocated_bytes, cache_entry_dir_is_dir, directory_tree_allocated_bytes,
-    entry_file_type_is_dir, fs_stats_with_additional_available, is_workspace_tmp_path_name,
+    allocated_bytes, cache_entry_dir_is_dir, entry_file_type_is_dir,
+    fs_stats_with_additional_available, is_workspace_tmp_path_name,
     remove_workspace_cache_path_if_exists, workspace_cache_path_allocated_bytes,
 };
 use super::metadata::{
@@ -219,7 +219,7 @@ impl SessionWorkspaceCache {
                 continue;
             };
 
-            let allocated = directory_tree_allocated_bytes(&entry_dir).await;
+            let allocated = workspace_cache_path_allocated_bytes(&entry_dir).await;
             if dry_run {
                 info!(
                     cache_key,
@@ -330,7 +330,7 @@ impl SessionWorkspaceCache {
                     return Err(e.into());
                 }
             }
-            let allocated = directory_tree_allocated_bytes(&entry_dir).await;
+            let allocated = workspace_cache_path_allocated_bytes(&entry_dir).await;
             if dry_run {
                 info!(
                     cache_key,

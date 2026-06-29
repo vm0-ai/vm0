@@ -37,7 +37,7 @@ pub(super) fn open_genl_socket() -> Result<GenlSocket> {
     let fd = socket(
         AddressFamily::Netlink,
         SockType::Datagram,
-        SockFlag::empty(),
+        SockFlag::SOCK_CLOEXEC,
         SockProtocol::NetlinkGeneric,
     )
     .map_err(errno_to_io)?;
@@ -130,6 +130,20 @@ fn set_test_recv_timeout(fd: &OwnedFd) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    use nix::fcntl::{FcntlArg, FdFlag, fcntl};
+
+    fn assert_close_on_exec(fd: &OwnedFd) {
+        let flags = fcntl(fd, FcntlArg::F_GETFD).unwrap();
+        assert!(FdFlag::from_bits_truncate(flags).contains(FdFlag::FD_CLOEXEC));
+    }
+
+    #[test]
+    fn open_genl_socket_sets_close_on_exec() {
+        let sock = open_genl_socket().unwrap();
+
+        assert_close_on_exec(&sock.fd);
+    }
 
     #[test]
     fn next_seq_wraps_without_returning_zero() {

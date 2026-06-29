@@ -35,6 +35,9 @@ import {
 
 function formatTime(timestamp: string): string {
   const d = new Date(timestamp);
+  if (Number.isNaN(d.getTime())) {
+    return timestamp.trim().length > 0 ? timestamp : "—";
+  }
   const h = String(d.getHours()).padStart(2, "0");
   const m = String(d.getMinutes()).padStart(2, "0");
   const s = String(d.getSeconds()).padStart(2, "0");
@@ -43,7 +46,7 @@ function formatTime(timestamp: string): string {
 }
 
 function formatLatency(ms: number | undefined | null): string {
-  if (ms === null || ms === undefined) {
+  if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) {
     return "—";
   }
   if (ms < 1000) {
@@ -106,7 +109,7 @@ function statusColor(status: number | undefined): string {
 }
 
 function latencyColor(ms: number | undefined | null): string {
-  if (ms === null || ms === undefined) {
+  if (ms === null || ms === undefined || !Number.isFinite(ms) || ms < 0) {
     return "text-muted-foreground";
   }
   if (ms < 500) {

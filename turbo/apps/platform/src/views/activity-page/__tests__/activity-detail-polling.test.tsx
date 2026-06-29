@@ -1,4 +1,5 @@
 import { screen, waitFor } from "@testing-library/react";
+import { toast } from "@vm0/ui/components/ui/sonner";
 import { logsByIdContract } from "@vm0/api-contracts/contracts/logs";
 import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
 import {
@@ -9,7 +10,7 @@ import {
   type RunContextResponse,
 } from "@vm0/api-contracts/contracts/zero-runs";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import {
   click,
@@ -27,10 +28,16 @@ import {
   loadNetworkLogsNextPage$,
   zeroActivityNetworkLogs$,
 } from "../../../signals/activity-page/activity-network-signals.ts";
-import { pushPathSilently$ } from "../../../signals/route.ts";
+import { fetchDownloadExtra$ } from "../../../signals/activity-page/activity-download.ts";
+import {
+  detachedNavigateTo$,
+  pushPathSilently$,
+} from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
+import { resetSignal } from "../../../signals/utils.ts";
 
 const context = testContext();
+const LONG_GENERIC_CODEX_OUTPUT = "verbose adapter output ".repeat(20);
 
 function makeLogDetail(overrides: Partial<LogDetail>): LogDetail {
   return {
@@ -568,14 +575,15 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
     },
     {
       sequenceNumber: 7,
-      eventType: "assistant",
+      eventType: "user",
       eventData: {
         parent_tool_use_id: "tool-child-task",
         message: {
           content: [
             {
-              type: "text",
-              text: "Child task found one risky deployment.",
+              type: "tool_result",
+              content: "child orphan cleanup result",
+              is_error: false,
             },
           ],
         },
@@ -590,10 +598,8 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
         message: {
           content: [
             {
-              type: "tool_use",
-              id: "tool-child-bash",
-              name: "Bash",
-              input: { command: "zero deploy status --json" },
+              type: "text",
+              text: "Child task found one risky deployment.",
             },
           ],
         },
@@ -602,6 +608,24 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
     },
     {
       sequenceNumber: 9,
+      eventType: "assistant",
+      eventData: {
+        parent_tool_use_id: "tool-child-task",
+        message: {
+          content: [
+            {
+              type: "tool_use",
+              id: "tool-child-bash",
+              name: "Bash",
+              input: { command: "zero deploy status --json" },
+            },
+          ],
+        },
+      },
+      createdAt: "2026-03-10T17:00:10Z",
+    },
+    {
+      sequenceNumber: 10,
       eventType: "user",
       eventData: {
         parent_tool_use_id: "tool-child-task",
@@ -616,10 +640,10 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
           ],
         },
       },
-      createdAt: "2026-03-10T17:00:10Z",
+      createdAt: "2026-03-10T17:00:11Z",
     },
     {
-      sequenceNumber: 10,
+      sequenceNumber: 11,
       eventType: "result",
       eventData: {
         type: "result",
@@ -628,7 +652,7 @@ function edgeGroupedActivityEvents(): AgentEvent[] {
         num_turns: 1,
         duration_ms: 1000,
       },
-      createdAt: "2026-03-10T17:00:11Z",
+      createdAt: "2026-03-10T17:00:12Z",
     },
   ];
 }
@@ -953,7 +977,7 @@ function codexFallbackActivityEvents(): AgentEvent[] {
         item: {
           id: "write-fallback",
           type: "file_write",
-          path: "src/generated.ts",
+          file_path: "src/generated.ts",
         },
       },
       createdAt: "2026-03-10T15:30:04Z",
@@ -978,7 +1002,7 @@ function codexFallbackActivityEvents(): AgentEvent[] {
         item: {
           id: "read-fallback",
           type: "file_read",
-          path: "src/edge.ts",
+          filePath: "src/edge.ts",
         },
       },
       createdAt: "2026-03-10T15:30:06Z",
@@ -1016,6 +1040,387 @@ function codexFallbackActivityEvents(): AgentEvent[] {
         message: "Codex stream disconnected.",
       },
       createdAt: "2026-03-10T15:30:09Z",
+    },
+    {
+      sequenceNumber: 9,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        item: {
+          id: "files-malformed",
+          type: "file_change",
+          changes: [
+            ...Array.from({ length: 20 }, () => {
+              return {};
+            }),
+            { kind: "modify", filePath: "src/late-valid.ts" },
+          ],
+        },
+      },
+      createdAt: "2026-03-10T15:30:10Z",
+    },
+  ];
+}
+
+function codexAdapterActivityEvents(): AgentEvent[] {
+  return [
+    {
+      sequenceNumber: 0,
+      eventType: "thread.started",
+      eventData: {
+        type: "thread.started",
+        thread_id: "codex-thread-adapter",
+      },
+      createdAt: "2026-03-10T16:00:01Z",
+    },
+    {
+      sequenceNumber: 1,
+      eventType: "warning",
+      eventData: {
+        type: "warning",
+        thread_id: "codex-thread-adapter",
+        message: "Retryable adapter warning",
+      },
+      createdAt: "2026-03-10T16:00:02Z",
+    },
+    {
+      sequenceNumber: 2,
+      eventType: "turn.plan.updated",
+      eventData: {
+        type: "turn.plan.updated",
+        thread_id: "codex-thread-adapter",
+        turn_id: "turn-plan",
+        explanation: "Refresh adapter event plan",
+        plan: [
+          ...Array.from({ length: 20 }, () => {
+            return {};
+          }),
+          { step: "Collect app-server events", status: "completed" },
+          { step: "Normalize Platform rows", status: "in_progress" },
+        ],
+      },
+      createdAt: "2026-03-10T16:00:03Z",
+    },
+    {
+      sequenceNumber: 3,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-plan",
+        item: {
+          id: "plan-item",
+          type: "plan",
+          status: "completed",
+          text: "Ship Platform normalizer coverage.",
+        },
+      },
+      createdAt: "2026-03-10T16:00:04Z",
+    },
+    {
+      sequenceNumber: 4,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-1",
+        item: {
+          id: "msg-before-result",
+          type: "agent_message",
+          status: "completed",
+          text: "Visible Codex assistant text before failed summary.",
+        },
+      },
+      createdAt: "2026-03-10T16:00:05Z",
+    },
+    {
+      sequenceNumber: 5,
+      eventType: "item.started",
+      eventData: {
+        type: "item.started",
+        turn_id: "turn-1",
+        item: {
+          id: "cmd-failed",
+          type: "command_execution",
+          status: "in_progress",
+          command: "pnpm test adapter",
+        },
+      },
+      createdAt: "2026-03-10T16:00:06Z",
+    },
+    {
+      sequenceNumber: 6,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-1",
+        item: {
+          id: "cmd-failed",
+          type: "command_execution",
+          status: "failed",
+          command: "pnpm test adapter",
+          aggregated_output: "  partial adapter output\nadapter output tail  ",
+          error: {
+            message: "Command refused by policy",
+            additional_details: "no shell grant",
+          },
+        },
+      },
+      createdAt: "2026-03-10T16:00:07Z",
+    },
+    {
+      sequenceNumber: 7,
+      eventType: "item.started",
+      eventData: {
+        type: "item.started",
+        turn_id: "turn-1",
+        item: {
+          id: "read-declined",
+          type: "file_read",
+          status: "in_progress",
+          path: "src/secret.ts",
+        },
+      },
+      createdAt: "2026-03-10T16:00:08Z",
+    },
+    {
+      sequenceNumber: 8,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-1",
+        item: {
+          id: "read-declined",
+          type: "file_read",
+          status: "declined",
+          error: { message: "Read declined by sandbox" },
+        },
+      },
+      createdAt: "2026-03-10T16:00:09Z",
+    },
+    {
+      sequenceNumber: 9,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-1",
+        item: {
+          id: "files-failed",
+          type: "file_change",
+          status: "failed",
+          error: { message: "Patch failed before write" },
+          changes: [{ kind: "modify", path: "src/adapter.ts" }],
+        },
+      },
+      createdAt: "2026-03-10T16:00:10Z",
+    },
+    {
+      sequenceNumber: 10,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-1",
+        item: {
+          id: "unknown-object",
+          type: "serverOperation",
+          status: "completed",
+          server: "codex-app-server",
+          details: { nested: "bounded detail" },
+          aggregatedOutput: LONG_GENERIC_CODEX_OUTPUT,
+        },
+      },
+      createdAt: "2026-03-10T16:00:11Z",
+    },
+    {
+      sequenceNumber: 11,
+      eventType: "item.started",
+      eventData: {
+        type: "item.started",
+        turn_id: "turn-1",
+        item: {
+          id: "cmd-camel-exit",
+          type: "command_execution",
+          command: "node scripts/fail-with-camel-exit.js",
+        },
+      },
+      createdAt: "2026-03-10T16:00:12Z",
+    },
+    {
+      sequenceNumber: 12,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-1",
+        item: {
+          id: "cmd-camel-exit",
+          type: "command_execution",
+          exitCode: 7,
+          output: "camel exit failure",
+        },
+      },
+      createdAt: "2026-03-10T16:00:13Z",
+    },
+    {
+      sequenceNumber: 13,
+      eventType: "error",
+      eventData: {
+        type: "error",
+        thread_id: "codex-thread-adapter",
+        turn_id: "turn-1",
+        message: "Adapter transport failed",
+        error: {
+          message: "Adapter transport failed",
+          additional_details: "socket closed",
+        },
+      },
+      createdAt: "2026-03-10T16:00:14Z",
+    },
+    {
+      sequenceNumber: 14,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-1",
+        item: {
+          id: "msg-after-error",
+          type: "agent_message",
+          status: "completed",
+          text: "Visible Codex assistant text after top-level error.",
+        },
+      },
+      createdAt: "2026-03-10T16:00:15Z",
+    },
+    {
+      sequenceNumber: 15,
+      eventType: "turn.completed",
+      eventData: {
+        type: "turn.completed",
+        thread_id: "codex-thread-adapter",
+        turn: {
+          id: "turn-1",
+          status: "failed",
+          duration_ms: 2345,
+          error: {
+            message: "Turn failed",
+            additional_details: "model stopped",
+          },
+        },
+        usage: {
+          input_tokens: 123,
+          output_tokens: 45,
+        },
+      },
+      createdAt: "2026-03-10T16:00:16Z",
+    },
+    {
+      sequenceNumber: 16,
+      eventType: "error",
+      eventData: {
+        type: "error",
+        thread_id: "codex-thread-adapter",
+        turn_id: "turn-2",
+        message: "Different turn top-level failure",
+      },
+      createdAt: "2026-03-10T16:00:17Z",
+    },
+    {
+      sequenceNumber: 17,
+      eventType: "turn.completed",
+      eventData: {
+        type: "turn.completed",
+        thread_id: "codex-thread-adapter",
+        turn: {
+          id: "turn-3",
+          status: "interrupted",
+          error: {
+            message: "Different turn interrupted",
+            codex_error_info: "user interrupt",
+          },
+        },
+      },
+      createdAt: "2026-03-10T16:00:18Z",
+    },
+    {
+      sequenceNumber: 18,
+      eventType: "error",
+      eventData: {
+        type: "error",
+        thread_id: "codex-thread-adapter",
+        turn_id: "turn-4",
+        message: "Recoverable adapter error",
+      },
+      createdAt: "2026-03-10T16:00:19Z",
+    },
+    {
+      sequenceNumber: 19,
+      eventType: "item.completed",
+      eventData: {
+        type: "item.completed",
+        turn_id: "turn-4",
+        item: {
+          id: "msg-after-recoverable-error",
+          type: "agent_message",
+          status: "completed",
+          text: "Visible Codex assistant text after recoverable error.",
+        },
+      },
+      createdAt: "2026-03-10T16:00:20Z",
+    },
+    {
+      sequenceNumber: 20,
+      eventType: "turn.completed",
+      eventData: {
+        type: "turn.completed",
+        thread_id: "codex-thread-adapter",
+        turn: {
+          id: "turn-4",
+          status: "completed",
+          duration_ms: 9876,
+        },
+        usage: {
+          input_tokens: 12,
+          output_tokens: 3,
+        },
+      },
+      createdAt: "2026-03-10T16:00:21Z",
+    },
+    {
+      sequenceNumber: 21,
+      eventType: "turn.completed",
+      eventData: {
+        type: "turn.completed",
+        thread_id: "codex-thread-adapter",
+        message: "Turn failed",
+        turn: {
+          id: "turn-deep-error",
+          status: "failed",
+          error: {
+            error: {
+              error: {
+                error: {
+                  error: {
+                    error: {
+                      message: "Deep nested adapter failure",
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      },
+      createdAt: "2026-03-10T16:00:22Z",
+    },
+    {
+      sequenceNumber: 22,
+      eventType: "turn.completed",
+      eventData: {
+        type: "turn.completed",
+        thread_id: "codex-thread-adapter",
+        turn: {
+          id: "turn-success-false",
+          success: false,
+        },
+      },
+      createdAt: "2026-03-10T16:00:23Z",
     },
   ];
 }
@@ -1521,6 +1926,8 @@ describe("activity detail polling", () => {
     expect(
       screen.getByText("Child task found one risky deployment."),
     ).toBeInTheDocument();
+    expect(screen.getByText("2 steps")).toBeInTheDocument();
+    expect(screen.getByText("child orphan cleanup result")).toBeInTheDocument();
     expect(screen.getAllByText("zero deploy status --json")).not.toHaveLength(
       0,
     );
@@ -1756,6 +2163,123 @@ describe("activity detail polling", () => {
     expect(downloads.revokedUrls).toContain(download.url);
   });
 
+  it("downloads activity extras without failing when context is unavailable", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000398";
+
+    context.mocks.api(zeroRunContextContract.getContext, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "NOT_FOUND",
+          message: "Run context not available",
+        },
+      });
+    });
+    context.mocks.api(
+      zeroRunNetworkLogsContract.getNetworkLogs,
+      ({ respond }) => {
+        return respond(200, { networkLogs: [], hasMore: false });
+      },
+    );
+
+    const extra = await context.store.set(
+      fetchDownloadExtra$,
+      runId,
+      context.signal,
+    );
+
+    expect(extra.context).toBeUndefined();
+    expect(extra.networkLogs).toStrictEqual([]);
+  });
+
+  it("silences optional activity extra fetch failures during download", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000396";
+    const toastError = vi.spyOn(toast, "error");
+
+    context.mocks.api(zeroRunContextContract.getContext, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "NOT_FOUND",
+          message: "Run context not available",
+        },
+      });
+    });
+    context.mocks.api(
+      zeroRunNetworkLogsContract.getNetworkLogs,
+      ({ respond }) => {
+        return respond(400, {
+          error: {
+            code: "BAD_REQUEST",
+            message: "Network logs unavailable",
+          },
+        });
+      },
+    );
+
+    try {
+      const extra = await context.store.set(
+        fetchDownloadExtra$,
+        runId,
+        context.signal,
+      );
+
+      expect(extra).toStrictEqual({});
+      expect(toastError).not.toHaveBeenCalled();
+    } finally {
+      toastError.mockRestore();
+    }
+  });
+
+  it("propagates abort while fetching raw download extras", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000397";
+    const resetDownloadSignal$ = resetSignal();
+    const downloadSignal = context.store.set(
+      resetDownloadSignal$,
+      context.signal,
+    );
+    let contextRequestStarted = false;
+    let contextRequestAborted = false;
+    let networkRequestStarted = false;
+    let networkRequestAborted = false;
+
+    context.mocks.api(zeroRunContextContract.getContext, async ({ never }) => {
+      contextRequestStarted = true;
+      try {
+        return await never();
+      } finally {
+        contextRequestAborted = true;
+      }
+    });
+    context.mocks.api(
+      zeroRunNetworkLogsContract.getNetworkLogs,
+      async ({ never }) => {
+        networkRequestStarted = true;
+        try {
+          return await never();
+        } finally {
+          networkRequestAborted = true;
+        }
+      },
+    );
+
+    const promise = context.store.set(
+      fetchDownloadExtra$,
+      runId,
+      downloadSignal,
+    );
+    await waitFor(() => {
+      expect(contextRequestStarted).toBeTruthy();
+      expect(networkRequestStarted).toBeTruthy();
+    });
+
+    context.store.set(resetDownloadSignal$, context.signal);
+    await expect(promise).rejects.toMatchObject({ name: "AbortError" });
+
+    await waitFor(() => {
+      expect(contextRequestAborted).toBeTruthy();
+      expect(networkRequestAborted).toBeTruthy();
+    });
+  });
+
   it("shows codex run steps, debug context, runner reuse, and network paging", async () => {
     const runId = "a0000000-0000-4000-a000-000000000299";
 
@@ -1863,7 +2387,7 @@ describe("activity detail polling", () => {
 
     await fill(
       screen.getByPlaceholderText("Search steps"),
-      "billing worker failed",
+      " billing worker failed ",
     );
 
     await waitFor(() => {
@@ -1871,6 +2395,9 @@ describe("activity detail polling", () => {
         screen.getByText(/\([0-9]+\/[0-9]+ matched\)/u),
       ).toBeInTheDocument();
       expect(screen.getAllByText("billing worker failed")).not.toHaveLength(0);
+      expect(
+        document.querySelector('mark[data-match-index="0"]')?.textContent,
+      ).toBe("billing worker failed");
     });
     expect(screen.queryByText(/Codex unknown_item/u)).not.toBeInTheDocument();
 
@@ -2091,6 +2618,183 @@ describe("activity detail polling", () => {
     expect(urls).not.toContain("https://stale.example.test/old-run");
   });
 
+  it("does not render stale context after changing activity", async () => {
+    const firstRunId = "a0000000-0000-4000-a000-000000000505";
+    const secondRunId = "a0000000-0000-4000-a000-000000000506";
+    const secondContextResponse = Promise.withResolvers<void>();
+    const secondContextRequested = Promise.withResolvers<void>();
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ params, respond }) => {
+      const id = String(params.id);
+      return respond(
+        200,
+        makeLogDetail({
+          id,
+          displayName: id === firstRunId ? "First Activity" : "Second Activity",
+          status: "completed",
+          prompt: "Inspect stale context rendering",
+          startedAt: "2026-03-10T18:40:00Z",
+          completedAt: "2026-03-10T18:40:10Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+    context.mocks.api(
+      zeroRunContextContract.getContext,
+      async ({ params, respond }) => {
+        const id = String(params.id);
+        if (id === secondRunId) {
+          secondContextRequested.resolve();
+          await secondContextResponse.promise;
+          return respond(200, {
+            ...codexRunContext(secondRunId),
+            secretNames: ["SECOND_ONLY_SECRET"],
+          });
+        }
+
+        return respond(200, {
+          ...codexRunContext(firstRunId),
+          secretNames: ["FIRST_ONLY_SECRET"],
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${firstRunId}?tab=context`,
+      featureSwitches: { [FeatureSwitchKey.ZeroDebug]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("FIRST_ONLY_SECRET")).toBeInTheDocument();
+    });
+
+    context.store.set(detachedNavigateTo$, ROUTES.activityDetail, {
+      pathParams: { activityRunId: secondRunId },
+      searchParams: new URLSearchParams("tab=context"),
+    });
+    await secondContextRequested.promise;
+
+    try {
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "Second Activity" }),
+        ).toBeInTheDocument();
+      });
+      expect(screen.queryByText("FIRST_ONLY_SECRET")).not.toBeInTheDocument();
+    } finally {
+      secondContextResponse.resolve();
+    }
+
+    await waitFor(() => {
+      expect(screen.getByText("SECOND_ONLY_SECRET")).toBeInTheDocument();
+    });
+  });
+
+  it("does not render stale step messages after changing activity", async () => {
+    const firstRunId = "a0000000-0000-4000-a000-000000000503";
+    const secondRunId = "a0000000-0000-4000-a000-000000000504";
+    const secondEventsResponse = Promise.withResolvers<void>();
+    const secondEventsRequested = Promise.withResolvers<void>();
+
+    const assistantTextEvent = (
+      sequenceNumber: number,
+      text: string,
+    ): AgentEvent => {
+      return {
+        sequenceNumber,
+        eventType: "assistant",
+        eventData: {
+          message: {
+            content: [{ type: "text", text }],
+          },
+        },
+        createdAt: "2026-03-10T18:30:01Z",
+      };
+    };
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ params, respond }) => {
+      const id = String(params.id);
+      return respond(
+        200,
+        makeLogDetail({
+          id,
+          displayName: id === firstRunId ? "First Activity" : "Second Activity",
+          status: "completed",
+          prompt: "Inspect stale step rendering",
+          startedAt: "2026-03-10T18:30:00Z",
+          completedAt: "2026-03-10T18:30:10Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      async ({ params, respond }) => {
+        const id = String(params.id);
+        if (id === secondRunId) {
+          secondEventsRequested.resolve();
+          await secondEventsResponse.promise;
+          return respond(200, {
+            events: [
+              assistantTextEvent(1, "new run step should render after load"),
+            ],
+            hasMore: false,
+            framework: "claude-code",
+          } satisfies AgentEventsResponse);
+        }
+
+        return respond(200, {
+          events: [assistantTextEvent(1, "old run step should not remain")],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${firstRunId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("old run step should not remain"),
+      ).toBeInTheDocument();
+    });
+
+    context.store.set(detachedNavigateTo$, ROUTES.activityDetail, {
+      pathParams: { activityRunId: secondRunId },
+    });
+    await secondEventsRequested.promise;
+
+    try {
+      await waitFor(() => {
+        expect(
+          screen.queryByText("old run step should not remain"),
+        ).not.toBeInTheDocument();
+      });
+    } finally {
+      secondEventsResponse.resolve();
+    }
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("new run step should render after load"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("shows codex fallback event rows for failed activity details", async () => {
     const runId = "a0000000-0000-4000-a000-000000000300";
 
@@ -2133,8 +2837,11 @@ describe("activity detail polling", () => {
     });
     expect(screen.getByText("Failed")).toBeInTheDocument();
     expect(screen.getByText("Codex item.completed")).toBeInTheDocument();
-    expect(screen.getByText(/Codex agent_message/u)).toBeInTheDocument();
-    expect(screen.getByText("[files] Files changed")).toBeInTheDocument();
+    expect(screen.queryByText(/Codex agent_message/u)).not.toBeInTheDocument();
+    expect(screen.getByText(/\[files\] Files changed/u)).toBeInTheDocument();
+    expect(screen.queryByText(/unknown path/u)).not.toBeInTheDocument();
+    expect(screen.getByText(/src\/late-valid\.ts/u)).toBeInTheDocument();
+    expect(screen.queryByText(/\+1 more changes/u)).not.toBeInTheDocument();
     expect(screen.getAllByText("Write")).not.toHaveLength(0);
     expect(screen.getByText("src/generated.ts")).toBeInTheDocument();
     expect(screen.getByText("File operation completed")).toBeInTheDocument();
@@ -2147,6 +2854,549 @@ describe("activity detail polling", () => {
     expect(screen.getAllByText("Codex stream disconnected.")).not.toHaveLength(
       0,
     );
+  });
+
+  it("marks raw success false result events as failed summaries", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000302";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Raw Result Status",
+          status: "failed",
+          prompt: "Render raw result status",
+          error: "Raw result failed",
+          startedAt: "2026-03-10T16:10:01Z",
+          completedAt: "2026-03-10T16:10:02Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [
+            {
+              sequenceNumber: 0,
+              eventType: "result",
+              eventData: {
+                type: "result",
+                success: false,
+                result: "Raw result failed",
+                num_turns: 1,
+                duration_ms: 1000,
+              },
+              createdAt: "2026-03-10T16:10:02Z",
+            },
+          ],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Raw Result Status" }),
+      ).toBeInTheDocument();
+    });
+
+    const summaryRow = screen.getByText("Summary").closest("div");
+    expect(summaryRow?.querySelector('[data-variant="error"]')).toBeTruthy();
+    expect(screen.getAllByText("Raw result failed")).not.toHaveLength(0);
+  });
+
+  it("marks failed task notification statuses as failed task rows", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000304";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Cancelled Task Status",
+          status: "failed",
+          prompt: "Render cancelled task status",
+          startedAt: "2026-03-10T16:15:01Z",
+          completedAt: "2026-03-10T16:15:02Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [
+            {
+              sequenceNumber: 0,
+              eventType: "system",
+              eventData: {
+                subtype: "task_started",
+                task_id: "cancelled-task",
+              },
+              createdAt: "2026-03-10T16:15:01Z",
+            },
+            {
+              sequenceNumber: 1,
+              eventType: "system",
+              eventData: {
+                subtype: "task_notification",
+                task_id: "cancelled-task",
+                status: "cancelled",
+                summary: "Task was cancelled",
+              },
+              createdAt: "2026-03-10T16:15:02Z",
+            },
+            {
+              sequenceNumber: 2,
+              eventType: "system",
+              eventData: {
+                subtype: "task_started",
+                task_id: "declined-task",
+              },
+              createdAt: "2026-03-10T16:15:03Z",
+            },
+            {
+              sequenceNumber: 3,
+              eventType: "system",
+              eventData: {
+                subtype: "task_notification",
+                task_id: "declined-task",
+                status: "declined",
+                summary: "Task was declined",
+              },
+              createdAt: "2026-03-10T16:15:04Z",
+            },
+          ],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Cancelled Task Status" }),
+      ).toBeInTheDocument();
+    });
+
+    const taskSummary = screen.getByText("Task was cancelled");
+    expect(
+      taskSummary.parentElement?.querySelector('[data-variant="error"]'),
+    ).toBeTruthy();
+    const declinedTaskSummary = screen.getByText("Task was declined");
+    expect(
+      declinedTaskSummary.parentElement?.querySelector(
+        '[data-variant="error"]',
+      ),
+    ).toBeTruthy();
+  });
+
+  it("keeps rendering activity details when event payloads are malformed", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000303";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Malformed Event Payloads",
+          status: "completed",
+          prompt: "Render malformed activity payloads",
+          startedAt: "2026-03-10T16:20:01Z",
+          completedAt: "2026-03-10T16:20:03Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: [
+            {
+              sequenceNumber: 0,
+              eventType: "system",
+              eventData: {
+                subtype: "init",
+                tools: "Bash",
+                agents: ["checkout-agent", 1],
+                slash_commands: { review: true },
+              },
+              createdAt: "2026-03-10T16:20:01Z",
+            },
+            {
+              sequenceNumber: 1,
+              eventType: "assistant",
+              eventData: null,
+              createdAt: "2026-03-10T16:20:02Z",
+            },
+            {
+              sequenceNumber: 2,
+              eventType: "assistant",
+              eventData: {
+                message: {
+                  content: { type: "text", text: "not an array" },
+                },
+              },
+              createdAt: "2026-03-10T16:20:03Z",
+            },
+            {
+              sequenceNumber: 3,
+              eventType: "assistant",
+              eventData: {
+                message: {
+                  content: [
+                    {
+                      type: "text",
+                      text: "Literal [ bracket assistant output",
+                    },
+                  ],
+                },
+              },
+              createdAt: "2026-03-10T16:20:04Z",
+            },
+            {
+              sequenceNumber: 4,
+              eventType: "assistant",
+              eventData: {
+                message: {
+                  content: [
+                    null,
+                    1,
+                    {
+                      type: "tool_use",
+                      id: "tool-todo-malformed",
+                      name: "TodoWrite",
+                      input: {
+                        todos: [
+                          null,
+                          "plain malformed todo",
+                          {
+                            content: "Recover malformed todo",
+                            status: "in_progress",
+                          },
+                        ],
+                      },
+                    },
+                    {
+                      type: "tool_use",
+                      id: "tool-bash-malformed",
+                      name: "Bash",
+                      input: { command: { nested: true } },
+                    },
+                  ],
+                },
+              },
+              createdAt: "2026-03-10T16:20:05Z",
+            },
+            {
+              sequenceNumber: 5,
+              eventType: "user",
+              eventData: {
+                message: {
+                  content: [
+                    null,
+                    {
+                      type: "tool_result",
+                      tool_use_id: "tool-bash-malformed",
+                      content: { ok: true },
+                      is_error: false,
+                    },
+                  ],
+                },
+                tool_use_result: { durationMs: "5", bytes: { nested: true } },
+              },
+              createdAt: "2026-03-10T16:20:06Z",
+            },
+            {
+              sequenceNumber: 6,
+              eventType: "result",
+              eventData: null,
+              createdAt: "2026-03-10T16:20:07Z",
+            },
+            {
+              sequenceNumber: 7,
+              eventType: "result",
+              eventData: {
+                type: "result",
+                is_error: false,
+                result: "Ignored malformed result stats.",
+                num_turns: 1.5,
+                duration_ms: Number.NaN,
+                modelUsage: {
+                  malformed: {
+                    inputTokens: Number.NaN,
+                    outputTokens: 1.5,
+                  },
+                },
+              },
+              createdAt: "2026-03-10T16:20:08Z",
+            },
+            {
+              sequenceNumber: 8,
+              eventType: "result",
+              eventData: {
+                type: "result",
+                is_error: false,
+                result: "Survived malformed payloads.",
+                num_turns: 1,
+                duration_ms: 100,
+              },
+              createdAt: "2026-03-10T16:20:09Z",
+            },
+            {
+              sequenceNumber: 9,
+              eventType: "system",
+              eventData: {
+                subtype: "task_started",
+                task_id: "task-malformed",
+                tool_use_id: "task-tool-malformed",
+                description: { nested: true },
+              },
+              createdAt: "2026-03-10T16:20:10Z",
+            },
+            {
+              sequenceNumber: 10,
+              eventType: "system",
+              eventData: {
+                subtype: "task_notification",
+                task_id: "task-malformed",
+                status: { nested: true },
+                summary: { nested: true },
+              },
+              createdAt: "2026-03-10T16:20:11Z",
+            },
+          ],
+          hasMore: false,
+          framework: "claude-code",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Malformed Event Payloads" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.getByText("Initialize")).toBeInTheDocument();
+    expect(screen.getByText("1 agents")).toBeInTheDocument();
+    expect(screen.getAllByText("Recover malformed todo")).not.toHaveLength(0);
+    expect(
+      screen.getByText("Survived malformed payloads."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Ignored malformed result stats."),
+    ).toBeInTheDocument();
+    expect(screen.queryByText(/\[object Object\]/u)).not.toBeInTheDocument();
+    expect(document.body.textContent).not.toContain("NaN");
+    expect(document.body.textContent).not.toContain("1.5 turns");
+    expect(document.body.textContent).not.toContain("out: 1.5");
+
+    await fill(screen.getByPlaceholderText("Search steps"), "[");
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/\([0-9]+\/[0-9]+ matched\)/u),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Literal [ bracket assistant output"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("normalizes codex app-server adapter events in activity details", async () => {
+    const runId = "a0000000-0000-4000-a000-000000000301";
+
+    context.mocks.data.composesList([]);
+    context.mocks.api(logsByIdContract.getById, ({ respond }) => {
+      return respond(
+        200,
+        makeLogDetail({
+          id: runId,
+          displayName: "Codex Adapter Events",
+          framework: "codex",
+          status: "failed",
+          prompt: "Exercise Codex adapter events",
+          error: "Adapter transport failed",
+          startedAt: "2026-03-10T16:00:01Z",
+          completedAt: "2026-03-10T16:00:19Z",
+        }),
+      );
+    });
+    context.mocks.api(
+      zeroRunAgentEventsContract.getAgentEvents,
+      ({ respond }) => {
+        return respond(200, {
+          events: codexAdapterActivityEvents(),
+          hasMore: false,
+          framework: "codex",
+        } satisfies AgentEventsResponse);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/activities/${runId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Codex Adapter Events" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(
+      screen.getByText("[warning] Retryable adapter warning"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) => {
+        return (
+          element?.tagName === "P" &&
+          element?.textContent?.includes("Refresh adapter event plan") === true
+        );
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getByText(/Collect app-server events/u)).toBeInTheDocument();
+    expect(screen.queryByText(/\+2 more steps/u)).not.toBeInTheDocument();
+    expect(
+      screen.getByText(/Ship Platform normalizer coverage\./u),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Visible Codex assistant text before failed summary."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Visible Codex assistant text after top-level error."),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Visible Codex assistant text after recoverable error."),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Bash")).not.toHaveLength(0);
+    expect(screen.getAllByText("pnpm test adapter")).not.toHaveLength(0);
+    expect(
+      screen.getByText((_, element) => {
+        return (
+          element?.tagName === "PRE" &&
+          element.textContent ===
+            "  partial adapter output\nadapter output tail  \nCommand refused by policy (no shell grant)"
+        );
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) => {
+        return (
+          element?.tagName === "PRE" &&
+          typeof element.className === "string" &&
+          element.className.includes("text-red-600") &&
+          element.textContent === "camel exit failure"
+        );
+      }),
+    ).toBeInTheDocument();
+    expect(screen.getAllByText("Read")).not.toHaveLength(0);
+    expect(screen.getByText("src/secret.ts")).toBeInTheDocument();
+    expect(screen.getAllByText("Read declined by sandbox")).not.toHaveLength(0);
+    expect(
+      screen.getAllByText((_, element) => {
+        return (
+          element?.tagName === "DIV" &&
+          typeof element.className === "string" &&
+          element.className.includes("wmde-markdown") &&
+          element?.textContent?.includes("[files] Files changed:") === true &&
+          element.textContent.includes("Status: failed") &&
+          element.textContent.includes("Patch failed before write") &&
+          element.textContent.includes("modify src/adapter.ts")
+        );
+      }),
+    ).toHaveLength(1);
+    expect(screen.getByText(/Codex serverOperation/u)).toBeInTheDocument();
+    expect(
+      screen.getByText(/details: \{nested=bounded detail\}/u),
+    ).toBeInTheDocument();
+    expect(document.body.textContent).toContain("verbose adapter output");
+    expect(document.body.textContent).not.toContain("aggregatedOutput:");
+    expect(document.body.textContent).not.toContain(LONG_GENERIC_CODEX_OUTPUT);
+    expect(
+      screen.getAllByText(/Adapter transport failed \(socket closed\)/u),
+    ).toHaveLength(1);
+    expect(
+      screen.getByText(/Turn failed \(model stopped\)/u),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText((_, element) => {
+        return (
+          element?.tagName === "DIV" &&
+          typeof element.className === "string" &&
+          element.className.includes("wmde-markdown") &&
+          element.textContent?.includes(
+            "Adapter transport failed (socket closed)",
+          ) === true &&
+          element.textContent.includes("Turn failed (model stopped)")
+        );
+      }),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("Different turn top-level failure"),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText(/Different turn interrupted \(user interrupt\)/u),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Deep nested adapter failure")).toBeInTheDocument();
+    expect(screen.getByText(/^Turn failed$/u)).toBeInTheDocument();
+    expect(screen.getByText("Recoverable adapter error")).toBeInTheDocument();
+    const detailText = document.body.textContent ?? "";
+    expect(detailText.indexOf("Recoverable adapter error")).toBeGreaterThan(-1);
+    expect(
+      detailText.indexOf(
+        "Visible Codex assistant text after recoverable error.",
+      ),
+    ).toBeGreaterThan(-1);
+    expect(detailText.indexOf("Recoverable adapter error")).toBeLessThan(
+      detailText.indexOf(
+        "Visible Codex assistant text after recoverable error.",
+      ),
+    );
+    expect(detailText.indexOf("9.9s")).toBeGreaterThan(-1);
+    expect(detailText.indexOf("Recoverable adapter error")).toBeLessThan(
+      detailText.indexOf("9.9s"),
+    );
+    expect(screen.queryByText(/\[object Object\]/u)).not.toBeInTheDocument();
+
+    await fill(
+      screen.getByPlaceholderText("Search steps"),
+      "Adapter transport",
+    );
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/\([0-9]+\/[0-9]+ matched\)/u),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText(/Adapter transport failed \(socket closed\)/u),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("Different turn top-level failure"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows a not-found state for an inaccessible activity", async () => {
@@ -2213,6 +3463,14 @@ describe("activity detail polling", () => {
         } satisfies AgentEventsResponse);
       },
     );
+    context.mocks.api(zeroRunContextContract.getContext, ({ respond }) => {
+      return respond(404, {
+        error: {
+          code: "NOT_FOUND",
+          message: "Run context not available",
+        },
+      });
+    });
     context.mocks.api(zeroRunRunnerContract.getRunner, ({ respond }) => {
       return respond(200, { sandboxReuseResult: null });
     });
@@ -2232,6 +3490,14 @@ describe("activity detail polling", () => {
     await waitFor(() => {
       expect(
         screen.getByRole("heading", { name: "Legacy Activity" }),
+      ).toBeInTheDocument();
+    });
+
+    click(getTabByText("Context"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Context not available" }),
       ).toBeInTheDocument();
     });
 

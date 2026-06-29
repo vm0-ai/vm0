@@ -6,6 +6,7 @@ Cache state and platform API calls live in dedicated owner modules.
 """
 
 import asyncio
+import hashlib
 import json
 import urllib.parse
 from dataclasses import dataclass
@@ -17,18 +18,22 @@ import flow_metadata_keys as metadata_keys
 import matching
 from auth_base_forwarder import (
     MAX_AUTH_BASE_REQUEST_BODY_BYTES,
-    AuthBaseForwardingAdmission,
     AuthBaseForwardingSaturatedError,
     ForwardedRequestTooLargeError,
     InvalidResolvedAuthHeaderError,
     forward_request,
     forwarded_auth_base_client_header_pairs,
     header_pairs,
-    release_forward_request_admission,
+    release_forward_request_admission_from_flow,
     resolved_auth_header_pairs,
+    take_forward_request_admission_from_flow,
 )
 from aws_sigv4 import AwsSigV4Credentials, AwsSigV4SigningError, sign_request
-from firewall_auth_cache import InvalidBillableAuthExpiryError, get_firewall_headers
+from firewall_auth_cache import (
+    FirewallAuthCacheKey,
+    InvalidBillableAuthExpiryError,
+    get_firewall_headers,
+)
 from firewall_auth_client import (
     ConnectorNotConfiguredError,
     FirewallAuthApiError,
@@ -59,6 +64,7 @@ class FirewallHeaderPhaseAuthResult(Enum):
 _HTTP_STATUS_CLIENT_ERROR_MIN = 400
 _HTTP_STATUS_SERVER_ERROR_MIN = 500
 AUTH_BASE_FORWARDING_SATURATED_ERROR = "auth_base_forwarding_saturated"
+_FIREWALL_AUTH_IDENTITY_VERSION = 1
 
 
 @dataclass(frozen=True)
@@ -67,10 +73,9 @@ class _FirewallAuthContext:
 
     allow: matching.FirewallAllow
     firewall_base: str
-    api_id: str
-    run_id: str
     proxy_log_path: str
     auth_request: FirewallAuthRequest
+    auth_cache_key: FirewallAuthCacheKey
 
 
 def is_billable_firewall(firewall_name: str, vm_info: dict) -> bool:
@@ -118,25 +123,56 @@ def _build_firewall_auth_context(
     """Capture request-local auth inputs after matched-firewall metadata exists."""
     api_entry = allow.api_entry
     auth_config = api_entry.get("auth", {})
-    return _FirewallAuthContext(
-        allow=allow,
-        firewall_base=flow.metadata[metadata_keys.FIREWALL_BASE],
-        api_id=flow.metadata[metadata_keys.FIREWALL_API_ID],
-        run_id=flow.metadata.get(metadata_keys.VM_RUN_ID, ""),
-        proxy_log_path=flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, ""),
-        auth_request=FirewallAuthRequest(
-            sandbox_token=vm_info.get("sandboxToken", ""),
-            encrypted_secrets=vm_info.get("encryptedSecrets") or "",
-            auth_headers=auth_config.get("headers", {}),
-            auth_base=auth_config.get("base"),
-            auth_query=auth_config.get("query"),
-            auth_aws_sigv4=auth_config.get("awsSigv4"),
-            secret_connector_map=vm_info.get("secretConnectorMap"),
-            secret_connector_metadata_map=vm_info.get("secretConnectorMetadataMap"),
-            vars_map=vm_info.get("vars"),
-            firewall_billable=bool(flow.metadata[metadata_keys.FIREWALL_BILLABLE]),
+    firewall_base = flow.metadata[metadata_keys.FIREWALL_BASE]
+    api_id = flow.metadata[metadata_keys.FIREWALL_API_ID]
+    run_id = flow.metadata.get(metadata_keys.VM_RUN_ID, "")
+    auth_request = FirewallAuthRequest(
+        sandbox_token=vm_info.get("sandboxToken", ""),
+        encrypted_secrets=vm_info.get("encryptedSecrets") or "",
+        auth_headers=auth_config.get("headers", {}),
+        auth_base=auth_config.get("base"),
+        auth_query=auth_config.get("query"),
+        auth_aws_sigv4=auth_config.get("awsSigv4"),
+        secret_connector_map=vm_info.get("secretConnectorMap"),
+        secret_connector_metadata_map=vm_info.get("secretConnectorMetadataMap"),
+        vars_map=vm_info.get("vars"),
+        firewall_billable=bool(flow.metadata[metadata_keys.FIREWALL_BILLABLE]),
+    )
+    auth_cache_key = FirewallAuthCacheKey(
+        run_id=run_id,
+        api_id=api_id,
+        auth_identity=_build_firewall_auth_identity(
+            firewall_name=allow.name,
+            firewall_base=firewall_base,
+            auth_request=auth_request,
         ),
     )
+    flow.metadata[metadata_keys.FIREWALL_AUTH_CACHE_KEY] = auth_cache_key
+    return _FirewallAuthContext(
+        allow=allow,
+        firewall_base=firewall_base,
+        proxy_log_path=flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, ""),
+        auth_request=auth_request,
+        auth_cache_key=auth_cache_key,
+    )
+
+
+def _build_firewall_auth_identity(
+    *,
+    firewall_name: str,
+    firewall_base: str,
+    auth_request: FirewallAuthRequest,
+) -> str:
+    sandbox_token_sha256 = hashlib.sha256(auth_request.sandbox_token.encode("utf-8")).hexdigest()
+    material = {
+        "version": _FIREWALL_AUTH_IDENTITY_VERSION,
+        "firewallName": firewall_name,
+        "firewallBase": firewall_base,
+        "auth": auth_request.to_body(force_refresh=False),
+        "sandboxTokenSha256": sandbox_token_sha256,
+    }
+    canonical_json = json.dumps(material, sort_keys=True, separators=(",", ":")).encode("utf-8")
+    return hashlib.sha256(canonical_json).hexdigest()
 
 
 def _firewall_auth_context_injects_credentials(context: _FirewallAuthContext) -> bool:
@@ -147,6 +183,12 @@ def _firewall_auth_context_injects_credentials(context: _FirewallAuthContext) ->
             "awsSigv4": context.auth_request.auth_aws_sigv4,
             "base": context.auth_request.auth_base,
         }
+    )
+
+
+def _firewall_auth_context_needs_resolution(context: _FirewallAuthContext) -> bool:
+    return context.auth_request.firewall_billable or _firewall_auth_context_injects_credentials(
+        context
     )
 
 
@@ -222,6 +264,16 @@ def _record_firewall_auth_success_metadata(flow: http.HTTPFlow, token_meta: dict
     )
     flow.metadata[metadata_keys.AUTH_REFRESHED_SECRETS] = token_meta.get("refreshed_secrets", [])
     flow.metadata[metadata_keys.AUTH_CACHE_HIT] = token_meta.get("cache_hit", False)
+
+
+def _empty_firewall_auth_metadata() -> dict:
+    return {
+        "headers": {},
+        "resolved_secrets": [],
+        "refreshed_connectors": [],
+        "refreshed_secrets": [],
+        "cache_hit": False,
+    }
 
 
 def _auth_config_uses_body_dependent_auth(auth_config: object) -> bool:
@@ -539,7 +591,9 @@ def _preflight_firewall_auth(
         )
         return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
-    if not context.auth_request.encrypted_secrets:
+    if not context.auth_request.encrypted_secrets and _firewall_auth_context_needs_resolution(
+        context
+    ):
         log_proxy_entry(
             context.proxy_log_path,
             "error",
@@ -694,19 +748,6 @@ def _set_invalid_resolved_auth_header_response(
     )
 
 
-def _take_auth_base_forward_admission(
-    flow: http.HTTPFlow,
-) -> AuthBaseForwardingAdmission | None:
-    admission = flow.metadata.pop(metadata_keys.AUTH_BASE_FORWARD_ADMISSION, None)
-    return admission if isinstance(admission, AuthBaseForwardingAdmission) else None
-
-
-def _release_auth_base_forward_admission(flow: http.HTTPFlow) -> None:
-    admission = _take_auth_base_forward_admission(flow)
-    if admission is not None:
-        release_forward_request_admission(admission)
-
-
 async def _apply_url_rewrite(
     flow: http.HTTPFlow,
     *,
@@ -765,7 +806,7 @@ async def _apply_url_rewrite(
             return FirewallAuthHandlingResult.LOCAL_RESPONSE
 
     try:
-        admission = _take_auth_base_forward_admission(flow)
+        admission = take_forward_request_admission_from_flow(flow)
         status, resp_body, resp_headers = await forward_request(
             new_url,
             flow.request.method,
@@ -838,7 +879,7 @@ async def _apply_resolved_firewall_auth(
                 proxy_log_path=proxy_log_path,
             )
 
-        _release_auth_base_forward_admission(flow)
+        release_forward_request_admission_from_flow(flow)
         _apply_header_query_injection(
             flow,
             headers=headers,
@@ -896,7 +937,7 @@ def _finish_firewall_auth_result(
     flow: http.HTTPFlow, result: FirewallAuthHandlingResult
 ) -> FirewallAuthHandlingResult:
     if result is FirewallAuthHandlingResult.LOCAL_RESPONSE:
-        _release_auth_base_forward_admission(flow)
+        release_forward_request_admission_from_flow(flow)
     return result
 
 
@@ -912,17 +953,19 @@ async def handle_firewall_request(
         if preflight_result is not None:
             return _finish_firewall_auth_result(flow, preflight_result)
 
-        try:
-            token_meta = await get_firewall_headers(
-                context.run_id,
-                context.api_id,
-                context.auth_request,
-            )
-        except Exception as exc:
-            return _finish_firewall_auth_result(
-                flow,
-                _set_firewall_auth_resolution_failure(flow, context, exc),
-            )
+        if _firewall_auth_context_needs_resolution(context):
+            try:
+                token_meta = await get_firewall_headers(
+                    context.auth_cache_key,
+                    context.auth_request,
+                )
+            except Exception as exc:
+                return _finish_firewall_auth_result(
+                    flow,
+                    _set_firewall_auth_resolution_failure(flow, context, exc),
+                )
+        else:
+            token_meta = _empty_firewall_auth_metadata()
 
         auth_result = await _apply_resolved_firewall_auth(
             flow,
@@ -937,7 +980,7 @@ async def handle_firewall_request(
         _finalize_firewall_auth_success(flow, context, token_meta)
         return auth_result
     except BaseException:
-        _release_auth_base_forward_admission(flow)
+        release_forward_request_admission_from_flow(flow)
         raise
 
 
@@ -956,11 +999,13 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
     if _auth_config_uses_body_dependent_auth(auth_config):
         return FirewallHeaderPhaseAuthResult.FALLBACK
 
+    injects_credentials = auth_config_injects_credentials(auth_config)
+    needs_auth_resolution = injects_credentials or is_billable_firewall(allow.name, vm_info)
     request_scheme = flow.request.scheme.lower()
-    if request_scheme != "https" and auth_config_injects_credentials(auth_config):
+    if request_scheme != "https" and injects_credentials:
         return FirewallHeaderPhaseAuthResult.FALLBACK
 
-    if not vm_info.get("encryptedSecrets"):
+    if not vm_info.get("encryptedSecrets") and needs_auth_resolution:
         return FirewallHeaderPhaseAuthResult.FALLBACK
 
     metadata_snapshot = dict(flow.metadata)
@@ -970,28 +1015,30 @@ async def try_apply_stream_safe_firewall_auth_for_requestheaders(
     _prepare_firewall_metadata(flow, allow, vm_info)
     context = _build_firewall_auth_context(flow, allow, vm_info)
 
-    try:
-        token_meta = await get_firewall_headers(
-            context.run_id,
-            context.api_id,
-            context.auth_request,
-        )
-    except asyncio.CancelledError:
-        _restore_header_phase_probe_state(
-            flow,
-            metadata_snapshot=metadata_snapshot,
-            request_headers_snapshot=request_headers_snapshot,
-            request_path_snapshot=request_path_snapshot,
-        )
-        raise
-    except Exception:
-        _restore_header_phase_probe_state(
-            flow,
-            metadata_snapshot=metadata_snapshot,
-            request_headers_snapshot=request_headers_snapshot,
-            request_path_snapshot=request_path_snapshot,
-        )
-        return FirewallHeaderPhaseAuthResult.FALLBACK
+    if needs_auth_resolution:
+        try:
+            token_meta = await get_firewall_headers(
+                context.auth_cache_key,
+                context.auth_request,
+            )
+        except asyncio.CancelledError:
+            _restore_header_phase_probe_state(
+                flow,
+                metadata_snapshot=metadata_snapshot,
+                request_headers_snapshot=request_headers_snapshot,
+                request_path_snapshot=request_path_snapshot,
+            )
+            raise
+        except Exception:
+            _restore_header_phase_probe_state(
+                flow,
+                metadata_snapshot=metadata_snapshot,
+                request_headers_snapshot=request_headers_snapshot,
+                request_path_snapshot=request_path_snapshot,
+            )
+            return FirewallHeaderPhaseAuthResult.FALLBACK
+    else:
+        token_meta = _empty_firewall_auth_metadata()
 
     if not isinstance(token_meta, dict):
         _restore_header_phase_probe_state(

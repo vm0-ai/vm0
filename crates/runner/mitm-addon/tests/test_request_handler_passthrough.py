@@ -7,7 +7,8 @@ import pytest
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import registry
-from tests.auth_state_helpers import has_auth_state
+import upstream_destination_binding
+from tests.auth_state_helpers import auth_cache_key, has_auth_state
 from tests.request_handler_helpers import _single_firewall_vm, _write_registry
 
 
@@ -89,7 +90,9 @@ async def test_registry_unavailable_blocks_vm0_api_auto_allow(registry_file, rea
     assert metadata_keys.VM_RUN_ID not in flow.metadata
 
 
-async def test_vm0_api_test_paths_skip_auto_allow(tmp_path, real_flow, mitm_ctx, headers):
+async def test_vm0_api_test_paths_skip_auto_allow(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+):
     """`/api/test/*` routes exist to exercise the firewall pipeline itself.
 
     If they fell into Step 2's auto-allow fast path, the test-oauth E2E
@@ -108,25 +111,85 @@ async def test_vm0_api_test_paths_skip_auto_allow(tmp_path, real_flow, mitm_ctx,
             firewall_name="test-oauth",
             api_entry={
                 "base": "https://api.vm0.ai/api/test/oauth-provider",
-                "auth": {"headers": {"Authorization": "Bearer x"}},
+                "auth": {
+                    "headers": {
+                        "Authorization": "Bearer ${{ secrets.TEST_OAUTH_TOKEN }}",
+                    }
+                },
                 "permissions": [{"name": "echo", "rules": ["GET /echo"]}],
             },
             network_policy=None,
-            include_encrypted_secrets=False,
         ),
     )
 
-    flow = real_flow(with_response=False, host="api.vm0.ai", path="/api/test/oauth-provider/echo")
+    flow = real_flow(
+        with_response=False,
+        host="api.vm0.ai",
+        path="/api/test/oauth-provider/echo",
+        request_headers=headers(
+            ("Host", "api.vm0.ai"),
+            ("x-vm0-test-endpoint-bypass", "preview-secret"),
+        ),
+    )
+    monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
-    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(
+            headers={"Authorization": "Bearer resolved-test-token"}
+        ) as auth_fetch,
+    ):
         await mitm_addon.request(flow)
 
-    # Carve-out took effect: Step 3 ran and the real handle_firewall_request
-    # entered (firewall_base is written at auth.py:327 up-front).  Step 2's
-    # auto-allow would have returned without writing firewall_base.
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.request.headers["Authorization"] == "Bearer resolved-test-token"
     assert (
         flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.vm0.ai/api/test/oauth-provider"
     )
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.kinds == frozenset(("connector_auth",))
+
+
+async def test_vm0_api_non_test_paths_auto_allow_before_firewall_auth(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        client_ip="10.200.0.1",
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            run_id="run-platform-api",
+            sandbox_marker="tok-platform",
+            firewall_name="platform-api",
+            api_entry={
+                "base": "https://api.vm0.ai",
+                "auth": {
+                    "headers": {
+                        "Authorization": "Bearer ${{ secrets.PLATFORM_API_TOKEN }}",
+                    }
+                },
+                "permissions": [{"name": "runs", "rules": ["GET /api/runs"]}],
+            },
+            network_policy=None,
+        ),
+    )
+    flow = real_flow(with_response=False, host="api.vm0.ai", path="/api/runs")
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert "Authorization" not in flow.request.headers
+    assert metadata_keys.FIREWALL_BASE not in flow.metadata
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.kinds == frozenset(("api_allow",))
 
 
 async def test_registry_unavailable_blocks_before_auth_injection(tmp_path, real_flow, mitm_ctx):
@@ -538,7 +601,7 @@ async def test_invalid_registered_vm_blocks_before_auth_injection(
         "reason": expected_reason,
     }
     auth_fetch.assert_not_called()
-    assert not has_auth_state(("", "https://api.github.com"))
+    assert not has_auth_state(auth_cache_key(run_id="", api_id="https://api.github.com"))
     assert metadata_keys.VM_RUN_ID not in flow.metadata
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
     assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"

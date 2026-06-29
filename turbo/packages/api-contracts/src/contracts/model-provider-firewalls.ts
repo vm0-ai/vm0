@@ -3,7 +3,7 @@ import type { ExpandedFirewallConfig } from "@vm0/connectors/firewall-types";
 import type {
   ModelProviderFramework,
   ModelProviderType,
-} from "./model-providers";
+} from "./model-provider-types";
 
 type FirewallSupportedProvider = Exclude<
   ModelProviderType,

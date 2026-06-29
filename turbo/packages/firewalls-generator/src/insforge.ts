@@ -34,6 +34,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "https://${{ vars.INSFORGE_DOMAIN }}",',
+    '      hostPolicy: { kind: "publicDestination" },',
     "      auth: {",
     "        headers: {",
     '          "X-API-Key": "${{ secrets.INSFORGE_API_KEY }}",',

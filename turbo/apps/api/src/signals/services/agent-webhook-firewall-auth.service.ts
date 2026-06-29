@@ -1,6 +1,7 @@
 import { Buffer } from "node:buffer";
 
 import {
+  getSecretNameForType,
   getModelProviderEnvBindings,
   modelProviderTypeSchema,
   type ModelProviderType,
@@ -604,17 +605,16 @@ const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 function getRefreshProviderKeySourceType(
   providerKey: string,
 ): AccessSecretSource {
-  return isModelProviderRefreshProviderKey(providerKey)
+  return modelProviderTypeForProviderKey(providerKey)
     ? "model-provider"
     : "connector";
 }
 
-function modelProviderTypeForRefreshProviderKey(
+function modelProviderTypeForProviderKey(
   providerKey: string,
-): string | undefined {
-  return isModelProviderRefreshProviderKey(providerKey)
-    ? providerKey
-    : undefined;
+): ModelProviderType | undefined {
+  const parsedProviderType = modelProviderTypeSchema.safeParse(providerKey);
+  return parsedProviderType.success ? parsedProviderType.data : undefined;
 }
 
 function resolveSecretUserId(
@@ -640,7 +640,7 @@ function resolveRefreshMetadata(
     metadataKey:
       sourceType === "model-provider"
         ? (metadata?.metadataKey ??
-          modelProviderTypeForRefreshProviderKey(connectorType))
+          modelProviderTypeForProviderKey(connectorType))
         : undefined,
   };
 }
@@ -650,8 +650,7 @@ function modelProviderTypeForMetadata(
   metadata: SecretConnectorMetadata,
 ): ModelProviderType | undefined {
   const providerType =
-    metadata.metadataKey ??
-    modelProviderTypeForRefreshProviderKey(connectorType);
+    metadata.metadataKey ?? modelProviderTypeForProviderKey(connectorType);
   const parsedProviderType = providerType
     ? modelProviderTypeSchema.safeParse(providerType)
     : undefined;
@@ -957,11 +956,6 @@ function modelProviderRuntimeSecretName(args: {
   readonly connectorType: string;
   readonly metadata: SecretConnectorMetadata;
 }): string | undefined {
-  const secretMetadata = getModelProviderRefreshMetadata(args.connectorType);
-  if (!secretMetadata?.isRefreshable) {
-    return undefined;
-  }
-
   const providerType = modelProviderTypeForMetadata(
     args.connectorType,
     args.metadata,
@@ -970,10 +964,19 @@ function modelProviderRuntimeSecretName(args: {
     return undefined;
   }
 
+  const providerSecretName = getSecretNameForType(providerType);
+  if (providerSecretName && args.key === providerSecretName) {
+    return providerSecretName;
+  }
+
   const valueRef = getModelProviderEnvBindings(providerType)?.[args.key];
-  return valueRef?.startsWith(CONNECTOR_SECRET_REF_PREFIX)
-    ? valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length)
-    : undefined;
+  if (valueRef === "$secret") {
+    return providerSecretName;
+  }
+  if (valueRef?.startsWith(CONNECTOR_SECRET_REF_PREFIX)) {
+    return valueRef.slice(CONNECTOR_SECRET_REF_PREFIX.length);
+  }
+  return undefined;
 }
 
 function refreshableRuntimeSecretNameForSource(args: {
@@ -1141,7 +1144,7 @@ function modelProviderSourceLookup(args: {
     providerKey: args.providerKey,
     providerType:
       metadata.metadataKey ??
-      modelProviderTypeForRefreshProviderKey(args.providerKey) ??
+      modelProviderTypeForProviderKey(args.providerKey) ??
       args.providerKey,
     userId: resolveSecretUserId(
       "model-provider",
@@ -2629,6 +2632,146 @@ async function syncStoredConnectorRuntimeSecrets(args: {
   }
 }
 
+async function getModelProviderRuntimeSecretValue(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly providerType: ModelProviderType;
+  readonly secretName: string;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<string | null> {
+  const singleSecretName = getSecretNameForType(args.providerType);
+  if (singleSecretName && args.secretName === singleSecretName) {
+    const [row] = await args.db
+      .select({ encryptedValue: secretsTable.encryptedValue })
+      .from(modelProviders)
+      .leftJoin(secretsTable, eq(modelProviders.secretId, secretsTable.id))
+      .where(
+        and(
+          eq(modelProviders.orgId, args.orgId),
+          eq(modelProviders.userId, args.userId),
+          eq(modelProviders.type, args.providerType),
+          eq(secretsTable.orgId, args.orgId),
+          eq(secretsTable.userId, args.userId),
+          eq(secretsTable.name, args.secretName),
+          eq(secretsTable.type, "model-provider"),
+        ),
+      )
+      .limit(1);
+    return row?.encryptedValue
+      ? await decryptStoredSecretValue(
+          row.encryptedValue,
+          args.featureSwitchContext,
+        )
+      : null;
+  }
+
+  const [provider] = await args.db
+    .select({ id: modelProviders.id })
+    .from(modelProviders)
+    .where(
+      and(
+        eq(modelProviders.orgId, args.orgId),
+        eq(modelProviders.userId, args.userId),
+        eq(modelProviders.type, args.providerType),
+      ),
+    )
+    .limit(1);
+  if (!provider) {
+    return null;
+  }
+
+  return await getSecretValue({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.userId,
+    name: args.secretName,
+    type: "model-provider",
+    featureSwitchContext: args.featureSwitchContext,
+  });
+}
+
+async function syncModelProviderRuntimeSecrets(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly secrets: Record<string, string>;
+  readonly secretConnectorMap: Record<string, string> | undefined;
+  readonly secretConnectorMetadataMap:
+    | Record<string, SecretConnectorMetadata>
+    | undefined;
+  readonly referencedKeys: Set<string>;
+  readonly featureSwitchContext: FeatureSwitchContext;
+}): Promise<void> {
+  if (!args.secretConnectorMap) {
+    return;
+  }
+
+  const lookups = [...args.referencedKeys].flatMap((key) => {
+    const connectorType = getOwnConnectorOwner(args.secretConnectorMap, key);
+    if (!connectorType) {
+      return [];
+    }
+    const metadata = resolveRefreshMetadata(
+      connectorType,
+      args.secretConnectorMetadataMap?.[key],
+    );
+    if (metadata.sourceType !== "model-provider") {
+      return [];
+    }
+    if (
+      modelProviderAccessSecretName({
+        key,
+        connectorType,
+        metadata,
+      }) !== undefined
+    ) {
+      return [];
+    }
+    const providerType = modelProviderTypeForMetadata(connectorType, metadata);
+    const secretName = modelProviderRuntimeSecretName({
+      key,
+      connectorType,
+      metadata,
+    });
+    return providerType && secretName
+      ? [
+          {
+            key,
+            providerType,
+            secretName,
+            userId: resolveSecretUserId(
+              "model-provider",
+              args.userId,
+              metadata.sourceUserId,
+            ),
+          },
+        ]
+      : [];
+  });
+  if (lookups.length === 0) {
+    return;
+  }
+
+  await Promise.all(
+    lookups.map(async (lookup) => {
+      const value = await getModelProviderRuntimeSecretValue({
+        db: args.db,
+        orgId: args.orgId,
+        userId: lookup.userId,
+        providerType: lookup.providerType,
+        secretName: lookup.secretName,
+        featureSwitchContext: args.featureSwitchContext,
+      });
+      if (value === null || value.trim().length === 0) {
+        delete args.secrets[lookup.key];
+      } else {
+        args.secrets[lookup.key] = value;
+      }
+    }),
+  );
+}
+
 function canResolveMissingAccessSecret(args: {
   readonly key: string;
   readonly secretConnectorMap: Record<string, string> | undefined;
@@ -2712,16 +2855,21 @@ function hasUnavailableAccessSource(args: {
       args.secretConnectorMetadataMap?.[key],
     );
     if (metadata.sourceType === "model-provider") {
-      if (
-        modelProviderAccessSecretName({
+      const accessSecretName = modelProviderAccessSecretName({
+        key,
+        connectorType,
+        metadata,
+      });
+      if (accessSecretName !== undefined) {
+        return !args.modelProviderSourceStateByConnector.has(connectorType);
+      }
+      return (
+        modelProviderRuntimeSecretName({
           key,
           connectorType,
           metadata,
         }) === undefined
-      ) {
-        return true;
-      }
-      return !args.modelProviderSourceStateByConnector.has(connectorType);
+      );
     }
 
     const connectorAccess = args.connectorAccessByType.get(connectorType);
@@ -2901,6 +3049,16 @@ async function prepareFirewallAuthResolutionContext(args: {
     secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
     referencedKeys: referenced.secrets,
     connectorAccessByType,
+    featureSwitchContext: args.featureSwitchContext,
+  });
+  await syncModelProviderRuntimeSecrets({
+    db: args.db,
+    orgId: args.orgId,
+    userId: args.auth.userId,
+    secrets: args.secrets,
+    secretConnectorMap: args.body.secretConnectorMap,
+    secretConnectorMetadataMap: args.body.secretConnectorMetadataMap,
+    referencedKeys: referenced.secrets,
     featureSwitchContext: args.featureSwitchContext,
   });
 

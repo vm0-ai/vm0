@@ -1,7 +1,8 @@
 import { beforeEach, describe, expect, it } from "vitest";
 
-import { createApp } from "../../../app-factory";
-import { testContext } from "../../../__tests__/test-helpers";
+import { createAppWithRoutes } from "../../../app-factory-core";
+import { testContext } from "../../../__tests__/test-context";
+import { legacyFileRoutes } from "../legacy-file";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
@@ -29,7 +30,10 @@ const context = testContext();
 
 function appRequest(path: string, init?: RequestInit): Promise<Response> {
   return Promise.resolve(
-    createApp({ signal: context.signal }).request(path, {
+    createAppWithRoutes({
+      signal: context.signal,
+      routes: legacyFileRoutes,
+    }).request(path, {
       method: "GET",
       ...init,
     }),

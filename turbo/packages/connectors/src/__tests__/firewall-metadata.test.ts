@@ -96,26 +96,42 @@ function collectRuntimePermissions(
   });
 }
 
-function collectRuntimeBaseUrlTemplates(
-  firewall: FirewallConfig,
-): readonly { readonly base: string; readonly credentialed: boolean }[] {
-  const templates = new Map<string, boolean>();
+function collectRuntimeBaseUrlTemplates(firewall: FirewallConfig): readonly {
+  readonly base: string;
+  readonly credentialed: boolean;
+  readonly hostPolicy?: FirewallConfig["apis"][number]["hostPolicy"];
+}[] {
+  const templates = new Map<
+    string,
+    {
+      readonly credentialed: boolean;
+      readonly hostPolicy?: FirewallConfig["apis"][number]["hostPolicy"];
+    }
+  >();
   for (const api of firewall.apis) {
     if (!hasBaseUrlVars(api.base)) {
       continue;
     }
-    templates.set(
-      api.base,
-      (templates.get(api.base) ?? false) ||
+    const existing = templates.get(api.base);
+    templates.set(api.base, {
+      credentialed:
+        (existing?.credentialed ?? false) ||
         firewallAuthInjectsCredentials(api.auth),
-    );
+      ...(api.hostPolicy !== undefined ? { hostPolicy: api.hostPolicy } : {}),
+    });
   }
   return [...templates.entries()]
     .sort(([a], [b]) => {
       return compareStrings(a, b);
     })
-    .map(([base, credentialed]) => {
-      return { base, credentialed };
+    .map(([base, template]) => {
+      return {
+        base,
+        credentialed: template.credentialed,
+        ...(template.hostPolicy !== undefined
+          ? { hostPolicy: template.hostPolicy }
+          : {}),
+      };
     });
 }
 

@@ -13,7 +13,7 @@ import {
   updateGithubLabelListener$,
   updateGithubInstallation$,
 } from "../services/integrations-github.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const githubReadAuth = {
   requireOrganization: true,

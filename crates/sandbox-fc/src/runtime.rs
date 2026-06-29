@@ -9,6 +9,7 @@ use sandbox::{
 use nbd_cow::pool::{DevicePoolConfig, DevicePoolHandle};
 
 use crate::config::{FirecrackerConfig, SnapshotConfig};
+use crate::duration::duration_ms;
 use crate::factory::FirecrackerFactory;
 use crate::network::{NetnsPoolConfig, NetnsPoolHandle};
 use crate::paths::{RuntimePaths, SandboxPaths, SnapshotOutputPaths, SockPaths};
@@ -45,14 +46,14 @@ impl FirecrackerRuntime {
                 message: format!("netns pool: {e}"),
             })?;
         info!(
-            elapsed_ms = t.elapsed().as_millis() as u64,
+            elapsed_ms = duration_ms(t.elapsed()),
             "runtime netns pool created"
         );
 
         let t = std::time::Instant::now();
         let device_pool = DevicePoolHandle::new(DevicePoolConfig::default());
         info!(
-            elapsed_ms = t.elapsed().as_millis() as u64,
+            elapsed_ms = duration_ms(t.elapsed()),
             "runtime device pool created"
         );
 

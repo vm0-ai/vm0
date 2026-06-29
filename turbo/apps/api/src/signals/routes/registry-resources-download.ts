@@ -21,7 +21,7 @@ import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
 import { db$ } from "../external/db";
 import { generatePresignedGetUrl } from "../external/s3";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 type PullableRegistryEntry = RegistryEntry | VideoTemplateRegistryEntry;
 

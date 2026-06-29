@@ -78,7 +78,8 @@ describe("zero workflow copy command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("copied");
       expect(logCalls).toContain(NEW_ID);
-      expect(logCalls).toContain("target-agent");
+      expect(logCalls).toContain("Agent Name:   Target Agent");
+      expect(logCalls).toContain(`Agent ID:     ${TARGET_AGENT_ID}`);
     });
   });
 

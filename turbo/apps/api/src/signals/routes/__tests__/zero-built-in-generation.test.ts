@@ -3,11 +3,12 @@ import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 
-import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
+import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -24,6 +25,13 @@ interface BuiltInGenerationFixture {
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
+}
+
+function createBuiltInGenerationTestApp() {
+  return createAppWithRoutes({
+    signal: context.signal,
+    routes: zeroBuiltInGenerationRoutes,
+  });
 }
 
 function seedBuiltInGenerationFixture(): Promise<BuiltInGenerationFixture> {
@@ -83,7 +91,7 @@ describe("GET /api/zero/built-in-generations/:generationId", () => {
         startedAt: staleAt,
       });
 
-    const app = createApp({ signal: context.signal });
+    const app = createBuiltInGenerationTestApp();
     const response = await app.request(
       `/api/zero/built-in-generations/${generationId}`,
       { headers: authHeaders() },
@@ -151,7 +159,7 @@ describe("GET /api/zero/built-in-generations/:generationId", () => {
         startedAt: freshAt,
       });
 
-    const app = createApp({ signal: context.signal });
+    const app = createBuiltInGenerationTestApp();
     const response = await app.request(
       `/api/zero/built-in-generations/${generationId}`,
       { headers: authHeaders() },

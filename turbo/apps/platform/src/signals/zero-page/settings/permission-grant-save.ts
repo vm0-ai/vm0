@@ -319,7 +319,7 @@ function buildAppliedUserGrantPolicies({
 }
 
 async function saveUserGrantPolicies({
-  agentId,
+  scope,
   connectorType,
   metadata,
   initialPolicies,
@@ -330,7 +330,7 @@ async function saveUserGrantPolicies({
   pageSignal,
   applyGrantPolicies,
 }: {
-  agentId: string;
+  scope: { agentId: string };
   connectorType: ConnectorType;
   metadata: FirewallPermissionDetailMetadata;
   initialPolicies: FirewallPolicies;
@@ -343,7 +343,7 @@ async function saveUserGrantPolicies({
 }): Promise<void> {
   await applyGrantPolicies(
     {
-      agentId,
+      ...scope,
       connectorRef: connectorType,
       mode: resetPending ? "replace" : "patch",
       grants: buildAppliedUserGrantPolicies({
@@ -361,7 +361,7 @@ async function saveUserGrantPolicies({
 }
 
 export async function savePermissionDraftPolicies({
-  agentId,
+  scope,
   connectorType,
   metadata,
   initialPolicies,
@@ -370,7 +370,7 @@ export async function savePermissionDraftPolicies({
   pageSignal,
   applyGrantPolicies,
 }: {
-  agentId: string;
+  scope: { agentId: string };
   connectorType: ConnectorType;
   metadata: FirewallPermissionDetailMetadata;
   initialPolicies: FirewallPolicies;
@@ -386,7 +386,7 @@ export async function savePermissionDraftPolicies({
       permissions: metadata.permissions,
     });
   await saveUserGrantPolicies({
-    agentId,
+    scope,
     connectorType,
     metadata,
     initialPolicies,

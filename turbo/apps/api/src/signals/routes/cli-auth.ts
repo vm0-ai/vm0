@@ -15,7 +15,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { getMemberRoleAndUpdateCache$ } from "../services/auth.service";
 import {
   CLI_TOKEN_EXPIRES_IN_SECONDS,

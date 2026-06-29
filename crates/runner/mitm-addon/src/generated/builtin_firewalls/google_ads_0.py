@@ -14,6 +14,15 @@ JSON_PART = r"""{
       },
       "base": "https://googleads.googleapis.com",
       "permissions": []
+    },
+    {
+      "auth": {
+        "headers": {
+          "Authorization": "Bearer ${{ secrets.GOOGLE_ADS_TOKEN }}"
+        }
+      },
+      "base": "https://datamanager.googleapis.com",
+      "permissions": []
     }
   ],
   "name": "google-ads"

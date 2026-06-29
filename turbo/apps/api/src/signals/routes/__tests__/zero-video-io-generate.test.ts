@@ -6,14 +6,14 @@ import { and, eq, inArray, sql } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 
-import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
@@ -24,6 +24,9 @@ import {
   VIDEO_IO_MODEL,
 } from "../../services/zero-video-io-generate.service";
 import { builtInGenerationUsageIdempotencyKey } from "../../services/built-in-generation-usage-idempotency";
+import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
+import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
+import { zeroVideoIoGenerateRoutes } from "../zero-video-io-generate";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -168,6 +171,17 @@ function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
+function createVideoIoTestApp() {
+  return createAppWithRoutes({
+    signal: context.signal,
+    routes: [
+      ...zeroBuiltInGenerationRoutes,
+      ...zeroVideoIoGenerateRoutes,
+      ...webhooksBuiltInGenerationRoutes,
+    ],
+  });
+}
+
 function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
@@ -201,7 +215,7 @@ function readCallbackUrl(body: unknown): string {
 }
 
 async function postBytePlusWebhook(
-  app: ReturnType<typeof createApp>,
+  app: ReturnType<typeof createVideoIoTestApp>,
   callbackUrl: string,
   payload: unknown,
 ): Promise<void> {
@@ -225,7 +239,7 @@ function readFalWebhookUrl(requestUrl: string | null): string {
 }
 
 async function postFalWebhook(
-  app: ReturnType<typeof createApp>,
+  app: ReturnType<typeof createVideoIoTestApp>,
   requestUrl: string | null,
   payload: unknown,
 ): Promise<void> {
@@ -481,7 +495,7 @@ describe("POST /api/zero/video-io/generate", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const app = createApp({ signal: context.signal });
+    const app = createVideoIoTestApp();
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       body: JSON.stringify({ prompt: "a city at night" }),
@@ -504,7 +518,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVideoIoTestApp();
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -533,7 +547,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVideoIoTestApp();
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -558,7 +572,7 @@ describe("POST /api/zero/video-io/generate", () => {
     const fixture = await track(seedVideoFixture({ credits: 0 }));
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const app = createApp({ signal: context.signal });
+    const app = createVideoIoTestApp();
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -591,7 +605,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVideoIoTestApp();
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -622,7 +636,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVideoIoTestApp();
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -680,7 +694,7 @@ describe("POST /api/zero/video-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createApp({ signal: context.signal });
+    const app = createVideoIoTestApp();
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -900,7 +914,7 @@ describe("POST /api/zero/video-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createApp({ signal: context.signal });
+    const app = createVideoIoTestApp();
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -997,7 +1011,7 @@ describe("POST /api/zero/video-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createApp({ signal: context.signal });
+    const app = createVideoIoTestApp();
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1158,7 +1172,7 @@ describe("POST /api/zero/video-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createApp({ signal: context.signal });
+    const app = createVideoIoTestApp();
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1288,7 +1302,7 @@ describe("POST /api/zero/video-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createApp({ signal: context.signal });
+    const app = createVideoIoTestApp();
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1383,7 +1397,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVideoIoTestApp();
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -1441,7 +1455,7 @@ describe("POST /api/zero/video-io/generate", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createVideoIoTestApp();
     const response = await app.request("/api/zero/video-io/generate", {
       method: "POST",
       headers: authHeaders(),

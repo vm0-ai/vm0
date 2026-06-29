@@ -15,7 +15,7 @@ import {
   currentLeftThread$,
   currentRightThread$,
 } from "../../signals/chat-page/chat-thread-panes.ts";
-import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { QueueDrawer } from "../queue-page/queue-drawer.tsx";
 import {

@@ -10,6 +10,10 @@ import { createRunLoop } from "../zero-page/polling.ts";
 import { delay } from "signal-timers";
 import { accept } from "../../lib/accept.ts";
 import {
+  groupVisibleMessages,
+  type GroupedMessage,
+} from "./log-detail-utils.ts";
+import {
   autoScrollActivityDetail$,
   scrollToBottomActivityDetail$,
 } from "./activity-detail-scroll.ts";
@@ -297,6 +301,11 @@ export const zeroActivityDetail$ = computed(async (get) => {
 // Events — flattened from run loop's paged events
 // ---------------------------------------------------------------------------
 
+interface ZeroActivityEvents {
+  runId: string;
+  events: AgentEvent[];
+}
+
 export const zeroActivityEvents$ = computed(async (get) => {
   const run = get(internalActiveRunLoop$);
   if (!run) {
@@ -306,16 +315,46 @@ export const zeroActivityEvents$ = computed(async (get) => {
   }
   const pages = await get(run.pagedEventsList$);
   if (pages.length === 0) {
-    return [] as AgentEvent[];
+    return {
+      runId: run.runId,
+      events: [],
+    } satisfies ZeroActivityEvents;
   }
   const results = await Promise.all(
     pages.map((p) => {
       return get(p);
     }),
   );
-  return results.flatMap((r) => {
-    return r.events;
-  });
+  return {
+    runId: run.runId,
+    events: results.flatMap((r) => {
+      return r.events;
+    }),
+  } satisfies ZeroActivityEvents;
+});
+
+interface ZeroActivityVisibleMessages {
+  runId: string | null;
+  messages: GroupedMessage[];
+}
+
+export const zeroActivityVisibleMessages$ = computed(async (get) => {
+  const [detail, events] = await Promise.all([
+    get(zeroActivityDetail$),
+    get(zeroActivityEvents$),
+  ]);
+  if (!detail || !events || events.runId !== detail.id) {
+    return {
+      runId: events?.runId ?? null,
+      messages: [],
+    } satisfies ZeroActivityVisibleMessages;
+  }
+  return {
+    runId: detail.id,
+    messages: groupVisibleMessages(events.events, {
+      framework: detail.framework,
+    }),
+  } satisfies ZeroActivityVisibleMessages;
 });
 
 // ---------------------------------------------------------------------------
@@ -324,6 +363,9 @@ export const zeroActivityEvents$ = computed(async (get) => {
 
 export function formatLogTime(createdAt: string): string {
   const date = new Date(createdAt);
+  if (Number.isNaN(date.getTime())) {
+    return createdAt.trim().length > 0 ? createdAt : "—";
+  }
   const month = String(date.getMonth() + 1).padStart(2, "0");
   const day = String(date.getDate()).padStart(2, "0");
   const hours = date.getHours();
@@ -341,6 +383,9 @@ export function formatDuration(
     return undefined;
   }
   const ms = new Date(completedAt).getTime() - new Date(startedAt).getTime();
+  if (!Number.isFinite(ms) || ms < 0) {
+    return undefined;
+  }
   if (ms < 1000) {
     return `${ms}ms`;
   }

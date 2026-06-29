@@ -7,7 +7,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { db } from "../../../lib/db";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
@@ -3345,6 +3345,12 @@ describe("INT-02: Telegram integration", () => {
         return run.status;
       })
       .toBe("cancelled");
+    await expect
+      .poll(async () => {
+        const callback = await readRunCallback(runId);
+        return callback?.status;
+      })
+      .toBe("delivered");
     const actionsAfterCancel = chatActions.length;
     const idleTyping = await webhooks.requestAgentEvents(
       typingBody,

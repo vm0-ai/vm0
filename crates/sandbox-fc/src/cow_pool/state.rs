@@ -14,6 +14,7 @@ use super::{
     AcquireResult, BUFFER_SIZE, CowPoolConfig, CowPoolError, MAX_CONCURRENT_SLOT_CREATIONS,
     MAX_SLOTS, PrewarmedSlot, SlotSpawner, WARM_RETRY_BACKOFF, destroy_slot_async,
 };
+use crate::duration::duration_ms;
 
 #[derive(Clone, Copy, Debug)]
 enum CreationPurpose {
@@ -177,7 +178,7 @@ impl CowPool {
 
     fn assign_slot_to_waiter(&mut self, mut slot: PrewarmedSlot) -> AssignOutcome {
         while let Some(waiter) = self.waiters.pop_front() {
-            let waited_ms = waiter.requested_at.elapsed().as_millis() as u64;
+            let waited_ms = duration_ms(waiter.requested_at.elapsed());
             let slot_id = slot.id().to_owned();
             match waiter.respond_to.send(Ok(slot)) {
                 Ok(()) => {
@@ -263,7 +264,7 @@ impl CowPool {
     }
 
     async fn handle_creation_outcome(&mut self, outcome: SlotCreationOutcome) {
-        let elapsed_ms = outcome.elapsed.as_millis() as u64;
+        let elapsed_ms = duration_ms(outcome.elapsed);
         match outcome.result {
             Ok(slot) => {
                 let slot_id = slot.id().to_owned();
@@ -368,7 +369,7 @@ impl CowPool {
         info!(
             pending_at_start,
             ready_at_start,
-            elapsed_ms = started.elapsed().as_millis() as u64,
+            elapsed_ms = duration_ms(started.elapsed()),
             "COW pool cleanup complete"
         );
     }
@@ -398,7 +399,7 @@ impl CowPool {
                 let slot_id = slot.id().to_owned();
                 info!(
                     id = %slot_id,
-                    elapsed_ms = elapsed.as_millis() as u64,
+                    elapsed_ms = duration_ms(elapsed),
                     "dropping late COW slot during cleanup"
                 );
                 destroy_slot_async(slot).await;
@@ -410,7 +411,7 @@ impl CowPool {
             }) => {
                 error!(
                     error = %e,
-                    elapsed_ms = elapsed.as_millis() as u64,
+                    elapsed_ms = duration_ms(elapsed),
                     "pending COW slot creation failed during cleanup"
                 );
             }

@@ -413,29 +413,6 @@ export const composesByIdContract = c.router({
     },
     summary: "Get agent compose by ID",
   },
-
-  /**
-   * DELETE /api/agent/composes/:id
-   * Delete agent compose and all associated resources (versions, automations, permissions, etc.)
-   * Returns 409 Conflict if agent has running or pending runs
-   */
-  delete: {
-    method: "DELETE",
-    path: "/api/agent/composes/:id",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.string().uuid("Compose ID is required"),
-    }),
-    body: c.noBody(),
-    responses: {
-      204: c.noBody(),
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-    },
-    summary: "Delete agent compose",
-  },
 });
 
 /**
@@ -543,46 +520,11 @@ export const composesMetadataContract = c.router({
   },
 });
 
-/**
- * Compose instructions response schema
- */
-const composeInstructionsResponseSchema = z.object({
-  content: z.string().nullable(),
-  filename: z.string().nullable(),
-});
-
-/**
- * Composes instructions route contract (/api/agent/composes/[id]/instructions)
- */
-export const composesInstructionsContract = c.router({
-  /**
-   * GET /api/agent/composes/:id/instructions
-   * Get the instructions content for an agent compose
-   */
-  getInstructions: {
-    method: "GET",
-    path: "/api/agent/composes/:id/instructions",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.string().uuid("Compose ID must be a valid UUID"),
-    }),
-    responses: {
-      200: composeInstructionsResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get agent compose instructions content",
-  },
-});
-
 export type ComposesMainContract = typeof composesMainContract;
 export type ComposesByIdContract = typeof composesByIdContract;
 export type ComposesVersionsContract = typeof composesVersionsContract;
 export type ComposesListContract = typeof composesListContract;
 export type ComposesMetadataContract = typeof composesMetadataContract;
-export type ComposesInstructionsContract = typeof composesInstructionsContract;
 
 // Export schemas for reuse
 export {
@@ -596,7 +538,6 @@ export {
   composeResponseSchema,
   composeListItemSchema,
   metadataUpdateSchema,
-  composeInstructionsResponseSchema,
 };
 
 // Export inferred types for consumers

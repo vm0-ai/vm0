@@ -127,7 +127,7 @@ interface DownloadWebFileResult {
 /**
  * Download a web-uploaded file to a local path, streaming the response body
  * to disk. Authenticates via ZERO_TOKEN. Response is binary, so this bypasses
- * the ts-rest contract system.
+ * the typed contract client.
  */
 export async function downloadWebFile(
   fileId: string,

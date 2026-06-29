@@ -127,29 +127,28 @@ class TestOpenAIResponsesSseUsageExtractor:
 
         assert usage == {}
 
-    def test_named_unknown_event_with_known_non_usage_type_stops_full_extraction(self, monkeypatch):
-        real_extractor = openai_responses.JsonSelectiveExtractor
-        fed_chunks: list[bytes] = []
-
-        class TrackingExtractor:
-            def __init__(self, **kwargs):
-                self._inner = real_extractor(**kwargs)
-
-            def feed(self, chunk: bytes) -> None:
-                fed_chunks.append(chunk)
-                self._inner.feed(chunk)
-
-            def finish(self):
-                return self._inner.finish()
-
-        monkeypatch.setattr(openai_responses, "JsonSelectiveExtractor", TrackingExtractor)
+    def test_named_unknown_event_with_large_known_non_usage_type_recovers_for_next_event(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         large_delta = b'{"type":"response.output_text.delta","delta":"' + b"x" * 100_000 + b'"}'
+
+        assert (
+            openai_responses._classify_responses_event_type(
+                large_delta[: openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES]
+            )
+            == openai_responses._RESPONSES_EVENT_KNOWN_NON_USAGE
+        )
         parse(b"event: response.future_delta\n")
         parse(b"data: " + large_delta + b"\n\n")
 
         assert usage == {}
-        assert large_delta not in b"".join(fed_chunks)
+
+        parse(
+            b"event: response.completed\n"
+            b'data: {"response":{"model":"gpt-5.4","usage":{"output_tokens":6}}}\n\n'
+        )
+
+        assert usage["model"] == "gpt-5.4"
+        assert usage["tokens.output"] == 6
 
     def test_named_terminal_event_with_known_non_usage_type_is_ignored(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
@@ -257,24 +256,16 @@ class TestOpenAIResponsesSseUsageExtractor:
 
         assert usage == {}
 
-    def test_eventless_non_terminal_skips_large_delta_before_full_extraction(self, monkeypatch):
-        real_extractor = openai_responses.JsonSelectiveExtractor
-        fed_chunks: list[bytes] = []
-
-        class TrackingExtractor:
-            def __init__(self, **kwargs):
-                self._inner = real_extractor(**kwargs)
-
-            def feed(self, chunk: bytes) -> None:
-                fed_chunks.append(chunk)
-                self._inner.feed(chunk)
-
-            def finish(self):
-                return self._inner.finish()
-
-        monkeypatch.setattr(openai_responses, "JsonSelectiveExtractor", TrackingExtractor)
+    def test_eventless_large_non_terminal_delta_recovers_for_next_event(self):
         parse, usage = create_openai_responses_sse_usage_extractor()
         delta_payload = b'{"type":"response.output_text.delta","delta":"' + b"x" * 100_000 + b'"}'
+
+        assert (
+            openai_responses._classify_responses_event_type(
+                delta_payload[: openai_responses._RESPONSES_EVENTLESS_SSE_PREFILTER_MAX_BYTES]
+            )
+            == openai_responses._RESPONSES_EVENT_KNOWN_NON_USAGE
+        )
         parse(
             b"data: "
             + delta_payload
@@ -285,7 +276,6 @@ class TestOpenAIResponsesSseUsageExtractor:
 
         assert usage["model"] == "gpt-5.4"
         assert usage["tokens.output"] == 9
-        assert delta_payload not in b"".join(fed_chunks)
 
     def test_eventless_terminal_type_split_across_chunks_extracts_usage(self):
         parse, usage = create_openai_responses_sse_usage_extractor()

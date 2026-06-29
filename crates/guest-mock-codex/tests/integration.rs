@@ -1588,6 +1588,38 @@ fn resume_rejects_duplicate_matching_sessions_without_events() -> std::io::Resul
 }
 
 #[test]
+fn resume_rejects_duplicate_matching_session_in_non_layout_tree_without_events()
+-> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let thread_id = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+    let layout_path = dir
+        .path()
+        .join(format!("sessions/2001/01/01/{thread_id}.jsonl"));
+    let non_layout_path = dir.path().join(format!(
+        "sessions/not-layout/deep/rollout-restored-{thread_id}.jsonl"
+    ));
+    write_session_file(&layout_path, &build_events(thread_id, "layout"))?;
+    write_session_file(&non_layout_path, &build_events(thread_id, "non-layout"))?;
+
+    let out = run(dir.path(), &["exec", "resume", thread_id, "--", "turn-3"])?;
+
+    assert_ne!(out.status, 0);
+    assert!(
+        out.events.is_empty(),
+        "non-layout duplicate should fail before emitting events: {:?}",
+        out.events
+    );
+    assert!(
+        out.stderr.contains("multiple session files found"),
+        "resume should report duplicate session files: {:?}",
+        out.stderr
+    );
+    assert_eq!(read_session_file(&layout_path)?.len(), 3);
+    assert_eq!(read_session_file(&non_layout_path)?.len(), 3);
+    Ok(())
+}
+
+#[test]
 fn resume_preserves_stale_fixed_temp_file() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     let thread_id = "0199a213-81c0-7800-8aa1-bbab2a035a53";

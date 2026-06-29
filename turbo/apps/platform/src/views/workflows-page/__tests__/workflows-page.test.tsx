@@ -23,7 +23,14 @@ import {
 } from "../../../__tests__/page-helper.ts";
 import { pathname, search } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { PLACEHOLDER } from "../../zero-page/__tests__/chat-test-helpers.ts";
+import {
+  patchWorkflowMetadataForm$,
+  setWorkflowFileDraft$,
+} from "../../../signals/workflows-page/workflows-signals.ts";
+import {
+  mockChatLifecycle,
+  PLACEHOLDER,
+} from "../../zero-page/__tests__/chat-test-helpers.ts";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
@@ -34,8 +41,18 @@ const SALES_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000201";
 const OPS_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000202";
 const OTHER_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000203";
 const PENDING_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000204";
+const COPIED_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000205";
 const GMAIL_TRIGGER_ID = "workflow-trigger-gmail-new-message";
 const GMAIL_LABEL_TRIGGER_ID = "workflow-trigger-gmail-label-applied";
+const GITHUB_LABEL_TRIGGER_ID = "workflow-trigger-github-label-applied";
+const WORKFLOW_CHAT_THREAD_ID = "00000000-0000-4000-a000-000000000300";
+const TRIGGER_RUN_THREAD_ID = "00000000-0000-4000-a000-000000000301";
+
+type WorkflowDetailTestTab = "triggers" | "instructions" | "info";
+
+function workflowDetailPath(tab: WorkflowDetailTestTab): string {
+  return `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}?tab=${tab}`;
+}
 
 type WorkflowScheduleTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
@@ -52,6 +69,10 @@ type WorkflowWebhookTriggerSummary = Extract<
 type WorkflowGmailLabelAppliedTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { kind: "event"; eventType: "gmail-label-applied" }
+>;
+type WorkflowGithubLabelAppliedTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "event"; eventType: "github-label-applied" }
 >;
 
 function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
@@ -73,8 +94,6 @@ function weekdayWorkflowTrigger(): WorkflowScheduleTriggerSummary {
     chatThreadId: "thread_weekday_brief",
     nextRunAt: "2026-06-19T01:00:00.000Z",
     lastRunAt: "2026-06-18T01:00:00.000Z",
-    unattendedConnectorRefs: [],
-    unattendedPermissionPolicy: null,
   };
 }
 
@@ -98,8 +117,6 @@ function gmailWorkflowTrigger(): WorkflowGmailNewMessageTriggerSummary {
     chatThreadId: "thread_gmail_new_message",
     nextRunAt: null,
     lastRunAt: null,
-    unattendedConnectorRefs: ["gmail"],
-    unattendedPermissionPolicy: null,
   };
 }
 
@@ -121,8 +138,30 @@ function gmailLabelWorkflowTrigger(): WorkflowGmailLabelAppliedTriggerSummary {
     chatThreadId: "thread_gmail_label_applied",
     nextRunAt: null,
     lastRunAt: null,
-    unattendedConnectorRefs: ["gmail"],
-    unattendedPermissionPolicy: null,
+  };
+}
+
+function githubLabelWorkflowTrigger(): WorkflowGithubLabelAppliedTriggerSummary {
+  return {
+    id: GITHUB_LABEL_TRIGGER_ID,
+    kind: "event",
+    eventType: "github-label-applied",
+    eventConfig: {
+      provider: "github",
+      event: "label_applied",
+      labelName: "triage",
+      filters: {
+        subject: "both",
+        actor: { type: "me" },
+      },
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_github_label_applied",
+    nextRunAt: null,
+    lastRunAt: null,
   };
 }
 
@@ -146,8 +185,6 @@ function webhookWorkflowTrigger(): WorkflowWebhookTriggerSummary {
     webhookUrl: "https://api.vm0.test/api/webhooks/workflow-triggers/whk_test",
     secretLastFour: "abcd",
     lastReceivedAt: null,
-    unattendedConnectorRefs: [],
-    unattendedPermissionPolicy: null,
   };
 }
 
@@ -413,6 +450,58 @@ function mockWorkflowApis(
   );
 }
 
+function mockDeleteWorkflow(
+  workflows: ZeroWorkflowDetailResponse[],
+  onDelete: (workflowId: string) => void | Promise<void>,
+): void {
+  context.mocks.api(
+    zeroWorkflowsDetailContract.delete,
+    async ({ params, respond }) => {
+      await onDelete(params.workflowId);
+      const index = workflows.findIndex((workflow) => {
+        return workflow.id === params.workflowId;
+      });
+      if (index !== -1) {
+        workflows.splice(index, 1);
+      }
+      return respond(204);
+    },
+  );
+}
+
+function mockConnectedTriggerConnectors(): void {
+  context.mocks.data.connectors([
+    {
+      id: "10000000-0000-4000-a000-000000000001",
+      type: "slack",
+      authMethod: "oauth",
+      externalId: "slack-workspace",
+      externalUsername: "workspace",
+      externalEmail: null,
+      oauthScopes: [],
+      connectionStatus: "connected",
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    },
+    {
+      id: "10000000-0000-4000-a000-000000000002",
+      type: "gmail",
+      authMethod: "oauth",
+      externalId: "gmail-user",
+      externalUsername: "user@example.com",
+      externalEmail: "user@example.com",
+      oauthScopes: ["https://www.googleapis.com/auth/gmail.modify"],
+      connectionStatus: "connected",
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      updatedAt: "2026-01-01T00:00:00Z",
+    },
+  ]);
+}
+
 function mockCreateWorkflowTrigger(
   onCreate: (body: ZeroWorkflowTriggerCreateRequest) => void,
 ): void {
@@ -436,6 +525,12 @@ function mockCreateWorkflowTrigger(
           eventConfig: body.eventConfig,
         });
       }
+      if (body.eventType === "github-label-applied") {
+        return respond(201, {
+          ...githubLabelWorkflowTrigger(),
+          eventConfig: body.eventConfig,
+        });
+      }
       return respond(201, {
         ...gmailWorkflowTrigger(),
         eventConfig: body.eventConfig,
@@ -452,6 +547,13 @@ function mockUpdateWorkflowTrigger(
     ({ params, body, respond }) => {
       onUpdate(params.id, body);
       if ("eventConfig" in body) {
+        if (body.eventConfig.provider === "github") {
+          return respond(200, {
+            ...githubLabelWorkflowTrigger(),
+            id: params.id,
+            eventConfig: body.eventConfig,
+          });
+        }
         if (body.eventConfig.event === "label_applied") {
           return respond(200, {
             ...gmailLabelWorkflowTrigger(),
@@ -469,6 +571,45 @@ function mockUpdateWorkflowTrigger(
         ...weekdayWorkflowTrigger(),
         id: params.id,
         schedule: body.schedule,
+      });
+    },
+  );
+}
+
+function mockRunWorkflowTrigger(onRun: (triggerId: string) => void): void {
+  context.mocks.api(zeroWorkflowTriggersContract.run, ({ params, respond }) => {
+    onRun(params.id);
+    return respond(201, {
+      runId: "workflow-trigger-run-now",
+      chatThreadId: TRIGGER_RUN_THREAD_ID,
+    });
+  });
+}
+
+function mockDisableWorkflowTrigger(
+  onDisable: (triggerId: string) => void,
+): void {
+  context.mocks.api(
+    zeroWorkflowTriggersContract.disable,
+    ({ params, respond }) => {
+      onDisable(params.id);
+      return respond(200, {
+        ...weekdayWorkflowTrigger(),
+        id: params.id,
+        enabled: false,
+      });
+    },
+  );
+}
+
+function mockOpenWorkflowChat(onOpen: (workflowId: string) => void): void {
+  context.mocks.api(
+    zeroWorkflowsDetailContract.chatThread,
+    ({ params, respond }) => {
+      onOpen(params.workflowId);
+      return respond(200, {
+        chatThreadId: WORKFLOW_CHAT_THREAD_ID,
+        prompt: "/sales-research",
       });
     },
   );
@@ -509,17 +650,6 @@ function buttonByText(
   return button;
 }
 
-function queryButtonByText(
-  text: RoleTextMatch,
-  container: ParentNode = document.body,
-): HTMLElement | null {
-  return (
-    queryAllByRoleFast("button", container).find((candidate) => {
-      return matchesText(candidate, text);
-    }) ?? null
-  );
-}
-
 function menuItemByText(text: RoleTextMatch): HTMLElement {
   const menuItems = queryAllByRoleFast("menuitem");
   const item = menuItems.find((candidate) => {
@@ -529,6 +659,21 @@ function menuItemByText(text: RoleTextMatch): HTMLElement {
     throw new Error(`${matchLabel(text)} menu item not found`);
   }
   return item;
+}
+
+function selectOptionByLabel(
+  label: string,
+  option: string | RegExp,
+  container: HTMLElement,
+): void {
+  const control =
+    within(container)
+      .getAllByLabelText(label)
+      .find((element) => {
+        return element.getAttribute("role") === "combobox";
+      }) ?? within(container).getByLabelText(label);
+  click(control);
+  click(screen.getByRole("option", { name: option }));
 }
 
 describe("agent workflows tab", () => {
@@ -595,11 +740,13 @@ describe("agent workflows tab", () => {
 
 describe("workflow detail page", () => {
   it("renders the instruction, files, and triggers", async () => {
+    context.mocks.data.userPreferences({ timezone: "UTC" });
     mockWorkflowApis([salesResearch()]);
+    mockConnectedTriggerConnectors();
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+      path: workflowDetailPath("instructions"),
     });
 
     await waitFor(() => {
@@ -619,17 +766,35 @@ describe("workflow detail page", () => {
     );
     expect(within(breadcrumb).getByText("Agents")).toBeInTheDocument();
     expect(within(breadcrumb).getByText("Research Bot")).toBeInTheDocument();
-    expect(within(breadcrumb).getByText("Sales Research")).toBeInTheDocument();
-    const workflowFilesButton =
-      within(breadcrumb).getByLabelText("Workflow files");
+    const currentBreadcrumb = within(breadcrumb).getByText("Sales Research");
+    expect(currentBreadcrumb).toBeInTheDocument();
+    expect(currentBreadcrumb).toHaveClass("font-medium", "text-foreground");
+    const workflowFilesButton = screen.getByLabelText("Workflow files");
     expect(workflowFilesButton).toHaveTextContent("instructions");
-    click(buttonByText(/trigger/i));
-    expect(search()).toBe("?sidebar=triggers");
-    expect(buttonByText("Close trigger sidebar")).toBeInTheDocument();
-    expect(screen.getByText("Weekdays at 9:00 AM")).toBeInTheDocument();
-    expect(screen.getByText("Enabled")).toBeInTheDocument();
-    expect(screen.getByText("Open thread")).toBeInTheDocument();
-    click(workflowFilesButton);
+    click(buttonByText("Triggers"));
+    await waitFor(() => {
+      expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
+    });
+    expect(search()).toBe("?tab=triggers");
+    expect(screen.getByText("Schedule")).toBeInTheDocument();
+    expect(screen.getAllByText("Last run").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Next run").length).toBeGreaterThan(0);
+    expect(buttonByText("Run now")).toBeInTheDocument();
+    click(buttonByText("Info"));
+    await waitFor(() => {
+      expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
+    });
+    expect(
+      screen.queryByText("Gather CRM context before outreach."),
+    ).not.toBeInTheDocument();
+    click(buttonByText("Instructions"));
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+    expect(search()).toBe("?tab=instructions");
+    click(screen.getByLabelText("Workflow files"));
     click(menuItemByText(/config\/settings\.json/));
     await waitFor(() => {
       expect(
@@ -639,27 +804,51 @@ describe("workflow detail page", () => {
     expect(screen.getByLabelText("Workflow file content")).toHaveValue(
       '{ "risk": "low", "tone": "direct" }',
     );
-
-    await waitFor(() => {
-      expect(buttonByText(/permissions/i)).toBeInTheDocument();
-    });
-    click(buttonByText(/permissions/i));
-    await waitFor(() => {
-      expect(screen.getByText("Trigger permissions")).toBeInTheDocument();
-    });
-    expect(
-      screen.getByPlaceholderText("Search connectors"),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Slack")).toBeInTheDocument();
+    expect(search()).toBe("?tab=instructions&file=config%2Fsettings.json");
   });
 
-  it("prefills a new agent chat with the workflow slash command", async () => {
-    mockAgentPageApis();
-    mockWorkflowApis([salesResearch()]);
+  it("ignores stale workflow instruction drafts without edit permission", async () => {
+    const workflow = {
+      ...salesResearch(),
+      canManage: false,
+    };
+    context.store.set(setWorkflowFileDraft$, {
+      workflowId: SALES_WORKFLOW_ID,
+      filePath: null,
+      sourceContent: "Gather CRM context before outreach.",
+      content: "Unsaved local workflow draft.",
+    });
+    mockWorkflowApis([workflow]);
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+      path: workflowDetailPath("instructions"),
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("Unsaved local workflow draft."),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("You have unsaved changes"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("opens the shared workflow chat thread with the workflow slash command", async () => {
+    const openedWorkflowIds: string[] = [];
+    mockChatLifecycle(context, { threadId: WORKFLOW_CHAT_THREAD_ID });
+    mockWorkflowApis([salesResearch()]);
+    mockOpenWorkflowChat((workflowId) => {
+      openedWorkflowIds.push(workflowId);
+    });
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("instructions"),
     });
 
     await waitFor(() => {
@@ -668,53 +857,266 @@ describe("workflow detail page", () => {
       ).toBeInTheDocument();
     });
 
-    click(buttonByText("Use this"));
+    click(buttonByText("Chat with Research Bot"));
 
+    await waitFor(() => {
+      expect(openedWorkflowIds).toStrictEqual([SALES_WORKFLOW_ID]);
+    });
     const textarea = await waitFor(() => {
       return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
     });
-    expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+    expect(pathname()).toBe(`/chats/${WORKFLOW_CHAT_THREAD_ID}`);
     expect(search()).toBe("");
     expect(textarea).toHaveValue("/sales-research");
   });
 
-  it("orders workflow actions menu sections with audit metadata last", async () => {
+  it("orders workflow info sections with audit metadata last", async () => {
     mockWorkflowAuditMembers();
     mockWorkflowApis([salesResearch()]);
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+      path: workflowDetailPath("info"),
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Gather CRM context before outreach."),
-      ).toBeInTheDocument();
+      expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
     });
 
-    click(buttonByText("Workflow actions"));
-
-    const menu = await screen.findByRole("menu");
     await waitFor(() => {
-      expect(textFor(menu)).toContain("Created by Ethan Zhang");
+      expect(textFor(document.body)).toContain("Created by Ethan Zhang");
     });
-    const menuText = textFor(menu);
-    expect(menuText).toContain("Created by Ethan Zhang");
-    expect(menuText).toContain("Last updated by Lancy Lan");
-    expect(menuText).toContain("Jun 17, 2026");
-    expect(menuText).toContain("Jun 20, 2026");
-    expect(menuText.indexOf("Visibility")).toBeLessThan(
-      menuText.indexOf("Edit"),
+    const pageText = textFor(document.body);
+    expect(pageText).toContain("Created by Ethan Zhang");
+    expect(pageText).toContain("Last updated by Lancy Lan");
+    expect(pageText).toContain("Jun 17, 2026");
+    expect(pageText).toContain("Jun 20, 2026");
+    expect(pageText.indexOf("Slug")).toBeLessThan(
+      pageText.indexOf("Visibility"),
     );
-    expect(menuText.indexOf("Edit")).toBeLessThan(menuText.indexOf("Copy"));
-    expect(menuText.indexOf("Copy")).toBeLessThan(menuText.indexOf("Delete"));
-    expect(menuText.indexOf("Delete")).toBeLessThan(
-      menuText.indexOf("Created by"),
+    expect(pageText.indexOf("Visibility")).toBeLessThan(
+      pageText.indexOf("Copy workflow"),
+    );
+    expect(pageText.indexOf("Copy workflow")).toBeLessThan(
+      pageText.indexOf("Delete workflow"),
+    );
+    expect(pageText.indexOf("Delete workflow")).toBeLessThan(
+      pageText.indexOf("Created by"),
     );
   });
 
-  it("prefills and updates workflow metadata from the actions menu", async () => {
+  it("shows source and target actions after copying a workflow", async () => {
+    const workflows = [salesResearch()];
+    const copiedWorkflow: ZeroWorkflowDetailResponse = {
+      ...salesResearch(),
+      id: COPIED_WORKFLOW_ID,
+      agentId: OTHER_AGENT_ID,
+      agentName: "support-bot",
+      agentDisplayName: "Support Bot",
+      visibility: "private",
+      triggers: [],
+    };
+    const copyGate = context.mocks.deferred<void>();
+    const copyRequests: {
+      readonly workflowId: string;
+      readonly toAgentId: string;
+    }[] = [];
+    const disabledTriggerIds: string[] = [];
+    mockAgentPageApis();
+    mockWorkflowApis(workflows);
+    mockDisableWorkflowTrigger((triggerId) => {
+      disabledTriggerIds.push(triggerId);
+    });
+    context.mocks.api(
+      zeroWorkflowsDetailContract.copy,
+      async ({ params, body, respond }) => {
+        copyRequests.push({
+          workflowId: params.workflowId,
+          toAgentId: body.toAgentId,
+        });
+        await copyGate.promise;
+        workflows.push(copiedWorkflow);
+        return respond(201, summary(copiedWorkflow));
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("info"),
+    });
+
+    await waitFor(() => {
+      expect(buttonByText(/^Copy workflow$/)).toBeInTheDocument();
+    });
+    click(buttonByText(/^Copy workflow$/));
+    await waitFor(() => {
+      expect(buttonByText(/Support Bot/)).toBeInTheDocument();
+    });
+    click(buttonByText(/Support Bot/));
+
+    await waitFor(() => {
+      expect(copyRequests).toStrictEqual([
+        { workflowId: SALES_WORKFLOW_ID, toAgentId: OTHER_AGENT_ID },
+      ]);
+    });
+    expect(
+      screen.getByText(
+        "Copying Sales Research from Research Bot to Support Bot.",
+      ),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Copy to another agent as a new private workflow."),
+    ).not.toBeInTheDocument();
+    expect(screen.getByText("Public target agent")).toBeInTheDocument();
+
+    copyGate.resolve();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Workflow copied to Support Bot"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.getByText("Source")).toBeInTheDocument();
+    expect(screen.getByText("Target")).toBeInTheDocument();
+    expect(buttonByText(/Pause source triggers/)).toBeInTheDocument();
+    expect(buttonByText(/Delete source workflow/)).toBeInTheDocument();
+    expect(buttonByText(/View target workflow/)).toBeInTheDocument();
+
+    click(buttonByText(/Pause source triggers/));
+    expect(buttonByText(/Pause source triggers/)).toBeDisabled();
+    expect(
+      buttonByText(/Pause source triggers/).querySelector(".animate-spin"),
+    ).not.toBeNull();
+    await waitFor(() => {
+      expect(disabledTriggerIds).toStrictEqual([
+        "workflow-trigger-weekday-brief",
+      ]);
+    });
+    expect(
+      screen.getByText("Source triggers are paused on Research Bot"),
+    ).toBeInTheDocument();
+
+    click(buttonByText(/View target workflow/));
+    await waitFor(() => {
+      expect(pathname()).toBe(
+        `/agents/${OTHER_AGENT_ID}/workflows/${COPIED_WORKFLOW_ID}`,
+      );
+    });
+  });
+
+  it("shows copy failure in the source and target progress state", async () => {
+    mockAgentPageApis();
+    mockWorkflowApis([salesResearch()]);
+    context.mocks.api(zeroWorkflowsDetailContract.copy, ({ respond }) => {
+      return respond(400, {
+        error: {
+          code: "BAD_REQUEST",
+          message: "Failed to copy workflow",
+        },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("info"),
+    });
+
+    await waitFor(() => {
+      expect(buttonByText(/^Copy workflow$/)).toBeInTheDocument();
+    });
+    click(buttonByText(/^Copy workflow$/));
+    await waitFor(() => {
+      expect(buttonByText(/Support Bot/)).toBeInTheDocument();
+    });
+    click(buttonByText(/Support Bot/));
+
+    expect(
+      screen.getByText(
+        "Copying Sales Research from Research Bot to Support Bot.",
+      ),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Copy failed")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Close this dialog and try again."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Source")).toBeInTheDocument();
+    expect(screen.getByText("Target")).toBeInTheDocument();
+    expect(screen.queryByText(/Workflow copied to/)).not.toBeInTheDocument();
+  });
+
+  it("deletes the source workflow from copied workflow actions", async () => {
+    const workflows = [salesResearch()];
+    const copiedWorkflow: ZeroWorkflowDetailResponse = {
+      ...salesResearch(),
+      id: COPIED_WORKFLOW_ID,
+      agentId: OTHER_AGENT_ID,
+      agentName: "support-bot",
+      agentDisplayName: "Support Bot",
+      visibility: "private",
+      triggers: [],
+    };
+    const deleteGate = context.mocks.deferred<void>();
+    const deletedWorkflowIds: string[] = [];
+    mockAgentPageApis();
+    mockWorkflowApis(workflows);
+    mockDeleteWorkflow(workflows, async (workflowId) => {
+      deletedWorkflowIds.push(workflowId);
+      await deleteGate.promise;
+    });
+    context.mocks.api(zeroWorkflowsDetailContract.copy, ({ respond }) => {
+      workflows.push(copiedWorkflow);
+      return respond(201, summary(copiedWorkflow));
+    });
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("info"),
+    });
+
+    await waitFor(() => {
+      expect(buttonByText(/^Copy workflow$/)).toBeInTheDocument();
+    });
+    click(buttonByText(/^Copy workflow$/));
+    await waitFor(() => {
+      expect(buttonByText(/Support Bot/)).toBeInTheDocument();
+    });
+    click(buttonByText(/Support Bot/));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Workflow copied to Support Bot"),
+      ).toBeInTheDocument();
+    });
+    expect(buttonByText(/Pause source triggers/)).not.toBeDisabled();
+    click(buttonByText(/Delete source workflow/));
+
+    await waitFor(() => {
+      expect(deletedWorkflowIds).toStrictEqual([SALES_WORKFLOW_ID]);
+    });
+    expect(buttonByText(/Pause source triggers/)).toBeDisabled();
+    expect(buttonByText(/Delete source workflow/)).toBeDisabled();
+    expect(
+      buttonByText(/Delete source workflow/).querySelector(".animate-spin"),
+    ).not.toBeNull();
+    expect(
+      screen.queryByRole("heading", { name: "Delete workflow" }),
+    ).not.toBeInTheDocument();
+
+    deleteGate.resolve();
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${AGENT_ID}/workflows`);
+    });
+    expect(
+      workflows.some((workflow) => {
+        return workflow.id === SALES_WORKFLOW_ID;
+      }),
+    ).toBeFalsy();
+  });
+
+  it("prefills and updates workflow metadata from the info tab", async () => {
     const updateBodies: ZeroWorkflowUpdateRequest[] = [];
     mockWorkflowApis([salesResearch()], (body) => {
       updateBodies.push(body);
@@ -722,17 +1124,8 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+      path: workflowDetailPath("info"),
     });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Gather CRM context before outreach."),
-      ).toBeInTheDocument();
-    });
-
-    click(buttonByText("Workflow actions"));
-    click(menuItemByText("Edit"));
 
     const form = await screen.findByRole("form", {
       name: "Workflow metadata",
@@ -755,7 +1148,10 @@ describe("workflow detail page", () => {
       within(form).getByLabelText("Description"),
       "Use when an account needs a fresh research brief.",
     );
-    fireEvent.submit(form);
+    await waitFor(() => {
+      expect(screen.getByTestId("unsaved-bar")).toBeInTheDocument();
+    });
+    click(screen.getByTestId("save-button"));
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
@@ -766,26 +1162,56 @@ describe("workflow detail page", () => {
     });
   });
 
-  it("derives the trigger sidebar from workflow detail search params", async () => {
+  it("ignores stale workflow metadata edits without edit permission", async () => {
+    const workflow = {
+      ...salesResearch(),
+      canManage: false,
+    };
+    context.store.set(patchWorkflowMetadataForm$, {
+      workflowId: SALES_WORKFLOW_ID,
+      patch: { displayName: "Unsaved Account Brief" },
+    });
+    mockWorkflowApis([workflow]);
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("info"),
+    });
+
+    const form = await screen.findByRole("form", {
+      name: "Workflow metadata",
+    });
+    expect(within(form).getByLabelText("Name")).toHaveValue("Sales Research");
+    expect(
+      screen.queryByText("You have unsaved changes"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("derives the active tab from workflow detail search params", async () => {
+    context.mocks.data.userPreferences({ timezone: "UTC" });
     mockWorkflowApis([salesResearch()]);
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}?sidebar=triggers`,
+      path: workflowDetailPath("triggers"),
     });
 
     await waitFor(() => {
-      expect(buttonByText("Close trigger sidebar")).toBeInTheDocument();
+      expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
     });
-    expect(screen.getByText("Weekdays at 9:00 AM")).toBeInTheDocument();
-    click(buttonByText("Close trigger sidebar"));
+    click(buttonByText("Info"));
 
+    await waitFor(() => {
+      expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
+    });
+    expect(search()).toBe("?tab=info");
+    click(buttonByText("Instructions"));
     await waitFor(() => {
       expect(
-        queryButtonByText("Close trigger sidebar"),
-      ).not.toBeInTheDocument();
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
     });
-    expect(search()).toBe("");
+    expect(search()).toBe("?tab=instructions");
   });
 
   it("renders Gmail new message trigger match summaries", async () => {
@@ -797,15 +1223,14 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+      path: workflowDetailPath("triggers"),
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Gather CRM context before outreach."),
-      ).toBeInTheDocument();
+      expect(screen.getAllByText("Gmail new message").length).toBeGreaterThan(
+        0,
+      );
     });
-    click(buttonByText(/trigger/i));
 
     await waitFor(() => {
       expect(screen.getAllByText("Gmail new message").length).toBeGreaterThan(
@@ -818,6 +1243,33 @@ describe("workflow detail page", () => {
     ).toBeInTheDocument();
   });
 
+  it("runs a trigger immediately and navigates to the bound chat thread", async () => {
+    const runTriggerIds: string[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockChatLifecycle(context, { threadId: TRIGGER_RUN_THREAD_ID });
+    mockRunWorkflowTrigger((triggerId) => {
+      runTriggerIds.push(triggerId);
+    });
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("triggers"),
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Run now")).toBeInTheDocument();
+    });
+    click(buttonByText("Run now"));
+
+    await waitFor(() => {
+      expect(runTriggerIds).toStrictEqual(["workflow-trigger-weekday-brief"]);
+    });
+    await waitFor(() => {
+      expect(pathname()).toBe(`/chats/${TRIGGER_RUN_THREAD_ID}`);
+    });
+    expect(search()).toBe("");
+  });
+
   it("creates a Gmail new message trigger with text match rules", async () => {
     const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
     mockWorkflowApis([salesResearch()]);
@@ -827,15 +1279,12 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+      path: workflowDetailPath("triggers"),
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Gather CRM context before outreach."),
-      ).toBeInTheDocument();
+      expect(buttonByText("Add trigger")).toBeInTheDocument();
     });
-    click(buttonByText(/trigger/i));
     const addTriggerButton = queryAllByRoleFast("button").find((button) => {
       return button.textContent?.trim() === "Add trigger";
     });
@@ -893,15 +1342,12 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+      path: workflowDetailPath("triggers"),
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Gather CRM context before outreach."),
-      ).toBeInTheDocument();
+      expect(buttonByText("Add trigger")).toBeInTheDocument();
     });
-    click(buttonByText(/trigger/i));
     const addTriggerButton = queryAllByRoleFast("button").find((button) => {
       return button.textContent?.trim() === "Add trigger";
     });
@@ -952,7 +1398,7 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+      path: workflowDetailPath("triggers"),
       featureSwitches: {
         [FeatureSwitchKey.WorkflowsViewer]: true,
         [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
@@ -960,11 +1406,8 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByText("Gather CRM context before outreach."),
-      ).toBeInTheDocument();
+      expect(buttonByText("Add trigger")).toBeInTheDocument();
     });
-    click(buttonByText(/trigger/i));
     click(buttonByText("Add trigger"));
 
     await waitFor(() => {
@@ -987,18 +1430,239 @@ describe("workflow detail page", () => {
         },
       });
     });
-    await waitFor(() => {
-      expect(
-        screen.getByDisplayValue(webhookWorkflowTrigger().webhookUrl),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.getByDisplayValue(webhookWorkflowTrigger().webhookUrl),
-    ).toHaveValue(webhookWorkflowTrigger().webhookUrl);
+    const webhookUrlField = await screen.findByDisplayValue(
+      webhookWorkflowTrigger().webhookUrl,
+    );
+    expect(webhookUrlField).toBeInTheDocument();
+    expect(webhookUrlField).toHaveValue(webhookWorkflowTrigger().webhookUrl);
+    expect(webhookUrlField).toHaveClass("min-w-0");
     expect(screen.getByDisplayValue("webhook-secret")).toHaveValue(
       "webhook-secret",
     );
-    expect(screen.getByText(/X-VM0-Signature/)).toBeInTheDocument();
+    const signedCurlExample = screen
+      .getByText(/X-VM0-Signature/)
+      .closest("pre");
+    expect(signedCurlExample).toBeInTheDocument();
+    expect(signedCurlExample).toHaveClass("whitespace-pre-wrap", "break-all");
+  });
+
+  it("creates a cron schedule trigger from the preferred time zone", async () => {
+    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    context.mocks.data.userPreferences({ timezone: "Asia/Shanghai" });
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowTrigger((body) => {
+      createBodies.push(body);
+    });
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("triggers"),
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add trigger")).toBeInTheDocument();
+    });
+    click(buttonByText("Add trigger"));
+    click(menuItemByText(/Scheduled time/u));
+
+    const createTriggerForm = await screen.findByRole("form", {
+      name: "Add schedule trigger",
+    });
+    expect(
+      within(createTriggerForm).getByText("Time (Asia/Shanghai)"),
+    ).toBeInTheDocument();
+    expect(within(createTriggerForm).queryByText(/Saved as/u)).toBeNull();
+    click(buttonByText("Add schedule", createTriggerForm));
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        schedule: {
+          type: "cron",
+          cronExpression: "0 1 * * *",
+          timezone: "UTC",
+        },
+      });
+    });
+  });
+
+  it("creates an interval trigger from the trigger menu", async () => {
+    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowTrigger((body) => {
+      createBodies.push(body);
+    });
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("triggers"),
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add trigger")).toBeInTheDocument();
+    });
+    click(buttonByText("Add trigger"));
+    click(menuItemByText(/^Interval/u));
+
+    const createTriggerForm = await screen.findByRole("form", {
+      name: "Add interval trigger",
+    });
+    selectOptionByLabel("Every", "30 minutes", createTriggerForm);
+    click(buttonByText("Add interval", createTriggerForm));
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        schedule: {
+          type: "loop",
+          intervalSeconds: 1800,
+        },
+      });
+    });
+  });
+
+  it("creates a one-time trigger from the trigger menu", async () => {
+    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowTrigger((body) => {
+      createBodies.push(body);
+    });
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("triggers"),
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add trigger")).toBeInTheDocument();
+    });
+    click(buttonByText("Add trigger"));
+    click(menuItemByText(/One-time run/u));
+
+    const createTriggerForm = await screen.findByRole("form", {
+      name: "Add one-time trigger",
+    });
+    fireEvent.change(within(createTriggerForm).getByLabelText("Run at"), {
+      target: { value: "2026-07-01T10:30" },
+    });
+    click(buttonByText("Add one-time run", createTriggerForm));
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        schedule: {
+          type: "once",
+          atTime: new Date("2026-07-01T10:30").toISOString(),
+          timezone: "UTC",
+        },
+      });
+    });
+  });
+
+  it("updates a cron schedule trigger from the preferred time zone", async () => {
+    const updateBodies: {
+      readonly triggerId: string;
+      readonly body: ZeroWorkflowTriggerUpdateRequest;
+    }[] = [];
+    context.mocks.data.userPreferences({ timezone: "Asia/Shanghai" });
+    const workflow = {
+      ...salesResearch(),
+      triggers: [
+        {
+          ...weekdayWorkflowTrigger(),
+          schedule: {
+            type: "cron",
+            cronExpression: "0 1 * * 1-5",
+            timezone: "UTC",
+          },
+        } satisfies WorkflowScheduleTriggerSummary,
+      ],
+    };
+    mockWorkflowApis([workflow]);
+    mockUpdateWorkflowTrigger((triggerId, body) => {
+      updateBodies.push({ triggerId, body });
+    });
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("triggers"),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Edit"));
+
+    const updateTriggerForm = screen.getByRole("form", {
+      name: "Update schedule trigger",
+    });
+    selectOptionByLabel("Hour", "16", updateTriggerForm);
+    selectOptionByLabel("Minute", "45", updateTriggerForm);
+    click(buttonByText("Save schedule", updateTriggerForm));
+
+    await waitFor(() => {
+      expect(updateBodies.at(-1)).toStrictEqual({
+        triggerId: "workflow-trigger-weekday-brief",
+        body: {
+          schedule: {
+            type: "cron",
+            cronExpression: "45 8 * * 1-5",
+            timezone: "UTC",
+          },
+        },
+      });
+    });
+  });
+
+  it("updates a loop schedule trigger from the edit dialog", async () => {
+    const updateBodies: {
+      readonly triggerId: string;
+      readonly body: ZeroWorkflowTriggerUpdateRequest;
+    }[] = [];
+    const workflow = {
+      ...salesResearch(),
+      triggers: [
+        {
+          ...weekdayWorkflowTrigger(),
+          schedule: {
+            type: "loop",
+            intervalSeconds: 3600,
+          },
+          scheduleSummary: "Every 3600s",
+        } satisfies WorkflowScheduleTriggerSummary,
+      ],
+    };
+    mockWorkflowApis([workflow]);
+    mockUpdateWorkflowTrigger((triggerId, body) => {
+      updateBodies.push({ triggerId, body });
+    });
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("triggers"),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Every 1 hour")).toBeInTheDocument();
+    });
+
+    click(buttonByText("Edit"));
+
+    const updateTriggerForm = screen.getByRole("form", {
+      name: "Update schedule trigger",
+    });
+    selectOptionByLabel("Every", "30 minutes", updateTriggerForm);
+    fireEvent.submit(updateTriggerForm);
+
+    await waitFor(() => {
+      expect(updateBodies.at(-1)).toStrictEqual({
+        triggerId: "workflow-trigger-weekday-brief",
+        body: {
+          schedule: {
+            type: "loop",
+            intervalSeconds: 1800,
+          },
+        },
+      });
+    });
   });
 
   it("updates a Gmail new message trigger with text match rules", async () => {
@@ -1029,22 +1693,16 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+      path: workflowDetailPath("triggers"),
     });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Gather CRM context before outreach."),
-      ).toBeInTheDocument();
-    });
-    click(buttonByText(/trigger/i));
 
     await waitFor(() => {
       expect(screen.getAllByText("Gmail new message").length).toBeGreaterThan(
         0,
       );
     });
-    click(screen.getByText("Edit match"));
+
+    click(buttonByText("Edit"));
 
     const updateTriggerForm = screen.getByRole("form", {
       name: "Update Gmail new message trigger",
@@ -1096,20 +1754,14 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+      path: workflowDetailPath("triggers"),
     });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText("Gather CRM context before outreach."),
-      ).toBeInTheDocument();
-    });
-    click(buttonByText(/trigger/i));
 
     await waitFor(() => {
       expect(screen.getByText("Gmail label applied")).toBeInTheDocument();
     });
-    click(screen.getByText("Edit label"));
+
+    click(buttonByText("Edit"));
 
     const updateTriggerForm = screen.getByRole("form", {
       name: "Update Gmail label trigger",
@@ -1147,7 +1799,7 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+      path: workflowDetailPath("instructions"),
     });
 
     await waitFor(() => {
@@ -1164,7 +1816,7 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+      path: workflowDetailPath("instructions"),
     });
 
     await waitFor(() => {
@@ -1195,7 +1847,7 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}`,
+      path: workflowDetailPath("instructions"),
     });
 
     await waitFor(() => {

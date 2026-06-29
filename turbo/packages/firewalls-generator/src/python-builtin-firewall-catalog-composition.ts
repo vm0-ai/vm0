@@ -18,6 +18,7 @@ interface PythonBuiltinFirewallSourcePermission {
 
 interface PythonBuiltinFirewallSourceApi {
   readonly base: string;
+  readonly hostPolicy?: unknown;
   readonly auth: unknown;
   readonly permissions?: readonly PythonBuiltinFirewallSourcePermission[];
 }
@@ -57,6 +58,7 @@ function runtimeApi(
 ): BuiltinFirewallRuntimeApi {
   return {
     base: api.base,
+    ...(api.hostPolicy !== undefined ? { hostPolicy: api.hostPolicy } : {}),
     auth: api.auth,
     ...(api.permissions !== undefined
       ? { permissions: api.permissions.map(runtimePermission) }

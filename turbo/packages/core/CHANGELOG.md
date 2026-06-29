@@ -1,5 +1,165 @@
 # Changelog
 
+## [8.375.0](https://github.com/vm0-ai/vm0/compare/core-v8.374.6...core-v8.375.0) (2026-06-29)
+
+
+### Features
+
+* add GitHub label workflow triggers ([#19322](https://github.com/vm0-ai/vm0/issues/19322)) ([245be48](https://github.com/vm0-ai/vm0/commit/245be48e4eab3b4644e00fe9480213c327dda1b9))
+
+
+### Refactoring
+
+* remove legacy agent compose instructions route ([#19338](https://github.com/vm0-ai/vm0/issues/19338)) ([9835703](https://github.com/vm0-ai/vm0/commit/9835703457fb0cedb8aeb4516c61299e843577b2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.125.0
+    * @vm0/connectors bumped to 1.113.0
+
+## [8.374.6](https://github.com/vm0-ai/vm0/compare/core-v8.374.5...core-v8.374.6) (2026-06-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.6
+    * @vm0/connectors bumped to 1.112.1
+
+## [8.374.5](https://github.com/vm0-ai/vm0/compare/core-v8.374.4...core-v8.374.5) (2026-06-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.5
+
+## [8.374.4](https://github.com/vm0-ai/vm0/compare/core-v8.374.3...core-v8.374.4) (2026-06-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.4
+    * @vm0/connectors bumped to 1.112.0
+
+## [8.374.3](https://github.com/vm0-ai/vm0/compare/core-v8.374.2...core-v8.374.3) (2026-06-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.3
+
+## [8.374.2](https://github.com/vm0-ai/vm0/compare/core-v8.374.1...core-v8.374.2) (2026-06-28)
+
+
+### Bug Fixes
+
+* **api:** deploy API for runtime dependency releases ([#19243](https://github.com/vm0-ai/vm0/issues/19243)) ([ba51114](https://github.com/vm0-ai/vm0/commit/ba5111415aab9e1cc3076e1d0ad60a551a9f87cf))
+* block schedule automation writes behind workflow trigger switch ([#19248](https://github.com/vm0-ai/vm0/issues/19248)) ([6b1cf5f](https://github.com/vm0-ai/vm0/commit/6b1cf5f2dc5f062c3d3c39a4763ad89fb337d1dc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.2
+
+## [8.374.1](https://github.com/vm0-ai/vm0/compare/core-v8.374.0...core-v8.374.1) (2026-06-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.1
+
+## [8.374.0](https://github.com/vm0-ai/vm0/compare/core-v8.373.4...core-v8.374.0) (2026-06-28)
+
+
+### Features
+
+* add workflow trigger automations page ([#19222](https://github.com/vm0-ai/vm0/issues/19222)) ([f653fba](https://github.com/vm0-ai/vm0/commit/f653fbaf15fa08364b2e802828582b63d5ca1c18))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.0
+    * @vm0/connectors bumped to 1.111.0
+
+## [8.373.4](https://github.com/vm0-ai/vm0/compare/core-v8.373.3...core-v8.373.4) (2026-06-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.123.0
+
+## [8.373.3](https://github.com/vm0-ai/vm0/compare/core-v8.373.2...core-v8.373.3) (2026-06-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.122.0
+    * @vm0/connectors bumped to 1.110.4
+
+## [8.373.2](https://github.com/vm0-ai/vm0/compare/core-v8.373.1...core-v8.373.2) (2026-06-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.121.2
+    * @vm0/connectors bumped to 1.110.3
+
+## [8.373.1](https://github.com/vm0-ai/vm0/compare/core-v8.373.0...core-v8.373.1) (2026-06-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.121.1
+    * @vm0/connectors bumped to 1.110.2
+
+## [8.373.0](https://github.com/vm0-ai/vm0/compare/core-v8.372.2...core-v8.373.0) (2026-06-27)
+
+
+### Features
+
+* enable goal workflows for staff orgs ([#19141](https://github.com/vm0-ai/vm0/issues/19141)) ([6d01523](https://github.com/vm0-ai/vm0/commit/6d01523dbf2ecfaa6f583d4f64652122e825ca37))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.121.0
+    * @vm0/connectors bumped to 1.110.1
+
+## [8.372.2](https://github.com/vm0-ai/vm0/compare/core-v8.372.1...core-v8.372.2) (2026-06-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.120.0
+
 ## [8.372.1](https://github.com/vm0-ai/vm0/compare/core-v8.372.0...core-v8.372.1) (2026-06-26)
 
 

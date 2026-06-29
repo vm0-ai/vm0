@@ -112,7 +112,7 @@ pub fn record_sandbox_op(
     let entry = SandboxOpEntry {
         ts: log::timestamp(),
         action_type: action_type.to_string(),
-        duration_ms: duration.as_millis() as u64,
+        duration_ms: duration_ms(duration),
         success,
         error: error.map(String::from),
     };
@@ -128,6 +128,10 @@ pub fn record_sandbox_op(
     record.push(b'\n');
 
     let _ = append_sandbox_op_record(path, &record);
+}
+
+fn duration_ms(duration: Duration) -> u64 {
+    u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
 fn append_sandbox_op_record(path: &str, record: &[u8]) -> io::Result<()> {
@@ -162,6 +166,7 @@ mod tests {
 
         record_sandbox_op("op_a", Duration::from_millis(10), true, None);
         record_sandbox_op("op_b", Duration::from_millis(20), false, Some("fail"));
+        record_sandbox_op("op_max", Duration::MAX, true, None);
 
         const THREAD_COUNT: usize = 8;
         const RECORDS_PER_THREAD: usize = 64;
@@ -185,7 +190,7 @@ mod tests {
 
         let content = std::fs::read_to_string(log_path).unwrap();
         let lines: Vec<&str> = content.lines().collect();
-        assert_eq!(lines.len(), 2 + THREAD_COUNT * RECORDS_PER_THREAD);
+        assert_eq!(lines.len(), 3 + THREAD_COUNT * RECORDS_PER_THREAD);
 
         let a: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
         assert_eq!(a["action_type"], "op_a");
@@ -198,15 +203,21 @@ mod tests {
         assert_eq!(b["error"], "fail");
         assert!(!b["success"].as_bool().unwrap());
 
+        let max_duration: serde_json::Value = serde_json::from_str(lines[2]).unwrap();
+        assert_eq!(max_duration["action_type"], "op_max");
+        assert_eq!(max_duration["duration_ms"], u64::MAX);
+        assert!(max_duration["success"].as_bool().unwrap());
+
         let mut actions = HashSet::new();
         for line in lines {
             let entry: serde_json::Value = serde_json::from_str(line).unwrap();
             actions.insert(entry["action_type"].as_str().unwrap().to_string());
         }
 
-        assert_eq!(actions.len(), 2 + THREAD_COUNT * RECORDS_PER_THREAD);
+        assert_eq!(actions.len(), 3 + THREAD_COUNT * RECORDS_PER_THREAD);
         assert!(actions.contains("op_a"));
         assert!(actions.contains("op_b"));
+        assert!(actions.contains("op_max"));
         for thread_index in 0..THREAD_COUNT {
             for record_index in 0..RECORDS_PER_THREAD {
                 assert!(actions.contains(&format!("op_{thread_index}_{record_index}")));

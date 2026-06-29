@@ -15,7 +15,7 @@ import {
   zeroRunById,
   zeroRunQueueStatus,
 } from "../services/zero-runs.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const agentRunReadAuth = {
   acceptAnySandboxCapability: true,

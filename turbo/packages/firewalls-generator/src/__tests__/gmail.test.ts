@@ -44,7 +44,7 @@ describe("Gmail permission manifest", () => {
   });
 
   it("matches the official Discovery route set exactly", () => {
-    expect(officialRouteKeys.size).toBe(91);
+    expect(officialRouteKeys.size).toBe(101);
 
     expect(() => {
       validateGmailPermissionManifest(
@@ -99,6 +99,9 @@ describe("Gmail permission manifest", () => {
                       simple: {
                         path: "/upload/gmail/v1/users/{userId}/messages",
                       },
+                      resumable: {
+                        path: "/resumable/upload/gmail/v1/users/{userId}/messages",
+                      },
                     },
                   },
                 },
@@ -112,7 +115,10 @@ describe("Gmail permission manifest", () => {
     expect(routeKeys).toEqual(
       new Set([
         "base:POST /v1/users/{userId}/messages",
+        "resumable-upload:POST /v1/users/{userId}/messages",
+        "resumable-upload:PUT /v1/users/{userId}/messages",
         "upload:POST /v1/users/{userId}/messages",
+        "upload:PUT /v1/users/{userId}/messages",
       ]),
     );
   });
@@ -138,18 +144,25 @@ describe("Gmail permission manifest", () => {
     expect(draftsWrite.routeKeys).toContain(
       "upload:POST /v1/users/{userId}/drafts",
     );
+    expect(draftsWrite.routeKeys).toContain(
+      "upload:PUT /v1/users/{userId}/drafts",
+    );
     expect(draftsWrite.routeKeys).not.toContain(
       "base:POST /v1/users/{userId}/drafts/send",
     );
     expect(draftsSend.routeKeys).toEqual([
       "base:POST /v1/users/{userId}/drafts/send",
       "resumable-upload:POST /v1/users/{userId}/drafts/send",
+      "resumable-upload:PUT /v1/users/{userId}/drafts/send",
       "upload:POST /v1/users/{userId}/drafts/send",
+      "upload:PUT /v1/users/{userId}/drafts/send",
     ]);
     expect(messagesSend.routeKeys).toEqual([
       "base:POST /v1/users/{userId}/messages/send",
       "resumable-upload:POST /v1/users/{userId}/messages/send",
+      "resumable-upload:PUT /v1/users/{userId}/messages/send",
       "upload:POST /v1/users/{userId}/messages/send",
+      "upload:PUT /v1/users/{userId}/messages/send",
     ]);
   });
 

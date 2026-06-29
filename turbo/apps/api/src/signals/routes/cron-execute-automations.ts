@@ -1,7 +1,7 @@
 import { cronExecuteAutomationsContract } from "@vm0/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { executeDueTriggers$ } from "../services/automations/trigger-poller";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 

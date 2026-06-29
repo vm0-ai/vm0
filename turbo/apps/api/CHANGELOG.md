@@ -1,5 +1,326 @@
 # Changelog
 
+## [1.188.0](https://github.com/vm0-ai/vm0/compare/api-v1.187.3...api-v1.188.0) (2026-06-29)
+
+
+### Features
+
+* add GitHub label workflow triggers ([#19322](https://github.com/vm0-ai/vm0/issues/19322)) ([245be48](https://github.com/vm0-ai/vm0/commit/245be48e4eab3b4644e00fe9480213c327dda1b9))
+
+
+### Bug Fixes
+
+* default new workspaces to sonnet ([#19293](https://github.com/vm0-ai/vm0/issues/19293)) ([fcfed7d](https://github.com/vm0-ai/vm0/commit/fcfed7d9522172c0a0b1210a554b45da166e57f8))
+
+
+### Refactoring
+
+* remove legacy agent compose delete route ([#19329](https://github.com/vm0-ai/vm0/issues/19329)) ([c2e1453](https://github.com/vm0-ai/vm0/commit/c2e14538da699adacfa1187347e27f1a42921c42))
+* remove legacy agent compose instructions route ([#19338](https://github.com/vm0-ai/vm0/issues/19338)) ([9835703](https://github.com/vm0-ai/vm0/commit/9835703457fb0cedb8aeb4516c61299e843577b2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.125.0
+    * @vm0/connectors bumped to 1.113.0
+    * @vm0/core bumped to 8.375.0
+    * @vm0/db bumped to 1.77.0
+
+## [1.187.3](https://github.com/vm0-ai/vm0/compare/api-v1.187.2...api-v1.187.3) (2026-06-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.6
+    * @vm0/connectors bumped to 1.112.1
+    * @vm0/core bumped to 8.374.6
+    * @vm0/db bumped to 1.76.8
+
+## [1.187.2](https://github.com/vm0-ai/vm0/compare/api-v1.187.1...api-v1.187.2) (2026-06-29)
+
+
+### Bug Fixes
+
+* allow concurrent workflow event triggers ([#19314](https://github.com/vm0-ai/vm0/issues/19314)) ([1f21d42](https://github.com/vm0-ai/vm0/commit/1f21d42c3fbbeb5c7061d9389b72451a2055d8b9))
+
+## [1.187.1](https://github.com/vm0-ai/vm0/compare/api-v1.187.0...api-v1.187.1) (2026-06-29)
+
+
+### Performance Improvements
+
+* lazy materialize firewall auth secrets ([#19277](https://github.com/vm0-ai/vm0/issues/19277)) ([2aaa344](https://github.com/vm0-ai/vm0/commit/2aaa3441e8c8c70aa6bad4d887808e9484ff0946))
+
+## [1.187.0](https://github.com/vm0-ai/vm0/compare/api-v1.186.5...api-v1.187.0) (2026-06-29)
+
+
+### Features
+
+* add atom grant invoice entitlements ([#19275](https://github.com/vm0-ai/vm0/issues/19275)) ([2c00769](https://github.com/vm0-ai/vm0/commit/2c007696e9588b4a53d9ec5115f735ece6bd63e4))
+
+
+### Refactoring
+
+* remove workflow permission grants ([#19271](https://github.com/vm0-ai/vm0/issues/19271)) ([07e590a](https://github.com/vm0-ai/vm0/commit/07e590af6b59fd53a565a7be9341d685f0321299))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.5
+    * @vm0/core bumped to 8.374.5
+    * @vm0/db bumped to 1.76.7
+
+## [1.186.5](https://github.com/vm0-ai/vm0/compare/api-v1.186.4...api-v1.186.5) (2026-06-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.4
+    * @vm0/connectors bumped to 1.112.0
+    * @vm0/core bumped to 8.374.4
+    * @vm0/db bumped to 1.76.6
+
+## [1.186.4](https://github.com/vm0-ai/vm0/compare/api-v1.186.3...api-v1.186.4) (2026-06-29)
+
+
+### Bug Fixes
+
+* copy workflow runtime configuration ([#19252](https://github.com/vm0-ai/vm0/issues/19252)) ([aa7dfdf](https://github.com/vm0-ai/vm0/commit/aa7dfdfe4db634174c43cdffb7ec94457f24e0cf))
+
+## [1.186.3](https://github.com/vm0-ai/vm0/compare/api-v1.186.2...api-v1.186.3) (2026-06-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.3
+    * @vm0/core bumped to 8.374.3
+    * @vm0/db bumped to 1.76.5
+
+## [1.186.2](https://github.com/vm0-ai/vm0/compare/api-v1.186.1...api-v1.186.2) (2026-06-28)
+
+
+### Bug Fixes
+
+* **api:** deploy API for runtime dependency releases ([#19243](https://github.com/vm0-ai/vm0/issues/19243)) ([ba51114](https://github.com/vm0-ai/vm0/commit/ba5111415aab9e1cc3076e1d0ad60a551a9f87cf))
+* bind workflow creation to current chat thread ([#19247](https://github.com/vm0-ai/vm0/issues/19247)) ([e656035](https://github.com/vm0-ai/vm0/commit/e6560354593174dcb2389013b3afe29cd31ffabc))
+* block schedule automation writes behind workflow trigger switch ([#19248](https://github.com/vm0-ai/vm0/issues/19248)) ([6b1cf5f](https://github.com/vm0-ai/vm0/commit/6b1cf5f2dc5f062c3d3c39a4763ad89fb337d1dc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.2
+    * @vm0/core bumped to 8.374.2
+    * @vm0/db bumped to 1.76.4
+
+## [1.186.1](https://github.com/vm0-ai/vm0/compare/api-v1.186.0...api-v1.186.1) (2026-06-28)
+
+
+### Bug Fixes
+
+* avoid workflow detail fanout on automations page ([#19239](https://github.com/vm0-ai/vm0/issues/19239)) ([c7f4116](https://github.com/vm0-ai/vm0/commit/c7f411634ce894d449b75dd6206157613fb2ff6e))
+
+
+### Performance Improvements
+
+* add zero run origin timing attribution ([#19235](https://github.com/vm0-ai/vm0/issues/19235)) ([a726e89](https://github.com/vm0-ai/vm0/commit/a726e894d0f8bbc80f7a3a882d45ee4985d860f4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.1
+    * @vm0/core bumped to 8.374.1
+    * @vm0/db bumped to 1.76.3
+
+## [1.186.0](https://github.com/vm0-ai/vm0/compare/api-v1.185.1...api-v1.186.0) (2026-06-28)
+
+
+### Features
+
+* add workflow permission request cards ([#19224](https://github.com/vm0-ai/vm0/issues/19224)) ([7e4907c](https://github.com/vm0-ai/vm0/commit/7e4907c3bb7e7d0a9043686a3cd56f5fc38fa799))
+
+
+### Bug Fixes
+
+* preserve workflow trigger loop cadence ([#19231](https://github.com/vm0-ai/vm0/issues/19231)) ([7e3cf79](https://github.com/vm0-ai/vm0/commit/7e3cf79b67b15be72f490566de090491cc78bb69))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.0
+    * @vm0/connectors bumped to 1.111.0
+    * @vm0/core bumped to 8.374.0
+    * @vm0/db bumped to 1.76.2
+
+## [1.185.1](https://github.com/vm0-ai/vm0/compare/api-v1.185.0...api-v1.185.1) (2026-06-28)
+
+
+### Refactoring
+
+* use trigger id as run group id for workflow triggers ([#19215](https://github.com/vm0-ai/vm0/issues/19215)) ([8ce95b7](https://github.com/vm0-ai/vm0/commit/8ce95b7a7ca0e6c28d355899b0c368f21c5a42b4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/db bumped to 1.76.1
+
+## [1.185.0](https://github.com/vm0-ai/vm0/compare/api-v1.184.3...api-v1.185.0) (2026-06-27)
+
+
+### Features
+
+* share workflow trigger chat threads ([#19208](https://github.com/vm0-ai/vm0/issues/19208)) ([6f47f8e](https://github.com/vm0-ai/vm0/commit/6f47f8ee081c2d2033c74e2a384d92a609d05642))
+
+
+### Refactoring
+
+* reduce fallback slop in media contracts ([#19209](https://github.com/vm0-ai/vm0/issues/19209)) ([e0b4f47](https://github.com/vm0-ai/vm0/commit/e0b4f47deda2876191f0891e778354f21896be3b))
+
+
+### Performance Improvements
+
+* add storage manifest entry build timing ([#19206](https://github.com/vm0-ai/vm0/issues/19206)) ([b5d8cc8](https://github.com/vm0-ai/vm0/commit/b5d8cc8fdb40b9aadfd6789d4290b48761084a4b))
+* reduce stored connector decrypt work ([#19202](https://github.com/vm0-ai/vm0/issues/19202)) ([10e8bf0](https://github.com/vm0-ai/vm0/commit/10e8bf00115804ad27cd9a4388787cf6e79573b9))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.123.0
+    * @vm0/core bumped to 8.373.4
+    * @vm0/db bumped to 1.76.0
+
+## [1.184.3](https://github.com/vm0-ai/vm0/compare/api-v1.184.2...api-v1.184.3) (2026-06-27)
+
+
+### Bug Fixes
+
+* cancel trial subscriptions on account deletion ([#19197](https://github.com/vm0-ai/vm0/issues/19197)) ([924fd60](https://github.com/vm0-ai/vm0/commit/924fd60279d7cc1e2c5e2256fd1b3d2ef54b2654))
+* update atom grant expiry ([#19201](https://github.com/vm0-ai/vm0/issues/19201)) ([589e3dd](https://github.com/vm0-ai/vm0/commit/589e3dd8b401d12837c14490db58e7313edbf9c4))
+
+
+### Refactoring
+
+* reduce fallback slop in runtime validation ([#19200](https://github.com/vm0-ai/vm0/issues/19200)) ([9f367c2](https://github.com/vm0-ai/vm0/commit/9f367c27b4c49578f8dd644ee73e166e092cbe09))
+
+
+### Performance Improvements
+
+* add storage manifest dispatch timing ([#19190](https://github.com/vm0-ai/vm0/issues/19190)) ([baf713f](https://github.com/vm0-ai/vm0/commit/baf713f63f3ceabb39d65fe895986c343c2a764a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.122.0
+    * @vm0/connectors bumped to 1.110.4
+    * @vm0/core bumped to 8.373.3
+    * @vm0/db bumped to 1.75.3
+
+## [1.184.2](https://github.com/vm0-ai/vm0/compare/api-v1.184.1...api-v1.184.2) (2026-06-27)
+
+
+### Performance Improvements
+
+* add Zero service pre-create timing ([#19185](https://github.com/vm0-ai/vm0/issues/19185)) ([2d8e05f](https://github.com/vm0-ai/vm0/commit/2d8e05f7d2b49e9b87fdbf17cb986f2676b083cc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.121.2
+    * @vm0/connectors bumped to 1.110.3
+    * @vm0/core bumped to 8.373.2
+    * @vm0/db bumped to 1.75.2
+
+## [1.184.1](https://github.com/vm0-ai/vm0/compare/api-v1.184.0...api-v1.184.1) (2026-06-27)
+
+
+### Performance Improvements
+
+* scope direct run connectors ([#19145](https://github.com/vm0-ai/vm0/issues/19145)) ([1fd3496](https://github.com/vm0-ai/vm0/commit/1fd349612583dc27bb333b53b19040eb622576ec))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.121.1
+    * @vm0/connectors bumped to 1.110.2
+    * @vm0/core bumped to 8.373.1
+    * @vm0/db bumped to 1.75.1
+
+## [1.184.0](https://github.com/vm0-ai/vm0/compare/api-v1.183.0...api-v1.184.0) (2026-06-27)
+
+
+### Features
+
+* add workflow-scoped authorization ([#19147](https://github.com/vm0-ai/vm0/issues/19147)) ([b17dcd9](https://github.com/vm0-ai/vm0/commit/b17dcd9d1b4499321bf6f5f8760ab6f43d9285d5))
+* enable goal workflows for staff orgs ([#19141](https://github.com/vm0-ai/vm0/issues/19141)) ([6d01523](https://github.com/vm0-ai/vm0/commit/6d01523dbf2ecfaa6f583d4f64652122e825ca37))
+
+
+### Bug Fixes
+
+* add ScrapeNinja RapidAPI host header ([#19138](https://github.com/vm0-ai/vm0/issues/19138)) ([5bd367c](https://github.com/vm0-ai/vm0/commit/5bd367cff031a467dcb15cd01aa00636add12c12))
+* restrict credentialed dynamic firewall hosts ([#19137](https://github.com/vm0-ai/vm0/issues/19137)) ([9801134](https://github.com/vm0-ai/vm0/commit/9801134aede293f0fd3c1f11c386bf4483fff78d))
+
+
+### Refactoring
+
+* replace ts-rest contracts with trpc-backed contracts ([#19150](https://github.com/vm0-ai/vm0/issues/19150)) ([100ff36](https://github.com/vm0-ai/vm0/commit/100ff36c7a8abb9a0506c1183596680b1e0c8199))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.121.0
+    * @vm0/connectors bumped to 1.110.1
+    * @vm0/core bumped to 8.373.0
+    * @vm0/db bumped to 1.75.0
+
+## [1.183.0](https://github.com/vm0-ai/vm0/compare/api-v1.182.3...api-v1.183.0) (2026-06-26)
+
+
+### Features
+
+* add workflow trigger sidebar controls ([#19102](https://github.com/vm0-ai/vm0/issues/19102)) ([dd06b8d](https://github.com/vm0-ai/vm0/commit/dd06b8db7916473a6b87ed4edd3efb4f66c8e6a2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.120.0
+    * @vm0/core bumped to 8.372.2
+    * @vm0/db bumped to 1.74.4
+
+## [1.182.3](https://github.com/vm0-ai/vm0/compare/api-v1.182.2...api-v1.182.3) (2026-06-26)
+
+
+### Performance Improvements
+
+* parallelize stored connector secret decrypts ([#19134](https://github.com/vm0-ai/vm0/issues/19134)) ([d863945](https://github.com/vm0-ai/vm0/commit/d863945607c699fb8b3d5e9b1b6c0217023c68c1))
+
 ## [1.182.2](https://github.com/vm0-ai/vm0/compare/api-v1.182.1...api-v1.182.2) (2026-06-26)
 
 

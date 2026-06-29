@@ -7,7 +7,6 @@
 mod api;
 mod api_ably_supervisor;
 mod local;
-mod local_cancel;
 #[cfg(test)]
 pub mod mock;
 

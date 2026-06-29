@@ -7,7 +7,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { submitZeroReportError$ } from "../services/zero-report-error.service";
 import { settle } from "../utils";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const log = logger("route:zero-report-error");
 

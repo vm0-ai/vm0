@@ -1,6 +1,6 @@
 import { command, computed, state, type StateArg } from "ccstate";
 import { nowDate } from "../../lib/time.ts";
-import type { CombinedEntry } from "../../views/zero-page/zero-automations-page.tsx";
+import type { CombinedEntry } from "../../views/zero-page/automation-utils.ts";
 import { userPreferences$ } from "../zero-page/settings/user-preferences.ts";
 import { agents$ } from "../agent.ts";
 import { zeroOnboardingStatus$ } from "../zero-page/zero-onboarding.ts";

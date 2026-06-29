@@ -43,13 +43,13 @@ import {
   type FirewallExecutionMetadataConnectorType,
   type FirewallPermissionIndex,
 } from "@vm0/connectors/firewall-metadata/server";
-import { getModelProviderRefreshMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
 import {
   extractSecretNamesFromApis,
   resolveFirewallBaseUrlVars,
   type ExecutionFirewallEntry,
   type ExecutionFirewalls,
   type ExpandedFirewallConfig,
+  FirewallBaseUrlResolutionError,
   type Firewall,
   type FirewallPolicies,
   type FirewallPolicy,
@@ -121,7 +121,7 @@ import {
 } from "../external/realtime";
 import { now, nowDate } from "../external/time";
 import { generateZeroToken } from "../auth/tokens";
-import { onRejection, settle, tapError } from "../utils";
+import { onRejection, safeSync, settle, tapError } from "../utils";
 import {
   environmentRecordToEntries,
   featureFlagsRecordToEntries,
@@ -165,7 +165,12 @@ import { checkLimitedFreeRunModelAdmission } from "./zero-run-admission.service"
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
+  type ApiDispatchTimingDimensions,
 } from "./api-dispatch-timing.service";
+import {
+  loadAgentConnectorScope,
+  loadZeroBackedComposeAgent,
+} from "./agent-connector-scope.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
@@ -175,7 +180,6 @@ type ArtifactMissingRootPolicy = NonNullable<
 >;
 const AUTO_MEMORY_MISSING_ROOT_POLICY: ArtifactMissingRootPolicy =
   "preserveParentVersion";
-const STORED_CONNECTOR_SECRET_DECRYPT_CONCURRENCY = 4;
 
 const TIER_LIMITS = Object.freeze({
   free: 1,
@@ -201,6 +205,15 @@ const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const CONNECTOR_VAR_REF_PREFIX = "$vars.";
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
   "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
+const EAGER_STORED_CONNECTOR_SECRET_DECRYPT_CONCURRENCY = 4;
+const STORED_CONNECTOR_COUNT_BUCKET_DIMENSIONS = [
+  "0",
+  "1",
+  "2_4",
+  "5_8",
+  "9_16",
+  "17_plus",
+] as const;
 
 type CreateRunBody = z.infer<typeof unifiedRunRequestSchema>;
 type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
@@ -255,6 +268,7 @@ interface ZeroRunMetadata {
   readonly triggerId?: string;
   // Run provenance for workflow schedule triggers.
   readonly workflowTriggerId?: string;
+  readonly triggerBrief?: string;
   // Stable chat run-group key for automation/workflow/goal-triggered runs.
   readonly runGroupId?: string;
   // Run provenance for autonomous thread-goal continuation.
@@ -289,6 +303,20 @@ interface ResolvedCompose {
   readonly resumedFromCheckpointId?: string;
   readonly continuedFromAgentSessionId?: string;
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
+}
+
+type ConnectorScopeSource = "explicit" | "zero_agent" | "legacy_all" | "empty";
+
+interface EffectiveConnectorScope {
+  readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+  readonly allowedCustomConnectorIds: readonly string[] | undefined;
+  readonly source: ConnectorScopeSource;
+}
+
+interface ExplicitConnectorScope {
+  readonly allowedConnectorTypes: readonly ConnectorType[];
+  readonly allowedCustomConnectorIds: readonly string[];
+  readonly source?: Exclude<ConnectorScopeSource, "legacy_all" | "empty">;
 }
 
 // Session naming in this service:
@@ -428,14 +456,14 @@ export interface CreateAgentRunArgs {
       readonly workflowId: string;
     }[];
   };
-  readonly allowedConnectorTypes?: readonly ConnectorType[];
-  readonly allowedCustomConnectorIds?: readonly string[];
+  readonly connectorScope?: ExplicitConnectorScope;
   readonly validateEnvironmentReferences?: boolean;
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly queueOnConcurrencyLimit?: boolean;
   readonly enforceVm0Credits?: boolean;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly timing?: ApiDispatchTimingCollector;
+  readonly timingDimensions?: ApiDispatchTimingDimensions;
 }
 
 interface ConnectorRuntimeContext {
@@ -596,7 +624,10 @@ function buildWorkflowSkillVolumes(
 }
 
 function buildInjectedSkillVolumes(
-  args: CreateAgentRunArgs,
+  args: {
+    readonly injectSkillVolumes: CreateAgentRunArgs["injectSkillVolumes"];
+    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+  },
   framework: SupportedFramework,
   goalSeedEnabled: boolean,
 ): readonly AdditionalVolume[] | undefined {
@@ -1150,33 +1181,86 @@ function hasUsableModelProviderSecretValue(value: string): boolean {
   return value.trim().length > 0;
 }
 
-function modelProviderEnvironment(
-  id: string | null,
-  type: ModelProviderType,
-  config: SingleSecretModelProviderConfig,
-  secretValue: string,
-  selectedModel: string | null,
-): ResolvedModelProviderEnvironment {
-  const model = selectedModel ?? config.defaultModel ?? "";
-  const runtimeModel = model ? getProviderRuntimeModel(type, model) : "";
+function modelProviderFirewallAuthMaps(
+  providerType: ModelProviderType,
+  sourceUserId: string,
+  secretNames: readonly string[],
+):
+  | {
+      readonly secretConnectorMap: Record<string, string>;
+      readonly secretConnectorMetadataMap: Record<
+        string,
+        SecretConnectorMetadata
+      >;
+    }
+  | undefined {
+  if (getModelProviderFirewall(providerType) === undefined) {
+    return undefined;
+  }
+
+  const uniqueSecretNames = [...new Set(secretNames)];
+  if (uniqueSecretNames.length === 0) {
+    return undefined;
+  }
+
+  const secretConnectorMap = Object.fromEntries(
+    uniqueSecretNames.map((secretName) => {
+      return [secretName, providerType];
+    }),
+  );
+  const secretConnectorMetadataMap = Object.fromEntries(
+    uniqueSecretNames.map((secretName) => {
+      return [
+        secretName,
+        {
+          sourceType: "model-provider" as const,
+          sourceUserId,
+          metadataKey: providerType,
+        },
+      ];
+    }),
+  );
+
+  return { secretConnectorMap, secretConnectorMetadataMap };
+}
+
+function modelProviderEnvironment(args: {
+  readonly id: string | null;
+  readonly type: ModelProviderType;
+  readonly config: SingleSecretModelProviderConfig;
+  readonly secretValue: string | undefined;
+  readonly sourceUserId: string;
+  readonly selectedModel: string | null;
+}): ResolvedModelProviderEnvironment {
+  const hasFirewallAuth = getModelProviderFirewall(args.type) !== undefined;
+  if (!hasFirewallAuth && args.secretValue === undefined) {
+    throw new Error(`Missing eager secret for model provider ${args.type}`);
+  }
+  const model = args.selectedModel ?? args.config.defaultModel ?? "";
+  const runtimeModel = model ? getProviderRuntimeModel(args.type, model) : "";
   const environmentSecret = modelProviderEnvironmentSecretValue(
-    type,
-    config.secretName,
-    secretValue,
+    args.type,
+    args.config.secretName,
+    args.secretValue ?? "",
   );
   const environment: Record<string, string> = {};
-  for (const [key, value] of Object.entries(config.envBindings)) {
+  for (const [key, value] of Object.entries(args.config.envBindings)) {
     environment[key] = value
       .replaceAll("$secret", environmentSecret)
       .replaceAll("$model", runtimeModel);
   }
 
   return {
-    id,
-    type,
+    id: args.id,
+    type: args.type,
     environment,
-    secrets: { [config.secretName]: secretValue },
+    secrets: hasFirewallAuth
+      ? {}
+      : { [args.config.secretName]: args.secretValue ?? "" },
     selectedModel: model || null,
+    ...modelProviderFirewallAuthMaps(args.type, args.sourceUserId, [
+      args.config.secretName,
+    ]),
   };
 }
 
@@ -1281,53 +1365,6 @@ function vm0ApiKeySelectionOrder() {
   return sql`case when ${vm0ApiKeys.label} = 'dev-seed' then 0 else 1 end`;
 }
 
-function modelProviderRefreshMaps(
-  providerType: ModelProviderType,
-  sourceUserId: string,
-):
-  | {
-      readonly secretConnectorMap: Record<string, string>;
-      readonly secretConnectorMetadataMap: Record<
-        string,
-        SecretConnectorMetadata
-      >;
-    }
-  | undefined {
-  const metadata = getModelProviderRefreshMetadata(providerType);
-  if (!metadata?.isRefreshable) {
-    return undefined;
-  }
-
-  const secretConnectorMap: Record<string, string> = {};
-  const envBindings = getModelProviderEnvBindings(providerType);
-  // Firewall auth templates reference runtime env aliases (for example, the
-  // `CHATGPT_ACCESS_TOKEN` in `${{ secrets.CHATGPT_ACCESS_TOKEN }}`), so the
-  // refresh map is keyed by envName, not by the backing provider storage key.
-  for (const [envName, valueRef] of Object.entries(envBindings ?? {})) {
-    if (
-      valueRef.startsWith("$secrets.") &&
-      metadata.refreshableSecrets.includes(valueRef.slice("$secrets.".length))
-    ) {
-      secretConnectorMap[envName] = providerType;
-    }
-  }
-
-  const secretConnectorMetadataMap = Object.fromEntries(
-    Object.keys(secretConnectorMap).map((key) => {
-      return [
-        key,
-        {
-          sourceType: "model-provider" as const,
-          sourceUserId,
-          metadataKey: providerType,
-        },
-      ];
-    }),
-  );
-
-  return { secretConnectorMap, secretConnectorMetadataMap };
-}
-
 async function multiAuthModelProviderEnvironment(
   db: Db,
   args: {
@@ -1348,10 +1385,13 @@ async function multiAuthModelProviderEnvironment(
     return null;
   }
 
+  const hasFirewallAuth = getModelProviderFirewall(args.type) !== undefined;
   const secretRows = await db
     .select({
       name: secretsTable.name,
-      encryptedValue: secretsTable.encryptedValue,
+      encryptedValue: hasFirewallAuth
+        ? sql<string | null>`NULL`
+        : secretsTable.encryptedValue,
     })
     .from(secretsTable)
     .where(
@@ -1362,11 +1402,20 @@ async function multiAuthModelProviderEnvironment(
       ),
     );
   const storedSecrets: Record<string, string> = {};
-  for (const row of secretRows) {
-    storedSecrets[row.name] = await decryptStoredSecretValue(
-      row.encryptedValue,
-      args.featureSwitchContext,
-    );
+  if (hasFirewallAuth) {
+    for (const row of secretRows) {
+      storedSecrets[row.name] = "__lazy_model_provider_secret__";
+    }
+  } else {
+    for (const row of secretRows) {
+      if (row.encryptedValue === null) {
+        continue;
+      }
+      storedSecrets[row.name] = await decryptStoredSecretValue(
+        row.encryptedValue,
+        args.featureSwitchContext,
+      );
+    }
   }
 
   const forwardableSecrets: Record<string, string> = {};
@@ -1388,7 +1437,11 @@ async function multiAuthModelProviderEnvironment(
   const runtimeModel = selectedModel
     ? getProviderRuntimeModel(args.type, selectedModel)
     : null;
-  const refreshMaps = modelProviderRefreshMaps(args.type, args.userId);
+  const authMaps = modelProviderFirewallAuthMaps(
+    args.type,
+    args.userId,
+    Object.keys(forwardableSecrets),
+  );
   return {
     id: args.id,
     type: args.type,
@@ -1397,10 +1450,10 @@ async function multiAuthModelProviderEnvironment(
       forwardableSecrets,
       runtimeModel,
     ),
-    secrets: forwardableSecrets,
+    secrets: hasFirewallAuth ? {} : forwardableSecrets,
     selectedModel,
-    secretConnectorMap: refreshMaps?.secretConnectorMap,
-    secretConnectorMetadataMap: refreshMaps?.secretConnectorMetadataMap,
+    secretConnectorMap: authMaps?.secretConnectorMap,
+    secretConnectorMetadataMap: authMaps?.secretConnectorMetadataMap,
   };
 }
 
@@ -1534,6 +1587,16 @@ async function resolveCandidateModelProviderEnvironment(
   if (!isSingleSecretModelProviderConfig(config) || !row.encryptedValue) {
     return null;
   }
+  if (getModelProviderFirewall(row.type) !== undefined) {
+    return modelProviderEnvironment({
+      id: row.id,
+      type: row.type,
+      config,
+      secretValue: undefined,
+      sourceUserId: row.userId,
+      selectedModel: args.selectedModelOverride ?? row.selectedModel,
+    });
+  }
   const secretValue = await decryptStoredSecretValue(
     row.encryptedValue,
     args.featureSwitchContext,
@@ -1541,13 +1604,14 @@ async function resolveCandidateModelProviderEnvironment(
   if (!hasUsableModelProviderSecretValue(secretValue)) {
     return null;
   }
-  return modelProviderEnvironment(
-    row.id,
-    row.type,
+  return modelProviderEnvironment({
+    id: row.id,
+    type: row.type,
     config,
     secretValue,
-    args.selectedModelOverride ?? row.selectedModel,
-  );
+    sourceUserId: row.userId,
+    selectedModel: args.selectedModelOverride ?? row.selectedModel,
+  });
 }
 
 async function resolveModelProviderEnvironment(
@@ -1794,6 +1858,13 @@ interface StoredConnectorRuntimeRow {
   readonly tokenExpiresAt: Date | null;
 }
 
+interface StoredConnectorRuntimeRowCandidate {
+  readonly type: string;
+  readonly authMethod: string;
+  readonly needsReconnect: boolean;
+  readonly tokenExpiresAt: Date | null;
+}
+
 interface ConnectorEnvBindingSet {
   readonly connectorType: ConnectorType;
   readonly authMethod: string;
@@ -1805,8 +1876,17 @@ interface StoredConnectorRequirements {
   readonly variableNames: Set<string>;
 }
 
+interface StoredConnectorMaterializationPlan {
+  readonly allowedConnectorRows: readonly StoredConnectorRuntimeRow[];
+  readonly bindingSets: readonly ConnectorEnvBindingSet[];
+  readonly requirements: StoredConnectorRequirements;
+}
+
 interface StoredConnectorSecretRow {
   readonly name: string;
+}
+
+interface StoredConnectorEncryptedSecretRow extends StoredConnectorSecretRow {
   readonly encryptedValue: string;
 }
 
@@ -1820,7 +1900,7 @@ interface StoredConnectorMaterializationSnapshot {
   readonly bindingSets: readonly ConnectorEnvBindingSet[];
   readonly requirements: StoredConnectorRequirements;
   readonly secretRows: readonly StoredConnectorSecretRow[];
-  readonly variableRows: readonly StoredConnectorVariableRow[];
+  readonly variableValues: Record<string, string>;
 }
 
 interface ResolvedStoredConnectorState {
@@ -1841,12 +1921,7 @@ function emptyConnectorRuntimeContext(): ConnectorRuntimeContext {
 }
 
 function allowedStoredConnectorRows(
-  rows: readonly {
-    readonly type: string;
-    readonly authMethod: string;
-    readonly needsReconnect: boolean;
-    readonly tokenExpiresAt: Date | null;
-  }[],
+  rows: readonly StoredConnectorRuntimeRowCandidate[],
   allowedConnectorTypes: readonly ConnectorType[] | undefined,
   now: Date,
 ): readonly StoredConnectorRuntimeRow[] {
@@ -1934,6 +2009,49 @@ function collectStoredConnectorRequirements(
   return { secretNames, variableNames };
 }
 
+function connectorSecretAliasesByStorageName(
+  bindingSets: readonly ConnectorEnvBindingSet[],
+): Map<string, Set<string>> {
+  const aliases = new Map<string, Set<string>>();
+  for (const { runtimeBindings } of bindingSets) {
+    for (const { envName, source } of runtimeBindings) {
+      if (source.kind !== "connector-secret") {
+        continue;
+      }
+      const existing = aliases.get(source.name);
+      if (existing) {
+        existing.add(envName);
+      } else {
+        aliases.set(source.name, new Set([envName]));
+      }
+    }
+  }
+  return aliases;
+}
+
+function filterOverriddenStoredConnectorSecretRows(args: {
+  readonly rows: readonly StoredConnectorSecretRow[];
+  readonly bindingSets: readonly ConnectorEnvBindingSet[];
+  readonly overriddenSecretAliases: ReadonlySet<string>;
+}): readonly StoredConnectorSecretRow[] {
+  if (args.overriddenSecretAliases.size === 0) {
+    return args.rows;
+  }
+
+  const aliasesByStorageName = connectorSecretAliasesByStorageName(
+    args.bindingSets,
+  );
+  return args.rows.filter((row) => {
+    const aliases = aliasesByStorageName.get(row.name);
+    if (!aliases || aliases.size === 0) {
+      return true;
+    }
+    return [...aliases].some((alias) => {
+      return !args.overriddenSecretAliases.has(alias);
+    });
+  });
+}
+
 async function mapWithBoundedConcurrency<TInput, TOutput>(
   values: readonly TInput[],
   concurrency: number,
@@ -1989,6 +2107,7 @@ async function loadStoredConnectorSecretRows(
     readonly orgId: string;
     readonly userId: string;
     readonly names: ReadonlySet<string>;
+    readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<readonly StoredConnectorSecretRow[]> {
@@ -1996,38 +2115,81 @@ async function loadStoredConnectorSecretRows(
     return [];
   }
 
-  return await measureApiDispatchTiming(
-    timing,
-    "api_dispatch_prepare_context_load_stored_connector_secret_rows",
-    "nested",
-    async () => {
-      return await db
-        .select({
-          name: secretsTable.name,
-          encryptedValue: secretsTable.encryptedValue,
-        })
-        .from(secretsTable)
-        .where(
-          and(
-            eq(secretsTable.orgId, args.orgId),
-            eq(secretsTable.userId, args.userId),
-            eq(secretsTable.type, "connector"),
-            inArray(secretsTable.name, [...args.names]),
-          ),
-        );
+  const startedAt = now();
+  const rows = await onRejection(
+    db
+      .select({
+        name: secretsTable.name,
+      })
+      .from(secretsTable)
+      .where(
+        and(
+          eq(secretsTable.orgId, args.orgId),
+          eq(secretsTable.userId, args.userId),
+          eq(secretsTable.type, "connector"),
+          inArray(secretsTable.name, [...args.names]),
+        ),
+      ),
+    () => {
+      timing?.recordElapsed(
+        "api_dispatch_prepare_context_load_stored_connector_secret_rows",
+        "nested",
+        startedAt,
+        now(),
+        args.timingDimensions,
+      );
     },
   );
+  timing?.recordElapsed(
+    "api_dispatch_prepare_context_load_stored_connector_secret_rows",
+    "nested",
+    startedAt,
+    now(),
+    {
+      ...args.timingDimensions,
+      stored_connector_secret_count_bucket: countBucket(rows.length),
+    },
+  );
+  return rows;
 }
 
-async function decryptStoredConnectorSecrets(
-  rows: readonly StoredConnectorSecretRow[],
+async function loadStoredConnectorEncryptedSecretRows(
+  db: Db,
   args: {
+    readonly orgId: string;
+    readonly userId: string;
     readonly names: ReadonlySet<string>;
+  },
+): Promise<readonly StoredConnectorEncryptedSecretRow[]> {
+  if (args.names.size === 0) {
+    return [];
+  }
+
+  return await db
+    .select({
+      name: secretsTable.name,
+      encryptedValue: secretsTable.encryptedValue,
+    })
+    .from(secretsTable)
+    .where(
+      and(
+        eq(secretsTable.orgId, args.orgId),
+        eq(secretsTable.userId, args.userId),
+        eq(secretsTable.type, "connector"),
+        inArray(secretsTable.name, [...args.names]),
+      ),
+    );
+}
+
+async function decryptStoredConnectorSecretRows(
+  rows: readonly StoredConnectorEncryptedSecretRow[],
+  args: {
     readonly featureSwitchContext: FeatureSwitchContext;
+    readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<Record<string, string>> {
-  if (args.names.size === 0) {
+  if (rows.length === 0) {
     return {};
   }
 
@@ -2038,7 +2200,7 @@ async function decryptStoredConnectorSecrets(
     async () => {
       const decryptedRows = await mapWithBoundedConcurrency(
         rows,
-        STORED_CONNECTOR_SECRET_DECRYPT_CONCURRENCY,
+        EAGER_STORED_CONNECTOR_SECRET_DECRYPT_CONCURRENCY,
         async (row) => {
           return {
             name: row.name,
@@ -2049,11 +2211,15 @@ async function decryptStoredConnectorSecrets(
           };
         },
       );
-      const values: Record<string, string> = {};
-      for (const row of decryptedRows) {
-        values[row.name] = row.value;
-      }
-      return values;
+      return Object.fromEntries(
+        decryptedRows.map((row) => {
+          return [row.name, row.value];
+        }),
+      );
+    },
+    {
+      ...args.timingDimensions,
+      stored_connector_secret_count_bucket: countBucket(rows.length),
     },
   );
 }
@@ -2064,6 +2230,7 @@ async function loadStoredConnectorVariableRows(
     readonly orgId: string;
     readonly userId: string;
     readonly names: ReadonlySet<string>;
+    readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<readonly StoredConnectorVariableRow[]> {
@@ -2091,6 +2258,7 @@ async function loadStoredConnectorVariableRows(
           ),
         );
     },
+    args.timingDimensions,
   );
 }
 
@@ -2104,10 +2272,30 @@ function storedConnectorVariablesFromRows(
   );
 }
 
+function storedConnectorRuntimeVariables(
+  bindingSets: readonly ConnectorEnvBindingSet[],
+  connectorVariables: Record<string, string>,
+): Record<string, string> {
+  const vars: Record<string, string> = {};
+  for (const { runtimeBindings } of bindingSets) {
+    for (const { envName, source } of runtimeBindings) {
+      if (source.kind !== "connector-variable") {
+        continue;
+      }
+      const value = connectorVariables[source.name];
+      if (value !== undefined) {
+        vars[envName] = value;
+      }
+    }
+  }
+  return vars;
+}
+
 function resolveStoredConnectorState(
   bindingSets: readonly ConnectorEnvBindingSet[],
   connectorSecrets: Record<string, string>,
   connectorVariables: Record<string, string>,
+  availableSecretNames: ReadonlySet<string>,
 ): ResolvedStoredConnectorState {
   const secrets: Record<string, string> = {};
   const vars: Record<string, string> = {};
@@ -2122,6 +2310,8 @@ function resolveStoredConnectorState(
           const secretValue = connectorSecrets[secretName];
           if (secretValue !== undefined) {
             secrets[envName] = secretValue;
+            addConnectorEnvironmentTemplate(environment, envName, valueRef);
+          } else if (availableSecretNames.has(secretName)) {
             addConnectorEnvironmentTemplate(environment, envName, valueRef);
           } else if (!optional) {
             addConnectorEnvironmentTemplate(environment, envName, valueRef);
@@ -2167,47 +2357,82 @@ function resolveStoredConnectorState(
   };
 }
 
-async function loadStoredConnectorContext(
-  db: Db,
+function storedConnectorContextFromSnapshot(
+  snapshot: StoredConnectorMaterializationSnapshot | null,
+): ConnectorRuntimeContext {
+  if (!snapshot) {
+    return emptyConnectorRuntimeContext();
+  }
+  return {
+    secrets: undefined,
+    vars: compactRecord(
+      storedConnectorRuntimeVariables(
+        snapshot.bindingSets,
+        snapshot.variableValues,
+      ),
+    ),
+    secretConnectorMap: undefined,
+    connectorTypes: snapshot.allowedConnectorRows.map((row) => {
+      return row.connectorType;
+    }),
+    storedEnvironment: undefined,
+  };
+}
+
+function availableStoredConnectorSecretNames(
+  rows: readonly StoredConnectorSecretRow[],
+): ReadonlySet<string> {
+  return new Set(
+    rows.map((row) => {
+      return row.name;
+    }),
+  );
+}
+
+function overriddenRuntimeSecretAliases(
+  records: readonly (Record<string, string> | undefined)[],
+): ReadonlySet<string> {
+  const aliases = new Set<string>();
+  for (const record of records) {
+    for (const key of Object.keys(record ?? {})) {
+      aliases.add(key);
+    }
+  }
+  return aliases;
+}
+
+function referencedEnvironmentSecretAliases(
+  environment: Record<string, string> | undefined,
+): ReadonlySet<string> {
+  if (!environment) {
+    return new Set();
+  }
+  return new Set(
+    extractAndGroupVariables(environment).secrets.map((ref) => {
+      return ref.name;
+    }),
+  );
+}
+
+async function materializeStoredConnectorContext(
+  snapshot: StoredConnectorMaterializationSnapshot | null,
   args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
-    readonly featureSwitchContext: FeatureSwitchContext;
+    readonly overriddenSecretAliases: ReadonlySet<string>;
+    readonly timingDimensions: ApiDispatchTimingDimensions;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<ConnectorRuntimeContext> {
-  if (args.allowedConnectorTypes?.length === 0) {
-    return emptyConnectorRuntimeContext();
-  }
-
-  const allowedConnectorTypes = args.allowedConnectorTypes
-    ? [...new Set(args.allowedConnectorTypes)]
-    : undefined;
-
-  const snapshot = await loadStoredConnectorMaterializationSnapshot(
-    db,
-    {
-      orgId: args.orgId,
-      userId: args.userId,
-      allowedConnectorTypes,
-    },
-    timing,
-  );
   if (!snapshot) {
     return emptyConnectorRuntimeContext();
   }
 
-  const connectorSecrets = await decryptStoredConnectorSecrets(
+  const availableSecretRows = filterOverriddenStoredConnectorSecretRows({
+    rows: snapshot.secretRows,
+    bindingSets: snapshot.bindingSets,
+    overriddenSecretAliases: args.overriddenSecretAliases,
+  });
+  const availableSecretNames = availableStoredConnectorSecretNames(
     snapshot.secretRows,
-    {
-      names: snapshot.requirements.secretNames,
-      featureSwitchContext: args.featureSwitchContext,
-    },
-    timing,
-  );
-  const connectorVariables = storedConnectorVariablesFromRows(
-    snapshot.variableRows,
   );
 
   return await measureApiDispatchTiming(
@@ -2217,8 +2442,9 @@ async function loadStoredConnectorContext(
     () => {
       const resolved = resolveStoredConnectorState(
         snapshot.bindingSets,
-        connectorSecrets,
-        connectorVariables,
+        {},
+        snapshot.variableValues,
+        availableSecretNames,
       );
 
       return Promise.resolve({
@@ -2231,7 +2457,280 @@ async function loadStoredConnectorContext(
         storedEnvironment: compactRecord(resolved.environment),
       });
     },
+    {
+      ...args.timingDimensions,
+      stored_connector_secret_count_bucket: countBucket(
+        availableSecretRows.length,
+      ),
+    },
   );
+}
+
+function eagerStoredConnectorSecretNames(args: {
+  readonly snapshot: StoredConnectorMaterializationSnapshot;
+  readonly storedEnvironment: Record<string, string> | undefined;
+  readonly referencedEnvironmentSecretAliases: ReadonlySet<string>;
+  readonly environmentSecretPlaceholders:
+    | Readonly<Record<string, string>>
+    | undefined;
+  readonly overriddenSecretAliases: ReadonlySet<string>;
+}): ReadonlySet<string> {
+  const names = new Set<string>();
+
+  for (const { runtimeBindings } of args.snapshot.bindingSets) {
+    for (const { envName, source } of runtimeBindings) {
+      const isNeededByStoredEnvironment =
+        args.storedEnvironment?.[envName] !== undefined;
+      const isNeededByExplicitEnvironment =
+        args.referencedEnvironmentSecretAliases.has(envName);
+      if (
+        source.kind !== "connector-secret" ||
+        (!isNeededByStoredEnvironment && !isNeededByExplicitEnvironment) ||
+        args.environmentSecretPlaceholders?.[envName] !== undefined ||
+        args.overriddenSecretAliases.has(envName)
+      ) {
+        continue;
+      }
+      names.add(source.name);
+    }
+  }
+  return names;
+}
+
+async function materializeEagerStoredConnectorSecrets(
+  db: Db,
+  snapshot: StoredConnectorMaterializationSnapshot | null,
+  context: ConnectorRuntimeContext,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly featureSwitchContext: FeatureSwitchContext;
+    readonly eagerStoredEnvironment: Record<string, string> | undefined;
+    readonly referencedEnvironmentSecretAliases: ReadonlySet<string>;
+    readonly environmentSecretPlaceholders:
+      | Readonly<Record<string, string>>
+      | undefined;
+    readonly overriddenSecretAliases: ReadonlySet<string>;
+    readonly timingDimensions: ApiDispatchTimingDimensions;
+  },
+  timing?: ApiDispatchTimingCollector,
+): Promise<ConnectorRuntimeContext> {
+  if (!snapshot) {
+    return context;
+  }
+
+  const eagerNames = eagerStoredConnectorSecretNames({
+    snapshot,
+    storedEnvironment: args.eagerStoredEnvironment,
+    referencedEnvironmentSecretAliases: args.referencedEnvironmentSecretAliases,
+    environmentSecretPlaceholders: args.environmentSecretPlaceholders,
+    overriddenSecretAliases: args.overriddenSecretAliases,
+  });
+  if (eagerNames.size === 0) {
+    return context;
+  }
+
+  const encryptedRows = await loadStoredConnectorEncryptedSecretRows(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    names: eagerNames,
+  });
+  const connectorSecrets = await decryptStoredConnectorSecretRows(
+    encryptedRows,
+    {
+      featureSwitchContext: args.featureSwitchContext,
+      timingDimensions: args.timingDimensions,
+    },
+    timing,
+  );
+  const resolved = resolveStoredConnectorState(
+    snapshot.bindingSets,
+    connectorSecrets,
+    snapshot.variableValues,
+    availableStoredConnectorSecretNames(snapshot.secretRows),
+  );
+
+  return {
+    ...context,
+    secrets: mergeRecords(context.secrets, resolved.secrets),
+  };
+}
+
+function eagerStoredConnectorSecretInputs(args: {
+  readonly content: AgentComposeContent;
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly connectorContext: ConnectorRuntimeContext;
+}): {
+  readonly eagerStoredEnvironment: Record<string, string> | undefined;
+  readonly referencedEnvironmentSecretAliases: ReadonlySet<string>;
+} {
+  const additionalEnvironment = args.modelProvider?.environment;
+  return {
+    eagerStoredEnvironment: effectiveStoredConnectorEnvironment({
+      content: args.content,
+      additionalEnvironment,
+      storedConnectorEnvironment: args.connectorContext.storedEnvironment,
+    }),
+    referencedEnvironmentSecretAliases: referencedEnvironmentSecretAliases(
+      environmentTemplates({
+        content: args.content,
+        additionalEnvironment,
+      }),
+    ),
+  };
+}
+
+async function loadStoredConnectorMaterializationPlan(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+    readonly scopeSource: ConnectorScopeSource;
+  },
+  timing?: ApiDispatchTimingCollector,
+): Promise<StoredConnectorMaterializationSnapshot | null> {
+  if (args.allowedConnectorTypes?.length === 0) {
+    return null;
+  }
+
+  const allowedConnectorTypes = args.allowedConnectorTypes
+    ? [...new Set(args.allowedConnectorTypes)]
+    : undefined;
+
+  const snapshot = await loadStoredConnectorMaterializationSnapshot(
+    db,
+    {
+      orgId: args.orgId,
+      userId: args.userId,
+      allowedConnectorTypes,
+      scopeSource: args.scopeSource,
+    },
+    timing,
+  );
+  return snapshot;
+}
+
+async function loadStoredConnectorRows(
+  tx: DbTransaction,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+    readonly timingDimensions: ApiDispatchTimingDimensions;
+  },
+  timing?: ApiDispatchTimingCollector,
+): Promise<readonly StoredConnectorRuntimeRowCandidate[]> {
+  const startedAt = now();
+  const rows = await onRejection(
+    (async () => {
+      await tx.execute(
+        sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
+      );
+      return await tx
+        .select({
+          type: connectors.type,
+          authMethod: connectors.authMethod,
+          needsReconnect: connectors.needsReconnect,
+          tokenExpiresAt: connectors.tokenExpiresAt,
+        })
+        .from(connectors)
+        .where(
+          and(
+            eq(connectors.orgId, args.orgId),
+            eq(connectors.userId, args.userId),
+            args.allowedConnectorTypes
+              ? inArray(connectors.type, args.allowedConnectorTypes)
+              : undefined,
+          ),
+        );
+    })(),
+    () => {
+      timing?.recordElapsed(
+        "api_dispatch_prepare_context_load_stored_connector_rows",
+        "nested",
+        startedAt,
+        now(),
+        args.timingDimensions,
+      );
+    },
+  );
+  timing?.recordElapsed(
+    "api_dispatch_prepare_context_load_stored_connector_rows",
+    "nested",
+    startedAt,
+    now(),
+    {
+      ...args.timingDimensions,
+      stored_connector_count_bucket: countBucket(rows.length),
+    },
+  );
+  return rows;
+}
+
+function buildStoredConnectorMaterializationPlan(args: {
+  readonly connectorRows: readonly StoredConnectorRuntimeRowCandidate[];
+  readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+}): StoredConnectorMaterializationPlan | null {
+  const allowedConnectorRows = allowedStoredConnectorRows(
+    args.connectorRows,
+    args.allowedConnectorTypes,
+    nowDate(),
+  );
+  if (allowedConnectorRows.length === 0) {
+    return null;
+  }
+
+  const bindingSets = connectorEnvBindingSets(allowedConnectorRows);
+  return {
+    allowedConnectorRows,
+    bindingSets,
+    requirements: collectStoredConnectorRequirements(bindingSets),
+  };
+}
+
+function filterStoredConnectorRows(
+  args: {
+    readonly connectorRows: readonly StoredConnectorRuntimeRowCandidate[];
+    readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+    readonly timingDimensions: ApiDispatchTimingDimensions;
+  },
+  timing?: ApiDispatchTimingCollector,
+): StoredConnectorMaterializationPlan | null {
+  const startedAt = now();
+  const result = safeSync(() => {
+    return buildStoredConnectorMaterializationPlan(args);
+  });
+  if ("error" in result) {
+    timing?.recordElapsed(
+      "api_dispatch_prepare_context_filter_stored_connector_rows",
+      "nested",
+      startedAt,
+      now(),
+      {
+        ...args.timingDimensions,
+        stored_connector_count_bucket: countBucket(args.connectorRows.length),
+      },
+    );
+    throw result.error;
+  }
+  const plan = result.ok;
+  timing?.recordElapsed(
+    "api_dispatch_prepare_context_filter_stored_connector_rows",
+    "nested",
+    startedAt,
+    now(),
+    {
+      ...args.timingDimensions,
+      stored_connector_count_bucket: countBucket(
+        plan?.allowedConnectorRows.length ?? 0,
+      ),
+      stored_connector_secret_count_bucket: countBucket(
+        plan?.requirements.secretNames.size ?? 0,
+      ),
+    },
+  );
+  return plan;
 }
 
 async function loadStoredConnectorMaterializationSnapshot(
@@ -2240,66 +2739,43 @@ async function loadStoredConnectorMaterializationSnapshot(
     readonly orgId: string;
     readonly userId: string;
     readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;
+    readonly scopeSource: ConnectorScopeSource;
   },
   timing?: ApiDispatchTimingCollector,
 ): Promise<StoredConnectorMaterializationSnapshot | null> {
   return await db.transaction(async (tx) => {
-    const connectorRows = await measureApiDispatchTiming(
-      timing,
-      "api_dispatch_prepare_context_load_stored_connector_rows",
-      "nested",
-      async () => {
-        await tx.execute(
-          sql`SET TRANSACTION ISOLATION LEVEL REPEATABLE READ, READ ONLY`,
-        );
-        return await tx
-          .select({
-            type: connectors.type,
-            authMethod: connectors.authMethod,
-            needsReconnect: connectors.needsReconnect,
-            tokenExpiresAt: connectors.tokenExpiresAt,
-          })
-          .from(connectors)
-          .where(
-            and(
-              eq(connectors.orgId, args.orgId),
-              eq(connectors.userId, args.userId),
-              args.allowedConnectorTypes
-                ? inArray(connectors.type, args.allowedConnectorTypes)
-                : undefined,
-            ),
-          );
+    const baseTimingDimensions = storedConnectorTimingDimensions({
+      scopeSource: args.scopeSource,
+    });
+    const connectorRows = await loadStoredConnectorRows(
+      tx,
+      {
+        orgId: args.orgId,
+        userId: args.userId,
+        allowedConnectorTypes: args.allowedConnectorTypes,
+        timingDimensions: baseTimingDimensions,
       },
+      timing,
     );
     if (connectorRows.length === 0) {
       return null;
     }
 
-    const storedConnectorPlan = await measureApiDispatchTiming(
-      timing,
-      "api_dispatch_prepare_context_filter_stored_connector_rows",
-      "nested",
-      () => {
-        const allowedConnectorRows = allowedStoredConnectorRows(
-          connectorRows,
-          args.allowedConnectorTypes,
-          nowDate(),
-        );
-        if (allowedConnectorRows.length === 0) {
-          return Promise.resolve(null);
-        }
-
-        const bindingSets = connectorEnvBindingSets(allowedConnectorRows);
-        return Promise.resolve({
-          allowedConnectorRows,
-          bindingSets,
-          requirements: collectStoredConnectorRequirements(bindingSets),
-        });
+    const storedConnectorPlan = await filterStoredConnectorRows(
+      {
+        connectorRows,
+        allowedConnectorTypes: args.allowedConnectorTypes,
+        timingDimensions: baseTimingDimensions,
       },
+      timing,
     );
     if (!storedConnectorPlan) {
       return null;
     }
+    const connectorTimingDimensions = storedConnectorTimingDimensions({
+      scopeSource: args.scopeSource,
+      connectorCount: storedConnectorPlan.allowedConnectorRows.length,
+    });
 
     const secretRows = await loadStoredConnectorSecretRows(
       tx,
@@ -2307,6 +2783,7 @@ async function loadStoredConnectorMaterializationSnapshot(
         orgId: args.orgId,
         userId: args.userId,
         names: storedConnectorPlan.requirements.secretNames,
+        timingDimensions: connectorTimingDimensions,
       },
       timing,
     );
@@ -2316,14 +2793,16 @@ async function loadStoredConnectorMaterializationSnapshot(
         orgId: args.orgId,
         userId: args.userId,
         names: storedConnectorPlan.requirements.variableNames,
+        timingDimensions: connectorTimingDimensions,
       },
       timing,
     );
+    const connectorVariables = storedConnectorVariablesFromRows(variableRows);
 
     return {
       ...storedConnectorPlan,
       secretRows,
-      variableRows,
+      variableValues: connectorVariables,
     } satisfies StoredConnectorMaterializationSnapshot;
   });
 }
@@ -2569,6 +3048,7 @@ function runtimeFirewall(firewall: ExpandedFirewallConfig): Firewall {
     apis: firewall.apis.map((api) => {
       return {
         base: api.base,
+        ...(api.hostPolicy !== undefined ? { hostPolicy: api.hostPolicy } : {}),
         auth: api.auth,
         permissions: api.permissions ?? [],
       };
@@ -2594,7 +3074,7 @@ function builtinFirewallEntry(
   for (const name of names) {
     const value = vars?.[name];
     if (!value) {
-      throw new Error(
+      throw new FirewallBaseUrlResolutionError(
         `Firewall "${firewall.name}" base URL requires variable "${name}" but it was not provided`,
       );
     }
@@ -2628,7 +3108,7 @@ function builtinFirewallEntryForMetadata(
   for (const name of metadata.baseUrlVarNames) {
     const value = vars?.[name];
     if (!value) {
-      throw new Error(
+      throw new FirewallBaseUrlResolutionError(
         `Firewall "${metadata.type}" base URL requires variable "${name}" but it was not provided`,
       );
     }
@@ -2641,6 +3121,9 @@ function builtinFirewallEntryForMetadata(
         apis: metadata.baseUrlTemplates.map((template) => {
           return {
             base: template.base,
+            ...(template.hostPolicy !== undefined
+              ? { hostPolicy: template.hostPolicy }
+              : {}),
             auth: baseUrlValidationAuth(template.credentialed),
             permissions: [],
           };
@@ -3570,6 +4053,7 @@ async function insertZeroRunRecord(
     automationId: metadata.automationId ?? null,
     triggerId: metadata.triggerId ?? null,
     workflowTriggerId: metadata.workflowTriggerId ?? null,
+    triggerBrief: metadata.triggerBrief ?? null,
     runGroupId: metadata.runGroupId ?? null,
     goalId: metadata.goalId ?? null,
     triggerAgentId: metadata.triggerAgentId ?? null,
@@ -3963,6 +4447,7 @@ function buildStoredExecutionSecrets(args: {
     secretConnectorMap: args.connectorContext.secretConnectorMap,
     overriddenSecrets: [
       args.modelProvider?.secrets,
+      args.modelProvider?.secretConnectorMap,
       args.bodySecrets,
       args.customConnectorContext.secrets,
     ],
@@ -4009,6 +4494,39 @@ function billableFirewallsForPermissions(args: {
   const connectorFirewalls = args.permissions?.billableFirewalls ?? [];
 
   return [...modelFirewalls, ...connectorFirewalls];
+}
+
+function countBucket(
+  count: number,
+): (typeof STORED_CONNECTOR_COUNT_BUCKET_DIMENSIONS)[number] {
+  if (count <= 0) {
+    return "0";
+  }
+  if (count === 1) {
+    return "1";
+  }
+  if (count <= 4) {
+    return "2_4";
+  }
+  if (count <= 8) {
+    return "5_8";
+  }
+  if (count <= 16) {
+    return "9_16";
+  }
+  return "17_plus";
+}
+
+function storedConnectorTimingDimensions(args: {
+  readonly scopeSource: ConnectorScopeSource;
+  readonly connectorCount?: number;
+}): ApiDispatchTimingDimensions {
+  return {
+    connector_scope_source: args.scopeSource,
+    ...(args.connectorCount !== undefined
+      ? { stored_connector_count_bucket: countBucket(args.connectorCount) }
+      : {}),
+  };
 }
 
 function isModelProviderFirewallName(name: string): boolean {
@@ -4184,6 +4702,7 @@ function buildRunnerJobPayload(
               volumeVersionOverrides: body.volumeVersions,
               additionalVolumes: args.additionalVolumes,
               framework: args.framework,
+              timing: args.timing,
             }),
           );
         },
@@ -4267,6 +4786,7 @@ function dispatchRun(
     readonly userTimezone: string | undefined;
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly timing: ApiDispatchTimingCollector;
+    readonly timingDimensions: ApiDispatchTimingDimensions | undefined;
   },
 ): Computed<Promise<DerivedPersistenceResult>> {
   return computed(async (get): Promise<DerivedPersistenceResult> => {
@@ -4364,6 +4884,10 @@ function dispatchRun(
         runnerGroup: payload.runnerGroup,
         profile: payload.profile,
         dispatchPath: "direct",
+        ...(args.timingDimensions ? { dimensions: args.timingDimensions } : {}),
+        ...(args.body.triggerSource
+          ? { triggerSource: args.body.triggerSource }
+          : {}),
       });
     }
 
@@ -4593,32 +5117,35 @@ async function loadRunConnectorContexts(
   args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly allowedConnectorTypes?: readonly ConnectorType[];
-    readonly allowedCustomConnectorIds?: readonly string[];
+    readonly connectorScope: EffectiveConnectorScope;
   },
   featureSwitchContext: FeatureSwitchContext,
   timing?: ApiDispatchTimingCollector,
 ): Promise<{
-  readonly connectorContext: ConnectorRuntimeContext;
+  readonly storedConnectorSnapshot: StoredConnectorMaterializationSnapshot | null;
+  readonly storedConnectorMetadataContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
 }> {
-  const [storedConnectorContext, customConnectorContext] = await Promise.all([
+  const [storedConnectorSnapshot, customConnectorContext] = await Promise.all([
     measureApiDispatchTiming(
       timing,
       "api_dispatch_prepare_context_load_stored_connectors",
       "nested",
       async () => {
-        return await loadStoredConnectorContext(
+        return await loadStoredConnectorMaterializationPlan(
           db,
           {
             orgId: args.orgId,
             userId: args.userId,
-            allowedConnectorTypes: args.allowedConnectorTypes,
-            featureSwitchContext,
+            allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
+            scopeSource: args.connectorScope.source,
           },
           timing,
         );
       },
+      storedConnectorTimingDimensions({
+        scopeSource: args.connectorScope.source,
+      }),
     ),
     measureApiDispatchTiming(
       timing,
@@ -4630,7 +5157,8 @@ async function loadRunConnectorContexts(
           {
             orgId: args.orgId,
             userId: args.userId,
-            allowedCustomConnectorIds: args.allowedCustomConnectorIds,
+            allowedCustomConnectorIds:
+              args.connectorScope.allowedCustomConnectorIds,
             featureSwitchContext,
           },
           timing,
@@ -4639,7 +5167,10 @@ async function loadRunConnectorContexts(
     ),
   ]);
   return {
-    connectorContext: storedConnectorContext,
+    storedConnectorSnapshot,
+    storedConnectorMetadataContext: storedConnectorContextFromSnapshot(
+      storedConnectorSnapshot,
+    ),
     customConnectorContext,
   };
 }
@@ -4715,23 +5246,33 @@ function validateRunEnvironmentReferences(args: {
 async function buildPreparedPermissionManifest(args: {
   readonly body: CreateRunBody;
   readonly modelProvider: ResolvedModelProviderEnvironment | null;
-  readonly connectorContext: ConnectorRuntimeContext;
+  readonly storedConnectorMetadataContext: ConnectorRuntimeContext;
   readonly customConnectorContext: CustomConnectorRuntimeContext;
   readonly timing: ApiDispatchTimingCollector;
-}): Promise<PermissionManifest | undefined> {
-  return await buildPermissionManifest({
-    modelProvider: args.modelProvider,
-    permissionPolicies: args.body.permissionPolicies,
-    vars: args.body.vars,
-    connectorVars: args.connectorContext.vars,
-    connectorTypes: args.connectorContext.connectorTypes,
-    customConnectorFirewalls: args.customConnectorContext.firewalls,
-    timing: args.timing,
-  });
+}): Promise<PermissionManifest | undefined | CreateRunErrorResult> {
+  const result = await settle(
+    buildPermissionManifest({
+      modelProvider: args.modelProvider,
+      permissionPolicies: args.body.permissionPolicies,
+      vars: args.body.vars,
+      connectorVars: args.storedConnectorMetadataContext.vars,
+      connectorTypes: args.storedConnectorMetadataContext.connectorTypes,
+      customConnectorFirewalls: args.customConnectorContext.firewalls,
+      timing: args.timing,
+    }),
+  );
+  if (result.ok) {
+    return result.value;
+  }
+  if (result.error instanceof FirewallBaseUrlResolutionError) {
+    return badRequestMessage(result.error.message);
+  }
+  throw result.error;
 }
 
 function preparedRunAdditionalVolumes(args: {
   readonly createArgs: CreateAgentRunArgs;
+  readonly connectorScope: EffectiveConnectorScope;
   readonly framework: SupportedFramework;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
@@ -4739,7 +5280,10 @@ function preparedRunAdditionalVolumes(args: {
 }): readonly AdditionalVolume[] | undefined {
   return mergeAdditionalVolumes({
     prepend: buildInjectedSkillVolumes(
-      args.createArgs,
+      {
+        injectSkillVolumes: args.createArgs.injectSkillVolumes,
+        allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
+      },
       args.framework,
       isFeatureEnabled(
         FeatureSwitchKey.GoalWorkflows,
@@ -4755,6 +5299,7 @@ type PrepareRunContextGet = <T>(value: Computed<T>) => T;
 interface PreparedRunBodyContext {
   readonly body: CreateRunBody;
   readonly resolved: ResolvedCompose;
+  readonly connectorScope: EffectiveConnectorScope;
   readonly requestedFramework: SupportedFramework;
   readonly featureSwitchContext: FeatureSwitchContext;
 }
@@ -4767,6 +5312,68 @@ interface PreparedRuntimeContext {
   readonly permissionManifest: PermissionManifest | undefined;
   readonly billableFirewalls: readonly string[];
   readonly modelUsageProvider: string | undefined;
+}
+
+function connectorScopeFromCreateArgs(
+  args: CreateAgentRunArgs,
+): EffectiveConnectorScope | null {
+  if (!args.connectorScope) {
+    return null;
+  }
+  const source =
+    args.connectorScope.allowedConnectorTypes.length === 0 &&
+    args.connectorScope.allowedCustomConnectorIds.length === 0
+      ? "empty"
+      : (args.connectorScope.source ?? "explicit");
+  return {
+    allowedConnectorTypes: args.connectorScope.allowedConnectorTypes,
+    allowedCustomConnectorIds: args.connectorScope.allowedCustomConnectorIds,
+    source,
+  };
+}
+
+async function resolveEffectiveConnectorScope(args: {
+  readonly db: Db;
+  readonly createArgs: CreateAgentRunArgs;
+  readonly resolved: ResolvedCompose;
+  readonly signal: AbortSignal;
+}): Promise<EffectiveConnectorScope | CreateRunErrorResult> {
+  const createArgsScope = connectorScopeFromCreateArgs(args.createArgs);
+  if (createArgsScope) {
+    return createArgsScope;
+  }
+
+  const zeroBackedAgent = await loadZeroBackedComposeAgent(args.db, {
+    composeId: args.resolved.composeId,
+  });
+  args.signal.throwIfAborted();
+  if (zeroBackedAgent) {
+    if (
+      zeroBackedAgent.visibility === "private" &&
+      zeroBackedAgent.owner !== args.createArgs.userId
+    ) {
+      return forbidden("Only the private agent owner can run this agent");
+    }
+    const scope = await loadAgentConnectorScope(args.db, {
+      userId: args.createArgs.userId,
+      orgId: args.createArgs.orgId,
+      agentId: args.resolved.composeId,
+    });
+    return {
+      ...scope,
+      source:
+        scope.allowedConnectorTypes.length === 0 &&
+        scope.allowedCustomConnectorIds.length === 0
+          ? "empty"
+          : "zero_agent",
+    };
+  }
+
+  return {
+    allowedConnectorTypes: undefined,
+    allowedCustomConnectorIds: undefined,
+    source: "legacy_all",
+  };
 }
 
 async function prepareRunBodyContext(args: {
@@ -4807,6 +5414,23 @@ async function prepareRunBodyContext(args: {
   }
   if (resolved.orgId !== args.createArgs.orgId) {
     return notFound("Resource not found");
+  }
+
+  const connectorScope = await args.timing.measure(
+    "api_dispatch_prepare_context_resolve_connector_scope",
+    "nested",
+    async () => {
+      return await resolveEffectiveConnectorScope({
+        db: args.db,
+        createArgs: args.createArgs,
+        resolved,
+        signal: args.signal,
+      });
+    },
+  );
+  args.signal.throwIfAborted();
+  if (isRouteError(connectorScope)) {
+    return connectorScope;
   }
 
   const persistedEnvironment = await args.timing.measure(
@@ -4856,6 +5480,7 @@ async function prepareRunBodyContext(args: {
   return {
     body,
     resolved,
+    connectorScope,
     requestedFramework: requestedFrameworkResult,
     featureSwitchContext,
   };
@@ -4864,6 +5489,7 @@ async function prepareRunBodyContext(args: {
 async function prepareRunRuntimeContext(args: {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
+  readonly connectorScope: EffectiveConnectorScope;
   readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
   readonly bodyContext: PreparedRunBodyContext;
@@ -4888,35 +5514,89 @@ async function prepareRunRuntimeContext(args: {
   const framework = modelProvider
     ? modelProviderFramework(modelProvider)
     : requestedFramework;
-  const { connectorContext, customConnectorContext } =
-    await args.timing.measure(
-      "api_dispatch_prepare_context_load_connector_contexts",
-      "nested",
-      async () => {
-        return await loadRunConnectorContexts(
-          args.db,
-          args.createArgs,
-          featureSwitchContext,
-          args.timing,
-        );
-      },
-    );
+  const {
+    storedConnectorSnapshot,
+    storedConnectorMetadataContext,
+    customConnectorContext,
+  } = await args.timing.measure(
+    "api_dispatch_prepare_context_load_connector_contexts",
+    "nested",
+    async () => {
+      return await loadRunConnectorContexts(
+        args.db,
+        {
+          orgId: args.createArgs.orgId,
+          userId: args.createArgs.userId,
+          connectorScope: args.connectorScope,
+        },
+        featureSwitchContext,
+        args.timing,
+      );
+    },
+    storedConnectorTimingDimensions({
+      scopeSource: args.connectorScope.source,
+    }),
+  );
   args.signal.throwIfAborted();
 
-  const permissionManifest = await args.timing.measure(
+  const storedConnectorTiming = storedConnectorTimingDimensions({
+    scopeSource: args.connectorScope.source,
+    connectorCount: storedConnectorSnapshot?.allowedConnectorRows.length ?? 0,
+  });
+  const overriddenConnectorSecretAliases = overriddenRuntimeSecretAliases([
+    modelProvider?.secrets,
+    modelProvider?.secretConnectorMap,
+    body.secrets,
+  ]);
+  const connectorContextPromise = materializeStoredConnectorContext(
+    storedConnectorSnapshot,
+    {
+      overriddenSecretAliases: overriddenConnectorSecretAliases,
+      timingDimensions: storedConnectorTiming,
+    },
+    args.timing,
+  );
+  const permissionManifestPromise = args.timing.measure(
     "api_dispatch_prepare_context_build_permission_manifest",
     "nested",
     async () => {
       return await buildPreparedPermissionManifest({
         body,
         modelProvider,
-        connectorContext,
+        storedConnectorMetadataContext,
         customConnectorContext,
         timing: args.timing,
       });
     },
   );
+  const [connectorContext, permissionManifest] = await Promise.all([
+    connectorContextPromise,
+    permissionManifestPromise,
+  ]);
   args.signal.throwIfAborted();
+  if (isRouteError(permissionManifest)) {
+    return permissionManifest;
+  }
+  const finalConnectorContext = await materializeEagerStoredConnectorSecrets(
+    args.db,
+    storedConnectorSnapshot,
+    connectorContext,
+    {
+      orgId: args.createArgs.orgId,
+      userId: args.createArgs.userId,
+      featureSwitchContext,
+      ...eagerStoredConnectorSecretInputs({
+        content: resolved.content,
+        modelProvider,
+        connectorContext,
+      }),
+      environmentSecretPlaceholders:
+        permissionManifest?.environmentSecretPlaceholders,
+      overriddenSecretAliases: overriddenConnectorSecretAliases,
+      timingDimensions: storedConnectorTiming,
+    },
+    args.timing,
+  );
   const modelUsageContext = prepareModelUsageContext({
     modelProvider,
     permissionManifest,
@@ -4928,7 +5608,7 @@ async function prepareRunRuntimeContext(args: {
   return {
     framework,
     modelProvider,
-    connectorContext,
+    connectorContext: finalConnectorContext,
     customConnectorContext,
     permissionManifest,
     billableFirewalls: modelUsageContext.billableFirewalls,
@@ -4938,6 +5618,7 @@ async function prepareRunRuntimeContext(args: {
 
 function prepareRunOutputMetadata(args: {
   readonly createArgs: CreateAgentRunArgs;
+  readonly connectorScope: EffectiveConnectorScope;
   readonly framework: SupportedFramework;
   readonly featureSwitchContext: FeatureSwitchContext;
   readonly body: CreateRunBody;
@@ -4948,6 +5629,7 @@ function prepareRunOutputMetadata(args: {
 } {
   const additionalVolumes = preparedRunAdditionalVolumes({
     createArgs: args.createArgs,
+    connectorScope: args.connectorScope,
     framework: args.framework,
     featureSwitchContext: args.featureSwitchContext,
     body: args.body,
@@ -4995,6 +5677,7 @@ function prepareRunContext(
       const runtimeContext = await prepareRunRuntimeContext({
         db,
         createArgs: args,
+        connectorScope: bodyContext.connectorScope,
         timing,
         signal,
         bodyContext,
@@ -5040,6 +5723,7 @@ function prepareRunContext(
           return await Promise.resolve(
             prepareRunOutputMetadata({
               createArgs: args,
+              connectorScope: bodyContext.connectorScope,
               framework: runtimeContext.framework,
               featureSwitchContext: bodyContext.featureSwitchContext,
               body: bodyContext.body,
@@ -5223,6 +5907,7 @@ function completePendingRun(input: {
             userTimezone: input.context.userTimezone,
             featureSwitchContext: input.context.featureSwitchContext,
             timing: input.timing,
+            timingDimensions: input.args.timingDimensions,
           }),
         ),
       );

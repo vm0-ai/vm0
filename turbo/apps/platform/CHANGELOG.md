@@ -1,5 +1,273 @@
 # Changelog
 
+## [0.506.0](https://github.com/vm0-ai/vm0/compare/app-v0.505.0...app-v0.506.0) (2026-06-29)
+
+
+### Features
+
+* add GitHub label workflow triggers ([#19322](https://github.com/vm0-ai/vm0/issues/19322)) ([245be48](https://github.com/vm0-ai/vm0/commit/245be48e4eab3b4644e00fe9480213c327dda1b9))
+* replace model coefficients with price tiers ([#19298](https://github.com/vm0-ai/vm0/issues/19298)) ([bde94cd](https://github.com/vm0-ai/vm0/commit/bde94cdfc2ee5c8bf0e4bf4da048be72ff3f3411))
+
+
+### Bug Fixes
+
+* route browser auth through staging so ([#19327](https://github.com/vm0-ai/vm0/issues/19327)) ([c1395e3](https://github.com/vm0-ai/vm0/commit/c1395e3859e8b7e63915cd2165161cd6ecd8a8bc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.125.0
+    * @vm0/connectors bumped to 1.113.0
+    * @vm0/core bumped to 8.375.0
+
+## [0.505.0](https://github.com/vm0-ai/vm0/compare/app-v0.504.8...app-v0.505.0) (2026-06-29)
+
+
+### Features
+
+* restore one-time workflow trigger ui ([#19326](https://github.com/vm0-ai/vm0/issues/19326)) ([d265803](https://github.com/vm0-ai/vm0/commit/d265803036887abef7f617719585817552f3cba2))
+
+
+### Bug Fixes
+
+* hide workflow dirty state without edit permission ([#19309](https://github.com/vm0-ai/vm0/issues/19309)) ([4c6dd49](https://github.com/vm0-ai/vm0/commit/4c6dd494370345f009176381d0680fcbe98cfd28))
+* improve workflow copy action states ([#19302](https://github.com/vm0-ai/vm0/issues/19302)) ([211d91e](https://github.com/vm0-ai/vm0/commit/211d91ee21c96354df48606f6db05f4f8f8264f1))
+* show already allowed permission grants ([#19324](https://github.com/vm0-ai/vm0/issues/19324)) ([ac4ff73](https://github.com/vm0-ai/vm0/commit/ac4ff7349dd4c24998303c740a2a996a0abe4988))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.6
+    * @vm0/connectors bumped to 1.112.1
+    * @vm0/core bumped to 8.374.6
+
+## [0.504.8](https://github.com/vm0-ai/vm0/compare/app-v0.504.7...app-v0.504.8) (2026-06-29)
+
+
+### Bug Fixes
+
+* shorten goal message label ([#19306](https://github.com/vm0-ai/vm0/issues/19306)) ([3082607](https://github.com/vm0-ai/vm0/commit/3082607aa23b52ab5c59209ce235fcb4abc33a1b))
+
+## [0.504.7](https://github.com/vm0-ai/vm0/compare/app-v0.504.6...app-v0.504.7) (2026-06-29)
+
+
+### Bug Fixes
+
+* show agent workflow trigger automations ([#19269](https://github.com/vm0-ai/vm0/issues/19269)) ([25bec10](https://github.com/vm0-ai/vm0/commit/25bec10f7209b14151f78e453b6f27df18dacf9d))
+
+
+### Refactoring
+
+* remove workflow permission grants ([#19271](https://github.com/vm0-ai/vm0/issues/19271)) ([07e590a](https://github.com/vm0-ai/vm0/commit/07e590af6b59fd53a565a7be9341d685f0321299))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.5
+    * @vm0/core bumped to 8.374.5
+
+## [0.504.6](https://github.com/vm0-ai/vm0/compare/app-v0.504.5...app-v0.504.6) (2026-06-29)
+
+
+### Bug Fixes
+
+* wrap webhook trigger signing details ([#19268](https://github.com/vm0-ai/vm0/issues/19268)) ([f339379](https://github.com/vm0-ai/vm0/commit/f3393799d8f4f8093ce79229f35741c8a51e93cd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.4
+    * @vm0/connectors bumped to 1.112.0
+    * @vm0/core bumped to 8.374.4
+
+## [0.504.5](https://github.com/vm0-ai/vm0/compare/app-v0.504.4...app-v0.504.5) (2026-06-29)
+
+
+### Bug Fixes
+
+* copy workflow runtime configuration ([#19252](https://github.com/vm0-ai/vm0/issues/19252)) ([aa7dfdf](https://github.com/vm0-ai/vm0/commit/aa7dfdfe4db634174c43cdffb7ec94457f24e0cf))
+
+## [0.504.4](https://github.com/vm0-ai/vm0/compare/app-v0.504.3...app-v0.504.4) (2026-06-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.3
+    * @vm0/core bumped to 8.374.3
+
+## [0.504.3](https://github.com/vm0-ai/vm0/compare/app-v0.504.2...app-v0.504.3) (2026-06-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.2
+    * @vm0/core bumped to 8.374.2
+
+## [0.504.2](https://github.com/vm0-ai/vm0/compare/app-v0.504.1...app-v0.504.2) (2026-06-28)
+
+
+### Bug Fixes
+
+* **app:** simplify workflow trigger creation prompts ([#19244](https://github.com/vm0-ai/vm0/issues/19244)) ([8b5680a](https://github.com/vm0-ai/vm0/commit/8b5680a78427aae3691a1f83a68e536f5d5084ac))
+
+## [0.504.1](https://github.com/vm0-ai/vm0/compare/app-v0.504.0...app-v0.504.1) (2026-06-28)
+
+
+### Bug Fixes
+
+* align automation agent picker modal ([#19232](https://github.com/vm0-ai/vm0/issues/19232)) ([10f1edc](https://github.com/vm0-ai/vm0/commit/10f1edc525aa49bbe3d6966ba98c4410d6e07489))
+* avoid workflow detail fanout on automations page ([#19239](https://github.com/vm0-ai/vm0/issues/19239)) ([c7f4116](https://github.com/vm0-ai/vm0/commit/c7f411634ce894d449b75dd6206157613fb2ff6e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.1
+    * @vm0/core bumped to 8.374.1
+
+## [0.504.0](https://github.com/vm0-ai/vm0/compare/app-v0.503.0...app-v0.504.0) (2026-06-28)
+
+
+### Features
+
+* add workflow permission request cards ([#19224](https://github.com/vm0-ai/vm0/issues/19224)) ([7e4907c](https://github.com/vm0-ai/vm0/commit/7e4907c3bb7e7d0a9043686a3cd56f5fc38fa799))
+* add workflow trigger automations page ([#19222](https://github.com/vm0-ai/vm0/issues/19222)) ([f653fba](https://github.com/vm0-ai/vm0/commit/f653fbaf15fa08364b2e802828582b63d5ca1c18))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.0
+    * @vm0/connectors bumped to 1.111.0
+    * @vm0/core bumped to 8.374.0
+
+## [0.503.0](https://github.com/vm0-ai/vm0/compare/app-v0.502.0...app-v0.503.0) (2026-06-28)
+
+
+### Features
+
+* redesign workflow trigger cards ([#19212](https://github.com/vm0-ai/vm0/issues/19212)) ([a5eb5b8](https://github.com/vm0-ai/vm0/commit/a5eb5b818a3114d6f7c04fbb1613f1d645b3bb12))
+
+
+### Bug Fixes
+
+* match slash workflows by slug prefix ([#19213](https://github.com/vm0-ai/vm0/issues/19213)) ([df4b182](https://github.com/vm0-ai/vm0/commit/df4b182a3c8dc696b8bfadc13bede06b6c9a860d))
+
+## [0.502.0](https://github.com/vm0-ai/vm0/compare/app-v0.501.0...app-v0.502.0) (2026-06-27)
+
+
+### Features
+
+* share workflow trigger chat threads ([#19208](https://github.com/vm0-ai/vm0/issues/19208)) ([6f47f8e](https://github.com/vm0-ai/vm0/commit/6f47f8ee081c2d2033c74e2a384d92a609d05642))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.123.0
+    * @vm0/core bumped to 8.373.4
+
+## [0.501.0](https://github.com/vm0-ai/vm0/compare/app-v0.500.2...app-v0.501.0) (2026-06-27)
+
+
+### Features
+
+* normalize Codex platform activity events ([#18978](https://github.com/vm0-ai/vm0/issues/18978)) ([a5fb6cc](https://github.com/vm0-ai/vm0/commit/a5fb6cc2af14bc5cfd709dbcb2c144c37a6e6761))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.122.0
+    * @vm0/connectors bumped to 1.110.4
+    * @vm0/core bumped to 8.373.3
+
+## [0.500.2](https://github.com/vm0-ai/vm0/compare/app-v0.500.1...app-v0.500.2) (2026-06-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.121.2
+    * @vm0/connectors bumped to 1.110.3
+    * @vm0/core bumped to 8.373.2
+
+## [0.500.1](https://github.com/vm0-ai/vm0/compare/app-v0.500.0...app-v0.500.1) (2026-06-27)
+
+
+### Bug Fixes
+
+* preserve computer use host order ([#19176](https://github.com/vm0-ai/vm0/issues/19176)) ([fc2b7d2](https://github.com/vm0-ai/vm0/commit/fc2b7d280ddc3d0a8b58371ced0d1aa07fbb88f3))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.121.1
+    * @vm0/connectors bumped to 1.110.2
+    * @vm0/core bumped to 8.373.1
+
+## [0.500.0](https://github.com/vm0-ai/vm0/compare/app-v0.499.0...app-v0.500.0) (2026-06-27)
+
+
+### Features
+
+* add workflow-scoped authorization ([#19147](https://github.com/vm0-ai/vm0/issues/19147)) ([b17dcd9](https://github.com/vm0-ai/vm0/commit/b17dcd9d1b4499321bf6f5f8760ab6f43d9285d5))
+
+
+### Refactoring
+
+* replace ts-rest contracts with trpc-backed contracts ([#19150](https://github.com/vm0-ai/vm0/issues/19150)) ([100ff36](https://github.com/vm0-ai/vm0/commit/100ff36c7a8abb9a0506c1183596680b1e0c8199))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.121.0
+    * @vm0/connectors bumped to 1.110.1
+    * @vm0/core bumped to 8.373.0
+
+## [0.499.0](https://github.com/vm0-ai/vm0/compare/app-v0.498.2...app-v0.499.0) (2026-06-26)
+
+
+### Features
+
+* add workflow trigger sidebar controls ([#19102](https://github.com/vm0-ai/vm0/issues/19102)) ([dd06b8d](https://github.com/vm0-ai/vm0/commit/dd06b8db7916473a6b87ed4edd3efb4f66c8e6a2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.120.0
+    * @vm0/core bumped to 8.372.2
+
+## [0.498.2](https://github.com/vm0-ai/vm0/compare/app-v0.498.1...app-v0.498.2) (2026-06-26)
+
+
+### Bug Fixes
+
+* update connector access agent rows ([#19131](https://github.com/vm0-ai/vm0/issues/19131)) ([bee1838](https://github.com/vm0-ai/vm0/commit/bee183844bec1b0cb125a2e876563bab423d94c4))
+
 ## [0.498.1](https://github.com/vm0-ai/vm0/compare/app-v0.498.0...app-v0.498.1) (2026-06-26)
 
 

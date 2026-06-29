@@ -6,7 +6,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { notFound } from "../../lib/error";
 import { updateChatThreadDraft$ } from "../services/zero-chat-thread.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 function chatThreadNotFound() {
   return notFound("Chat thread not found");

@@ -14,6 +14,7 @@ import {
   detachedSetupPage,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
+import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 
@@ -155,6 +156,132 @@ describe("chat message action cards", () => {
         within(permissionCard).getByText("Permissions updated"),
       ).toBeInTheDocument();
     });
+  });
+
+  it("shows already allowed permission action cards as read-only after refresh", async () => {
+    mockNow();
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=youtube&permission=videos.write&action=allow&expiresIn=24h`;
+    let applyRequests = 0;
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          agentId: AGENT_ID,
+          connectorRef: "youtube",
+          permission: "videos.write",
+          action: "allow",
+          expiresAt: isoFromNowMs(7 * 24 * 60 * 60 * 1000),
+          createdAt: "2026-06-09T11:00:00Z",
+          updatedAt: "2026-06-09T11:01:00Z",
+        },
+      ]);
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.apply, ({ respond }) => {
+      applyRequests += 1;
+      return respond(200, []);
+    });
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-already-allowed-permission`,
+      threadTitle: "Permission already allowed",
+      chatMessages: [
+        {
+          id: "msg-user-already-allowed-permission",
+          role: "user",
+          content: "Upload the video",
+          runId: "run-already-allowed-permission",
+          createdAt: "2026-06-09T11:00:00Z",
+        },
+        {
+          id: "msg-assistant-already-allowed-permission-card",
+          role: "assistant",
+          content: permissionAuthorizeUrl,
+          runId: "run-already-allowed-permission",
+          createdAt: "2026-06-09T11:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-already-allowed-permission`,
+    });
+
+    const permissionCard = await screen.findByTestId("permission-action-card");
+    await waitFor(() => {
+      expect(
+        within(permissionCard).getByText("Already allowed"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      within(permissionCard).getByText("Expires in 7 days"),
+    ).toBeInTheDocument();
+    expect(
+      within(permissionCard).queryByText("Confirm"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(permissionCard).queryByLabelText("Permission duration"),
+    ).not.toBeInTheDocument();
+    expect(applyRequests).toBe(0);
+  });
+
+  it("shows already denied permission action cards as read-only after refresh", async () => {
+    const permissionDenyUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=deny`;
+    let applyRequests = 0;
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          agentId: AGENT_ID,
+          connectorRef: "slack",
+          permission: "admin.analytics:read",
+          action: "deny",
+          expiresAt: null,
+          createdAt: "2026-06-09T11:00:00Z",
+          updatedAt: "2026-06-09T11:01:00Z",
+        },
+      ]);
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.apply, ({ respond }) => {
+      applyRequests += 1;
+      return respond(200, []);
+    });
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-already-denied-permission`,
+      threadTitle: "Permission already denied",
+      chatMessages: [
+        {
+          id: "msg-user-already-denied-permission",
+          role: "user",
+          content: "Block the Slack analytics request",
+          runId: "run-already-denied-permission",
+          createdAt: "2026-06-09T11:00:00Z",
+        },
+        {
+          id: "msg-assistant-already-denied-permission-card",
+          role: "assistant",
+          content: permissionDenyUrl,
+          runId: "run-already-denied-permission",
+          createdAt: "2026-06-09T11:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-already-denied-permission`,
+    });
+
+    const permissionCard = await screen.findByTestId("permission-action-card");
+    await waitFor(() => {
+      expect(
+        within(permissionCard).getByText("Already denied"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      within(permissionCard).queryByText("Confirm"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(permissionCard).queryByLabelText("Permission duration"),
+    ).not.toBeInTheDocument();
+    expect(applyRequests).toBe(0);
   });
 
   it("renders custom connector proposal links as configure cards", async () => {

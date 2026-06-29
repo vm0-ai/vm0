@@ -16,6 +16,15 @@ class InvalidBillableAuthExpiryError(Exception):
     """Raised when billable firewall auth succeeds with an invalid cache expiry."""
 
 
+@dataclass(frozen=True)
+class FirewallAuthCacheKey:
+    """Auth cache identity for one run, API, and resolved auth input set."""
+
+    run_id: str
+    api_id: str
+    auth_identity: str
+
+
 @dataclass
 class _FirewallHeaderCacheEntry:
     """Cached /firewall/auth response data for a single firewall key."""
@@ -26,15 +35,15 @@ class _FirewallHeaderCacheEntry:
 
 @dataclass
 class _FirewallAuthState:
-    """Per-(run_id, api_id) auth lifecycle state."""
+    """Per-auth-identity lifecycle state."""
 
     cache: _FirewallHeaderCacheEntry | None = None
     lock: asyncio.Lock = field(default_factory=asyncio.Lock)
     force_refresh_pending: bool = False
-    last_force_refresh_at: float = 0.0
+    last_force_refresh_monotonic_at: float | None = None
 
 
-_auth_state: dict[tuple[str, str], _FirewallAuthState] = {}
+_auth_state: dict[FirewallAuthCacheKey, _FirewallAuthState] = {}
 
 # Cooldown window for re-marking a force-refresh. Caps amplification at
 # 30 refreshes/hour/key under a persistent non-token 401 loop — safely
@@ -45,7 +54,7 @@ _auth_state: dict[tuple[str, str], _FirewallAuthState] = {}
 _FORCE_REFRESH_COOLDOWN_SECS = 120.0
 
 
-def _get_auth_state(cache_key: tuple[str, str]) -> _FirewallAuthState:
+def _get_auth_state(cache_key: FirewallAuthCacheKey) -> _FirewallAuthState:
     state = _auth_state.get(cache_key)
     if state is None:
         state = _FirewallAuthState()
@@ -53,7 +62,7 @@ def _get_auth_state(cache_key: tuple[str, str]) -> _FirewallAuthState:
     return state
 
 
-def request_force_refresh(cache_key: tuple[str, str]) -> None:
+def request_force_refresh(cache_key: FirewallAuthCacheKey) -> None:
     """Request a forced token refresh on the next /firewall/auth fetch.
 
     No-op if a forced refresh already completed within
@@ -63,28 +72,31 @@ def request_force_refresh(cache_key: tuple[str, str]) -> None:
 
     Design notes for future changes:
 
-    * The consume timestamp in ``state.last_force_refresh_at`` is written **before**
-      ``fetch_firewall_headers`` is awaited in ``get_firewall_headers``, not
-      after. Recording after would allow a 401 arriving during the fetch to
-      re-add the marker; after the fetch completes and writes the cache, a
-      later cache miss would then consume the stale marker and trigger an
-      unnecessary second refresh. The trade-off is that a failed fetch
-      (webhook down, ``TOKEN_REFRESH_FAILED``, etc.) still burns the
-      cooldown — intentional, because if the refresh grant itself is broken,
-      retrying faster than once per cooldown wouldn't help and would hammer
-      the provider.
-    * ``time.time()`` is used for the cooldown (not ``time.monotonic()``) for
-      consistency with the rest of this module, which compares wall-clock
-      ``expiresAt`` values from the webhook. An NTP backward step could
-      freeze the cooldown until wall-clock catches up; on NTP-slewed runners
-      this is not a realistic concern.
+    * The consume timestamp in ``state.last_force_refresh_monotonic_at`` is
+      written **before** ``fetch_firewall_headers`` is awaited in
+      ``get_firewall_headers``, not after. Recording after would allow a 401
+      arriving during the fetch to re-add the marker; after the fetch
+      completes and writes the cache, a later cache miss would then consume
+      the stale marker and trigger an unnecessary second refresh. The
+      trade-off is that a failed fetch (webhook down,
+      ``TOKEN_REFRESH_FAILED``, etc.) still burns the cooldown — intentional,
+      because if the refresh grant itself is broken, retrying faster than once
+      per cooldown wouldn't help and would hammer the provider.
+    * The cooldown is process-local elapsed time and uses ``time.monotonic()``.
+      Absolute webhook ``expiresAt`` checks remain wall-clock based elsewhere
+      in this module.
     """
     state = _get_auth_state(cache_key)
-    if time.time() - state.last_force_refresh_at >= _FORCE_REFRESH_COOLDOWN_SECS:
+    now = time.monotonic()
+    last_force_refresh_monotonic_at = state.last_force_refresh_monotonic_at
+    if (
+        last_force_refresh_monotonic_at is None
+        or now - last_force_refresh_monotonic_at >= _FORCE_REFRESH_COOLDOWN_SECS
+    ):
         state.force_refresh_pending = True
 
 
-def clear_cached_firewall_headers(cache_key: tuple[str, str]) -> None:
+def clear_cached_firewall_headers(cache_key: FirewallAuthCacheKey) -> None:
     """Invalidate only cached headers while preserving refresh lifecycle state."""
     state = _auth_state.get(cache_key)
     if state:
@@ -93,7 +105,7 @@ def clear_cached_firewall_headers(cache_key: tuple[str, str]) -> None:
 
 def evict_stale_cache_keys(active_run_ids: set[str]) -> None:
     """Remove cache entries for runs no longer in the registry."""
-    stale = [k for k in _auth_state if k[0] not in active_run_ids]
+    stale = [k for k in _auth_state if k.run_id not in active_run_ids]
     for k in stale:
         _auth_state.pop(k, None)
 
@@ -151,21 +163,19 @@ def _build_cache_hit(
 
 
 async def get_firewall_headers(
-    run_id: str,
-    api_id: str,
+    cache_key: FirewallAuthCacheKey,
     request: FirewallAuthRequest,
 ) -> dict:
     """Get firewall auth headers with TTL-based caching.
 
     Uses per-key locking so that concurrent requests for the same
-    (run_id, api_id) coalesce into a single HTTP fetch.
+    auth identity coalesce into a single HTTP fetch.
 
     Cache is evicted when:
     - The run is removed from the registry (see registry.load_registry)
     - A 401 response is received (see response handler)
     - The expiresAt timestamp from the auth endpoint has passed
     """
-    cache_key = (run_id, api_id)
     state = _get_auth_state(cache_key)
 
     # Fast path: cache hit (no lock needed — single-threaded event loop)
@@ -183,7 +193,7 @@ async def get_firewall_headers(
                 return hit
 
         # Consume the force-refresh marker inside the lock so concurrent
-        # coroutines for the same (run_id, api_id) cannot both trigger a
+        # coroutines for the same auth identity cannot both trigger a
         # refresh — the one that loses the lock will see the fresh cache
         # on its double-check above and never reach this path. Record the
         # consume timestamp so request_force_refresh() suppresses re-marking
@@ -191,7 +201,7 @@ async def get_firewall_headers(
         force_refresh = state.force_refresh_pending
         state.force_refresh_pending = False
         if force_refresh:
-            state.last_force_refresh_at = time.time()
+            state.last_force_refresh_monotonic_at = time.monotonic()
 
         result = await fetch_firewall_headers(
             request,

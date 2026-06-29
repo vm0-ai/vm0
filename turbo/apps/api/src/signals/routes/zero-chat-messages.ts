@@ -71,9 +71,9 @@ import { visibleChatMessageCondition } from "../services/zero-chat-message-share
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { bestEffort } from "../utils";
-import type { RouteEntry } from "../route";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
+import type { RouteEntry } from "../route-entry";
 import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
 import { resolveThreadGenerationTemplatePrompt } from "./thread-generation-template";
 

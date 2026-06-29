@@ -1741,9 +1741,6 @@ describe("chat composer templates", () => {
       detachedSetupPage({
         context,
         path: `/chats/${THREAD_ID}`,
-        featureSwitches: {
-          [FeatureSwitchKey.ChatTemplatePicker]: true,
-        },
       });
 
       const templateButton = await waitFor(() => {
@@ -1770,9 +1767,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-      },
     });
 
     const composer = composerElementFrom(
@@ -1802,10 +1796,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.VideoTemplatePicker]: true,
-      },
     });
 
     const templateButton = await waitFor(() => {
@@ -1842,9 +1832,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-      },
     });
 
     await openTemplatePicker(user, template);
@@ -1931,9 +1918,6 @@ describe("chat composer templates", () => {
       detachedSetupPage({
         context,
         path: `/chats/${THREAD_ID}`,
-        featureSwitches: {
-          [FeatureSwitchKey.ChatTemplatePicker]: true,
-        },
       });
 
       click(
@@ -2109,9 +2093,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-      },
     });
 
     click(
@@ -2204,9 +2185,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-      },
     });
 
     click(
@@ -2312,9 +2290,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-      },
     });
 
     click(
@@ -2404,9 +2379,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-      },
     });
 
     click(
@@ -2466,9 +2438,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-      },
     });
 
     click(
@@ -2575,9 +2544,6 @@ describe("chat composer templates", () => {
       detachedSetupPage({
         context,
         path: `/chats/${THREAD_ID}`,
-        featureSwitches: {
-          [FeatureSwitchKey.ChatTemplatePicker]: true,
-        },
       });
 
       click(
@@ -2696,9 +2662,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-      },
     });
 
     click(
@@ -2928,9 +2891,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-      },
     });
 
     click(
@@ -3107,9 +3067,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-      },
     });
 
     click(
@@ -3277,7 +3234,7 @@ describe("chat composer templates", () => {
     expect(scrollIntoView).not.toHaveBeenCalled();
   });
 
-  it("keeps historical illustration labels behind the template picker feature switch", async () => {
+  it("shows historical illustration labels after template picker rollout", async () => {
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
     mockChatLifecycle(context, {
       threadId: THREAD_ID,
@@ -3301,7 +3258,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: false },
     });
 
     await waitFor(() => {
@@ -3309,14 +3265,12 @@ describe("chat composer templates", () => {
         screen.getByText("Make an illustrated launch card"),
       ).toBeInTheDocument();
       expect(
-        screen.queryByLabelText(
-          `Message template ${illustrationTemplate.title}`,
-        ),
-      ).not.toBeInTheDocument();
+        screen.getByLabelText(`Message template ${illustrationTemplate.title}`),
+      ).toHaveTextContent("Illustration");
     });
   });
 
-  it("opens video templates by default when only the video picker is enabled", async () => {
+  it("renders video templates in the default template picker", async () => {
     const videoStyle = VIDEO_TEMPLATE_ITEMS[0]!;
     const playSpy = vi
       .spyOn(HTMLMediaElement.prototype, "play")
@@ -3330,10 +3284,6 @@ describe("chat composer templates", () => {
       detachedSetupPage({
         context,
         path: `/chats/${THREAD_ID}`,
-        featureSwitches: {
-          [FeatureSwitchKey.ChatTemplatePicker]: false,
-          [FeatureSwitchKey.VideoTemplatePicker]: true,
-        },
       });
 
       click(
@@ -3343,7 +3293,13 @@ describe("chat composer templates", () => {
       );
 
       await waitFor(() => {
+        expect(tabByText("Presentation")).toBeInTheDocument();
+        expect(tabByText("Illustration")).toBeInTheDocument();
         expect(tabByText("Video")).toBeInTheDocument();
+      });
+      click(tabByText("Video"));
+
+      await waitFor(() => {
         expect(
           screen.getByLabelText(`Select video template ${videoStyle.title}`),
         ).toBeInTheDocument();
@@ -3379,8 +3335,6 @@ describe("chat composer templates", () => {
             `Play video template preview ${videoStyle.title}`,
           ),
         ).toBeInTheDocument();
-        expect(screen.queryByText("Presentation")).not.toBeInTheDocument();
-        expect(screen.queryByText("Illustration")).not.toBeInTheDocument();
       });
 
       const previewVideo = document
@@ -3435,7 +3389,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
     });
 
     await waitFor(() => {
@@ -3474,7 +3427,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
     });
 
     await waitFor(() => {
@@ -3520,10 +3472,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.VideoTemplatePicker]: true,
-      },
     });
 
     click(
@@ -3583,10 +3531,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.VideoTemplatePicker]: true,
-      },
     });
 
     await selectTemplate(user, template);
@@ -3609,7 +3553,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
     });
 
     // Select an illustration style, which leaves the picker on the
@@ -3674,7 +3617,6 @@ describe("chat composer templates", () => {
     detachedSetupPage({
       context,
       path: `/chats/${THREAD_ID}`,
-      featureSwitches: { [FeatureSwitchKey.ChatTemplatePicker]: true },
     });
 
     await selectTemplate(user, template);

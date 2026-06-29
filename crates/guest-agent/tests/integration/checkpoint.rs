@@ -1,4 +1,7 @@
 use crate::support::*;
+use guest_contracts::session_history_identity::{
+    FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
+};
 use httpmock::prelude::*;
 use serde_json::json;
 use sha2::{Digest, Sha256};
@@ -99,6 +102,22 @@ async fn success_checkpoint_uploads_non_utf8_session_history() {
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(1).await;
     checkpoint_mock.assert_calls_async(1).await;
+
+    let identity_bytes =
+        std::fs::read(guest_agent::paths::final_session_history_identity_file()).unwrap();
+    let identity = FinalSessionHistoryIdentity::from_json_slice(&identity_bytes).unwrap();
+    assert_eq!(identity.framework, FinalSessionHistoryFramework::ClaudeCode);
+    assert_eq!(identity.history_ref_kind, FinalSessionHistoryRefKind::Blob);
+    assert_eq!(
+        identity.session_id_hash,
+        hex::encode(Sha256::digest(b"success-non-utf8-session"))
+    );
+    assert_eq!(identity.history_hash, history_hash);
+    assert_eq!(identity.history_size_bytes, history_size as u64);
+    assert_eq!(
+        std::fs::read(&identity.history_marker_payload).unwrap(),
+        history
+    );
 }
 
 // =========================================================================
@@ -156,6 +175,10 @@ async fn recovery_checkpoint_uploads_valid_session_history() {
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(1).await;
     checkpoint_mock.assert_calls_async(1).await;
+    assert!(
+        !std::path::Path::new(guest_agent::paths::final_session_history_identity_file()).exists(),
+        "recovery checkpoint must not write final session history identity metadata"
+    );
 }
 
 async fn assert_recovery_checkpoint_derives_claude_history_marker(

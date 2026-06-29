@@ -6,6 +6,7 @@ use serde::Serialize;
 use tokio::task::JoinHandle;
 use tracing::warn;
 
+use crate::duration::duration_ms;
 use crate::http::HttpClient;
 use crate::ids::RunId;
 
@@ -71,7 +72,7 @@ impl JobTelemetry {
         self.pending_ops.push(SandboxOp {
             ts: Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true),
             action_type: action_type.to_string(),
-            duration_ms: duration.as_millis() as u64,
+            duration_ms: duration_ms(duration),
             success,
             error: error.map(String::from),
         });
@@ -109,6 +110,24 @@ impl JobTelemetry {
         self.pending_ops
             .iter()
             .map(|op| (op.action_type.clone(), op.success, op.error.clone()))
+            .collect()
+    }
+
+    /// Snapshot of buffered ops for tests that need to assert duration semantics.
+    #[cfg(test)]
+    pub(crate) fn pending_ops_with_duration_snapshot(
+        &self,
+    ) -> Vec<(String, u64, bool, Option<String>)> {
+        self.pending_ops
+            .iter()
+            .map(|op| {
+                (
+                    op.action_type.clone(),
+                    op.duration_ms,
+                    op.success,
+                    op.error.clone(),
+                )
+            })
             .collect()
     }
 
@@ -303,6 +322,17 @@ mod tests {
         assert!(!telemetry.pending_ops[1].success);
         assert_eq!(telemetry.pending_ops[1].error.as_deref(), Some("timeout"));
         assert!(telemetry.oldest_pending.is_some());
+    }
+
+    #[test]
+    fn record_saturates_large_duration() {
+        let http = http_client();
+        let mut telemetry = JobTelemetry::new(http, RunId::nil(), "tok".to_string());
+
+        telemetry.record("huge_op", Duration::MAX, true, None);
+
+        assert_eq!(telemetry.pending_ops.len(), 1);
+        assert_eq!(telemetry.pending_ops[0].duration_ms, u64::MAX);
     }
 
     #[tokio::test]

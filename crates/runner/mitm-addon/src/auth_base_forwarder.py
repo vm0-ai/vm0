@@ -20,6 +20,7 @@ from typing import NamedTuple
 
 from mitmproxy import http
 
+import flow_metadata_keys as metadata_keys
 from http_header_syntax import has_forbidden_header_value_control, is_http_header_name
 
 HOP_BY_HOP: frozenset[str] = frozenset(
@@ -523,6 +524,30 @@ def release_forward_request_admission(admission: AuthBaseForwardingAdmission) ->
         admission._released = True
         _forward_request_admitted_count -= 1
         _forward_request_admitted_body_bytes -= admission._body_bytes
+
+
+def attach_forward_request_admission_to_flow(
+    flow: http.HTTPFlow, admission: AuthBaseForwardingAdmission
+) -> None:
+    """Attach an auth.base forward admission to a flow until ownership is transferred."""
+    if metadata_keys.AUTH_BASE_FORWARD_ADMISSION in flow.metadata:
+        raise RuntimeError("auth.base forwarding admission is already attached to flow")
+    flow.metadata[metadata_keys.AUTH_BASE_FORWARD_ADMISSION] = admission
+
+
+def take_forward_request_admission_from_flow(
+    flow: http.HTTPFlow,
+) -> AuthBaseForwardingAdmission | None:
+    """Remove an attached auth.base forward admission and transfer ownership."""
+    admission = flow.metadata.pop(metadata_keys.AUTH_BASE_FORWARD_ADMISSION, None)
+    return admission if isinstance(admission, AuthBaseForwardingAdmission) else None
+
+
+def release_forward_request_admission_from_flow(flow: http.HTTPFlow) -> None:
+    """Release any auth.base forward admission still attached to a flow."""
+    admission = take_forward_request_admission_from_flow(flow)
+    if admission is not None:
+        release_forward_request_admission(admission)
 
 
 def forward_request_admission_state_for_tests() -> tuple[int, int]:

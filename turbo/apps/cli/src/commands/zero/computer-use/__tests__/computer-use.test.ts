@@ -123,7 +123,7 @@ describe("computer-use command visibility", () => {
 
   it("should have Desktop-backed agent command subcommands", () => {
     const prog = new Command();
-    registerZeroCommands(prog);
+    registerZeroCommands(prog, [zeroComputerUseCommand]);
 
     const computerUse = prog.commands.find((c) => {
       return c.name() === "computer-use";
@@ -149,7 +149,7 @@ describe("computer-use command visibility", () => {
 
   it("should not expose host targeting options on agent-facing commands", () => {
     const prog = new Command();
-    registerZeroCommands(prog);
+    registerZeroCommands(prog, [zeroComputerUseCommand]);
 
     const computerUse = prog.commands.find((c) => {
       return c.name() === "computer-use";

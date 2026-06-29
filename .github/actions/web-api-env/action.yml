@@ -147,7 +147,7 @@ runs:
         if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
           web_url="${INPUT_WEB_URL:-https://www.vm0.ai}"
           app_url="${INPUT_APP_URL:-https://app.vm0.ai}"
-          paid_onboarding_url="$(first_non_empty "$(repo_var PAID_ONBOARDING_URL)" "https://so.vm0.ai")"
+          onboarding_url="$(first_non_empty "$(repo_var ONBOARDING_URL)" "https://www.vm0.ai")"
           api_url="${INPUT_API_URL:-$(repo_var VM0_API_URL)}"
           api_backend_url="$(first_non_empty "$INPUT_API_BACKEND_URL" "$(repo_var VM0_API_BACKEND_URL)")"
           axiom_dataset_suffix="prod"
@@ -167,7 +167,7 @@ runs:
         else
           web_url="$INPUT_WEB_URL"
           app_url="$INPUT_APP_URL"
-          paid_onboarding_url="$(first_non_empty "$(repo_var PAID_ONBOARDING_URL_STAGING)" "https://staging-so.vm6.ai")"
+          onboarding_url="$(first_non_empty "$(repo_var ONBOARDING_URL_STAGING)" "https://staging-www.vm6.ai")"
           api_url="$INPUT_API_URL"
           api_backend_url="$INPUT_API_BACKEND_URL"
           axiom_dataset_suffix="dev"
@@ -337,6 +337,7 @@ runs:
         add_secret CLERK_WEBHOOK_SIGNING_SECRET CLERK_WEBHOOK_SIGNING_SECRET
         add_var ZERO_PRICE_PRO ZERO_PRICE_PRO
         add_var ZERO_PRICE_TEAM ZERO_PRICE_TEAM
+        add_var ATOM_GRANT_PRICE ATOM_GRANT_PRICE
         add_var ZERO_PRICE_CUSTOM_CREDITS ZERO_PRICE_CUSTOM_CREDITS
         add_var ZERO_PRICE_CONCURRENCY ZERO_PRICE_CONCURRENCY
         add_var ZERO_ONE_TIME_CAMPAIGN ZERO_ONE_TIME_CAMPAIGN
@@ -347,8 +348,8 @@ runs:
         add_secret AGENTPHONE_WEBHOOK_SECRET AGENTPHONE_WEBHOOK_SECRET
         add_secret PLAIN_API_KEY PLAIN_API_KEY
         add_env APP_URL "$app_url"
-        if [[ -n "$paid_onboarding_url" ]]; then
-          add_env PAID_ONBOARDING_URL "$paid_onboarding_url"
+        if [[ -n "$onboarding_url" ]]; then
+          add_env ONBOARDING_URL "$onboarding_url"
         fi
         add_secret RESEND_API_KEY RESEND_API_KEY
         add_secret RESEND_WEBHOOK_SECRET RESEND_WEBHOOK_SECRET

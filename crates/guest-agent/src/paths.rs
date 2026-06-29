@@ -75,6 +75,11 @@ static CHECKPOINT_ERROR_FILE: LazyLock<String> = LazyLock::new(|| {
         runtime_dir(),
     ))
 });
+static FINAL_SESSION_HISTORY_IDENTITY_FILE: LazyLock<String> = LazyLock::new(|| {
+    path_to_string(
+        guest_contracts::runtime_paths::final_session_history_identity_file(runtime_dir()),
+    )
+});
 static FAILURE_DIAGNOSTIC_FILE: LazyLock<String> = LazyLock::new(|| {
     path_to_string(guest_contracts::runtime_paths::failure_diagnostic_file(
         runtime_dir(),
@@ -98,6 +103,9 @@ pub fn event_error_flag() -> &'static str {
 }
 pub fn checkpoint_error_file() -> &'static str {
     &CHECKPOINT_ERROR_FILE
+}
+pub fn final_session_history_identity_file() -> &'static str {
+    &FINAL_SESSION_HISTORY_IDENTITY_FILE
 }
 pub fn failure_diagnostic_file() -> &'static str {
     &FAILURE_DIAGNOSTIC_FILE

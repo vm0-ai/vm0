@@ -5,7 +5,7 @@ import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import { registerPushSubscription$ } from "../services/zero-push-subscriptions.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const registerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);

@@ -15,7 +15,7 @@ import {
 } from "../services/zero-host.service";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 function internalError(message: string) {
   return {

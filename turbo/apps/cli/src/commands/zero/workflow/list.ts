@@ -2,6 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { listWorkflows } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+import { formatWorkflowAgentName } from "./format";
 
 export const listCommand = new Command()
   .name("list")
@@ -42,9 +43,15 @@ Examples:
         }),
       );
       const agentWidth = Math.max(
-        5,
+        10,
         ...workflows.map((s) => {
-          return (s.agentName ?? s.agentId).length;
+          return formatWorkflowAgentName(s).length;
+        }),
+      );
+      const agentIdWidth = Math.max(
+        8,
+        ...workflows.map((s) => {
+          return s.agentId.length;
         }),
       );
 
@@ -52,7 +59,8 @@ Examples:
         "ID".padEnd(idWidth),
         "NAME".padEnd(nameWidth),
         "VISIBILITY".padEnd(10),
-        "AGENT".padEnd(agentWidth),
+        "AGENT NAME".padEnd(agentWidth),
+        "AGENT ID".padEnd(agentIdWidth),
         "DESCRIPTION",
       ].join("  ");
       console.log(chalk.dim(header));
@@ -62,7 +70,8 @@ Examples:
           workflow.id.padEnd(idWidth),
           workflow.name.padEnd(nameWidth),
           workflow.visibility.padEnd(10),
-          (workflow.agentName ?? workflow.agentId).padEnd(agentWidth),
+          formatWorkflowAgentName(workflow).padEnd(agentWidth),
+          workflow.agentId.padEnd(agentIdWidth),
           workflow.description ?? "-",
         ].join("  ");
         console.log(row);

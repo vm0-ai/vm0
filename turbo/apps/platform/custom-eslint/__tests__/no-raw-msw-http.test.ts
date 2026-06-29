@@ -51,7 +51,7 @@ ruleTester.run("no-raw-msw-http", rule, {
     {
       // Allowed: marker comment above the variable declaration that holds the handler
       code: `
-        // mockApi cannot be used here: binary streaming response with no ts-rest contract.
+        // mockApi cannot be used here: binary streaming response with no typed contract.
         const handler = http.post("http://localhost:3000/api/zero/voice-io/speech", () => new Response());
       `,
     },

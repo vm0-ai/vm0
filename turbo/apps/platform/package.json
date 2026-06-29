@@ -1,6 +1,6 @@
 {
   "name": "@vm0/app",
-  "version": "0.498.1",
+  "version": "0.506.0",
   "private": true,
   "type": "module",
   "scripts": {
@@ -9,7 +9,7 @@
     "preview": "vite preview",
     "test": "vitest run",
     "lint": "oxlint && oxlint --type-aware -c ../../.oxlintrc.typeaware.json && eslint . --max-warnings 0",
-    "check-types": "tsc --noEmit"
+    "check-types": "tsc -p tsconfig.production.json --noEmit && tsc -p tsconfig.tests.json --noEmit"
   },
   "dependencies": {
     "@clerk/clerk-js": "^5.125.10",
@@ -25,7 +25,6 @@
     "@tiptap/pm": "3.21.0",
     "@tiptap/react": "3.21.0",
     "@tiptap/starter-kit": "3.21.0",
-    "@ts-rest/core": "3.53.0-rc.1",
     "@uiw/react-markdown-preview": "^5.1.5",
     "@vm0/api-contracts": "workspace:*",
     "@vm0/connectors": "workspace:*",

@@ -84,13 +84,16 @@ import {
   IconCheck,
   IconBan,
   IconChevronRight,
-  IconCircleHalf2,
   IconClock,
   IconChevronDown,
   IconLoader2,
   IconSearch,
   IconX,
 } from "@tabler/icons-react";
+import {
+  PermissionPolicyMixedBadge,
+  PermissionPolicyToggle,
+} from "./permission-policy-toggle.tsx";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { firewallPermissionMetadataByConnector } from "../../../../signals/firewall-permission-metadata.ts";
@@ -102,10 +105,14 @@ interface ConnectorPermission {
 
 interface PermissionsDrawerProps {
   agentId: string;
+  targetKind?: "agent" | "workflow";
   connectorType: ConnectorType;
   displayName: string;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
+  initialIntent?: PermissionDraftIntent;
+  initialSearch?: string;
+  initialContextKey?: string;
   resetEnabled?: boolean;
   readOnly?: boolean;
   onApply: (
@@ -142,7 +149,14 @@ interface InitialPermissionDrawerState {
 
 type LoadedPermissionsDrawerContentProps = Pick<
   PermissionsDrawerProps,
-  "initialPolicies" | "resetEnabled" | "readOnly" | "onApply" | "onClose"
+  | "initialPolicies"
+  | "initialIntent"
+  | "initialSearch"
+  | "initialContextKey"
+  | "resetEnabled"
+  | "readOnly"
+  | "onApply"
+  | "onClose"
 > & {
   readonly surface: PermissionsSurface;
   readonly metadata: FirewallPermissionDetailMetadata;
@@ -175,8 +189,12 @@ function buildInitialPermissionDrawerState({
 function PermissionsDrawerHeader({
   connectorType,
   displayName,
+  targetKind = "agent",
   surface,
-}: Pick<PermissionsDrawerProps, "connectorType" | "displayName"> & {
+}: Pick<
+  PermissionsDrawerProps,
+  "connectorType" | "displayName" | "targetKind"
+> & {
   readonly surface: PermissionsSurface;
 }) {
   const connectorLabel = CONNECTOR_TYPES[connectorType].label;
@@ -189,7 +207,9 @@ function PermissionsDrawerHeader({
     </>
   );
   const description =
-    "Configure which actions this agent is allowed to perform via this connector.";
+    targetKind === "workflow"
+      ? "Configure which actions this workflow is allowed to perform via this connector."
+      : "Configure which actions this agent is allowed to perform via this connector.";
 
   if (surface === "dialog") {
     return (
@@ -463,26 +483,6 @@ function allowDurationStatusLabel(
   return option?.statusLabel ?? null;
 }
 
-function permissionPolicyButtonClass({
-  active,
-  disabled,
-  tone,
-}: {
-  active: boolean;
-  disabled?: boolean;
-  tone: "allow" | "deny";
-}): string {
-  return `flex h-7 items-center gap-1 px-2.5 text-xs font-medium transition-colors ${
-    active
-      ? tone === "allow"
-        ? "bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
-        : "bg-rose-500/10 text-rose-700 dark:text-rose-400"
-      : disabled
-        ? "text-muted-foreground/50"
-        : "text-muted-foreground hover:text-foreground hover:bg-muted/50"
-  } ${disabled ? "cursor-default" : "cursor-pointer"}`;
-}
-
 function MenuItemCheck({ active }: { active: boolean }) {
   return active ? (
     <IconCheck size={14} stroke={2.5} />
@@ -584,19 +584,6 @@ function PermissionAllowDurationStatic({ label }: { label: string }) {
   );
 }
 
-// Non-interactive state read-out shown in the leading slot when a group's
-// permissions resolve to a mix of allow and deny. It occupies the same slot as
-// the duration dropdown (they are mutually exclusive), so the Allow / Deny
-// controls stay aligned in their columns across the header and the rows.
-function PermissionGroupMixedBadge() {
-  return (
-    <span className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md bg-muted/60 px-2 text-[11px] font-medium text-muted-foreground">
-      <IconCircleHalf2 size={12} className="shrink-0" />
-      <span>Mixed</span>
-    </span>
-  );
-}
-
 function PermissionGrantPolicyControl({
   permission,
   policy,
@@ -666,47 +653,22 @@ function PermissionGrantPolicyControl({
               }}
             />
           )}
-          {policy === "mixed" && <PermissionGroupMixedBadge />}
-          <span className="inline-flex shrink-0 overflow-hidden rounded-md text-xs font-medium zero-border">
-            <button
-              type="button"
-              disabled={saving}
-              aria-pressed={policy === "allow"}
-              onClick={() => {
-                if (onAllowClick) {
-                  onAllowClick();
-                  return;
-                }
-                onPolicyChange("allow");
-              }}
-              className={permissionPolicyButtonClass({
-                active: policy === "allow",
-                disabled: saving,
-                tone: "allow",
-              })}
-            >
-              <IconCheck size={12} stroke={2.5} />
-              Allow
-            </button>
-            <button
-              type="button"
-              disabled={saving}
-              aria-pressed={policy === "deny"}
-              style={{ borderLeft: "0.7px solid hsl(var(--gray-400))" }}
-              onClick={() => {
-                onPolicyChange("deny");
-                onClearExpiration();
-              }}
-              className={permissionPolicyButtonClass({
-                active: policy === "deny",
-                disabled: saving,
-                tone: "deny",
-              })}
-            >
-              <IconBan size={12} stroke={2.5} />
-              Deny
-            </button>
-          </span>
+          {policy === "mixed" && <PermissionPolicyMixedBadge />}
+          <PermissionPolicyToggle
+            policy={policy}
+            disabled={saving}
+            onAllow={() => {
+              if (onAllowClick) {
+                onAllowClick();
+                return;
+              }
+              onPolicyChange("allow");
+            }}
+            onDeny={() => {
+              onPolicyChange("deny");
+              onClearExpiration();
+            }}
+          />
         </>
       )}
     </div>
@@ -1134,6 +1096,9 @@ function PermissionsDrawerFooter({
 
 function LoadedPermissionsDrawerContent({
   initialPolicies,
+  initialIntent,
+  initialSearch,
+  initialContextKey,
   resetEnabled,
   readOnly,
   onApply,
@@ -1143,10 +1108,17 @@ function LoadedPermissionsDrawerContent({
   initialState,
 }: LoadedPermissionsDrawerContentProps) {
   const { explicitGrants } = initialState;
-  const stateKey = initialState.initialPolicyKey;
+  const stateKey = initialContextKey
+    ? `${initialState.initialPolicyKey}\u0000${initialContextKey}`
+    : initialState.initialPolicyKey;
+  const initialUiState = {
+    ...(initialIntent ? { draft: initialIntent } : {}),
+    ...(initialSearch ? { search: initialSearch } : {}),
+  };
   const drawerUiState = permissionDrawerUiStateForKey(
     useGet(permissionDrawerUiState$),
     stateKey,
+    initialUiState,
   );
   const setDraft = useSet(updatePermissionDrawerDraft$);
   const toggleGroup = useSet(togglePermissionDrawerGroup$);
@@ -1218,50 +1190,66 @@ function LoadedPermissionsDrawerContent({
   const unknownSelectedExpiration = draft.unknownExpiration;
 
   const handlePolicyChange = (name: string, policy: PermissionPolicy) => {
-    setDraft(stateKey, (current) => {
-      return setPermissionDraftPolicy({
-        draft: current,
-        permissionName: name,
-        policy,
-      });
-    });
+    setDraft(
+      stateKey,
+      (current) => {
+        return setPermissionDraftPolicy({
+          draft: current,
+          permissionName: name,
+          policy,
+        });
+      },
+      initialUiState,
+    );
   };
 
   const handleSetAll = (policy: PermissionPolicy) => {
-    setDraft(stateKey, (current) => {
-      return setPermissionDraftConnectorPolicy({
-        draft: current,
-        policy,
-        includeUnknown: true,
-      });
-    });
+    setDraft(
+      stateKey,
+      (current) => {
+        return setPermissionDraftConnectorPolicy({
+          draft: current,
+          policy,
+          includeUnknown: true,
+        });
+      },
+      initialUiState,
+    );
   };
 
   const handleGroupAllow = (
     category: string,
     groupPermissions: ConnectorPermission[],
   ) => {
-    setDraft(stateKey, (current) => {
-      return setPermissionDraftGroupAllowPolicy({
-        draft: current,
-        category,
-        permissions: groupPermissions,
-      });
-    });
+    setDraft(
+      stateKey,
+      (current) => {
+        return setPermissionDraftGroupAllowPolicy({
+          draft: current,
+          category,
+          permissions: groupPermissions,
+        });
+      },
+      initialUiState,
+    );
   };
 
   const handleGroupDeny = (
     category: string,
     groupPermissions: ConnectorPermission[],
   ) => {
-    setDraft(stateKey, (current) => {
-      return setPermissionDraftGroupPolicy({
-        draft: current,
-        category,
-        permissions: groupPermissions,
-        policy: "deny",
-      });
-    });
+    setDraft(
+      stateKey,
+      (current) => {
+        return setPermissionDraftGroupPolicy({
+          draft: current,
+          category,
+          permissions: groupPermissions,
+          policy: "deny",
+        });
+      },
+      initialUiState,
+    );
   };
 
   const handleGroupAllowDuration = (
@@ -1269,21 +1257,29 @@ function LoadedPermissionsDrawerContent({
     groupPermissions: ConnectorPermission[],
     expiresIn: UserPermissionGrantExpiresIn,
   ) => {
-    setDraft(stateKey, (current) => {
-      return setPermissionDraftGroupAllowExpiration({
-        draft: current,
-        category,
-        permissions: groupPermissions,
-        explicitGrants: effectiveExplicitGrants,
-        expiresIn,
-      });
-    });
+    setDraft(
+      stateKey,
+      (current) => {
+        return setPermissionDraftGroupAllowExpiration({
+          draft: current,
+          category,
+          permissions: groupPermissions,
+          explicitGrants: effectiveExplicitGrants,
+          expiresIn,
+        });
+      },
+      initialUiState,
+    );
   };
 
   const handleResetConnector = () => {
-    setDraft(stateKey, (current) => {
-      return stagePermissionDraftConnectorRestore({ draft: current });
-    });
+    setDraft(
+      stateKey,
+      (current) => {
+        return stagePermissionDraftConnectorRestore({ draft: current });
+      },
+      initialUiState,
+    );
   };
 
   const handleClose = () => {
@@ -1292,45 +1288,60 @@ function LoadedPermissionsDrawerContent({
   };
 
   const handleToggleGroup = (category: string) => {
-    toggleGroup(stateKey, category);
+    toggleGroup(stateKey, category, initialUiState);
   };
 
   const handleGrantExpirationChange = (
     permission: string,
     expiresIn: UserPermissionGrantExpiresIn | null,
   ) => {
-    setDraft(stateKey, (current) => {
-      return setPermissionDraftExpiration({
-        draft: current,
-        permissionName: permission,
-        expiresIn,
-      });
-    });
+    setDraft(
+      stateKey,
+      (current) => {
+        return setPermissionDraftExpiration({
+          draft: current,
+          permissionName: permission,
+          expiresIn,
+        });
+      },
+      initialUiState,
+    );
   };
 
   const handleClearInheritedExpiration = (permission: string) => {
-    setDraft(stateKey, (current) => {
-      return clearPermissionDraftInheritedExpiration({
-        draft: current,
-        permissionName: permission,
-      });
-    });
+    setDraft(
+      stateKey,
+      (current) => {
+        return clearPermissionDraftInheritedExpiration({
+          draft: current,
+          permissionName: permission,
+        });
+      },
+      initialUiState,
+    );
   };
 
   const handleUnknownExpirationChange = (
     expiresIn: UserPermissionGrantExpiresIn | null,
   ) => {
-    setDraft(stateKey, (current) => {
-      return setPermissionDraftUnknownExpiration({ draft: current, expiresIn });
-    });
+    setDraft(
+      stateKey,
+      (current) => {
+        return setPermissionDraftUnknownExpiration({
+          draft: current,
+          expiresIn,
+        });
+      },
+      initialUiState,
+    );
   };
 
   const handleShowMore = (key: string) => {
-    showMore(stateKey, key, PERMISSION_PAGE_SIZE);
+    showMore(stateKey, key, PERMISSION_PAGE_SIZE, initialUiState);
   };
 
   const handleSearchChange = (value: string) => {
-    setSearch(stateKey, value);
+    setSearch(stateKey, value, initialUiState);
   };
 
   const handleApply = () => {
@@ -1404,7 +1415,7 @@ function LoadedPermissionsDrawerContent({
           className={`flex-1 overflow-y-auto -mx-6 px-3 ${displayedGroups ? "pt-1" : ""}`}
           onScroll={(e) => {
             const target = e.currentTarget;
-            setScrolled(stateKey, target.scrollTop > 0);
+            setScrolled(stateKey, target.scrollTop > 0, initialUiState);
           }}
         >
           {searchActive && displayedPermissions.length === 0 ? (
@@ -1448,12 +1459,16 @@ function LoadedPermissionsDrawerContent({
               readOnly={readOnly}
               saving={saving}
               onAllowClick={() => {
-                setDraft(stateKey, (current) => {
-                  return setPermissionDraftUnknownPolicy({
-                    draft: current,
-                    policy: "allow",
-                  });
-                });
+                setDraft(
+                  stateKey,
+                  (current) => {
+                    return setPermissionDraftUnknownPolicy({
+                      draft: current,
+                      policy: "allow",
+                    });
+                  },
+                  initialUiState,
+                );
               }}
               onClearExpiration={() => {
                 handleUnknownExpirationChange(null);
@@ -1467,12 +1482,16 @@ function LoadedPermissionsDrawerContent({
                 );
               }}
               onPolicyChange={(p) => {
-                setDraft(stateKey, (current) => {
-                  return setPermissionDraftUnknownPolicy({
-                    draft: current,
-                    policy: p,
-                  });
-                });
+                setDraft(
+                  stateKey,
+                  (current) => {
+                    return setPermissionDraftUnknownPolicy({
+                      draft: current,
+                      policy: p,
+                    });
+                  },
+                  initialUiState,
+                );
               }}
             />
           }
@@ -1531,6 +1550,7 @@ function PermissionsContent({
       <PermissionsDrawerHeader
         connectorType={props.connectorType}
         displayName={props.displayName}
+        targetKind={props.targetKind}
         surface={surface}
       />
 

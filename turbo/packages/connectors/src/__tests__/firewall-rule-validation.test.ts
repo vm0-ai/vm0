@@ -34,6 +34,8 @@ const ALLOWED_FIREWALL_BASE_OVERLAPS = new Set([
   "instagram[1] https://graph.facebook.com <-> meta-ads[1] https://graph.facebook.com",
   // Meta Ads has a same-origin page-token exception that intentionally skips auth injection.
   "meta-ads[0] https://graph.facebook.com <-> meta-ads[1] https://graph.facebook.com",
+  // Cloudflare keeps provider-issued upload JWTs on a narrow second API entry.
+  "cloudflare[0] https://api.cloudflare.com/client <-> cloudflare[1] https://api.cloudflare.com/client",
   // Microsoft 365, Outlook Mail, and Outlook Calendar share Microsoft Graph.
   "microsoft-365[0] https://graph.microsoft.com <-> outlook-calendar[0] https://graph.microsoft.com",
   "microsoft-365[0] https://graph.microsoft.com <-> outlook-mail[0] https://graph.microsoft.com",
@@ -64,6 +66,22 @@ function apiBases(firewall: FirewallConfig): string[] {
   return firewall.apis.map((api) => {
     return api.base;
   });
+}
+
+function rulesByPermission(firewall: FirewallConfig): Map<string, Set<string>> {
+  const result = new Map<string, Set<string>>();
+
+  for (const api of firewall.apis) {
+    for (const permission of api.permissions ?? []) {
+      const rules = result.get(permission.name) ?? new Set<string>();
+      for (const rule of permission.rules) {
+        rules.add(`${api.base} ${rule}`);
+      }
+      result.set(permission.name, rules);
+    }
+  }
+
+  return result;
 }
 
 function baseSampleUrls(base: string): string[] {
@@ -327,25 +345,53 @@ describe("known endpoint-scoped firewall bases", () => {
 
   it("keeps Gmail send routes out of draft write permission", async () => {
     const firewall = await loadRequiredConnectorFirewall("gmail");
-    const rulesByPermission = new Map<string, Set<string>>();
+    const rules = rulesByPermission(firewall);
 
-    for (const api of firewall.apis) {
-      for (const permission of api.permissions ?? []) {
-        const rules = rulesByPermission.get(permission.name) ?? new Set();
-        for (const rule of permission.rules) {
-          rules.add(`${api.base} ${rule}`);
-        }
-        rulesByPermission.set(permission.name, rules);
-      }
-    }
-
-    expect([...rulesByPermission.get("messages.send")!].sort()).toEqual([
+    expect([...rules.get("messages.send")!].sort()).toEqual([
       "https://gmail.googleapis.com/gmail POST /v1/users/{userId}/messages/send",
       "https://gmail.googleapis.com/resumable/upload/gmail POST /v1/users/{userId}/messages/send",
+      "https://gmail.googleapis.com/resumable/upload/gmail PUT /v1/users/{userId}/messages/send",
       "https://gmail.googleapis.com/upload/gmail POST /v1/users/{userId}/messages/send",
+      "https://gmail.googleapis.com/upload/gmail PUT /v1/users/{userId}/messages/send",
     ]);
-    expect(rulesByPermission.get("drafts.write")).not.toContain(
+    expect(rules.get("messages.write")).toContain(
+      "https://gmail.googleapis.com/upload/gmail PUT /v1/users/{userId}/messages/import",
+    );
+    expect(rules.get("drafts.write")).not.toContain(
       "https://gmail.googleapis.com/gmail POST /v1/users/{userId}/drafts/send",
+    );
+  });
+
+  it("keeps Google Drive media PUT routes attached to files.write", async () => {
+    const firewall = await loadRequiredConnectorFirewall("google-drive");
+    const rules = rulesByPermission(firewall);
+
+    expect(rules.get("files.write")).toContain(
+      "https://www.googleapis.com/upload/drive PUT /v3/files",
+    );
+    expect(rules.get("files.write")).toContain(
+      "https://www.googleapis.com/resumable/upload/drive PUT /v3/files/{fileId}",
+    );
+    expect(rules.get("files.read")).not.toContain(
+      "https://www.googleapis.com/upload/drive PUT /v3/files",
+    );
+  });
+
+  it("keeps Google Cloud media PUT routes attached to upload permissions", async () => {
+    const firewall = await loadRequiredConnectorFirewall("google-cloud");
+    const rules = rulesByPermission(firewall);
+
+    expect(rules.get("bigquery.jobs.create")).toContain(
+      "https://bigquery.googleapis.com PUT /resumable/upload/bigquery/v2/projects/{projectsId}/jobs",
+    );
+    expect(rules.get("storage.objects.create")).toContain(
+      "https://storage.googleapis.com PUT /resumable/upload/storage/v1/b/{bucket}/o",
+    );
+    expect(rules.get("artifactregistry.files.upload")).toContain(
+      "https://artifactregistry.googleapis.com PUT /resumable/upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files:upload",
+    );
+    expect(rules.get("storage.objects.get")).not.toContain(
+      "https://storage.googleapis.com PUT /resumable/upload/storage/v1/b/{bucket}/o",
     );
   });
 
@@ -501,11 +547,16 @@ describe("known endpoint-scoped firewall bases", () => {
 
     expect([...rulesByPermission.get("videos.create")!].sort()).toEqual([
       "https://youtube.googleapis.com/resumable/upload/youtube POST /v3/videos",
+      "https://youtube.googleapis.com/resumable/upload/youtube PUT /v3/videos",
       "https://youtube.googleapis.com/upload/youtube POST /v3/videos",
+      "https://youtube.googleapis.com/upload/youtube PUT /v3/videos",
       "https://youtube.googleapis.com/youtube POST /v3/videos",
     ]);
     expect(rulesByPermission.get("videos.write")).not.toContain(
       "https://youtube.googleapis.com/upload/youtube POST /v3/videos",
+    );
+    expect(rulesByPermission.get("videos.write")).not.toContain(
+      "https://youtube.googleapis.com/upload/youtube PUT /v3/videos",
     );
     expect(rulesByPermission.get("videos.read")).not.toContain(
       "https://youtube.googleapis.com/youtube POST /v3/videos",

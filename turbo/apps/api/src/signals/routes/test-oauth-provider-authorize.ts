@@ -3,7 +3,7 @@ import { testOAuthProviderAuthorizeContract } from "@vm0/api-contracts/contracts
 
 import { queryOf } from "../context/request";
 import { request$ } from "../context/hono";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import {
   isTestEndpointAllowed,
   mintAuthCode,

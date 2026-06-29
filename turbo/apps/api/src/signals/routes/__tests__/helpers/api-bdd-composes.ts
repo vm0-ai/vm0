@@ -1,10 +1,8 @@
 import { randomUUID } from "node:crypto";
-import { gzipSync } from "node:zlib";
 
 import {
   agentComposeApiContentSchema,
   composesByIdContract,
-  composesInstructionsContract,
   composesListContract,
   composesMainContract,
   composesMetadataContract,
@@ -18,14 +16,16 @@ import {
 } from "@vm0/api-contracts/contracts/zero-composes";
 import type { z } from "zod";
 
-import { createApp } from "../../../../app-factory";
+import { createAppWithRoutes } from "../../../../app-factory-core";
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { now } from "../../../../lib/time";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../../auth/tokens";
+import { agentComposesByIdRoutes } from "../../agent-composes-id";
+import { agentComposesMetadataRoutes } from "../../agent-composes-metadata";
+import { agentComposesReadRoutes } from "../../agent-composes-read";
+import { agentComposesRoutes } from "../../agent-composes";
+import { zeroComposesRoutes } from "../../zero-composes";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -76,6 +76,14 @@ type ReadStatus = 200 | 400 | 401 | 403 | 404;
 type ListStatus = 200 | 400 | 401 | 403;
 type DeleteStatus = 204 | 401 | 403 | 404 | 409;
 type ZeroMetadataStatus = 200 | 401 | 404;
+
+const composeRoutes = [
+  ...agentComposesRoutes,
+  ...agentComposesReadRoutes,
+  ...agentComposesByIdRoutes,
+  ...agentComposesMetadataRoutes,
+  ...zeroComposesRoutes,
+] as const;
 
 /**
  * Compose version ids are sha256 hashes of the canonical (key-sorted) JSON
@@ -136,78 +144,6 @@ export function sandboxComposeToken(args: {
   });
 }
 
-/**
- * Zero-scope token carrying `agent:delete`, proving compose deletion is
- * refused even for capability-bearing zero tokens (web-compatible 403).
- */
-export function zeroComposeDeleteToken(args: {
-  readonly userId: string;
-  readonly orgId: string;
-}): string {
-  const seconds = Math.floor(now() / 1000);
-  return signSandboxJwtForTests({
-    scope: "zero",
-    userId: args.userId,
-    orgId: args.orgId,
-    runId: `run_${randomUUID()}`,
-    capabilities: ["agent:delete"],
-    iat: seconds,
-    exp: seconds + 3600,
-  });
-}
-
-const TAR_BLOCK_SIZE = 512;
-
-function octal(value: number, length: number): string {
-  return value.toString(8).padStart(length - 1, "0") + "\0";
-}
-
-// Private copy of the single-file tar-gz construction in zero-workflows.ts
-// (not exported there; ~20 lines). extractFileFromTarGz only needs the
-// filename, size, and payload from a USTAR-compatible header.
-function createTarEntry(filename: string, content: Buffer): Buffer {
-  const header = Buffer.alloc(TAR_BLOCK_SIZE);
-  header.write(filename, 0, 100, "utf8");
-  header.write("0000644\0", 100); // mode
-  header.write("0000000\0", 108); // uid
-  header.write("0000000\0", 116); // gid
-  header.write(octal(content.length, 12), 124); // size
-  header.write(octal(0, 12), 136); // mtime
-  // Checksum placeholder: 8 spaces required so the checksum sum is correct.
-  header.write("        ", 148);
-  header.write("0", 156); // type flag (regular file)
-
-  let checksum = 0;
-  for (const byte of header) {
-    checksum += byte;
-  }
-  // Final checksum: 6 octal digits, NUL, space.
-  header.write(checksum.toString(8).padStart(6, "0") + "\0 ", 148);
-
-  const padding = content.length % TAR_BLOCK_SIZE;
-  const dataBlocks =
-    padding === 0
-      ? content
-      : Buffer.concat([content, Buffer.alloc(TAR_BLOCK_SIZE - padding)]);
-
-  return Buffer.concat([header, dataBlocks]);
-}
-
-function createSingleFileTarGz(filename: string, content: Buffer): Buffer {
-  const eofBlocks = Buffer.alloc(TAR_BLOCK_SIZE * 2);
-  return gzipSync(
-    Buffer.concat([createTarEntry(filename, content), eofBlocks]),
-  );
-}
-
-function asyncIterableOf(buffer: Buffer): AsyncIterable<Uint8Array> {
-  return {
-    async *[Symbol.asyncIterator]() {
-      yield buffer;
-    },
-  };
-}
-
 function commandInput(command: unknown): Record<string, unknown> {
   if (
     typeof command === "object" &&
@@ -219,11 +155,6 @@ function commandInput(command: unknown): Record<string, unknown> {
     return command.input as Record<string, unknown>;
   }
   return {};
-}
-
-function commandKey(command: unknown): string {
-  const key = commandInput(command).Key;
-  return typeof key === "string" ? key : "";
 }
 
 function deleteObjectKeys(input: Record<string, unknown>): string[] {
@@ -250,55 +181,6 @@ function deleteObjectKeys(input: Record<string, unknown>): string[] {
   return keys;
 }
 
-interface ComposeInstructionsDownloadArgs {
-  readonly storageName: string;
-  readonly filename: string;
-  readonly manifestPath?: string;
-  readonly content: string;
-}
-
-/**
- * S3 download boundary for storage-backed compose instructions. The storage
- * version s3Key is server-generated (`<orgId>/volume/<storageName>/<hash>`),
- * so keys are matched by storage-name inclusion plus suffix instead of
- * reading mock call state. Non-matching keys resolve `{}` so storage-commit
- * head checks keep passing. Same construction as `mockInstructionsContent`
- * in zero-workflows.ts.
- */
-export function mockComposeInstructionsDownloads(
-  context: TestContext,
-  args: ComposeInstructionsDownloadArgs,
-): void {
-  const contentBuffer = Buffer.from(args.content, "utf8");
-  const path = args.manifestPath ?? args.filename;
-  const archive = createSingleFileTarGz(path, contentBuffer);
-
-  const manifest = {
-    version: "bdd-version",
-    createdAt: new Date(0).toISOString(),
-    files: [
-      { path, hash: "bdd-hash-instructions", size: contentBuffer.length },
-    ],
-    totalSize: contentBuffer.length,
-    fileCount: 1,
-  };
-  const manifestBuffer = Buffer.from(JSON.stringify(manifest), "utf8");
-
-  context.mocks.s3.send.mockImplementation((cmd: unknown): Promise<unknown> => {
-    const key = commandKey(cmd);
-    if (!key.includes(args.storageName)) {
-      return Promise.resolve({});
-    }
-    if (key.endsWith("/manifest.json")) {
-      return Promise.resolve({ Body: asyncIterableOf(manifestBuffer) });
-    }
-    if (key.endsWith("/archive.tar.gz")) {
-      return Promise.resolve({ Body: asyncIterableOf(archive) });
-    }
-    return Promise.resolve({});
-  });
-}
-
 export function createComposesBddApi(context: TestContext) {
   const routeMocks = createZeroRouteMocks(context);
 
@@ -317,43 +199,57 @@ export function createComposesBddApi(context: TestContext) {
   }
 
   function mainClient() {
-    return setupApp({ context })(composesMainContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      composesMainContract,
+    );
   }
 
   function byIdClient() {
-    return setupApp({ context })(composesByIdContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      composesByIdContract,
+    );
   }
 
   function listClient() {
-    return setupApp({ context })(composesListContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      composesListContract,
+    );
   }
 
   function versionsClient() {
-    return setupApp({ context })(composesVersionsContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      composesVersionsContract,
+    );
   }
 
   function metadataClient() {
-    return setupApp({ context })(composesMetadataContract);
-  }
-
-  function instructionsClient() {
-    return setupApp({ context })(composesInstructionsContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      composesMetadataContract,
+    );
   }
 
   function zeroMainClient() {
-    return setupApp({ context })(zeroComposesMainContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      zeroComposesMainContract,
+    );
   }
 
   function zeroByIdClient() {
-    return setupApp({ context })(zeroComposesByIdContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      zeroComposesByIdContract,
+    );
   }
 
   function zeroListClient() {
-    return setupApp({ context })(zeroComposesListContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      zeroComposesListContract,
+    );
   }
 
   function zeroMetadataClient() {
-    return setupApp({ context })(zeroComposesMetadataContract);
+    return setupAppWithRoutes({ context, routes: composeRoutes })(
+      zeroComposesMetadataContract,
+    );
   }
 
   return {
@@ -374,7 +270,7 @@ export function createComposesBddApi(context: TestContext) {
     },
 
     /**
-     * Raw HTTP request for contract-invalid payloads the typed ts-rest
+     * Raw HTTP request for contract-invalid payloads the typed contract
      * client cannot express (array agents, unsupported framework, numeric
      * metadata fields, malformed uuid paths, missing query params, short
      * version specifiers) and for reading stored compose content without
@@ -393,16 +289,16 @@ export function createComposesBddApi(context: TestContext) {
           ? {}
           : { "content-type": "application/json" }),
       };
-      const response = await createApp({ signal: context.signal }).request(
-        request.path,
-        {
-          method: request.method,
-          headers,
-          ...(request.jsonBody === undefined
-            ? {}
-            : { body: JSON.stringify(request.jsonBody) }),
-        },
-      );
+      const response = await createAppWithRoutes({
+        signal: context.signal,
+        routes: composeRoutes,
+      }).request(request.path, {
+        method: request.method,
+        headers,
+        ...(request.jsonBody === undefined
+          ? {}
+          : { body: JSON.stringify(request.jsonBody) }),
+      });
       return { status: response.status, body: await response.json() };
     },
 
@@ -486,37 +382,6 @@ export function createComposesBddApi(context: TestContext) {
       );
     },
 
-    async readComposeInstructions(
-      auth: ComposeAuth,
-      composeId: string,
-    ): Promise<{
-      readonly content: string | null;
-      readonly filename: string | null;
-    }> {
-      const response = await accept(
-        instructionsClient().getInstructions({
-          headers: authenticate(auth),
-          params: { id: composeId },
-        }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async requestReadComposeInstructions<TStatus extends ReadStatus>(
-      auth: ComposeAuth,
-      composeId: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        instructionsClient().getInstructions({
-          headers: authenticate(auth),
-          params: { id: composeId },
-        }),
-        statuses,
-      );
-    },
-
     async requestUpdateComposeMetadata<TStatus extends ReadStatus>(
       auth: ComposeAuth,
       composeId: string,
@@ -528,20 +393,6 @@ export function createComposesBddApi(context: TestContext) {
           headers: authenticate(auth),
           params: { id: composeId },
           body,
-        }),
-        statuses,
-      );
-    },
-
-    async requestDeleteCompose<TStatus extends DeleteStatus>(
-      auth: ComposeAuth,
-      composeId: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        byIdClient().delete({
-          headers: authenticate(auth),
-          params: { id: composeId },
         }),
         statuses,
       );

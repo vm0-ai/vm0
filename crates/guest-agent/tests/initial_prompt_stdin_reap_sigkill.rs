@@ -2,9 +2,9 @@
 
 mod common;
 
-use agent_diagnostics::{CliTerminationReason, CliTerminationSignal};
 use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
+use guest_contracts::diagnostics::{CliTerminationReason, CliTerminationSignal};
 use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
 

@@ -12,6 +12,9 @@ const NLMSG_ERROR_CODE_OFFSET: usize = NLMSG_HEADER_LEN;
 const U16_LEN: usize = 2;
 const U32_LEN: usize = 4;
 
+// Linux kernel error returns are constrained to the ERR_PTR errno range.
+const MAX_NETLINK_ERRNO: i32 = 4095;
+
 const NLM_F_REQUEST: u16 = 1;
 const NLM_F_ACK: u16 = 4;
 const NLMSG_ERROR: u16 = 2;
@@ -95,7 +98,8 @@ pub(super) fn parse_nl_header(buf: &[u8], n: usize) -> Result<NlHeader> {
 }
 
 /// Parse a single generic-netlink response from the buffer. Returns
-/// `GenlResponse` on success, or an error for NLMSG_ERROR with non-zero errno.
+/// `GenlResponse` on success, or an error for NLMSG_ERROR with a non-zero or
+/// malformed error code.
 pub(super) fn parse_genl_response(buf: &[u8], n: usize) -> Result<GenlResponse<'_>> {
     let received = received_slice(buf, n)?;
     let header = parse_nl_header(buf, n)?;
@@ -117,7 +121,17 @@ pub(super) fn parse_genl_response(buf: &[u8], n: usize) -> Result<GenlResponse<'
         if error == 0 {
             return Ok(GenlResponse::Ack);
         }
-        let errno = -error;
+        if error > 0 {
+            return Err(NbdCowError::Netlink(
+                "invalid positive netlink error code".into(),
+            ));
+        }
+        let errno = error
+            .checked_neg()
+            .ok_or_else(|| NbdCowError::Netlink("invalid netlink error code".into()))?;
+        if errno > MAX_NETLINK_ERRNO {
+            return Err(NbdCowError::Netlink("invalid netlink error code".into()));
+        }
         return Err(NbdCowError::NetlinkErrno {
             errno,
             message: std::io::Error::from_raw_os_error(errno).to_string(),
@@ -495,6 +509,41 @@ mod tests {
         assert!(matches!(
             result,
             Err(NbdCowError::NetlinkErrno { errno, .. }) if errno == libc::EBUSY
+        ));
+    }
+
+    #[test]
+    fn parse_genl_response_error_rejects_i32_min() {
+        let msg = build_nlmsg_error_for_test(2, i32::MIN);
+
+        let result = parse_genl_response(&msg, msg.len());
+        assert!(matches!(result, Err(NbdCowError::Netlink(_))));
+    }
+
+    #[test]
+    fn parse_genl_response_error_rejects_positive_code() {
+        let msg = build_nlmsg_error_for_test(2, 5);
+
+        let result = parse_genl_response(&msg, msg.len());
+        assert!(matches!(result, Err(NbdCowError::Netlink(_))));
+    }
+
+    #[test]
+    fn parse_genl_response_error_rejects_out_of_range_negative_code() {
+        let msg = build_nlmsg_error_for_test(2, -(MAX_NETLINK_ERRNO + 1));
+
+        let result = parse_genl_response(&msg, msg.len());
+        assert!(matches!(result, Err(NbdCowError::Netlink(_))));
+    }
+
+    #[test]
+    fn parse_genl_response_error_accepts_max_errno() {
+        let msg = build_nlmsg_error_for_test(2, -MAX_NETLINK_ERRNO);
+
+        let result = parse_genl_response(&msg, msg.len());
+        assert!(matches!(
+            result,
+            Err(NbdCowError::NetlinkErrno { errno, .. }) if errno == MAX_NETLINK_ERRNO
         ));
     }
 

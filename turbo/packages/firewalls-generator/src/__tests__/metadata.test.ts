@@ -319,6 +319,137 @@ describe("firewall metadata generator", () => {
   );
 
   it(
+    "requires host policy for credentialed whole-host dynamic bases",
+    async () => {
+      await loadGeneratedConnectorFirewallSource("github", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const previousSource = getGeneratedFirewallOutput("github");
+      if (previousSource === null) {
+        throw new Error("missing generated github firewall source");
+      }
+
+      writeOutput(
+        "github",
+        [
+          "export const githubFirewall = {",
+          '  name: "github",',
+          "  apis: [",
+          "    {",
+          '      base: "https://${{ vars.GITHUB_HOST }}",',
+          "      auth: {",
+          "        headers: {",
+          '          Authorization: "Bearer ${{ secrets.GITHUB_TOKEN }}",',
+          "        },",
+          "      },",
+          "      permissions: [],",
+          "    },",
+          "  ],",
+          "};",
+        ].join("\n"),
+      );
+
+      try {
+        await expect(
+          loadGeneratedConnectorFirewallSource("github", {
+            connectorsDir: CONNECTORS_DIR,
+          }),
+        ).rejects.toThrow(
+          "Credentialed dynamic base URL requires hostPolicy for github.apis[0]",
+        );
+      } finally {
+        writeOutput("github", previousSource);
+      }
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "rejects provider-owned host policies without fixed host ownership",
+    async () => {
+      await loadGeneratedConnectorFirewallSource("github", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const previousSource = getGeneratedFirewallOutput("github");
+      if (previousSource === null) {
+        throw new Error("missing generated github firewall source");
+      }
+      const invalidCases = [
+        {
+          hostPolicy:
+            '{ kind: "providerOwned", exactHosts: [".api.github.com"] }',
+          message:
+            "providerOwned host policy exactHosts must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", exactHosts: ["127.0.0.1"] }',
+          message:
+            "providerOwned host policy exactHosts must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", exactHosts: ["0177.0.0.1"] }',
+          message:
+            "providerOwned host policy exactHosts must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", exactHosts: ["api.例子.com"] }',
+          message:
+            "providerOwned host policy exactHosts must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", suffixes: ["*.github.com"] }',
+          message:
+            "providerOwned host policy suffixes must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", suffixes: ["..github.com"] }',
+          message:
+            "providerOwned host policy suffixes must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", suffixes: ["com"] }',
+          message:
+            "providerOwned host policy suffixes must be fixed hostnames with at least two labels",
+        },
+      ] as const;
+
+      try {
+        for (const invalidCase of invalidCases) {
+          writeOutput(
+            "github",
+            [
+              "export const githubFirewall = {",
+              '  name: "github",',
+              "  apis: [",
+              "    {",
+              '      base: "https://${{ vars.GITHUB_HOST }}",',
+              `      hostPolicy: ${invalidCase.hostPolicy},`,
+              "      auth: {",
+              "        headers: {",
+              '          Authorization: "Bearer ${{ secrets.GITHUB_TOKEN }}",',
+              "        },",
+              "      },",
+              "      permissions: [],",
+              "    },",
+              "  ],",
+              "};",
+            ].join("\n"),
+          );
+
+          await expect(
+            loadGeneratedConnectorFirewallSource("github", {
+              connectorsDir: CONNECTORS_DIR,
+            }),
+          ).rejects.toThrow(invalidCase.message);
+        }
+      } finally {
+        writeOutput("github", previousSource);
+      }
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
     "rejects generated optional metadata exports with the wrong connector prefix",
     async () => {
       await loadGeneratedConnectorFirewallSource("github", {

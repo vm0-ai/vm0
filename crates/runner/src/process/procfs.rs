@@ -1,6 +1,26 @@
 use std::path::PathBuf;
 
-use super::types::ProcessStat;
+use super::types::{ProcessStat, process_stat_is_live};
+
+#[derive(Debug, Eq, PartialEq)]
+enum CmdlineRead {
+    Args(Vec<String>),
+    Ignored,
+    Missing,
+    Unreadable(String),
+}
+
+fn parse_cmdline_bytes(bytes: &[u8]) -> Option<Vec<String>> {
+    if bytes.is_empty() || !bytes.contains(&0) {
+        return None;
+    }
+    let argv: Vec<String> = bytes
+        .split(|&b| b == 0)
+        .filter(|s| !s.is_empty())
+        .map(|s| String::from_utf8_lossy(s).into_owned())
+        .collect();
+    if argv.is_empty() { None } else { Some(argv) }
+}
 
 /// Read `/proc/{pid}/cmdline` as the NUL-separated argv.
 ///
@@ -11,15 +31,46 @@ use super::types::ProcessStat;
 pub(crate) async fn read_cmdline(pid: u32) -> Option<Vec<String>> {
     let path = format!("/proc/{pid}/cmdline");
     let bytes = tokio::fs::read(&path).await.ok()?;
-    if bytes.is_empty() || !bytes.contains(&0) {
-        return None;
+    parse_cmdline_bytes(&bytes)
+}
+
+async fn read_cmdline_for_scan(pid: u32) -> CmdlineRead {
+    let path = format!("/proc/{pid}/cmdline");
+    match tokio::fs::read(&path).await {
+        Ok(bytes) => match parse_cmdline_bytes(&bytes) {
+            Some(argv) => CmdlineRead::Args(argv),
+            None => cmdline_problem_for_scan(pid, "cmdline is empty or NUL-free").await,
+        },
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => CmdlineRead::Missing,
+        Err(e) => {
+            let problem = format!("cmdline read failed: {e}");
+            cmdline_problem_for_scan(pid, &problem).await
+        }
     }
-    let argv: Vec<String> = bytes
-        .split(|&b| b == 0)
-        .filter(|s| !s.is_empty())
-        .map(|s| String::from_utf8_lossy(s).into_owned())
-        .collect();
-    if argv.is_empty() { None } else { Some(argv) }
+}
+
+async fn cmdline_problem_for_scan(pid: u32, problem: &str) -> CmdlineRead {
+    cmdline_problem_for_comm(read_process_comm_for_scan(pid).await, problem)
+}
+
+fn cmdline_problem_for_comm(comm_read: ProcessCommRead, problem: &str) -> CmdlineRead {
+    match comm_read {
+        ProcessCommRead::Name {
+            comm,
+            live: Some(true),
+        } if comm == b"firecracker" => CmdlineRead::Unreadable(problem.to_string()),
+        ProcessCommRead::Name { comm, live: None } if comm == b"firecracker" => {
+            CmdlineRead::Unreadable(format!("{problem}; stat parse failed"))
+        }
+        ProcessCommRead::Name { .. } => CmdlineRead::Ignored,
+        ProcessCommRead::Missing => CmdlineRead::Missing,
+        ProcessCommRead::Unreadable(stat_error) => {
+            CmdlineRead::Unreadable(format!("{problem}; stat read failed: {stat_error}"))
+        }
+        ProcessCommRead::Invalid => {
+            CmdlineRead::Unreadable(format!("{problem}; stat parse failed"))
+        }
+    }
 }
 
 /// Read `/proc/{pid}/stat` and extract the PPid field.
@@ -42,6 +93,39 @@ fn stat_fields_after_comm(content: &[u8]) -> Option<impl Iterator<Item = &[u8]> 
             .split(|byte| byte.is_ascii_whitespace())
             .filter(|field| !field.is_empty()),
     )
+}
+
+fn process_comm(content: &[u8]) -> Option<&[u8]> {
+    let open_paren = content.iter().position(|byte| *byte == b'(')?;
+    let close_paren = content.iter().rposition(|byte| *byte == b')')?;
+    if close_paren <= open_paren {
+        return None;
+    }
+    content.get(open_paren + 1..close_paren)
+}
+
+enum ProcessCommRead {
+    Name { comm: Vec<u8>, live: Option<bool> },
+    Missing,
+    Unreadable(std::io::Error),
+    Invalid,
+}
+
+async fn read_process_comm_for_scan(pid: u32) -> ProcessCommRead {
+    let path = format!("/proc/{pid}/stat");
+    match tokio::fs::read(&path).await {
+        Ok(content) => {
+            let Some(comm) = process_comm(&content) else {
+                return ProcessCommRead::Invalid;
+            };
+            ProcessCommRead::Name {
+                comm: comm.to_vec(),
+                live: parse_process_stat(&content).map(|stat| process_stat_is_live(&stat)),
+            }
+        }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => ProcessCommRead::Missing,
+        Err(e) => ProcessCommRead::Unreadable(e),
+    }
 }
 
 fn parse_char_field(field: &[u8]) -> Option<char> {
@@ -116,14 +200,24 @@ pub async fn read_service_unit(pid: u32) -> Option<String> {
 
 /// Scan `/proc` for all process argvs.
 ///
-/// Returns `(pid, argv)` pairs for every readable process.
-pub(super) async fn scan_proc_cmdlines() -> Vec<(u32, Vec<String>)> {
+/// Returns `(pid, argv)` pairs for every readable process plus whether the
+/// top-level directory scan completed without errors.
+pub(super) struct ProcCmdlineScan {
+    pub(super) entries: Vec<(u32, Vec<String>)>,
+    pub(super) complete: bool,
+}
+
+pub(super) async fn scan_proc_cmdlines() -> ProcCmdlineScan {
     let mut result = Vec::new();
+    let mut complete = true;
     let mut entries = match tokio::fs::read_dir("/proc").await {
         Ok(e) => e,
         Err(e) => {
             tracing::warn!("scan_proc_cmdlines: cannot read /proc: {e}");
-            return result;
+            return ProcCmdlineScan {
+                entries: result,
+                complete: false,
+            };
         }
     };
     loop {
@@ -132,6 +226,7 @@ pub(super) async fn scan_proc_cmdlines() -> Vec<(u32, Vec<String>)> {
             Ok(None) => break,
             Err(e) => {
                 tracing::warn!("scan_proc_cmdlines: read entry in /proc: {e}");
+                complete = false;
                 continue;
             }
         };
@@ -142,11 +237,19 @@ pub(super) async fn scan_proc_cmdlines() -> Vec<(u32, Vec<String>)> {
         let Ok(pid) = name_str.parse::<u32>() else {
             continue;
         };
-        if let Some(argv) = read_cmdline(pid).await {
-            result.push((pid, argv));
+        match read_cmdline_for_scan(pid).await {
+            CmdlineRead::Args(argv) => result.push((pid, argv)),
+            CmdlineRead::Ignored | CmdlineRead::Missing => {}
+            CmdlineRead::Unreadable(e) => {
+                tracing::warn!("scan_proc_cmdlines: cannot read /proc/{pid}/cmdline: {e}");
+                complete = false;
+            }
         }
     }
-    result
+    ProcCmdlineScan {
+        entries: result,
+        complete,
+    }
 }
 
 #[cfg(test)]
@@ -171,6 +274,104 @@ mod tests {
         stat.extend_from_slice(b") ");
         stat.extend_from_slice(fields.join(" ").as_bytes());
         stat
+    }
+
+    #[test]
+    fn parse_cmdline_bytes_accepts_nul_separated_argv() {
+        assert_eq!(
+            parse_cmdline_bytes(b"firecracker\0--no-api\0"),
+            Some(vec!["firecracker".to_string(), "--no-api".to_string()])
+        );
+    }
+
+    #[test]
+    fn parse_cmdline_bytes_rejects_empty_or_nul_free_content() {
+        assert_eq!(parse_cmdline_bytes(b""), None);
+        assert_eq!(parse_cmdline_bytes(b"firecracker"), None);
+    }
+
+    #[test]
+    fn parse_cmdline_bytes_rejects_all_empty_segments() {
+        assert_eq!(parse_cmdline_bytes(b"\0\0"), None);
+    }
+
+    #[test]
+    fn cmdline_problem_for_firecracker_comm_is_unreadable() {
+        assert_eq!(
+            cmdline_problem_for_comm(
+                ProcessCommRead::Name {
+                    comm: b"firecracker".to_vec(),
+                    live: Some(true),
+                },
+                "cmdline is empty or NUL-free",
+            ),
+            CmdlineRead::Unreadable("cmdline is empty or NUL-free".to_string())
+        );
+    }
+
+    #[test]
+    fn cmdline_problem_for_zombie_firecracker_comm_is_ignored() {
+        assert_eq!(
+            cmdline_problem_for_comm(
+                ProcessCommRead::Name {
+                    comm: b"firecracker".to_vec(),
+                    live: Some(false),
+                },
+                "cmdline is empty or NUL-free",
+            ),
+            CmdlineRead::Ignored
+        );
+    }
+
+    #[test]
+    fn cmdline_problem_for_firecracker_comm_with_invalid_stat_is_unreadable() {
+        assert_eq!(
+            cmdline_problem_for_comm(
+                ProcessCommRead::Name {
+                    comm: b"firecracker".to_vec(),
+                    live: None,
+                },
+                "cmdline is empty or NUL-free",
+            ),
+            CmdlineRead::Unreadable("cmdline is empty or NUL-free; stat parse failed".to_string())
+        );
+    }
+
+    #[test]
+    fn cmdline_problem_for_non_firecracker_comm_is_ignored() {
+        assert_eq!(
+            cmdline_problem_for_comm(
+                ProcessCommRead::Name {
+                    comm: b"postgres".to_vec(),
+                    live: Some(true),
+                },
+                "cmdline is empty or NUL-free",
+            ),
+            CmdlineRead::Ignored
+        );
+    }
+
+    #[test]
+    fn process_comm_extracts_comm_with_spaces_and_parens() {
+        let stat = stat_with_comm("firecracker (worker)", "S", "1100", "123456");
+
+        assert_eq!(
+            process_comm(stat.as_bytes()),
+            Some(&b"firecracker (worker)"[..])
+        );
+    }
+
+    #[test]
+    fn process_comm_accepts_non_utf8_comm() {
+        let stat = stat_bytes_with_comm(b"firecracker\xff", "S", "1100", "123456");
+
+        assert_eq!(process_comm(&stat), Some(&b"firecracker\xff"[..]));
+    }
+
+    #[test]
+    fn process_comm_rejects_missing_delimiters() {
+        assert_eq!(process_comm(b"1234 firecracker) S 1 1"), None);
+        assert_eq!(process_comm(b"1234 (firecracker S 1 1"), None);
     }
 
     #[test]

@@ -7,7 +7,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 
 import { now } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { setFirewallAuthRefreshTimeoutMsForTests } from "../../services/agent-webhook-firewall-auth.service";
 import {
@@ -141,10 +141,13 @@ describe("FW-2: template resolution without connector refresh", () => {
           BASIC_USER: "alice",
           BASE_SECRET: "base-secret",
           QUERY_SECRET: "query-secret",
+          SCRAPENINJA_TOKEN: "rapidapi-secret",
           SHARED: "secret-shared",
         }),
         authHeaders: {
           Authorization: `Bearer ${secretTemplate("API_KEY")}`,
+          "X-RapidAPI-Host": "scrapeninja.p.rapidapi.com",
+          "X-RapidAPI-Key": secretTemplate("SCRAPENINJA_TOKEN"),
           "X-Tenant": varTemplate("TENANT"),
           "X-Basic": basicTemplate("secrets.BASIC_USER", "vars.BASIC_PASS"),
           "X-Literal-Basic": basicTemplate('"alice"', '"literal-pass"'),
@@ -164,6 +167,10 @@ describe("FW-2: template resolution without connector refresh", () => {
       throw new Error("Expected firewall auth resolution to succeed");
     }
     expect(resolved.body.headers.Authorization).toBe("Bearer secret-value");
+    expect(resolved.body.headers["X-RapidAPI-Host"]).toBe(
+      "scrapeninja.p.rapidapi.com",
+    );
+    expect(resolved.body.headers["X-RapidAPI-Key"]).toBe("rapidapi-secret");
     expect(resolved.body.headers["X-Tenant"]).toBe("tenant-1");
     expect(resolved.body.headers["X-Basic"]).toBe(
       `Basic ${Buffer.from("alice:var-pass").toString("base64")}`,
@@ -182,6 +189,7 @@ describe("FW-2: template resolution without connector refresh", () => {
     );
     expect(resolved.body.resolvedSecrets).toContain("BASE_SECRET");
     expect(resolved.body.resolvedSecrets).toContain("QUERY_SECRET");
+    expect(resolved.body.resolvedSecrets).toContain("SCRAPENINJA_TOKEN");
   });
 
   it("reports unresolvable template references as connector-not-configured", async () => {
@@ -1404,6 +1412,59 @@ describe("FW-8: static access tokens and unavailable sources", () => {
 });
 
 describe("FW-9: codex model-provider access", () => {
+  it("resolves static model-provider auth from an empty runtime namespace", async () => {
+    const fw = createFirewallApi(context);
+    const { headers } = await firewallRun();
+
+    const resolved = await fw.requestFirewallAuth(
+      headers,
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          "x-api-key": secretTemplate("ANTHROPIC_API_KEY"),
+        },
+        secretConnectorMap: { ANTHROPIC_API_KEY: "anthropic-api-key" },
+        secretConnectorMetadataMap: {
+          ANTHROPIC_API_KEY: {
+            sourceType: "model-provider" as const,
+            sourceUserId: ORG_SENTINEL_USER_ID,
+            metadataKey: "anthropic-api-key",
+          },
+        },
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected static model-provider auth to resolve");
+    }
+    expect(resolved.body.headers["x-api-key"]).toBe("test-anthropic-key");
+    expect(resolved.body.resolvedSecrets).toStrictEqual(["ANTHROPIC_API_KEY"]);
+    expect(resolved.body.refreshedConnectors).toStrictEqual([]);
+  });
+
+  it("derives static model-provider auth when metadata is omitted", async () => {
+    const fw = createFirewallApi(context);
+    const { headers } = await firewallRun();
+
+    const resolved = await fw.requestFirewallAuth(
+      headers,
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          "x-api-key": secretTemplate("ANTHROPIC_API_KEY"),
+        },
+        secretConnectorMap: { ANTHROPIC_API_KEY: "anthropic-api-key" },
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected derived static model-provider auth to resolve");
+    }
+    expect(resolved.body.headers["x-api-key"]).toBe("test-anthropic-key");
+    expect(resolved.body.resolvedSecrets).toStrictEqual(["ANTHROPIC_API_KEY"]);
+    expect(resolved.body.refreshedConnectors).toStrictEqual([]);
+  });
+
   it("refreshes an expired org codex provider and serves the stored token afterwards", async () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();

@@ -15,6 +15,9 @@ import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 import { hideAppSkeleton$ } from "../app-skeleton.ts";
 import { setActiveAgent$ } from "../zero-page/zero-job-detail.ts";
 import { setChatAgentId$ } from "../agent-chat.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { reloadWorkflows$ } from "../workflows-page/workflows-signals.ts";
 
 export const setupAgentDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -53,6 +56,10 @@ export const setupAgentDetailPage$ = command(
     set(setActiveAgent$, agentId);
     set(setChatAgentId$, agentId);
     set(rememberLastUsedAgentId$, agentId);
+    const features = get(featureSwitch$);
+    if (features[FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]) {
+      set(reloadWorkflows$);
+    }
 
     const displayName = agent.displayName ?? "Agent";
     set(updateDocumentTitle$, displayName);

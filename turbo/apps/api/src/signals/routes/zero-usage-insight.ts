@@ -6,7 +6,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
 import { zeroUsageInsight$ } from "../services/zero-usage-insight.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { isValidTimeZone } from "../utils";
 
 const getUsageInsightInner$ = command(

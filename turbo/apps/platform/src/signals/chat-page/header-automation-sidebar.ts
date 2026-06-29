@@ -1,4 +1,4 @@
-import { command, computed } from "ccstate";
+import { command, computed, state } from "ccstate";
 
 import {
   replaceSearchParams$,
@@ -15,6 +15,18 @@ export const currentHeaderAutomationThreadId$ = computed((get) => {
   return get(searchParams$).get(CHAT_AUTOMATIONS_QUERY_PARAM);
 });
 
+const editingHeaderWorkflowTriggerId$ = state<string | null>(null);
+
+export const currentEditingHeaderWorkflowTriggerId$ = computed((get) => {
+  return get(editingHeaderWorkflowTriggerId$);
+});
+
+export const setEditingHeaderWorkflowTriggerId$ = command(
+  ({ set }, triggerId: string | null) => {
+    set(editingHeaderWorkflowTriggerId$, triggerId);
+  },
+);
+
 export const openHeaderAutomationSidebar$ = command(
   ({ get, set }, threadId: string) => {
     const params = new URLSearchParams(get(searchParams$));
@@ -30,5 +42,6 @@ export const closeHeaderAutomationSidebar$ = command(({ get, set }) => {
     return;
   }
   clearChatAutomationSidebarParams(params);
+  set(setEditingHeaderWorkflowTriggerId$, null);
   set(replaceSearchParams$, params);
 });

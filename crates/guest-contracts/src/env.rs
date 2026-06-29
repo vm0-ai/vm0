@@ -133,24 +133,24 @@ pub const STUCK_TOOL_TIMEOUT_SECS_ENV: &str = "VM0_STUCK_TOOL_TIMEOUT_SECS";
 /// reports a final result.
 ///
 /// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The guest-agent parses the value as `u64`;
-/// unset or unparseable values use the compiled default.
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. Unset, unparseable, or out-of-range values
+/// use the guest-agent's compiled default.
 pub const POST_RESULT_SIGTERM_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGTERM_GRACE_SECS";
 
 /// Guest-agent absolute cap in seconds before sending SIGTERM after the CLI
 /// reports a final result, regardless of later post-result stdout events.
 ///
 /// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The guest-agent parses the value as `u64`;
-/// unset or unparseable values use the compiled default.
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. Unset, unparseable, or out-of-range values
+/// use the guest-agent's compiled default.
 pub const POST_RESULT_TOTAL_CAP_SECS_ENV: &str = "VM0_POST_RESULT_TOTAL_CAP_SECS";
 
 /// Guest-agent grace period in seconds before escalating from SIGTERM to
 /// SIGKILL after the CLI reports a final result.
 ///
 /// This is a tuning key: local execution may pass it through user env via
-/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. The guest-agent parses the value as `u64`;
-/// unset or unparseable values use the compiled default.
+/// [`GUEST_AGENT_TUNING_ENV_KEYS`]. Unset, unparseable, or out-of-range values
+/// use the guest-agent's compiled default.
 pub const POST_RESULT_SIGKILL_GRACE_SECS_ENV: &str = "VM0_POST_RESULT_SIGKILL_GRACE_SECS";
 
 /// Test/debug bootstrap switch that makes the guest-agent use the mock Claude
@@ -168,6 +168,13 @@ pub const USE_MOCK_CLAUDE_ENV: &str = "USE_MOCK_CLAUDE";
 /// prefix because the mock launcher contract uses this exact name. The
 /// guest-agent treats `true` or `1` as enabled.
 pub const USE_MOCK_CODEX_ENV: &str = "USE_MOCK_CODEX";
+
+/// Experimental bootstrap switch for the disabled Codex app-server backend.
+///
+/// The runner does not set this key in product paths. Tests and future rollout
+/// PRs may set it explicitly; user-provided env cannot override it because the
+/// `VM0_` namespace is runner-owned.
+pub const CODEX_APP_SERVER_BACKEND_ENV: &str = "VM0_CODEX_APP_SERVER_BACKEND";
 
 /// Optional test/debug override for the mock Claude binary path.
 ///

@@ -6,7 +6,7 @@ import { MAX_EVENT_SEQUENCE_NUMBER } from "@vm0/api-contracts/contracts/runs";
 
 import { env } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import {
   createBddApi,
   expectApiError,

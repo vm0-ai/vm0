@@ -12,7 +12,7 @@ import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const PCM_SAMPLE_RATE = 16_000;
 const PCM_CHANNELS = 1;

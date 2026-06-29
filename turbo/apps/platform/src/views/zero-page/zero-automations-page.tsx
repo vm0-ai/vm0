@@ -3,6 +3,7 @@
 import { useGet, useSet, useLastLoadable } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { IconList, IconLayoutGrid, IconPlus } from "@tabler/icons-react";
 import {
   Tabs,
@@ -25,7 +26,7 @@ import {
   DialogTitle,
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
-import { WEEKDAY_LABELS, type AutomationEntry } from "./zero-automation-card";
+import { WEEKDAY_LABELS, type CombinedEntry } from "./automation-utils";
 import {
   AutomationFormDialog,
   type AutomationFormValues,
@@ -69,16 +70,10 @@ import {
   automationListTab$,
   setAutomationListTab$,
 } from "../../signals/automation-page/automation-list-tab.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { WorkflowTriggerAutomationsPage } from "./workflow-trigger-automations-page.tsx";
 
-export type CombinedEntry = AutomationEntry & {
-  agentLabel: string;
-  agentId: string;
-  timezone: string;
-  nextRunAt: string | null;
-  lastRunAt: string | null;
-  chatThreadId: string;
-  triggerSummary: string;
-};
+export type { CombinedEntry } from "./automation-utils";
 
 export function buildCombinedAutomations(
   entries: OrgAutomationEntry[],
@@ -528,6 +523,14 @@ const AUTOMATIONS_LABELS = {
 // ---------------------------------------------------------------------------
 
 export function ZeroAutomationsPage() {
+  const features = useGet(featureSwitch$);
+  if (features[FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]) {
+    return <WorkflowTriggerAutomationsPage />;
+  }
+  return <LegacyZeroAutomationsPage />;
+}
+
+function LegacyZeroAutomationsPage() {
   const labels = AUTOMATIONS_LABELS;
   const statusLoadable = useLastLoadable(zeroOnboardingStatus$);
   const defaultComposeId =

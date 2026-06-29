@@ -3,6 +3,7 @@ use std::time::{Duration, Instant};
 
 use tracing::{info, warn};
 
+use crate::duration::duration_ms;
 use crate::workspace_drive_image::{
     WorkspaceDriveImagePrepareObserver, WorkspaceDriveImagePrepareStage,
 };
@@ -281,10 +282,6 @@ impl WorkspaceDriveImagePrepareObserver for SandboxCreateTiming {
     }
 }
 
-fn duration_ms(duration: Duration) -> u64 {
-    duration.as_millis() as u64
-}
-
 fn optional_duration_ms(duration: Option<Duration>) -> u64 {
     duration.map_or(0, duration_ms)
 }
@@ -539,6 +536,20 @@ mod tests {
             let expected = ((index as u64 + 1) * 10).to_string();
             assert_field(&event, field, &expected);
         }
+    }
+
+    #[test]
+    fn success_summary_saturates_large_durations() {
+        let mut timing = SandboxCreateTiming::new("sandbox-1".into(), "vm0/default".into());
+        timing.record_stage_duration(SandboxCreateStage::CowPoolAcquire, Duration::MAX);
+
+        let event = capture_success_summary_event(&timing, Duration::MAX);
+
+        assert_eq!(event.level, Level::WARN);
+        assert_field(&event, "message", "slow sandbox create");
+        assert_field(&event, "total_elapsed_ms", &u64::MAX.to_string());
+        assert_field(&event, "cow_pool_acquire_ms", &u64::MAX.to_string());
+        assert_field(&event, "threshold_ms", "3000");
     }
 
     #[test]

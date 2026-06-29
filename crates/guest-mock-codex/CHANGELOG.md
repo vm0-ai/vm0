@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.4.0](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.3.2...guest-mock-codex-v0.4.0) (2026-06-29)
+
+
+### Features
+
+* add disabled codex app-server backend ([#19207](https://github.com/vm0-ai/vm0/issues/19207)) ([6a3a6e2](https://github.com/vm0-ai/vm0/commit/6a3a6e2aeb8820029b7388869600d849f629fcbb))
+
+## [0.3.2](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.3.1...guest-mock-codex-v0.3.2) (2026-06-29)
+
+
+### Bug Fixes
+
+* bound codex session cleanup traversal ([#19265](https://github.com/vm0-ai/vm0/issues/19265)) ([0ad8dd7](https://github.com/vm0-ai/vm0/commit/0ad8dd7cc4a2ba0e4d1f0e3732b7cc2596b5b38f))
+
 ## [0.3.1](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.3.0...guest-mock-codex-v0.3.1) (2026-06-25)
 
 

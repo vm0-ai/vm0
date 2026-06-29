@@ -3,7 +3,7 @@ import { zeroMemoryContract } from "@vm0/api-contracts/contracts/zero-memory";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { zeroMemoryDetail } from "../services/zero-memory-detail.service";
 
 const memoryAuthOptions = {

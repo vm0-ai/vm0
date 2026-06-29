@@ -6,6 +6,7 @@ import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-work
 import { cn, PopoverContent } from "@vm0/ui";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { Link } from "../router/link.tsx";
+import { matchesWorkflowNameQuery } from "./slash-workflow-match.ts";
 
 export interface SlashWorkflowRange {
   readonly start: number;
@@ -40,15 +41,7 @@ export function matchesWorkflowQuery(
   workflow: ComposerSlashWorkflow,
   query: string,
 ): boolean {
-  if (!query) {
-    return true;
-  }
-
-  const normalizedQuery = query.toLowerCase();
-  return [workflow.name, workflow.displayName ?? "", workflow.description ?? ""]
-    .join(" ")
-    .toLowerCase()
-    .includes(normalizedQuery);
+  return matchesWorkflowNameQuery(workflow.name, query);
 }
 
 export function workflowTokenPattern(

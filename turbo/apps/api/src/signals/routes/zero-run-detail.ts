@@ -14,7 +14,7 @@ import {
   zeroRunContext,
   zeroRunNetworkLogs,
 } from "../services/zero-run-detail.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const runReadAuth = {
   requireOrganization: true,

@@ -376,7 +376,7 @@ async function readThreadComputerUseHostId(
 }
 
 /**
- * Raw chat send through the Hono app, for statuses the ts-rest contract does
+ * Raw chat send through the Hono app, for statuses the typed contract does
  * not model (precedent: requestListAutomationsRaw in api-bdd-runs-automations).
  */
 async function requestSendMessageRaw(
@@ -1245,6 +1245,9 @@ describe("CHAT-02: explicit provider pins", () => {
         authHeaders: {
           Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
         },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          claim.secretConnectorMetadataMap ?? undefined,
       },
       [200],
     );
@@ -1358,8 +1361,9 @@ describe("CHAT-02: explicit provider pins", () => {
       );
   }, 90_000);
 
-  it("rejects legacy blank OpenRouter provider secrets before runner claim", async () => {
-    const { actor, agentId } = await entitledChatActor();
+  it("rejects legacy blank OpenRouter provider secrets during firewall auth", async () => {
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
     const orgId = actor.orgId;
     if (!orgId) {
       throw new Error("Expected entitled actor to have an org");
@@ -1370,7 +1374,7 @@ describe("CHAT-02: explicit provider pins", () => {
     });
     await overwriteOrgModelProviderSecret(orgId, "OPENROUTER_API_KEY", "   ");
 
-    const response = await requestSendMessageRaw(actor, {
+    const run = await sendChatRun(actor, {
       agentId,
       prompt: "run with a legacy blank openrouter provider",
       modelSelection: {
@@ -1378,12 +1382,31 @@ describe("CHAT-02: explicit provider pins", () => {
         selectedModel: "claude-opus-4-7",
       },
     });
-
-    expect(response.status).toBe(503);
-    expectApiError(response.body);
-    expect(response.body.error.message).toContain(
-      "No model provider configured",
+    const { claim, sandboxHeaders } = await claimChatRun(
+      runnerGroup,
+      run.runId,
     );
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected OpenRouter claim to carry encrypted secrets");
+    }
+
+    const rejected = await fw.requestFirewallAuth(
+      sandboxHeaders,
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("OPENROUTER_API_KEY")}`,
+        },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+        secretConnectorMetadataMap:
+          claim.secretConnectorMetadataMap ?? undefined,
+      },
+      [424],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("CONNECTOR_NOT_CONFIGURED");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
   }, 60_000);
 });
 

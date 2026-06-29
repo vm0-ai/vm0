@@ -1,7 +1,7 @@
 import { cronProcessUsageEventsContract } from "@vm0/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { processStaleUsageEvents$ } from "../services/cron-process-usage-events.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 

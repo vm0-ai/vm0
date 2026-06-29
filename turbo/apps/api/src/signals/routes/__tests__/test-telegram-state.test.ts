@@ -20,10 +20,12 @@ import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
-import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { writeDb$ } from "../../external/db";
+import { testSlackStateRoutes } from "../test-slack-state";
+import { testTelegramStateRoutes } from "../test-telegram-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -74,7 +76,10 @@ interface TelegramStateSeedResponse {
 }
 
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
-  const app = createApp({ signal: context.signal });
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: [...testTelegramStateRoutes, ...testSlackStateRoutes],
+  });
   return Promise.resolve(app.request(path, init));
 }
 

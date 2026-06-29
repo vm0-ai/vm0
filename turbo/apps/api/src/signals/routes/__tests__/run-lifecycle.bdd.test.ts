@@ -25,7 +25,7 @@ import { describe, expect, it, onTestFinished } from "vitest";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, nowDate } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { assistantMessageIdForRunEvent } from "../../services/assistant-message-id";
@@ -33,7 +33,6 @@ import {
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
 } from "../../services/crypto.utils";
-import { settle } from "../../utils";
 import {
   createBddApi,
   expectApiError,
@@ -111,6 +110,7 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_persisted_environment",
   "api_dispatch_prepare_context_build_resolved_body",
   "api_dispatch_prepare_context_resolve_framework",
+  "api_dispatch_prepare_context_resolve_connector_scope",
   "api_dispatch_prepare_context_resolve_model_provider",
   "api_dispatch_prepare_context_load_connector_contexts",
   "api_dispatch_prepare_context_load_stored_connectors",
@@ -128,7 +128,37 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_check_concurrency_limit",
   "api_dispatch_insert_run_record",
   "api_dispatch_prepare_storage_manifest",
+  "api_dispatch_prepare_storage_manifest_resolve_inputs",
+  "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+  "api_dispatch_prepare_storage_manifest_load_storage_index",
+  "api_dispatch_prepare_storage_manifest_build_entries",
+  "api_dispatch_prepare_storage_manifest_build_compose_entries",
+  "api_dispatch_prepare_storage_manifest_resolve_compose_versions",
+  "api_dispatch_prepare_storage_manifest_generate_compose_urls",
+  "api_dispatch_prepare_storage_manifest_build_additional_entries",
+  "api_dispatch_prepare_storage_manifest_resolve_additional_versions",
+  "api_dispatch_prepare_storage_manifest_generate_additional_urls",
+  "api_dispatch_prepare_storage_manifest_build_artifact_entries",
+  "api_dispatch_prepare_storage_manifest_resolve_artifact_versions",
+  "api_dispatch_prepare_storage_manifest_generate_artifact_urls",
+  "api_dispatch_prepare_storage_manifest_assemble",
   "api_dispatch_build_stored_execution_context",
+] as const;
+const API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES = [
+  "api_dispatch_prepare_storage_manifest_resolve_inputs",
+  "api_dispatch_prepare_storage_manifest_ensure_artifacts",
+  "api_dispatch_prepare_storage_manifest_load_storage_index",
+  "api_dispatch_prepare_storage_manifest_build_entries",
+  "api_dispatch_prepare_storage_manifest_build_compose_entries",
+  "api_dispatch_prepare_storage_manifest_resolve_compose_versions",
+  "api_dispatch_prepare_storage_manifest_generate_compose_urls",
+  "api_dispatch_prepare_storage_manifest_build_additional_entries",
+  "api_dispatch_prepare_storage_manifest_resolve_additional_versions",
+  "api_dispatch_prepare_storage_manifest_generate_additional_urls",
+  "api_dispatch_prepare_storage_manifest_build_artifact_entries",
+  "api_dispatch_prepare_storage_manifest_resolve_artifact_versions",
+  "api_dispatch_prepare_storage_manifest_generate_artifact_urls",
+  "api_dispatch_prepare_storage_manifest_assemble",
 ] as const;
 const API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_direct_parse_body",
@@ -146,6 +176,9 @@ const API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_resolve_permission_policies",
   "api_dispatch_pre_create_zero_build_create_run_args",
 ] as const;
+const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_entrypoint_gap",
+] as const;
 const API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_stored_connector_rows",
   "api_dispatch_prepare_context_filter_stored_connector_rows",
@@ -153,7 +186,6 @@ const API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES = [
 ] as const;
 const API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_stored_connector_secret_rows",
-  "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
 ] as const;
 const API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_stored_connector_variable_rows",
@@ -203,6 +235,20 @@ const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
   "environment",
   "execution_context",
   "presigned_url",
+  "presignedUrl",
+  "archive_url",
+  "archiveUrl",
+  "manifest_url",
+  "manifestUrl",
+  "url",
+  "storage_name",
+  "storageName",
+  "artifact_name",
+  "artifactName",
+  "volume_name",
+  "volumeName",
+  "mount_path",
+  "mountPath",
   "runner_id",
   "runnerId",
   "target_runner_id",
@@ -429,6 +475,17 @@ function expectApiDispatchSpanKind(
   }
 }
 
+function singleApiDispatchEvent(
+  events: readonly Record<string, unknown>[],
+  actionType: string,
+): Record<string, unknown> {
+  const matchingEvents = events.filter((event) => {
+    return event.op_type === actionType;
+  });
+  expect(matchingEvents).toHaveLength(1);
+  return matchingEvents[0]!;
+}
+
 function expectApiDispatchTimingEventsNotToLeak(
   events: readonly Record<string, unknown>[],
   forbiddenValues: readonly string[],
@@ -511,6 +568,65 @@ async function entitledRunActor(): Promise<{
   return { actor, agentId: agent.agentId, runnerGroup, granted };
 }
 
+async function zeroBackedDirectRunActor(args?: {
+  readonly visibility?: "private" | "public";
+}): Promise<{
+  readonly actor: ApiTestUser;
+  readonly orgId: string;
+  readonly agentId: string;
+  readonly runnerGroup: string;
+}> {
+  const bdd = createBddApi(context);
+  const api = createRunsAutomationsApi(context);
+  const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Zero-backed direct run tests require an org-scoped actor");
+  }
+  bdd.acceptAgentStorageWrites();
+  api.acceptStorageDownloads();
+  api.acceptTelemetryIngest();
+  const runnerGroup = api.configureRunnerGroup();
+  await api.grantProEntitlement(actor);
+  await api.ensureOrgModelProvider(actor);
+
+  const agent = await bdd.createAgent(actor, {
+    displayName: "BDD zero-backed direct agent",
+    visibility: args?.visibility ?? "private",
+  });
+
+  return { actor, orgId: actor.orgId, agentId: agent.agentId, runnerGroup };
+}
+
+function zeroBackedDirectRunBody(args: {
+  readonly agentId: string;
+  readonly agentComposeVersionId?: string;
+  readonly prompt: string;
+}) {
+  return {
+    ...(args.agentComposeVersionId
+      ? { agentComposeVersionId: args.agentComposeVersionId }
+      : { agentComposeId: args.agentId }),
+    prompt: args.prompt,
+    modelProviderType: "anthropic-api-key" as const,
+    vars: { ZERO_AGENT_ID: args.agentId },
+    secrets: { ZERO_TOKEN: "bdd-zero-direct-token" },
+  };
+}
+
+async function readAgentHeadVersionId(agentId: string): Promise<string> {
+  const [composeRow] = await writeDb
+    .select({ headVersionId: agentComposes.headVersionId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, agentId))
+    .limit(1);
+  if (!composeRow?.headVersionId) {
+    throw new Error(
+      "Expected Zero-backed direct run agent to have a head version",
+    );
+  }
+  return composeRow.headVersionId;
+}
+
 const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
 
 function failIfChatCallbackRouteIsFetched(): void {
@@ -581,9 +697,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES,
     );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
+    );
     expectApiDispatchActions(
       timingEvents,
       API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES,
+      "nested",
     );
     expectApiDispatchActions(timingEvents, [
       "api_dispatch_resolve_compose_by_compose_id",
@@ -636,6 +761,7 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
           runner_group: runnerGroup,
           profile: "vm0/default",
           dispatch_path: "direct",
+          trigger_source: "web",
         }),
       );
       expect(event.duration_ms).toStrictEqual(expect.any(Number));
@@ -685,9 +811,18 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       API_DISPATCH_DIRECT_PRE_CREATE_ACTION_TYPES,
       "nested",
     );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_STORAGE_MANIFEST_ACTION_TYPES,
+      "nested",
+    );
     expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
     );
     expectApiDispatchSpanKind(
       timingEvents,
@@ -1586,6 +1721,142 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("omits connected stored connectors when the Zero-backed direct run allowlist is empty", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-direct-unallowed-access",
+      refreshToken: "x-bdd-direct-unallowed-refresh",
+    });
+
+    const run = await api.createDirectRun(
+      actor,
+      zeroBackedDirectRunBody({
+        agentId,
+        prompt: "direct run without enabled stored connectors",
+      }),
+    );
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_CUSTOM_CONNECTOR_SUBSTEP_ACTION_TYPES,
+    );
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(claim.secretConnectorMap ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
+    expect(claim.billableFirewalls).not.toContain("x");
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("x");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+    const cancelled = await api.readRun(actor, run.runId);
+    expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("omits connected stored connectors for pinned Zero-backed direct run versions", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
+    const agentComposeVersionId = await readAgentHeadVersionId(agentId);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-version-unallowed-access",
+      refreshToken: "x-bdd-version-unallowed-refresh",
+    });
+
+    const run = await api.createDirectRun(
+      actor,
+      zeroBackedDirectRunBody({
+        agentId,
+        agentComposeVersionId,
+        prompt: "direct run pinned to a zero agent version",
+      }),
+    );
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SUBSTEP_ACTION_TYPES,
+    );
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.agentComposeVersionId).toBe(agentComposeVersionId);
+    expect(claim.environment ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("rejects same-org non-owner Zero-backed direct runs for private agents", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await zeroBackedDirectRunActor();
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+
+    const rejected = await api.requestDirectRun(
+      member,
+      zeroBackedDirectRunBody({
+        agentId,
+        prompt: "direct run someone else's private zero agent",
+      }),
+      [403],
+    );
+
+    expectApiError(rejected.body);
+    expect(rejected.body.error.message).toBe(
+      "Only the private agent owner can run this agent",
+    );
+  });
+
+  it("allows same-org non-owner Zero-backed direct runs for public agents without owner connector leakage", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor({
+      visibility: "public",
+    });
+    const member = bdd.user({ orgId: actor.orgId, orgRole: "org:member" });
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-public-owner-access",
+      refreshToken: "x-bdd-public-owner-refresh",
+    });
+    const enabled = await api.enableAgentConnectors(actor, agentId, ["x"]);
+    expect(enabled).toContain("x");
+
+    const run = await api.createDirectRun(
+      member,
+      zeroBackedDirectRunBody({
+        agentId,
+        prompt: "direct run someone else's public zero agent",
+      }),
+    );
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(claim.secretConnectorMap ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "x")).toBeUndefined();
+    expect(claim.billableFirewalls).not.toContain("x");
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("x");
+
+    await api.requestCancelRun(member, run.runId, [200]);
+  });
+
   it("injects oauth connector tokens with billable firewalls and resolvable secrets", async () => {
     const api = createRunsAutomationsApi(context);
     const fw = createFirewallApi(context);
@@ -1623,6 +1894,15 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       timingEvents,
       API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES,
     );
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+    ]);
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      "x-bdd-access",
+      "x-bdd-refresh",
+      "X_TOKEN",
+      "SLACK_TOKEN",
+    ]);
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
 
@@ -1633,7 +1913,9 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(claim.environment).not.toHaveProperty("X_REFRESH_TOKEN");
     expect(claim.secretConnectorMap).toMatchObject({ X_TOKEN: "x" });
     expect(claim.secretConnectorMap).not.toHaveProperty("X_REFRESH_TOKEN");
-    expect(claim.secretConnectorMetadataMap ?? null).toBeNull();
+    expect(claim.secretConnectorMetadataMap ?? {}).not.toHaveProperty(
+      "X_TOKEN",
+    );
 
     expect(
       claim.firewalls?.map((firewall) => {
@@ -1676,6 +1958,293 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("does not decrypt stored connector secrets overridden by body secrets", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-overridden-access",
+      refreshToken: "x-bdd-overridden-refresh",
+    });
+    const composeName = `bdd-overridden-connector-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+
+    const kms = fakeKmsClient();
+    setSecretKmsClientForTests(kms.client);
+    onTestFinished(() => {
+      resetSecretKmsClientForTests();
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "use overridden x connector secret",
+      secrets: { X_TOKEN: "body-x-token" },
+    });
+    const decryptCalls = kms.calls.filter((call) => {
+      return call instanceof DecryptCommand;
+    });
+    expect(decryptCalls).toHaveLength(0);
+
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
+    );
+    expectApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_load_stored_connector_secret_rows",
+    ]);
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+    ]);
+    const buildStoredConnectorStateEvent = singleApiDispatchEvent(
+      timingEvents,
+      "api_dispatch_prepare_context_build_stored_connector_state",
+    );
+    expect(buildStoredConnectorStateEvent).toStrictEqual(
+      expect.objectContaining({
+        connector_scope_source: "legacy_all",
+        stored_connector_count_bucket: "1",
+        stored_connector_secret_count_bucket: "0",
+      }),
+    );
+    expect(buildStoredConnectorStateEvent).not.toHaveProperty(
+      "zero_run_origin",
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      "x-bdd-overridden-access",
+      "x-bdd-overridden-refresh",
+      "body-x-token",
+      "X_TOKEN",
+    ]);
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment?.X_TOKEN).toBe(
+      connectorPlaceholder("x", "X_TOKEN"),
+    );
+    expect(claim.secretConnectorMap ?? {}).not.toHaveProperty("X_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "x")).toStrictEqual({
+      kind: "builtin",
+      name: "x",
+    });
+    expect(claim.billableFirewalls).toContain("x");
+
+    if (!claim.encryptedSecrets) {
+      throw new Error("Expected the x claim to carry encrypted secrets");
+    }
+    const resolved = await fw.requestFirewallAuth(
+      { authorization: `Bearer ${claim.sandboxToken}` },
+      {
+        encryptedSecrets: claim.encryptedSecrets,
+        authHeaders: { Authorization: `Bearer \${{ secrets.X_TOKEN }}` },
+        secretConnectorMap: claim.secretConnectorMap ?? undefined,
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected the overridden x firewall auth to resolve");
+    }
+    expect(resolved.body.headers).toStrictEqual({
+      Authorization: "Bearer body-x-token",
+    });
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("does not decrypt stored connector secrets overridden by compose environment", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await connectors.connectManualGrant(actor, "agora", "api-token", {
+      AGORA_CUSTOMER_ID: "agora-customer-id",
+      AGORA_CUSTOMER_SECRET: "agora-customer-secret",
+      AGORA_APP_ID: "agora-app-id",
+      AGORA_APP_CERTIFICATE: "agora-stored-certificate",
+    });
+    const composeName = `bdd-compose-overrides-connector-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: {
+            ANTHROPIC_API_KEY: "bdd-inline-key",
+            AGORA_APP_CERTIFICATE: "inline-agora-certificate",
+          },
+        },
+      },
+    });
+
+    const kms = fakeKmsClient();
+    setSecretKmsClientForTests(kms.client);
+    onTestFinished(() => {
+      resetSecretKmsClientForTests();
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "use compose-overridden agora certificate",
+    });
+    expect(
+      kms.calls.filter((call) => {
+        return call instanceof DecryptCommand;
+      }),
+    ).toHaveLength(0);
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+    ]);
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.environment?.AGORA_CUSTOMER_ID).toBe(
+      connectorPlaceholder("agora", "AGORA_CUSTOMER_ID"),
+    );
+    expect(claim.environment?.AGORA_CUSTOMER_SECRET).toBe(
+      connectorPlaceholder("agora", "AGORA_CUSTOMER_SECRET"),
+    );
+    expect(claim.environment?.AGORA_APP_ID).toBe("agora-app-id");
+    expect(claim.environment?.AGORA_APP_CERTIFICATE).toBe(
+      "inline-agora-certificate",
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("maps stored connector variable sources to runtime aliases for permission manifests", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "test-oauth",
+      authMethod: "oauth",
+      accessToken: "test-oauth-bdd-access",
+      refreshToken: "test-oauth-bdd-refresh",
+    });
+    const composeName = `bdd-connector-var-alias-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "use stored connector variable aliases",
+    });
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(findFirewallEntry(claim.firewalls, "test-oauth")).toStrictEqual({
+      kind: "builtin",
+      name: "test-oauth",
+      baseUrlVars: {
+        TEST_OAUTH_TENANT_ID: "test-oauth-oauth-tenantId",
+      },
+    });
+    expect(claim.environment?.TEST_OAUTH_TENANT_ID).toBe(
+      "test-oauth-oauth-tenantId",
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("injects only enabled stored connectors for Zero-backed direct runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-direct-access",
+      refreshToken: "x-bdd-direct-refresh",
+    });
+    await fw.seedTestConnector(actor, {
+      connectorName: "slack",
+      authMethod: "oauth",
+      accessToken: "xoxb-bdd-direct-unenabled-access",
+    });
+    const enabled = await api.enableAgentConnectors(actor, agentId, ["x"]);
+    expect(enabled).toContain("x");
+
+    const run = await api.createDirectRun(
+      actor,
+      zeroBackedDirectRunBody({
+        agentId,
+        prompt: "direct run with the x connector",
+      }),
+    );
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
+    );
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+    ]);
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    expect(claim.environment?.X_TOKEN).toBe(
+      connectorPlaceholder("x", "X_TOKEN"),
+    );
+    expect(claim.secretConnectorMap).toMatchObject({ X_TOKEN: "x" });
+    expect(findFirewallEntry(claim.firewalls, "x")).toStrictEqual({
+      kind: "builtin",
+      name: "x",
+    });
+    expect(claim.billableFirewalls).toContain("x");
+    expect(claim.networkPolicies?.x?.unknownPolicy).toBe("allow");
+    expect(claim.environment).not.toHaveProperty("SLACK_TOKEN");
+    expect(claim.secretConnectorMap).not.toHaveProperty("SLACK_TOKEN");
+    expect(findFirewallEntry(claim.firewalls, "slack")).toBeUndefined();
+    expect(claim.billableFirewalls).not.toContain("slack");
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty("slack");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
   });
 
   it("injects manual-grant api-token connectors and their optional variables", async () => {
@@ -1738,17 +2307,17 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     expect(drained.body.concurrency.active).toBe(0);
   });
 
-  it("decrypts multiple stored connector secrets with bounded concurrency", async () => {
+  it("does not decrypt stored connector auth secrets during create-run", async () => {
     const api = createRunsAutomationsApi(context);
     const connectors = createConnectorBddApi(context);
-    const { actor, agentId, runnerGroup } = await entitledRunActor();
-    await seedVm0ManagedDefaultModelKey();
+    const fw = createFirewallApi(context);
+    const { actor, agentId } = await entitledRunActor();
 
-    await connectors.connectManualGrant(actor, "agora", "api-token", {
-      AGORA_CUSTOMER_ID: "agora-customer-id",
-      AGORA_CUSTOMER_SECRET: "agora-customer-secret",
-      AGORA_APP_ID: "agora-app-id",
-      AGORA_APP_CERTIFICATE: "agora-app-certificate",
+    await fw.seedTestConnector(actor, {
+      connectorName: "x",
+      authMethod: "oauth",
+      accessToken: "x-bdd-lazy-access",
+      refreshToken: "x-bdd-lazy-refresh",
     });
     await connectors.connectManualGrant(actor, "gitlab", "api-token", {
       GITLAB_TOKEN: "glpat-bdd-parallel",
@@ -1756,103 +2325,24 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await connectors.connectManualGrant(actor, "figma", "api-token", {
       FIGMA_TOKEN: "figd_bdd-parallel",
     });
-    await api.enableAgentConnectors(actor, agentId, [
-      "agora",
-      "gitlab",
-      "figma",
-    ]);
+    await api.enableAgentConnectors(actor, agentId, ["x", "gitlab", "figma"]);
 
-    let releaseDecrypts: (() => void) | undefined;
-    const decryptGate = new Promise<void>((resolve) => {
-      releaseDecrypts = resolve;
-    });
-    const kms = fakeKmsClient({
-      onDecrypt: () => {
-        return decryptGate;
-      },
-    });
+    const kms = fakeKmsClient();
     setSecretKmsClientForTests(kms.client);
     onTestFinished(() => {
-      releaseDecrypts?.();
       resetSecretKmsClientForTests();
     });
 
-    const createRunResultPromise = settle(
-      api.createRun(actor, {
-        agentId,
-        prompt: "use agora credentials",
-        modelProvider: "vm0",
-      }),
-    );
-
-    const concurrencyResult = await settle(
-      expect
-        .poll(
-          () => {
-            return kms.getMaxInFlightDecrypts();
-          },
-          { timeout: 10_000 },
-        )
-        .toBe(4),
-    );
-    releaseDecrypts?.();
-
-    const createRunResult = await createRunResultPromise;
-    if (!createRunResult.ok) {
-      throw createRunResult.error;
-    }
-    if (!concurrencyResult.ok) {
-      throw concurrencyResult.error;
-    }
-    const run = createRunResult.value;
-    expect(kms.getMaxInFlightDecrypts()).toBeLessThanOrEqual(4);
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "use lazy connector auth credentials",
+      modelProvider: "anthropic-api-key",
+    });
     expect(
       kms.calls.filter((call) => {
         return call instanceof DecryptCommand;
       }),
-    ).toHaveLength(5);
-
-    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
-    expectApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES,
-    );
-    expectApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_SECRET_ACTION_TYPES,
-    );
-    expectApiDispatchActions(
-      timingEvents,
-      API_DISPATCH_STORED_CONNECTOR_VARIABLE_ACTION_TYPES,
-    );
-
-    await api.heartbeatRunner(runnerGroup);
-    const claim = await api.claimRunnerJob(run.runId);
-
-    expect(claim.environment?.AGORA_CUSTOMER_ID).toBe(
-      connectorPlaceholder("agora", "AGORA_CUSTOMER_ID"),
-    );
-    expect(claim.environment?.AGORA_CUSTOMER_SECRET).toBe(
-      connectorPlaceholder("agora", "AGORA_CUSTOMER_SECRET"),
-    );
-    expect(claim.environment?.AGORA_APP_ID).toBe("agora-app-id");
-    expect(claim.environment?.AGORA_APP_CERTIFICATE).toBe(
-      "agora-app-certificate",
-    );
-    expect(claim.environment?.GITLAB_TOKEN).toBe(
-      connectorPlaceholder("gitlab", "GITLAB_TOKEN"),
-    );
-    expect(claim.environment?.FIGMA_TOKEN).toBe(
-      connectorPlaceholder("figma", "FIGMA_TOKEN"),
-    );
-    expect(claim.secretConnectorMap).toMatchObject({
-      AGORA_CUSTOMER_ID: "agora",
-      AGORA_CUSTOMER_SECRET: "agora",
-      AGORA_APP_CERTIFICATE: "agora",
-      GITLAB_TOKEN: "gitlab",
-      FIGMA_TOKEN: "figma",
-    });
-    expect(claim.secretConnectorMap).not.toHaveProperty("AGORA_APP_ID");
+    ).toHaveLength(0);
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
@@ -2147,6 +2637,80 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     expect(cancelled.status).toBe("cancelled");
   });
 
+  it("injects only enabled custom connector firewalls for Zero-backed direct runs", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId, runnerGroup } = await zeroBackedDirectRunActor();
+
+    const allowedSlug = `bdd-direct-internal-${randomUUID().slice(0, 8)}`;
+    const allowed = await connectors.createCustomConnector(actor, {
+      slug: allowedSlug,
+      displayName: "BDD Direct Internal API",
+      prefixes: ["https://*.direct.internal.example.com/api/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      allowed.id,
+      "direct-custom-secret-value",
+    );
+
+    const blockedSlug = `bdd-direct-blocked-${randomUUID().slice(0, 8)}`;
+    const blocked = await connectors.createCustomConnector(actor, {
+      slug: blockedSlug,
+      displayName: "BDD Direct Blocked API",
+      prefixes: ["https://*.blocked.internal.example.com/api/"],
+      headerName: "Authorization",
+      headerTemplate: "Bearer {{secret}}",
+    });
+    await connectors.setCustomConnectorSecret(
+      actor,
+      blocked.id,
+      "blocked-custom-secret-value",
+    );
+
+    await connectors.updateAgentCustomConnectors(actor, agentId, [allowed.id]);
+
+    const run = await api.createDirectRun(
+      actor,
+      zeroBackedDirectRunBody({
+        agentId,
+        prompt: "direct run with the custom connector",
+      }),
+    );
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_CUSTOM_CONNECTOR_SUBSTEP_ACTION_TYPES,
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      allowed.id,
+      allowedSlug,
+      "direct-custom-secret-value",
+      blocked.id,
+      blockedSlug,
+      "blocked-custom-secret-value",
+    ]);
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+
+    const allowedInternalName = `custom_connector_${allowed.id.replaceAll("-", "")}`;
+    const blockedInternalName = `custom_connector_${blocked.id.replaceAll("-", "")}`;
+    expect(
+      findFirewallEntry(claim.firewalls, allowedInternalName),
+    ).toBeDefined();
+    expect(
+      findFirewallEntry(claim.firewalls, blockedInternalName),
+    ).toBeUndefined();
+    expect(claim.networkPolicies?.[allowedInternalName]?.unknownPolicy).toBe(
+      "allow",
+    );
+    expect(claim.networkPolicies ?? {}).not.toHaveProperty(blockedInternalName);
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("injects proposed custom connector fields into headers, query, and host templates", async () => {
     const api = createRunsAutomationsApi(context);
     const connectors = createConnectorBddApi(context);
@@ -2297,6 +2861,30 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);
     expect(cancelled.status).toBe("cancelled");
+  });
+
+  it("rejects stored connector base URL vars outside their host policy", async () => {
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    await connectors.connectManualGrant(actor, "jira", "api-token", {
+      JIRA_API_TOKEN: "jira-token-bdd",
+      JIRA_DOMAIN: "attacker.example",
+      JIRA_EMAIL: "connector@example.com",
+    });
+    await api.enableAgentConnectors(actor, agentId, ["jira"]);
+
+    const rejected = await api.requestCreateRun(
+      actor,
+      {
+        agentId,
+        prompt: "use jira",
+        modelProvider: "anthropic-api-key",
+      },
+      [400],
+    );
+    expectApiError(rejected.body);
   });
 
   it("applies, scopes, expires, and snapshots user permission grants", async () => {
@@ -2551,6 +3139,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       timingEvents,
       API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
     );
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+    ]);
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(run.runId);
     expect(claim.environment?.CLOUDFLARE_TOKEN).toBe(

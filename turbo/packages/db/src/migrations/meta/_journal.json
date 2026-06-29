@@ -3543,6 +3543,48 @@
       "when": 1782463956819,
       "tag": "0505_lively_arclight",
       "breakpoints": true
+    },
+    {
+      "idx": 506,
+      "version": "7",
+      "when": 1782525518285,
+      "tag": "0506_workflow_user_authorization",
+      "breakpoints": true
+    },
+    {
+      "idx": 507,
+      "version": "7",
+      "when": 1782569786068,
+      "tag": "0507_workflow_user_trigger_threads",
+      "breakpoints": true
+    },
+    {
+      "idx": 508,
+      "version": "7",
+      "when": 1782618975408,
+      "tag": "0508_workflow_trigger_run_group_uses_trigger_id",
+      "breakpoints": true
+    },
+    {
+      "idx": 509,
+      "version": "7",
+      "when": 1782702733604,
+      "tag": "0509_strange_supreme_intelligence",
+      "breakpoints": true
+    },
+    {
+      "idx": 510,
+      "version": "7",
+      "when": 1782719289790,
+      "tag": "0510_mean_mother_askani",
+      "breakpoints": true
+    },
+    {
+      "idx": 511,
+      "version": "7",
+      "when": 1782726284537,
+      "tag": "0511_zero_run_trigger_brief",
+      "breakpoints": true
     }
   ]
 }

@@ -4,7 +4,7 @@ import { storagesPrepareContract } from "@vm0/api-contracts/contracts/storages";
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { prepareStorageUploadForAuth$ } from "../services/storage-write.service";
 
 const prepareBody$ = bodyResultOf(storagesPrepareContract.prepare);

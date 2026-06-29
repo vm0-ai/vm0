@@ -4,7 +4,7 @@ use serde_json::{Map, Value, json};
 
 use super::codex_app_server::ServerNotification;
 
-const IGNORED_NOTIFICATION_METHODS: &[&str] = &[
+pub(super) const IGNORED_NOTIFICATION_METHODS: &[&str] = &[
     "command/exec/outputDelta",
     "process/outputDelta",
     "process/exited",
@@ -901,7 +901,7 @@ fn invalid_field_for_method(method: &str, field: &'static str) -> CodexAppServer
 
 #[cfg(test)]
 mod tests {
-    use agent_diagnostics::FailureReason;
+    use guest_contracts::diagnostics::FailureReason;
     use serde_json::{Value, json};
 
     use crate::events;

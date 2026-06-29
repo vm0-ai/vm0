@@ -17,7 +17,7 @@ import {
   zeroComposeByName,
   zeroComposeList,
 } from "../services/zero-compose-data.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 function composeNotFound(identifier: string) {
   return notFound(`Agent compose not found: ${identifier}`);

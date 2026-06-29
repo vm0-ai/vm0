@@ -44,14 +44,24 @@ import {
 import { zeroModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 import { http, HttpResponse } from "msw";
 
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
-import { createApp } from "../../../../app-factory";
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
+import { createAppWithRoutes } from "../../../../app-factory-core";
 import { now } from "../../../../lib/time";
 import { server } from "../../../../mocks/server";
+import type { RouteEntry } from "../../../route-entry";
+import { agentComposesRoutes } from "../../agent-composes";
+import { authMeRoutes } from "../../auth-me";
+import { cliAuthRoutes } from "../../cli-auth";
+import { cliAuthTestRoutes } from "../../cli-auth-test";
+import { desktopAuthRoutes } from "../../desktop-auth";
+import { deviceTokenRoutes } from "../../device-token";
+import { zeroAgentsRoutes } from "../../zero-agents";
+import { zeroBillingStatusRoutes } from "../../zero-billing-status";
+import { zeroClaudeCodeDeviceAuthRoutes } from "../../zero-claude-code-device-auth";
+import { zeroCodexDeviceAuthRoutes } from "../../zero-codex-device-auth";
+import { zeroModelProvidersRoutes } from "../../zero-model-providers";
+import { zeroRealtimeTokenRoutes } from "../../zero-realtime-token";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
@@ -78,6 +88,35 @@ type SeedTestCodexOauthBody = z.infer<
   (typeof cliAuthTestCodexOauthContract.create)["body"]
 >;
 type ComposeContent = z.infer<typeof agentComposeApiContentSchema>;
+
+const authDeviceRoutes: readonly RouteEntry[] = [
+  ...agentComposesRoutes,
+  ...authMeRoutes,
+  ...cliAuthRoutes,
+  ...cliAuthTestRoutes,
+  ...desktopAuthRoutes,
+  ...deviceTokenRoutes,
+  ...zeroAgentsRoutes,
+  ...zeroBillingStatusRoutes,
+  ...zeroClaudeCodeDeviceAuthRoutes,
+  ...zeroCodexDeviceAuthRoutes,
+  ...zeroModelProvidersRoutes,
+  ...zeroRealtimeTokenRoutes,
+];
+
+function authDeviceApp(context: TestContext) {
+  return setupAppWithRoutes({
+    context,
+    routes: authDeviceRoutes,
+  });
+}
+
+function authDeviceRawApp(context: TestContext) {
+  return createAppWithRoutes({
+    signal: context.signal,
+    routes: authDeviceRoutes,
+  });
+}
 
 function authHeaders(actor: ApiTestUser | null): AuthHeaders {
   return actor ? { authorization: "Bearer clerk-session" } : {};
@@ -292,7 +331,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
     body: string,
     headers: Record<string, string> = {},
   ): Promise<{ readonly status: number; readonly body: unknown }> {
-    const response = await createApp({ signal: context.signal }).request(path, {
+    const response = await authDeviceRawApp(context).request(path, {
       method: "POST",
       headers: { "content-type": "application/json", ...headers },
       body,
@@ -317,7 +356,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
     },
 
     async startCliDevice() {
-      const client = setupApp({ context })(cliAuthDeviceContract);
+      const client = authDeviceApp(context)(cliAuthDeviceContract);
       const response = await accept(client.create({ body: {} }), [200]);
       return response.body;
     },
@@ -326,7 +365,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       deviceCode: string,
       statuses: readonly (200 | 202 | 400 | 500)[],
     ) {
-      const client = setupApp({ context })(cliAuthTokenContract);
+      const client = authDeviceApp(context)(cliAuthTokenContract);
       return await accept(
         client.exchange({ body: { device_code: deviceCode } }),
         statuses,
@@ -338,7 +377,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       body: CliApproveBody,
       statuses: readonly (200 | 400 | 401 | 403)[],
     ) {
-      const client = setupApp({ context })(cliAuthApproveContract);
+      const client = authDeviceApp(context)(cliAuthApproveContract);
       return await accept(
         client.approve({ headers: authenticate(actor), body }),
         statuses,
@@ -354,7 +393,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       body: CliApproveBody,
       statuses: readonly (200 | 400 | 401 | 403)[],
     ) {
-      const client = setupApp({ context })(cliAuthApproveContract);
+      const client = authDeviceApp(context)(cliAuthApproveContract);
       return await accept(
         client.approve({
           headers: { authorization: `Bearer ${token}` },
@@ -369,7 +408,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       body: { readonly slug: string },
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(cliAuthOrgContract);
+      const client = authDeviceApp(context)(cliAuthOrgContract);
       return await accept(
         client.switchOrg({
           headers: token ? { authorization: `Bearer ${token}` } : {},
@@ -389,7 +428,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       query: TestEmailQuery,
       statuses: readonly (200 | 404)[],
     ) {
-      const client = setupApp({ context })(cliAuthTestTokenContract);
+      const client = authDeviceApp(context)(cliAuthTestTokenContract);
       return await accept(client.create({ query, body: {} }), statuses);
     },
 
@@ -406,7 +445,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       readonly userId: string;
     }> {
       setClerkReads(context, actor);
-      const client = setupApp({ context })(cliAuthTestTokenContract);
+      const client = authDeviceApp(context)(cliAuthTestTokenContract);
       const response = await accept(
         client.create({ query: { email: actor.email }, body: {} }),
         [200],
@@ -422,7 +461,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       body: { readonly device_code?: string },
       statuses: readonly (200 | 400 | 404)[],
     ) {
-      const client = setupApp({ context })(cliAuthTestApproveContract);
+      const client = authDeviceApp(context)(cliAuthTestApproveContract);
       return await accept(client.approve({ query, body }), statuses);
     },
 
@@ -435,7 +474,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       body: SeedTestConnectorBody,
       statuses: readonly (200 | 400 | 404)[],
     ) {
-      const client = setupApp({ context })(cliAuthTestConnectorContract);
+      const client = authDeviceApp(context)(cliAuthTestConnectorContract);
       return await accept(client.create({ query, body }), statuses);
     },
 
@@ -448,7 +487,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       body: SeedTestEnableConnectorBody,
       statuses: readonly (200 | 400 | 404)[],
     ) {
-      const client = setupApp({ context })(cliAuthTestEnableConnectorContract);
+      const client = authDeviceApp(context)(cliAuthTestEnableConnectorContract);
       return await accept(client.create({ query, body }), statuses);
     },
 
@@ -461,7 +500,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       body: SeedTestCodexOauthBody,
       statuses: readonly (200 | 400 | 404)[],
     ) {
-      const client = setupApp({ context })(cliAuthTestCodexOauthContract);
+      const client = authDeviceApp(context)(cliAuthTestCodexOauthContract);
       return await accept(client.create({ query, body }), statuses);
     },
 
@@ -470,7 +509,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
     },
 
     async createCompose(actor: ApiTestUser, content: ComposeContent) {
-      const client = setupApp({ context })(composesMainContract);
+      const client = authDeviceApp(context)(composesMainContract);
       const response = await accept(
         client.create({ headers: authenticate(actor), body: { content } }),
         [200, 201],
@@ -479,7 +518,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
     },
 
     async readUserConnectors(actor: ApiTestUser, agentId: string) {
-      const client = setupApp({ context })(zeroUserConnectorsContract);
+      const client = authDeviceApp(context)(zeroUserConnectorsContract);
       const response = await accept(
         client.get({ params: { id: agentId }, headers: authenticate(actor) }),
         [200],
@@ -488,7 +527,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
     },
 
     async readBillingStatus(actor: ApiTestUser) {
-      const client = setupApp({ context })(zeroBillingStatusContract);
+      const client = authDeviceApp(context)(zeroBillingStatusContract);
       const response = await accept(
         client.get({ headers: authenticate(actor) }),
         [200],
@@ -502,7 +541,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404 | 500)[],
     ) {
       setClerkReads(context, actor);
-      const client = setupApp({ context })(authContract);
+      const client = authDeviceApp(context)(authContract);
       return await accept(
         client.me({ headers: { authorization: `Bearer ${token}` } }),
         statuses,
@@ -514,7 +553,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       body: { readonly callbackScheme?: DesktopAuthCallbackScheme } | undefined,
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
-      const client = setupApp({ context })(desktopAuthHandoffContract);
+      const client = authDeviceApp(context)(desktopAuthHandoffContract);
       return await accept(
         client.create({ headers: authenticate(actor), body: body ?? {} }),
         statuses,
@@ -525,7 +564,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       code: string,
       statuses: readonly (200 | 400 | 500)[],
     ) {
-      const client = setupApp({ context })(desktopAuthConsumeContract);
+      const client = authDeviceApp(context)(desktopAuthConsumeContract);
       return await accept(client.consume({ body: { code } }), statuses);
     },
 
@@ -534,7 +573,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       handoffId: string,
       statuses: readonly (200 | 401 | 404)[],
     ) {
-      const client = setupApp({ context })(desktopAuthHandoffContract);
+      const client = authDeviceApp(context)(desktopAuthHandoffContract);
       return await accept(
         client.status({
           params: { handoffId },
@@ -549,7 +588,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       handoffId: string,
       statuses: readonly (200 | 401 | 404)[],
     ) {
-      const client = setupApp({ context })(desktopAuthHandoffContract);
+      const client = authDeviceApp(context)(desktopAuthHandoffContract);
       return await accept(
         client.complete({
           params: { handoffId },
@@ -561,7 +600,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
     },
 
     async createDeviceToken(body: CreateDeviceTokenRequest) {
-      const client = setupApp({ context })(deviceTokenContract);
+      const client = authDeviceApp(context)(deviceTokenContract);
       const response = await accept(client.create({ body }), [200]);
       return response.body;
     },
@@ -570,7 +609,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       body: CreateDeviceTokenRequest,
       statuses: readonly (200 | 400)[],
     ) {
-      const client = setupApp({ context })(deviceTokenContract);
+      const client = authDeviceApp(context)(deviceTokenContract);
       return await accept(client.create({ body }), statuses);
     },
 
@@ -578,7 +617,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       body: PollDeviceTokenRequest,
       statuses: readonly (200 | 202 | 400 | 404 | 410)[],
     ) {
-      const client = setupApp({ context })(deviceTokenContract);
+      const client = authDeviceApp(context)(deviceTokenContract);
       return await accept(client.poll({ body }), statuses);
     },
 
@@ -587,7 +626,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       deviceCode: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(bb0DeviceConfirmContract);
+      const client = authDeviceApp(context)(bb0DeviceConfirmContract);
       return await accept(
         client.confirm({
           headers: authenticate(actor),
@@ -601,7 +640,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       actor: ApiTestUser | null,
       statuses: readonly (200 | 401 | 500)[],
     ) {
-      const client = setupApp({ context })(platformRealtimeTokenContract);
+      const client = authDeviceApp(context)(platformRealtimeTokenContract);
       return await accept(
         client.create({ headers: authenticate(actor), body: {} }),
         statuses,
@@ -613,7 +652,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       scope: CodexDeviceAuthScope,
       statuses: readonly (200 | 400 | 401 | 403 | 503)[],
     ) {
-      const client = setupApp({ context })(zeroCodexDeviceAuthContract);
+      const client = authDeviceApp(context)(zeroCodexDeviceAuthContract);
       return await accept(
         client.start({ headers: authenticate(actor), body: { scope } }),
         statuses,
@@ -625,7 +664,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       sessionToken: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 503)[],
     ) {
-      const client = setupApp({ context })(zeroCodexDeviceAuthContract);
+      const client = authDeviceApp(context)(zeroCodexDeviceAuthContract);
       return await accept(
         client.complete({
           headers: authenticate(actor),
@@ -640,7 +679,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       sessionToken: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroCodexDeviceAuthContract);
+      const client = authDeviceApp(context)(zeroCodexDeviceAuthContract);
       return await accept(
         client.cancel({
           headers: authenticate(actor),
@@ -655,7 +694,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       scope: ClaudeCodeDeviceAuthScope,
       statuses: readonly (200 | 400 | 401 | 403 | 503)[],
     ) {
-      const client = setupApp({ context })(zeroClaudeCodeDeviceAuthContract);
+      const client = authDeviceApp(context)(zeroClaudeCodeDeviceAuthContract);
       return await accept(
         client.start({ headers: authenticate(actor), body: { scope } }),
         statuses,
@@ -668,7 +707,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       authorizationCode: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 503)[],
     ) {
-      const client = setupApp({ context })(zeroClaudeCodeDeviceAuthContract);
+      const client = authDeviceApp(context)(zeroClaudeCodeDeviceAuthContract);
       return await accept(
         client.complete({
           headers: authenticate(actor),
@@ -683,7 +722,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       sessionToken: string,
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
-      const client = setupApp({ context })(zeroClaudeCodeDeviceAuthContract);
+      const client = authDeviceApp(context)(zeroClaudeCodeDeviceAuthContract);
       return await accept(
         client.cancel({
           headers: authenticate(actor),
@@ -697,7 +736,7 @@ export function createAuthDeviceApiActions(context: TestContext) {
       actor: ApiTestUser,
       type: "claude-code-oauth-token" | "codex-oauth-token",
     ): Promise<void> {
-      const client = setupApp({ context })(zeroModelProvidersByTypeContract);
+      const client = authDeviceApp(context)(zeroModelProvidersByTypeContract);
       await accept(
         client.delete({
           params: { type },

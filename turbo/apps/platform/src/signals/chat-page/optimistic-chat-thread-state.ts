@@ -1,5 +1,5 @@
 import { command, computed, state } from "ccstate";
-import type { createChatThreadSignals } from "./create-chat-thread.ts";
+import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 
 export type OptimisticChatPane = "main" | "sidebar";
 
@@ -9,7 +9,7 @@ export interface PendingChatThread {
   agentId: string;
   createdAt: string;
   running: boolean;
-  pendingThread: ReturnType<typeof createChatThreadSignals>;
+  pendingThread: ChatThreadSignals;
   settleResult: Promise<void>;
 }
 

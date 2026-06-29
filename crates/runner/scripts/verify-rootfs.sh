@@ -107,7 +107,7 @@ trap cleanup EXIT
 # ---------------------------------------------------------------------------
 
 missing=()
-for cmd in sudo unshare mount umount mountpoint stat mktemp sed grep; do
+for cmd in sudo unshare mount umount mountpoint stat mktemp sed grep readlink; do
   if ! command -v "$cmd" &> /dev/null; then
     missing+=("$cmd")
   fi
@@ -136,6 +136,87 @@ sudo mount -o loop,ro "$ROOTFS" "$MOUNT_DIR"
 
 errors=()
 
+# Resolve inside the mounted rootfs without chroot: verification may inspect
+# cached or downloaded images, so it must not execute binaries from the image.
+resolve_rootfs_path() {
+  local rootfs_path="$1"
+  local resolved="/"
+  local remaining="${rootfs_path#/}"
+  local symlink_count=0
+  local component candidate target
+
+  while [[ -n "$remaining" ]]; do
+    component="${remaining%%/*}"
+    if [[ "$component" == "$remaining" ]]; then
+      remaining=""
+    else
+      remaining="${remaining#*/}"
+    fi
+
+    case "$component" in
+      ""|".")
+        continue
+        ;;
+      "..")
+        resolved="${resolved%/*}"
+        [[ -n "$resolved" ]] || resolved="/"
+        continue
+        ;;
+    esac
+
+    if [[ "$resolved" == "/" ]]; then
+      candidate="/${component}"
+    else
+      candidate="${resolved}/${component}"
+    fi
+
+    if [[ -L "${MOUNT_DIR}${candidate}" ]]; then
+      symlink_count=$((symlink_count + 1))
+      if [[ "$symlink_count" -gt 40 ]]; then
+        return 1
+      fi
+      target="$(readlink -- "${MOUNT_DIR}${candidate}")"
+      if [[ "$target" == /* ]]; then
+        resolved="/"
+        target="${target#/}"
+      fi
+      if [[ -n "$remaining" ]]; then
+        remaining="${target}/${remaining}"
+      else
+        remaining="$target"
+      fi
+    else
+      resolved="$candidate"
+    fi
+  done
+
+  printf '%s\n' "$resolved"
+}
+
+check_required_executable() {
+  local path="$1" name="${2:-$1}"
+  local resolved_path
+  if ! resolved_path="$(resolve_rootfs_path "$path")"; then
+    errors+=("${name} cannot resolve rootfs path at ${path}")
+    return
+  fi
+  if [[ -f "${MOUNT_DIR}${resolved_path}" && -x "${MOUNT_DIR}${resolved_path}" ]]; then
+    echo "  ${name}: found"
+  else
+    errors+=("${name} not found or not executable at ${path}")
+  fi
+}
+
+check_bin() {
+  local pattern="$1" name="$2"
+  # shellcheck disable=SC2086
+  if ls ${MOUNT_DIR}${pattern} &>/dev/null; then
+    echo "  ${name}: found"
+  else
+    errors+=("${name} not found (pattern: ${pattern})")
+  fi
+}
+
 # Check root directory permissions (must be 0755 for non-root users to access files)
 root_perms=$(stat -c%a "$MOUNT_DIR")
 if [[ "$root_perms" == "755" ]]; then
@@ -163,12 +244,7 @@ guest_dests=(
 if [[ "$MODE" == "rootfs" ]]; then
   # Check guest binaries
   for dest in "${guest_dests[@]}"; do
-    check_path="${MOUNT_DIR}${dest}"
-    if [[ -f "$check_path" ]]; then
-      echo "  ${dest}: found"
-    else
-      errors+=("${dest} not found")
-    fi
+    check_required_executable "$dest" "$dest"
   done
 else
   guest_contamination=0
@@ -182,6 +258,51 @@ else
     echo "  rootfs-only guest binaries: absent"
   fi
 fi
+
+# Check required sandbox runtime commands. Runner-owned exec/start-process
+# commands run inside the guest via shell wrappers and included helper scripts,
+# so missing commands should fail image verification before a user session.
+#
+# Intentionally unchecked optional diagnostic commands: file sha256sum free timeout ps.
+# agent-abnormal-exit-diagnostics.sh runs with `set +e` and has command/fallback
+# guards where absence should reduce diagnostic detail, not block image verification.
+
+# Shell wrappers used by vsock-guest before the runner command body executes.
+# Env-backed wrappers clean up their transient script directory before exec.
+check_required_executable "/bin/sh" "sh"
+check_required_executable "/bin/bash" "bash"
+check_required_executable "/usr/bin/su" "su"
+check_required_executable "/usr/bin/rmdir" "rmdir"
+
+# Guest state and timezone repair. /sbin/guest-reseed is rootfs-only and is
+# checked with the guest binaries above when verifying a rootfs image.
+check_required_executable "/usr/bin/date" "date"
+check_required_executable "/usr/bin/ln" "ln"
+check_required_executable "/usr/bin/sed" "sed"
+
+# Storage manifest cleanup and Codex session cleanup helpers.
+check_required_executable "/usr/bin/rm" "rm"
+check_required_executable "/usr/bin/find" "find"
+check_required_executable "/usr/bin/awk" "awk"
+check_required_executable "/usr/bin/xargs" "xargs"
+check_required_executable "/usr/bin/mktemp" "mktemp"
+check_required_executable "/usr/bin/tr" "tr"
+
+# Workspace mount/unmount helpers.
+check_required_executable "/usr/bin/mountpoint" "mountpoint"
+check_required_executable "/usr/bin/mount" "mount"
+check_required_executable "/usr/bin/umount" "umount"
+check_required_executable "/usr/bin/sync" "sync"
+check_required_executable "/usr/bin/chown" "chown"
+check_required_executable "/usr/bin/mkdir" "mkdir"
+check_required_executable "/usr/bin/stat" "stat"
+check_required_executable "/usr/bin/cat" "cat"
+check_required_executable "/usr/bin/readlink" "readlink"
+check_required_executable "/usr/bin/cut" "cut"
+check_required_executable "/usr/bin/sort" "sort"
+check_required_executable "/usr/bin/wc" "wc"
+check_required_executable "/usr/bin/kill" "kill"
+check_required_executable "/usr/bin/sleep" "sleep"
 
 # Check CLIs
 if [[ -f "${MOUNT_DIR}/usr/bin/gh" ]]; then
@@ -207,16 +328,6 @@ fi
 # Some binaries use update-alternatives symlinks or versioned names (e.g.
 # php8.3 instead of php, javac under /usr/lib/jvm/). Use glob patterns
 # and ls to handle both exact paths and wildcards.
-check_bin() {
-  local pattern="$1" name="$2"
-  # shellcheck disable=SC2086
-  if ls ${MOUNT_DIR}${pattern} &>/dev/null; then
-    echo "  ${name}: found"
-  else
-    errors+=("${name} not found (pattern: ${pattern})")
-  fi
-}
-
 check_bin "/usr/bin/ruby"                      "ruby"
 check_bin "/usr/bin/php*"                      "php"
 check_bin "/usr/lib/jvm/java-*/bin/javac"      "javac"

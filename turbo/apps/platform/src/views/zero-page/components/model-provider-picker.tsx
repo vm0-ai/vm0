@@ -34,7 +34,9 @@ import { pageSignal$ } from "../../../signals/page-signal";
 import { detach, Reason } from "../../../signals/utils";
 import {
   getModelBrandIconType,
-  getVm0ModelMultiplier,
+  getVm0ModelPriceTier,
+  getVm0ModelPriceTierLabel,
+  type Vm0ModelPriceTier,
 } from "./settings/provider-ui-config";
 import { ProviderIcon } from "./settings/provider-icons";
 
@@ -57,7 +59,7 @@ interface ModelProviderPickerProps {
   triggerClassName?: string;
   /**
    * When true, the trigger shows only the friendly model name (no provider
-   * label, no multiplier badge). Used by the chat composer where horizontal
+   * label, no price tier badge). Used by the chat composer where horizontal
    * space is tight and the full breakdown lives in the open dropdown.
    */
   compactTrigger?: boolean;
@@ -86,21 +88,17 @@ const INHERIT_SENTINEL = "__inherit_default__";
 const MEASURABLE_HIDDEN_SELECT_ITEM_CLASS =
   "absolute left-0 top-0 h-8 w-px overflow-hidden opacity-0 data-[disabled]:opacity-0 pointer-events-none";
 
-function formatMultiplier(multiplier: number): string {
-  return `×${multiplier}`;
-}
-
-function MultiplierBadge({ multiplier }: { multiplier: number }) {
+function PriceTierBadge({ tier }: { tier: Vm0ModelPriceTier }) {
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="shrink-0 cursor-help text-xs tabular-nums text-muted-foreground underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 hover:text-foreground hover:decoration-muted-foreground">
-            {formatMultiplier(multiplier)}
+          <span className="shrink-0 cursor-help text-xs font-medium text-muted-foreground underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 hover:text-foreground hover:decoration-muted-foreground">
+            {tier}
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          Credit cost multiplier
+          {getVm0ModelPriceTierLabel(tier)}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -352,9 +350,9 @@ function ModelFirstPolicyRow({
   limitedFree1: boolean;
 }) {
   const iconType = getModelFirstIconType(policy.model);
-  const builtInMultiplier =
+  const builtInPriceTier =
     policy.defaultProviderType === "vm0"
-      ? getVm0ModelMultiplier(policy.model)
+      ? getVm0ModelPriceTier(policy.model)
       : undefined;
   const restricted = !modelSelectionAllowedForTier(limitedFree1, policy.model);
   return (
@@ -368,8 +366,8 @@ function ModelFirstPolicyRow({
         <span className="min-w-0 flex-1 truncate">
           {policy.modelLabel || getCanonicalModelDisplayName(policy.model)}
         </span>
-        {builtInMultiplier !== undefined ? (
-          <MultiplierBadge multiplier={builtInMultiplier} />
+        {builtInPriceTier !== undefined ? (
+          <PriceTierBadge tier={builtInPriceTier} />
         ) : (
           <ByokBadge />
         )}

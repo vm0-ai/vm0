@@ -1,7 +1,7 @@
 import { cronSyncSkillsContract } from "@vm0/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { syncSkills$ } from "../services/cron-sync-skills.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 

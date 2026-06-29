@@ -178,7 +178,7 @@ export default [
     },
   },
   // Allow direct fetch$ in the abstraction layers and tests.
-  // View files below use fetch$ for multipart file uploads that lack ts-rest
+  // View files below use fetch$ for multipart file uploads that lack typed
   // contracts — migrate them to zeroClient$ when contracts are added.
   {
     files: [
@@ -198,7 +198,7 @@ export default [
   },
   // Allow raw http.* in the fetch$ wrapper self-tests. The file exercises the
   // wrapper against synthetic URLs (`/test`, `/api/zero/items`) that do not
-  // correspond to any ts-rest contract — see the file-level comment in
+  // correspond to any typed contract — see the file-level comment in
   // src/signals/__tests__/fetch.test.ts for the full rationale.
   {
     files: ["src/signals/__tests__/fetch.test.ts"],

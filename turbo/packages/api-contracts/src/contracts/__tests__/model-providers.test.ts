@@ -16,7 +16,8 @@ import {
   getDefaultOrgModelPolicySeed,
   getProviderRuntimeModel,
   getProvidersForModel,
-  getVm0ModelMultiplier,
+  getVm0ModelPriceTier,
+  getVm0ModelPriceTierLabel,
   isModelSupportedByProvider,
   isSupportedRunModel,
   normalizeRunModelId,
@@ -28,7 +29,7 @@ import {
   supportedRunModelSchema,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   SUPPORTED_RUN_MODELS,
-  VM0_MODEL_CREDIT_MULTIPLIER,
+  VM0_MODEL_PRICE_TIER,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   MODEL_PROVIDER_FIREWALL_CONFIGS,
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
@@ -311,7 +312,7 @@ describe("model-first canonical catalog", () => {
       "glm-5.2",
       "gpt-5.5",
     ]);
-    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("kimi-k2.7-code");
+    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("claude-sonnet-4-6");
     expect(getDefaultOrgModelPolicySeed()).toEqual(
       DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {
         return {
@@ -325,28 +326,35 @@ describe("model-first canonical catalog", () => {
     );
   });
 
-  it("exposes VM0 credit multipliers for built-in reasoning models", () => {
-    expect(VM0_MODEL_CREDIT_MULTIPLIER).toEqual(
+  it("exposes VM0 price tiers for built-in reasoning models", () => {
+    expect(VM0_MODEL_PRICE_TIER).toEqual(
       expect.objectContaining({
-        "claude-opus-4-8": 2,
-        "claude-opus-4-7": 2,
-        "claude-opus-4-6": 2,
-        "deepseek-v4-pro": 0.1,
-        "kimi-k2.7-code": 0.3,
-        "glm-5.2": 0.4,
-        "mimo-v2.5": 0.1,
-        "hy3-preview": 0.1,
+        "claude-opus-4-8": "$$$",
+        "claude-opus-4-7": "$$$",
+        "claude-opus-4-6": "$$$",
+        "deepseek-v4-pro": "$",
+        "kimi-k2.7-code": "$",
+        "glm-5.2": "$",
+        "mimo-v2.5": "$",
+        "hy3-preview": "$",
       }),
     );
-    expect(getVm0ModelMultiplier("claude-opus-4-8")).toBe(2);
-    expect(getVm0ModelMultiplier("claude-opus-4-7")).toBe(2);
-    expect(getVm0ModelMultiplier("claude-opus-4-6")).toBe(2);
-    expect(getVm0ModelMultiplier("deepseek-v4-pro")).toBe(0.1);
-    expect(getVm0ModelMultiplier("kimi-k2.7-code")).toBe(0.3);
-    expect(getVm0ModelMultiplier("glm-5.2")).toBe(0.4);
-    expect(getVm0ModelMultiplier("mimo-v2.5")).toBe(0.1);
-    expect(getVm0ModelMultiplier("hy3-preview")).toBe(0.1);
-    expect(getVm0ModelMultiplier("custom/model")).toBeUndefined();
+    expect(getVm0ModelPriceTier("claude-opus-4-8")).toBe("$$$");
+    expect(getVm0ModelPriceTier("claude-opus-4-7")).toBe("$$$");
+    expect(getVm0ModelPriceTier("claude-opus-4-6")).toBe("$$$");
+    expect(getVm0ModelPriceTier("deepseek-v4-pro")).toBe("$");
+    expect(getVm0ModelPriceTier("kimi-k2.7-code")).toBe("$");
+    expect(getVm0ModelPriceTier("glm-5.2")).toBe("$");
+    expect(getVm0ModelPriceTier("mimo-v2.5")).toBe("$");
+    expect(getVm0ModelPriceTier("hy3-preview")).toBe("$");
+    expect(getVm0ModelPriceTier("custom/model")).toBeUndefined();
+    expect(getVm0ModelPriceTierLabel("$")).toBe(
+      "Economy tier for everyday simple tasks",
+    );
+    expect(getVm0ModelPriceTierLabel("$$")).toBe(
+      "Balanced cost and performance",
+    );
+    expect(getVm0ModelPriceTierLabel("$$$")).toBe("Frontier flagship model");
   });
 });
 

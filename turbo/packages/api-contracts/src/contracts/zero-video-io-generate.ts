@@ -5,27 +5,31 @@ import { apiErrorSchema } from "./errors";
 import { zeroBuiltInGenerationAcceptedResponseSchema } from "./zero-built-in-generation";
 
 const c = initContract();
+const stringOrStringArraySchema = z.union([
+  z.string(),
+  z.array(z.string()).readonly(),
+]);
 
 export const zeroVideoIoGenerateRequestSchema = z
   .object({
-    prompt: z.unknown().optional(),
-    model: z.unknown().optional(),
-    aspectRatio: z.unknown().optional(),
-    duration: z.unknown().optional(),
-    resolution: z.unknown().optional(),
-    generateAudio: z.unknown().optional(),
-    negativePrompt: z.unknown().optional(),
-    seed: z.unknown().optional(),
-    autoFix: z.unknown().optional(),
-    safetyTolerance: z.unknown().optional(),
-    imageUrls: z.unknown().optional(),
-    videoUrls: z.unknown().optional(),
-    audioUrls: z.unknown().optional(),
-    referenceImageUrls: z.unknown().optional(),
-    referenceVideoUrls: z.unknown().optional(),
-    referenceAudioUrls: z.unknown().optional(),
-    firstFrameImageUrl: z.unknown().optional(),
-    lastFrameImageUrl: z.unknown().optional(),
+    prompt: z.string().optional(),
+    model: z.string().optional(),
+    aspectRatio: z.string().optional(),
+    duration: z.string().optional(),
+    resolution: z.string().optional(),
+    generateAudio: z.boolean().optional(),
+    negativePrompt: z.string().optional(),
+    seed: z.number().optional(),
+    autoFix: z.boolean().optional(),
+    safetyTolerance: z.string().optional(),
+    imageUrls: stringOrStringArraySchema.optional(),
+    videoUrls: stringOrStringArraySchema.optional(),
+    audioUrls: stringOrStringArraySchema.optional(),
+    referenceImageUrls: stringOrStringArraySchema.optional(),
+    referenceVideoUrls: stringOrStringArraySchema.optional(),
+    referenceAudioUrls: stringOrStringArraySchema.optional(),
+    firstFrameImageUrl: z.string().optional(),
+    lastFrameImageUrl: z.string().optional(),
   })
   .passthrough();
 

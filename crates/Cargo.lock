@@ -40,14 +40,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
-name = "agent-diagnostics"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -131,9 +123,9 @@ dependencies = [
 
 [[package]]
 name = "arc-swap"
-version = "1.9.1"
+version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a3a1fd6f75306b68087b831f025c712524bcb19aad54e557b1129cfa0a2b207"
+checksum = "c049c0be4daef0b145cb3555416b3b8ef5b7888a38aea1a3a155801fe7b0810b"
 dependencies = [
  "rustversion",
 ]
@@ -1246,9 +1238,8 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.41.11"
+version = "0.41.17"
 dependencies = [
- "agent-diagnostics",
  "aho-corasick",
  "api-contracts",
  "base64",
@@ -1283,7 +1274,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.2.18"
+version = "0.2.23"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1295,16 +1286,18 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.2.5"
+version = "0.2.9"
 dependencies = [
  "libc",
+ "serde",
+ "serde_json",
  "tempfile",
  "uuid",
 ]
 
 [[package]]
 name = "guest-download"
-version = "0.20.36"
+version = "0.20.41"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1320,7 +1313,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.90"
+version = "0.16.94"
 dependencies = [
  "libc",
  "nix",
@@ -1340,7 +1333,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-codex"
-version = "0.3.1"
+version = "0.4.0"
 dependencies = [
  "chrono",
  "clap",
@@ -1359,7 +1352,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.6"
+version = "0.1.10"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -1581,9 +1574,9 @@ dependencies = [
 
 [[package]]
 name = "hybrid-array"
-version = "0.4.12"
+version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9155a582abd142abc056962c29e3ce5ff2ad5469f4246b537ed42c5deba857da"
+checksum = "818356c5132c1fede50f837ca96afbe78ff42413047f4abb886217845e1b6c8c"
 dependencies = [
  "typenum",
 ]
@@ -2048,7 +2041,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.49"
+version = "0.4.51"
 dependencies = [
  "bitvec",
  "libc",
@@ -2529,10 +2522,9 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.129.33"
+version = "0.130.5"
 dependencies = [
  "ably-subscriber",
- "agent-diagnostics",
  "api-contracts",
  "async-trait",
  "aws-sdk-s3",
@@ -2750,7 +2742,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.69"
+version = "0.37.76"
 dependencies = [
  "async-trait",
  "base64",
@@ -2780,7 +2772,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.8"
+version = "0.8.13"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3673,7 +3665,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.10"
+version = "0.19.14"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3684,7 +3676,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.45"
+version = "0.17.46"
 dependencies = [
  "nix",
  "shell-quote",
@@ -3702,7 +3694,7 @@ version = "0.18.19"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.115"
+version = "0.9.120"
 dependencies = [
  "guest-write-file",
  "libc",

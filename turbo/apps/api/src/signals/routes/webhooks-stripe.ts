@@ -3,7 +3,7 @@ import { command } from "ccstate";
 import { webhookStripeContract } from "@vm0/api-contracts/contracts/webhooks";
 
 import { optionalEnv } from "../../lib/env";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { request$ } from "../context/hono";
 import { getStripeClient } from "../external/stripe-client";
 import { settle } from "../utils";

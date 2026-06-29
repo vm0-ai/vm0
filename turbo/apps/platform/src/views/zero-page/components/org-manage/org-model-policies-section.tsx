@@ -83,7 +83,9 @@ import { detach, Reason } from "../../../../signals/utils.ts";
 import {
   getModelBrandIconType as getModelIconType,
   getUILabel,
-  getVm0ModelMultiplier,
+  getVm0ModelPriceTier,
+  getVm0ModelPriceTierLabel,
+  type Vm0ModelPriceTier,
 } from "../settings/provider-ui-config.ts";
 import { ProviderIcon } from "../settings/provider-icons.tsx";
 import { SettingsSectionHeading } from "../settings/settings-section-heading.tsx";
@@ -379,21 +381,17 @@ function getPolicyDetail(policy: OrgModelPolicy): string | null {
   return null;
 }
 
-function formatMultiplier(multiplier: number): string {
-  return `×${multiplier}`;
-}
-
-function MultiplierBadge({ multiplier }: { multiplier: number }) {
+function PriceTierBadge({ tier }: { tier: Vm0ModelPriceTier }) {
   return (
     <TooltipProvider delayDuration={300}>
       <Tooltip>
         <TooltipTrigger asChild>
-          <span className="shrink-0 cursor-help text-xs tabular-nums text-muted-foreground underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 hover:text-foreground hover:decoration-muted-foreground">
-            {formatMultiplier(multiplier)}
+          <span className="shrink-0 cursor-help text-xs font-medium text-muted-foreground underline decoration-dotted decoration-muted-foreground/50 underline-offset-2 hover:text-foreground hover:decoration-muted-foreground">
+            {tier}
           </span>
         </TooltipTrigger>
         <TooltipContent side="top" className="text-xs">
-          Credit cost multiplier
+          {getVm0ModelPriceTierLabel(tier)}
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -551,9 +549,9 @@ function PolicyRow({
   const detail = getPolicyDetail(policy);
   const routeSummary = getPolicyRouteSummary(policy, providers);
   const modelIconType = getModelIconType(policy.model);
-  const builtInMultiplier =
+  const builtInPriceTier =
     policy.defaultProviderType === "vm0"
-      ? getVm0ModelMultiplier(policy.model)
+      ? getVm0ModelPriceTier(policy.model)
       : undefined;
 
   return (
@@ -567,8 +565,8 @@ function PolicyRow({
           <p className="truncate text-sm font-medium text-foreground">
             {policy.modelLabel}
           </p>
-          {builtInMultiplier !== undefined && (
-            <MultiplierBadge multiplier={builtInMultiplier} />
+          {builtInPriceTier !== undefined && (
+            <PriceTierBadge tier={builtInPriceTier} />
           )}
           {policy.routeStatus !== "valid" && (
             <span className="inline-flex items-center gap-1 rounded bg-amber-500/10 px-1.5 py-0.5 text-[11px] font-medium text-amber-700 dark:text-amber-300">

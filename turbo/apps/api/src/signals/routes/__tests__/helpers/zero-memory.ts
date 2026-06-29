@@ -12,7 +12,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { eq } from "drizzle-orm";
 
-import type { TestContext } from "../../../../__tests__/test-helpers";
+import type { TestContext } from "../../../../__tests__/test-context";
 import { writeDb$ } from "../../../external/db";
 
 export interface MemoryFixture {

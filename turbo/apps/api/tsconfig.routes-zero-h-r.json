@@ -1,0 +1,32 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "types": ["node"]
+  },
+  "include": [
+    "src/signals/routes/zero-host.ts",
+    "src/signals/routes/zero-image*.ts",
+    "src/signals/routes/zero-insights.ts",
+    "src/signals/routes/zero-integrations*.ts",
+    "src/signals/routes/zero-logs.ts",
+    "src/signals/routes/zero-maps.ts",
+    "src/signals/routes/zero-me*.ts",
+    "src/signals/routes/zero-memory*.ts",
+    "src/signals/routes/zero-model*.ts",
+    "src/signals/routes/zero-onboarding*.ts",
+    "src/signals/routes/zero-org*.ts",
+    "src/signals/routes/zero-push*.ts",
+    "src/signals/routes/zero-queue-position.ts",
+    "src/signals/routes/zero-realtime-token.ts",
+    "src/signals/routes/zero-report-error.ts",
+    "src/signals/routes/zero-run*.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/**/__tests__/**",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts"
+  ]
+}

@@ -1,8 +1,11 @@
+import type { TriggerSource } from "@vm0/api-contracts/contracts/logs";
+
 import { now } from "../external/time";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { onRejection } from "../utils";
 
 type ApiDispatchTimingSpanKind = "top_level" | "nested";
+export type ApiDispatchTimingDimensions = Readonly<Record<string, string>>;
 
 export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_agent_run"
@@ -10,6 +13,7 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_direct_prepare_args"
   | "api_dispatch_pre_create_zero_parse_body"
   | "api_dispatch_pre_create_zero_prepare_args"
+  | "api_dispatch_pre_create_zero_entrypoint_gap"
   | "api_dispatch_pre_create_zero_resolve_agent_id"
   | "api_dispatch_pre_create_zero_load_agent"
   | "api_dispatch_pre_create_zero_load_user_info"
@@ -25,6 +29,7 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_prepare_context_load_persisted_environment"
   | "api_dispatch_prepare_context_build_resolved_body"
   | "api_dispatch_prepare_context_resolve_framework"
+  | "api_dispatch_prepare_context_resolve_connector_scope"
   | "api_dispatch_prepare_context_resolve_model_provider"
   | "api_dispatch_prepare_context_load_connector_contexts"
   | "api_dispatch_prepare_context_load_stored_connectors"
@@ -70,6 +75,20 @@ export type ApiDispatchTimingActionType =
   | "api_dispatch_check_concurrency_limit"
   | "api_dispatch_insert_run_record"
   | "api_dispatch_prepare_storage_manifest"
+  | "api_dispatch_prepare_storage_manifest_resolve_inputs"
+  | "api_dispatch_prepare_storage_manifest_ensure_artifacts"
+  | "api_dispatch_prepare_storage_manifest_load_storage_index"
+  | "api_dispatch_prepare_storage_manifest_build_entries"
+  | "api_dispatch_prepare_storage_manifest_build_compose_entries"
+  | "api_dispatch_prepare_storage_manifest_resolve_compose_versions"
+  | "api_dispatch_prepare_storage_manifest_generate_compose_urls"
+  | "api_dispatch_prepare_storage_manifest_build_additional_entries"
+  | "api_dispatch_prepare_storage_manifest_resolve_additional_versions"
+  | "api_dispatch_prepare_storage_manifest_generate_additional_urls"
+  | "api_dispatch_prepare_storage_manifest_build_artifact_entries"
+  | "api_dispatch_prepare_storage_manifest_resolve_artifact_versions"
+  | "api_dispatch_prepare_storage_manifest_generate_artifact_urls"
+  | "api_dispatch_prepare_storage_manifest_assemble"
   | "api_dispatch_build_stored_execution_context";
 
 interface ApiDispatchTimingRecord {
@@ -77,6 +96,7 @@ interface ApiDispatchTimingRecord {
   readonly spanKind: ApiDispatchTimingSpanKind;
   readonly durationMs: number;
   readonly timestamp: string;
+  readonly dimensions?: ApiDispatchTimingDimensions;
 }
 
 export class ApiDispatchTimingCollector {
@@ -87,12 +107,14 @@ export class ApiDispatchTimingCollector {
     spanKind: ApiDispatchTimingSpanKind,
     startedAt: number,
     finishedAt: number = now(),
+    dimensions?: ApiDispatchTimingDimensions,
   ): void {
     this.records.push({
       actionType,
       spanKind,
       durationMs: Math.max(0, finishedAt - startedAt),
       timestamp: new Date(finishedAt).toISOString(),
+      dimensions,
     });
   }
 
@@ -100,6 +122,7 @@ export class ApiDispatchTimingCollector {
     actionType: ApiDispatchTimingActionType,
     spanKind: ApiDispatchTimingSpanKind,
     operation: () => T | Promise<T>,
+    dimensions?: ApiDispatchTimingDimensions,
   ): Promise<T> {
     const startedAt = now();
     const result = await onRejection(
@@ -107,10 +130,10 @@ export class ApiDispatchTimingCollector {
         return await operation();
       })(),
       () => {
-        this.recordElapsed(actionType, spanKind, startedAt);
+        this.recordElapsed(actionType, spanKind, startedAt, now(), dimensions);
       },
     );
-    this.recordElapsed(actionType, spanKind, startedAt);
+    this.recordElapsed(actionType, spanKind, startedAt, now(), dimensions);
     return result;
   }
 
@@ -119,6 +142,8 @@ export class ApiDispatchTimingCollector {
     readonly runnerGroup: string;
     readonly profile: string;
     readonly dispatchPath: "direct";
+    readonly triggerSource?: TriggerSource;
+    readonly dimensions?: ApiDispatchTimingDimensions;
   }): void {
     const records = this.records.splice(0);
     recordSandboxOperations(
@@ -131,10 +156,15 @@ export class ApiDispatchTimingCollector {
           runId: args.runId,
           timestamp: record.timestamp,
           dimensions: {
+            ...args.dimensions,
+            ...record.dimensions,
             runner_group: args.runnerGroup,
             profile: args.profile,
             dispatch_path: args.dispatchPath,
             span_kind: record.spanKind,
+            ...(args.triggerSource
+              ? { trigger_source: args.triggerSource }
+              : {}),
           },
         };
       }),
@@ -147,9 +177,10 @@ export async function measureApiDispatchTiming<T>(
   actionType: ApiDispatchTimingActionType,
   spanKind: ApiDispatchTimingSpanKind,
   operation: () => T | Promise<T>,
+  dimensions?: ApiDispatchTimingDimensions,
 ): Promise<T> {
   if (!collector) {
     return await operation();
   }
-  return await collector.measure(actionType, spanKind, operation);
+  return await collector.measure(actionType, spanKind, operation, dimensions);
 }

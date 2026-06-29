@@ -1,13 +1,15 @@
 use std::time::{Duration, Instant};
 
-use agent_diagnostics::FailureDiagnostic;
+use guest_contracts::diagnostics::FailureDiagnostic;
+use guest_contracts::session_history_identity::FinalSessionHistoryIdentity;
 use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, ProcessControlMode, ProcessOutputMode,
     Sandbox, StartProcessRequest,
 };
+use sha2::{Digest, Sha256};
 use shell_quote::quote_shell_arg;
 use tokio_util::sync::CancellationToken;
-use tracing::{info, warn};
+use tracing::{debug, info, warn};
 
 use super::diagnostics::{
     AgentBootstrapAbnormalExitLogContext, AgentStdoutStreamDiagnostics, StdoutDrainReport,
@@ -21,22 +23,66 @@ use super::diagnostics::{
 use super::env::{build_env_json, build_user_env_json, write_user_env_file};
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::session_history_download::{SessionHistoryMaterialization, SessionHistoryMaterializer};
-use super::session_restore::restore_session;
+use super::session_restore::{MaterializedResumeSession, restore_session};
 use super::storage::{apply_storage_fingerprint_reuse, download_storages, guest_download_has_work};
 use super::telemetry::{RunnerSpawnTiming, record_api_latency};
 use super::{
     EXIT_SIGKILL, EXIT_SIGNAL_KILL, ExecutionFailure, ExecutorConfig, JOB_TIMEOUT,
     JOB_TIMEOUT_EXIT_CODE, PROCESS_CANCEL_TIMEOUTS, ResourceFailureDiagnostics,
     ResourceFailureKind, RunnerResult, SandboxReuseResult, USER_ENV_FILE_ENV_KEY,
-    agent_exit_failure_message, job_terminal_wait_timeout, normalize_failure_exit_code,
+    agent_exit_failure_message, guest_runtime_dir, guest_runtime_path, job_terminal_wait_timeout,
+    normalize_failure_exit_code,
 };
 use crate::active_input::ActiveInputSource;
 use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
 use crate::paths::guest;
+use crate::restored_session_identity::{
+    FINAL_SESSION_HISTORY_IDENTITY_READ_LIMIT, RestoredSessionHistoryVerification,
+    RestoredSessionIdentity,
+};
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, GuestDownloadManifest};
 
 const AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
+const SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR: &str = "session history download failed";
+const SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR: &str =
+    "session history materialization failed";
+const SESSION_HISTORY_IDENTITY_VERIFY_TIMEOUT: Duration = Duration::from_secs(5);
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) enum SessionHistoryRestoreFallback {
+    NonReuse,
+    MissingIdleIdentity,
+    UnverifiedIdleIdentity,
+    StaleIdleIdentity,
+    IdentityMismatch,
+}
+
+impl SessionHistoryRestoreFallback {
+    const fn action_type(self) -> &'static str {
+        match self {
+            Self::NonReuse => "session_history_restore_fallback_non_reuse",
+            Self::MissingIdleIdentity => "session_history_restore_fallback_missing_idle_identity",
+            Self::UnverifiedIdleIdentity => {
+                "session_history_restore_fallback_unverified_idle_identity"
+            }
+            Self::StaleIdleIdentity => "session_history_restore_fallback_stale_idle_identity",
+            Self::IdentityMismatch => "session_history_restore_fallback_identity_mismatch",
+        }
+    }
+}
+
+#[derive(Default)]
+#[must_use = "restore plans decide whether resume history download can be skipped"]
+pub(crate) enum SessionHistoryRestorePlan {
+    #[default]
+    Default,
+    Prestarted {
+        materializer: SessionHistoryMaterializer,
+        fallback: Option<SessionHistoryRestoreFallback>,
+    },
+    SkipVerified(RestoredSessionIdentity),
+}
 
 pub(super) fn build_agent_start_command(run_agent_path: &str) -> String {
     let run_agent_path = quote_shell_arg(run_agent_path);
@@ -57,6 +103,244 @@ pub(super) fn build_agent_start_command(run_agent_path: &str) -> String {
     )
 }
 
+async fn verify_restored_session_identity_for_reuse(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    identity: Option<RestoredSessionIdentity>,
+) -> Option<RestoredSessionIdentity> {
+    let identity = identity?;
+    let Some(requested_identity) = RestoredSessionIdentity::from_context(context) else {
+        debug!(
+            run_id = %context.run_id,
+            "restored session identity cannot be verified without a valid hash-backed resume request"
+        );
+        return None;
+    };
+    if !identity.is_verified_match_for_request(&requested_identity) {
+        debug!(
+            run_id = %context.run_id,
+            "restored session identity invalidated because it does not match the resume request"
+        );
+        return None;
+    }
+    let Some(verification) = identity.guest_history_verification() else {
+        debug!(
+            run_id = %context.run_id,
+            "restored session identity cannot be verified without a bounded verifier"
+        );
+        return None;
+    };
+
+    match verification {
+        RestoredSessionHistoryVerification::GuestHistoryPath {
+            expected_size,
+            guest_history_path,
+            read_limit,
+        } => {
+            let guest_history_path = guest_history_path.to_owned();
+            verify_guest_history_path_identity(
+                sandbox,
+                context,
+                identity,
+                expected_size,
+                &guest_history_path,
+                read_limit,
+            )
+            .await
+        }
+        RestoredSessionHistoryVerification::FinalIdentityMetadata {
+            metadata_path,
+            runtime_dir,
+            framework,
+            session_id_hash,
+            history_ref_kind,
+            history_hash,
+            history_size_bytes,
+        } => {
+            let metadata_path = metadata_path.to_owned();
+            let runtime_dir = runtime_dir.to_owned();
+            let command = build_final_identity_verify_command(
+                guest::RUN_AGENT,
+                &metadata_path,
+                framework.as_str(),
+                session_id_hash,
+                history_ref_kind.as_str(),
+                history_hash,
+                history_size_bytes,
+            );
+            verify_final_identity_metadata(sandbox, context, identity, command, &runtime_dir).await
+        }
+    }
+}
+
+async fn verify_guest_history_path_identity(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    identity: RestoredSessionIdentity,
+    expected_size: u64,
+    guest_history_path: &str,
+    read_limit: u64,
+) -> Option<RestoredSessionIdentity> {
+    let read_result = sandbox.read_file(guest_history_path, read_limit).await;
+    let bytes = match read_result {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => {
+            debug!(
+                run_id = %context.run_id,
+                "restored session identity invalidated because history file is missing"
+            );
+            return None;
+        }
+        Err(_) => {
+            debug!(
+                run_id = %context.run_id,
+                "restored session identity verification failed"
+            );
+            return None;
+        }
+    };
+    if bytes.len() as u64 != expected_size {
+        debug!(
+            run_id = %context.run_id,
+            expected_size = expected_size,
+            actual_size = bytes.len(),
+            "restored session identity invalidated because history size changed"
+        );
+        return None;
+    }
+    let actual_hash = hex::encode(Sha256::digest(&bytes));
+    if actual_hash != identity.history_hash() {
+        debug!(
+            run_id = %context.run_id,
+            "restored session identity invalidated because history hash changed"
+        );
+        return None;
+    }
+
+    Some(identity)
+}
+
+async fn verify_final_identity_metadata(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+    identity: RestoredSessionIdentity,
+    command: String,
+    runtime_dir: &str,
+) -> Option<RestoredSessionIdentity> {
+    let env = [(
+        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        runtime_dir,
+    )];
+    let request = ExecRequest {
+        cmd: &command,
+        timeout: SESSION_HISTORY_IDENTITY_VERIFY_TIMEOUT,
+        env: &env,
+        sudo: false,
+        stdin_bytes: None,
+        output_limits: EXEC_OUTPUT_LIMIT_64_KIB,
+    };
+    match sandbox
+        .exec_with_diagnostic_label(&request, "session-history-identity-verify")
+        .await
+    {
+        Ok(result) if helper_exec_succeeded(&result) => Some(identity),
+        Ok(result) => {
+            debug!(
+                run_id = %context.run_id,
+                termination = %helper_exec_termination_label(&result),
+                "restored session identity final metadata verification failed"
+            );
+            None
+        }
+        Err(_) => {
+            debug!(
+                run_id = %context.run_id,
+                "restored session identity final metadata verification errored"
+            );
+            None
+        }
+    }
+}
+
+fn build_final_identity_verify_command(
+    run_agent_path: &str,
+    metadata_path: &str,
+    framework: &str,
+    session_id_hash: &str,
+    history_ref_kind: &str,
+    history_hash: &str,
+    history_size_bytes: u64,
+) -> String {
+    let args = [
+        quote_shell_arg(run_agent_path),
+        "verify-session-history-identity".to_string(),
+        quote_shell_arg(metadata_path),
+        quote_shell_arg(framework),
+        quote_shell_arg(session_id_hash),
+        quote_shell_arg(history_ref_kind),
+        quote_shell_arg(history_hash),
+        history_size_bytes.to_string(),
+    ];
+    args.join(" ")
+}
+
+async fn read_final_session_history_identity(
+    sandbox: &dyn Sandbox,
+    context: &ExecutionContext,
+) -> Option<RestoredSessionIdentity> {
+    let metadata_path = match guest_runtime_path(
+        context.run_id,
+        guest_contracts::runtime_paths::final_session_history_identity_file,
+    ) {
+        Ok(path) => path,
+        Err(error) => {
+            debug!(
+                run_id = %context.run_id,
+                error = %error,
+                "final session history identity path could not be resolved"
+            );
+            return None;
+        }
+    };
+    let runtime_dir = match guest_runtime_dir(context.run_id) {
+        Ok(path) => path,
+        Err(error) => {
+            debug!(
+                run_id = %context.run_id,
+                error = %error,
+                "guest runtime dir could not be resolved for final session history identity"
+            );
+            return None;
+        }
+    };
+    let bytes = match sandbox
+        .read_file(&metadata_path, FINAL_SESSION_HISTORY_IDENTITY_READ_LIMIT)
+        .await
+    {
+        Ok(Some(bytes)) => bytes,
+        Ok(None) => return None,
+        Err(_) => {
+            debug!(
+                run_id = %context.run_id,
+                "final session history identity metadata read failed"
+            );
+            return None;
+        }
+    };
+    let metadata = match FinalSessionHistoryIdentity::from_json_slice(&bytes) {
+        Ok(metadata) => metadata,
+        Err(error) => {
+            debug!(
+                run_id = %context.run_id,
+                error = %error,
+                "final session history identity metadata was invalid"
+            );
+            return None;
+        }
+    };
+    RestoredSessionIdentity::from_final_metadata(metadata, metadata_path, runtime_dir)
+}
+
 pub(super) struct ProcessCancelTimeouts {
     pub(super) write: Duration,
     pub(super) terminal_grace: Duration,
@@ -65,6 +349,7 @@ pub(super) struct ProcessCancelTimeouts {
 pub(super) struct AgentExecutionResult {
     pub(super) failure: Option<ExecutionFailure>,
     pub(super) stdout_stream_diagnostics: AgentStdoutStreamDiagnostics,
+    pub(super) restored_session_identity: Option<RestoredSessionIdentity>,
 }
 
 impl AgentExecutionResult {
@@ -72,6 +357,7 @@ impl AgentExecutionResult {
         Self {
             failure: None,
             stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
+            restored_session_identity: None,
         }
     }
 
@@ -83,6 +369,7 @@ impl AgentExecutionResult {
         Self {
             failure: Some(ExecutionFailure::new(exit_code, error, diagnostic)),
             stdout_stream_diagnostics: AgentStdoutStreamDiagnostics::default(),
+            restored_session_identity: None,
         }
     }
 
@@ -99,6 +386,14 @@ impl AgentExecutionResult {
         diagnostics: AgentStdoutStreamDiagnostics,
     ) -> Self {
         self.stdout_stream_diagnostics = diagnostics;
+        self
+    }
+
+    pub(super) fn with_restored_session_identity(
+        mut self,
+        restored_session_identity: Option<RestoredSessionIdentity>,
+    ) -> Self {
+        self.restored_session_identity = restored_session_identity;
         self
     }
 
@@ -216,6 +511,7 @@ pub(super) struct RunControls {
     pub(super) cancel: CancellationToken,
     pub(super) active_input_source: Option<ActiveInputSource>,
     pub(super) spawn_timing: Option<RunnerSpawnTiming>,
+    pub(super) session_history_restore_plan: SessionHistoryRestorePlan,
 }
 
 impl RunControls {
@@ -227,11 +523,20 @@ impl RunControls {
             cancel,
             active_input_source,
             spawn_timing: None,
+            session_history_restore_plan: SessionHistoryRestorePlan::Default,
         }
     }
 
     pub(super) fn with_spawn_timing(mut self, spawn_timing: RunnerSpawnTiming) -> Self {
         self.spawn_timing = Some(spawn_timing);
+        self
+    }
+
+    pub(super) fn with_session_history_restore_plan(
+        mut self,
+        plan: SessionHistoryRestorePlan,
+    ) -> Self {
+        self.session_history_restore_plan = plan;
         self
     }
 }
@@ -269,9 +574,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         cancel,
         active_input_source,
         spawn_timing,
+        session_history_restore_plan,
     } = controls;
-    let session_history_materializer =
-        SessionHistoryMaterializer::start(&config.http, context.resume_session.as_ref());
 
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
     //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
@@ -329,7 +633,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         };
         let err = result.as_ref().err().map(|e| e.to_string());
         telemetry.record(
-            "storage_download",
+            "runner_storage_manifest_apply",
             t.elapsed(),
             result.is_ok(),
             err.as_deref(),
@@ -337,41 +641,126 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         result?;
     }
 
-    // 4. Restore session history. Hash-backed history downloads start before
-    // guest prep/storage download, then materialize here right before restore.
-    let downloaded_resume_session = match session_history_materializer.finish(&cancel).await {
-        SessionHistoryMaterialization::Missing => None,
-        SessionHistoryMaterialization::Ready => None,
-        SessionHistoryMaterialization::Downloaded { session, elapsed } => {
-            telemetry.record("session_history_download", elapsed, true, None);
-            Some(session)
+    let mut session_restore_diagnostics = None;
+    let mut restored_session_identity = None;
+    let mut produced_restored_session_identity = false;
+    let session_history_materializer = match session_history_restore_plan {
+        SessionHistoryRestorePlan::SkipVerified(identity) => {
+            match verify_restored_session_identity_for_reuse(sandbox, context, Some(identity)).await
+            {
+                Some(identity) => {
+                    telemetry.record(
+                        "session_history_identity_reuse_hit",
+                        Duration::ZERO,
+                        true,
+                        None,
+                    );
+                    telemetry.record("session_history_restore_skip", Duration::ZERO, true, None);
+                    restored_session_identity = Some(identity);
+                    None
+                }
+                None => {
+                    telemetry.record(
+                        SessionHistoryRestoreFallback::StaleIdleIdentity.action_type(),
+                        Duration::ZERO,
+                        true,
+                        None,
+                    );
+                    Some(SessionHistoryMaterializer::start_cancellable(
+                        &config.http,
+                        context.resume_session.as_ref(),
+                        cancel.clone(),
+                    ))
+                }
+            }
         }
-        SessionHistoryMaterialization::Failed { elapsed, error } => {
-            let error_message = error.to_string();
-            telemetry.record(
-                "session_history_download",
-                elapsed,
-                false,
-                Some(&error_message),
-            );
-            return Err(error);
+        SessionHistoryRestorePlan::Default => Some(SessionHistoryMaterializer::start_cancellable(
+            &config.http,
+            context.resume_session.as_ref(),
+            cancel.clone(),
+        )),
+        SessionHistoryRestorePlan::Prestarted {
+            materializer,
+            fallback,
+        } => {
+            if let Some(fallback) = fallback {
+                telemetry.record(fallback.action_type(), Duration::ZERO, true, None);
+                if matches!(fallback, SessionHistoryRestoreFallback::MissingIdleIdentity) {
+                    telemetry.record(
+                        "session_history_identity_reuse_missing",
+                        Duration::ZERO,
+                        true,
+                        None,
+                    );
+                }
+            }
+            Some(materializer)
         }
     };
-    let resume_session = downloaded_resume_session
-        .as_ref()
-        .or(context.resume_session.as_ref());
-    let mut session_restore_diagnostics = None;
-    if let Some(session) = resume_session {
-        let t = Instant::now();
-        let result = restore_session(sandbox, context, session).await;
-        let err = result.as_ref().err().map(|e| e.to_string());
-        telemetry.record(
-            "session_restore",
-            t.elapsed(),
-            result.is_ok(),
-            err.as_deref(),
-        );
-        session_restore_diagnostics = Some(result?);
+    if let Some(session_history_materializer) = session_history_materializer {
+        // 4. Restore session history. Hash-backed history downloads can start
+        // before sandbox preparation, then materialize here right before restore.
+        let should_record_materialization_wait = session_history_materializer.is_downloading();
+        let materialization_wait_started = Instant::now();
+        let materialization = session_history_materializer.finish(&cancel).await;
+        let materialization_wait = materialization_wait_started.elapsed();
+        let downloaded_resume_session = match materialization {
+            SessionHistoryMaterialization::Missing => None,
+            SessionHistoryMaterialization::Ready => None,
+            SessionHistoryMaterialization::Downloaded { session, elapsed } => {
+                if should_record_materialization_wait {
+                    telemetry.record(
+                        "session_history_materialization_wait",
+                        materialization_wait,
+                        true,
+                        None,
+                    );
+                }
+                telemetry.record("session_history_download", elapsed, true, None);
+                Some(session)
+            }
+            SessionHistoryMaterialization::Failed { elapsed, error } => {
+                if should_record_materialization_wait {
+                    telemetry.record(
+                        "session_history_materialization_wait",
+                        materialization_wait,
+                        false,
+                        Some(SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR),
+                    );
+                }
+                telemetry.record(
+                    "session_history_download",
+                    elapsed,
+                    false,
+                    Some(SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR),
+                );
+                return Err(error);
+            }
+        };
+        let resume_session = downloaded_resume_session.map(Ok).or_else(|| {
+            context
+                .resume_session
+                .as_ref()
+                .map(MaterializedResumeSession::from_inline_resume_session)
+        });
+        if let Some(session) = resume_session {
+            let t = Instant::now();
+            let result = match session {
+                Ok(session) => restore_session(sandbox, context, &session).await,
+                Err(error) => Err(error),
+            };
+            let err = result.as_ref().err().map(|e| e.to_string());
+            telemetry.record(
+                "session_restore",
+                t.elapsed(),
+                result.is_ok(),
+                err.as_deref(),
+            );
+            let diagnostics = result?;
+            restored_session_identity = diagnostics.restored_session_identity.clone();
+            produced_restored_session_identity = restored_session_identity.is_some();
+            session_restore_diagnostics = Some(diagnostics);
+        }
     }
 
     // 5. Build env vars. The guest-agent bootstrap env is runner-owned only;
@@ -624,7 +1013,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     .to_string();
                 telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
-                    .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled));
+                    .with_resource_failure_kind(ResourceFailureKind::HostMemoryOomKilled)
+                    .with_restored_session_identity(restored_session_identity));
             }
             let error = e.to_string();
             telemetry.record("agent_execute", t.elapsed(), false, Some(&error));
@@ -639,6 +1029,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                         None,
                     )),
                     stdout_stream_diagnostics: stdout_stream_diagnostics_on_wait_error,
+                    restored_session_identity,
                 });
             }
             return Err(e.into());
@@ -702,7 +1093,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 telemetry.record("agent_execute", t.elapsed(), false, Some(error));
                 return Ok(AgentExecutionResult::failure(1, error, None)
                     .with_resource_failure_kind(ResourceFailureKind::GuestMemoryOomKilled)
-                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics));
+                    .with_stdout_stream_diagnostics(stdout_stream_diagnostics)
+                    .with_restored_session_identity(restored_session_identity));
             }
             Err(e) => {
                 warn!(run_id = %context.run_id, error = %e, "failed to exec dmesg for OOM check");
@@ -808,13 +1200,43 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         None
     };
 
+    if failure.is_none() {
+        if let Some(final_identity) = read_final_session_history_identity(sandbox, context).await {
+            telemetry.record(
+                "session_history_identity_finalized",
+                Duration::ZERO,
+                true,
+                None,
+            );
+            restored_session_identity = Some(final_identity);
+        } else {
+            let verified_restored_session_identity = verify_restored_session_identity_for_reuse(
+                sandbox,
+                context,
+                restored_session_identity,
+            )
+            .await;
+            if produced_restored_session_identity && verified_restored_session_identity.is_some() {
+                telemetry.record(
+                    "session_history_identity_restored",
+                    Duration::ZERO,
+                    true,
+                    None,
+                );
+            }
+            restored_session_identity = verified_restored_session_identity;
+        }
+    }
+
     let agent_result = match failure {
         Some(failure) => AgentExecutionResult {
             failure: Some(failure),
             stdout_stream_diagnostics,
+            restored_session_identity,
         },
         None => AgentExecutionResult::success()
-            .with_stdout_stream_diagnostics(stdout_stream_diagnostics),
+            .with_stdout_stream_diagnostics(stdout_stream_diagnostics)
+            .with_restored_session_identity(restored_session_identity),
     };
     telemetry.record(
         "agent_execute",

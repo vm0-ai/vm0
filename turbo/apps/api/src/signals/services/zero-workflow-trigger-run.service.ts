@@ -29,6 +29,7 @@ export interface DueWorkflowTrigger {
   // longer carry an agentId column, so callers resolve it and pass it here.
   readonly agentId: string;
   readonly workflowName: string;
+  readonly chatThreadId: string;
 }
 
 type RunErrorResponse = {
@@ -44,6 +45,7 @@ export type RunWorkflowTriggerResult =
   | { readonly kind: "run_error"; readonly response: RunErrorResponse };
 
 export type RunFailure = Exclude<RunWorkflowTriggerResult, { kind: "ok" }>;
+type ActivePreviousRunPolicy = "block" | "allow";
 
 interface InternalRunCallbackInput {
   readonly internalKind: InternalRunCallbackKind;
@@ -67,10 +69,17 @@ function isActivePreviousRunStatus(status: string): boolean {
   return status === "pending" || status === "running";
 }
 
-function workflowTriggerRunMetadata(trigger: TriggerRow) {
+function workflowTriggerRunMetadata(
+  trigger: TriggerRow,
+  triggerBrief: string | undefined,
+) {
   return {
     workflowTriggerId: trigger.id,
-    runGroupId: trigger.runGroupId,
+    triggerBrief,
+    // The trigger id is the run group id: all runs fired by the same trigger
+    // share a group for chat folding, and `zero_runs.workflow_trigger_id`
+    // already carries the same value as a row-level reference.
+    runGroupId: trigger.id,
   };
 }
 
@@ -83,6 +92,7 @@ function workflowTriggerRunMetadata(trigger: TriggerRow) {
 function buildWorkflowTriggerCallbacks(
   trigger: TriggerRow,
   agentId: string,
+  chatThreadId: string,
 ): InternalRunCallbackInput[] {
   const callbacks: InternalRunCallbackInput[] = [];
   if (trigger.scheduleType === "loop") {
@@ -104,13 +114,11 @@ function buildWorkflowTriggerCallbacks(
       },
     });
   }
-  if (trigger.chatThreadId) {
-    callbacks.push({
-      internalKind: "chat",
-      secret: generateCallbackSecret(),
-      payload: { threadId: trigger.chatThreadId, agentId },
-    });
-  }
+  callbacks.push({
+    internalKind: "chat",
+    secret: generateCallbackSecret(),
+    payload: { threadId: chatThreadId, agentId },
+  });
   return callbacks;
 }
 
@@ -120,23 +128,20 @@ function buildAppendSystemPrompt(workflowName: string): string {
     `You are running on a schedule trigger for the "${workflowName}" workflow.`,
     "The workflow's procedure is available as a skill - execute it now.",
     "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "You are running unattended: connector permissions come from this trigger's own allowlist, not interactive grants, so blocked requests cannot be approved mid-run. If a request is denied by a permission, do not retry blindly - run `zero doctor permission-deny` to identify the permission, then tell the user which permission this automation needs and that it must be enabled in this trigger's permission settings (the `zero doctor permission-change` link points there).",
+    "Connector permissions use the same agent-run permission settings as chat runs. If a request is denied by a permission, do not retry blindly - run `zero doctor permission-deny` to identify the permission, then tell the user which permission this automation needs.",
   ].join("\n");
 }
 
 export function buildChatOnlyWorkflowTriggerCallbacks(
-  trigger: TriggerRow,
+  chatThreadId: string,
   agentId: string,
 ): InternalRunCallbackInput[] {
-  if (!trigger.chatThreadId) {
-    return [];
-  }
   return [
     {
       internalKind: "chat",
       secret: generateCallbackSecret(),
       payload: {
-        threadId: trigger.chatThreadId,
+        threadId: chatThreadId,
         agentId,
       },
     },
@@ -198,9 +203,12 @@ export const runWorkflowTriggerNow$ = command(
       readonly sessionId?: string;
       // Overrides the default `/<workflowName>` slash-command prompt.
       readonly prompt?: string;
+      // Display-only source context surfaced through workflowSnapshot.triggerBrief.
+      readonly triggerBrief?: string;
       readonly triggerSource?: TriggerSource;
       readonly appendSystemPrompt?: string;
       readonly callbacks?: readonly InternalRunCallbackInput[];
+      readonly activePreviousRunPolicy?: ActivePreviousRunPolicy;
       readonly recordLastRunId?: boolean;
       readonly recordLastRunAt?: boolean;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
@@ -208,25 +216,9 @@ export const runWorkflowTriggerNow$ = command(
     signal: AbortSignal,
   ): Promise<RunWorkflowTriggerResult> => {
     const db = set(writeDb$);
-    const { trigger, agentId, workflowName } = args.due;
+    const { trigger, agentId, workflowName, chatThreadId } = args.due;
 
-    if (!trigger.chatThreadId) {
-      return {
-        kind: "run_error",
-        response: {
-          status: 400,
-          body: {
-            error: {
-              message: "Workflow trigger is missing its thread",
-              code: "INVALID_TRIGGER",
-            },
-          },
-        },
-      };
-    }
-    const chatThreadId = trigger.chatThreadId;
-
-    if (trigger.lastRunId) {
+    if (args.activePreviousRunPolicy !== "allow" && trigger.lastRunId) {
       const [lastRun] = await db
         .select({ status: agentRuns.status })
         .from(agentRuns)
@@ -278,8 +270,9 @@ export const runWorkflowTriggerNow$ = command(
         appendSystemPrompt:
           args.appendSystemPrompt ?? buildAppendSystemPrompt(workflowName),
         callbacks:
-          args.callbacks ?? buildWorkflowTriggerCallbacks(trigger, agentId),
-        zeroRunMetadata: workflowTriggerRunMetadata(trigger),
+          args.callbacks ??
+          buildWorkflowTriggerCallbacks(trigger, agentId, chatThreadId),
+        zeroRunMetadata: workflowTriggerRunMetadata(trigger, args.triggerBrief),
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
       signal,
@@ -297,7 +290,7 @@ export const runWorkflowTriggerNow$ = command(
       runId: result.body.runId,
       prompt,
       appendQueueMarker: result.body.status === "queued",
-      runGroupId: trigger.runGroupId,
+      runGroupId: trigger.id,
     });
     signal.throwIfAborted();
 

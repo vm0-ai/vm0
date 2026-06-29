@@ -19,7 +19,7 @@ import {
   defaultAgentResponse,
 } from "../services/zero-agent-data.service";
 import { zeroAgentInstructions } from "../services/zero-agent-instructions.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const agentReadAuth = {
   requireOrganization: true,

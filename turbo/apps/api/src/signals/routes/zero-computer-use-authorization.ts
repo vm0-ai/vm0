@@ -13,7 +13,7 @@ import {
   readComputerUseAuthorizationRequest$,
 } from "../services/zero-computer-use-authorization.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 function featureDisabled() {
   return {

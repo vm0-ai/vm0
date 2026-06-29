@@ -12,10 +12,6 @@ import {
   jsonb,
 } from "drizzle-orm/pg-core";
 import { sql } from "drizzle-orm";
-import type {
-  UnattendedTriggerConnectorRefs,
-  UnattendedTriggerPermissionPolicy,
-} from "@vm0/api-contracts/contracts/zero-workflows";
 import { zeroAgents } from "./zero-agent";
 import { chatThreads } from "./chat-thread";
 
@@ -89,6 +85,54 @@ export const zeroWorkflows = pgTable(
 );
 
 /**
+ * Shared trigger chat thread for one workflow execution owner.
+ *
+ * Trigger-fired runs use the trigger owner's identity. Keep the linked chat
+ * thread at the workflow-user level so every trigger owned by the same user
+ * for a workflow writes to one conversation.
+ */
+export const workflowUserTriggerThreads = pgTable(
+  "workflow_user_trigger_threads",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    orgId: text("org_id").notNull(),
+    userId: text("user_id").notNull(),
+    workflowId: uuid("workflow_id")
+      .notNull()
+      .references(
+        () => {
+          return zeroWorkflows.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    chatThreadId: uuid("chat_thread_id").references(
+      () => {
+        return chatThreads.id;
+      },
+      { onDelete: "set null" },
+    ),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("idx_workflow_user_trigger_threads_unique").on(
+        table.orgId,
+        table.userId,
+        table.workflowId,
+      ),
+      index("idx_workflow_user_trigger_threads_chat_thread").on(
+        table.chatThreadId,
+      ),
+      index("idx_workflow_user_trigger_threads_workflow_user").on(
+        table.workflowId,
+        table.userId,
+      ),
+    ];
+  },
+);
+
+/**
  * Schedule sub-type for a workflow trigger.
  *
  * - `cron`: recurring at wall-clock times defined by a cron expression.
@@ -103,6 +147,7 @@ export type ZeroWorkflowTriggerKind = "schedule" | "event";
 export type ZeroWorkflowEventType =
   | "gmail-new-message"
   | "gmail-label-applied"
+  | "github-label-applied"
   | "webhook-received";
 export type ZeroWorkflowEventConfig = Record<string, unknown>;
 
@@ -110,8 +155,8 @@ export type ZeroWorkflowEventConfig = Record<string, unknown>;
  * Workflow triggers.
  *
  * A trigger answers "when" (schedule) and "where" (agent) a workflow runs; the
- * workflow's SKILL.md is the "what". Each trigger binds to its own chat thread
- * and runs under its `owner_user_id` identity.
+ * workflow's SKILL.md is the "what". Trigger chat is shared at the
+ * workflow-user level by `workflow_user_trigger_threads`.
  *
  * Schedule triggers are polled by `next_run_at`. Event triggers keep
  * `next_run_at = NULL` and fire from their event-specific junction.
@@ -120,7 +165,6 @@ export const zeroWorkflowTriggers = pgTable(
   "zero_workflow_triggers",
   {
     id: uuid("id").defaultRandom().primaryKey(),
-    runGroupId: uuid("run_group_id").defaultRandom().notNull(),
     orgId: text("org_id").notNull(),
     workflowId: uuid("workflow_id")
       .notNull()
@@ -149,31 +193,10 @@ export const zeroWorkflowTriggers = pgTable(
     atTime: timestamp("at_time"),
     timezone: varchar("timezone", { length: 50 }).default("UTC").notNull(),
     enabled: boolean("enabled").default(true).notNull(),
-    // Nullable: the bound thread is removed when its agent is deleted
-    // (chat_threads.agent_compose_id ON DELETE CASCADE).
-    chatThreadId: uuid("chat_thread_id").references(
-      () => {
-        return chatThreads.id;
-      },
-      { onDelete: "set null" },
-    ),
     nextRunAt: timestamp("next_run_at"),
     lastRunAt: timestamp("last_run_at"),
     lastRunId: uuid("last_run_id"),
     consecutiveFailures: integer("consecutive_failures").notNull().default(0),
-    // Connector refs this unattended trigger may use. Empty means the trigger
-    // runs without connector access; per-connector policies are kept separate
-    // so disabled connectors can preserve their permission choices.
-    unattendedConnectorRefs: jsonb(
-      "unattended_connector_refs",
-    ).$type<UnattendedTriggerConnectorRefs>(),
-    // Isolated unattended permission policy for trigger-fired runs (allow/deny
-    // only). NULL falls back to connector metadata defaults; agent/user grants
-    // are never inherited. Set only via a session/PAT-gated route, never by the
-    // in-run agent. See issue #18789.
-    unattendedPermissionPolicy: jsonb(
-      "unattended_permission_policy",
-    ).$type<UnattendedTriggerPermissionPolicy>(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at").defaultNow().notNull(),
   },
@@ -181,8 +204,6 @@ export const zeroWorkflowTriggers = pgTable(
     return [
       index("idx_zero_workflow_triggers_workflow").on(table.workflowId),
       index("idx_zero_workflow_triggers_org").on(table.orgId),
-      index("idx_zero_workflow_triggers_chat_thread").on(table.chatThreadId),
-      uniqueIndex("idx_zero_workflow_triggers_run_group").on(table.runGroupId),
       // Partial index for the time poller: enabled triggers with a due next run.
       index("idx_zero_workflow_triggers_next_run")
         .on(table.nextRunAt)
@@ -202,7 +223,7 @@ export const zeroWorkflowTriggers = pgTable(
           )
           OR (
             kind = 'event'
-            AND event_type IN ('gmail-new-message', 'gmail-label-applied', 'webhook-received')
+            AND event_type IN ('gmail-new-message', 'gmail-label-applied', 'github-label-applied', 'webhook-received')
             AND event_config IS NOT NULL
             AND schedule_type IS NULL
             AND cron_expression IS NULL
@@ -271,6 +292,43 @@ export const zeroWorkflowWebhookDeliveries = pgTable(
       index("idx_zero_workflow_webhook_deliveries_received").on(
         table.triggerId,
         table.receivedAt,
+      ),
+    ];
+  },
+);
+
+export const zeroWorkflowGithubProcessedEvents = pgTable(
+  "zero_workflow_github_processed_events",
+  {
+    id: uuid("id").defaultRandom().primaryKey(),
+    triggerId: uuid("trigger_id")
+      .notNull()
+      .references(
+        () => {
+          return zeroWorkflowTriggers.id;
+        },
+        { onDelete: "cascade" },
+      ),
+    githubDeliveryId: varchar("github_delivery_id", { length: 255 }).notNull(),
+    repo: varchar("repo", { length: 255 }).notNull(),
+    subjectType: varchar("subject_type", { length: 32 }).notNull(),
+    subjectNumber: integer("subject_number").notNull(),
+    action: varchar("action", { length: 64 }).notNull(),
+    labelNameNormalized: varchar("label_name_normalized", {
+      length: 255,
+    }).notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+  },
+  (table) => {
+    return [
+      uniqueIndex("idx_zero_workflow_github_processed_delivery").on(
+        table.triggerId,
+        table.githubDeliveryId,
+      ),
+      index("idx_zero_workflow_github_processed_subject").on(
+        table.repo,
+        table.subjectType,
+        table.subjectNumber,
       ),
     ];
   },

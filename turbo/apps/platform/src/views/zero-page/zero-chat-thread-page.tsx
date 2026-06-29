@@ -1,5 +1,6 @@
 import type {
   CSSProperties,
+  FormEvent,
   KeyboardEvent as ReactKeyboardEvent,
   MouseEvent as ReactMouseEvent,
   PointerEvent as ReactPointerEvent,
@@ -42,6 +43,7 @@ import {
   IconMessageCircle,
   IconPackage,
   IconPresentation,
+  IconRoute,
   IconSearch,
   IconTag,
   IconTarget,
@@ -60,9 +62,20 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
   Popover,
   PopoverContent,
   PopoverTrigger,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -75,6 +88,10 @@ import type {
   GenerationTemplateRequest,
   ChatThreadGithubPr,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  ChatThreadWorkflowTrigger,
+  ZeroWorkflowSchedule,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_ITEMS,
@@ -144,7 +161,6 @@ import {
   DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
   permissionGrantExpiresInByScope$,
   permissionGrantExpiryText,
-  requestedUserPermissionGrantExpirationAlreadyApplies,
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import {
@@ -191,8 +207,11 @@ import {
 import {
   headerAutomationMenu$,
   headerWorkflowTriggersForThread,
+  runHeaderWorkflowTriggerNow$,
   reloadHeaderAutomationMenu$,
-  toggleWorkflowTriggerEnabled$,
+  updateHeaderWorkflowGmailLabelAppliedTrigger$,
+  updateHeaderWorkflowGmailNewMessageTrigger$,
+  updateHeaderWorkflowScheduleTrigger$,
   automationsForThread,
   type HeaderAutomationEntry,
   type HeaderWorkflowTriggerEntry,
@@ -200,8 +219,10 @@ import {
 import { pauseChatThreadGoal$ } from "../../signals/chat-page/chat-goal.ts";
 import {
   closeHeaderAutomationSidebar$,
+  currentEditingHeaderWorkflowTriggerId$,
   currentHeaderAutomationThreadId$,
   openHeaderAutomationSidebar$,
+  setEditingHeaderWorkflowTriggerId$,
 } from "../../signals/chat-page/header-automation-sidebar.ts";
 import {
   runAutomationNow$,
@@ -212,13 +233,33 @@ import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
 import { openRenameChatThreadDialog$ } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
+import { ROUTES } from "../../signals/route-paths.ts";
+import { WORKFLOW_DETAIL_TAB_PARAM } from "../../signals/workflows-page/workflows-signals.ts";
+import {
+  atTimeInTimezone,
+  cronWallTimeInTimezone,
+} from "../../signals/zero-page/cron.ts";
+import {
+  buildGmailLabelAppliedEventConfig,
+  buildGmailNewMessageEventConfig,
+  formatWorkflowIntervalSeconds,
+  GMAIL_TEXT_FIELDS,
+  getWorkflowIntervalSecondOptions,
+  gmailMatcherDefaultValue,
+  gmailTriggerSummary,
+  gmailTriggerTitle,
+} from "../workflows-page/workflow-shared.tsx";
+import {
+  WorkflowTriggerCard,
+  type WorkflowTriggerCardRow,
+} from "../workflows-page/workflow-trigger-card.tsx";
 
 import type {
   EnrichedChatMessage,
   GroupedChatMessageGroup,
   PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
-import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
 import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import {
@@ -976,13 +1017,6 @@ function GithubPrTrackingButton({
       </Tooltip>
     </TooltipProvider>
   );
-}
-
-function featureSwitchEnabled(
-  features: Record<FeatureSwitchKey, boolean> | undefined,
-  key: FeatureSwitchKey,
-): boolean {
-  return features?.[key] ?? false;
 }
 
 // Loads automations and only renders once this thread has at least one linked
@@ -1997,6 +2031,141 @@ function automationDescription(automation: HeaderAutomationEntry): string {
   return description && description.length > 0 ? description : "No description";
 }
 
+function formatHeaderWorkflowTriggerRun(value: string | null): string {
+  if (!value) {
+    return "No runs yet";
+  }
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "No runs yet";
+  }
+  return date.toLocaleString("en-US", {
+    dateStyle: "medium",
+    timeStyle: "short",
+  });
+}
+
+function formatHeaderWorkflowTriggerNextRun(value: string | null): string {
+  if (!value) {
+    return "No upcoming run";
+  }
+  return formatHeaderWorkflowTriggerRun(value);
+}
+
+function formatHeaderClockTime(hour: number, minute: number): string {
+  const ampm = hour >= 12 ? "PM" : "AM";
+  const h12 = hour === 0 ? 12 : hour > 12 ? hour - 12 : hour;
+  return `${h12}:${String(minute).padStart(2, "0")} ${ampm}`;
+}
+
+function formatHeaderIntervalSeconds(seconds: number): string {
+  if (seconds % 3600 === 0) {
+    const hours = seconds / 3600;
+    return `Every ${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  if (seconds % 60 === 0) {
+    const minutes = seconds / 60;
+    return `Every ${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+  }
+  return `Every ${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+}
+
+function headerCronRuleLabel(
+  cronExpression: string,
+  sourceTimezone: string,
+  displayTimezone: string,
+): string {
+  const [minutePart, hourPart, dayOfMonth = "*", , dayOfWeek = "*"] =
+    cronExpression.split(" ");
+  const minute = Number(minutePart);
+  const hour = Number(hourPart);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    return `${cronExpression} (${sourceTimezone})`;
+  }
+  const converted = cronWallTimeInTimezone(
+    hour,
+    minute,
+    sourceTimezone,
+    displayTimezone,
+  );
+  const time = formatHeaderClockTime(converted.hour, converted.minute);
+  if (dayOfMonth !== "*") {
+    return `Every month on day ${dayOfMonth} at ${time}`;
+  }
+  if (dayOfWeek === "1-5") {
+    return `Every weekday at ${time}`;
+  }
+  if (dayOfWeek !== "*") {
+    const dayNames: Readonly<Record<string, string>> = {
+      "0": "Sunday",
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday",
+    };
+    const days = dayOfWeek
+      .split(",")
+      .map((day) => {
+        return dayNames[day];
+      })
+      .filter(Boolean)
+      .join(", ");
+    return days ? `Every week on ${days} at ${time}` : `Every week at ${time}`;
+  }
+  return `Every day at ${time}`;
+}
+
+function headerWorkflowTriggerRule(
+  trigger: HeaderWorkflowTriggerEntry,
+): string {
+  const source = trigger.trigger;
+  if (source.kind !== "schedule") {
+    return gmailTriggerTitle(source);
+  }
+  const schedule = source.schedule;
+  if (schedule.type === "loop") {
+    return formatHeaderIntervalSeconds(schedule.intervalSeconds);
+  }
+  if (schedule.type === "once") {
+    const { date, hour, minute } = atTimeInTimezone(
+      schedule.atTime,
+      trigger.timezone,
+    );
+    return `Once on ${date} at ${formatHeaderClockTime(hour, minute)}`;
+  }
+  return headerCronRuleLabel(
+    schedule.cronExpression,
+    schedule.timezone,
+    trigger.timezone,
+  );
+}
+
+function headerWorkflowTriggerRows(
+  trigger: HeaderWorkflowTriggerEntry,
+): readonly WorkflowTriggerCardRow[] {
+  const rows: WorkflowTriggerCardRow[] = [
+    {
+      label: trigger.trigger.kind === "schedule" ? "Schedule" : "Trigger",
+      value: headerWorkflowTriggerRule(trigger),
+    },
+    {
+      label: "Last run",
+      value: formatHeaderWorkflowTriggerRun(trigger.trigger.lastRunAt),
+    },
+    {
+      label: "Next run",
+      value: formatHeaderWorkflowTriggerNextRun(trigger.trigger.nextRunAt),
+    },
+  ];
+  const matchSummary = gmailTriggerSummary(trigger.trigger);
+  if (matchSummary) {
+    rows.splice(1, 0, { label: "Match", value: matchSummary });
+  }
+  return rows;
+}
+
 function HeaderAutomationSidebarCard({
   automation,
 }: {
@@ -2124,62 +2293,487 @@ function HeaderWorkflowTriggerCard({
   trigger: HeaderWorkflowTriggerEntry;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const [togglingLoadable, toggleEnabledTracked] = useLoadableSet(
-    toggleWorkflowTriggerEnabled$,
+  const editingTriggerId = useGet(currentEditingHeaderWorkflowTriggerId$);
+  const setEditingTriggerId = useSet(setEditingHeaderWorkflowTriggerId$);
+  const [runningLoadable, runNow] = useLoadableSet(
+    runHeaderWorkflowTriggerNow$,
   );
-  const toggling = togglingLoadable.state === "loading";
+  const running = runningLoadable.state === "loading";
   const title = trigger.workflowDisplayName?.trim() || trigger.workflowName;
-  const description = trigger.workflowDescription?.trim();
-
-  const toggleEnabled = (enabled: boolean) => {
-    detach(
-      toggleEnabledTracked({ triggerId: trigger.id, enabled }, pageSignal),
-      Reason.DomCallback,
-      "toggle workflow trigger enabled",
-    );
-  };
+  const rows = headerWorkflowTriggerRows(trigger);
+  const editing = editingTriggerId === trigger.id;
 
   return (
-    <article
-      className={cn(
-        "rounded-lg border border-border bg-background p-4 transition-colors",
-        !trigger.enabled && "opacity-75",
-      )}
-    >
-      <p
-        className={cn(
-          "line-clamp-1 text-sm font-medium leading-snug",
-          trigger.enabled ? "text-foreground" : "text-muted-foreground",
-        )}
-      >
-        {title}
-      </p>
-      {description ? (
-        <p className="mt-1 line-clamp-3 text-xs text-muted-foreground">
-          {description}
+    <div className="min-w-0">
+      <div className="mb-2 flex min-w-0 items-center justify-between gap-3">
+        <p className="min-w-0 truncate text-sm font-normal leading-snug text-muted-foreground">
+          {title}
         </p>
-      ) : null}
-
-      <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/50 pt-3 text-xs">
-        <span
-          className={cn(
-            "font-medium",
-            trigger.enabled ? "text-foreground" : "text-muted-foreground",
-          )}
+        <Link
+          pathname={ROUTES.agentWorkflowDetail}
+          options={{
+            pathParams: {
+              agentId: trigger.workflowAgentId,
+              workflowId: trigger.workflowId,
+            },
+            searchParams: new URLSearchParams({
+              [WORKFLOW_DETAIL_TAB_PARAM]: "triggers",
+            }),
+          }}
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
         >
-          {trigger.enabled ? "Active" : "Inactive"}
-        </span>
-        <LoadingSwitch
-          checked={trigger.enabled}
-          loading={toggling}
-          onCheckedChange={toggleEnabled}
-          ariaLabel={`${trigger.enabled ? "Disable" : "Enable"} ${title}`}
-        />
+          View
+          <IconArrowUpRight size={12} stroke={1.5} />
+        </Link>
       </div>
-    </article>
+      <WorkflowTriggerCard
+        rows={rows}
+        dimmed={!trigger.enabled}
+        actions={
+          <>
+            {trigger.trigger.kind === "schedule" ||
+            (trigger.trigger.kind === "event" &&
+              (trigger.trigger.eventType === "gmail-new-message" ||
+                trigger.trigger.eventType === "gmail-label-applied")) ? (
+              <button
+                type="button"
+                className="rounded-md px-1 py-1 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                onClick={() => {
+                  setEditingTriggerId(trigger.id);
+                }}
+              >
+                Edit
+              </button>
+            ) : null}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="zero-btn-morandi h-8 shrink-0 gap-1.5 rounded-lg px-3 text-xs font-medium"
+              disabled={running}
+              onClick={() => {
+                detach(
+                  runNow(trigger.id, pageSignal),
+                  Reason.DomCallback,
+                  "run header workflow trigger now",
+                );
+              }}
+            >
+              {running ? (
+                <IconLoader2 size={13} className="animate-spin" />
+              ) : (
+                <IconPlayerPlay size={13} stroke={1.5} />
+              )}
+              {running ? "Starting..." : "Run now"}
+            </Button>
+          </>
+        }
+      />
+      <HeaderWorkflowTriggerEditDialog
+        trigger={trigger.trigger}
+        displayTimezone={trigger.timezone}
+        open={editing}
+        onOpenChange={(open) => {
+          setEditingTriggerId(open ? trigger.id : null);
+        }}
+      />
+    </div>
   );
 }
 
+function HeaderWorkflowTriggerEditDialog({
+  trigger,
+  displayTimezone,
+  open,
+  onOpenChange,
+}: {
+  readonly trigger: ChatThreadWorkflowTrigger;
+  readonly displayTimezone: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent
+        className={
+          trigger.kind === "event" && trigger.eventType === "gmail-new-message"
+            ? "max-w-2xl"
+            : ""
+        }
+      >
+        <DialogHeader>
+          <DialogTitle>Edit trigger</DialogTitle>
+          <DialogDescription>Update this workflow trigger.</DialogDescription>
+        </DialogHeader>
+        {trigger.kind === "schedule" ? (
+          <HeaderScheduleTriggerEditForm
+            trigger={trigger}
+            displayTimezone={displayTimezone}
+            onDone={() => {
+              onOpenChange(false);
+            }}
+          />
+        ) : null}
+        {trigger.kind === "event" &&
+        trigger.eventType === "gmail-new-message" ? (
+          <HeaderGmailNewMessageTriggerEditForm
+            trigger={trigger}
+            onDone={() => {
+              onOpenChange(false);
+            }}
+          />
+        ) : null}
+        {trigger.kind === "event" &&
+        trigger.eventType === "gmail-label-applied" ? (
+          <HeaderGmailLabelTriggerEditForm
+            trigger={trigger}
+            onDone={() => {
+              onOpenChange(false);
+            }}
+          />
+        ) : null}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+const HEADER_TRIGGER_FIELD_CLASS =
+  "h-9 w-full rounded-md border border-border/60 bg-background px-2.5 text-sm outline-none transition-colors focus:border-primary disabled:opacity-60";
+
+function localDateTimeInputValue(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) {
+    return "";
+  }
+  const year = date.getFullYear();
+  const month = String(date.getMonth() + 1).padStart(2, "0");
+  const day = String(date.getDate()).padStart(2, "0");
+  const hour = String(date.getHours()).padStart(2, "0");
+  const minute = String(date.getMinutes()).padStart(2, "0");
+  return `${year}-${month}-${day}T${hour}:${minute}`;
+}
+
+function scheduleFromHeaderTriggerForm(
+  trigger: Extract<ChatThreadWorkflowTrigger, { kind: "schedule" }>,
+  form: FormData,
+): ZeroWorkflowSchedule | null {
+  const schedule = trigger.schedule;
+  if (schedule.type === "loop") {
+    const intervalSeconds = Number(form.get("intervalSeconds"));
+    return Number.isInteger(intervalSeconds) && intervalSeconds > 0
+      ? { type: "loop", intervalSeconds }
+      : null;
+  }
+  if (schedule.type === "once") {
+    const rawAtTime = String(form.get("atTime") ?? "");
+    if (!rawAtTime) {
+      return null;
+    }
+    const atTime = new Date(rawAtTime);
+    return Number.isNaN(atTime.getTime())
+      ? null
+      : {
+          type: "once",
+          atTime: atTime.toISOString(),
+          timezone: schedule.timezone,
+        };
+  }
+  const cronExpression = String(form.get("cronExpression") ?? "").trim();
+  return cronExpression
+    ? {
+        type: "cron",
+        cronExpression,
+        timezone: schedule.timezone,
+      }
+    : null;
+}
+
+function HeaderScheduleTriggerEditForm({
+  trigger,
+  displayTimezone,
+  onDone,
+}: {
+  readonly trigger: Extract<ChatThreadWorkflowTrigger, { kind: "schedule" }>;
+  readonly displayTimezone: string;
+  readonly onDone: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [updateLoadable, updateTrigger] = useLoadableSet(
+    updateHeaderWorkflowScheduleTrigger$,
+  );
+  const saving = updateLoadable.state === "loading";
+  const schedule = trigger.schedule;
+
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        const scheduleValue = scheduleFromHeaderTriggerForm(
+          trigger,
+          new FormData(event.currentTarget),
+        );
+        if (!scheduleValue) {
+          return;
+        }
+        detach(
+          (async () => {
+            await updateTrigger(
+              { triggerId: trigger.id, schedule: scheduleValue },
+              pageSignal,
+            );
+            onDone();
+          })(),
+          Reason.DomCallback,
+          "update header workflow schedule trigger",
+        );
+      }}
+    >
+      {schedule.type === "loop" ? (
+        <HeaderIntervalField
+          disabled={saving}
+          defaultIntervalSeconds={schedule.intervalSeconds}
+        />
+      ) : null}
+      {schedule.type === "once" ? (
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Run at
+          <input
+            name="atTime"
+            aria-label="Run at"
+            type="datetime-local"
+            defaultValue={localDateTimeInputValue(schedule.atTime)}
+            disabled={saving}
+            className={HEADER_TRIGGER_FIELD_CLASS}
+          />
+          <span>Displays in {displayTimezone}</span>
+        </label>
+      ) : null}
+      {schedule.type === "cron" ? (
+        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+          Cron expression
+          <input
+            name="cronExpression"
+            aria-label="Cron expression"
+            defaultValue={schedule.cronExpression}
+            disabled={saving}
+            className={HEADER_TRIGGER_FIELD_CLASS}
+          />
+          <span>Runs in {schedule.timezone}</span>
+        </label>
+      ) : null}
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={saving}
+          onClick={onDone}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving}>
+          {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
+          Save trigger
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+function HeaderIntervalField({
+  disabled,
+  defaultIntervalSeconds,
+}: {
+  readonly disabled: boolean;
+  readonly defaultIntervalSeconds: number;
+}) {
+  return (
+    <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+      Every
+      <Select
+        name="intervalSeconds"
+        defaultValue={String(defaultIntervalSeconds)}
+        disabled={disabled}
+      >
+        <SelectTrigger className="h-9 w-full" aria-label="Every">
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {getWorkflowIntervalSecondOptions(defaultIntervalSeconds).map(
+            (seconds) => {
+              return (
+                <SelectItem key={seconds} value={String(seconds)}>
+                  {formatWorkflowIntervalSeconds(seconds)}
+                </SelectItem>
+              );
+            },
+          )}
+        </SelectContent>
+      </Select>
+    </label>
+  );
+}
+
+function HeaderGmailNewMessageTriggerEditForm({
+  trigger,
+  onDone,
+}: {
+  readonly trigger: Extract<
+    ChatThreadWorkflowTrigger,
+    { eventType: "gmail-new-message" }
+  >;
+  readonly onDone: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [updateLoadable, updateTrigger] = useLoadableSet(
+    updateHeaderWorkflowGmailNewMessageTrigger$,
+  );
+  const saving = updateLoadable.state === "loading";
+
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        detach(
+          (async () => {
+            await updateTrigger(
+              {
+                triggerId: trigger.id,
+                eventConfig: buildGmailNewMessageEventConfig(
+                  form,
+                  trigger.eventConfig,
+                ),
+              },
+              pageSignal,
+            );
+            onDone();
+          })(),
+          Reason.DomCallback,
+          "update header workflow Gmail trigger",
+        );
+      }}
+    >
+      <div className="grid gap-3 sm:grid-cols-2">
+        {GMAIL_TEXT_FIELDS.map(({ field, label }) => {
+          return (
+            <div key={field} className="grid grid-cols-2 gap-2">
+              <input
+                name={`${field}Contains`}
+                aria-label={`${label} contains`}
+                defaultValue={gmailMatcherDefaultValue(
+                  trigger.eventConfig,
+                  field,
+                  "contains",
+                )}
+                disabled={saving}
+                placeholder={`${label} contains`}
+                className={HEADER_TRIGGER_FIELD_CLASS}
+              />
+              <input
+                name={`${field}DoesNotContain`}
+                aria-label={`${label} does not contain`}
+                defaultValue={gmailMatcherDefaultValue(
+                  trigger.eventConfig,
+                  field,
+                  "doesNotContain",
+                )}
+                disabled={saving}
+                placeholder={`${label} does not contain`}
+                className={HEADER_TRIGGER_FIELD_CLASS}
+              />
+            </div>
+          );
+        })}
+      </div>
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={saving}
+          onClick={onDone}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving}>
+          {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
+          Save trigger
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+function HeaderGmailLabelTriggerEditForm({
+  trigger,
+  onDone,
+}: {
+  readonly trigger: Extract<
+    ChatThreadWorkflowTrigger,
+    { eventType: "gmail-label-applied" }
+  >;
+  readonly onDone: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [updateLoadable, updateTrigger] = useLoadableSet(
+    updateHeaderWorkflowGmailLabelAppliedTrigger$,
+  );
+  const saving = updateLoadable.state === "loading";
+
+  return (
+    <form
+      className="flex flex-col gap-4"
+      onSubmit={(event: FormEvent<HTMLFormElement>) => {
+        event.preventDefault();
+        const eventConfig = buildGmailLabelAppliedEventConfig(
+          new FormData(event.currentTarget),
+        );
+        if (!eventConfig) {
+          return;
+        }
+        detach(
+          (async () => {
+            await updateTrigger(
+              { triggerId: trigger.id, eventConfig },
+              pageSignal,
+            );
+            onDone();
+          })(),
+          Reason.DomCallback,
+          "update header workflow Gmail label trigger",
+        );
+      }}
+    >
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Label name
+        <input
+          name="labelName"
+          aria-label="Label name"
+          required
+          defaultValue={trigger.eventConfig.labelName}
+          disabled={saving}
+          placeholder="Support"
+          className={HEADER_TRIGGER_FIELD_CLASS}
+        />
+      </label>
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={saving}
+          onClick={onDone}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={saving}>
+          {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
+          Save trigger
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
 function HeaderAutomationSidebar({ threadId }: { threadId: string }) {
   const automationsLoadable = useLastLoadable(headerAutomationMenu$);
   const lastResolvedAutomations = useLastResolved(headerAutomationMenu$);
@@ -2471,14 +3065,7 @@ export function ZeroChatThreadPage() {
   const presentationEditorUrl = useGet(currentPresentationEditorUrl$);
   const closePresentationEditor = useSet(closePresentationEditor$);
   const artifactFullscreen = useGet(artifactFullscreen$);
-  const features = useLastResolved(featureSwitch$);
-  const presentationHtmlEditorEnabled = featureSwitchEnabled(
-    features,
-    FeatureSwitchKey.PresentationHtmlPptxDownload,
-  );
-  const activePresentationEditorUrl = presentationHtmlEditorEnabled
-    ? presentationEditorUrl
-    : null;
+  const activePresentationEditorUrl = presentationEditorUrl;
   const artifactPanelOpen =
     artifactRef !== null || artifactInboxThreadId !== null;
   const automationPanelOpen = automationPanelThreadId !== null;
@@ -3247,8 +3834,12 @@ function runGroupFoldSourceLabel(fold: RunGroupFold): string {
 
 function runGroupFoldWorkflowLabel(fold: RunGroupFold): string | null {
   for (const message of runGroupFoldMessages(fold)) {
+    if (isWorkflowUserMessage(message)) {
+      return normalizedInlineLabel(workflowMessageBody(message));
+    }
     const workflowSnapshot = message.workflowSnapshot;
     const label =
+      workflowSnapshot?.triggerBrief?.trim() ||
       workflowSnapshot?.description?.trim() ||
       workflowSnapshot?.displayName?.trim() ||
       workflowSnapshot?.name?.trim();
@@ -3272,6 +3863,7 @@ function isGoalUserMessage(
     message.role === "user" &&
     message.isGoalRun === true &&
     !hasAutomationMessageMetadata(message) &&
+    !hasWorkflowMessageMetadata(message) &&
     (message.content?.trim().length ?? 0) > 0
   );
 }
@@ -4871,7 +5463,8 @@ interface LoadableLike<T> {
 
 type ApplyUserPermissionGrantFn = (
   params: {
-    agentId: string;
+    agentId?: string;
+    workflowId?: string;
     connectorRef: string;
     permission: string;
     action: PermissionAction;
@@ -4922,10 +5515,15 @@ function permissionActionStatusText(
   state: PermissionActionButtonState,
   action: "allow" | "deny",
 ): { label: string; className: string } | null {
-  if (state.saveDone || state.alreadyApplied) {
+  if (state.saveDone) {
     return action === "allow"
       ? { label: "Permissions updated", className: "text-green-600" }
       : { label: "Permission denied", className: "text-destructive" };
+  }
+  if (state.alreadyApplied) {
+    return action === "allow"
+      ? { label: "Already allowed", className: "text-green-600" }
+      : { label: "Already denied", className: "text-destructive" };
   }
   return null;
 }
@@ -4995,23 +5593,11 @@ function isPermissionActionAlreadyApplied(params: {
   hasAgent: boolean;
   userGrantPolicy: FirewallPolicyValue | undefined;
   action: "allow" | "deny";
-  expirationAvailable: boolean;
-  requestedExpiresIn: UserPermissionGrantExpiresIn | null;
-  currentExpiresAt: string | null | undefined;
 }): boolean {
   if (!params.hasAgent) {
     return false;
   }
-  if (params.userGrantPolicy !== params.action) {
-    return false;
-  }
-  if (!params.expirationAvailable || params.action !== "allow") {
-    return true;
-  }
-  return requestedUserPermissionGrantExpirationAlreadyApplies({
-    expiresIn: params.requestedExpiresIn,
-    currentExpiresAt: params.currentExpiresAt,
-  });
+  return params.userGrantPolicy === params.action;
 }
 
 function findPermissionActionPermission(
@@ -5099,8 +5685,6 @@ function createPermissionActionCardViewState(params: {
   permissionMetadataLoadable: LoadableLike<FirewallPermissionDetailMetadata | null>;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
   grantLoadableState: string;
-  expirationAvailable: boolean;
-  currentGrantExpiresAt: string | null | undefined;
 }) {
   const permissionMetadata =
     params.permissionMetadataLoadable.state === "hasData"
@@ -5135,9 +5719,6 @@ function createPermissionActionCardViewState(params: {
     hasAgent: params.hasAgent,
     userGrantPolicy,
     action: params.block.action,
-    expirationAvailable: params.expirationAvailable,
-    requestedExpiresIn: params.block.expiresIn,
-    currentExpiresAt: params.currentGrantExpiresAt,
   });
   const saveDone = params.grantLoadableState === "hasData";
   const buttonState = createPermissionActionCardButtonState({
@@ -5289,7 +5870,17 @@ function PermissionActionCardContent({
   );
 }
 
-function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
+function PermissionActionCardForTarget({
+  block,
+  hasTarget,
+  targetLoadableState,
+  userGrantsLoadable,
+}: {
+  block: PermissionActionBlock;
+  hasTarget: boolean;
+  targetLoadableState: string;
+  userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
+}) {
   const pageSignal = useGet(pageSignal$);
   const config = CONNECTOR_TYPES[block.connectorRef];
   const expirationAvailable = block.action === "allow";
@@ -5300,30 +5891,20 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
     expiresInByScope[durationScope] ??
     block.expiresIn ??
     DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
-  const agentLoadable = useLastLoadable(agentById(block.agentId));
   const permissionMetadataLoadable = useLoadable(
     firewallPermissionMetadataByConnector({
       connectorType: block.connectorRef,
     }),
   );
   const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
-  const userGrantsLoadable = useLoadable(
-    userPermissionGrantsByAgent({
-      agentId: block.agentId,
-    }),
-  );
-  const hasAgent =
-    agentLoadable.state === "hasData" && Boolean(agentLoadable.data);
   const existingGrant = permissionActionUserGrant(userGrantsLoadable, block);
   const actionState = createPermissionActionCardViewState({
     block,
-    hasAgent,
-    agentLoadableState: agentLoadable.state,
+    hasAgent: hasTarget,
+    agentLoadableState: targetLoadableState,
     permissionMetadataLoadable,
     userGrantsLoadable,
     grantLoadableState: grantLoadable.state,
-    expirationAvailable,
-    currentGrantExpiresAt: existingGrant?.expiresAt,
   });
   const grantExpiresAt =
     grantLoadable.state === "hasData"
@@ -5346,7 +5927,7 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
       onClick={createPermissionActionHandler({
         block,
         pageSignal,
-        hasAgent,
+        hasAgent: hasTarget,
         focusedPermission: actionState.focusedPermission,
         state: actionState.buttonState,
         finished: actionState.finished,
@@ -5356,6 +5937,32 @@ function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
       })}
     />
   );
+}
+
+function AgentPermissionActionCard({
+  block,
+}: {
+  block: PermissionActionBlock;
+}) {
+  const agentLoadable = useLastLoadable(agentById(block.agentId));
+  const userGrantsLoadable = useLoadable(
+    userPermissionGrantsByAgent({
+      agentId: block.agentId,
+    }),
+  );
+  const agent = agentLoadable.state === "hasData" ? agentLoadable.data : null;
+  return (
+    <PermissionActionCardForTarget
+      block={block}
+      hasTarget={Boolean(agent)}
+      targetLoadableState={agentLoadable.state}
+      userGrantsLoadable={userGrantsLoadable}
+    />
+  );
+}
+
+function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
+  return <AgentPermissionActionCard block={block} />;
 }
 
 function ChatConnectorActionConnectModal() {
@@ -5824,6 +6431,20 @@ function hasAutomationMessageMetadata(message: EnrichedChatMessage): boolean {
   );
 }
 
+function isWorkflowUserMessage(
+  message: EnrichedChatMessage,
+): message is EnrichedChatMessage & { role: "user" } {
+  return (
+    message.role === "user" &&
+    hasWorkflowMessageMetadata(message) &&
+    !hasAutomationMessageMetadata(message)
+  );
+}
+
+function hasWorkflowMessageMetadata(message: EnrichedChatMessage): boolean {
+  return message.workflowSnapshot !== undefined;
+}
+
 function automationMessageLabel(
   message: EnrichedChatMessage & { role: "user" },
 ): string {
@@ -5832,6 +6453,39 @@ function automationMessageLabel(
     message.automationSnapshot?.title?.trim() ||
     message.automationTitle?.trim() ||
     "Automation run"
+  );
+}
+
+function workflowSnapshotTitle(
+  workflowSnapshot: NonNullable<EnrichedChatMessage["workflowSnapshot"]>,
+): string {
+  return (
+    workflowSnapshot.displayName?.trim() ||
+    workflowSnapshot.name.trim() ||
+    "Workflow"
+  );
+}
+
+function workflowMessageBrief(
+  workflowSnapshot: NonNullable<EnrichedChatMessage["workflowSnapshot"]>,
+): string | null {
+  const brief =
+    workflowSnapshot.triggerBrief?.trim() ||
+    workflowSnapshot.description?.trim() ||
+    "";
+  return brief.length > 0 ? brief : null;
+}
+
+function workflowMessageBody(
+  message: EnrichedChatMessage & { role: "user" },
+): string {
+  const workflowSnapshot = message.workflowSnapshot;
+  if (!workflowSnapshot) {
+    return message.content?.trim() || "Workflow";
+  }
+  return (
+    workflowMessageBrief(workflowSnapshot) ??
+    workflowSnapshotTitle(workflowSnapshot)
   );
 }
 
@@ -6089,14 +6743,6 @@ function UserMessageGenerationTemplate({
 }: {
   generationTemplate: GenerationTemplateRequest | undefined;
 }) {
-  const features = useLastResolved(featureSwitch$);
-  const templateLabelEnabled =
-    generationTemplate?.type === "video"
-      ? (features?.[FeatureSwitchKey.VideoTemplatePicker] ?? false)
-      : (features?.[FeatureSwitchKey.ChatTemplatePicker] ?? false);
-  if (!templateLabelEnabled) {
-    return null;
-  }
   const label = generationTemplateLabel(generationTemplate);
   const typeLabel = generationTemplateTypeLabel(generationTemplate);
   if (!label || !typeLabel) {
@@ -6162,6 +6808,66 @@ function AutomationUserMessage({
   );
 }
 
+function WorkflowUserMessage({
+  message,
+}: {
+  message: EnrichedChatMessage & { role: "user" };
+}) {
+  const workflowSnapshot = message.workflowSnapshot;
+  if (!workflowSnapshot) {
+    return null;
+  }
+  const workflowTitle = workflowSnapshotTitle(workflowSnapshot);
+  const workflowBody = workflowMessageBody(message);
+  const bubbleClassName =
+    "zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden whitespace-pre-wrap transition-colors duration-150";
+  const body = (
+    <div className={bubbleClassName}>
+      <div className="px-4 py-3">{workflowBody}</div>
+    </div>
+  );
+  const workflowAgentId = workflowSnapshot.agentId;
+  const workflowId = workflowSnapshot.id;
+  const linked = workflowAgentId !== undefined && workflowId !== undefined;
+
+  return (
+    <div data-role="user" className="group">
+      <div className="flex flex-col items-end min-w-0 animate-in fade-in slide-in-from-bottom-2 duration-300 @[900px]:grid @[900px]:grid-cols-[36px_minmax(0,1fr)] @[900px]:gap-2.5 @[900px]:-ml-[46px] @[900px]:items-start">
+        <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
+        <div className="flex w-full flex-col items-end">
+          <div
+            aria-label={`Workflow ${workflowTitle}`}
+            className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
+            title={workflowTitle}
+          >
+            <IconRoute size={15} stroke={1.8} className="shrink-0" />
+            <span className="min-w-0 truncate">{workflowTitle}</span>
+          </div>
+          {linked ? (
+            <Link
+              pathname={ROUTES.agentWorkflowDetail}
+              options={{
+                pathParams: {
+                  agentId: workflowAgentId,
+                  workflowId,
+                },
+              }}
+              className="contents"
+              aria-label={`Open workflow ${workflowSnapshotTitle(
+                workflowSnapshot,
+              )}`}
+            >
+              {body}
+            </Link>
+          ) : (
+            body
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function GoalUserMessage({
   bodyBlocks,
   openLightbox,
@@ -6175,11 +6881,11 @@ function GoalUserMessage({
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
           <div
-            aria-label="Goal prompt"
+            aria-label="Goal"
             className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
           >
             <IconTarget size={15} stroke={1.8} className="shrink-0" />
-            <span>Goal prompt</span>
+            <span>Goal</span>
           </div>
           {bodyBlocks.length > 0 ? (
             <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden ring-1 ring-emerald-900/10">
@@ -6259,6 +6965,10 @@ function PagedUserMessage({
         automationLabel={automationMessageLabel(message)}
       />
     );
+  }
+
+  if (isWorkflowUserMessage(message)) {
+    return <WorkflowUserMessage message={message} />;
   }
 
   if (isGoalUserMessage(message)) {

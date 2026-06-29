@@ -1,3 +1,4 @@
+import type { ReactNode } from "react";
 import { useGet, useLastLoadable, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { Button } from "@vm0/ui";
@@ -7,9 +8,15 @@ import {
   IconCheck,
   IconLoader2,
 } from "@tabler/icons-react";
-import type { UserPermissionGrantExpiresIn } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
+import type {
+  UserPermissionGrantExpiresIn,
+  UserPermissionGrantResponse,
+} from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { CONNECTOR_TYPES } from "@vm0/connectors/connectors";
-import { isFirewallMetadataConnectorType } from "@vm0/connectors/firewall-metadata";
+import {
+  isFirewallMetadataConnectorType,
+  type FirewallPermissionDetailMetadata,
+} from "@vm0/connectors/firewall-metadata";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { user$ } from "../../signals/auth.ts";
 import { firewallPermissionMetadataByConnector } from "../../signals/firewall-permission-metadata.ts";
@@ -31,7 +38,6 @@ import {
   DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
   permissionGrantExpiresInByScope$,
   permissionGrantExpiryText,
-  requestedUserPermissionGrantExpirationAlreadyApplies,
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -40,23 +46,53 @@ import { PermissionGrantDurationSelect } from "../components/permission-grant-du
 import { ConnectorIcon } from "../zero-page/components/settings/connector-icons.tsx";
 import { AvatarFromUrl } from "../zero-page/zero-sidebar-shared.tsx";
 
-function AgentPill({
+function TargetPill({
   avatarUrl,
   displayName,
 }: {
-  avatarUrl: string | null;
+  avatarUrl?: string | null;
   displayName: string;
 }) {
   return (
     <div className="w-full rounded-lg border border-border bg-muted/30 pl-2 pr-8 py-3 flex items-center gap-2">
       <AvatarFromUrl
-        avatarUrl={avatarUrl}
+        avatarUrl={avatarUrl ?? null}
         alt=""
         className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
       />
       <span className="text-sm font-medium text-foreground">{displayName}</span>
     </div>
   );
+}
+
+type PermissionGrantTarget = {
+  id: string;
+  displayName: string;
+  avatarUrl: string | null;
+};
+
+type PermissionAllowAgent = {
+  displayName?: string | null;
+  avatarUrl?: string | null;
+} | null;
+
+function resolvePermissionGrantTarget({
+  agentId,
+  agent,
+}: {
+  agentId: string;
+  agent: PermissionAllowAgent;
+}): { target: PermissionGrantTarget } | { message: string } {
+  if (!agent) {
+    return { message: "Agent not found" };
+  }
+  return {
+    target: {
+      id: agentId,
+      displayName: agent.displayName ?? agentId,
+      avatarUrl: agent.avatarUrl ?? null,
+    },
+  };
 }
 
 function ConnectorPermissionCard({
@@ -131,14 +167,30 @@ function LoadingCard() {
 
 function ResultCard({
   action,
+  alreadyApplied = false,
   expiresAt,
   showExpiry,
 }: {
   action: "allow" | "deny";
+  alreadyApplied?: boolean;
   expiresAt?: string | null;
   showExpiry: boolean;
 }) {
   const allowed = action === "allow";
+  const title = alreadyApplied
+    ? allowed
+      ? "Already allowed"
+      : "Already denied"
+    : allowed
+      ? "Permissions updated"
+      : "Permissions denied";
+  const description = alreadyApplied
+    ? allowed
+      ? "Your connector permission grant is already allowed"
+      : "Your connector permission grant is already denied"
+    : allowed
+      ? "Your connector permission grant has been updated"
+      : "Your connector permission grant has been denied";
   const expiryText = showExpiry
     ? permissionGrantExpiryText(expiresAt ?? null)
     : null;
@@ -153,12 +205,10 @@ function ResultCard({
             <IconBan size={40} className="text-destructive opacity-70" />
           )}
           <p className="text-center text-lg font-medium leading-7 text-foreground">
-            {allowed ? "Permissions updated" : "Permissions denied"}
+            {title}
           </p>
           <p className="text-center text-sm text-muted-foreground">
-            {allowed
-              ? "Your connector permission grant has been updated"
-              : "Your connector permission grant has been denied"}
+            {description}
           </p>
           {expiryText && (
             <p className="text-center text-xs font-medium text-amber-700 dark:text-amber-400">
@@ -171,7 +221,7 @@ function ResultCard({
   );
 }
 
-function StatusMessage({ children }: { children: React.ReactNode }) {
+function StatusMessage({ children }: { children: ReactNode }) {
   return (
     <div className="flex flex-1 items-center justify-center text-muted-foreground">
       {children}
@@ -202,27 +252,97 @@ function resolveUserName(
   return "there";
 }
 
+function anyLoadableIsLoading(
+  loadables: readonly { state: string }[],
+): boolean {
+  return loadables.some((loadable) => {
+    return loadable.state === "loading";
+  });
+}
+
+function permissionAllowLoadErrorMessage({
+  targetState,
+  grantsState,
+  metadataState,
+}: {
+  targetState: string;
+  grantsState: string;
+  metadataState: string;
+}): string | null {
+  if (targetState === "hasError") {
+    return "Failed to load agent";
+  }
+  if (grantsState === "hasError") {
+    return "Failed to load permission grants";
+  }
+  if (metadataState === "hasError") {
+    return "Failed to load permission metadata";
+  }
+  return null;
+}
+
+function resolveExistingPermissionGrantResult({
+  action,
+  connectorRef,
+  focusedPermission,
+  grants,
+  metadata,
+}: {
+  action: "allow" | "deny";
+  connectorRef: string;
+  focusedPermission: Permission;
+  grants: readonly UserPermissionGrantResponse[];
+  metadata: FirewallPermissionDetailMetadata;
+}): { expiresAt?: string | null } | null {
+  const effectivePolicy = resolveUserPermissionGrantPolicy(
+    grants,
+    metadata,
+    focusedPermission.name,
+  );
+  const explicitGrant = grants.find((grant) => {
+    return (
+      grant.connectorRef === connectorRef &&
+      grant.permission === focusedPermission.name &&
+      grant.action === action
+    );
+  });
+
+  if (effectivePolicy !== action) {
+    return null;
+  }
+  return { expiresAt: explicitGrant?.expiresAt };
+}
+
 function ConfirmGrantCard({
-  agentId,
+  target,
   connectorRef,
   permission,
   action,
   initialExpiresIn,
-  agentDisplayName,
-  agentAvatarUrl,
   userName,
+  grantLoadable,
+  applyGrant,
 }: {
-  agentId: string;
+  target: PermissionGrantTarget;
   connectorRef: string;
   permission: Permission;
   action: "allow" | "deny";
   initialExpiresIn: UserPermissionGrantExpiresIn | null;
-  agentDisplayName: string;
-  agentAvatarUrl: string | null;
   userName: string;
+  grantLoadable: { state: string };
+  applyGrant: (
+    params: {
+      agentId: string;
+      connectorRef: string;
+      permission: string;
+      action: "allow" | "deny";
+      expiresIn?: UserPermissionGrantExpiresIn;
+    },
+    signal: AbortSignal,
+  ) => Promise<UserPermissionGrantResponse>;
 }) {
   const pageSignal = useGet(pageSignal$);
-  const durationScope = `${agentId}\u0000${connectorRef}\u0000${permission.name}\u0000${action}\u0000${initialExpiresIn ?? ""}`;
+  const durationScope = `agent\u0000${target.id}\u0000${connectorRef}\u0000${permission.name}\u0000${action}\u0000${initialExpiresIn ?? ""}`;
   const expiresInByScope = useGet(permissionGrantExpiresInByScope$);
   const setExpiresInForScope = useSet(setPermissionGrantExpiresIn$);
   const expiresIn =
@@ -230,24 +350,13 @@ function ConfirmGrantCard({
     initialExpiresIn ??
     DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN;
   const expirationAvailable = action === "allow";
-  const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
   const saving = grantLoadable.state === "loading";
-
-  if (grantLoadable.state === "hasData") {
-    return (
-      <ResultCard
-        action={action}
-        expiresAt={grantLoadable.data.expiresAt}
-        showExpiry={expirationAvailable}
-      />
-    );
-  }
 
   const handleSave = () => {
     detach(
       applyGrant(
         {
-          agentId,
+          agentId: target.id,
           connectorRef,
           permission: permission.name,
           action,
@@ -266,12 +375,12 @@ function ConfirmGrantCard({
 
         <div className="flex w-[500px] max-w-[calc(100vw-96px)] flex-col items-center gap-4 px-[26px]">
           <p className="text-center text-lg font-medium leading-7 text-foreground">
-            {`Hey ${userName}, you're updating your permissions for ${agentDisplayName}.`}
+            {`Hey ${userName}, you're updating your permissions for ${target.displayName}.`}
           </p>
 
-          <AgentPill
-            avatarUrl={agentAvatarUrl}
-            displayName={agentDisplayName}
+          <TargetPill
+            avatarUrl={target.avatarUrl}
+            displayName={target.displayName}
           />
 
           <div className="w-full flex flex-col gap-3">
@@ -333,31 +442,39 @@ function PermissionAllowDoctorPage({
   const metadataLoadable = useLoadable(
     firewallPermissionMetadataByConnector({ connectorType: ref }),
   );
+  const [grantLoadable, applyGrant] = useLoadableSet(applyUserPermissionGrant$);
 
   if (
-    agentLoadable.state === "loading" ||
-    userLoadable.state === "loading" ||
-    grantsLoadable.state === "loading" ||
-    metadataLoadable.state === "loading"
+    anyLoadableIsLoading([
+      agentLoadable,
+      userLoadable,
+      grantsLoadable,
+      metadataLoadable,
+    ])
   ) {
     return <LoadingCard />;
   }
 
-  if (agentLoadable.state === "hasError") {
-    return <ErrorMessage message="Failed to load agent" />;
-  }
-  if (grantsLoadable.state === "hasError") {
-    return <ErrorMessage message="Failed to load permission grants" />;
-  }
-  if (metadataLoadable.state === "hasError") {
-    return <ErrorMessage message="Failed to load permission metadata" />;
+  const loadErrorMessage = permissionAllowLoadErrorMessage({
+    targetState: agentLoadable.state,
+    grantsState: grantsLoadable.state,
+    metadataState: metadataLoadable.state,
+  });
+  if (loadErrorMessage) {
+    return <ErrorMessage message={loadErrorMessage} />;
   }
 
-  const agent = agentLoadable.data;
-  if (!agent) {
-    return <ErrorMessage message="Agent not found" />;
+  const agent = agentLoadable.state === "hasData" ? agentLoadable.data : null;
+  const targetResult = resolvePermissionGrantTarget({
+    agentId,
+    agent,
+  });
+  if ("message" in targetResult) {
+    return <ErrorMessage message={targetResult.message} />;
   }
-  const metadata = metadataLoadable.data;
+
+  const metadata =
+    metadataLoadable.state === "hasData" ? metadataLoadable.data : null;
   if (!metadata) {
     return <ErrorMessage message={`Unknown connector: ${ref}`} />;
   }
@@ -368,29 +485,29 @@ function PermissionAllowDoctorPage({
   }
 
   const grants = grantsLoadable.state === "hasData" ? grantsLoadable.data : [];
-  const effectivePolicy = resolveUserPermissionGrantPolicy(
-    grants,
-    metadata,
-    focusedPermission.name,
-  );
-  const explicitGrant = grants.find((grant) => {
-    return (
-      grant.connectorRef === ref &&
-      grant.permission === focusedPermission.name &&
-      grant.action === action
-    );
-  });
-  const requestedExpirationAlreadyApplies =
-    action !== "allow" ||
-    requestedUserPermissionGrantExpirationAlreadyApplies({
-      expiresIn: initialExpiresIn,
-      currentExpiresAt: explicitGrant?.expiresAt,
-    });
-  if (effectivePolicy === action && requestedExpirationAlreadyApplies) {
+  if (grantLoadable.state === "hasData") {
     return (
       <ResultCard
         action={action}
-        expiresAt={explicitGrant?.expiresAt}
+        expiresAt={grantLoadable.data.expiresAt}
+        showExpiry={action === "allow"}
+      />
+    );
+  }
+
+  const existingGrantResult = resolveExistingPermissionGrantResult({
+    action,
+    connectorRef: ref,
+    focusedPermission,
+    grants,
+    metadata,
+  });
+  if (existingGrantResult) {
+    return (
+      <ResultCard
+        action={action}
+        alreadyApplied
+        expiresAt={existingGrantResult.expiresAt}
         showExpiry={action === "allow"}
       />
     );
@@ -398,17 +515,16 @@ function PermissionAllowDoctorPage({
 
   const currentUser =
     userLoadable.state === "hasData" ? userLoadable.data : undefined;
-
   return (
     <ConfirmGrantCard
-      agentId={agentId}
+      target={targetResult.target}
       connectorRef={ref}
       permission={focusedPermission}
       action={action}
       initialExpiresIn={initialExpiresIn}
-      agentDisplayName={agent.displayName ?? agentId}
-      agentAvatarUrl={agent.avatarUrl}
       userName={resolveUserName(currentUser)}
+      grantLoadable={grantLoadable}
+      applyGrant={applyGrant}
     />
   );
 }

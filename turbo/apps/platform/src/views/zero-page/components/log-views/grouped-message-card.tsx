@@ -1,6 +1,7 @@
 import { IconCheck, IconCircleDashed, IconLoader } from "@tabler/icons-react";
 import { Markdown } from "../../../components/markdown.tsx";
 import {
+  groupedMessageKey,
   isTaskEventData,
   type GroupedMessage,
   type ToolOperation,
@@ -10,7 +11,6 @@ import {
   SystemInitContent,
   ResultEventContent,
   formatEventTime,
-  type EventData,
 } from "./event-card.tsx";
 import { StatusDot } from "./status-dot.tsx";
 
@@ -27,6 +27,39 @@ const MESSAGE_SPACING = "py-2";
 
 function MarkdownContent({ text }: { text: string }) {
   return <Markdown source={text} />;
+}
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function isFailedTaskStatus(status: string | undefined): boolean {
+  switch (status?.toLowerCase()) {
+    case "aborted":
+    case "cancelled":
+    case "canceled":
+    case "declined":
+    case "error":
+    case "failed":
+    case "interrupted":
+    case "timed_out":
+    case "timeout": {
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
+}
+
+function nextOccurrenceKey(counts: Map<string, number>, base: string): string {
+  const occurrence = counts.get(base) ?? 0;
+  counts.set(base, occurrence + 1);
+  return occurrence === 0 ? base : `${base}:${occurrence}`;
 }
 
 function CollapsibleText({ text }: { text: string }) {
@@ -137,14 +170,11 @@ export function GroupedMessageCard({
   matchStartIndex = 0,
   showConnector = false,
 }: GroupedMessageCardProps) {
-  const eventData = message.eventData as EventData;
-
   // System event
   if (message.type === "system") {
     return (
       <SystemMessageCard
         message={message}
-        eventData={eventData}
         searchTerm={searchTerm}
         showConnector={showConnector}
       />
@@ -154,11 +184,7 @@ export function GroupedMessageCard({
   // Result event
   if (message.type === "result") {
     return (
-      <ResultMessageCard
-        message={message}
-        eventData={eventData}
-        showConnector={showConnector}
-      />
+      <ResultMessageCard message={message} showConnector={showConnector} />
     );
   }
 
@@ -197,9 +223,12 @@ function TaskMessageCard({
   const taskData = isTaskEventData(message.eventData)
     ? message.eventData
     : null;
-  const description = taskData?.description ?? taskData?.task_summary ?? "";
-  const taskStatus = taskData?.task_status;
-  const isFailed = taskStatus === "error" || taskStatus === "failed";
+  const description =
+    stringValue(taskData?.description) ??
+    stringValue(taskData?.task_summary) ??
+    "";
+  const taskStatus = stringValue(taskData?.task_status);
+  const isFailed = isFailedTaskStatus(taskStatus);
   const isRunning = !taskStatus;
   const timestamp = formatEventTime(message.createdAt);
   const children = message.childMessages ?? [];
@@ -287,7 +316,7 @@ function TaskMessageCard({
           {children.map((child, i) => {
             return (
               <GroupedMessageCard
-                key={child.sequenceNumber}
+                key={groupedMessageKey(child)}
                 message={child}
                 searchTerm={searchTerm}
                 showConnector={i < children.length - 1}
@@ -302,16 +331,16 @@ function TaskMessageCard({
 
 function SystemMessageCard({
   message,
-  eventData,
   searchTerm,
   showConnector = false,
 }: {
   message: GroupedMessage;
-  eventData: EventData;
   searchTerm?: string;
   showConnector?: boolean;
 }) {
-  const subtype = eventData.subtype;
+  const eventData = isRecord(message.eventData) ? message.eventData : {};
+  const subtype =
+    typeof eventData.subtype === "string" ? eventData.subtype : undefined;
 
   // Task events are rendered by TaskMessageCard
   if (subtype === "task_started" || subtype === "task_notification") {
@@ -354,14 +383,14 @@ function SystemMessageCard({
 
 function ResultMessageCard({
   message,
-  eventData,
   showConnector = false,
 }: {
   message: GroupedMessage;
-  eventData: EventData;
   showConnector?: boolean;
 }) {
+  const eventData = isRecord(message.eventData) ? message.eventData : {};
   const timestamp = formatEventTime(message.createdAt);
+  const isError = eventData.is_error === true || eventData.success === false;
   return (
     <div className="relative">
       {showConnector && (
@@ -373,7 +402,7 @@ function ResultMessageCard({
       <details className="group relative" open>
         <summary className="cursor-pointer list-none relative py-2">
           <div className="flex gap-2 items-center">
-            <StatusDot variant="primary" />
+            <StatusDot variant={isError ? "error" : "primary"} />
             <span className="font-semibold text-sm text-foreground">
               Summary
             </span>
@@ -423,6 +452,27 @@ function isSubtask(content: string): boolean {
   return /^\s{2,}|^\s*[-*]\s/.test(content);
 }
 
+function getTodoOperationErrors(message: GroupedMessage): {
+  content: string;
+  key: string;
+}[] {
+  const keyCounts = new Map<string, number>();
+  return (message.toolOperations ?? []).flatMap((operation) => {
+    if (!operation.result?.isError) {
+      return [];
+    }
+
+    const content =
+      operation.result.content.trim() || `${operation.toolName} failed`;
+    return [
+      {
+        content,
+        key: nextOccurrenceKey(keyCounts, `todo-error-${operation.toolUseId}`),
+      },
+    ];
+  });
+}
+
 function TodoCard({
   message,
   searchTerm,
@@ -433,6 +483,7 @@ function TodoCard({
   showConnector?: boolean;
 }) {
   const todoItems = message.todoState ?? [];
+  const operationErrors = getTodoOperationErrors(message);
   // Filter out subtasks for count - only count top-level tasks
   const topLevelTodos = todoItems.filter((t) => {
     return !isSubtask(t.content);
@@ -444,17 +495,21 @@ function TodoCard({
     return t.status === "completed";
   }).length;
   const totalCount = topLevelTodos.length;
+  const normalizedSearchTerm = searchTerm?.trim().toLowerCase();
 
   // Check if any todo item matches search
   const hasSearchMatch = Boolean(
-    searchTerm &&
-    searchTerm.trim() &&
-    todoItems.some((t) => {
-      return t.content.toLowerCase().includes(searchTerm.toLowerCase());
-    }),
+    normalizedSearchTerm &&
+    (todoItems.some((t) => {
+      return t.content.toLowerCase().includes(normalizedSearchTerm);
+    }) ||
+      operationErrors.some((error) => {
+        return error.content.toLowerCase().includes(normalizedSearchTerm);
+      })),
   );
 
   const timestamp = formatEventTime(message.createdAt);
+  const todoKeyCounts = new Map<string, number>();
   return (
     <div className={`${MESSAGE_SPACING} relative`}>
       {showConnector && (
@@ -496,9 +551,12 @@ function TodoCard({
         </summary>
         <div className="mt-2 space-y-1.5 ml-[18px]">
           {todoItems.map((item) => {
+            const keyPrefix = `${item.status}:${item.content}`;
+            const occurrence = todoKeyCounts.get(keyPrefix) ?? 0;
+            todoKeyCounts.set(keyPrefix, occurrence + 1);
             return (
               <div
-                key={item.content}
+                key={`${keyPrefix}:${occurrence}`}
                 className="flex items-center gap-2 text-sm"
               >
                 <span className="shrink-0">
@@ -517,6 +575,20 @@ function TodoCard({
             );
           })}
         </div>
+        {operationErrors.length > 0 && (
+          <div className="mt-2 space-y-1.5 ml-[18px]">
+            {operationErrors.map((error) => {
+              return (
+                <div
+                  key={error.key}
+                  className="rounded-md border border-destructive/20 bg-destructive/10 px-2 py-1 text-xs text-destructive whitespace-pre-wrap break-words"
+                >
+                  {error.content}
+                </div>
+              );
+            })}
+          </div>
+        )}
       </details>
     </div>
   );
@@ -620,6 +692,7 @@ function CollapsedToolGroup({
       : group.toolName === "Grep"
         ? `${count} searches`
         : `${count} calls`;
+  const operationKeyCounts = new Map<string, number>();
 
   return (
     <div className={`${MESSAGE_SPACING} relative`}>
@@ -646,7 +719,10 @@ function CollapsedToolGroup({
             {group.operations.map((op) => {
               return (
                 <ToolSummary
-                  key={op.toolUseId}
+                  key={nextOccurrenceKey(
+                    operationKeyCounts,
+                    `tool-${op.toolUseId}`,
+                  )}
                   operation={op}
                   searchTerm={searchTerm}
                   currentMatchIndex={currentMatchIndex}
@@ -681,6 +757,7 @@ function renderToolElements(params: {
   } = params;
   const elements: React.ReactNode[] = [];
   const toolGroups = groupConsecutiveTools(toolOperations);
+  const elementKeyCounts = new Map<string, number>();
 
   for (let gi = 0; gi < toolGroups.length; gi++) {
     const group = toolGroups[gi]!;
@@ -696,7 +773,10 @@ function renderToolElements(params: {
     if (group.operations.length === 1) {
       const op = group.operations[0]!;
       elements.push(
-        <div key={op.toolUseId} className={`${MESSAGE_SPACING} relative`}>
+        <div
+          key={nextOccurrenceKey(elementKeyCounts, `tool-${op.toolUseId}`)}
+          className={`${MESSAGE_SPACING} relative`}
+        >
           {showConnectorHere && <Connector isDashed={isDashed} />}
           <div className="relative">
             <ToolSummary
@@ -712,7 +792,10 @@ function renderToolElements(params: {
     } else {
       elements.push(
         <CollapsedToolGroup
-          key={`group-${group.operations[0]!.toolUseId}`}
+          key={nextOccurrenceKey(
+            elementKeyCounts,
+            `group-${group.operations[0]!.toolUseId}`,
+          )}
           group={group}
           searchTerm={searchTerm}
           currentMatchIndex={currentMatchIndex}

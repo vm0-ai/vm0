@@ -5024,15 +5024,11 @@ function ComposerTemplatePickerSlot({
 }: {
   picker: ComposerTemplatePicker | undefined;
 }) {
-  const features = useLastResolved(featureSwitch$);
-  const hasChatTemplatePicker = Boolean(
-    features?.[FeatureSwitchKey.ChatTemplatePicker],
-  );
-  const hasPptTab = hasChatTemplatePicker;
-  const hasIllustrationTab = hasChatTemplatePicker;
-  const hasVideoTab = Boolean(features?.[FeatureSwitchKey.VideoTemplatePicker]);
+  const hasPptTab = true;
+  const hasIllustrationTab = true;
+  const hasVideoTab = true;
   const presentationItems = PRESENTATION_TEMPLATE_PICKER_ITEMS;
-  if (!picker || (!hasChatTemplatePicker && !hasVideoTab)) {
+  if (!picker) {
     return null;
   }
   return (
@@ -5211,8 +5207,11 @@ function ComputerUseConnectorMenuSection({
             return (
               <div
                 key={host.id}
+                onClick={() => {
+                  computerUse.onChange(checked ? null : host.id);
+                }}
                 className={cn(
-                  "flex items-center gap-2 rounded-md px-2 py-2 transition-colors",
+                  "flex cursor-pointer items-center gap-2 rounded-md px-2 py-2 transition-colors",
                   checked
                     ? "bg-primary/5"
                     : "hover:bg-gray-100 dark:hover:bg-gray-200",
@@ -5231,15 +5230,22 @@ function ComputerUseConnectorMenuSection({
                     </span>
                   )}
                 </span>
-                <LoadingSwitch
-                  checked={checked}
-                  onCheckedChange={onDomEventFn((nextChecked) => {
-                    computerUse.onChange(nextChecked ? host.id : null);
-                  })}
-                  loading={false}
-                  ariaLabel={`${checked ? "Disconnect" : "Connect"} ${host.displayName}`}
-                  size="sm"
-                />
+                <span
+                  className="flex shrink-0 items-center"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                  }}
+                >
+                  <LoadingSwitch
+                    checked={checked}
+                    onCheckedChange={onDomEventFn((nextChecked) => {
+                      computerUse.onChange(nextChecked ? host.id : null);
+                    })}
+                    loading={false}
+                    ariaLabel={`${checked ? "Disconnect" : "Connect"} ${host.displayName}`}
+                    size="sm"
+                  />
+                </span>
               </div>
             );
           })}

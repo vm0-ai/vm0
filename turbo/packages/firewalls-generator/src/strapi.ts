@@ -32,6 +32,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "${{ vars.STRAPI_BASE_URL }}",',
+    '      hostPolicy: { kind: "publicDestination" },',
     "      auth: {",
     "        headers: {",
     '          Authorization: "Bearer ${{ secrets.STRAPI_TOKEN }}",',

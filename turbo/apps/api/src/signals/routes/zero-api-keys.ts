@@ -10,7 +10,7 @@ import { generateCliToken } from "../auth/tokens";
 import { bodyResultOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { userApiKeys } from "../services/zero-user-data.service";
 import { zeroApiKeysDeleteRoutes } from "./zero-api-keys-delete";
 

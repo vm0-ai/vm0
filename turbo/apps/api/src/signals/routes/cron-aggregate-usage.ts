@@ -1,7 +1,7 @@
 import { cronAggregateUsageContract } from "@vm0/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { aggregateUsageDaily$ } from "../services/cron-aggregate-usage.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 

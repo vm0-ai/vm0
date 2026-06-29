@@ -39,14 +39,13 @@ const SCHEMA = {
   VERCEL_AUTOMATION_BYPASS_SECRET: z.string().min(1).optional(),
   VM0_API_URL: z.url(),
   // Direct origin of the API backend for self-dispatched internal callbacks
-  // (`/api/internal/**`). Shared with the apps/web rewrite target, which reads
-  // the same var. Optional; when unset, production defaults to the API backend
-  // origin and other environments fall back to VM0_API_URL — so internal
-  // callbacks do not hop through the web rewrite layer at www.
+  // (`/api/internal/**`). Optional; when unset, production defaults to the API
+  // backend origin and other environments fall back to VM0_API_URL — so internal
+  // callbacks do not hop through the marketing surface at www.
   VM0_API_BACKEND_URL: z.url().optional(),
   VM0_WEB_URL: z.url(),
   APP_URL: z.url(),
-  PAID_ONBOARDING_URL: z.url().optional(),
+  ONBOARDING_URL: z.url().optional(),
   RESEND_API_KEY: z.string().min(1).optional(),
   RESEND_WEBHOOK_SECRET: z.string().min(1).optional(),
   RESEND_FROM_DOMAIN: z.string().min(1).optional(),
@@ -76,6 +75,7 @@ const SCHEMA = {
   AXIOM_DATASET_SUFFIX: z.enum(["dev", "prod"]),
   STRIPE_SECRET_KEY: z.string().min(1),
   ATOM_URL: z.url().optional(),
+  ATOM_GRANT_PRICE: z.string().min(1).optional(),
   VM0_MACHINE_SECRET_KEY: z.string().min(1).optional(),
   ZERO_PRICE_PRO: priceIdsSchema,
   ZERO_PRICE_TEAM: priceIdsSchema,

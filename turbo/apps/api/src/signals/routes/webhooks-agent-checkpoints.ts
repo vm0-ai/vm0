@@ -7,7 +7,7 @@ import {
 import { notFound } from "../../lib/error";
 import { authorization$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import {
   createAgentCheckpoint$,
   prepareCheckpointHistoryUpload$,

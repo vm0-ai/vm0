@@ -7,11 +7,18 @@ const reload$ = state(0);
 const clerkVersion$ = state(0);
 
 /**
- * Resolve the web app origin from the current app origin.
- * Replaces "platform" or "app" with "www" in the hostname so sign-in/sign-out
- * redirects land on the web app where auth pages live.
+ * Resolve the hosted auth/onboarding origin.
+ * Prefer the configured onboarding origin; the app/platform -> www derivation
+ * remains a fallback for older environments.
  */
 export function resolveWebOrigin(): string {
+  const configuredUrl = import.meta.env.VITE_ONBOARDING_URL as
+    | string
+    | undefined;
+  if (configuredUrl) {
+    return new URL(configuredUrl).origin;
+  }
+
   const origin = location.origin;
   if (!origin || origin === "null") {
     return "";
@@ -22,6 +29,15 @@ export function resolveWebOrigin(): string {
 }
 
 function resolveDomainOverride(): string | null {
+  if (import.meta.env.VITE_VERCEL_ENV !== "production") {
+    const configuredDomain = import.meta.env.VITE_ONBOARDING_DOMAIN as
+      | string
+      | undefined;
+    if (configuredDomain) {
+      return configuredDomain;
+    }
+  }
+
   const origin = location.origin;
   if (!origin || origin === "null") {
     return null;

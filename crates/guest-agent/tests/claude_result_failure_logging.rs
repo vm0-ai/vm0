@@ -5,10 +5,10 @@
 
 mod common;
 
-use agent_diagnostics::FailureDetailSource;
 use common::SystemLogOverrideGuard;
 use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
+use guest_contracts::diagnostics::FailureDetailSource;
 use std::time::Duration;
 
 #[tokio::test]

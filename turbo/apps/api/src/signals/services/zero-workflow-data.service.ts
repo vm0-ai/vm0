@@ -33,7 +33,7 @@ export interface WorkflowRow {
 }
 
 /**
- * The host agent's identity fields needed to evaluate workflow permissions.
+ * The host agent's identity fields needed to evaluate workflow management.
  */
 export interface WorkflowAgentInfo {
   readonly id: string;
@@ -109,7 +109,7 @@ export function requireWorkflowPermission(
  * parked under another user's private agent must stay hidden, so that resolving
  * it returns 404 rather than leaking the agent's existence via a 403.
  */
-function visibleWorkflowCondition(member: WorkflowMember): SQL {
+export function visibleWorkflowCondition(member: WorkflowMember): SQL {
   const agentVisibleToMember = or(
     eq(zeroAgents.visibility, "public"),
     eq(zeroAgents.owner, member.userId),

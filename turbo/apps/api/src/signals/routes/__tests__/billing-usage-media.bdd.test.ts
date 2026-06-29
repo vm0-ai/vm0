@@ -14,7 +14,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import {
@@ -1427,7 +1427,7 @@ function octetStreamBlob(bytes: Uint8Array<ArrayBuffer>): Blob {
   return new Blob([bytes], { type: "application/octet-stream" });
 }
 
-// The ts-rest client JSON-stringifies non-FormData bodies, so PCM-bearing
+// The contract client JSON-stringifies non-FormData bodies, so PCM-bearing
 // requests go through a raw app request to keep the exact bytes.
 async function requestAudioTranscriptionRaw(
   token: string,

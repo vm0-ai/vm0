@@ -1,15 +1,8 @@
 /**
- * ts-rest API Contracts
+ * API Contracts
  *
- * This module provides type-safe API contracts using ts-rest.
- *
- * IMPORTANT: We use @ts-rest/core@3.53.0-rc.1 (RC version) because:
- * - The stable version (3.52.x) requires Zod v3
- * - This project uses Zod v4 which has breaking type changes
- * - The RC version adds Zod v4 compatibility
- *
- * TODO: Upgrade to stable @ts-rest/core@3.53.0 when released.
- * Track: https://github.com/ts-rest/ts-rest/releases
+ * This module exports type-safe REST contracts backed by tRPC procedure
+ * typing.
  */
 export { initContract } from "./base";
 export {
@@ -47,13 +40,11 @@ export {
   composesVersionsContract,
   composesListContract,
   composesMetadataContract,
-  composesInstructionsContract,
   type ComposesMainContract,
   type ComposesByIdContract,
   type ComposesVersionsContract,
   type ComposesListContract,
   type ComposesMetadataContract,
-  type ComposesInstructionsContract,
   AGENT_NAME_REGEX,
   agentNameSchema,
   volumeConfigSchema,
@@ -67,7 +58,6 @@ export {
   composeResponseSchema,
   composeListItemSchema,
   metadataUpdateSchema,
-  composeInstructionsResponseSchema,
   ZERO_CAPABILITIES,
   ZERO_CAPABILITY_META,
   type ZeroCapability,
@@ -441,7 +431,8 @@ export {
   modelProviderCredentialScopeSchema,
   MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,
-  VM0_MODEL_CREDIT_MULTIPLIER,
+  VM0_MODEL_PRICE_TIER,
+  VM0_MODEL_PRICE_TIER_LABEL,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getFrameworkForType,
@@ -462,7 +453,8 @@ export {
   isModelSupportedByProvider,
   isSupportedRunModel,
   normalizeRunModelId,
-  getVm0ModelMultiplier,
+  getVm0ModelPriceTier,
+  getVm0ModelPriceTierLabel,
   // Selectable provider filtering
   getSelectableProviderTypes,
   // Multi-auth provider support
@@ -475,6 +467,7 @@ export {
   type ModelProviderFramework,
   type ModelProviderEnvBindings,
   type ModelProviderResponse,
+  type Vm0ModelPriceTier,
   type ModelProviderListResponse,
   type UpsertModelProviderRequest,
   type UpsertModelProviderResponse,
@@ -923,11 +916,11 @@ export {
 } from "./user-connectors";
 export {
   zeroUserPermissionGrantsContract,
+  userPermissionGrantScopeSchema,
   userPermissionGrantActionSchema,
   userPermissionGrantApplyModeSchema,
   userPermissionGrantExpiresInSchema,
   userPermissionGrantResponseSchema,
-  listUserPermissionGrantsQuerySchema,
   applyUserPermissionGrantSchema,
   applyUserPermissionGrantsRequestSchema,
   type UserPermissionGrantAction,

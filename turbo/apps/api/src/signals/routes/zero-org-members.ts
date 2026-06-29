@@ -8,7 +8,7 @@ import {
   removeZeroOrgMember$,
   updateZeroOrgMemberRole$,
 } from "../services/zero-org-data.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const updateRoleBody$ = bodyResultOf(zeroOrgMembersContract.updateRole);
 const removeMemberBody$ = bodyResultOf(zeroOrgMembersContract.removeMember);

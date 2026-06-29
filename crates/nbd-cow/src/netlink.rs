@@ -14,8 +14,10 @@
 //!   by the kernel within ~60s if there is pending I/O. Idle orphans still
 //!   require `runner gc`.
 
-use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
+use std::os::fd::{AsRawFd, OwnedFd};
 use std::path::Path;
+
+use nix::sys::socket::{AddressFamily, SockFlag, SockType, socketpair};
 
 use crate::error::{NbdCowError, Result};
 
@@ -59,20 +61,13 @@ const NBD_GENL_VERSION: u8 = 1;
 
 /// Create a Unix socketpair for NBD communication.
 pub fn create_socketpair() -> Result<(OwnedFd, OwnedFd)> {
-    let mut fds = [0i32; 2];
-    let ret = unsafe { libc::socketpair(libc::AF_UNIX, libc::SOCK_STREAM, 0, fds.as_mut_ptr()) };
-    if ret < 0 {
-        return Err(NbdCowError::Io(std::io::Error::last_os_error()));
-    }
-    let fd0 = fds
-        .first()
-        .copied()
-        .ok_or_else(|| NbdCowError::Io(std::io::Error::other("failed to get fd[0]")))?;
-    let fd1 = fds
-        .get(1)
-        .copied()
-        .ok_or_else(|| NbdCowError::Io(std::io::Error::other("failed to get fd[1]")))?;
-    Ok(unsafe { (OwnedFd::from_raw_fd(fd0), OwnedFd::from_raw_fd(fd1)) })
+    socketpair(
+        AddressFamily::Unix,
+        SockType::Stream,
+        None,
+        SockFlag::SOCK_CLOEXEC,
+    )
+    .map_err(|err| NbdCowError::Io(err.into()))
 }
 
 /// Read the kernel's nbds_max parameter to know how many devices are available.
@@ -100,18 +95,21 @@ pub fn random_offset(max: u32) -> u32 {
 /// Check if a device index appears free by inspecting its pid file.
 pub fn device_appears_free(index: u32) -> bool {
     let pid_path = format!("/sys/block/nbd{index}/pid");
-    let path = Path::new(&pid_path);
+    device_pid_appears_free(Path::new(&pid_path), || {
+        Path::new(&format!("/dev/nbd{index}")).exists()
+    })
+}
 
-    if !path.exists() {
-        // No pid file: free if the device node exists.
-        return Path::new(&format!("/dev/nbd{index}")).exists();
-    }
-
-    match std::fs::read_to_string(path) {
+fn device_pid_appears_free<F>(pid_path: &Path, device_exists: F) -> bool
+where
+    F: FnOnce() -> bool,
+{
+    match std::fs::read_to_string(pid_path) {
         Ok(contents) => {
             let pid = contents.trim();
             pid == "-1" || pid == "0" || pid.is_empty()
         }
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => device_exists(),
         Err(_) => false, // Can't read pid file; EBUSY fallback will catch free devices.
     }
 }
@@ -396,11 +394,26 @@ fn build_sockets_nla(client_fds: &[OwnedFd], sockets_payload_len: usize) -> Vec<
 mod tests {
     use super::*;
 
+    use nix::fcntl::{FcntlArg, FdFlag, fcntl};
+
     fn raw_nla_header(nla_len: u16, nla_type: u16) -> Vec<u8> {
         let mut attr = Vec::new();
         attr.extend_from_slice(&nla_len.to_ne_bytes());
         attr.extend_from_slice(&nla_type.to_ne_bytes());
         attr
+    }
+
+    fn assert_close_on_exec(fd: &OwnedFd) {
+        let flags = fcntl(fd, FcntlArg::F_GETFD).unwrap();
+        assert!(FdFlag::from_bits_truncate(flags).contains(FdFlag::FD_CLOEXEC));
+    }
+
+    #[test]
+    fn create_socketpair_sets_close_on_exec() {
+        let (client_fd, server_fd) = create_socketpair().unwrap();
+
+        assert_close_on_exec(&client_fd);
+        assert_close_on_exec(&server_fd);
     }
 
     #[test]
@@ -415,6 +428,63 @@ mod tests {
                 assert!(random_offset(max) < max, "offset >= max for max={max}");
             }
         }
+    }
+
+    #[test]
+    fn device_appears_free_accepts_free_pid_values() {
+        for contents in ["-1", "0", "", " 0\n"] {
+            let dir = tempfile::tempdir().expect("tempdir");
+            let pid_path = dir.path().join("pid");
+            std::fs::write(&pid_path, contents).expect("write pid");
+
+            assert!(
+                device_pid_appears_free(&pid_path, || {
+                    panic!("device path should not be checked when pid is readable")
+                }),
+                "pid contents {contents:?} should be free"
+            );
+        }
+    }
+
+    #[test]
+    fn device_appears_free_rejects_busy_pid_value() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let pid_path = dir.path().join("pid");
+        std::fs::write(&pid_path, "1234\n").expect("write pid");
+
+        assert!(!device_pid_appears_free(&pid_path, || {
+            panic!("device path should not be checked when pid is readable")
+        }));
+    }
+
+    #[test]
+    fn device_appears_free_falls_back_to_device_path_when_pid_is_missing() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let pid_path = dir.path().join("pid");
+        let device_path = dir.path().join("nbd0");
+        std::fs::write(&device_path, b"").expect("create device placeholder");
+
+        assert!(device_pid_appears_free(&pid_path, || device_path.exists()));
+    }
+
+    #[test]
+    fn device_appears_free_rejects_missing_pid_without_device_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let pid_path = dir.path().join("pid");
+        let device_path = dir.path().join("nbd0");
+
+        assert!(!device_pid_appears_free(&pid_path, || device_path.exists()));
+    }
+
+    #[test]
+    fn device_appears_free_rejects_unreadable_pid_path() {
+        let dir = tempfile::tempdir().expect("tempdir");
+        let pid_path = dir.path().join("pid");
+        std::fs::create_dir(&pid_path).expect("create pid directory");
+
+        assert!(!device_pid_appears_free(&pid_path, || {
+            panic!("device path should not be checked when pid read fails")
+        }));
     }
 
     #[test]

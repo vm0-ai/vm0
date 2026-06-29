@@ -2,7 +2,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
 import { now } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import {
@@ -10,11 +10,12 @@ import {
   mockClaudeCodeTokenEndpoint,
   mockCodexDeviceAuthProvider,
 } from "./helpers/api-bdd-auth-device";
-import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
+import { createAuthDeviceSupportApi } from "./helpers/api-bdd-auth-device-support";
 
 const context = testContext();
 const bdd = createBddApi(context);
 const authDevice = createAuthDeviceApiActions(context);
+const support = createAuthDeviceSupportApi(context);
 
 interface OAuthErrorBody {
   readonly error: string;
@@ -531,7 +532,6 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
 
   it("completes org-scope Codex device auth and exposes the imported provider", async () => {
     const calls = mockCodexDeviceAuthProvider({ tokenScope: "org" });
-    const miscApi = createMiscRoutesApi(context);
     const admin = bdd.user();
 
     const started = await authDevice.requestCodexStart(admin, "org", [200]);
@@ -582,7 +582,7 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
     );
     expect(oauthTokenBody?.get("code_verifier")).toBe("code_verifier_test");
 
-    const providers = await miscApi.listModelProviders(admin);
+    const providers = await support.listModelProviders(admin);
     expect(
       providers.body.modelProviders.find((provider) => {
         return provider.type === "codex-oauth-token";
@@ -605,7 +605,6 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
 
   it("completes personal-scope Codex device auth for an org member", async () => {
     const calls = mockCodexDeviceAuthProvider({ tokenScope: "personal" });
-    const miscApi = createMiscRoutesApi(context);
     const member = bdd.user({ orgRole: "org:member" });
 
     const started = await authDevice.requestCodexStart(
@@ -633,7 +632,7 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
     });
     expect(calls.deviceToken).toHaveLength(1);
 
-    const personalProviders = await miscApi.listPersonalModelProviders(
+    const personalProviders = await support.listPersonalModelProviders(
       member,
       [200],
     );
@@ -646,7 +645,7 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
       }),
     ).toBeTruthy();
 
-    await miscApi.deletePersonalModelProvider(
+    await support.deletePersonalModelProvider(
       member,
       "codex-oauth-token",
       [204],
@@ -655,7 +654,6 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
 
   it("completes org-scope Claude Code device auth with a pasted code fragment", async () => {
     const calls = mockClaudeCodeTokenEndpoint();
-    const miscApi = createMiscRoutesApi(context);
     const admin = bdd.user();
 
     const started = await authDevice.requestClaudeCodeStart(
@@ -698,7 +696,7 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
       code_verifier: expect.any(String),
     });
 
-    const providers = await miscApi.listModelProviders(admin);
+    const providers = await support.listModelProviders(admin);
     expect(
       providers.body.modelProviders.some((provider) => {
         return provider.type === "claude-code-oauth-token";
@@ -721,7 +719,6 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
 
   it("completes personal-scope Claude Code device auth from a full callback URL", async () => {
     mockClaudeCodeTokenEndpoint();
-    const miscApi = createMiscRoutesApi(context);
     const member = bdd.user({ orgRole: "org:member" });
 
     const started = await authDevice.requestClaudeCodeStart(
@@ -750,7 +747,7 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
       provider: { type: "claude-code-oauth-token" },
     });
 
-    const personalProviders = await miscApi.listPersonalModelProviders(
+    const personalProviders = await support.listPersonalModelProviders(
       member,
       [200],
     );
@@ -763,7 +760,7 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
       }),
     ).toBeTruthy();
 
-    await miscApi.deletePersonalModelProvider(
+    await support.deletePersonalModelProvider(
       member,
       "claude-code-oauth-token",
       [204],

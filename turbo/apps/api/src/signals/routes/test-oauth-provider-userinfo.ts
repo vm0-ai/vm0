@@ -2,7 +2,7 @@ import { computed } from "ccstate";
 import { testOAuthProviderUserinfoContract } from "@vm0/api-contracts/contracts/test-oauth-provider-userinfo";
 
 import { authorization$, request$ } from "../context/hono";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import {
   bearerTokenFrom,
   isTestEndpointAllowed,

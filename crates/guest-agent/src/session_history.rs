@@ -34,11 +34,11 @@ use crate::error::AgentError;
 use crate::nofollow_fs::Dir;
 use guest_contracts::codex_thread_id::codex_thread_id_filename_key;
 use std::ffi::OsStr;
-use std::io;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 #[cfg(target_os = "linux")]
-use std::{fs::File, io::Read};
+use std::fs::File;
 
 const CODEX_MARKER_PREFIX: &str = "CODEX_SEARCH:";
 // Checkpoint must resolve Codex history from user-controlled guest-home state.
@@ -79,13 +79,30 @@ pub fn read_session_history(path_file: &str) -> Result<Vec<u8>, AgentError> {
 /// The payload is either a literal path (Claude) or a
 /// codex marker.
 pub(crate) fn read_session_history_from_payload(payload: &str) -> Result<Vec<u8>, AgentError> {
+    read_session_history_from_payload_impl(payload, None)
+}
+
+/// Read session history bytes from an already-resolved marker payload, bounded
+/// to `max_bytes + 1` decoded bytes so callers can detect oversized history
+/// without loading the full file.
+pub(crate) fn read_session_history_from_payload_bounded(
+    payload: &str,
+    max_bytes: u64,
+) -> Result<Vec<u8>, AgentError> {
+    read_session_history_from_payload_impl(payload, Some(max_bytes))
+}
+
+fn read_session_history_from_payload_impl(
+    payload: &str,
+    max_bytes: Option<u64>,
+) -> Result<Vec<u8>, AgentError> {
     if is_codex_marker(payload) {
         let Some((sessions_dir, thread_id)) = decode_marker(payload) else {
             return Err(AgentError::Checkpoint(
                 "Invalid Codex session history marker".to_string(),
             ));
         };
-        return read_codex_session_history(&sessions_dir, thread_id)?.ok_or_else(|| {
+        return read_codex_session_history(&sessions_dir, thread_id, max_bytes)?.ok_or_else(|| {
             AgentError::Checkpoint(format!(
                 "Codex session file not found under {}",
                 sessions_dir.display()
@@ -94,7 +111,7 @@ pub(crate) fn read_session_history_from_payload(payload: &str) -> Result<Vec<u8>
     }
 
     let session_path = PathBuf::from(payload);
-    read_history_bytes(&session_path)
+    read_history_bytes(&session_path, max_bytes)
 }
 
 /// Parse a Codex marker into `(dir, thread_id)`. Markers are length-prefixed so
@@ -125,6 +142,7 @@ fn decode_len_prefixed_marker(rest: &str) -> Option<(PathBuf, &str)> {
 fn read_codex_session_history(
     sessions_dir: &Path,
     thread_id: &str,
+    max_bytes: Option<u64>,
 ) -> Result<Option<Vec<u8>>, AgentError> {
     let Some(id_norm) = codex_thread_id_filename_key(thread_id) else {
         return Ok(None);
@@ -132,7 +150,7 @@ fn read_codex_session_history(
     if !codex_sessions_parent_is_usable(sessions_dir)? {
         return Ok(None);
     }
-    read_codex_session_history_impl(sessions_dir, &id_norm)
+    read_codex_session_history_impl(sessions_dir, &id_norm, max_bytes)
 }
 
 fn codex_sessions_parent_is_usable(sessions_dir: &Path) -> Result<bool, AgentError> {
@@ -152,6 +170,7 @@ fn codex_sessions_parent_is_usable(sessions_dir: &Path) -> Result<bool, AgentErr
 fn read_codex_session_history_impl(
     sessions_dir: &Path,
     id_norm: &str,
+    max_bytes: Option<u64>,
 ) -> Result<Option<Vec<u8>>, AgentError> {
     let Some(root) = CodexSessionDir::open_root(sessions_dir)? else {
         return Ok(None);
@@ -166,7 +185,7 @@ fn read_codex_session_history_impl(
         &mut found,
         &mut budget,
     )?;
-    found.map(ResolvedCodexSession::read).transpose()
+    found.map(|session| session.read(max_bytes)).transpose()
 }
 
 fn scan_codex_session_dirs(
@@ -389,15 +408,15 @@ struct ResolvedCodexSession {
 }
 
 impl ResolvedCodexSession {
-    fn read(self) -> Result<Vec<u8>, AgentError> {
+    fn read(self, max_bytes: Option<u64>) -> Result<Vec<u8>, AgentError> {
         #[cfg(target_os = "linux")]
         {
-            read_history_bytes_from_file(&self.path, self.file)
+            read_history_bytes_from_file(&self.path, self.file, max_bytes)
         }
 
         #[cfg(not(target_os = "linux"))]
         {
-            read_history_bytes(&self.path)
+            read_history_bytes(&self.path, max_bytes)
         }
     }
 }
@@ -487,34 +506,85 @@ fn is_filesystem_loop_error(_: &io::Error) -> bool {
 }
 
 /// Read the bytes at `path`, decompressing legacy zstd files if the extension is `.zst`.
-fn read_history_bytes(path: &Path) -> Result<Vec<u8>, AgentError> {
-    let raw = std::fs::read(path).map_err(|e| read_history_error(path, e))?;
-    decode_history_bytes(path, raw)
+fn read_history_bytes(path: &Path, max_bytes: Option<u64>) -> Result<Vec<u8>, AgentError> {
+    let file = std::fs::File::open(path).map_err(|e| read_history_error(path, e))?;
+    read_history_bytes_from_reader(path, file, max_bytes)
 }
 
 #[cfg(target_os = "linux")]
-fn read_history_bytes_from_file(path: &Path, mut file: File) -> Result<Vec<u8>, AgentError> {
-    let mut raw = Vec::new();
-    file.read_to_end(&mut raw)
-        .map_err(|e| read_history_error(path, e))?;
-    decode_history_bytes(path, raw)
+fn read_history_bytes_from_file(
+    path: &Path,
+    file: File,
+    max_bytes: Option<u64>,
+) -> Result<Vec<u8>, AgentError> {
+    read_history_bytes_from_reader(path, file, max_bytes)
 }
 
 fn read_history_error(_path: &Path, source: io::Error) -> AgentError {
     AgentError::Checkpoint(format!("Failed to read session history: {source}"))
 }
 
-fn decode_history_bytes(path: &Path, raw: Vec<u8>) -> Result<Vec<u8>, AgentError> {
+fn read_history_bytes_from_reader(
+    path: &Path,
+    reader: impl Read,
+    max_bytes: Option<u64>,
+) -> Result<Vec<u8>, AgentError> {
     if path
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("zst"))
     {
-        zstd::decode_all(raw.as_slice()).map_err(|e| {
+        let decoder = zstd::stream::read::Decoder::new(reader).map_err(|e| {
             AgentError::Checkpoint(format!("Failed to decompress zstd session history: {e}"))
-        })
-    } else {
-        Ok(raw)
+        })?;
+        return read_zstd_history_reader(decoder, max_bytes);
     }
+    read_history_reader(path, reader, max_bytes)
+}
+
+fn read_zstd_history_reader(
+    mut reader: impl Read,
+    max_bytes: Option<u64>,
+) -> Result<Vec<u8>, AgentError> {
+    let mut bytes = Vec::new();
+    match max_bytes {
+        Some(max_bytes) => {
+            let limit = max_bytes.checked_add(1).ok_or_else(|| {
+                AgentError::Checkpoint("Session history read limit overflowed".to_string())
+            })?;
+            reader.by_ref().take(limit).read_to_end(&mut bytes)
+        }
+        None => reader.read_to_end(&mut bytes),
+    }
+    .map_err(|e| {
+        AgentError::Checkpoint(format!("Failed to decompress zstd session history: {e}"))
+    })?;
+    Ok(bytes)
+}
+
+fn read_history_reader(
+    path: &Path,
+    mut reader: impl Read,
+    max_bytes: Option<u64>,
+) -> Result<Vec<u8>, AgentError> {
+    let mut bytes = Vec::new();
+    match max_bytes {
+        Some(max_bytes) => {
+            let limit = max_bytes.checked_add(1).ok_or_else(|| {
+                AgentError::Checkpoint("Session history read limit overflowed".to_string())
+            })?;
+            reader
+                .by_ref()
+                .take(limit)
+                .read_to_end(&mut bytes)
+                .map_err(|e| read_history_error(path, e))?;
+        }
+        None => {
+            reader
+                .read_to_end(&mut bytes)
+                .map_err(|e| read_history_error(path, e))?;
+        }
+    }
+    Ok(bytes)
 }
 
 // Note: integration coverage for the public `read_session_history` entry

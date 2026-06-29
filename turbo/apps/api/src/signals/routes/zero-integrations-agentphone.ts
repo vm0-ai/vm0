@@ -16,7 +16,7 @@ import { request$ } from "../context/hono";
 import { waitUntil } from "../context/wait-until";
 import { db$, writeDb$ } from "../external/db";
 import { sendAgentPhoneMessage } from "../external/agentphone-client";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import {
   buildAgentPhoneConnectUrl,
   describeAgentPhoneHandleShape,

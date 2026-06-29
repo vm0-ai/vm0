@@ -119,7 +119,7 @@ interface UserPermissionGrantsByAgentParams {
   agentId: string;
 }
 
-function createUserPermissionGrantsByAgentFactory(): (
+function createUserPermissionGrantsFactory(): (
   params: UserPermissionGrantsByAgentParams,
 ) => Computed<Promise<readonly UserPermissionGrantResponse[]>> {
   const cache = new Map<
@@ -136,10 +136,7 @@ function createUserPermissionGrantsByAgentFactory(): (
       get(internalUserPermissionGrantsReload$);
       const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
       const result = await retryTransientLoad(() => {
-        return accept(
-          client.list({ query: { agentId: params.agentId } }),
-          [200],
-        );
+        return accept(client.list({ query: params }), [200]);
       });
       return result.body;
     });
@@ -148,8 +145,7 @@ function createUserPermissionGrantsByAgentFactory(): (
   };
 }
 
-export const userPermissionGrantsByAgent =
-  createUserPermissionGrantsByAgentFactory();
+export const userPermissionGrantsByAgent = createUserPermissionGrantsFactory();
 
 export const permissionAllowUserPermissionGrants$ = computed(async (get) => {
   const agentId = get(permissionAllowAgentId$);
@@ -163,13 +159,16 @@ export const applyUserPermissionGrants$ = command(
   async (
     { get, set },
     params: {
-      agentId: string;
+      agentId?: string;
       connectorRef: string;
       mode: UserPermissionGrantApplyMode;
       grants: readonly ApplyUserPermissionGrant[];
     },
     signal: AbortSignal,
   ): Promise<readonly UserPermissionGrantResponse[]> => {
+    if (!params.agentId) {
+      throw new Error("Permission grant scope is required");
+    }
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
     const result = await accept(
       client.apply({
@@ -199,7 +198,7 @@ export const applyUserPermissionGrant$ = command(
   async (
     { set },
     params: {
-      agentId: string;
+      agentId?: string;
       connectorRef: string;
       permission: string;
       action: UserPermissionGrantAction;

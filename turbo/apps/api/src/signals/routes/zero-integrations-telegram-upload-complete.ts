@@ -21,7 +21,7 @@ import {
 } from "../external/telegram-official";
 import { recordTelegramUploadedFile$ } from "../services/run-uploaded-files.service";
 import { zeroTelegramInstallation } from "../services/zero-telegram-data.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const botNotFound = Object.freeze({
   status: 404 as const,

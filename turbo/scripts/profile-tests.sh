@@ -4,7 +4,7 @@
 # Usage:
 #   ./scripts/profile-tests.sh [workspace] [--top N]
 #
-# workspace: web | cli | platform | core | firewalls-generator | all  (default: all)
+# workspace: cli | platform | core | firewalls-generator | all  (default: all)
 # --top N  : show only N slowest files in the final summary (default: 30)
 #
 # Output:
@@ -13,8 +13,8 @@
 #   - Results saved to turbo/test-profile-results.tsv
 #
 # Example:
-#   ./scripts/profile-tests.sh web
-#   ./scripts/profile-tests.sh web --top 10
+#   ./scripts/profile-tests.sh cli
+#   ./scripts/profile-tests.sh cli --top 10
 
 set -euo pipefail
 
@@ -45,8 +45,7 @@ RST='\033[0m'
 # ─── Helpers ─────────────────────────────────────────────────────────────────
 get_filter() {
   local file="$1"
-  if   [[ "$file" == */apps/web/* ]];               then echo "web"
-  elif [[ "$file" == */apps/cli/* ]];               then echo "@vm0/cli"
+  if   [[ "$file" == */apps/cli/* ]];               then echo "@vm0/cli"
   elif [[ "$file" == */apps/platform/* ]];          then echo "@vm0/app"
   elif [[ "$file" == */packages/core/* ]];          then echo "@vm0/core"
   elif [[ "$file" == */packages/firewalls-generator/* ]]; then echo "@vm0/firewalls-generator"
@@ -56,13 +55,11 @@ get_filter() {
 
 list_files() {
   case "$1" in
-    web)      find "$TURBO_DIR/apps/web/src"           -name "*.test.ts" -o -name "*.test.tsx" | sort ;;
     cli)      find "$TURBO_DIR/apps/cli/src"           -name "*.test.ts" | sort ;;
     platform) find "$TURBO_DIR/apps/platform/src"     -name "*.test.ts" -o -name "*.test.tsx" | sort ;;
     core)     find "$TURBO_DIR/packages/core"          -name "*.test.ts" | sort ;;
     firewalls-generator) find "$TURBO_DIR/packages/firewalls-generator" -name "*.test.ts" | sort ;;
     all)
-      list_files web
       list_files cli
       list_files platform
       list_files core
@@ -70,7 +67,7 @@ list_files() {
       ;;
     *)
       echo "Unknown workspace: $1" >&2
-      echo "Valid: web | cli | platform | core | firewalls-generator | all" >&2
+      echo "Valid: cli | platform | core | firewalls-generator | all" >&2
       exit 1
       ;;
   esac

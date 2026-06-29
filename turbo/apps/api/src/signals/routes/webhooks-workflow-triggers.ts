@@ -6,7 +6,7 @@ import { command } from "ccstate";
 import { request$ } from "../context/hono";
 import { pathParamsOf } from "../context/request";
 import { now } from "../external/time";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import {
   dispatchWorkflowWebhook$,
   WORKFLOW_WEBHOOK_BODY_LIMIT_BYTES,

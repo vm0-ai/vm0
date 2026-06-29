@@ -30,11 +30,8 @@ import {
   type ZeroChatAttachment,
 } from "../zero-page/chat-draft.ts";
 import { clearAgentDraftById$ } from "../zero-page/agent-draft.ts";
-import {
-  createChatThreadSignals,
-  ensureDraft$,
-  type ChatThreadSignals,
-} from "./create-chat-thread.ts";
+import { createChatThreadSignals, ensureDraft$ } from "./create-chat-thread.ts";
+import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import { createLocalChatThreadDataSource } from "./local-chat-thread-data-source.ts";
 import type { AppendQueuedMessageArgs } from "./chat-thread-data-source.ts";
 import { createPendingChatThread } from "./pending-chat-thread.ts";

@@ -6,8 +6,8 @@ use crate::error::{RunnerError, RunnerResult};
 
 use super::entry::is_cache_key_name;
 use super::fs::{
-    allocated_bytes, cache_entry_dir_is_dir, directory_tree_allocated_bytes,
-    entry_file_type_is_dir, is_workspace_tmp_path_name,
+    allocated_bytes, cache_entry_dir_is_dir, entry_file_type_is_dir, is_workspace_tmp_path_name,
+    workspace_cache_existing_path_allocated_bytes, workspace_cache_path_allocated_bytes,
 };
 use super::metadata::WorkspaceCacheMetadata;
 use super::types::{
@@ -139,7 +139,9 @@ impl SessionWorkspaceCache {
             Err(e) => (None, Some(e.to_string())),
         };
         let current_allocated_bytes = match current_metadata.as_ref() {
-            Some(metadata) if metadata.is_dir() => directory_tree_allocated_bytes(&current).await,
+            Some(metadata) if metadata.is_dir() => {
+                workspace_cache_path_allocated_bytes(&current).await
+            }
             Some(metadata) => allocated_bytes(metadata),
             None => 0,
         };
@@ -256,15 +258,8 @@ pub(super) async fn inspect_temporary_paths(entry_dir: &Path) -> RunnerResult<Te
             continue;
         }
         let path = file.path();
-        let metadata = match fs::symlink_metadata(&path).await {
-            Ok(metadata) => metadata,
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(e) => return Err(e.into()),
-        };
-        let allocated = if metadata.is_dir() {
-            directory_tree_allocated_bytes(&path).await
-        } else {
-            allocated_bytes(&metadata)
+        let Some(allocated) = workspace_cache_existing_path_allocated_bytes(&path).await? else {
+            continue;
         };
         stats.path_count += 1;
         stats.allocated_bytes = stats.allocated_bytes.saturating_add(allocated);

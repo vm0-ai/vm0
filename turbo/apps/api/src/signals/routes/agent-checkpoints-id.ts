@@ -6,7 +6,7 @@ import { authRoute } from "../auth/auth-route";
 import { pathParamsOf } from "../context/request";
 import { notFound } from "../../lib/error";
 import { agentCheckpointById } from "../services/agent-checkpoints.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const checkpointNotFound = notFound("Checkpoint not found");
 

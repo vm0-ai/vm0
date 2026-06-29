@@ -59,7 +59,7 @@ import {
   type ZoomableImageControls,
   zoomableArtifactImageKey,
 } from "./zero-zoomable-image-canvas.tsx";
-import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
 import type { ChatThreadArtifactFile } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   ArtifactActionSeparator,
@@ -684,9 +684,7 @@ function ArtifactSidebarActions({
 }) {
   const features = useLastResolved(featureSwitch$);
   const showPresentationEdit =
-    artifactKind === "presentation-html" &&
-    Boolean(features?.[FeatureSwitchKey.PresentationHtmlPptxDownload]) &&
-    onEditPresentation !== undefined;
+    artifactKind === "presentation-html" && onEditPresentation !== undefined;
   const showHtmlControls =
     kind === "html" &&
     artifactKind === "hosted-site" &&

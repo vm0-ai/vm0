@@ -11,7 +11,7 @@ import { writeDb$, type Db } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { nowDate } from "../external/time";
 import { notFound } from "../../lib/error";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 async function threadExists(params: {
   readonly db: Db;

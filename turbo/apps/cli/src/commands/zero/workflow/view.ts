@@ -2,6 +2,7 @@ import { Command } from "commander";
 import chalk from "chalk";
 import { getWorkflow } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
+import { formatWorkflowAgentName } from "./format";
 
 export const viewCommand = new Command()
   .name("view")
@@ -23,9 +24,8 @@ Examples:
       console.log(`ID:           ${workflow.id}`);
       console.log(`Name:         ${workflow.name}`);
       console.log(`Visibility:   ${workflow.visibility}`);
-      console.log(
-        `Agent:        ${workflow.agentName ?? workflow.agentId} (${workflow.agentId})`,
-      );
+      console.log(`Agent Name:   ${formatWorkflowAgentName(workflow)}`);
+      console.log(`Agent ID:     ${workflow.agentId}`);
       if (workflow.displayName)
         console.log(`Display Name: ${workflow.displayName}`);
       if (workflow.description)

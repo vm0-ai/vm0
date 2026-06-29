@@ -4,6 +4,13 @@ import {
   automationsByRefContract,
   automationsMainContract,
 } from "@vm0/api-contracts/contracts/automations";
+import {
+  zeroWorkflowTriggersContract,
+  type ZeroWorkflowDetailResponse,
+  type ZeroWorkflowSummary,
+  type ZeroWorkflowTriggerSummary,
+} from "@vm0/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -15,12 +22,28 @@ import {
 import { mockNow } from "../../../__tests__/time.ts";
 import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations.ts";
 import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
+import { pathname } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
 const zeroAgentId = "c0000000-0000-4000-a000-000000000001";
 const researchAgentId = "a0000000-0000-4000-a000-000000000301";
+const workflowId = "d0000000-0000-4000-a000-000000000301";
+const supportWorkflowId = "d0000000-0000-4000-a000-000000000302";
+
+type ScheduleWorkflowTrigger = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "schedule" }
+>;
+type GmailWorkflowTrigger = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "event"; eventType: "gmail-new-message" }
+>;
+type WebhookWorkflowTrigger = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "event"; eventType: "webhook-received" }
+>;
 
 function createAgent(id: string, displayName: string): TeamComposeItem {
   return {
@@ -34,6 +57,146 @@ function createAgent(id: string, displayName: string): TeamComposeItem {
     headVersionId: "version_1",
     updatedAt: "2026-03-10T00:00:00Z",
   };
+}
+
+function workflowSummary(
+  workflow: ZeroWorkflowDetailResponse,
+): ZeroWorkflowSummary {
+  return {
+    id: workflow.id,
+    agentId: workflow.agentId,
+    agentName: workflow.agentName,
+    agentDisplayName: workflow.agentDisplayName,
+    name: workflow.name,
+    displayName: workflow.displayName,
+    description: workflow.description,
+    visibility: workflow.visibility,
+    requestToPublish: workflow.requestToPublish,
+    ownerUserId: workflow.ownerUserId,
+    ownerUserDisplayName: "Test User",
+    ownerUserImageUrl: null,
+    canManage: workflow.canManage,
+  };
+}
+
+function intervalWorkflowTrigger(): ScheduleWorkflowTrigger {
+  return {
+    id: "e0000000-0000-4000-a000-000000000301",
+    kind: "schedule",
+    schedule: { type: "loop", intervalSeconds: 900 },
+    scheduleSummary: "Every 15 minutes",
+    ownerUserId: "test-user-123",
+    enabled: true,
+    chatThreadId: "thread-interval",
+    nextRunAt: "2026-06-28T10:15:00.000Z",
+    lastRunAt: "2026-06-28T10:00:00.000Z",
+  };
+}
+
+function gmailWorkflowTrigger(): GmailWorkflowTrigger {
+  return {
+    id: "e0000000-0000-4000-a000-000000000302",
+    kind: "event",
+    eventType: "gmail-new-message",
+    eventConfig: {
+      provider: "gmail",
+      event: "new_message",
+      match: {
+        from: { contains: "@acme.com" },
+      },
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: "test-user-123",
+    enabled: true,
+    chatThreadId: "thread-gmail",
+    nextRunAt: null,
+    lastRunAt: null,
+  };
+}
+
+function webhookWorkflowTrigger(): WebhookWorkflowTrigger {
+  return {
+    id: "e0000000-0000-4000-a000-000000000303",
+    kind: "event",
+    eventType: "webhook-received",
+    eventConfig: {
+      provider: "webhook",
+      event: "received",
+      auth: { mode: "hmac-sha256" },
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: "test-user-123",
+    enabled: false,
+    chatThreadId: "thread-webhook",
+    nextRunAt: null,
+    lastRunAt: "2026-06-27T10:00:00.000Z",
+    webhookUrl: "https://api.vm0.test/api/webhooks/workflow-triggers/whk_test",
+    secretLastFour: "abcd",
+    lastReceivedAt: "2026-06-27T10:00:00.000Z",
+  };
+}
+
+function workflowDetail(
+  overrides?: Partial<ZeroWorkflowDetailResponse>,
+): ZeroWorkflowDetailResponse {
+  return {
+    id: workflowId,
+    agentId: zeroAgentId,
+    agentName: "zero",
+    agentDisplayName: "Zero",
+    name: "ops-brief",
+    displayName: "Ops brief",
+    description: "Keeps the team updated",
+    visibility: "public",
+    requestToPublish: false,
+    ownerUserId: "test-user-123",
+    canManage: true,
+    createdByUserId: "test-user-123",
+    updatedByUserId: "test-user-123",
+    createdAt: "2026-06-28T00:00:00.000Z",
+    updatedAt: "2026-06-28T00:00:00.000Z",
+    instruction: "Send the operations brief.",
+    files: [],
+    fileContents: [],
+    triggers: [intervalWorkflowTrigger(), gmailWorkflowTrigger()],
+    ...overrides,
+  };
+}
+
+function supportWorkflowDetail(): ZeroWorkflowDetailResponse {
+  return workflowDetail({
+    id: supportWorkflowId,
+    agentId: researchAgentId,
+    agentName: "research",
+    agentDisplayName: "Research Agent",
+    name: "support-intake",
+    displayName: "Support intake",
+    triggers: [webhookWorkflowTrigger()],
+  });
+}
+
+function mockWorkflowTriggerStory(): void {
+  const workflows = [workflowDetail(), supportWorkflowDetail()];
+  context.mocks.data.team([
+    createAgent(zeroAgentId, "Zero"),
+    createAgent(researchAgentId, "Research Agent"),
+  ]);
+  context.mocks.data.userPreferences({ timezone: "UTC" });
+  context.mocks.api(
+    zeroWorkflowTriggersContract.listWorkspace,
+    ({ respond }) => {
+      return respond(
+        200,
+        workflows.flatMap((workflow) => {
+          return workflow.triggers.map((trigger) => {
+            return { workflow: workflowSummary(workflow), trigger };
+          });
+        }),
+      );
+    },
+  );
 }
 
 function buttonByText(
@@ -229,6 +392,111 @@ async function openCreateDialog(): Promise<HTMLElement> {
 }
 
 describe("zero automations page", () => {
+  it("shows workflow triggers when the workflow-trigger switch is enabled", async () => {
+    mockWorkflowTriggerStory();
+
+    detachedSetupPage({
+      context,
+      path: "/automations",
+      featureSwitches: {
+        [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Automations" }),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByText("Workflow triggers running across your workspace."),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Calendar")).not.toBeInTheDocument();
+    expect(screen.queryByText("List")).not.toBeInTheDocument();
+    expect(screen.getAllByText("Ops brief")[0]).toBeInTheDocument();
+    expect(screen.getAllByText("Zero")[0]).toBeInTheDocument();
+    expect(screen.getByText("Every 15 minutes")).toBeInTheDocument();
+    expect(screen.getByText("Gmail new message")).toBeInTheDocument();
+    expect(screen.getByText('from contains "@acme.com"')).toBeInTheDocument();
+    expect(screen.getByText("Support intake")).toBeInTheDocument();
+    expect(screen.getByText("Webhook trigger")).toBeInTheDocument();
+  });
+
+  it.each([
+    [
+      "Fixed interval",
+      "I'd like to set up an interval workflow trigger that runs every few minutes or hours. Help me define the workflow.",
+    ],
+    [
+      "Fixed schedule",
+      "I'd like to set up a scheduled workflow trigger that runs on a daily, weekly, monthly, or custom cron schedule. Help me define the workflow.",
+    ],
+    [
+      "One-time run",
+      "I'd like to set up a one-time workflow trigger that runs at a specific date and time. Help me define the workflow.",
+    ],
+    [
+      "Web trigger",
+      "I'd like to set up a webhook workflow trigger that runs when an inbound webhook is received. Help me define the workflow.",
+    ],
+    [
+      "New email",
+      "I'd like to set up an email workflow trigger that runs when a Gmail message matches my criteria. Help me define the workflow.",
+    ],
+    [
+      "Email label",
+      "I'd like to set up an email-label workflow trigger that runs when a Gmail label is applied. Help me define the workflow.",
+    ],
+  ])(
+    "starts workflow-trigger creation with the %s prompt",
+    async (triggerName, prompt) => {
+      mockWorkflowTriggerStory();
+
+      detachedSetupPage({
+        context,
+        path: "/automations",
+        featureSwitches: {
+          [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
+        },
+      });
+
+      await waitFor(() => {
+        expect(
+          screen.getByRole("heading", { name: "Automations" }),
+        ).toBeInTheDocument();
+      });
+
+      click(buttonByText("Add automation"));
+      const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).queryByText("1 Agent")).not.toBeInTheDocument();
+      expect(within(dialog).queryByText("2 Trigger")).not.toBeInTheDocument();
+      expect(within(dialog).getByText("Zero")).toBeInTheDocument();
+      expect(
+        within(dialog).queryByLabelText("Pin to sidebar"),
+      ).not.toBeInTheDocument();
+
+      click(buttonByText("Zero", dialog));
+      await waitFor(() => {
+        expect(within(dialog).queryByText("1 Agent")).not.toBeInTheDocument();
+        expect(within(dialog).queryByText("2 Trigger")).not.toBeInTheDocument();
+        expect(
+          within(dialog).getByText("What do you want me to do?"),
+        ).toBeInTheDocument();
+        expect(within(dialog).getByText(triggerName)).toBeInTheDocument();
+      });
+
+      click(within(dialog).getByText(triggerName));
+
+      await waitFor(() => {
+        expect(pathname()).toBe(`/agents/${zeroAgentId}/chat`);
+      });
+      await expect(
+        screen.findByDisplayValue(prompt),
+      ).resolves.toBeInTheDocument();
+    },
+  );
+
   it("shows scheduled work in the calendar", async () => {
     mockAutomationsPageStory();
 
