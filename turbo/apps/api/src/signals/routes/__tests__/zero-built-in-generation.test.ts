@@ -1,65 +1,111 @@
 import { randomUUID } from "node:crypto";
 
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import { HttpResponse, http } from "msw";
 
-import { createAppWithRoutes } from "../../../app-factory-core";
-import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
 import { testContext } from "../../../__tests__/test-context";
+import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
-import { writeDb$ } from "../../external/db";
-import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { server } from "../../../mocks/server";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { createBillingMediaApi } from "./helpers/api-bdd-billing-media";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
 const context = testContext();
-const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const bdd = createBddApi(context);
+const billingApi = createBillingMediaApi(context);
+const webhooks = createWebhookCallbackApi(context);
 
-interface BuiltInGenerationFixture {
-  readonly orgId: string;
-  readonly userId: string;
+type BuiltInGenerationActor = ApiTestUser & { readonly orgId: string };
+type ApiUuid = `${string}-${string}-${string}-${string}-${string}`;
+
+function apiUuid(value: string): ApiUuid {
+  if (
+    !/^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+  ) {
+    throw new Error(`Expected API UUID, received ${value}`);
+  }
+  return value as ApiUuid;
 }
 
-function authHeaders() {
-  return { authorization: "Bearer clerk-session" };
+function createActor(): BuiltInGenerationActor {
+  const actor = bdd.user();
+  if (!actor.orgId) {
+    throw new Error("Expected built-in generation actor to have an org");
+  }
+  return { ...actor, orgId: actor.orgId };
 }
 
-function createBuiltInGenerationTestApp() {
-  return createAppWithRoutes({
-    signal: context.signal,
-    routes: zeroBuiltInGenerationRoutes,
+async function grantVisibleCredits(actor: BuiltInGenerationActor) {
+  webhooks.configureStripeWebhookSecret();
+  webhooks.acceptNextStripeWebhookEvent({
+    id: `evt_built_in_generation_${randomUUID()}`,
+    type: "checkout.session.completed",
+    data: {
+      object: {
+        id: `cs_built_in_generation_${randomUUID()}`,
+        invoice: null,
+        subscription: null,
+        customer: null,
+        metadata: {
+          purpose: "credit_purchase",
+          orgId: actor.orgId,
+          creditsAmount: "1000000",
+        },
+        payment_status: "paid",
+      },
+    },
   });
+  const response = await webhooks.requestStripeWebhook(
+    "{}",
+    { "stripe-signature": "valid-signature" },
+    [200],
+  );
+  expect(response.body).toBe("OK");
 }
 
-function seedBuiltInGenerationFixture(): Promise<BuiltInGenerationFixture> {
-  return Promise.resolve({
-    orgId: `org_${randomUUID()}`,
-    userId: `user_${randomUUID()}`,
+async function createRunningImageGeneration(
+  actor: BuiltInGenerationActor,
+  createdAt: Date,
+): Promise<ApiUuid> {
+  mockNow(createdAt);
+  mockEnv("FAL_KEY", "test-fal-key");
+  context.mocks.ably.createTokenRequest.mockResolvedValue({
+    keyName: "ably-key",
+    timestamp: 1_700_000_000,
+    capability: JSON.stringify({ [`user:${actor.userId}`]: ["subscribe"] }),
+    nonce: "nonce",
+    mac: "mac",
   });
-}
+  server.use(
+    http.post("https://queue.fal.run/*", () => {
+      return HttpResponse.json({
+        request_id: `fal_status_${randomUUID()}`,
+        status_url: "https://queue.fal.run/status/built-in-generation",
+        response_url: "https://queue.fal.run/response/built-in-generation",
+      });
+    }),
+  );
 
-async function deleteBuiltInGenerationFixture(
-  fixture: BuiltInGenerationFixture,
-): Promise<void> {
-  await store
-    .set(writeDb$)
-    .delete(builtInGenerationJobs)
-    .where(eq(builtInGenerationJobs.orgId, fixture.orgId));
+  const queued = await billingApi.requestImageIoGenerate(
+    actor,
+    { prompt: "a generated status thumbnail" },
+    [202],
+  );
+  if (queued.status !== 202) {
+    throw new Error(`Expected image generation to queue, got ${queued.status}`);
+  }
+  return apiUuid(queued.body.generationId);
 }
 
 describe("GET /api/zero/built-in-generations/:generationId", () => {
-  const track = createFixtureTracker<BuiltInGenerationFixture>(
-    deleteBuiltInGenerationFixture,
-  );
-
   beforeEach(() => {
     context.mocks.clerk.authenticateRequest.mockReset();
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: false,
     });
+    context.mocks.ably.createTokenRequest.mockReset();
     context.mocks.ably.publish.mockReset();
     context.mocks.ably.publish.mockResolvedValue(undefined);
   });
@@ -70,35 +116,24 @@ describe("GET /api/zero/built-in-generations/:generationId", () => {
 
   it("marks stale active jobs as failed when status is read", async () => {
     const currentTime = new Date("2026-05-15T12:00:00.000Z");
-    mockNow(currentTime);
-    const fixture = await track(seedBuiltInGenerationFixture());
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const generationId = randomUUID();
+    const actor = createActor();
+    await billingApi.setupOnboarding(actor, {
+      displayName: "BDD Built In Generation",
+    });
+    await grantVisibleCredits(actor);
     const staleAt = new Date(currentTime.getTime() - 16 * 60 * 1000);
+    const generationId = await createRunningImageGeneration(actor, staleAt);
+    mockNow(currentTime);
+    context.mocks.ably.publish.mockClear();
 
-    await store
-      .set(writeDb$)
-      .insert(builtInGenerationJobs)
-      .values({
-        id: generationId,
-        type: "image",
-        status: "running",
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        request: { prompt: "stale image" },
-        createdAt: staleAt,
-        updatedAt: staleAt,
-        startedAt: staleAt,
-      });
-
-    const app = createBuiltInGenerationTestApp();
-    const response = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
-      { headers: authHeaders() },
+    const response = await billingApi.readBuiltInGeneration(
+      actor,
+      generationId,
+      [200],
     );
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    expect(response.body).toMatchObject({
       generationId,
       type: "image",
       status: "failed",
@@ -120,35 +155,24 @@ describe("GET /api/zero/built-in-generations/:generationId", () => {
 
   it("leaves active jobs running before the timeout window", async () => {
     const currentTime = new Date("2026-05-15T12:00:00.000Z");
-    mockNow(currentTime);
-    const fixture = await track(seedBuiltInGenerationFixture());
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const generationId = randomUUID();
+    const actor = createActor();
+    await billingApi.setupOnboarding(actor, {
+      displayName: "BDD Built In Generation",
+    });
+    await grantVisibleCredits(actor);
     const freshAt = new Date(currentTime.getTime() - 14 * 60 * 1000);
+    const generationId = await createRunningImageGeneration(actor, freshAt);
+    mockNow(currentTime);
+    context.mocks.ably.publish.mockClear();
 
-    await store
-      .set(writeDb$)
-      .insert(builtInGenerationJobs)
-      .values({
-        id: generationId,
-        type: "image",
-        status: "running",
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        request: { prompt: "fresh image" },
-        createdAt: freshAt,
-        updatedAt: freshAt,
-        startedAt: freshAt,
-      });
-
-    const app = createBuiltInGenerationTestApp();
-    const response = await app.request(
-      `/api/zero/built-in-generations/${generationId}`,
-      { headers: authHeaders() },
+    const response = await billingApi.readBuiltInGeneration(
+      actor,
+      generationId,
+      [200],
     );
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    expect(response.body).toMatchObject({
       generationId,
       type: "image",
       status: "running",
