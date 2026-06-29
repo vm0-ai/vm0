@@ -30,6 +30,20 @@ import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
 export type WorkflowDetailTab = "triggers" | "instructions" | "info";
+export type WorkflowCopyDialogAgent = {
+  readonly id: string;
+  readonly displayName: string | null;
+  readonly visibility?: string | null;
+};
+export type WorkflowCopyDialogState =
+  | { readonly kind: "select" }
+  | { readonly kind: "copying"; readonly agent: WorkflowCopyDialogAgent }
+  | {
+      readonly kind: "copied";
+      readonly agent: WorkflowCopyDialogAgent;
+      readonly workflow: ZeroWorkflowSummary;
+      readonly sourceTriggersPaused: boolean;
+    };
 type WorkflowTriggerCreateDialog =
   | "interval"
   | "scheduled"
@@ -119,6 +133,9 @@ const internalWorkflowDetailActiveTab$ = state<WorkflowDetailTab>("triggers");
 
 const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
+const internalWorkflowCopyDialogState$ = state<WorkflowCopyDialogState>({
+  kind: "select",
+});
 const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
 const internalEditingWorkflowTriggerId$ = state<string | null>(null);
 const internalWorkflowMetadataPatch$ = state<WorkflowMetadataPatch | null>(
@@ -139,9 +156,22 @@ export const workflowActionDialog$ = computed((get) => {
   return get(internalWorkflowActionDialog$);
 });
 
+export const workflowCopyDialogState$ = computed((get) => {
+  return get(internalWorkflowCopyDialogState$);
+});
+
 export const setWorkflowActionDialog$ = command(
   ({ set }, dialog: WorkflowDetailActionDialog) => {
     set(internalWorkflowActionDialog$, dialog);
+    if (dialog === "copy") {
+      set(internalWorkflowCopyDialogState$, { kind: "select" });
+    }
+  },
+);
+
+export const setWorkflowCopyDialogState$ = command(
+  ({ set }, copyState: WorkflowCopyDialogState) => {
+    set(internalWorkflowCopyDialogState$, copyState);
   },
 );
 
@@ -184,6 +214,7 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalWorkflowDetailActiveTab$, "triggers");
   set(internalSelectedFilePath$, null);
   set(internalWorkflowActionDialog$, null);
+  set(internalWorkflowCopyDialogState$, { kind: "select" });
   set(internalWorkflowFileDraft$, null);
   set(internalEditingWorkflowTriggerId$, null);
   set(internalWorkflowMetadataPatch$, null);
@@ -769,6 +800,34 @@ export const setWorkflowTriggerEnabled$ = command(
     await accept(request, [200]);
     signal.throwIfAborted();
     set(reloadWorkflows$);
+  },
+);
+
+export const pauseWorkflowTriggers$ = command(
+  async (
+    { get, set },
+    triggerIds: readonly string[],
+    signal: AbortSignal,
+  ): Promise<{ readonly pausedCount: number }> => {
+    if (triggerIds.length === 0) {
+      return { pausedCount: 0 };
+    }
+
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await Promise.all(
+      triggerIds.map((triggerId) => {
+        return accept(
+          client.disable({
+            params: { id: triggerId },
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
+      }),
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+    return { pausedCount: triggerIds.length };
   },
 );
 
