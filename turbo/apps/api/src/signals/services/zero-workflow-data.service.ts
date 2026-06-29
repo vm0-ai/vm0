@@ -33,7 +33,7 @@ export interface WorkflowRow {
 }
 
 /**
- * The host agent's identity fields needed to evaluate workflow permissions.
+ * The host agent's identity fields needed to evaluate workflow management.
  */
 export interface WorkflowAgentInfo {
   readonly id: string;

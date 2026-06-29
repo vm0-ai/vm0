@@ -13,7 +13,6 @@ import {
   type ZeroWorkflowTriggerSummary,
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { zeroWorkflowUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
@@ -29,11 +28,7 @@ import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
-export type WorkflowDetailTab =
-  | "authorization"
-  | "triggers"
-  | "instructions"
-  | "info";
+export type WorkflowDetailTab = "triggers" | "instructions" | "info";
 type WorkflowTriggerCreateDialog =
   | "interval"
   | "scheduled"
@@ -54,7 +49,6 @@ function workflowDetailTabFromSearchParams(
 ): WorkflowDetailTab | null {
   const value = params.get(WORKFLOW_DETAIL_TAB_PARAM);
   switch (value) {
-    case "authorization":
     case "triggers":
     case "instructions":
     case "info": {
@@ -119,9 +113,7 @@ export const currentWorkflowId$ = computed((get): string | null => {
 });
 
 const internalWorkflowReload$ = state(0);
-const internalWorkflowConnectorAuthorizationsReload$ = state(0);
-const internalWorkflowDetailActiveTab$ =
-  state<WorkflowDetailTab>("authorization");
+const internalWorkflowDetailActiveTab$ = state<WorkflowDetailTab>("triggers");
 
 const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
@@ -187,7 +179,7 @@ export const resetWorkflowMetadataForm$ = command(({ set }) => {
 });
 
 export const resetWorkflowDetailUiState$ = command(({ set }) => {
-  set(internalWorkflowDetailActiveTab$, "authorization");
+  set(internalWorkflowDetailActiveTab$, "triggers");
   set(internalSelectedFilePath$, null);
   set(internalWorkflowActionDialog$, null);
   set(internalWorkflowFileDraft$, null);
@@ -214,12 +206,6 @@ export const setWorkflowDetailActiveTab$ = command(
     set(replaceSearchParams$, params);
   },
 );
-
-export const reloadWorkflowConnectorAuthorizations$ = command(({ set }) => {
-  set(internalWorkflowConnectorAuthorizationsReload$, (prev) => {
-    return prev + 1;
-  });
-});
 
 export const editingWorkflowTriggerId$ = computed((get) => {
   return get(internalEditingWorkflowTriggerId$);
@@ -407,52 +393,6 @@ function createWorkflowDetailFactory(): (
 }
 
 export const workflowDetail = createWorkflowDetailFactory();
-
-function createWorkflowAuthorizedConnectorsFactory(): (
-  workflowId: string,
-) => Computed<Promise<readonly string[]>> {
-  const cache = new Map<string, Computed<Promise<readonly string[]>>>();
-  return (workflowId: string) => {
-    const existing = cache.get(workflowId);
-    if (existing) {
-      return existing;
-    }
-    const atom$ = computed(async (get) => {
-      get(internalWorkflowConnectorAuthorizationsReload$);
-      const client = get(zeroClient$)(zeroWorkflowUserConnectorsContract);
-      const result = await accept(
-        client.get({ params: { id: workflowId } }),
-        [200],
-      );
-      return result.body.enabledTypes;
-    });
-    cache.set(workflowId, atom$);
-    return atom$;
-  };
-}
-
-export const workflowAuthorizedConnectors =
-  createWorkflowAuthorizedConnectorsFactory();
-
-export const setWorkflowAuthorizedConnectors$ = command(
-  async (
-    { get, set },
-    input: { readonly workflowId: string; readonly enabledTypes: string[] },
-    signal: AbortSignal,
-  ) => {
-    const client = get(zeroClient$)(zeroWorkflowUserConnectorsContract);
-    await accept(
-      client.update({
-        params: { id: input.workflowId },
-        body: { enabledTypes: input.enabledTypes },
-        fetchOptions: { signal },
-      }),
-      [200],
-    );
-    signal.throwIfAborted();
-    set(reloadWorkflowConnectorAuthorizations$);
-  },
-);
 
 export const updateWorkflow$ = command(
   async (

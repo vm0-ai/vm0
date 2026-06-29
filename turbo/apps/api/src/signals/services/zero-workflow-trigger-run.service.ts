@@ -123,7 +123,7 @@ function buildAppendSystemPrompt(workflowName: string): string {
     `You are running on a schedule trigger for the "${workflowName}" workflow.`,
     "The workflow's procedure is available as a skill - execute it now.",
     "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "You are running unattended: connector permissions come from this user's workflow authorization settings, not interactive grants, so blocked requests cannot be approved mid-run. If a request is denied by a permission, do not retry blindly - run `zero doctor permission-deny` to identify the permission, then tell the user which permission this automation needs and that it must be enabled in the workflow authorization settings (the `zero doctor permission-change` link points there).",
+    "Connector permissions use the same agent-run permission settings as chat runs. If a request is denied by a permission, do not retry blindly - run `zero doctor permission-deny` to identify the permission, then tell the user which permission this automation needs.",
   ].join("\n");
 }
 

@@ -6,11 +6,6 @@ import {
   zeroWorkflowsDetailContract,
   zeroWorkflowVisibilityContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { zeroWorkflowUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
-import {
-  connectorTypeSchema,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
 import { SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
@@ -22,14 +17,12 @@ import {
   zeroWorkflowWebhookTriggers,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
-import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
-import { workflowUserPermissionGrants } from "@vm0/db/schema/workflow-user-permission-grant";
 import { and, eq, ne } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
-import { db$, writeDb$, type Db } from "../external/db";
+import { writeDb$, type Db } from "../external/db";
 import { conflict, notFound } from "../../lib/error";
 import { nowDate } from "../../lib/time";
 import { requireAgentPermission } from "../../lib/require-agent-permission";
@@ -49,10 +42,6 @@ import {
   mintWorkflowWebhookSecret,
   mintWorkflowWebhookToken,
 } from "../services/workflow-webhook-trigger.service";
-import {
-  unavailableUserConnectorTypes,
-  userConnectorAvailability,
-} from "../services/connector-availability.service";
 import {
   loadVisibleWorkflowById,
   requireWorkflowPermission,
@@ -210,9 +199,6 @@ const createWorkflowBody$ = bodyResultOf(
 );
 const updateWorkflowBody$ = bodyResultOf(zeroWorkflowsDetailContract.update);
 const copyWorkflowBody$ = bodyResultOf(zeroWorkflowsDetailContract.copy);
-const updateWorkflowUserConnectorsBody$ = bodyResultOf(
-  zeroWorkflowUserConnectorsContract.update,
-);
 
 const listWorkflowsInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -378,144 +364,6 @@ const getWorkflowDetailInner$ = computed(async (get) => {
   }
   return { status: 200 as const, body: result };
 });
-
-const getWorkflowUserConnectorsInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const member = memberFromAuth(auth);
-  const params = get(pathParamsOf(zeroWorkflowUserConnectorsContract.get));
-  const db = get(db$);
-  const visible = await loadVisibleWorkflowById(db, {
-    orgId: auth.orgId,
-    member,
-    workflowId: params.id,
-  });
-  if (!visible) {
-    return workflowNotFound(params.id);
-  }
-
-  const rows = await db
-    .select({ connectorType: workflowUserConnectors.connectorType })
-    .from(workflowUserConnectors)
-    .where(
-      and(
-        eq(workflowUserConnectors.orgId, auth.orgId),
-        eq(workflowUserConnectors.userId, auth.userId),
-        eq(workflowUserConnectors.workflowId, params.id),
-      ),
-    );
-  const availability = await get(
-    userConnectorAvailability(auth.orgId, auth.userId),
-  );
-  const enabledTypes = rows.flatMap((row) => {
-    const parsed = connectorTypeSchema.safeParse(row.connectorType);
-    if (
-      !parsed.success ||
-      !availability.isConnectorTypeAvailable(parsed.data)
-    ) {
-      return [];
-    }
-    return [parsed.data];
-  });
-  return { status: 200 as const, body: { enabledTypes } };
-});
-
-const updateWorkflowUserConnectorsInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const member = memberFromAuth(auth);
-    const params = get(pathParamsOf(zeroWorkflowUserConnectorsContract.update));
-    const body = await get(updateWorkflowUserConnectorsBody$);
-    signal.throwIfAborted();
-    if (!body.ok) {
-      return body.response;
-    }
-
-    const writeDb = set(writeDb$);
-    const visible = await loadVisibleWorkflowById(writeDb, {
-      orgId: auth.orgId,
-      member,
-      workflowId: params.id,
-    });
-    signal.throwIfAborted();
-    if (!visible) {
-      return workflowNotFound(params.id);
-    }
-
-    const uniqueTypes = Array.from(new Set(body.data.enabledTypes));
-    const parsedTypes: ConnectorType[] = [];
-    const invalidTypes: string[] = [];
-    for (const type of uniqueTypes) {
-      const parsed = connectorTypeSchema.safeParse(type);
-      if (parsed.success) {
-        parsedTypes.push(parsed.data);
-      } else {
-        invalidTypes.push(type);
-      }
-    }
-    if (invalidTypes.length > 0) {
-      return {
-        status: 400 as const,
-        body: {
-          error: {
-            message: `Invalid connector types: ${invalidTypes.join(", ")}`,
-            code: "VALIDATION_ERROR" as const,
-          },
-        },
-      };
-    }
-
-    const availability = await get(
-      userConnectorAvailability(auth.orgId, auth.userId),
-    );
-    signal.throwIfAborted();
-    const unavailableTypes = unavailableUserConnectorTypes(
-      availability,
-      parsedTypes,
-    );
-    if (unavailableTypes.length > 0) {
-      return {
-        status: 400 as const,
-        body: {
-          error: {
-            message: `Connector types are not available: ${unavailableTypes.join(", ")}`,
-            code: "VALIDATION_ERROR" as const,
-          },
-        },
-      };
-    }
-
-    await writeDb.transaction(async (tx) => {
-      await tx
-        .delete(workflowUserConnectors)
-        .where(
-          and(
-            eq(workflowUserConnectors.orgId, auth.orgId),
-            eq(workflowUserConnectors.userId, auth.userId),
-            eq(workflowUserConnectors.workflowId, params.id),
-          ),
-        );
-
-      if (parsedTypes.length > 0) {
-        await tx.insert(workflowUserConnectors).values(
-          parsedTypes.map((connectorType) => {
-            return {
-              orgId: auth.orgId,
-              userId: auth.userId,
-              workflowId: params.id,
-              connectorType,
-            };
-          }),
-        );
-      }
-    });
-    signal.throwIfAborted();
-
-    return {
-      status: 200 as const,
-      body: { enabledTypes: parsedTypes },
-    };
-  },
-);
 
 const updateWorkflowInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -688,77 +536,6 @@ async function insertCopiedWorkflowRow(
   return workflow;
 }
 
-async function copyWorkflowUserConnectors(
-  tx: WorkflowCopyTransaction,
-  args: CopyWorkflowScopedRowsArgs,
-): Promise<void> {
-  const rows = await tx
-    .select({ connectorType: workflowUserConnectors.connectorType })
-    .from(workflowUserConnectors)
-    .where(
-      and(
-        eq(workflowUserConnectors.orgId, args.orgId),
-        eq(workflowUserConnectors.userId, args.userId),
-        eq(workflowUserConnectors.workflowId, args.sourceWorkflowId),
-      ),
-    );
-  if (rows.length === 0) {
-    return;
-  }
-
-  await tx.insert(workflowUserConnectors).values(
-    rows.map((row) => {
-      return {
-        orgId: args.orgId,
-        userId: args.userId,
-        workflowId: args.targetWorkflowId,
-        connectorType: row.connectorType,
-        createdAt: args.currentTime,
-      };
-    }),
-  );
-}
-
-async function copyWorkflowUserPermissionGrants(
-  tx: WorkflowCopyTransaction,
-  args: CopyWorkflowScopedRowsArgs,
-): Promise<void> {
-  const rows = await tx
-    .select({
-      connectorRef: workflowUserPermissionGrants.connectorRef,
-      permission: workflowUserPermissionGrants.permission,
-      action: workflowUserPermissionGrants.action,
-      expiresAt: workflowUserPermissionGrants.expiresAt,
-    })
-    .from(workflowUserPermissionGrants)
-    .where(
-      and(
-        eq(workflowUserPermissionGrants.orgId, args.orgId),
-        eq(workflowUserPermissionGrants.userId, args.userId),
-        eq(workflowUserPermissionGrants.workflowId, args.sourceWorkflowId),
-      ),
-    );
-  if (rows.length === 0) {
-    return;
-  }
-
-  await tx.insert(workflowUserPermissionGrants).values(
-    rows.map((row) => {
-      return {
-        orgId: args.orgId,
-        userId: args.userId,
-        workflowId: args.targetWorkflowId,
-        connectorRef: row.connectorRef,
-        permission: row.permission,
-        action: row.action,
-        expiresAt: row.expiresAt,
-        createdAt: args.currentTime,
-        updatedAt: args.currentTime,
-      };
-    }),
-  );
-}
-
 async function copyWorkflowWebhookTriggerConfig(
   tx: WorkflowCopyTransaction,
   args: {
@@ -900,8 +677,6 @@ async function copyWorkflowRuntimeConfiguration(
     targetWorkflowId: workflow.id,
     currentTime: args.currentTime,
   };
-  await copyWorkflowUserConnectors(tx, scopedRowsArgs);
-  await copyWorkflowUserPermissionGrants(tx, scopedRowsArgs);
   await copyWorkflowUserTriggers(tx, {
     ...scopedRowsArgs,
     targetAgentId: args.targetAgentId,
@@ -952,7 +727,7 @@ const copyWorkflowInner$ = command(
 
     // A copy is a fork owned by the caller: a new private workflow under the
     // target agent. User-scoped runtime configuration is cloned only for the
-    // caller so copies do not leak another user's triggers or authorization.
+    // caller so copies do not leak another user's triggers.
     const currentTime = nowDate();
     const inserted = await writeDb.transaction(async (tx) => {
       return await copyWorkflowRuntimeConfiguration(tx, {
@@ -1490,14 +1265,6 @@ export const zeroWorkflowsRoutes: readonly RouteEntry[] = [
   {
     route: zeroWorkflowsDetailContract.get,
     handler: authRoute(workflowReadAuth, getWorkflowDetailInner$),
-  },
-  {
-    route: zeroWorkflowUserConnectorsContract.get,
-    handler: authRoute(workflowReadAuth, getWorkflowUserConnectorsInner$),
-  },
-  {
-    route: zeroWorkflowUserConnectorsContract.update,
-    handler: authRoute(workflowReadAuth, updateWorkflowUserConnectorsInner$),
   },
   {
     route: zeroWorkflowsDetailContract.update,

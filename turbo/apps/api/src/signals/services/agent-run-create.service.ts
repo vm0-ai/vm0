@@ -305,12 +305,7 @@ interface ResolvedCompose {
   readonly resumeSession?: StoredExecutionContext["resumeSession"];
 }
 
-type ConnectorScopeSource =
-  | "explicit"
-  | "zero_agent"
-  | "zero_unattended"
-  | "legacy_all"
-  | "empty";
+type ConnectorScopeSource = "explicit" | "zero_agent" | "legacy_all" | "empty";
 
 interface EffectiveConnectorScope {
   readonly allowedConnectorTypes: readonly ConnectorType[] | undefined;

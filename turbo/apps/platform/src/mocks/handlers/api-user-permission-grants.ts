@@ -11,22 +11,17 @@ let mockUserPermissionGrants: UserPermissionGrantResponse[] = [];
 function grantKey(
   grant: Pick<
     UserPermissionGrantResponse,
-    "agentId" | "workflowId" | "connectorRef" | "permission"
+    "agentId" | "connectorRef" | "permission"
   >,
 ): string {
-  const scope = grant.workflowId
-    ? `workflow:${grant.workflowId}`
-    : `agent:${grant.agentId}`;
-  return `${scope}:${grant.connectorRef}:${grant.permission}`;
+  return `agent:${grant.agentId}:${grant.connectorRef}:${grant.permission}`;
 }
 
 function sameScope(
   grant: UserPermissionGrantResponse,
-  scope: { readonly agentId?: string; readonly workflowId?: string },
+  scope: { readonly agentId: string },
 ): boolean {
-  return scope.workflowId
-    ? grant.workflowId === scope.workflowId
-    : grant.agentId === scope.agentId;
+  return grant.agentId === scope.agentId;
 }
 
 function isActiveGrant(grant: UserPermissionGrantResponse, checkedAt: Date) {
@@ -115,9 +110,7 @@ export const apiUserPermissionGrantsHandlers = [
         now,
       });
       return {
-        ...(body.workflowId
-          ? { workflowId: body.workflowId }
-          : { agentId: body.agentId }),
+        agentId: body.agentId,
         connectorRef: body.connectorRef,
         permission: appliedGrant.permission,
         action: appliedGrant.action,

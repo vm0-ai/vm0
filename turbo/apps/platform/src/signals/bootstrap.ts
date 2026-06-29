@@ -10,7 +10,6 @@ import {
   setupAuthPageWrapper,
   pathParams$,
   pathname$,
-  searchParams$,
   type RouterPathParams,
 } from "./route.ts";
 import { registerServiceWorker$ } from "../lib/push-notifications.ts";
@@ -97,29 +96,6 @@ function redirectWithId(target: RoutePath, targetParam: string) {
   });
 }
 
-const setupWorkflowTriggerPermissionsRedirect$ = command(({ get, set }) => {
-  const params = get(pathParams$) ?? {};
-  const agentId = params.agentId;
-  const workflowId = params.workflowId;
-  const triggerId = params.triggerId;
-  if (typeof agentId !== "string" || typeof workflowId !== "string") {
-    set(detachedNavigateTo$, ROUTES.agents, { replace: true });
-    return;
-  }
-  const targetSearchParams = new URLSearchParams(get(searchParams$));
-  if (typeof triggerId === "string" && !targetSearchParams.has("triggerId")) {
-    targetSearchParams.set("triggerId", triggerId);
-  }
-  set(detachedNavigateTo$, ROUTES.agentWorkflowPermissions, {
-    pathParams: {
-      agentId,
-      workflowId,
-    } as RouterPathParams<typeof ROUTES.agentWorkflowPermissions>,
-    searchParams: targetSearchParams,
-    replace: true,
-  });
-});
-
 function setupSettingsParamAfterStableRoute(
   setupPage: Command<Promise<void> | void, [AbortSignal]>,
 ) {
@@ -191,18 +167,8 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupPermissionAllowPage$),
   },
   {
-    path: ROUTES.agentWorkflowPermissions,
-    setup: setupAuthPageWrapper(setupPermissionAllowPage$),
-  },
-  {
     path: ROUTES.reportError,
     setup: setupAuthPageWrapper(setupReportErrorPage$),
-  },
-  {
-    path: ROUTES.agentWorkflowTriggerPermissions,
-    setup: setupAuthSidebarPageWrapper(
-      setupWorkflowTriggerPermissionsRedirect$,
-    ),
   },
   {
     path: ROUTES.agentWorkflowDetail,

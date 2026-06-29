@@ -18,15 +18,9 @@ const userPermissionGrantAuthOptions = {
 const listQuery$ = queryOf(zeroUserPermissionGrantsContract.list);
 const applyBody$ = bodyResultOf(zeroUserPermissionGrantsContract.apply);
 
-function permissionGrantScopeFromQuery(query: {
-  readonly agentId?: string;
-  readonly workflowId?: string;
-}):
-  | { readonly agentId: string; readonly workflowId?: never }
-  | { readonly workflowId: string; readonly agentId?: never } {
-  if (query.workflowId !== undefined) {
-    return { workflowId: query.workflowId };
-  }
+function permissionGrantScopeFromQuery(query: { readonly agentId?: string }): {
+  readonly agentId: string;
+} {
   if (query.agentId !== undefined) {
     return { agentId: query.agentId };
   }

@@ -1127,6 +1127,7 @@ const ZERO_AGENT_USER_CONNECTORS_NEXT_NEGATIVE_PATHS = [
   "/api/zero/agents/550e8400-e29b-41d4-a716-446655440000/user-connectors/extra",
   "/api/zero/agents/user-connectors",
   "/api/zero/agent/550e8400-e29b-41d4-a716-446655440000/user-connectors",
+  "/api/zero/workflows/550e8400-e29b-41d4-a716-446655440000/user-connectors",
 ] as const;
 const ZERO_CUSTOM_CONNECTORS_REWRITE_SOURCE = "/api/zero/custom-connectors";
 const ZERO_CUSTOM_CONNECTORS_PATH = "/api/zero/custom-connectors";

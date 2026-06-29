@@ -72,7 +72,6 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
       "agentPermissions",
       "agentWorkflows",
       "agentWorkflowDetail",
-      "agentWorkflowTriggerPermissions",
     ],
     pathname: "/agents",
     label: "Agents",

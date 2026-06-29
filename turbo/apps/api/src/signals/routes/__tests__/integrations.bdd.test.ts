@@ -3345,6 +3345,12 @@ describe("INT-02: Telegram integration", () => {
         return run.status;
       })
       .toBe("cancelled");
+    await expect
+      .poll(async () => {
+        const callback = await readRunCallback(runId);
+        return callback?.status;
+      })
+      .toBe("delivered");
     const actionsAfterCancel = chatActions.length;
     const idleTyping = await webhooks.requestAgentEvents(
       typingBody,

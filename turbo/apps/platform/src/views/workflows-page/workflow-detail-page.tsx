@@ -2,13 +2,7 @@
 // the instruction editor, supplementary file manager (SKILL.md is never shown),
 // triggers, visibility controls, metadata editing, slash use, copy, and delete.
 import type { FormEvent, ReactNode } from "react";
-import {
-  useGet,
-  useLastLoadable,
-  useLastResolved,
-  useLoadable,
-  useSet,
-} from "ccstate-react";
+import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type {
   GmailLabelAppliedEventConfig,
@@ -36,7 +30,6 @@ import {
   IconPlayerPlay,
   IconPlus,
   IconRepeat,
-  IconShieldLock,
   IconTrash,
   IconUpload,
   IconUsers,
@@ -65,12 +58,6 @@ import {
   TabsList,
   TabsTrigger,
 } from "@vm0/ui";
-import type { ConnectorType } from "@vm0/connectors/connectors";
-import { permissionGrantsToFirewallPolicies } from "@vm0/connectors/firewall-metadata";
-import {
-  UNKNOWN_PERMISSION_GRANT,
-  type FirewallPolicies,
-} from "@vm0/connectors/firewall-types";
 
 import { agents$ } from "../../signals/agent.ts";
 import { user$ } from "../../signals/auth.ts";
@@ -101,7 +88,6 @@ import {
   setEditingWorkflowTriggerId$,
   setSelectedWorkflowFilePath$,
   setWorkflowActionDialog$,
-  setWorkflowAuthorizedConnectors$,
   setWorkflowDetailActiveTab$,
   setWorkflowFileDraft$,
   setWorkflowTriggerCreateDialog$,
@@ -111,7 +97,6 @@ import {
   updateWorkflowScheduleTrigger$,
   updateWorkflow$,
   workflowActionDialog$,
-  workflowAuthorizedConnectors,
   workflowDetailActiveTab$,
   workflowTriggerCreateDialog$,
   workflowFileDraft$,
@@ -128,12 +113,8 @@ import {
 } from "../../signals/external/org-members.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
-import {
-  detachedNavigateTo$,
-  replaceSearchParams$,
-  searchParams$,
-} from "../../signals/route.ts";
-import { bestEffort, detach, Reason } from "../../signals/utils.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { detach, Reason } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
 import {
   atTimeInTimezone,
@@ -153,44 +134,6 @@ import { TiptapInstructionsEditor } from "../zero-page/tiptap-instructions-edito
 import { ZeroUnsavedBar } from "../zero-page/zero-unsaved-bar.tsx";
 import { InlineSettingsRow } from "../zero-page/components/zero-inline-settings-row.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import {
-  applyUserPermissionGrants$,
-  userPermissionGrantsByWorkflow,
-} from "../../signals/permission-allow/permission-allow-signals.ts";
-import {
-  savePermissionDraftPolicies,
-  type ApplyUserPermissionGrants,
-} from "../../signals/zero-page/settings/permission-grant-save.ts";
-import {
-  createEmptyPermissionDraftIntent,
-  setPermissionDraftExpiration,
-  setPermissionDraftPolicy,
-  setPermissionDraftUnknownExpiration,
-  setPermissionDraftUnknownPolicy,
-  type PermissionDraftIntent,
-} from "../../signals/zero-page/settings/permission-draft-intent.ts";
-import { parseUserPermissionGrantExpiresIn } from "../../signals/permission-allow/permission-grant-expiration.ts";
-import {
-  allConnectorTypes$,
-  matchesConnectorSearch,
-} from "../../signals/zero-page/settings/connectors.ts";
-import {
-  permConnectorType$,
-  permSavingType$,
-  permSearch$,
-  permSearchActive$,
-  setPermConnectorType$,
-  setPermSavingType$,
-  setPermSearch$,
-  setPermSearchActive$,
-} from "../../signals/zero-page/zero-job-detail-page.ts";
-import {
-  AgentPermissionsDrawer,
-  ConnectedConnectorPermissions,
-  NoConnectedConnectors,
-  PermissionGrantsError,
-  PermissionListSkeleton,
-} from "../team-page/zero-job-detail-page.tsx";
 import {
   agentLabel,
   formatWorkflowIntervalSeconds,
@@ -299,79 +242,6 @@ function isWebhookWorkflowTrigger(
 
 function copyText(value: string): void {
   detach(writeToClipboard(value), Reason.DomCallback);
-}
-
-interface WorkflowPermissionDeepLink {
-  readonly connectorRef: string;
-  readonly initialIntent?: PermissionDraftIntent;
-  readonly initialSearch?: string;
-  readonly initialContextKey: string;
-}
-
-function workflowPermissionDeepLinkFromSearchParams(
-  params: URLSearchParams,
-): WorkflowPermissionDeepLink | null {
-  const connectorRef = params.get("ref");
-  if (!connectorRef) {
-    return null;
-  }
-  const permission = params.get("permission")?.trim() ?? "";
-  const actionParam = params.get("action");
-  const action =
-    actionParam === "allow" || actionParam === "deny" ? actionParam : null;
-  const expiresIn = parseUserPermissionGrantExpiresIn(params.get("expiresIn"));
-  let initialIntent: PermissionDraftIntent | undefined;
-
-  if (permission && action) {
-    const policy = action === "allow" ? "allow" : "deny";
-    const draft =
-      permission === UNKNOWN_PERMISSION_GRANT
-        ? setPermissionDraftUnknownPolicy({
-            draft: createEmptyPermissionDraftIntent(),
-            policy,
-          })
-        : setPermissionDraftPolicy({
-            draft: createEmptyPermissionDraftIntent(),
-            permissionName: permission,
-            policy,
-          });
-    initialIntent =
-      action === "allow" && expiresIn
-        ? permission === UNKNOWN_PERMISSION_GRANT
-          ? setPermissionDraftUnknownExpiration({
-              draft,
-              expiresIn,
-            })
-          : setPermissionDraftExpiration({
-              draft,
-              permissionName: permission,
-              expiresIn,
-            })
-        : draft;
-  }
-
-  return {
-    connectorRef,
-    ...(initialIntent ? { initialIntent } : {}),
-    ...(permission ? { initialSearch: permission } : {}),
-    initialContextKey: JSON.stringify({
-      ref: connectorRef,
-      permission,
-      action: actionParam,
-      expiresIn: params.get("expiresIn"),
-    }),
-  };
-}
-
-function workflowSearchParamsWithoutPermissionDeepLink(
-  params: URLSearchParams,
-): URLSearchParams {
-  const next = new URLSearchParams(params);
-  next.delete("ref");
-  next.delete("permission");
-  next.delete("action");
-  next.delete("expiresIn");
-  return next;
 }
 
 export function WorkflowDetailPage() {
@@ -555,7 +425,6 @@ function WorkflowTabNav({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="authorization">Authorization</SelectItem>
             <SelectItem value="triggers">Triggers</SelectItem>
             <SelectItem value="instructions">Instructions</SelectItem>
             <SelectItem value="info">Info</SelectItem>
@@ -563,13 +432,6 @@ function WorkflowTabNav({
         </Select>
       </div>
       <TabsList className="zero-tabs hidden h-9 gap-1 px-1 py-1 sm:inline-flex">
-        <TabsTrigger
-          value="authorization"
-          className={WORKFLOW_TAB_TRIGGER_CLASS}
-        >
-          <IconShieldLock size={14} stroke={1.5} />
-          Authorization
-        </TabsTrigger>
         <TabsTrigger value="triggers" className={WORKFLOW_TAB_TRIGGER_CLASS}>
           <IconClock size={14} stroke={1.5} />
           Triggers
@@ -635,9 +497,6 @@ function WorkflowTabContent({
 }) {
   const content = (() => {
     switch (activeTab) {
-      case "authorization": {
-        return <WorkflowAuthorizationTab detail={detail} />;
-      }
       case "triggers": {
         return <TriggersSection detail={detail} />;
       }
@@ -655,210 +514,6 @@ function WorkflowTabContent({
       <ShadowWarning detail={detail} />
       {content}
     </>
-  );
-}
-
-function WorkflowAuthorizationTab({
-  detail,
-}: {
-  readonly detail: ZeroWorkflowDetailResponse;
-}) {
-  const authorizedLoadable = useLastLoadable(
-    workflowAuthorizedConnectors(detail.id),
-  );
-  const authorizedConnectors =
-    authorizedLoadable.state === "hasData" ? authorizedLoadable.data : [];
-  const allTypesLoadable = useLastLoadable(allConnectorTypes$);
-  const allConnectors =
-    allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
-  const userGrantsLoadable = useLoadable(
-    userPermissionGrantsByWorkflow({ workflowId: detail.id }),
-  );
-  const userGrants =
-    userGrantsLoadable.state === "hasData" ? userGrantsLoadable.data : [];
-  const userGrantPolicies =
-    userGrantsLoadable.state === "hasData"
-      ? permissionGrantsToFirewallPolicies(userGrants)
-      : null;
-  const drawerInitialPolicies: FirewallPolicies = userGrantPolicies ?? {};
-  const [, applyGrantPolicies] = useLoadableSet(applyUserPermissionGrants$);
-  const [saveConnectorsLoadable, setWorkflowConnectors] = useLoadableSet(
-    setWorkflowAuthorizedConnectors$,
-  );
-  const pageSignal = useGet(pageSignal$);
-  const connectorType = useGet(permConnectorType$);
-  const setConnectorType = useSet(setPermConnectorType$);
-  const routeSearchParams = useGet(searchParams$);
-  const permissionDeepLink =
-    workflowPermissionDeepLinkFromSearchParams(routeSearchParams);
-  const replaceSearchParams = useSet(replaceSearchParams$);
-  const search = useGet(permSearch$);
-  const setSearch = useSet(setPermSearch$);
-  const searchActive = useGet(permSearchActive$);
-  const setSearchActive = useSet(setPermSearchActive$);
-  const savingType = useGet(permSavingType$);
-  const setSavingType = useSet(setPermSavingType$);
-  const connectedConnectors = allConnectors.filter((connector) => {
-    return connector.connected;
-  });
-  const filteredConnectors = connectedConnectors.filter((connector) => {
-    return matchesConnectorSearch(search, connector);
-  });
-  const deepLinkedConnectorType =
-    permissionDeepLink !== null
-      ? (connectedConnectors.find((connector) => {
-          return connector.type === permissionDeepLink.connectorRef;
-        })?.type ?? null)
-      : null;
-  const selectedConnectorType = connectorType ?? deepLinkedConnectorType;
-  const authorizedSet = new Set(authorizedConnectors);
-  const loading =
-    authorizedLoadable.state === "loading" ||
-    allTypesLoadable.state !== "hasData" ||
-    userGrantsLoadable.state === "loading";
-
-  const handleToggle = async (type: ConnectorType, checked: boolean) => {
-    if (savingType !== null || saveConnectorsLoadable.state === "loading") {
-      return;
-    }
-    const next = checked
-      ? Array.from(new Set([...authorizedConnectors, type]))
-      : authorizedConnectors.filter((connector) => {
-          return connector !== type;
-        });
-    setSavingType(type);
-    await bestEffort(
-      (async () => {
-        await setWorkflowConnectors(
-          { workflowId: detail.id, enabledTypes: next },
-          pageSignal,
-        );
-        toast.success("Connectors saved");
-      })(),
-    );
-    setSavingType(null);
-  };
-
-  if (loading) {
-    return <PermissionListSkeleton />;
-  }
-
-  if (userGrantsLoadable.state === "hasError") {
-    return <PermissionGrantsError />;
-  }
-
-  return (
-    <div className="mx-auto flex max-w-[900px] flex-col gap-4">
-      {connectedConnectors.length === 0 ? (
-        <NoConnectedConnectors />
-      ) : (
-        <>
-          <ConnectedConnectorPermissions
-            filteredConnectors={filteredConnectors}
-            authorizedSet={authorizedSet}
-            search={search}
-            setSearch={setSearch}
-            searchActive={searchActive}
-            setSearchActive={setSearchActive}
-            savingType={savingType}
-            canManagePermissions
-            onToggle={handleToggle}
-            onManage={setConnectorType}
-          />
-          <WorkflowAuthorizationPermissionDrawer
-            detail={detail}
-            connectorType={selectedConnectorType}
-            deepLinkedConnectorType={deepLinkedConnectorType}
-            permissionDeepLink={permissionDeepLink}
-            routeSearchParams={routeSearchParams}
-            initialPolicies={drawerInitialPolicies}
-            initialGrants={userGrants}
-            pageSignal={pageSignal}
-            applyGrantPolicies={applyGrantPolicies}
-            onSelectConnector={setConnectorType}
-            onReplaceSearchParams={replaceSearchParams}
-          />
-        </>
-      )}
-    </div>
-  );
-}
-
-function WorkflowAuthorizationPermissionDrawer({
-  detail,
-  connectorType,
-  deepLinkedConnectorType,
-  permissionDeepLink,
-  routeSearchParams,
-  initialPolicies,
-  initialGrants,
-  pageSignal,
-  applyGrantPolicies,
-  onSelectConnector,
-  onReplaceSearchParams,
-}: {
-  readonly detail: ZeroWorkflowDetailResponse;
-  readonly connectorType: ConnectorType | null;
-  readonly deepLinkedConnectorType: ConnectorType | null;
-  readonly permissionDeepLink: WorkflowPermissionDeepLink | null;
-  readonly routeSearchParams: URLSearchParams;
-  readonly initialPolicies: FirewallPolicies;
-  readonly initialGrants: Parameters<
-    typeof savePermissionDraftPolicies
-  >[0]["initialGrants"];
-  readonly pageSignal: AbortSignal;
-  readonly applyGrantPolicies: ApplyUserPermissionGrants;
-  readonly onSelectConnector: (type: ConnectorType | null) => void;
-  readonly onReplaceSearchParams: (params: URLSearchParams) => void;
-}) {
-  const fromPermissionDeepLink = connectorType === deepLinkedConnectorType;
-
-  return (
-    <AgentPermissionsDrawer
-      targetId={detail.id}
-      targetKind="workflow"
-      connectorType={connectorType}
-      displayName={workflowTitle(detail)}
-      initialPolicies={initialPolicies}
-      initialGrants={initialGrants}
-      initialIntent={
-        fromPermissionDeepLink ? permissionDeepLink?.initialIntent : undefined
-      }
-      initialSearch={
-        fromPermissionDeepLink ? permissionDeepLink?.initialSearch : undefined
-      }
-      initialContextKey={
-        fromPermissionDeepLink
-          ? permissionDeepLink?.initialContextKey
-          : undefined
-      }
-      resetEnabled
-      readOnly={false}
-      onApply={async (intent, { metadata }) => {
-        if (connectorType === null) {
-          throw new Error("Cannot save permissions without a connector");
-        }
-        await savePermissionDraftPolicies({
-          scope: { workflowId: detail.id },
-          connectorType,
-          metadata,
-          initialPolicies,
-          initialGrants,
-          intent,
-          pageSignal,
-          applyGrantPolicies,
-        });
-        toast.success("Permissions updated");
-      }}
-      onClose={() => {
-        onSelectConnector(null);
-        if (permissionDeepLink) {
-          onReplaceSearchParams(
-            workflowSearchParamsWithoutPermissionDeepLink(routeSearchParams),
-          );
-        }
-      }}
-    />
   );
 }
 

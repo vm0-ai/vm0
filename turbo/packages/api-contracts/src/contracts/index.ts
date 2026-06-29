@@ -910,11 +910,9 @@ export {
 } from "./zero-workflows";
 export {
   zeroUserConnectorsContract,
-  zeroWorkflowUserConnectorsContract,
   userConnectorEnabledTypesSchema,
   type UserConnectorEnabledTypes,
   type ZeroUserConnectorsContract,
-  type ZeroWorkflowUserConnectorsContract,
 } from "./user-connectors";
 export {
   zeroUserPermissionGrantsContract,

@@ -1,7 +1,6 @@
 import { screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroWorkflowsDetailContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
@@ -89,127 +88,6 @@ describe("permission allow page", () => {
       screen.getByText("Your connector permission grant has been updated"),
     ).toBeInTheDocument();
     expect(screen.getByText(/Expires in (1 day|24 hours)/)).toBeInTheDocument();
-  });
-
-  it("lets a user grant an expiring connector permission to a workflow", async () => {
-    const agentId = "c0000000-0000-4000-a000-000000000011";
-    const workflowId = "f0000001-0000-4000-a000-000000000911";
-    let capturedBody: unknown = null;
-
-    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
-      return respond(200, {
-        agentId,
-        ownerId: "test-user-123",
-        description: null,
-        displayName: "Research Bot",
-        sound: null,
-        avatarUrl: null,
-        modelProviderId: null,
-        selectedModel: null,
-        preferPersonalProvider: false,
-      });
-    });
-    context.mocks.api(
-      zeroWorkflowsDetailContract.get,
-      ({ params, respond }) => {
-        if (params.workflowId !== workflowId) {
-          return respond(404, {
-            error: { code: "NOT_FOUND", message: "Workflow not found" },
-          });
-        }
-        return respond(200, {
-          id: workflowId,
-          agentId,
-          agentName: "research-bot",
-          agentDisplayName: "Research Bot",
-          name: "daily-inbox-triage",
-          displayName: "Daily inbox triage",
-          description: null,
-          visibility: "private",
-          requestToPublish: false,
-          ownerUserId: "test-user-123",
-          canManage: true,
-          createdByUserId: "test-user-123",
-          updatedByUserId: "test-user-123",
-          createdAt: "2026-06-09T10:00:00Z",
-          updatedAt: "2026-06-09T10:00:00Z",
-          instruction: null,
-          files: null,
-          fileContents: null,
-          triggers: [],
-        });
-      },
-    );
-    context.mocks.api(
-      zeroUserPermissionGrantsContract.list,
-      ({ query, respond }) => {
-        expect(query).toMatchObject({ workflowId });
-        expect(query).not.toHaveProperty("agentId");
-        return respond(200, []);
-      },
-    );
-    context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
-      ({ body, respond }) => {
-        const appliedGrant = body.grants[0];
-        if (!appliedGrant) {
-          throw new Error("Expected a permission grant");
-        }
-        capturedBody = body;
-        expect(body).not.toHaveProperty("agentId");
-        return respond(200, [
-          {
-            workflowId: body.workflowId,
-            connectorRef: body.connectorRef,
-            permission: appliedGrant.permission,
-            action: appliedGrant.action,
-            expiresAt: "2026-06-10T10:00:00Z",
-            createdAt: "2026-06-09T10:00:00Z",
-            updatedAt: "2026-06-09T10:01:00Z",
-          },
-        ]);
-      },
-    );
-
-    detachedSetupPage({
-      context,
-      path: `/agents/${agentId}/workflows/${workflowId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
-      user: {
-        id: "test-user-123",
-        fullName: "Dana Analyst",
-        firstName: "Dana",
-      },
-    });
-
-    await waitFor(() => {
-      expect(
-        screen.getByText(
-          "Hey Dana, you're updating your permissions for Daily inbox triage.",
-        ),
-      ).toBeInTheDocument();
-    });
-    expect(screen.getByText("Daily inbox triage")).toBeInTheDocument();
-    expect(screen.getByText("Slack")).toBeInTheDocument();
-    expect(screen.getByText("Duration")).toBeInTheDocument();
-    expect(screen.getByText("24 hours")).toBeInTheDocument();
-
-    await user.click(screen.getByText("Confirm"));
-
-    await waitFor(() => {
-      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
-      expect(capturedBody).toMatchObject({
-        workflowId,
-        connectorRef: "slack",
-        mode: "patch",
-        grants: [
-          {
-            permission: "admin.analytics:read",
-            action: "allow",
-            expiresIn: "24h",
-          },
-        ],
-      });
-    });
   });
 
   it("lets a user deny a connector permission without an expiry choice", async () => {

@@ -32,7 +32,6 @@ import {
   searchZeroConnectors,
 } from "../../../lib/api/domains/zero-connectors";
 import { getZeroAgentUserConnectors } from "../../../lib/api/domains/zero-agents";
-import { getZeroWorkflowUserConnectors } from "../../../lib/api/domains/zero-workflows";
 import { getZeroRunContext } from "../../../lib/api/domains/zero-runs";
 import { withErrorHandler } from "../../../lib/command";
 import { toPlatformUrl } from "./platform-url";
@@ -52,12 +51,6 @@ interface DiagContext {
   connectorAvailable: boolean;
   platformOrigin: string;
   agentId: string | undefined;
-  triggerContext: TriggerContext | undefined;
-}
-
-interface TriggerContext {
-  readonly workflowId: string;
-  readonly triggerId: string;
 }
 
 interface RunConnectorState {
@@ -295,23 +288,6 @@ async function getCurrentRunContext(): Promise<RunContextResponse | null> {
   return await getZeroRunContext(runId);
 }
 
-function resolveTriggerContext(): TriggerContext | undefined {
-  const workflowId = process.env.ZERO_WORKFLOW_ID;
-  const triggerId = process.env.ZERO_WORKFLOW_TRIGGER_ID;
-  return workflowId && triggerId ? { workflowId, triggerId } : undefined;
-}
-
-function workflowPermissionUrl(ctx: DiagContext): string | null {
-  if (!ctx.agentId || !ctx.triggerContext) {
-    return null;
-  }
-  const params = new URLSearchParams({
-    ref: ctx.connectorType,
-    triggerId: ctx.triggerContext.triggerId,
-  });
-  return `${ctx.platformOrigin}/agents/${ctx.agentId}/workflows/${ctx.triggerContext.workflowId}/permissions?${params.toString()}`;
-}
-
 function printConnectorConnectionStatus(
   ctx: DiagContext,
   isConnected: boolean,
@@ -328,10 +304,7 @@ function printConnectorConnectionStatus(
     );
   } else if (!isConnected) {
     console.log(`The ${ctx.label} connector is not connected.`);
-    if (ctx.triggerContext) {
-      const connectUrl = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/connect`;
-      console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
-    } else if (ctx.agentId && hasPermission) {
+    if (ctx.agentId && hasPermission) {
       const connectUrl = `${ctx.platformOrigin}/connectors/${ctx.connectorType}/connect?agentId=${ctx.agentId}`;
       console.log(`Connect it at: [Connect ${ctx.label}](${connectUrl})`);
     } else if (!ctx.agentId) {
@@ -351,35 +324,6 @@ function printConnectorConnectionStatus(
     console.log(`The ${ctx.label} connector is connected and active.`);
   }
   console.log("");
-}
-
-function printWorkflowAuthorizationStatus(
-  ctx: DiagContext & { readonly triggerContext: TriggerContext },
-  isConnected: boolean,
-  hasPermission: boolean,
-): void {
-  const url = workflowPermissionUrl(ctx);
-  if (hasPermission) {
-    console.log(
-      isConnected
-        ? `The ${ctx.label} connector is authorized for this workflow (${ctx.triggerContext.workflowId}).`
-        : `The ${ctx.label} connector is authorized for this workflow (${ctx.triggerContext.workflowId}), but it is not connected.`,
-    );
-    return;
-  }
-
-  console.log(
-    isConnected
-      ? `The ${ctx.label} connector is not authorized for this workflow (${ctx.triggerContext.workflowId}).`
-      : `The ${ctx.label} connector needs to be connected and authorized for this workflow (${ctx.triggerContext.workflowId}).`,
-  );
-  if (url) {
-    console.log(`Authorize it at: [Authorize ${ctx.label}](${url})`);
-  } else {
-    console.log(
-      "ZERO_AGENT_ID is not set — cannot build a workflow authorization link.",
-    );
-  }
 }
 
 function printAgentAuthorizationStatus(
@@ -420,28 +364,18 @@ function printConnectorAuthorizationStatus(
   hasPermission: boolean,
 ): void {
   console.log(
-    ctx.triggerContext
-      ? `### 2b: Workflow authorization (user must authorize workflow to use this connector)`
-      : `### 2b: Agent authorization (user must authorize agent to use this connector)`,
+    `### 2b: Agent authorization (user must authorize agent to use this connector)`,
   );
   console.log("");
   if (!ctx.connectorAvailable) {
     console.log(
       `Skipped — the ${ctx.label} connector is not available for this account.`,
     );
-  } else if (ctx.triggerContext) {
-    printWorkflowAuthorizationStatus(
-      { ...ctx, triggerContext: ctx.triggerContext },
-      isConnected,
-      hasPermission,
-    );
   } else {
     printAgentAuthorizationStatus(ctx, isConnected, isExpired, hasPermission);
   }
   console.log(
-    ctx.triggerContext
-      ? `This is a workflow-triggered run, so ${ctx.label} access is scoped by the workflow's authorization settings, not the agent's connector authorization.`
-      : `This is an interactive/agent-scoped run, so ${ctx.label} access is scoped by the agent's connector authorization.`,
+    `This run uses agent-scoped connector authorization for ${ctx.label} access.`,
   );
   console.log("");
 }
@@ -480,11 +414,9 @@ async function checkConnectorStatus(ctx: DiagContext): Promise<{
 
   const [connector, enabledTypes] = await Promise.all([
     getZeroConnector(ctx.connectorType),
-    ctx.triggerContext
-      ? getZeroWorkflowUserConnectors(ctx.triggerContext.workflowId)
-      : ctx.agentId
-        ? getZeroAgentUserConnectors(ctx.agentId)
-        : Promise.resolve(null),
+    ctx.agentId
+      ? getZeroAgentUserConnectors(ctx.agentId)
+      : Promise.resolve(null),
   ]);
 
   const isConnected = connector !== null;
@@ -876,7 +808,6 @@ How connectors work:
         connectorAvailable,
         platformOrigin: platformUrl.origin,
         agentId: process.env.ZERO_AGENT_ID || undefined,
-        triggerContext: resolveTriggerContext(),
       };
 
       checkEnvName(ctx);
@@ -889,9 +820,8 @@ How connectors work:
 
       // Summary for Step 2
       if (configuredForRun === false) {
-        const scope = ctx.triggerContext ? "workflow" : "agent";
         console.log(
-          `Steps 1-2 summary: The ${label} connector is not configured for this run. Check the ${scope} authorization settings, then start a new run after updating them.`,
+          `Steps 1-2 summary: The ${label} connector is not configured for this run. Check the agent authorization settings, then start a new run after updating them.`,
         );
       } else if (isConnected && !isExpired && hasPermission) {
         console.log(

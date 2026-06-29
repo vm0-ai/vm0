@@ -140,14 +140,6 @@ async function printComputerUsePermissionChangeMessage(
   }
 }
 
-function resolveTriggerContext():
-  | { workflowId: string; triggerId: string }
-  | undefined {
-  const triggerId = process.env.ZERO_WORKFLOW_TRIGGER_ID;
-  const workflowId = process.env.ZERO_WORKFLOW_ID;
-  return triggerId && workflowId ? { workflowId, triggerId } : undefined;
-}
-
 async function outputPermissionChangeMessage(
   connectorRef: string,
   label: string,
@@ -155,40 +147,8 @@ async function outputPermissionChangeMessage(
   action: PermissionAction,
   duration: UserPermissionGrantExpiresIn | undefined,
   agentId: string | undefined,
-  triggerContext: { workflowId: string; triggerId: string } | undefined,
 ): Promise<void> {
   const platformOrigin = await getPlatformOrigin();
-
-  // Trigger-fired runs configure permissions on the workflow-user grant store,
-  // shared by all triggers the same user owns for the workflow. Deep-link to
-  // the workflow permission page for the relevant connector and permission.
-  if (triggerContext && agentId) {
-    const workflowUrlParams = new URLSearchParams({
-      ref: connectorRef,
-      permission,
-      action: action === "enable" ? "allow" : "deny",
-      triggerId: triggerContext.triggerId,
-    });
-    if (action === "enable") {
-      workflowUrlParams.set(
-        "expiresIn",
-        duration ?? DEFAULT_PERMISSION_GRANT_DURATION,
-      );
-    }
-    const workflowUrl = `${platformOrigin}/agents/${agentId}/workflows/${triggerContext.workflowId}/permissions?${workflowUrlParams.toString()}`;
-    printSensitivePermissionGuidance(connectorRef, permission, action);
-    printPermissionActionMessage({
-      action,
-      permission,
-      label,
-      url: workflowUrl,
-      duration:
-        action === "enable"
-          ? (duration ?? DEFAULT_PERMISSION_GRANT_DURATION)
-          : undefined,
-    });
-    return;
-  }
 
   const urlParams = new URLSearchParams({
     ref: connectorRef,
@@ -325,7 +285,6 @@ Notes:
           action,
           opts.duration,
           opts.agent ?? process.env.ZERO_AGENT_ID,
-          resolveTriggerContext(),
         );
       },
     ),

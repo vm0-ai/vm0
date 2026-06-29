@@ -87,10 +87,9 @@ export const zeroWorkflows = pgTable(
 /**
  * Shared trigger chat thread for one workflow execution owner.
  *
- * Workflow permissions/connectors are scoped by (workflow_id, user_id), and
- * trigger-fired runs use the trigger owner's identity. Keep the linked chat
- * thread at the same workflow-user level so every trigger owned by the same
- * user for a workflow writes to one conversation.
+ * Trigger-fired runs use the trigger owner's identity. Keep the linked chat
+ * thread at the workflow-user level so every trigger owned by the same user
+ * for a workflow writes to one conversation.
  */
 export const workflowUserTriggerThreads = pgTable(
   "workflow_user_trigger_threads",
