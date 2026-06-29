@@ -19,11 +19,12 @@ import { and, eq, inArray, like } from "drizzle-orm";
 import { env } from "../../lib/env";
 import { generatePresignedGetUrl, putS3Object } from "../external/s3";
 import type { Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { now, nowDate } from "../external/time";
 import { settle } from "../utils";
 import {
   measureApiDispatchTiming,
   type ApiDispatchTimingCollector,
+  type ApiDispatchTimingActionType,
 } from "./api-dispatch-timing.service";
 import { computeContentHashFromHashes } from "./storage-content-hash.service";
 
@@ -120,6 +121,24 @@ interface StorageManifestEntries {
   readonly artifactEntries: ManifestArtifact[];
 }
 
+interface ResolvedManifestStorageInput {
+  readonly name: string;
+  readonly mountPath: string;
+  readonly vasStorageName: string;
+  readonly instructionsTargetFilename?: string;
+  readonly resolved: StorageResolution;
+}
+
+interface ResolvedManifestArtifactInput {
+  readonly artifact: ContextArtifact;
+  readonly resolved: StorageResolution;
+}
+
+interface StorageManifestPhaseTimingWindow {
+  startedAt: number | undefined;
+  finishedAt: number | undefined;
+}
+
 /**
  * Pre-fetched (orgId, userId, name, type) -> storage row map. A single run
  * resolves dozens to hundreds of volumes/artifacts; looking each up with its
@@ -130,6 +149,93 @@ type StorageIndex = ReadonlyMap<string, StorageIndexEntry>;
 
 const EMPTY_TAR_GZ = gzipSync(Buffer.alloc(1024, 0));
 const DOWNLOAD_URL_TTL_SECONDS = 60 * 60;
+
+class StorageManifestEntryPhaseTiming {
+  private readonly resolveWindow: StorageManifestPhaseTimingWindow = {
+    startedAt: undefined,
+    finishedAt: undefined,
+  };
+  private readonly generateWindow: StorageManifestPhaseTimingWindow = {
+    startedAt: undefined,
+    finishedAt: undefined,
+  };
+
+  constructor(
+    private readonly timing: ApiDispatchTimingCollector | undefined,
+    private readonly resolveActionType: ApiDispatchTimingActionType,
+    private readonly generateActionType: ApiDispatchTimingActionType,
+  ) {}
+
+  async measureResolve<T>(operation: () => Promise<T>): Promise<T> {
+    return await this.measure(this.resolveWindow, operation);
+  }
+
+  async measureGenerate<T>(operation: () => Promise<T>): Promise<T> {
+    return await this.measure(this.generateWindow, operation);
+  }
+
+  flush(): void {
+    this.record(this.resolveActionType, this.resolveWindow);
+    this.record(this.generateActionType, this.generateWindow);
+  }
+
+  private async measure<T>(
+    window: StorageManifestPhaseTimingWindow,
+    operation: () => Promise<T>,
+  ): Promise<T> {
+    if (!this.timing) {
+      return await operation();
+    }
+
+    const startedAt = now();
+    window.startedAt =
+      window.startedAt === undefined
+        ? startedAt
+        : Math.min(window.startedAt, startedAt);
+    return await operation().finally(() => {
+      const finishedAt = now();
+      window.finishedAt =
+        window.finishedAt === undefined
+          ? finishedAt
+          : Math.max(window.finishedAt, finishedAt);
+    });
+  }
+
+  private record(
+    actionType: ApiDispatchTimingActionType,
+    window: StorageManifestPhaseTimingWindow,
+  ): void {
+    if (!this.timing) {
+      return;
+    }
+
+    const finishedAt = window.finishedAt ?? now();
+    this.timing.recordElapsed(
+      actionType,
+      "nested",
+      window.startedAt ?? finishedAt,
+      finishedAt,
+    );
+  }
+}
+
+async function withStorageManifestEntryPhaseTiming<T>(args: {
+  readonly timing?: ApiDispatchTimingCollector;
+  readonly resolveActionType: ApiDispatchTimingActionType;
+  readonly generateActionType: ApiDispatchTimingActionType;
+  readonly operation: (
+    phaseTiming: StorageManifestEntryPhaseTiming,
+  ) => Promise<T>;
+}): Promise<T> {
+  const phaseTiming = new StorageManifestEntryPhaseTiming(
+    args.timing,
+    args.resolveActionType,
+    args.generateActionType,
+  );
+  return await args.operation(phaseTiming).finally(() => {
+    phaseTiming.flush();
+  });
+}
 
 function instructionsMountPath(framework: SupportedFramework): string {
   return framework === "codex" ? "/home/user/.codex" : "/home/user/.claude";
@@ -625,135 +731,232 @@ function buildStorageEntry(args: {
   });
 }
 
-function buildComposeStorageEntry(args: {
+async function resolveComposeStorageInput(args: {
   readonly db: Db;
   readonly index: StorageIndex;
-  readonly bucket: string;
   readonly agentOrgId: string;
   readonly volume: ResolvedVolume;
-}): Computed<Promise<ManifestStorage | null>> {
-  return computed(async (get): Promise<ManifestStorage | null> => {
-    const resolvedResult = await settle(
-      resolveVolumeStorage({
-        db: args.db,
-        index: args.index,
-        volume: args.volume,
-        primaryOrgId: args.agentOrgId,
-        allowSystemFallback: true,
-      }),
-    );
-    if (!resolvedResult.ok) {
-      if (args.volume.optional && isMissingStorageError(resolvedResult.error)) {
-        return null;
-      }
-      throw resolvedResult.error;
-    }
-    if (!resolvedResult.value) {
+}): Promise<ResolvedManifestStorageInput | null> {
+  const resolvedResult = await settle(
+    resolveVolumeStorage({
+      db: args.db,
+      index: args.index,
+      volume: args.volume,
+      primaryOrgId: args.agentOrgId,
+      allowSystemFallback: true,
+    }),
+  );
+  if (!resolvedResult.ok) {
+    if (args.volume.optional && isMissingStorageError(resolvedResult.error)) {
       return null;
     }
-    return await get(
-      buildStorageEntry({
-        bucket: args.bucket,
-        name: args.volume.name,
-        mountPath: args.volume.mountPath,
-        vasStorageName: args.volume.vasStorageName,
-        instructionsTargetFilename: args.volume.instructionsTargetFilename,
-        resolved: resolvedResult.value,
-      }),
-    );
-  });
+    throw resolvedResult.error;
+  }
+  if (!resolvedResult.value) {
+    return null;
+  }
+  return {
+    name: args.volume.name,
+    mountPath: args.volume.mountPath,
+    vasStorageName: args.volume.vasStorageName,
+    instructionsTargetFilename: args.volume.instructionsTargetFilename,
+    resolved: resolvedResult.value,
+  };
 }
 
-function buildAdditionalStorageEntry(args: {
+async function resolveAdditionalStorageInput(args: {
   readonly db: Db;
   readonly index: StorageIndex;
-  readonly bucket: string;
   readonly runtimeOrgId: string;
   readonly volume: AdditionalVolume;
-}): Computed<Promise<ManifestStorage | null>> {
-  return computed(async (get): Promise<ManifestStorage | null> => {
-    const resolvedResult = await settle(
-      resolveVolumeStorage({
-        db: args.db,
-        index: args.index,
-        volume: args.volume,
-        primaryOrgId: args.runtimeOrgId,
-        allowSystemFallback: true,
-      }),
-    );
-    if (!resolvedResult.ok) {
-      if (isMissingStorageError(resolvedResult.error)) {
-        return null;
-      }
-      throw resolvedResult.error;
-    }
-    if (!resolvedResult.value) {
+}): Promise<ResolvedManifestStorageInput | null> {
+  const resolvedResult = await settle(
+    resolveVolumeStorage({
+      db: args.db,
+      index: args.index,
+      volume: args.volume,
+      primaryOrgId: args.runtimeOrgId,
+      allowSystemFallback: true,
+    }),
+  );
+  if (!resolvedResult.ok) {
+    if (isMissingStorageError(resolvedResult.error)) {
       return null;
     }
-    return await get(
-      buildStorageEntry({
-        bucket: args.bucket,
-        name: args.volume.name,
-        mountPath: args.volume.mountPath,
-        vasStorageName: args.volume.name,
-        resolved: resolvedResult.value,
-      }),
-    );
-  });
+    throw resolvedResult.error;
+  }
+  if (!resolvedResult.value) {
+    return null;
+  }
+  return {
+    name: args.volume.name,
+    mountPath: args.volume.mountPath,
+    vasStorageName: args.volume.name,
+    resolved: resolvedResult.value,
+  };
 }
 
-function buildArtifactEntry(args: {
+async function resolveArtifactStorageInput(args: {
   readonly db: Db;
   readonly index: StorageIndex;
-  readonly bucket: string;
   readonly runtimeOrgId: string;
   readonly userId: string;
   readonly artifact: ContextArtifact;
-}): Computed<Promise<ManifestArtifact>> {
-  return computed(async (get): Promise<ManifestArtifact> => {
-    const resolved = await resolveStorageVersion(
-      args.db,
-      args.index,
-      {
-        orgId: args.runtimeOrgId,
-        userId: args.userId,
-        name: args.artifact.name,
-        type: "artifact",
-      },
-      args.artifact.version,
-    );
-    const [archiveUrl, manifestUrl] = await Promise.all([
-      get(
-        generatePresignedGetUrl(
-          args.bucket,
-          `${resolved.s3Key}/archive.tar.gz`,
-          DOWNLOAD_URL_TTL_SECONDS,
-          undefined,
-          true,
-        ),
-      ),
-      get(
-        generatePresignedGetUrl(
-          args.bucket,
-          `${resolved.s3Key}/manifest.json`,
-          DOWNLOAD_URL_TTL_SECONDS,
-          undefined,
-          true,
-        ),
-      ),
-    ]);
+}): Promise<ResolvedManifestArtifactInput> {
+  const resolved = await resolveStorageVersion(
+    args.db,
+    args.index,
+    {
+      orgId: args.runtimeOrgId,
+      userId: args.userId,
+      name: args.artifact.name,
+      type: "artifact",
+    },
+    args.artifact.version,
+  );
+  return { artifact: args.artifact, resolved };
+}
 
-    return {
-      mountPath: args.artifact.mountPath,
-      vasStorageName: args.artifact.name,
-      vasStorageId: resolved.storageId,
-      vasVersionId: resolved.versionId,
-      archiveUrl,
-      manifestUrl,
-      ...(args.artifact.missingRootPolicy
-        ? { missingRootPolicy: args.artifact.missingRootPolicy }
-        : {}),
-    };
+async function buildStorageEntryFromInput(
+  get: ComputedGetter,
+  args: {
+    readonly bucket: string;
+    readonly input: ResolvedManifestStorageInput | null;
+  },
+): Promise<ManifestStorage | null> {
+  if (!args.input) {
+    return null;
+  }
+  return await get(
+    buildStorageEntry({
+      bucket: args.bucket,
+      ...args.input,
+    }),
+  );
+}
+
+async function buildArtifactEntryFromInput(
+  get: ComputedGetter,
+  args: {
+    readonly bucket: string;
+    readonly input: ResolvedManifestArtifactInput;
+  },
+): Promise<ManifestArtifact> {
+  const { artifact, resolved } = args.input;
+  const [archiveUrl, manifestUrl] = await Promise.all([
+    get(
+      generatePresignedGetUrl(
+        args.bucket,
+        `${resolved.s3Key}/archive.tar.gz`,
+        DOWNLOAD_URL_TTL_SECONDS,
+        undefined,
+        true,
+      ),
+    ),
+    get(
+      generatePresignedGetUrl(
+        args.bucket,
+        `${resolved.s3Key}/manifest.json`,
+        DOWNLOAD_URL_TTL_SECONDS,
+        undefined,
+        true,
+      ),
+    ),
+  ]);
+
+  return {
+    mountPath: artifact.mountPath,
+    vasStorageName: artifact.name,
+    vasStorageId: resolved.storageId,
+    vasVersionId: resolved.versionId,
+    archiveUrl,
+    manifestUrl,
+    ...(artifact.missingRootPolicy
+      ? { missingRootPolicy: artifact.missingRootPolicy }
+      : {}),
+  };
+}
+
+async function buildComposeStorageEntry(
+  get: ComputedGetter,
+  args: {
+    readonly db: Db;
+    readonly index: StorageIndex;
+    readonly bucket: string;
+    readonly agentOrgId: string;
+    readonly volume: ResolvedVolume;
+    readonly phaseTiming: StorageManifestEntryPhaseTiming;
+  },
+): Promise<ManifestStorage | null> {
+  const input = await args.phaseTiming.measureResolve(() => {
+    return resolveComposeStorageInput({
+      db: args.db,
+      index: args.index,
+      agentOrgId: args.agentOrgId,
+      volume: args.volume,
+    });
+  });
+  return await args.phaseTiming.measureGenerate(() => {
+    return buildStorageEntryFromInput(get, {
+      bucket: args.bucket,
+      input,
+    });
+  });
+}
+
+async function buildAdditionalStorageEntry(
+  get: ComputedGetter,
+  args: {
+    readonly db: Db;
+    readonly index: StorageIndex;
+    readonly bucket: string;
+    readonly runtimeOrgId: string;
+    readonly volume: AdditionalVolume;
+    readonly phaseTiming: StorageManifestEntryPhaseTiming;
+  },
+): Promise<ManifestStorage | null> {
+  const input = await args.phaseTiming.measureResolve(() => {
+    return resolveAdditionalStorageInput({
+      db: args.db,
+      index: args.index,
+      runtimeOrgId: args.runtimeOrgId,
+      volume: args.volume,
+    });
+  });
+  return await args.phaseTiming.measureGenerate(() => {
+    return buildStorageEntryFromInput(get, {
+      bucket: args.bucket,
+      input,
+    });
+  });
+}
+
+async function buildArtifactEntry(
+  get: ComputedGetter,
+  args: {
+    readonly db: Db;
+    readonly index: StorageIndex;
+    readonly bucket: string;
+    readonly runtimeOrgId: string;
+    readonly userId: string;
+    readonly artifact: ContextArtifact;
+    readonly phaseTiming: StorageManifestEntryPhaseTiming;
+  },
+): Promise<ManifestArtifact> {
+  const input = await args.phaseTiming.measureResolve(() => {
+    return resolveArtifactStorageInput({
+      db: args.db,
+      index: args.index,
+      runtimeOrgId: args.runtimeOrgId,
+      userId: args.userId,
+      artifact: args.artifact,
+    });
+  });
+  return await args.phaseTiming.measureGenerate(() => {
+    return buildArtifactEntryFromInput(get, {
+      bucket: args.bucket,
+      input,
+    });
   });
 }
 
@@ -884,19 +1087,27 @@ async function buildStorageManifestEntries(
             "api_dispatch_prepare_storage_manifest_build_compose_entries",
             "nested",
             async () => {
-              return await Promise.all(
-                args.composeVolumes.map((volume) => {
-                  return get(
-                    buildComposeStorageEntry({
-                      db: args.db,
-                      index: args.storageIndex,
-                      bucket: args.bucket,
-                      agentOrgId: args.agentOrgId,
-                      volume,
+              return await withStorageManifestEntryPhaseTiming({
+                timing: args.timing,
+                resolveActionType:
+                  "api_dispatch_prepare_storage_manifest_resolve_compose_versions",
+                generateActionType:
+                  "api_dispatch_prepare_storage_manifest_generate_compose_urls",
+                operation: async (phaseTiming) => {
+                  return await Promise.all(
+                    args.composeVolumes.map((volume) => {
+                      return buildComposeStorageEntry(get, {
+                        db: args.db,
+                        index: args.storageIndex,
+                        bucket: args.bucket,
+                        agentOrgId: args.agentOrgId,
+                        volume,
+                        phaseTiming,
+                      });
                     }),
                   );
-                }),
-              );
+                },
+              });
             },
           ),
           measureApiDispatchTiming(
@@ -904,19 +1115,27 @@ async function buildStorageManifestEntries(
             "api_dispatch_prepare_storage_manifest_build_additional_entries",
             "nested",
             async () => {
-              return await Promise.all(
-                (args.additionalVolumes ?? []).map((volume) => {
-                  return get(
-                    buildAdditionalStorageEntry({
-                      db: args.db,
-                      index: args.storageIndex,
-                      bucket: args.bucket,
-                      runtimeOrgId: args.runtimeOrgId,
-                      volume,
+              return await withStorageManifestEntryPhaseTiming({
+                timing: args.timing,
+                resolveActionType:
+                  "api_dispatch_prepare_storage_manifest_resolve_additional_versions",
+                generateActionType:
+                  "api_dispatch_prepare_storage_manifest_generate_additional_urls",
+                operation: async (phaseTiming) => {
+                  return await Promise.all(
+                    (args.additionalVolumes ?? []).map((volume) => {
+                      return buildAdditionalStorageEntry(get, {
+                        db: args.db,
+                        index: args.storageIndex,
+                        bucket: args.bucket,
+                        runtimeOrgId: args.runtimeOrgId,
+                        volume,
+                        phaseTiming,
+                      });
                     }),
                   );
-                }),
-              );
+                },
+              });
             },
           ),
           measureApiDispatchTiming(
@@ -924,20 +1143,28 @@ async function buildStorageManifestEntries(
             "api_dispatch_prepare_storage_manifest_build_artifact_entries",
             "nested",
             async () => {
-              return await Promise.all(
-                args.artifacts.map((artifact) => {
-                  return get(
-                    buildArtifactEntry({
-                      db: args.db,
-                      index: args.storageIndex,
-                      bucket: args.bucket,
-                      runtimeOrgId: args.runtimeOrgId,
-                      userId: args.userId,
-                      artifact,
+              return await withStorageManifestEntryPhaseTiming({
+                timing: args.timing,
+                resolveActionType:
+                  "api_dispatch_prepare_storage_manifest_resolve_artifact_versions",
+                generateActionType:
+                  "api_dispatch_prepare_storage_manifest_generate_artifact_urls",
+                operation: async (phaseTiming) => {
+                  return await Promise.all(
+                    args.artifacts.map((artifact) => {
+                      return buildArtifactEntry(get, {
+                        db: args.db,
+                        index: args.storageIndex,
+                        bucket: args.bucket,
+                        runtimeOrgId: args.runtimeOrgId,
+                        userId: args.userId,
+                        artifact,
+                        phaseTiming,
+                      });
                     }),
                   );
-                }),
-              );
+                },
+              });
             },
           ),
         ]);
