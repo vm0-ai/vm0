@@ -11,7 +11,6 @@ import { afterEach } from "vitest";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { writeDb$ } from "../../external/db";
 import {
-  deleteOrgMembership$,
   seedOrgMembership$,
   type OrgMembershipFixture,
 } from "./helpers/zero-org-membership";
@@ -57,7 +56,6 @@ describe("GET /api/zero/connectors", () => {
       const fixture = seededFixtures.pop();
       if (fixture) {
         await deleteConnectorsByOrg(fixture.orgId);
-        await store.set(deleteOrgMembership$, fixture, context.signal);
       }
     }
   });

@@ -28,10 +28,7 @@ import { builtInGenerationUsageIdempotencyKey } from "../../services/built-in-ge
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
 import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import { zeroImageIoGenerateRoutes } from "../zero-image-io-generate";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -658,7 +655,6 @@ async function deleteImageFixture(fixture: ImageFixture): Promise<void> {
     );
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
   await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
-  await store.set(deleteOrgMembership$, fixture, context.signal);
   if (fixture.insertedPricingCategories.length > 0) {
     await writeDb
       .delete(usagePricing)

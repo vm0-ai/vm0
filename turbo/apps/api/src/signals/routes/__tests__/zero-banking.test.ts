@@ -22,10 +22,7 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -238,7 +235,6 @@ async function deleteBankingFixture(fixture: BankingFixture): Promise<void> {
         eq(bankingConnections.userId, fixture.userId),
       ),
     );
-  await store.set(deleteOrgMembership$, fixture, context.signal);
   await deleteFeatureSwitchesForUser(context, fixture);
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
 }

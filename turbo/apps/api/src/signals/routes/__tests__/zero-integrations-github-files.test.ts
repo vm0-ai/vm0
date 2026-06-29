@@ -24,11 +24,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -130,22 +126,14 @@ describe("GitHub zero file integration routes", () => {
   const trackUsage = createFixtureTracker<UsageInsightFixture>((fixture) => {
     return store.set(deleteUsageInsightFixture$, fixture, context.signal);
   });
-  const trackMembership = createFixtureTracker<OrgMembershipFixture>(
-    (fixture) => {
-      return store.set(deleteOrgMembership$, fixture, context.signal);
-    },
-  );
-
   async function seedFixture(): Promise<GitHubFileFixture> {
     const fixture = await trackUsage(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
     );
-    await trackMembership(
-      store.set(
-        seedOrgMembership$,
-        { orgId: fixture.orgId, userId: fixture.userId },
-        context.signal,
-      ),
+    await store.set(
+      seedOrgMembership$,
+      { orgId: fixture.orgId, userId: fixture.userId },
+      context.signal,
     );
     const compose = await store.set(
       seedCompose$,

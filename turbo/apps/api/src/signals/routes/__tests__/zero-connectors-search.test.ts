@@ -14,11 +14,7 @@ import { afterEach } from "vitest";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -68,7 +64,6 @@ describe("GET /api/zero/connectors/search", () => {
     readonly orgId: string;
     readonly userId: string;
   }[] = [];
-  const seededOrgs: OrgMembershipFixture[] = [];
   const restoreConnectorRegistry: (() => void)[] = [];
 
   afterEach(async () => {
@@ -79,12 +74,6 @@ describe("GET /api/zero/connectors/search", () => {
       const fixture = seededFeatureSwitches.pop();
       if (fixture) {
         await deleteFeatureSwitches(fixture.orgId, fixture.userId);
-      }
-    }
-    while (seededOrgs.length > 0) {
-      const fixture = seededOrgs.pop();
-      if (fixture) {
-        await store.set(deleteOrgMembership$, fixture, context.signal);
       }
     }
   });
@@ -463,12 +452,10 @@ describe("GET /api/zero/connectors/search", () => {
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    seededOrgs.push(
-      await store.set(
-        seedOrgMembership$,
-        { orgId, userId, role: "admin" },
-        context.signal,
-      ),
+    await store.set(
+      seedOrgMembership$,
+      { orgId, userId, role: "admin" },
+      context.signal,
     );
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
@@ -497,12 +484,10 @@ describe("GET /api/zero/connectors/search", () => {
   it("rejects a ZERO_TOKEN missing the connector:read capability with 403", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    seededOrgs.push(
-      await store.set(
-        seedOrgMembership$,
-        { orgId, userId, role: "admin" },
-        context.signal,
-      ),
+    await store.set(
+      seedOrgMembership$,
+      { orgId, userId, role: "admin" },
+      context.signal,
     );
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({

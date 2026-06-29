@@ -12,7 +12,6 @@ import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import {
-  deleteOrgMembership$,
   seedOrgMembership$,
   type OrgMembershipFixture,
 } from "./helpers/zero-org-membership";
@@ -61,7 +60,6 @@ describe("GET /api/zero/connectors/:type", () => {
       const fixture = seededFixtures.pop();
       if (fixture) {
         await deleteConnectorsByOrg(fixture.orgId);
-        await store.set(deleteOrgMembership$, fixture, context.signal);
       }
     }
   });

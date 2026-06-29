@@ -25,10 +25,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteFeatureSwitchesForUser,
   updateFeatureSwitchesForUser,
@@ -53,7 +50,6 @@ interface GoalApiFixture extends UsageInsightFixture {
 const track = createFixtureTracker<GoalApiFixture>(async (fixture) => {
   await deleteFeatureSwitchesForUser(context, fixture);
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
-  await store.set(deleteOrgMembership$, fixture, context.signal);
 });
 
 function currentSecond(): number {

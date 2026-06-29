@@ -14,7 +14,6 @@ import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
-  deleteOrgMembership$,
   seedOrgMembership$,
   type OrgMembershipFixture,
 } from "./helpers/zero-org-membership";
@@ -32,7 +31,6 @@ async function cleanupOrgData(fixture: OrgMembershipFixture): Promise<void> {
   await writeDb.delete(connectors).where(eq(connectors.orgId, fixture.orgId));
   await writeDb.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
   await writeDb.delete(variables).where(eq(variables.orgId, fixture.orgId));
-  await store.set(deleteOrgMembership$, fixture, context.signal);
 }
 
 function seedFixture(): Promise<OrgMembershipFixture> {
