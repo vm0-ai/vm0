@@ -26,6 +26,7 @@ export const googleAds = {
           kind: "auth-code",
           scopes: [
             "https://www.googleapis.com/auth/adwords",
+            "https://www.googleapis.com/auth/datamanager",
             "https://www.googleapis.com/auth/userinfo.email",
           ],
           outputs: {

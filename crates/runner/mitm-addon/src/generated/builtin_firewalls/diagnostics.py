@@ -1671,6 +1671,16 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
           "GOOGLE_ADS_TOKEN",
           "GOOGLE_ADS_DEVELOPER_TOKEN"
         ]
+      },
+      {
+        "authHeaderNames": [
+          "Authorization"
+        ],
+        "authQueryParamNames": [],
+        "base": "https://datamanager.googleapis.com",
+        "envNames": [
+          "GOOGLE_ADS_TOKEN"
+        ]
       }
     ],
     "name": "google-ads"
