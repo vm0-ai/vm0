@@ -321,7 +321,8 @@ const IPV4_NON_PUBLIC_RANGES: readonly (readonly [number, number])[] = [
   [0x7f000000, 0x7fffffff],
   [0xa9fe0000, 0xa9feffff],
   [0xac100000, 0xac1fffff],
-  [0xc0000000, 0xc00000ff],
+  [0xc0000000, 0xc0000008],
+  [0xc000000b, 0xc00000ff],
   [0xc0000200, 0xc00002ff],
   [0xc0586300, 0xc05863ff],
   [0xc0a80000, 0xc0a8ffff],
@@ -1563,7 +1564,8 @@ function isPublicIpv6SpecialRegistryException(
     words[4] === 0 &&
     words[5] === 0 &&
     words[6] === 0 &&
-    (words[7] === 1 || words[7] === 2)
+    words[7]! >= 1 &&
+    words[7]! <= 3
   ) {
     return true;
   }
@@ -1592,6 +1594,9 @@ function isPublicIpv6Address(words: readonly number[]): boolean {
     return isPublicIpv6SpecialRegistryException(words);
   }
   if (first === 0x2001 && second === 0x0db8) {
+    return false;
+  }
+  if (first === 0x3fff && second <= 0x0fff) {
     return false;
   }
   if (first === 0x2002) {
