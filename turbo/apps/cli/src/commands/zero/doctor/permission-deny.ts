@@ -1,6 +1,5 @@
 import { Command, Option } from "commander";
 import {
-  type FirewallBaseUrlMatch,
   findMatchingRoutingPermissions,
   matchFirewallBaseUrl,
 } from "@vm0/connectors/firewall-rule-matcher";
@@ -22,6 +21,15 @@ interface PermissionDenyOptions {
   readonly url?: string;
   readonly path?: string;
 }
+
+interface PermissionDenyBaseMatch {
+  readonly apiBase: string;
+  readonly displayBase: string;
+  readonly relativePath: string;
+  readonly score: number;
+}
+
+const BASE_URL_VAR_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 
 function pathOnlyError(): Error {
   return new Error(
@@ -51,13 +59,86 @@ function parseDeniedUrl(url: string): URL {
   }
 }
 
+function baseUrlTemplateVarNames(base: string): string[] {
+  return [...base.matchAll(BASE_URL_VAR_PATTERN)].map((match) => {
+    return match[1]!;
+  });
+}
+
+function resolveBaseUrlTemplateFromEnv(base: string): string | null {
+  const names = baseUrlTemplateVarNames(base);
+  if (names.length === 0) return base;
+
+  let missing = false;
+  const resolved = base.replace(
+    BASE_URL_VAR_PATTERN,
+    (_match, name: string) => {
+      const value = process.env[name];
+      if (!value) {
+        missing = true;
+        return "";
+      }
+      return value;
+    },
+  );
+  return missing ? null : resolved;
+}
+
+function baseUrlTemplateToPattern(base: string): string | null {
+  if (baseUrlTemplateVarNames(base).length === 0) return null;
+  const pattern = base.replace(BASE_URL_VAR_PATTERN, (_match, name: string) => {
+    return `{${name}}`;
+  });
+  return pattern.includes("://") ? pattern : null;
+}
+
+function matchApiBaseUrl(
+  url: string,
+  apiBase: string,
+): PermissionDenyBaseMatch | null {
+  const directMatch = matchFirewallBaseUrl(url, apiBase);
+  if (directMatch) {
+    return {
+      apiBase,
+      displayBase: directMatch.displayBase,
+      relativePath: directMatch.relativePath,
+      score: directMatch.score,
+    };
+  }
+
+  const resolvedBase = resolveBaseUrlTemplateFromEnv(apiBase);
+  if (resolvedBase !== null && resolvedBase !== apiBase) {
+    const resolvedMatch = matchFirewallBaseUrl(url, resolvedBase);
+    if (resolvedMatch) {
+      return {
+        apiBase,
+        displayBase: resolvedMatch.displayBase,
+        relativePath: resolvedMatch.relativePath,
+        score: resolvedMatch.score,
+      };
+    }
+    return null;
+  }
+
+  const patternBase = baseUrlTemplateToPattern(apiBase);
+  if (patternBase === null) return null;
+  const patternMatch = matchFirewallBaseUrl(url, patternBase);
+  if (!patternMatch) return null;
+  return {
+    apiBase,
+    displayBase: apiBase,
+    relativePath: patternMatch.relativePath,
+    score: patternMatch.score,
+  };
+}
+
 function findBestBaseMatch(
   url: string,
   apis: readonly { readonly base: string }[],
-): FirewallBaseUrlMatch | null {
-  let bestMatch: FirewallBaseUrlMatch | null = null;
+): PermissionDenyBaseMatch | null {
+  let bestMatch: PermissionDenyBaseMatch | null = null;
   for (const api of apis) {
-    const match = matchFirewallBaseUrl(url, api.base);
+    const match = matchApiBaseUrl(url, api.base);
     if (match && (!bestMatch || match.score > bestMatch.score)) {
       bestMatch = match;
     }
@@ -163,7 +244,7 @@ Notes:
           method,
           match.relativePath,
           metadata.apis,
-          { apiBase: match.displayBase, serviceName: connectorRef },
+          { apiBase: match.apiBase, serviceName: connectorRef },
         );
 
         console.log(

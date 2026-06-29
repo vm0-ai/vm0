@@ -253,6 +253,74 @@ describe("zero doctor permission-deny command", () => {
       ).toBe(true);
     });
 
+    it("should match base URL templates with path variables", async () => {
+      await permissionDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "quickbooks",
+        "--method",
+        "GET",
+        "--url",
+        "https://quickbooks.api.intuit.com/v3/company/123/companyinfo/123",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        "QuickBooks permission filtered GET /companyinfo/123 relative to base URL https://quickbooks.api.intuit.com/v3/company/${{ vars.QUICKBOOKS_REALM_ID }}",
+      );
+      expect(logCalls).toContain('covered by the "company-info"');
+      expect(logCalls).toContain(
+        "zero doctor permission-change quickbooks --permission company-info --enable --duration 1h",
+      );
+    });
+
+    it("should use configured env base URL variables when available", async () => {
+      vi.stubEnv("REAP_API_BASE_URL", "https://sandbox.api.reap.global/v1");
+
+      await permissionDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "reap",
+        "--method",
+        "GET",
+        "--url",
+        "https://sandbox.api.reap.global/v1/accounts",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        "Reap permission filtered GET /accounts relative to base URL https://sandbox.api.reap.global/v1",
+      );
+      expect(logCalls).toContain('covered by the "read"');
+      expect(logCalls).toContain(
+        "zero doctor permission-change reap --permission read --enable --duration 1h",
+      );
+    });
+
+    it("should not ignore configured env base URL variable mismatches", async () => {
+      vi.stubEnv("QUICKBOOKS_REALM_ID", "999");
+
+      await expect(async () => {
+        await permissionDenyCommand.parseAsync([
+          "node",
+          "cli",
+          "quickbooks",
+          "--method",
+          "GET",
+          "--url",
+          "https://quickbooks.api.intuit.com/v3/company/123/companyinfo/123",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "No registered QuickBooks base URL matches the provided URL.",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleLog).not.toHaveBeenCalled();
+    });
+
     it("should reject path-only diagnostics", async () => {
       await expect(async () => {
         await permissionDenyCommand.parseAsync([
