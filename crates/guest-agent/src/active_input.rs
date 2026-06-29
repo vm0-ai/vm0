@@ -1,4 +1,4 @@
-//! Guest-agent local active-input state for Claude stream-json stdin.
+//! Guest-agent local active-input state shared by CLI follow-up sinks.
 
 use std::collections::{HashMap, HashSet, VecDeque};
 use std::sync::{Arc, Mutex};
@@ -12,21 +12,21 @@ const ACTIVE_INPUT_TYPE: &str = "active-input";
 const ACTIVE_INPUT_QUEUE_CAPACITY: usize = 8;
 const ACTIVE_INPUT_SEEN_MESSAGE_ID_CAPACITY: usize = 1024;
 
-/// Accepted follow-up user input waiting to be written to Claude stream-json stdin.
+/// Accepted follow-up user input waiting for the CLI follow-up sink.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct ActiveInputFrame {
     /// Control-plane message id used for duplicate detection and diagnostics.
     pub message_id: String,
-    /// Deterministic Claude user-frame UUID assigned to this active input.
+    /// Deterministic vm0 frame UUID assigned to this active input.
     pub uuid: String,
-    /// User text to replay into the running CLI process.
+    /// Follow-up user text to deliver to the running CLI process.
     pub text: String,
 }
 
 /// Result returned to the process-control caller for an active-input payload.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub enum ActiveInputControlOutcome {
-    /// The payload was accepted and queued for the CLI stdin writer.
+    /// The payload was accepted and queued for the CLI follow-up sink.
     Accepted,
     /// The payload was rejected without being queued.
     Rejected { diagnostic: &'static str },
@@ -257,7 +257,7 @@ pub struct ActiveInputController {
     inner: Arc<ActiveInputInner>,
 }
 
-/// Single-consumer CLI stdin side of active input for one guest-agent run.
+/// Single-consumer CLI follow-up side of active input for one guest-agent run.
 ///
 /// `execute_cli_with_active_input` consumes this writer for the lifetime of one
 /// CLI execution. It yields accepted follow-up input frames and observes the
@@ -272,7 +272,7 @@ pub struct ActiveInputWriter {
 /// Paired active-input state for one guest-agent run.
 ///
 /// The runtime creates a cloneable [`ActiveInputController`] for control-plane
-/// requests and a single [`ActiveInputWriter`] for CLI stdin replay. Consuming
+/// requests and a single [`ActiveInputWriter`] for CLI follow-up delivery. Consuming
 /// the runtime with [`ActiveInputRuntime::into_writer`] transfers the writer to
 /// the CLI execution path.
 pub struct ActiveInputRuntime {
@@ -510,7 +510,7 @@ impl ActiveInputController {
 
     /// Mark a writer-owned frame delivered by a sink that will not emit a
     /// replayed user event back through CLI stdout.
-    pub fn mark_written_without_replay(&self, uuid: &str) {
+    fn mark_written_without_replay(&self, uuid: &str) {
         let mut state = self.inner.state.lock().unwrap_or_else(|e| e.into_inner());
         state.remove_pending_by_uuid(uuid);
     }
@@ -636,7 +636,7 @@ impl ActiveInputWriter {
         self.controller.mark_written(uuid);
     }
 
-    pub fn mark_written_without_replay(&self, uuid: &str) {
+    pub(crate) fn mark_written_without_replay(&self, uuid: &str) {
         self.controller.mark_written_without_replay(uuid);
     }
 

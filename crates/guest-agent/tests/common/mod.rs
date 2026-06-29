@@ -377,6 +377,16 @@ pub fn ensure_canonical_workspace_for_test() -> Result<(), String> {
 /// and under `cargo test --release`. We infer both from the currently-
 /// running test binary's path and forward them to the subprocess.
 pub fn build_and_locate_mock() -> Result<PathBuf, String> {
+    build_and_locate_mock_package("guest-mock-claude", "guest-mock-claude")
+}
+
+/// Build the mock Codex binary and resolve its filesystem path beside the
+/// current test profile.
+pub fn build_and_locate_mock_codex() -> Result<PathBuf, String> {
+    build_and_locate_mock_package("guest-mock-codex", "guest-mock-codex")
+}
+
+fn build_and_locate_mock_package(package: &str, binary: &str) -> Result<PathBuf, String> {
     // Test binary:   <target_dir>/<profile>/deps/<name>-<hash>
     //   parent():    <target_dir>/<profile>/deps
     //   parent().parent():  <target_dir>/<profile>   ← target_profile_dir
@@ -395,7 +405,7 @@ pub fn build_and_locate_mock() -> Result<PathBuf, String> {
         .ok_or_else(|| "profile dir name".to_string())?;
 
     let mut cmd = std::process::Command::new("cargo");
-    cmd.args(["build", "-p", "guest-mock-claude", "--quiet"])
+    cmd.args(["build", "-p", package, "--quiet"])
         .arg("--target-dir")
         .arg(target_dir);
     // Cargo profile → output dir mapping:
@@ -417,54 +427,10 @@ pub fn build_and_locate_mock() -> Result<PathBuf, String> {
         .status()
         .map_err(|e| format!("invoke cargo build: {e}"))?;
     if !status.success() {
-        return Err("cargo build -p guest-mock-claude failed".into());
+        return Err(format!("cargo build -p {package} failed"));
     }
 
-    let mock = target_profile_dir.join("guest-mock-claude");
-    if !mock.exists() {
-        return Err(format!("mock binary not found at {}", mock.display()));
-    }
-    Ok(mock)
-}
-
-/// Build the mock Codex binary and resolve its filesystem path beside the
-/// current test profile.
-pub fn build_and_locate_mock_codex() -> Result<PathBuf, String> {
-    let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
-    let target_profile_dir = exe
-        .parent()
-        .and_then(|p| p.parent())
-        .ok_or_else(|| "target/<profile> dir".to_string())?;
-    let target_dir = target_profile_dir
-        .parent()
-        .ok_or_else(|| "target dir".to_string())?;
-    let profile_dir_name = target_profile_dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| "profile dir name".to_string())?;
-
-    let mut cmd = std::process::Command::new("cargo");
-    cmd.args(["build", "-p", "guest-mock-codex", "--quiet"])
-        .arg("--target-dir")
-        .arg(target_dir);
-    match profile_dir_name {
-        "debug" => {}
-        "release" => {
-            cmd.arg("--release");
-        }
-        other => {
-            cmd.args(["--profile", other]);
-        }
-    }
-
-    let status = cmd
-        .status()
-        .map_err(|e| format!("invoke cargo build: {e}"))?;
-    if !status.success() {
-        return Err("cargo build -p guest-mock-codex failed".into());
-    }
-
-    let mock = target_profile_dir.join("guest-mock-codex");
+    let mock = target_profile_dir.join(binary);
     if !mock.exists() {
         return Err(format!("mock binary not found at {}", mock.display()));
     }
