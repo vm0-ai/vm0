@@ -311,6 +311,34 @@ async def test_public_destination_allows_prebound_public_original_destination(
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
+async def test_public_destination_ignores_stale_prebound_public_original_destination(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="10.0.0.1")
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("93.184.216.34", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+
+
 @pytest.mark.parametrize("request_stream", [False, True])
 async def test_public_destination_requestheaders_blocks_before_early_auth(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, request_stream
