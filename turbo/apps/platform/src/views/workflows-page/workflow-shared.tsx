@@ -191,6 +191,9 @@ export function gmailTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "gmail-new-message") {
     return "Gmail new message";
   }
+  if (trigger.eventType === "github-label-applied") {
+    return "GitHub label applied";
+  }
   return "Webhook trigger";
 }
 
@@ -205,6 +208,9 @@ export function gmailTriggerSummary(
   }
   if (trigger.eventType === "gmail-new-message") {
     return formatGmailMatchSummary(trigger.eventConfig);
+  }
+  if (trigger.eventType === "github-label-applied") {
+    return `Label ${quote(trigger.eventConfig.labelName)}`;
   }
   return null;
 }

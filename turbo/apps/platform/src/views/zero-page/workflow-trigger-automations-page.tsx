@@ -81,6 +81,7 @@ import {
 type WorkflowAutomationKind =
   | "interval"
   | "scheduled"
+  | "once"
   | "webhook"
   | "gmail-new-message"
   | "gmail-label-applied";
@@ -110,6 +111,14 @@ const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
     Icon: IconCalendarTime,
     prompt:
       "I'd like to set up a scheduled workflow trigger that runs on a daily, weekly, monthly, or custom cron schedule. Help me define the workflow.",
+  },
+  {
+    kind: "once",
+    title: "One-time run",
+    description: "Run a workflow once at a specific date and time.",
+    Icon: IconClock,
+    prompt:
+      "I'd like to set up a one-time workflow trigger that runs at a specific date and time. Help me define the workflow.",
   },
   {
     kind: "webhook",

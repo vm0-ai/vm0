@@ -901,7 +901,7 @@ fn invalid_field_for_method(method: &str, field: &'static str) -> CodexAppServer
 
 #[cfg(test)]
 mod tests {
-    use agent_diagnostics::FailureReason;
+    use guest_contracts::diagnostics::FailureReason;
     use serde_json::{Value, json};
 
     use crate::events;

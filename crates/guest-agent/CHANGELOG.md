@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.17](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.16...guest-agent-v0.41.17) (2026-06-29)
+
+
+### Refactoring
+
+* merge agent diagnostics into guest contracts ([#19317](https://github.com/vm0-ai/vm0/issues/19317)) ([e36a711](https://github.com/vm0-ai/vm0/commit/e36a71168939a1b692a1ab80005d984697a77fe4))
+
 ## [0.41.16](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.15...guest-agent-v0.41.16) (2026-06-29)
 
 ## [0.41.15](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.14...guest-agent-v0.41.15) (2026-06-29)

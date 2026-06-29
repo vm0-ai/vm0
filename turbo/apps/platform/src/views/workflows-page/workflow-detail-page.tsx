@@ -7,6 +7,8 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import type {
   GmailLabelAppliedEventConfig,
   GmailNewMessageEventConfig,
+  GithubLabelAppliedEventConfig,
+  GithubLabelAppliedSubjectFilter,
   WorkflowFileEntry,
   WorkflowFileMetadata,
   ZeroWorkflowDetailResponse,
@@ -17,6 +19,8 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   IconAlertTriangle,
+  IconArrowRight,
+  IconBrandGithub,
   IconChevronDown,
   IconClock,
   IconCopy,
@@ -63,9 +67,11 @@ import { agents$ } from "../../signals/agent.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
   changeWorkflowVisibility$,
+  createWorkflowGithubLabelAppliedTrigger$,
   createWorkflowGmailLabelAppliedTrigger$,
   createWorkflowGmailNewMessageTrigger$,
   createWorkflowWebhookTrigger$,
+  createGithubLabelActor$,
   createScheduleCronFields$,
   createWorkflowScheduleTrigger$,
   createdWorkflowWebhookTrigger$,
@@ -75,32 +81,41 @@ import {
   deleteWorkflow$,
   deleteWorkflowTrigger$,
   editingScheduleCronFields$,
+  editingGithubLabelActors$,
   editingWorkflowTriggerId$,
   patchWorkflowMetadataForm$,
   openWorkflowChat$,
+  pauseWorkflowTriggers$,
   reloadWorkflows$,
   resetWorkflowMetadataForm$,
   runWorkflowTriggerNow$,
   selectedWorkflowFilePath$,
+  setCreateGithubLabelActor$,
   setCreateScheduleCronFields$,
   setCreatedWorkflowWebhookTrigger$,
+  setEditingGithubLabelActor$,
   setEditingScheduleCronFields$,
   setEditingWorkflowTriggerId$,
   setSelectedWorkflowFilePath$,
   setWorkflowActionDialog$,
   setWorkflowDetailActiveTab$,
   setWorkflowFileDraft$,
+  setWorkflowCopyDialogState$,
   setWorkflowTriggerCreateDialog$,
   setWorkflowTriggerEnabled$,
+  updateWorkflowGithubLabelAppliedTrigger$,
   updateWorkflowGmailNewMessageTrigger$,
   updateWorkflowGmailLabelAppliedTrigger$,
   updateWorkflowScheduleTrigger$,
   updateWorkflow$,
   workflowActionDialog$,
+  workflowCopyDialogState$,
   workflowDetailActiveTab$,
   workflowTriggerCreateDialog$,
   workflowFileDraft$,
   workflowDetail,
+  type WorkflowCopyDialogAgent,
+  type WorkflowCopyDialogState,
   type WorkflowCronFields,
   type WorkflowCronFrequency,
   type WorkflowDetailTab,
@@ -116,6 +131,10 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
+import {
+  connectGithubInstallation$,
+  githubIntegrationData$,
+} from "../../signals/zero-page/zero-github.ts";
 import {
   atTimeInTimezone,
   buildCronExpression,
@@ -164,6 +183,13 @@ type GmailWorkflowTriggerSummary = Extract<
     readonly eventType: "gmail-new-message" | "gmail-label-applied";
   }
 >;
+type GithubWorkflowTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  {
+    readonly kind: "event";
+    readonly eventType: "github-label-applied";
+  }
+>;
 type WebhookWorkflowTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
@@ -178,6 +204,23 @@ const GMAIL_TEXT_FIELDS: readonly {
   { field: "body", label: "Body" },
   { field: "to", label: "To" },
   { field: "cc", label: "Cc" },
+];
+
+const GITHUB_SUBJECT_OPTIONS: readonly {
+  readonly value: GithubLabelAppliedSubjectFilter;
+  readonly label: string;
+}[] = [
+  { value: "both", label: "Issues and pull requests" },
+  { value: "issues", label: "Issues only" },
+  { value: "pull_requests", label: "Pull requests only" },
+];
+
+const GITHUB_ACTOR_OPTIONS: readonly {
+  readonly value: "me" | "anyone";
+  readonly label: string;
+}[] = [
+  { value: "me", label: "Me" },
+  { value: "anyone", label: "Anyone" },
 ];
 
 const WORKFLOW_CRON_FREQUENCY_OPTIONS: readonly {
@@ -234,6 +277,14 @@ function isGmailWorkflowTrigger(
   );
 }
 
+function isGithubWorkflowTrigger(
+  trigger: ZeroWorkflowTriggerSummary,
+): trigger is GithubWorkflowTriggerSummary {
+  return (
+    trigger.kind === "event" && trigger.eventType === "github-label-applied"
+  );
+}
+
 function isWebhookWorkflowTrigger(
   trigger: ZeroWorkflowTriggerSummary,
 ): trigger is WebhookWorkflowTriggerSummary {
@@ -259,9 +310,13 @@ function WorkflowDetailContent({
 }: {
   readonly workflowId: string;
 }) {
-  const detailLoadable = useLoadable(workflowDetail(workflowId));
+  const detail$ = workflowDetail(workflowId);
+  const detailLoadable = useLoadable(detail$);
+  const lastResolvedDetail = useLastResolved(detail$);
   const detail =
-    detailLoadable.state === "hasData" ? detailLoadable.data : null;
+    detailLoadable.state === "hasData"
+      ? detailLoadable.data
+      : (lastResolvedDetail ?? null);
   const activeTab = useGet(workflowDetailActiveTab$);
   const setActiveTab = useSet(setWorkflowDetailActiveTab$);
 
@@ -728,12 +783,17 @@ function WorkflowMetadataForm({
   const disabled = !detail.canManage || saving;
   const defaults = workflowMetadataDefaults(detail);
   const values =
-    patch?.workflowId === detail.id ? { ...defaults, ...patch } : defaults;
+    detail.canManage && patch?.workflowId === detail.id
+      ? { ...defaults, ...patch }
+      : defaults;
   const dirty =
     values.displayName !== defaults.displayName ||
     values.name !== defaults.name ||
     values.description !== defaults.description;
   const patchValues = (patch: Partial<WorkflowMetadataValues>) => {
+    if (!detail.canManage || saving) {
+      return;
+    }
     patchForm({ workflowId: detail.id, patch });
   };
   const save = () => {
@@ -785,7 +845,7 @@ function WorkflowMetadataForm({
           values={values}
         />
       </form>
-      {dirty ? (
+      {detail.canManage && dirty ? (
         <ZeroUnsavedBar onDiscard={resetForm} onSave={save} saving={saving} />
       ) : null}
     </>
@@ -998,6 +1058,10 @@ function WorkflowCopyDialog({
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
+  const copyState = useGet(workflowCopyDialogState$);
+  const pageSignal = useGet(pageSignal$);
+  const setCopyState = useSet(setWorkflowCopyDialogState$);
+  const [copyLoadable, copyWorkflow] = useLoadableSet(copyWorkflow$);
   const agentsLoadable = useLoadable(agents$);
   const agents =
     agentsLoadable.state === "hasData"
@@ -1005,73 +1069,428 @@ function WorkflowCopyDialog({
           return agent.id !== detail.agentId;
         })
       : [];
-  const pageSignal = useGet(pageSignal$);
-  const [copyLoadable, copyWorkflow] = useLoadableSet(copyWorkflow$);
-  const copying = copyLoadable.state === "loading";
+  const sourceAgentName = agentLabel(detail);
+  const sourceWorkflowName = workflowTitle(detail);
+  const enabledSourceTriggerIds = detail.triggers
+    .filter((trigger) => {
+      return trigger.enabled;
+    })
+    .map((trigger) => {
+      return trigger.id;
+    });
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="sm:max-w-[560px]">
         <DialogHeader>
-          <DialogTitle>Copy workflow</DialogTitle>
+          <DialogTitle>{workflowCopyDialogTitle(copyState)}</DialogTitle>
           <DialogDescription>
-            Copy to another agent as a new private workflow.
+            {workflowCopyDialogDescription({
+              copyState,
+              sourceAgentName,
+              sourceWorkflowName,
+            })}
           </DialogDescription>
         </DialogHeader>
-        {agents.length > 0 ? (
-          <div className="max-h-[360px] overflow-auto rounded-md border border-border/60">
-            {agents.map((agent) => {
-              return (
-                <button
-                  key={agent.id}
-                  type="button"
-                  disabled={copying}
-                  className="flex w-full items-center justify-between gap-3 border-b border-border/60 px-3 py-2 text-left last:border-b-0 transition-colors hover:bg-muted disabled:opacity-60"
-                  onClick={() => {
-                    detach(
-                      (async () => {
-                        await copyWorkflow(
-                          {
-                            workflowId: detail.id,
-                            toAgentId: agent.id,
-                          },
-                          pageSignal,
-                        );
-                        onOpenChange(false);
-                      })(),
-                      Reason.DomCallback,
-                    );
-                  }}
-                >
-                  <span className="min-w-0">
-                    <span className="block truncate text-sm font-medium text-foreground">
-                      {agent.displayName ?? agent.id}
-                    </span>
-                    <span className="block text-xs text-muted-foreground">
-                      {agent.visibility === "private"
-                        ? "Private agent"
-                        : "Public agent"}
-                    </span>
-                  </span>
-                  {copying ? (
-                    <IconLoader2
-                      size={14}
-                      className="shrink-0 animate-spin text-muted-foreground"
-                    />
-                  ) : null}
-                </button>
-              );
-            })}
-          </div>
-        ) : agentsLoadable.state === "hasData" ? (
-          <p className="text-sm text-muted-foreground">
-            No other agents are available.
-          </p>
+        {copyState.kind === "copying" ? (
+          <WorkflowCopyProgressState
+            copyFailed={copyLoadable.state === "hasError"}
+            copyState={copyState}
+            sourceAgentName={sourceAgentName}
+            sourceWorkflowName={sourceWorkflowName}
+          />
+        ) : copyState.kind === "copied" ? (
+          <WorkflowCopySuccessState
+            copyState={copyState}
+            enabledSourceTriggerIds={enabledSourceTriggerIds}
+            onOpenChange={onOpenChange}
+            sourceAgentId={detail.agentId}
+            sourceAgentName={sourceAgentName}
+            sourceWorkflowId={detail.id}
+            sourceWorkflowName={sourceWorkflowName}
+          />
         ) : (
-          <div className="h-24 rounded-md bg-muted/50" aria-hidden="true" />
+          <WorkflowCopySelectState
+            agents={agents}
+            agentsLoaded={agentsLoadable.state === "hasData"}
+            onCopyToAgent={(agent) => {
+              setCopyState({ kind: "copying", agent });
+              detach(
+                (async () => {
+                  const copiedWorkflow = await copyWorkflow(
+                    {
+                      workflowId: detail.id,
+                      toAgentId: agent.id,
+                    },
+                    pageSignal,
+                  );
+                  setCopyState({
+                    kind: "copied",
+                    agent,
+                    workflow: copiedWorkflow,
+                    sourceTriggersPaused: false,
+                  });
+                })(),
+                Reason.DomCallback,
+              );
+            }}
+          />
         )}
       </DialogContent>
     </Dialog>
+  );
+}
+
+function WorkflowCopySelectState({
+  agents,
+  agentsLoaded,
+  onCopyToAgent,
+}: {
+  readonly agents: readonly WorkflowCopyDialogAgent[];
+  readonly agentsLoaded: boolean;
+  readonly onCopyToAgent: (agent: WorkflowCopyDialogAgent) => void;
+}) {
+  if (agents.length === 0) {
+    return agentsLoaded ? (
+      <p className="text-sm text-muted-foreground">
+        No other agents are available.
+      </p>
+    ) : (
+      <div className="h-24 rounded-md bg-muted/50" aria-hidden="true" />
+    );
+  }
+
+  return (
+    <div className="max-h-[360px] overflow-auto rounded-md border border-border/60">
+      {agents.map((agent) => {
+        return (
+          <button
+            key={agent.id}
+            type="button"
+            className="flex w-full items-center justify-between gap-3 border-b border-border/60 px-3 py-2 text-left last:border-b-0 transition-colors hover:bg-muted disabled:opacity-60"
+            onClick={() => {
+              onCopyToAgent(agent);
+            }}
+          >
+            <span className="min-w-0">
+              <span className="block truncate text-sm font-medium text-foreground">
+                {workflowCopyAgentName(agent)}
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                {agent.visibility === "private"
+                  ? "Private agent"
+                  : "Public agent"}
+              </span>
+            </span>
+          </button>
+        );
+      })}
+    </div>
+  );
+}
+
+function WorkflowCopyProgressState({
+  copyFailed,
+  copyState,
+  sourceAgentName,
+  sourceWorkflowName,
+}: {
+  readonly copyFailed: boolean;
+  readonly copyState: Extract<WorkflowCopyDialogState, { kind: "copying" }>;
+  readonly sourceAgentName: string;
+  readonly sourceWorkflowName: string;
+}) {
+  return (
+    <div className="space-y-3">
+      <WorkflowCopyAgentPanels
+        sourceAgentName={sourceAgentName}
+        sourceWorkflowName={sourceWorkflowName}
+        targetAgentName={workflowCopyAgentName(copyState.agent)}
+        targetWorkflowName={sourceWorkflowName}
+      />
+      <div className="rounded-lg border border-border/60 bg-gray-50 px-3 py-3">
+        <div className="flex items-start gap-3">
+          {copyFailed ? (
+            <IconAlertTriangle
+              size={16}
+              className="mt-0.5 shrink-0 text-destructive"
+              stroke={1.5}
+            />
+          ) : (
+            <IconLoader2
+              size={16}
+              className="mt-0.5 shrink-0 animate-spin text-muted-foreground"
+            />
+          )}
+          <div className="min-w-0">
+            <p className="text-sm font-medium text-foreground">
+              {copyFailed
+                ? "Copy failed"
+                : workflowCopyAgentName(copyState.agent)}
+            </p>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {copyFailed
+                ? "Close this dialog and try again."
+                : `${copyState.agent.visibility === "private" ? "Private" : "Public"} target agent`}
+            </p>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowCopySuccessState({
+  copyState,
+  enabledSourceTriggerIds,
+  onOpenChange,
+  sourceAgentId,
+  sourceAgentName,
+  sourceWorkflowId,
+  sourceWorkflowName,
+}: {
+  readonly copyState: Extract<WorkflowCopyDialogState, { kind: "copied" }>;
+  readonly enabledSourceTriggerIds: readonly string[];
+  readonly onOpenChange: (open: boolean) => void;
+  readonly sourceAgentId: string;
+  readonly sourceAgentName: string;
+  readonly sourceWorkflowId: string;
+  readonly sourceWorkflowName: string;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const navigate = useSet(detachedNavigateTo$);
+  const setCopyState = useSet(setWorkflowCopyDialogState$);
+  const [pauseLoadable, pauseWorkflowTriggers] = useLoadableSet(
+    pauseWorkflowTriggers$,
+  );
+  const [deleteLoadable, deleteWorkflow] = useLoadableSet(deleteWorkflow$);
+  const pausingSourceTriggers = pauseLoadable.state === "loading";
+  const deletingSourceWorkflow = deleteLoadable.state === "loading";
+
+  return (
+    <>
+      <WorkflowCopyAgentPanels
+        sourceAgentName={sourceAgentName}
+        sourceWorkflowName={sourceWorkflowName}
+        targetAgentName={workflowCopyAgentName(copyState.agent)}
+        targetWorkflowName={workflowTitle(copyState.workflow)}
+      />
+      <div className="space-y-2">
+        <WorkflowCopyActionButton
+          icon={
+            pausingSourceTriggers ? (
+              <IconLoader2 size={15} className="animate-spin" />
+            ) : (
+              <IconPlayerPause size={15} stroke={1.5} />
+            )
+          }
+          title="Pause source triggers"
+          description={sourceTriggerActionDescription({
+            enabledCount: enabledSourceTriggerIds.length,
+            sourceAgentName,
+            paused: copyState.sourceTriggersPaused,
+          })}
+          disabled={
+            pausingSourceTriggers ||
+            deletingSourceWorkflow ||
+            copyState.sourceTriggersPaused ||
+            enabledSourceTriggerIds.length === 0
+          }
+          onClick={() => {
+            detach(
+              (async () => {
+                await pauseWorkflowTriggers(
+                  enabledSourceTriggerIds,
+                  pageSignal,
+                );
+                setCopyState({ ...copyState, sourceTriggersPaused: true });
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        />
+        <WorkflowCopyActionButton
+          icon={
+            deletingSourceWorkflow ? (
+              <IconLoader2 size={15} className="animate-spin" />
+            ) : (
+              <IconTrash size={15} stroke={1.5} />
+            )
+          }
+          title="Delete source workflow"
+          description={`Delete ${sourceWorkflowName} from ${sourceAgentName}`}
+          disabled={deletingSourceWorkflow}
+          destructive
+          onClick={() => {
+            detach(
+              (async () => {
+                await deleteWorkflow(sourceWorkflowId, pageSignal);
+                onOpenChange(false);
+                navigate(ROUTES.agentWorkflows, {
+                  pathParams: { agentId: sourceAgentId },
+                });
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        />
+        <WorkflowCopyActionButton
+          icon={<IconArrowRight size={15} stroke={1.5} />}
+          title="View target workflow"
+          description={`Open ${workflowTitle(copyState.workflow)} on ${workflowCopyAgentName(copyState.agent)}`}
+          onClick={() => {
+            onOpenChange(false);
+            navigate(ROUTES.agentWorkflowDetail, {
+              pathParams: {
+                agentId: copyState.workflow.agentId,
+                workflowId: copyState.workflow.id,
+              },
+            });
+          }}
+        />
+      </div>
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          onClick={() => {
+            onOpenChange(false);
+          }}
+        >
+          Close
+        </Button>
+      </DialogFooter>
+    </>
+  );
+}
+
+function workflowCopyDialogTitle(copyState: WorkflowCopyDialogState): string {
+  return copyState.kind === "copied"
+    ? `Workflow copied to ${workflowCopyAgentName(copyState.agent)}`
+    : "Copy workflow";
+}
+
+function workflowCopyDialogDescription({
+  copyState,
+  sourceAgentName,
+  sourceWorkflowName,
+}: {
+  readonly copyState: WorkflowCopyDialogState;
+  readonly sourceAgentName: string;
+  readonly sourceWorkflowName: string;
+}): string {
+  if (copyState.kind === "copying") {
+    return `Copying ${sourceWorkflowName} from ${sourceAgentName} to ${workflowCopyAgentName(copyState.agent)}.`;
+  }
+  if (copyState.kind === "copied") {
+    return "The new private workflow is ready on the target agent.";
+  }
+  return "Copy to another agent as a new private workflow.";
+}
+
+function workflowCopyAgentName(agent: WorkflowCopyDialogAgent): string {
+  return agent.displayName ?? agent.id;
+}
+
+function sourceTriggerActionDescription({
+  enabledCount,
+  sourceAgentName,
+  paused,
+}: {
+  readonly enabledCount: number;
+  readonly sourceAgentName: string;
+  readonly paused: boolean;
+}): string {
+  if (paused) {
+    return `Source triggers are paused on ${sourceAgentName}`;
+  }
+  if (enabledCount === 0) {
+    return `No enabled source triggers on ${sourceAgentName}`;
+  }
+  return `Pause ${enabledCount} enabled source ${
+    enabledCount === 1 ? "trigger" : "triggers"
+  } on ${sourceAgentName}`;
+}
+
+function WorkflowCopyAgentPanels({
+  sourceAgentName,
+  sourceWorkflowName,
+  targetAgentName,
+  targetWorkflowName,
+}: {
+  readonly sourceAgentName: string;
+  readonly sourceWorkflowName: string;
+  readonly targetAgentName: string;
+  readonly targetWorkflowName: string;
+}) {
+  return (
+    <div className="grid gap-2 sm:grid-cols-2">
+      <div className="rounded-lg border border-border/60 bg-gray-50 px-3 py-3">
+        <span className="text-xs text-muted-foreground">Source</span>
+        <span className="mt-1 block truncate text-sm font-semibold text-foreground">
+          {sourceAgentName}
+        </span>
+        <span className="mt-1 block truncate text-xs text-muted-foreground">
+          {sourceWorkflowName}
+        </span>
+      </div>
+      <div className="rounded-lg border border-border/60 bg-gray-50 px-3 py-3">
+        <span className="text-xs text-muted-foreground">Target</span>
+        <span className="mt-1 block truncate text-sm font-semibold text-foreground">
+          {targetAgentName}
+        </span>
+        <span className="mt-1 block truncate text-xs text-muted-foreground">
+          {targetWorkflowName}
+        </span>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowCopyActionButton({
+  icon,
+  title,
+  description,
+  disabled,
+  destructive = false,
+  onClick,
+}: {
+  readonly icon: ReactNode;
+  readonly title: string;
+  readonly description: string;
+  readonly disabled?: boolean;
+  readonly destructive?: boolean;
+  readonly onClick: () => void;
+}) {
+  return (
+    <button
+      type="button"
+      disabled={disabled}
+      className={cn(
+        "flex w-full items-center gap-3 rounded-lg border border-border/60 bg-background px-3 py-3 text-left transition-colors hover:bg-gray-50 disabled:pointer-events-none disabled:opacity-60",
+        destructive && "border-destructive/30 hover:bg-destructive/10",
+      )}
+      onClick={onClick}
+    >
+      <span
+        className={cn(
+          "flex size-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground",
+          destructive
+            ? "bg-destructive/10 text-destructive"
+            : "text-primary bg-primary/10",
+        )}
+      >
+        {icon}
+      </span>
+      <span className="min-w-0">
+        <span className="block text-sm font-semibold text-foreground">
+          {title}
+        </span>
+        <span className="mt-1 block text-xs leading-5 text-muted-foreground">
+          {description}
+        </span>
+      </span>
+    </button>
   );
 }
 
@@ -1429,12 +1848,15 @@ function WorkflowSelectedFileEditor({
     draftState?.workflowId === detail.id &&
     draftState.filePath === selectedFilePath &&
     draftState.sourceContent === sourceContent;
-  const draft = draftMatches ? draftState.content : null;
+  const draft = detail.canManage && draftMatches ? draftState.content : null;
   const content = draft ?? sourceContent;
   const dirty = draft !== null && draft !== sourceContent;
   const markdown =
     selectedFilePath === null || isMarkdownPath(selectedFilePath);
   const setDraft = (nextContent: string) => {
+    if (!detail.canManage || saving) {
+      return;
+    }
     setDraftState({
       workflowId: detail.id,
       filePath: selectedFilePath,
@@ -1494,7 +1916,7 @@ function WorkflowSelectedFileEditor({
           }}
         />
       )}
-      {dirty ? (
+      {detail.canManage && dirty ? (
         <ZeroUnsavedBar
           saving={saving}
           onDiscard={() => {
@@ -1913,6 +2335,53 @@ function buildGmailLabelAppliedEventConfig(
   };
 }
 
+function githubSubjectFilterValue(
+  value: FormDataEntryValue | null,
+  fallback: GithubLabelAppliedSubjectFilter,
+): GithubLabelAppliedSubjectFilter {
+  if (value === "both" || value === "issues" || value === "pull_requests") {
+    return value;
+  }
+  return fallback;
+}
+
+function githubActorFilterValue(
+  value: FormDataEntryValue | null,
+  fallback: "me" | "anyone",
+): "me" | "anyone" {
+  if (value === "me" || value === "anyone") {
+    return value;
+  }
+  return fallback;
+}
+
+function buildGithubLabelAppliedEventConfig(
+  form: FormData,
+  baseConfig?: GithubLabelAppliedEventConfig,
+): GithubLabelAppliedEventConfig | null {
+  const labelName = formTextValue(form, "labelName") ?? baseConfig?.labelName;
+  if (!labelName) {
+    return null;
+  }
+  return {
+    provider: "github",
+    event: "label_applied",
+    labelName,
+    filters: {
+      subject: githubSubjectFilterValue(
+        form.get("subject"),
+        baseConfig?.filters.subject ?? "both",
+      ),
+      actor: {
+        type: githubActorFilterValue(
+          form.get("actor"),
+          baseConfig?.filters.actor.type ?? "me",
+        ),
+      },
+    },
+  };
+}
+
 function quote(value: string): string {
   return `"${value}"`;
 }
@@ -1969,6 +2438,9 @@ function workflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "gmail-label-applied") {
     return "Gmail label applied";
   }
+  if (trigger.eventType === "github-label-applied") {
+    return "GitHub label applied";
+  }
   return "Webhook";
 }
 
@@ -1984,6 +2456,15 @@ function workflowTriggerSummary(
   if (trigger.eventType === "gmail-label-applied") {
     return `Label ${quote(trigger.eventConfig.labelName)}`;
   }
+  if (trigger.eventType === "github-label-applied") {
+    const subject =
+      GITHUB_SUBJECT_OPTIONS.find((option) => {
+        return option.value === trigger.eventConfig.filters.subject;
+      })?.label ?? "Issues and pull requests";
+    const actor =
+      trigger.eventConfig.filters.actor.type === "me" ? "me" : "anyone";
+    return `Label ${quote(trigger.eventConfig.labelName)} · ${subject} · Actor ${actor}`;
+  }
   return null;
 }
 
@@ -1998,15 +2479,43 @@ function gmailMatcherDefaultValue(
 type TriggerCreateDialogKind =
   | "interval"
   | "scheduled"
+  | "once"
   | "gmail"
   | "gmail-label"
+  | "github-label"
   | "webhook";
+
+function TriggerCreateMenuItem({
+  icon,
+  title,
+  description,
+  onSelect,
+}: {
+  readonly icon: ReactNode;
+  readonly title: string;
+  readonly description: string;
+  readonly onSelect: () => void;
+}) {
+  return (
+    <DropdownMenuItem className="items-start gap-2 py-2" onSelect={onSelect}>
+      {icon}
+      <span className="min-w-0">
+        <span className="block text-sm font-medium">{title}</span>
+        <span className="block text-xs text-muted-foreground">
+          {description}
+        </span>
+      </span>
+    </DropdownMenuItem>
+  );
+}
 
 function TriggerCreateMenu({
   onSelect,
+  githubLabelTriggersEnabled,
   webhookTriggersEnabled,
 }: {
   readonly onSelect: (kind: TriggerCreateDialogKind) => void;
+  readonly githubLabelTriggersEnabled: boolean;
   readonly webhookTriggersEnabled: boolean;
 }) {
   return (
@@ -2021,99 +2530,107 @@ function TriggerCreateMenu({
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
-        <DropdownMenuItem
-          className="items-start gap-2 py-2"
-          onSelect={() => {
-            onSelect("interval");
-          }}
-        >
-          <IconRepeat
-            size={15}
-            stroke={1.5}
-            className="mt-0.5 shrink-0 text-muted-foreground"
-          />
-          <span className="min-w-0">
-            <span className="block text-sm font-medium">Interval</span>
-            <span className="block text-xs text-muted-foreground">
-              Run this workflow on a fixed interval.
-            </span>
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="items-start gap-2 py-2"
-          onSelect={() => {
-            onSelect("scheduled");
-          }}
-        >
-          <IconClock
-            size={15}
-            stroke={1.5}
-            className="mt-0.5 shrink-0 text-muted-foreground"
-          />
-          <span className="min-w-0">
-            <span className="block text-sm font-medium">Scheduled time</span>
-            <span className="block text-xs text-muted-foreground">
-              Run this workflow from a time rule.
-            </span>
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="items-start gap-2 py-2"
-          onSelect={() => {
-            onSelect("gmail");
-          }}
-        >
-          <IconMail
-            size={15}
-            stroke={1.5}
-            className="mt-0.5 shrink-0 text-muted-foreground"
-          />
-          <span className="min-w-0">
-            <span className="block text-sm font-medium">Gmail new message</span>
-            <span className="block text-xs text-muted-foreground">
-              Run this workflow from matching email.
-            </span>
-          </span>
-        </DropdownMenuItem>
-        <DropdownMenuItem
-          className="items-start gap-2 py-2"
-          onSelect={() => {
-            onSelect("gmail-label");
-          }}
-        >
-          <IconMail
-            size={15}
-            stroke={1.5}
-            className="mt-0.5 shrink-0 text-muted-foreground"
-          />
-          <span className="min-w-0">
-            <span className="block text-sm font-medium">
-              Gmail label applied
-            </span>
-            <span className="block text-xs text-muted-foreground">
-              Run when a named Gmail label is applied.
-            </span>
-          </span>
-        </DropdownMenuItem>
-        {webhookTriggersEnabled ? (
-          <DropdownMenuItem
-            className="items-start gap-2 py-2"
-            onSelect={() => {
-              onSelect("webhook");
-            }}
-          >
-            <IconLink
+        <TriggerCreateMenuItem
+          title="Interval"
+          description="Run this workflow on a fixed interval."
+          icon={
+            <IconRepeat
               size={15}
               stroke={1.5}
               className="mt-0.5 shrink-0 text-muted-foreground"
             />
-            <span className="min-w-0">
-              <span className="block text-sm font-medium">Webhook</span>
-              <span className="block text-xs text-muted-foreground">
-                Run this workflow from a signed POST.
-              </span>
-            </span>
-          </DropdownMenuItem>
+          }
+          onSelect={() => {
+            onSelect("interval");
+          }}
+        />
+        <TriggerCreateMenuItem
+          title="Scheduled time"
+          description="Run this workflow from a time rule."
+          icon={
+            <IconClock
+              size={15}
+              stroke={1.5}
+              className="mt-0.5 shrink-0 text-muted-foreground"
+            />
+          }
+          onSelect={() => {
+            onSelect("scheduled");
+          }}
+        />
+        <TriggerCreateMenuItem
+          title="One-time run"
+          description="Run this workflow once at a date and time."
+          icon={
+            <IconClock
+              size={15}
+              stroke={1.5}
+              className="mt-0.5 shrink-0 text-muted-foreground"
+            />
+          }
+          onSelect={() => {
+            onSelect("once");
+          }}
+        />
+        <TriggerCreateMenuItem
+          title="Gmail new message"
+          description="Run this workflow from matching email."
+          icon={
+            <IconMail
+              size={15}
+              stroke={1.5}
+              className="mt-0.5 shrink-0 text-muted-foreground"
+            />
+          }
+          onSelect={() => {
+            onSelect("gmail");
+          }}
+        />
+        <TriggerCreateMenuItem
+          title="Gmail label applied"
+          description="Run when a named Gmail label is applied."
+          icon={
+            <IconMail
+              size={15}
+              stroke={1.5}
+              className="mt-0.5 shrink-0 text-muted-foreground"
+            />
+          }
+          onSelect={() => {
+            onSelect("gmail-label");
+          }}
+        />
+        {githubLabelTriggersEnabled ? (
+          <TriggerCreateMenuItem
+            title="GitHub label applied"
+            description="Run when an issue or pull request gets a label."
+            icon={
+              <IconBrandGithub
+                size={15}
+                stroke={1.5}
+                className="mt-0.5 shrink-0 text-muted-foreground"
+              />
+            }
+            onSelect={() => {
+              onSelect("github-label");
+            }}
+          />
+        ) : null}
+        {webhookTriggersEnabled ? (
+          <TriggerCreateMenuItem
+            title="Webhook"
+            description="Run this workflow from a signed POST."
+            icon={
+              <IconLink
+                size={15}
+                stroke={1.5}
+                className="mt-0.5 shrink-0 text-muted-foreground"
+              />
+            }
+            onSelect={() => {
+              onSelect("webhook");
+            }}
+          />
         ) : null}
       </DropdownMenuContent>
     </DropdownMenu>
@@ -2136,6 +2653,8 @@ function TriggersSection({
   const triggers = detail.triggers;
   const webhookTriggersEnabled =
     features[FeatureSwitchKey.WorkflowWebhookTriggers] ?? false;
+  const githubLabelTriggersEnabled =
+    features[FeatureSwitchKey.WorkflowGithubLabelEventTriggers] ?? false;
 
   return (
     <section className="mx-auto flex max-w-[900px] flex-col gap-3">
@@ -2148,6 +2667,7 @@ function TriggersSection({
         </div>
         <TriggerCreateMenu
           onSelect={setCreateDialog}
+          githubLabelTriggersEnabled={githubLabelTriggersEnabled}
           webhookTriggersEnabled={webhookTriggersEnabled}
         />
       </div>
@@ -2184,6 +2704,14 @@ function TriggersSection({
           setCreateDialog(open ? "scheduled" : null);
         }}
       />
+      <CreateOnceTriggerDialog
+        workflowId={detail.id}
+        displayTimezone={displayTimezone}
+        open={createDialog === "once"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "once" : null);
+        }}
+      />
       <CreateGmailNewMessageTriggerDialog
         workflowId={detail.id}
         open={createDialog === "gmail"}
@@ -2196,6 +2724,13 @@ function TriggersSection({
         open={createDialog === "gmail-label"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "gmail-label" : null);
+        }}
+      />
+      <CreateGithubLabelAppliedTriggerDialog
+        workflowId={detail.id}
+        open={createDialog === "github-label"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "github-label" : null);
         }}
       />
       <CreateWebhookTriggerDialog
@@ -2379,6 +2914,95 @@ function CreateScheduledTriggerDialog({
   );
 }
 
+function CreateOnceTriggerDialog({
+  workflowId,
+  displayTimezone,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly displayTimezone: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const setCronFields = useSet(setCreateScheduleCronFields$);
+  const [createLoadable, createScheduleTrigger] = useLoadableSet(
+    createWorkflowScheduleTrigger$,
+  );
+  const creating = createLoadable.state === "loading";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add one-time trigger</DialogTitle>
+          <DialogDescription>
+            Choose the date and time for this workflow to run once.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label="Add one-time trigger"
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            const schedule = buildTriggerSchedule(
+              "once",
+              {
+                cronFields: defaultWorkflowCronFields(),
+                intervalSeconds: "",
+                atTime: String(form.get("atTime") ?? ""),
+              },
+              displayTimezone,
+            );
+            if (!schedule) {
+              return;
+            }
+            detach(
+              (async () => {
+                await createScheduleTrigger(
+                  { workflowId, schedule },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <ScheduleTriggerFields
+            scheduleType="once"
+            cronFields={defaultWorkflowCronFields()}
+            setCronFields={setCronFields}
+            displayTimezone={displayTimezone}
+            disabled={creating}
+          />
+
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : null}
+              Add one-time run
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function ScheduleTriggerFields({
   scheduleType,
   cronFields,
@@ -2418,7 +3042,7 @@ function ScheduleTriggerFields({
           className={FIELD_CLASS}
         />
         <span className="text-xs text-muted-foreground">
-          Uses {TRIGGER_TIMEZONE}.
+          Displays in {displayTimezone}.
         </span>
       </label>
     );
@@ -2953,6 +3577,278 @@ function CreateGmailLabelAppliedTriggerDialog({
   );
 }
 
+function GithubLabelTriggerFields({
+  disabled,
+  actor,
+  defaultConfig,
+  onActorChange,
+}: {
+  readonly disabled: boolean;
+  readonly actor: "me" | "anyone";
+  readonly defaultConfig?: GithubLabelAppliedEventConfig;
+  readonly onActorChange: (actor: "me" | "anyone") => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Label name
+        <input
+          name="labelName"
+          aria-label="GitHub label name"
+          required
+          disabled={disabled}
+          defaultValue={defaultConfig?.labelName ?? ""}
+          placeholder="triage"
+          className={FIELD_CLASS}
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Subject
+        <Select
+          name="subject"
+          defaultValue={defaultConfig?.filters.subject ?? "both"}
+          disabled={disabled}
+        >
+          <SelectTrigger className="h-9 w-full" aria-label="Subject">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {GITHUB_SUBJECT_OPTIONS.map((option) => {
+              return (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Triggered by
+        <Select
+          name="actor"
+          value={actor}
+          disabled={disabled}
+          onValueChange={(value) => {
+            onActorChange(value === "anyone" ? "anyone" : "me");
+          }}
+        >
+          <SelectTrigger className="h-9 w-full" aria-label="Triggered by">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {GITHUB_ACTOR_OPTIONS.map((option) => {
+              return (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      </label>
+    </div>
+  );
+}
+
+function GithubLabelTriggerAvailabilityMessages({
+  githubLoaded,
+  isInstalled,
+  needsConnection,
+  githubLoadError,
+  connecting,
+  onConnect,
+}: {
+  readonly githubLoaded: boolean;
+  readonly isInstalled: boolean;
+  readonly needsConnection: boolean;
+  readonly githubLoadError: boolean;
+  readonly connecting: boolean;
+  readonly onConnect: () => void;
+}) {
+  return (
+    <>
+      {githubLoaded && !isInstalled ? <GithubNotInstalledNotice /> : null}
+      {needsConnection ? (
+        <GithubAccountConnectionNotice
+          connecting={connecting}
+          onConnect={onConnect}
+        />
+      ) : null}
+      {githubLoadError ? <GithubLoadErrorNotice /> : null}
+    </>
+  );
+}
+
+function GithubNotInstalledNotice() {
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+      GitHub is not installed for this workspace.
+      <Button
+        asChild
+        type="button"
+        variant="link"
+        className="ml-1 h-auto p-0 text-xs"
+      >
+        <Link pathname={ROUTES.works} title="Open integrations">
+          Open integrations
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
+function GithubAccountConnectionNotice({
+  connecting,
+  onConnect,
+}: {
+  readonly connecting: boolean;
+  readonly onConnect: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+      Connect your GitHub account to use Me.
+      <Button
+        type="button"
+        variant="link"
+        disabled={connecting}
+        className="ml-1 h-auto p-0 text-xs"
+        onClick={onConnect}
+      >
+        Connect GitHub
+      </Button>
+    </div>
+  );
+}
+
+function GithubLoadErrorNotice() {
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+      GitHub settings could not be loaded.
+    </div>
+  );
+}
+
+function CreateGithubLabelAppliedTriggerDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const githubLoadable = useLoadable(githubIntegrationData$);
+  const githubData =
+    githubLoadable.state === "hasData" ? githubLoadable.data : null;
+  const actor = useGet(createGithubLabelActor$);
+  const setActor = useSet(setCreateGithubLabelActor$);
+  const [createLoadable, createGithubLabelTrigger] = useLoadableSet(
+    createWorkflowGithubLabelAppliedTrigger$,
+  );
+  const [connectLoadable, connectGithub] = useLoadableSet(
+    connectGithubInstallation$,
+  );
+  const creating = createLoadable.state === "loading";
+  const connecting = connectLoadable.state === "loading";
+  const loadingGithub = githubLoadable.state === "loading";
+  const githubLoadError = githubLoadable.state === "hasError";
+  const isInstalled = githubData?.isInstalled ?? false;
+  const needsConnection =
+    isInstalled && actor === "me" && !githubData?.isConnected;
+  const submitDisabled =
+    creating ||
+    loadingGithub ||
+    githubLoadError ||
+    !isInstalled ||
+    needsConnection;
+  const connectCurrentGithubAccount = () => {
+    if (!githubData) {
+      return;
+    }
+    detach(
+      connectGithub(githubData.connectUrl, pageSignal),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) {
+          setActor("me");
+        }
+        onOpenChange(nextOpen);
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add GitHub label trigger</DialogTitle>
+          <DialogDescription>
+            Run this workflow when a GitHub label is applied.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label="Add GitHub label trigger"
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            const eventConfig = buildGithubLabelAppliedEventConfig(form);
+            if (!eventConfig) {
+              return;
+            }
+            detach(
+              (async () => {
+                await createGithubLabelTrigger(
+                  { workflowId, eventConfig },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <GithubLabelTriggerFields
+            disabled={creating || loadingGithub || githubLoadError}
+            actor={actor}
+            onActorChange={setActor}
+          />
+          <GithubLabelTriggerAvailabilityMessages
+            githubLoaded={githubLoadable.state === "hasData"}
+            isInstalled={isInstalled}
+            needsConnection={needsConnection}
+            githubLoadError={githubLoadError}
+            connecting={connecting}
+            onConnect={connectCurrentGithubAccount}
+          />
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitDisabled}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : null}
+              Add label trigger
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CreateWebhookTriggerDialog({
   workflowId,
   open,
@@ -3356,7 +4252,11 @@ function TriggerControls({
 }
 
 function canEditWorkflowTrigger(trigger: ZeroWorkflowTriggerSummary): boolean {
-  return trigger.kind === "schedule" || isGmailWorkflowTrigger(trigger);
+  return (
+    trigger.kind === "schedule" ||
+    isGmailWorkflowTrigger(trigger) ||
+    isGithubWorkflowTrigger(trigger)
+  );
 }
 
 function editWorkflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
@@ -3364,9 +4264,10 @@ function editWorkflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
     return "Edit schedule";
   }
 
-  return trigger.eventType === "gmail-label-applied"
-    ? "Edit label"
-    : "Edit match";
+  if (trigger.eventType === "gmail-new-message") {
+    return "Edit match";
+  }
+  return "Edit label";
 }
 
 function EditWorkflowTriggerDialog({
@@ -3387,7 +4288,11 @@ function EditWorkflowTriggerDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={isGmailWorkflowTrigger(trigger) ? "max-w-2xl" : ""}
+        className={
+          trigger.kind === "event" && trigger.eventType === "gmail-new-message"
+            ? "max-w-2xl"
+            : ""
+        }
       >
         <DialogHeader>
           <DialogTitle>{editWorkflowTriggerTitle(trigger)}</DialogTitle>
@@ -3410,6 +4315,13 @@ function EditWorkflowTriggerDialog({
         {trigger.kind === "event" &&
         trigger.eventType === "gmail-label-applied" ? (
           <UpdateGmailLabelAppliedTriggerForm
+            trigger={trigger}
+            onCancel={close}
+          />
+        ) : null}
+        {trigger.kind === "event" &&
+        trigger.eventType === "github-label-applied" ? (
+          <UpdateGithubLabelAppliedTriggerForm
             trigger={trigger}
             onCancel={close}
           />
@@ -3671,6 +4583,124 @@ function UpdateGmailLabelAppliedTriggerForm({
             <IconLoader2 size={13} className="animate-spin" />
           ) : (
             <IconMail size={13} stroke={1.5} />
+          )}
+          <span>Save label</span>
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+function UpdateGithubLabelAppliedTriggerForm({
+  trigger,
+  onCancel,
+}: {
+  readonly trigger: Extract<
+    ZeroWorkflowTriggerSummary,
+    { eventType: "github-label-applied" }
+  >;
+  readonly onCancel: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const githubLoadable = useLoadable(githubIntegrationData$);
+  const githubData =
+    githubLoadable.state === "hasData" ? githubLoadable.data : null;
+  const editingGithubLabelActors = useGet(editingGithubLabelActors$);
+  const setEditingGithubLabelActor = useSet(setEditingGithubLabelActor$);
+  const actor =
+    editingGithubLabelActors[trigger.id] ??
+    trigger.eventConfig.filters.actor.type;
+  const [updateLoadable, updateGithubLabelTrigger] = useLoadableSet(
+    updateWorkflowGithubLabelAppliedTrigger$,
+  );
+  const [connectLoadable, connectGithub] = useLoadableSet(
+    connectGithubInstallation$,
+  );
+  const saving = updateLoadable.state === "loading";
+  const connecting = connectLoadable.state === "loading";
+  const loadingGithub = githubLoadable.state === "loading";
+  const githubLoadError = githubLoadable.state === "hasError";
+  const isInstalled = githubData?.isInstalled ?? false;
+  const needsConnection =
+    isInstalled && actor === "me" && !githubData?.isConnected;
+  const submitDisabled =
+    saving ||
+    loadingGithub ||
+    githubLoadError ||
+    !isInstalled ||
+    needsConnection;
+  const connectCurrentGithubAccount = () => {
+    if (!githubData) {
+      return;
+    }
+    detach(
+      connectGithub(githubData.connectUrl, pageSignal),
+      Reason.DomCallback,
+    );
+  };
+
+  return (
+    <form
+      aria-label="Update GitHub label trigger"
+      className="flex flex-col gap-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const eventConfig = buildGithubLabelAppliedEventConfig(
+          form,
+          trigger.eventConfig,
+        );
+        if (!eventConfig) {
+          return;
+        }
+        detach(
+          (async () => {
+            await updateGithubLabelTrigger(
+              {
+                triggerId: trigger.id,
+                eventConfig,
+              },
+              pageSignal,
+            );
+            onCancel();
+          })(),
+          Reason.DomCallback,
+        );
+      }}
+    >
+      <GithubLabelTriggerFields
+        disabled={saving || loadingGithub || githubLoadError}
+        actor={actor}
+        defaultConfig={trigger.eventConfig}
+        onActorChange={(nextActor) => {
+          setEditingGithubLabelActor({
+            triggerId: trigger.id,
+            actor: nextActor,
+          });
+        }}
+      />
+      <GithubLabelTriggerAvailabilityMessages
+        githubLoaded={githubLoadable.state === "hasData"}
+        isInstalled={isInstalled}
+        needsConnection={needsConnection}
+        githubLoadError={githubLoadError}
+        connecting={connecting}
+        onConnect={connectCurrentGithubAccount}
+      />
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={saving}
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={submitDisabled}>
+          {saving ? (
+            <IconLoader2 size={13} className="animate-spin" />
+          ) : (
+            <IconBrandGithub size={13} stroke={1.5} />
           )}
           <span>Save label</span>
         </Button>

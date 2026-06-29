@@ -492,20 +492,237 @@ exit 1
 
     #[test]
     fn verify_script_checks_sandbox_helper_runtime_commands() {
-        for command_path in [
-            "/bin/sh",
-            "/usr/bin/find",
-            "/usr/bin/awk",
-            "/usr/bin/xargs",
-            "/usr/bin/mktemp",
-            "/usr/bin/tr",
-            "/usr/bin/rm",
+        assert!(
+            VERIFY_SCRIPT.contains("resolve_rootfs_path()"),
+            "verify-rootfs.sh should resolve required executable symlinks within the mounted rootfs"
+        );
+        assert!(
+            VERIFY_SCRIPT.contains(
+                "for cmd in sudo unshare mount umount mountpoint stat mktemp sed grep readlink; do"
+            ),
+            "verify-rootfs.sh should declare readlink as a host dependency for safe symlink resolution"
+        );
+        assert!(
+            VERIFY_SCRIPT
+                .lines()
+                .filter(|line| !line.trim_start().starts_with('#'))
+                .all(|line| !line.contains("chroot")),
+            "verify-rootfs.sh must not chroot into the image it is verifying"
+        );
+
+        for (group, command_paths) in [
+            (
+                "shell wrapper runtime",
+                &["/bin/sh", "/bin/bash", "/usr/bin/su", "/usr/bin/rmdir"][..],
+            ),
+            (
+                "guest state runtime",
+                &["/usr/bin/date", "/usr/bin/ln", "/usr/bin/sed"][..],
+            ),
+            (
+                "storage and Codex cleanup runtime",
+                &[
+                    "/usr/bin/rm",
+                    "/usr/bin/find",
+                    "/usr/bin/awk",
+                    "/usr/bin/xargs",
+                    "/usr/bin/mktemp",
+                    "/usr/bin/tr",
+                ][..],
+            ),
+            (
+                "workspace mount runtime",
+                &[
+                    "/usr/bin/mountpoint",
+                    "/usr/bin/mount",
+                    "/usr/bin/umount",
+                    "/usr/bin/sync",
+                    "/usr/bin/chown",
+                    "/usr/bin/mkdir",
+                    "/usr/bin/stat",
+                    "/usr/bin/cat",
+                    "/usr/bin/readlink",
+                    "/usr/bin/cut",
+                    "/usr/bin/sort",
+                    "/usr/bin/wc",
+                    "/usr/bin/kill",
+                    "/usr/bin/sleep",
+                ][..],
+            ),
+        ] {
+            for command_path in command_paths {
+                let verifier_check = format!(r#"check_required_executable "{command_path}""#);
+                assert!(
+                    VERIFY_SCRIPT.contains(&verifier_check),
+                    "verify-rootfs.sh should verify {command_path} is present for {group}"
+                );
+            }
+        }
+
+        assert!(
+            VERIFY_SCRIPT.contains(r#"check_required_executable "$dest" "$dest""#),
+            "verify-rootfs.sh should verify rootfs-only guest binaries are executable"
+        );
+        for guest_binary_path in [
+            "/usr/local/bin/guest-agent",
+            "/usr/local/bin/guest-download",
+            "/sbin/guest-init",
+            "/usr/local/bin/guest-mock-claude",
+            "/usr/local/bin/guest-mock-codex",
+            "/sbin/guest-reseed",
+            "/sbin/guest-write-file",
         ] {
             assert!(
-                VERIFY_SCRIPT.contains(command_path),
-                "verify-rootfs.sh should verify {command_path} is present for sandbox helper exec scripts"
+                VERIFY_SCRIPT.contains(guest_binary_path),
+                "verify-rootfs.sh should verify {guest_binary_path} in rootfs mode"
             );
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn verify_script_resolves_rootfs_symlinks_without_host_paths() {
+        use std::os::unix::fs::symlink;
+        use std::process::Command;
+
+        let resolver_start = VERIFY_SCRIPT
+            .find("resolve_rootfs_path() {")
+            .expect("verify-rootfs.sh should define resolve_rootfs_path");
+        let resolver_end = VERIFY_SCRIPT
+            .find("\ncheck_required_executable() {")
+            .expect("verify-rootfs.sh should define check_required_executable after resolver");
+        let resolver_function = &VERIFY_SCRIPT[resolver_start..resolver_end];
+
+        let rootfs = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(rootfs.path().join("usr/bin")).unwrap();
+        std::fs::create_dir_all(rootfs.path().join("etc/alternatives")).unwrap();
+        symlink("usr/bin", rootfs.path().join("bin")).unwrap();
+        symlink("/etc/alternatives/awk", rootfs.path().join("usr/bin/awk")).unwrap();
+        symlink(
+            "../../usr/bin/real-tool",
+            rootfs.path().join("etc/alternatives/awk"),
+        )
+        .unwrap();
+        let real_tool = rootfs.path().join("usr/bin/real-tool");
+        std::fs::write(&real_tool, b"#!/bin/sh\n").unwrap();
+        let mut perms = std::fs::metadata(&real_tool).unwrap().permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+        std::fs::set_permissions(&real_tool, perms).unwrap();
+        symlink("loop-b", rootfs.path().join("usr/bin/loop-a")).unwrap();
+        symlink("loop-a", rootfs.path().join("usr/bin/loop-b")).unwrap();
+
+        let script = format!(
+            r#"
+set -euo pipefail
+{resolver_function}
+resolved="$(resolve_rootfs_path /bin/awk)"
+test "$resolved" = "/usr/bin/real-tool"
+test -x "${{MOUNT_DIR}}${{resolved}}"
+if resolve_rootfs_path /usr/bin/loop-a >/dev/null; then
+  echo "loop not detected" >&2
+  exit 1
+fi
+"#
+        );
+        let output = Command::new("bash")
+            .arg("-c")
+            .arg(script)
+            .env("MOUNT_DIR", rootfs.path())
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "resolver script failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn verify_script_does_not_treat_host_executables_as_rootfs_executables() {
+        use std::os::unix::fs::PermissionsExt;
+        use std::os::unix::fs::symlink;
+        use std::process::Command;
+
+        let functions_start = VERIFY_SCRIPT
+            .find("resolve_rootfs_path() {")
+            .expect("verify-rootfs.sh should define resolve_rootfs_path");
+        let functions_end = VERIFY_SCRIPT
+            .find("\ncheck_bin() {")
+            .expect("verify-rootfs.sh should define check_bin after executable checks");
+        let verifier_functions = &VERIFY_SCRIPT[functions_start..functions_end];
+
+        let rootfs = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(rootfs.path().join("bin")).unwrap();
+        std::fs::create_dir_all(rootfs.path().join("usr/bin")).unwrap();
+        symlink("/bin/bash", rootfs.path().join("bin/awk")).unwrap();
+        symlink("../../../../bin/bash", rootfs.path().join("bin/sh")).unwrap();
+        symlink("/usr/bin/missing-target", rootfs.path().join("bin/broken")).unwrap();
+        std::fs::write(
+            rootfs.path().join("usr/bin/file-parent"),
+            b"not a directory",
+        )
+        .unwrap();
+        let non_executable = rootfs.path().join("usr/bin/not-executable");
+        std::fs::write(&non_executable, b"#!/bin/sh\n").unwrap();
+        let mut perms = std::fs::metadata(&non_executable).unwrap().permissions();
+        perms.set_mode(0o644);
+        std::fs::set_permissions(&non_executable, perms).unwrap();
+        std::fs::create_dir(rootfs.path().join("usr/bin/dir-command")).unwrap();
+
+        let script = format!(
+            r#"
+set -euo pipefail
+{verifier_functions}
+assert_check_error() {{
+  local path="$1" name="$2" expected="$3"
+  errors=()
+  check_required_executable "$path" "$name"
+  test "${{#errors[@]}}" -eq 1
+  test "${{errors[0]}}" = "$expected"
+}}
+assert_check_error /bin/awk awk "awk not found or not executable at /bin/awk"
+assert_check_error /bin/sh sh "sh not found or not executable at /bin/sh"
+assert_check_error /bin/broken broken "broken not found or not executable at /bin/broken"
+assert_check_error \
+  /usr/bin/file-parent/tool \
+  file-parent-tool \
+  "file-parent-tool not found or not executable at /usr/bin/file-parent/tool"
+assert_check_error \
+  /usr/bin/not-executable \
+  not-executable \
+  "not-executable not found or not executable at /usr/bin/not-executable"
+assert_check_error \
+  /usr/bin/dir-command \
+  dir-command \
+  "dir-command not found or not executable at /usr/bin/dir-command"
+"#
+        );
+        let output = Command::new("bash")
+            .arg("-c")
+            .arg(script)
+            .env("MOUNT_DIR", rootfs.path())
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "rootfs executable check script failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
+    #[test]
+    fn verify_script_documents_optional_diagnostic_commands() {
+        assert!(
+            VERIFY_SCRIPT.contains(
+                "Intentionally unchecked optional diagnostic commands: file sha256sum free timeout ps"
+            ),
+            "verify-rootfs.sh should document intentionally unchecked optional diagnostics"
+        );
     }
 
     #[test]

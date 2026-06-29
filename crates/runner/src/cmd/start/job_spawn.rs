@@ -8,8 +8,10 @@ use std::panic::AssertUnwindSafe;
 use std::sync::Arc;
 use std::time::{Duration, Instant};
 
-use agent_diagnostics::{CliTerminationDiagnostic, FailureClass, FailureDiagnostic, FailureReason};
 use futures_util::FutureExt;
+use guest_contracts::diagnostics::{
+    CliTerminationDiagnostic, FailureClass, FailureDiagnostic, FailureReason,
+};
 use sandbox::SandboxId;
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
@@ -969,7 +971,7 @@ mod tests {
     use std::sync::Arc;
     use std::time::Duration;
 
-    use agent_diagnostics::{
+    use guest_contracts::diagnostics::{
         AgentFramework, CliTerminationDiagnostic, CliTerminationReason, CliTerminationSignal,
         FailureClass, FailureDetailSource, PromptMetadata, SessionHistoryStatus,
     };

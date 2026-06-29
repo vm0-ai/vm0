@@ -2243,7 +2243,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     expect(exchangeBody?.get("client_secret")).toBe("test-oauth-secret");
     expect(exchangeBody?.get("code")).toBe("bdd-test-oauth-code");
     expect(exchangeBody?.get("redirect_uri")).toBe(
-      "https://www.vm0.ai/api/connectors/test-oauth/callback",
+      "https://api.vm0.ai/api/connectors/test-oauth/callback",
     );
 
     const oauthConnector = await connectorsApi.readConnectorByType(

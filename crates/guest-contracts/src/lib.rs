@@ -6,6 +6,7 @@
 //! values, and filesystem layout helpers both sides must keep in lockstep.
 
 pub mod codex_thread_id;
+pub mod diagnostics;
 pub mod env;
 pub mod runtime_paths;
 pub mod session_history_identity;

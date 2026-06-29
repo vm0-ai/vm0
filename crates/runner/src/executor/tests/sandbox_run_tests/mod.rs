@@ -4,10 +4,12 @@ use std::sync::Arc;
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::time::Duration;
 
-use agent_diagnostics::FailureDiagnostic;
 use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 use api_contracts::generated::types::runners::storage::StorageManifest;
 use futures_util::FutureExt;
+use guest_contracts::diagnostics::{
+    AgentFramework, FailureClass, FailureDiagnostic, PromptMetadata,
+};
 use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecResult, ExecTermination, ProcessControlMode, ProcessExit,
     ProcessOutputChunk, ProcessOutputMode, Sandbox, SandboxError, SandboxFactory, SandboxId,

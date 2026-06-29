@@ -40,14 +40,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
-name = "agent-diagnostics"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1246,9 +1238,8 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.41.16"
+version = "0.41.17"
 dependencies = [
- "agent-diagnostics",
  "aho-corasick",
  "api-contracts",
  "base64",
@@ -1283,7 +1274,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.2.22"
+version = "0.2.23"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1295,7 +1286,7 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.2.8"
+version = "0.2.9"
 dependencies = [
  "libc",
  "serde",
@@ -1306,7 +1297,7 @@ dependencies = [
 
 [[package]]
 name = "guest-download"
-version = "0.20.40"
+version = "0.20.41"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1322,7 +1313,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.93"
+version = "0.16.94"
 dependencies = [
  "libc",
  "nix",
@@ -1361,7 +1352,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.9"
+version = "0.1.10"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -2531,10 +2522,9 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.130.3"
+version = "0.130.4"
 dependencies = [
  "ably-subscriber",
- "agent-diagnostics",
  "api-contracts",
  "async-trait",
  "aws-sdk-s3",
@@ -2752,7 +2742,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.75"
+version = "0.37.76"
 dependencies = [
  "async-trait",
  "base64",
@@ -2782,7 +2772,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.12"
+version = "0.8.13"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3675,7 +3665,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.13"
+version = "0.19.14"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3704,7 +3694,7 @@ version = "0.18.19"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.119"
+version = "0.9.120"
 dependencies = [
  "guest-write-file",
  "libc",

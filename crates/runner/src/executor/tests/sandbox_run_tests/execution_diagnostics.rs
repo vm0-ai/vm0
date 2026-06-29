@@ -829,9 +829,9 @@ async fn execute_inner_nonzero_with_failure_diagnostic_skips_abnormal_exit_diagn
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     overrides.push_wait_process_exit(ProcessExit::new(1, 126, Vec::new(), Vec::new()));
     let diagnostic = FailureDiagnostic::new(
-        agent_diagnostics::FailureClass::CliNonzero,
-        agent_diagnostics::AgentFramework::ClaudeCode,
-        agent_diagnostics::PromptMetadata::from_prompt("/help"),
+        FailureClass::CliNonzero,
+        AgentFramework::ClaudeCode,
+        PromptMetadata::from_prompt("/help"),
     );
     overrides.push_read_file_result(Ok(Some(serde_json::to_vec(&diagnostic).unwrap())));
     overrides.push_read_file_result(Ok(None));

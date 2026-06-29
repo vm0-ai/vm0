@@ -21,9 +21,6 @@
         "turbo/apps/cli": {
             "release-type": "node"
         },
-        "turbo/apps/web": {
-            "release-type": "node"
-        },
         "turbo/apps/api": {
             "release-type": "node"
         },

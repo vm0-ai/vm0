@@ -11,8 +11,8 @@ use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::session_metadata;
-use agent_diagnostics::FailureReason;
 use guest_common::{log_error, log_info};
+use guest_contracts::diagnostics::FailureReason;
 use serde_json::{Map, Value, json};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
