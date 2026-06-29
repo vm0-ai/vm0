@@ -29,11 +29,25 @@ function pathOnlyError(): Error {
   );
 }
 
-function urlPath(url: string): string | undefined {
+function invalidUrlError(): Error {
+  return new Error(
+    "permission-deny requires --url to be a valid absolute http or https URL.",
+  );
+}
+
+function parseDeniedUrl(url: string): URL {
+  if (!url.includes("://") || /\s/.test(url) || url.includes("\\")) {
+    throw invalidUrlError();
+  }
+
   try {
-    return new URL(url).pathname;
+    const parsed = new URL(url);
+    if (parsed.protocol !== "http:" && parsed.protocol !== "https:") {
+      throw invalidUrlError();
+    }
+    return parsed;
   } catch {
-    return undefined;
+    throw invalidUrlError();
   }
 }
 
@@ -118,11 +132,12 @@ Notes:
         if (!opts.url) {
           throw pathOnlyError();
         }
+        const deniedUrl = parseDeniedUrl(opts.url);
 
         if (
           isComputerUsePermissionTarget({
             connectorRef,
-            path: urlPath(opts.url),
+            path: deniedUrl.pathname,
           })
         ) {
           printComputerUsePermissionGuidance();

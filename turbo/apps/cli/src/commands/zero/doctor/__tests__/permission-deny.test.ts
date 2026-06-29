@@ -252,6 +252,50 @@ describe("zero doctor permission-deny command", () => {
       expect(mockConsoleLog).not.toHaveBeenCalled();
     });
 
+    it("should reject malformed URLs before computer-use guidance", async () => {
+      await expect(async () => {
+        await permissionDenyCommand.parseAsync([
+          "node",
+          "cli",
+          "computer-use",
+          "--method",
+          "POST",
+          "--url",
+          "not-a-url",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "permission-deny requires --url to be a valid absolute http or https URL.",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleLog).not.toHaveBeenCalled();
+    });
+
+    it("should reject non-http URLs", async () => {
+      await expect(async () => {
+        await permissionDenyCommand.parseAsync([
+          "node",
+          "cli",
+          "slack",
+          "--method",
+          "GET",
+          "--url",
+          "mailto:user@example.com",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "permission-deny requires --url to be a valid absolute http or https URL.",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleLog).not.toHaveBeenCalled();
+    });
+
     it("should reject URLs outside the selected connector bases", async () => {
       await expect(async () => {
         await permissionDenyCommand.parseAsync([
