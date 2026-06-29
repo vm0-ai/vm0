@@ -39,6 +39,7 @@ enum Scenario {
     NoActiveTurn,
     RuntimeTurnComplete,
     RuntimeTurnCompleteWithoutThreadStarted,
+    ResumeDifferentThreadId,
     ResumeRpcErrorWithThreadId,
     UnexpectedThreadTurnCompleted,
 }
@@ -75,6 +76,7 @@ impl Scenario {
                 "runtime-turn-complete-without-thread-started" => {
                     Ok(Self::RuntimeTurnCompleteWithoutThreadStarted)
                 }
+                "resume-different-thread-id" => Ok(Self::ResumeDifferentThreadId),
                 "resume-rpc-error-with-thread-id" => Ok(Self::ResumeRpcErrorWithThreadId),
                 "unexpected-thread-turn-completed" => Ok(Self::UnexpectedThreadTurnCompleted),
                 _ => Err(io::Error::new(
@@ -343,7 +345,12 @@ impl AppServerState {
                     thread_id.to_string(),
                     params.get("runtimeWorkspaceRoots").is_some(),
                 );
-                write_success(output, id, thread_response(thread_id, true))?;
+                let response_thread_id = if self.scenario == Scenario::ResumeDifferentThreadId {
+                    "unexpected-resume-thread-id"
+                } else {
+                    thread_id
+                };
+                write_success(output, id, thread_response(response_thread_id, true))?;
                 Ok(ServerAction::Continue)
             }
             "turn/start" => {

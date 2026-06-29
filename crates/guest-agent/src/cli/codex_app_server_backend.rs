@@ -132,6 +132,7 @@ async fn run_codex_app_server(
         )
         .await?;
         let thread_id = thread_id_from_response(&thread_response)?;
+        validate_resumed_thread_id(&thread_id)?;
         let mut thread_started_emitted = false;
 
         while let Some(notification) = client.pop_notification() {
@@ -573,6 +574,16 @@ fn synthesize_thread_started_event(thread_id: &str) -> Value {
 
 fn thread_id_from_response(response: &Value) -> Result<String, AgentError> {
     non_empty_string_at(response, "/thread/id", "thread response missing thread.id")
+}
+
+fn validate_resumed_thread_id(thread_id: &str) -> Result<(), AgentError> {
+    let resume_id = env::resume_session_id();
+    if !resume_id.is_empty() && thread_id != resume_id {
+        return Err(AgentError::Execution(
+            "thread/resume returned a different thread id".to_string(),
+        ));
+    }
+    Ok(())
 }
 
 fn turn_id_from_response(response: &Value) -> Result<String, AgentError> {
