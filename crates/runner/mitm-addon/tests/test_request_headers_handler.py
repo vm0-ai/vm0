@@ -1608,6 +1608,7 @@ async def test_firewall_allow_header_auth_cancellation_restores_probe_state(
     assert metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata
     assert metadata_keys.FIREWALL_BASE not in flow.metadata
     assert metadata_keys.FIREWALL_API_ID not in flow.metadata
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 @pytest.mark.parametrize(

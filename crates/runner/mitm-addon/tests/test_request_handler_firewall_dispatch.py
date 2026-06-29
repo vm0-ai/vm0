@@ -1,5 +1,6 @@
 """Firewall dispatch and network policy tests for the request hook."""
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, patch
 
@@ -1387,7 +1388,13 @@ async def test_auth_base_requestheaders_admission_released_when_resolved_base_mi
 async def test_auth_base_requestheaders_admission_released_when_request_already_has_response(
     tmp_path, real_flow, mitm_ctx, headers
 ):
-    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    reg_path = _write_auth_base_firewall_registry(
+        tmp_path,
+        auth_config={
+            "headers": {"Authorization": "Bearer ${{ secrets.WEBHOOK_TOKEN }}"},
+            "base": "${{ secrets.WEBHOOK_URL }}",
+        },
+    )
     declared_size = mitm_addon.STREAM_BUFFER_LIMIT + 1
     flow = real_flow(
         with_response=False,
@@ -1414,7 +1421,47 @@ async def test_auth_base_requestheaders_admission_released_when_request_already_
     assert flow.response is not None
     assert flow.response.status_code == 204
     assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
     assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+
+async def test_firewall_auth_cancellation_clears_upstream_binding(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        path="/repos/octocat/hello",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", AsyncMock(side_effect=asyncio.CancelledError)),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await mitm_addon.request(flow)
+
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 @pytest.mark.parametrize(

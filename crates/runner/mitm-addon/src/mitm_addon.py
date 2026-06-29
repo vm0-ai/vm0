@@ -2206,6 +2206,7 @@ async def _try_firewall_request_stream_capture_from_headers(
         result = await try_apply_stream_safe_firewall_auth_for_requestheaders(flow, allow, vm_info)
     except (asyncio.CancelledError, Exception):
         _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+        upstream_destination_binding.forget_server_binding(flow.server_conn)
         raise
     if result is not FirewallHeaderPhaseAuthResult.APPLIED:
         _restore_request_headers_probe_metadata(flow, metadata_snapshot)
@@ -2273,11 +2274,13 @@ async def request(flow: http.HTTPFlow) -> None:
     """
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+        upstream_destination_binding.forget_server_binding(flow.server_conn)
         flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         return
 
     if flow.response is not None or flow.error is not None:
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+        upstream_destination_binding.forget_server_binding(flow.server_conn)
         flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         return
 
@@ -2375,6 +2378,7 @@ async def request(flow: http.HTTPFlow) -> None:
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+        upstream_destination_binding.forget_server_binding(flow.server_conn)
         _release_tracked_usage_flow(flow)
         raise
     finally:
