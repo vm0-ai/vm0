@@ -4,7 +4,7 @@ use serde_json::{Map, Value, json};
 
 use super::codex_app_server::ServerNotification;
 
-const IGNORED_NOTIFICATION_METHODS: &[&str] = &[
+pub(super) const IGNORED_NOTIFICATION_METHODS: &[&str] = &[
     "command/exec/outputDelta",
     "process/outputDelta",
     "process/exited",

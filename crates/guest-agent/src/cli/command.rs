@@ -153,7 +153,7 @@ fn build_codex_memories_config() -> String {
 /// Per-model default for the codex `model_reasoning_effort` config. GPT-5.5
 /// invests heavily in reasoning depth, so default it to `xhigh` rather than
 /// the codex CLI's stock `medium`.
-fn default_codex_reasoning_effort_for_model(model: &str) -> Option<&'static str> {
+pub(super) fn default_codex_reasoning_effort_for_model(model: &str) -> Option<&'static str> {
     let bare = model.strip_prefix("openai/").unwrap_or(model);
     match bare {
         "gpt-5.5" => Some("xhigh"),

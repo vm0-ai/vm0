@@ -18,6 +18,7 @@
 
 mod child_env;
 pub mod codex_app_server;
+mod codex_app_server_backend;
 mod codex_app_server_events;
 mod codex_setup;
 mod command;
@@ -255,6 +256,121 @@ pub enum HeartbeatStatus {
 /// callers that do not own a heartbeat task.
 pub type HeartbeatMonitor = Option<oneshot::Receiver<HeartbeatStatus>>;
 
+enum ParsedEventAction {
+    Forward,
+    Skip,
+}
+
+struct CliEventIngestor {
+    seq: u32,
+    last_read_event_at: Option<Instant>,
+    session_metadata_capture: events::SessionMetadataCapture,
+    failure_diagnostic: Option<CliFailureDiagnostic>,
+}
+
+impl CliEventIngestor {
+    fn new() -> Self {
+        Self {
+            seq: 0,
+            last_read_event_at: None,
+            session_metadata_capture: events::SessionMetadataCapture::new(),
+            failure_diagnostic: None,
+        }
+    }
+
+    async fn write_raw_line(log_file: &mut tokio::fs::File, raw_line: impl AsRef<[u8]>) {
+        let _ = log_file.write_all(raw_line.as_ref()).await;
+        let _ = log_file.write_all(b"\n").await;
+    }
+
+    async fn begin_event(
+        &mut self,
+        log_file: &mut tokio::fs::File,
+        raw_line: impl AsRef<[u8]>,
+        event: &serde_json::Value,
+        masker: &SecretMasker,
+        behavior: CliFrameworkBehavior,
+    ) -> Result<ParsedEventAction, AgentError> {
+        Self::write_raw_line(log_file, raw_line).await;
+
+        if event.get("type").and_then(serde_json::Value::as_str) == Some("stream_event") {
+            events::register_event_session_identifier(event, masker);
+            return Ok(ParsedEventAction::Skip);
+        }
+        self.last_read_event_at = Some(Instant::now());
+        if self.seq == 0 {
+            timing::record_e2e_from_api("api_to_cli_init");
+        }
+        self.session_metadata_capture.capture_event(event, masker);
+
+        if behavior.logs_codex_failure_diagnostics()
+            && let Some(diagnostic) = events::masked_codex_failure_diagnostic(event, masker)
+        {
+            let candidate = CliFailureDiagnostic {
+                message: diagnostic.message,
+                source: FailureDetailSource::CodexJsonl,
+                failure_reason: diagnostic.failure_reason,
+            };
+            log_warn!(
+                LOG_TAG,
+                "Codex JSONL failure event seq={} type={}: {}",
+                self.seq,
+                diagnostic.event_type,
+                candidate.message
+            );
+            if let Some(selected) =
+                select_failure_diagnostic(self.failure_diagnostic.as_ref(), candidate)
+            {
+                self.failure_diagnostic = Some(selected);
+            }
+        }
+
+        Ok(ParsedEventAction::Forward)
+    }
+
+    fn replace_failure_diagnostic(&mut self, diagnostic: CliFailureDiagnostic) {
+        self.failure_diagnostic = Some(diagnostic);
+    }
+
+    fn current_sequence(&self) -> u32 {
+        self.seq
+    }
+
+    fn enqueue_event(
+        &mut self,
+        event: serde_json::Value,
+        masker: &SecretMasker,
+        should_send_events: bool,
+        event_tx: &tokio::sync::mpsc::UnboundedSender<PreparedEvent>,
+    ) {
+        if should_send_events {
+            let payload = events::prepare_event_payload(event, self.seq, masker);
+            if event_tx
+                .send(PreparedEvent::Webhook {
+                    sequence: self.seq,
+                    payload,
+                })
+                .is_err()
+            {
+                log_warn!(
+                    LOG_TAG,
+                    "Event channel closed, dropping event seq={}",
+                    self.seq
+                );
+            }
+        }
+        self.seq += 1;
+    }
+
+    fn last_read_event_at(&self) -> Option<Instant> {
+        self.last_read_event_at
+    }
+
+    fn failure_diagnostic(&self) -> Option<CliFailureDiagnostic> {
+        self.failure_diagnostic.clone()
+    }
+}
+
 /// Execute the CLI process, streaming JSONL events and racing against heartbeat.
 pub async fn execute_cli(
     masker: &SecretMasker,
@@ -309,6 +425,16 @@ async fn execute_cli_inner(
     framework: env::Framework,
     active_input: ActiveInputWriter,
 ) -> Result<CliExecutionResult, AgentError> {
+    if matches!(framework, env::Framework::Codex) && env::use_codex_app_server_backend() {
+        if active_input.is_enabled() {
+            return Err(AgentError::Execution(
+                "codex app-server backend does not support active input".to_string(),
+            ));
+        }
+        return codex_app_server_backend::execute_codex_app_server(masker, heartbeat_monitor, http)
+            .await;
+    }
+
     let behavior = CliFrameworkBehavior::new(framework);
     let replay_user_messages = active_input.is_enabled();
     masker.add_sensitive_value(env::resume_session_id());
@@ -421,7 +547,6 @@ async fn execute_cli_inner(
     // fills, the CLI's entire event loop blocks — including TCP I/O.
     // See: https://github.com/vm0-ai/vm0/issues/3645
     let mut reader = tokio::io::BufReader::new(stdout).lines();
-    let mut seq = 0u32;
     let mut stdout_eof = false;
 
     // Capture the process group ID before wait() reaps the child, since
@@ -494,13 +619,11 @@ async fn execute_cli_inner(
     });
 
     let mut heartbeat_done = false;
-    let mut last_read_event_at: Option<Instant> = None;
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut post_result_cleanup_result = None;
     let mut post_result_cleanup = None;
-    let mut failure_diagnostic = None;
-    let mut session_metadata_capture = events::SessionMetadataCapture::new();
+    let mut event_ingestor = CliEventIngestor::new();
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             stdin_write_result = async {
@@ -605,25 +728,19 @@ async fn execute_cli_inner(
                             }
 
                             let post_result_cleanup_was_armed = post_result_cleanup.is_some();
-
-                            let _ = log_file.write_all(line.as_bytes()).await;
-                            let _ = log_file.write_all(b"\n").await;
-
-                            if event.get("type").and_then(serde_json::Value::as_str)
-                                == Some("stream_event")
+                            match event_ingestor
+                                .begin_event(
+                                    &mut log_file,
+                                    line.as_bytes(),
+                                    &event,
+                                    masker,
+                                    behavior,
+                                )
+                                .await?
                             {
-                                events::register_event_session_identifier(&event, masker);
-                                continue;
+                                ParsedEventAction::Forward => {}
+                                ParsedEventAction::Skip => continue,
                             }
-                            last_read_event_at = Some(Instant::now());
-                            // First event is the CLI init (system/init or thread.started)
-                            if seq == 0 {
-                                timing::record_e2e_from_api("api_to_cli_init");
-                            }
-                            // Capture checkpoint metadata and register any
-                            // event-local session identifier before logging
-                            // terminal diagnostics from the same event.
-                            session_metadata_capture.capture_event(&event, masker);
                             // Print Claude Code final result to stdout if applicable.
                             if behavior.handles_claude_result_event(&event) {
                                 let result_summary = ClaudeResultSummary::from_event(&event);
@@ -639,10 +756,11 @@ async fn execute_cli_inner(
                                     };
                                     log_warn!(
                                         LOG_TAG,
-                                        "Claude JSONL failure result seq={seq} subtype={subtype}: {}",
+                                        "Claude JSONL failure result seq={} subtype={subtype}: {}",
+                                        event_ingestor.current_sequence(),
                                         candidate.message
                                     );
-                                    failure_diagnostic = Some(candidate);
+                                    event_ingestor.replace_failure_diagnostic(candidate);
                                 }
                                 if let Some(result) = event.get("result").and_then(|v| v.as_str())
                                 {
@@ -680,28 +798,6 @@ async fn execute_cli_inner(
                             }
                             // Extract tool info BEFORE masking (masker may replace tool names).
                             behavior.track_claude_tool_events(&event, &mut stuck_tool_tracker);
-                            if behavior.logs_codex_failure_diagnostics()
-                                && let Some(diagnostic) =
-                                    events::masked_codex_failure_diagnostic(&event, masker)
-                            {
-                                let candidate = CliFailureDiagnostic {
-                                    message: diagnostic.message,
-                                    source: FailureDetailSource::CodexJsonl,
-                                    failure_reason: diagnostic.failure_reason,
-                                };
-                                log_warn!(
-                                    LOG_TAG,
-                                    "Codex JSONL failure event seq={seq} type={}: {}",
-                                    diagnostic.event_type,
-                                    candidate.message
-                                );
-                                if let Some(selected) = select_failure_diagnostic(
-                                    failure_diagnostic.as_ref(),
-                                    candidate,
-                                ) {
-                                    failure_diagnostic = Some(selected);
-                                }
-                            }
                             if post_result_cleanup_was_armed
                                 && matches!(
                                     termination_runtime.state,
@@ -721,25 +817,9 @@ async fn execute_cli_inner(
                             }
                             // Prepare event payload (mask secrets, add seq) and enqueue
                             // for background sending. Network I/O stays off the reading loop.
-                            if should_send_events {
-                                let payload = events::prepare_event_payload(event, seq, masker);
-                                if event_tx
-                                    .send(PreparedEvent::Webhook {
-                                        sequence: seq,
-                                        payload,
-                                    })
-                                    .is_err()
-                                {
-                                    log_warn!(
-                                        LOG_TAG,
-                                        "Event channel closed, dropping event seq={seq}"
-                                    );
-                                }
-                            }
-                            seq += 1;
+                            event_ingestor.enqueue_event(event, masker, should_send_events, &event_tx);
                         } else {
-                            let _ = log_file.write_all(line.as_bytes()).await;
-                            let _ = log_file.write_all(b"\n").await;
+                            CliEventIngestor::write_raw_line(&mut log_file, line.as_bytes()).await;
                         }
                     }
                     Ok(None) => {
@@ -1080,7 +1160,9 @@ async fn execute_cli_inner(
             status
         }
     };
-    if let (Some(last_read_event_at), Some(cli_exit_at)) = (last_read_event_at, cli_exit_at) {
+    if let (Some(last_read_event_at), Some(cli_exit_at)) =
+        (event_ingestor.last_read_event_at(), cli_exit_at)
+    {
         record_sandbox_op(
             "last_read_event_to_cli_exit",
             cli_exit_at
@@ -1151,7 +1233,7 @@ async fn execute_cli_inner(
         last_event_sequence,
         claude_result,
         post_result_cleanup_result,
-        failure_diagnostic,
+        failure_diagnostic: event_ingestor.failure_diagnostic(),
         control_error,
         cli_termination,
     })

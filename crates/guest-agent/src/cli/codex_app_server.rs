@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout};
 use tokio::runtime::Handle;
@@ -27,7 +27,6 @@ const METHOD_NOT_FOUND: i64 = -32601;
 const NOTIFICATION_QUEUE_CAPACITY: usize = 128;
 const NOTIFICATION_QUEUE_MAX_BYTES: usize = 16 * 1024 * 1024;
 const STDOUT_MAX_LINE_BYTES: usize = 64 * 1024 * 1024;
-const SHUTDOWN_SIGTERM_GRACE: Duration = Duration::from_secs(2);
 const SHUTDOWN_SIGKILL_GRACE: Duration = Duration::from_secs(2);
 const STDERR_DRAIN_GRACE: Duration = Duration::from_secs(2);
 
@@ -36,6 +35,8 @@ pub struct CodexAppServerConfig {
     binary: PathBuf,
     codex_home: PathBuf,
     extra_env: Vec<(String, String)>,
+    current_dir: Option<PathBuf>,
+    opt_out_notification_methods: Vec<String>,
 }
 
 impl CodexAppServerConfig {
@@ -44,11 +45,27 @@ impl CodexAppServerConfig {
             binary: binary.into(),
             codex_home: codex_home.into(),
             extra_env: Vec::new(),
+            current_dir: None,
+            opt_out_notification_methods: Vec::new(),
         }
     }
 
     pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
         self.extra_env.push((key.into(), value.into()));
+        self
+    }
+
+    pub fn with_current_dir(mut self, current_dir: impl Into<PathBuf>) -> Self {
+        self.current_dir = Some(current_dir.into());
+        self
+    }
+
+    pub fn with_opt_out_notification_methods<I, S>(mut self, methods: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.opt_out_notification_methods = methods.into_iter().map(Into::into).collect();
         self
     }
 }
@@ -145,6 +162,7 @@ pub struct CodexAppServerClient {
     stream_unusable_reason: Option<String>,
     notifications: VecDeque<QueuedNotification>,
     notification_queue_bytes: usize,
+    opt_out_notification_methods: Vec<String>,
     closed: bool,
 }
 
@@ -165,6 +183,9 @@ impl CodexAppServerClient {
             .stderr(Stdio::piped())
             .process_group(0)
             .kill_on_drop(true);
+        if let Some(current_dir) = config.current_dir {
+            cmd.current_dir(current_dir);
+        }
         for (key, value) in config.extra_env {
             cmd.env(key, value);
         }
@@ -204,6 +225,7 @@ impl CodexAppServerClient {
             stream_unusable_reason: None,
             notifications: VecDeque::with_capacity(NOTIFICATION_QUEUE_CAPACITY),
             notification_queue_bytes: 0,
+            opt_out_notification_methods: config.opt_out_notification_methods,
             closed: false,
         })
     }
@@ -223,6 +245,22 @@ impl CodexAppServerClient {
     }
 
     pub async fn initialize(&mut self) -> Result<InitializeResponse, CodexAppServerError> {
+        let mut capabilities = Map::new();
+        capabilities.insert("experimentalApi".to_string(), Value::Bool(true));
+        capabilities.insert("requestAttestation".to_string(), Value::Bool(false));
+        if !self.opt_out_notification_methods.is_empty() {
+            capabilities.insert(
+                "optOutNotificationMethods".to_string(),
+                Value::Array(
+                    self.opt_out_notification_methods
+                        .iter()
+                        .cloned()
+                        .map(Value::String)
+                        .collect(),
+                ),
+            );
+        }
+
         let response = self
             .request(
                 "initialize",
@@ -232,10 +270,7 @@ impl CodexAppServerClient {
                         "title": null,
                         "version": env!("CARGO_PKG_VERSION")
                     },
-                    "capabilities": {
-                        "experimentalApi": true,
-                        "requestAttestation": false
-                    }
+                    "capabilities": capabilities
                 }),
             )
             .await?;
@@ -330,6 +365,35 @@ impl CodexAppServerClient {
         }
     }
 
+    pub async fn next_notification(
+        &mut self,
+        pending_method: &str,
+    ) -> Result<ServerNotification, CodexAppServerError> {
+        self.ensure_stream_usable()?;
+        if self.in_flight_request_id.is_some() {
+            return Err(self.poison_stream(
+                "cannot wait for app-server notification while a request is in flight",
+            ));
+        }
+        if let Some(notification) = self.pop_notification() {
+            return Ok(notification);
+        }
+
+        loop {
+            match self.read_next_message(pending_method).await? {
+                IncomingMessage::Notification { notification, .. } => return Ok(notification),
+                IncomingMessage::Request(request) => {
+                    self.reject_server_request(&request).await?;
+                }
+                IncomingMessage::Success { .. } | IncomingMessage::Error { .. } => {
+                    return Err(self.poison_stream(format!(
+                        "received response while waiting for {pending_method}"
+                    )));
+                }
+            }
+        }
+    }
+
     pub async fn notify(&mut self, method: &str, params: Value) -> Result<(), CodexAppServerError> {
         self.ensure_stream_usable()?;
         self.write_message(&outgoing_notification(method, params))
@@ -344,17 +408,37 @@ impl CodexAppServerClient {
         let requested_graceful_shutdown = self.stdin.is_some();
         self.close_io_handles();
         let child_exited = if requested_graceful_shutdown {
-            self.wait_for_child(SHUTDOWN_SIGTERM_GRACE).await?
+            tokio::task::yield_now().await;
+            self.try_finish_child_wait()?.is_some()
         } else {
             self.try_finish_child_wait()?.is_some()
         };
         if self.wait_rx.is_some() && !child_exited {
             self.sigterm_process_group();
+            self.sigkill_process_group();
             if !self.wait_for_child(SHUTDOWN_SIGKILL_GRACE).await? {
-                self.sigkill_process_group();
-                if !self.wait_for_child(SHUTDOWN_SIGKILL_GRACE).await? {
-                    return Err(CodexAppServerError::ShutdownTimeout);
-                }
+                return Err(CodexAppServerError::ShutdownTimeout);
+            }
+        }
+
+        self.drain_stderr().await;
+        self.clear_child_process_handles();
+        self.closed = true;
+        Ok(())
+    }
+
+    pub async fn terminate(&mut self) -> Result<(), CodexAppServerError> {
+        if self.closed {
+            return Ok(());
+        }
+
+        self.close_io_handles();
+        let child_exited = self.try_finish_child_wait()?.is_some();
+        if self.wait_rx.is_some() && !child_exited {
+            self.sigterm_process_group();
+            self.sigkill_process_group();
+            if !self.wait_for_child(SHUTDOWN_SIGKILL_GRACE).await? {
+                return Err(CodexAppServerError::ShutdownTimeout);
             }
         }
 
