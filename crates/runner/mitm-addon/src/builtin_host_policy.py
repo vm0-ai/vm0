@@ -52,7 +52,10 @@ def validate_credentialed_builtin_base(
 ) -> None:
     if not auth_config_injects_credentials(auth_config):
         return
-    parsed = urllib.parse.urlsplit(base)
+    try:
+        parsed = urllib.parse.urlsplit(base)
+    except ValueError as e:
+        raise _invalid_resolved_base_url(firewall_name) from e
     scheme = parsed.scheme.lower()
     if scheme != "https":
         raise BuiltinHostPolicyError(
@@ -90,6 +93,34 @@ def validate_credentialed_builtin_request_destination(
             firewall_name=firewall_name,
             message=str(e),
         ) from e
+
+
+def _invalid_resolved_base_url(firewall_name: str) -> BuiltinHostPolicyError:
+    return BuiltinHostPolicyError(
+        f'builtin firewall "{firewall_name}" resolved base URL is invalid'
+    )
+
+
+def _parsed_hostname(
+    *,
+    firewall_name: str,
+    parsed: urllib.parse.SplitResult,
+) -> str | None:
+    try:
+        return parsed.hostname
+    except ValueError as e:
+        raise _invalid_resolved_base_url(firewall_name) from e
+
+
+def _parsed_port(
+    *,
+    firewall_name: str,
+    parsed: urllib.parse.SplitResult,
+) -> int | None:
+    try:
+        return parsed.port
+    except ValueError as e:
+        raise _invalid_resolved_base_url(firewall_name) from e
 
 
 def _normalize_host_policy_hostname(hostname: str) -> str:
@@ -202,11 +233,12 @@ def _validate_provider_owned_host_policy(
     parsed: urllib.parse.SplitResult,
     policy: dict,
 ) -> None:
-    if parsed.hostname is None:
+    parsed_hostname = _parsed_hostname(firewall_name=firewall_name, parsed=parsed)
+    if parsed_hostname is None:
         raise BuiltinHostPolicyError(
             f'builtin firewall "{firewall_name}" resolved base URL is invalid'
         )
-    hostname = _normalize_host_policy_hostname(parsed.hostname)
+    hostname = _normalize_host_policy_hostname(parsed_hostname)
     exact_hosts = _host_policy_string_list(policy, "exactHosts")
     suffixes = _host_policy_string_list(policy, "suffixes")
     allow_non_default_port = _host_policy_optional_bool(
@@ -242,8 +274,8 @@ def _validate_provider_owned_host_policy(
         )
     if (
         not allow_non_default_port
-        and parsed.port is not None
-        and parsed.port != _DEFAULT_HTTPS_PORT
+        and (parsed_port := _parsed_port(firewall_name=firewall_name, parsed=parsed)) is not None
+        and parsed_port != _DEFAULT_HTTPS_PORT
     ):
         raise BuiltinHostPolicyError(
             f'builtin firewall "{firewall_name}" host policy does not allow non-default ports'
@@ -255,11 +287,11 @@ def _validate_public_destination_host_policy(
     firewall_name: str,
     parsed: urllib.parse.SplitResult,
 ) -> None:
-    if parsed.hostname is None:
+    hostname = _parsed_hostname(firewall_name=firewall_name, parsed=parsed)
+    if hostname is None:
         raise BuiltinHostPolicyError(
             f'builtin firewall "{firewall_name}" resolved base URL is invalid'
         )
-    hostname = parsed.hostname
     public_ip_literal = public_destination.public_ip_literal_is_public(hostname)
     if public_ip_literal is False:
         raise BuiltinHostPolicyError(

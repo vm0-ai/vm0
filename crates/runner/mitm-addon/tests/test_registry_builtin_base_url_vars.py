@@ -502,6 +502,25 @@ class TestRegistryBuiltinBaseUrlVars:
         assert invalid_vm.reason == "invalid_firewalls"
         assert 'builtin firewall "strapi" resolved base URL is invalid' in invalid_vm.message
 
+    def test_builtin_public_destination_rejects_bracketed_ipv4_literal(self, tmp_path):
+        path = tmp_path / "registry.json"
+        write_builtin_firewall_registry(
+            path,
+            run_id="run-strapi",
+            name="strapi",
+            base_url_vars={"STRAPI_BASE_URL": "https://[8.8.8.8]"},
+        )
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            context = registry.get_vm_context("10.200.0.1", str(path))
+            state = registry.load_registry_state(str(path))
+
+        assert context is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        invalid_vm = state.invalid_vms["10.200.0.1"]
+        assert invalid_vm.reason == "invalid_firewalls"
+        assert 'builtin firewall "strapi" resolved base URL is invalid' in invalid_vm.message
+
     def test_builtin_base_url_prefix_preserves_fixed_path_suffix(self, tmp_path):
         path = tmp_path / "registry.json"
         write_builtin_firewall_registry(
