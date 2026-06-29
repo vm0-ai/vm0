@@ -20,6 +20,15 @@ _IPV4_NON_PUBLIC_RANGES = (
     (0xCB007100, 0xCB0071FF),
     (0xE0000000, 0xFFFFFFFF),
 )
+_HOST_DOT_EQUIVALENT_TRANSLATION = str.maketrans(
+    {
+        "\u3002": ".",
+        "\uff0e": ".",
+        "\uff61": ".",
+    }
+)
+_IPV4_HEX_PREFIX = "0x"
+_IPV4_LITERAL_MAX_COMPONENTS = 4
 _IPV6_GLOBAL_UNICAST_FIRST_MIN = 0x2000
 _IPV6_GLOBAL_UNICAST_FIRST_MAX = 0x3FFF
 _IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST = 0x2001
@@ -57,6 +66,8 @@ def public_ip_literal_is_public(hostname: str) -> bool | None:
     try:
         ip = ipaddress.ip_address(ip_text)
     except ValueError:
+        if _looks_like_legacy_ipv4_literal(ip_text):
+            return False
         return None
     return _ip_address_is_public(ip)
 
@@ -118,6 +129,24 @@ def _ip_address_is_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> 
 def _ipv4_literal_is_public(ip: ipaddress.IPv4Address) -> bool:
     value = int(ip)
     return not any(start <= value <= end for start, end in _IPV4_NON_PUBLIC_RANGES)
+
+
+def _looks_like_ipv4_number_component(value: str) -> bool:
+    if not value:
+        return False
+    if value.lower().startswith(_IPV4_HEX_PREFIX):
+        return len(value) > len(_IPV4_HEX_PREFIX) and all(
+            char in "0123456789abcdefABCDEF" for char in value[len(_IPV4_HEX_PREFIX) :]
+        )
+    return value.isdecimal()
+
+
+def _looks_like_legacy_ipv4_literal(hostname: str) -> bool:
+    normalized = hostname.translate(_HOST_DOT_EQUIVALENT_TRANSLATION)
+    parts = normalized.split(".")
+    return 1 <= len(parts) <= _IPV4_LITERAL_MAX_COMPONENTS and all(
+        _looks_like_ipv4_number_component(part) for part in parts
+    )
 
 
 def _ipv6_word(ip: ipaddress.IPv6Address, index: int) -> int:
