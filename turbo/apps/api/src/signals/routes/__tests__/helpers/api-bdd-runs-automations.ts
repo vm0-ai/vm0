@@ -1110,6 +1110,20 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
     },
 
+    async showAutomation(
+      actor: ApiTestUser,
+      automation: AutomationResourceRef,
+    ): Promise<AutomationView> {
+      const response = await accept(
+        runsAutomationApp(context)(automationsByRefContract).show({
+          headers: authenticate(context, actor),
+          params: { ref: automationRef(automation) },
+        }),
+        [200],
+      );
+      return automationViewFromResponse(response.body);
+    },
+
     async updateAutomation(
       actor: ApiTestUser,
       name: string,
