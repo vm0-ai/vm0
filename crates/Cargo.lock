@@ -1246,7 +1246,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.41.13"
+version = "0.41.14"
 dependencies = [
  "agent-diagnostics",
  "aho-corasick",
@@ -2048,7 +2048,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.50"
+version = "0.4.51"
 dependencies = [
  "bitvec",
  "libc",
@@ -2529,7 +2529,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.129.42"
+version = "0.130.0"
 dependencies = [
  "ably-subscriber",
  "agent-diagnostics",
@@ -2750,7 +2750,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.72"
+version = "0.37.73"
 dependencies = [
  "async-trait",
  "base64",
@@ -3684,7 +3684,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.45"
+version = "0.17.46"
 dependencies = [
  "nix",
  "shell-quote",
@@ -3702,7 +3702,7 @@ version = "0.18.19"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.116"
+version = "0.9.117"
 dependencies = [
  "guest-write-file",
  "libc",

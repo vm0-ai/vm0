@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.130.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.42...runner-rs-v0.130.0) (2026-06-29)
+
+
+### Features
+
+* add Data Manager scope to Google Ads connector ([#19266](https://github.com/vm0-ai/vm0/issues/19266)) ([68eac5f](https://github.com/vm0-ai/vm0/commit/68eac5fad5a50253641f97db301b120908bc35f8))
+
+
+### Documentation
+
+* clarify runner image hash identity ([#19262](https://github.com/vm0-ai/vm0/issues/19262)) ([442c1ad](https://github.com/vm0-ai/vm0/commit/442c1adb06a39617a7ce9bff85ed7b35135e9b7c))
+
 ## [0.129.42](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.41...runner-rs-v0.129.42) (2026-06-28)
 
 
