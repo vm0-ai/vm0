@@ -1,4 +1,6 @@
 use std::collections::HashSet;
+use std::ffi::OsString;
+use std::os::unix::ffi::OsStringExt;
 use std::os::unix::fs::{MetadataExt, OpenOptionsExt};
 use std::path::{Path, PathBuf};
 use std::time::{Duration, SystemTime};
@@ -11,7 +13,7 @@ use crate::cmd::service;
 use crate::error::{RunnerError, RunnerResult};
 use crate::host_file;
 use crate::lock;
-use crate::paths::{HomePaths, LogPaths};
+use crate::paths::{HomePaths, LogPaths, base_dir_lock_name};
 use crate::r2_cache::R2ImageCache;
 
 /// Default TTL for completed R2 image objects. Older objects are deleted by
@@ -1530,17 +1532,30 @@ fn is_base_dir_lock_name(name: &str) -> bool {
     name.starts_with("base-dir-") && name.ends_with(".lock")
 }
 
-fn parse_base_dir_lock_content(content: &str, lock_path: &Path) -> Option<PathBuf> {
-    let path = content.trim();
-    if path.is_empty() {
+fn parse_base_dir_lock_content(
+    content: &[u8],
+    lock_path: &Path,
+    lock_name: &str,
+) -> Option<PathBuf> {
+    if content.is_empty() {
         return None;
     }
-    let base_dir = PathBuf::from(path);
+    let base_dir = PathBuf::from(OsString::from_vec(content.to_vec()));
     if !base_dir.is_absolute() {
         warn!(
             "workspace gc: {} contains non-absolute base_dir {}, treating lock as unusable",
             lock_path.display(),
             base_dir.display()
+        );
+        return None;
+    }
+    let expected_lock_name = base_dir_lock_name(&base_dir);
+    if lock_name != expected_lock_name {
+        warn!(
+            "workspace gc: {} contains base_dir {}, but lock name should be {}; treating lock as unusable",
+            lock_path.display(),
+            base_dir.display(),
+            expected_lock_name
         );
         return None;
     }
@@ -1609,7 +1624,7 @@ fn acquire_dead_runner_base_dir_lease(
             return None;
         }
     };
-    let content = match std::fs::read_to_string(&candidate.lock_path) {
+    let content = match std::fs::read(&candidate.lock_path) {
         Ok(c) => c,
         Err(e) => {
             warn!(
@@ -1620,7 +1635,7 @@ fn acquire_dead_runner_base_dir_lease(
         }
     };
     Some(DeadRunnerBaseDirLease {
-        base_dir: parse_base_dir_lock_content(&content, &candidate.lock_path),
+        base_dir: parse_base_dir_lock_content(&content, &candidate.lock_path, &candidate.lock_name),
         lock_path: candidate.lock_path,
         lock_name: candidate.lock_name,
         lock_guard,
@@ -2768,6 +2783,12 @@ mod tests {
 
     fn discover_base_dir_lock_candidates(home: &HomePaths) -> Vec<DeadRunnerBaseDirLockCandidate> {
         discover_dead_runner_base_dir_lock_candidates(&home.locks_dir())
+    }
+
+    fn write_base_dir_lock(home: &HomePaths, base_dir: &Path) -> PathBuf {
+        let lock_path = home.base_dir_lock(base_dir);
+        std::fs::write(&lock_path, base_dir.as_os_str().as_encoded_bytes()).unwrap();
+        lock_path
     }
 
     fn firecracker_with_base_dir(
@@ -4822,8 +4843,8 @@ mod tests {
         let locks_dir = home.locks_dir();
         std::fs::create_dir_all(&locks_dir).unwrap();
 
-        std::fs::write(locks_dir.join("base-dir-abc123.lock"), "/data/runner-01").unwrap();
-        std::fs::write(locks_dir.join("base-dir-def456.lock"), "/data/runner-02").unwrap();
+        write_base_dir_lock(&home, Path::new("/data/runner-01"));
+        write_base_dir_lock(&home, Path::new("/data/runner-02"));
 
         let dirs = discover_dead_runner_base_dirs(&home.locks_dir());
         assert_eq!(dirs.len(), 2);
@@ -4866,8 +4887,7 @@ mod tests {
         std::fs::create_dir_all(&locks_dir).unwrap();
 
         // Lock file with content, held by us (simulating a live runner).
-        let lock_path = locks_dir.join("base-dir-live.lock");
-        std::fs::write(&lock_path, "/data/live-runner").unwrap();
+        let lock_path = write_base_dir_lock(&home, Path::new("/data/live-runner"));
         let file = std::fs::File::options()
             .read(true)
             .write(true)
@@ -4876,7 +4896,7 @@ mod tests {
         let _held = Flock::lock(file, FlockArg::LockExclusive).unwrap();
 
         // Lock file with content, NOT held (simulating a dead runner).
-        std::fs::write(locks_dir.join("base-dir-dead.lock"), "/data/dead-runner").unwrap();
+        write_base_dir_lock(&home, Path::new("/data/dead-runner"));
 
         let dirs = discover_dead_runner_base_dirs(&home.locks_dir());
         assert_eq!(dirs.len(), 1);
@@ -4890,8 +4910,7 @@ mod tests {
         let locks_dir = home.locks_dir();
         std::fs::create_dir_all(&locks_dir).unwrap();
 
-        let lock_path = locks_dir.join("base-dir-dead.lock");
-        std::fs::write(&lock_path, "/data/dead-runner").unwrap();
+        let lock_path = write_base_dir_lock(&home, Path::new("/data/dead-runner"));
 
         let leases = discover_dead_runner_base_dirs(&home.locks_dir());
         assert_eq!(leases.len(), 1);
@@ -4914,8 +4933,7 @@ mod tests {
         let locks_dir = home.locks_dir();
         std::fs::create_dir_all(&locks_dir).unwrap();
 
-        let lock_path = locks_dir.join("base-dir-dead.lock");
-        std::fs::write(&lock_path, "/data/dead-runner").unwrap();
+        let lock_path = write_base_dir_lock(&home, Path::new("/data/dead-runner"));
 
         let candidates = discover_base_dir_lock_candidates(&home);
         assert_eq!(candidates.len(), 1);
@@ -4932,8 +4950,7 @@ mod tests {
         let locks_dir = home.locks_dir();
         std::fs::create_dir_all(&locks_dir).unwrap();
 
-        let lock_path = locks_dir.join("base-dir-dead.lock");
-        std::fs::write(&lock_path, "/data/dead-runner").unwrap();
+        let lock_path = write_base_dir_lock(&home, Path::new("/data/dead-runner"));
 
         let candidates = discover_base_dir_lock_candidates(&home);
         assert_eq!(candidates.len(), 1);
@@ -4969,8 +4986,7 @@ mod tests {
         std::fs::write(workspace.join("cow.img"), vec![0u8; 4096]).unwrap();
 
         // Register base_dir in lock file
-        let lock_path = locks_dir.join("base-dir-test.lock");
-        std::fs::write(&lock_path, base_dir.to_str().unwrap()).unwrap();
+        write_base_dir_lock(&home, &base_dir);
 
         // Set workspace mtime to 1 hour ago (past GC_MIN_AGE)
         let old_time = SystemTime::now() - Duration::from_secs(3600);
@@ -5000,8 +5016,7 @@ mod tests {
         std::fs::write(workspace.join("cow.img"), b"data").unwrap();
         // mtime = now (default), so workspace is too recent
 
-        let lock_path = locks_dir.join("base-dir-test.lock");
-        std::fs::write(&lock_path, base_dir.to_str().unwrap()).unwrap();
+        write_base_dir_lock(&home, &base_dir);
 
         let summary = gc_workspace_orphans(&home, false).await.unwrap();
 
@@ -5024,8 +5039,7 @@ mod tests {
         std::fs::create_dir_all(&workspace).unwrap();
         std::fs::write(workspace.join("cow.img"), b"data").unwrap();
 
-        let lock_path = locks_dir.join("base-dir-test.lock");
-        std::fs::write(&lock_path, base_dir.to_str().unwrap()).unwrap();
+        let lock_path = write_base_dir_lock(&home, &base_dir);
 
         let old_time = SystemTime::now() - Duration::from_secs(3600);
         std::fs::File::open(&workspace)
@@ -5057,8 +5071,7 @@ mod tests {
         std::fs::create_dir_all(&workspace).unwrap();
         std::fs::write(workspace.join("cow.img"), b"data").unwrap();
         set_mtime(&workspace, old_gc_time());
-        let lock_path = locks_dir.join("base-dir-test.lock");
-        std::fs::write(&lock_path, base_dir.to_str().unwrap()).unwrap();
+        let lock_path = write_base_dir_lock(&home, &base_dir);
 
         let candidates = discover_base_dir_lock_candidates(&home);
         let firecrackers = [incomplete_firecracker(1234)];
@@ -5093,8 +5106,7 @@ mod tests {
         std::fs::create_dir_all(&workspace).unwrap();
         std::fs::write(workspace.join("cow.img"), b"data").unwrap();
         set_mtime(&workspace, old_gc_time());
-        let lock_path = locks_dir.join("base-dir-test.lock");
-        std::fs::write(&lock_path, base_dir.to_str().unwrap()).unwrap();
+        let lock_path = write_base_dir_lock(&home, &base_dir);
 
         let candidates = discover_base_dir_lock_candidates(&home);
         let summary =
@@ -5123,8 +5135,7 @@ mod tests {
         std::fs::create_dir_all(&workspace).unwrap();
         std::fs::write(workspace.join("cow.img"), b"data").unwrap();
         set_mtime(&workspace, old_gc_time());
-        let lock_path = locks_dir.join("base-dir-test.lock");
-        std::fs::write(&lock_path, base_dir.to_str().unwrap()).unwrap();
+        let lock_path = write_base_dir_lock(&home, &base_dir);
 
         let candidates = discover_base_dir_lock_candidates(&home);
         let firecrackers = [incomplete_firecracker(1234)];
@@ -5163,8 +5174,7 @@ mod tests {
         std::fs::create_dir_all(&workspace).unwrap();
         std::fs::write(workspace.join("cow.img"), b"data").unwrap();
         set_mtime(&workspace, old_gc_time());
-        let lock_path = locks_dir.join("base-dir-test.lock");
-        std::fs::write(&lock_path, base_dir.to_str().unwrap()).unwrap();
+        let lock_path = write_base_dir_lock(&home, &base_dir);
 
         let candidates = discover_base_dir_lock_candidates(&home);
         let firecrackers = [firecracker_with_base_dir(1234, sandbox_id, &base_dir)];
@@ -5202,8 +5212,7 @@ mod tests {
         std::fs::create_dir_all(&workspace).unwrap();
         std::fs::write(workspace.join("cow.img"), b"data").unwrap();
         set_mtime(&workspace, old_gc_time());
-        let lock_path = locks_dir.join("base-dir-test.lock");
-        std::fs::write(&lock_path, base_dir.to_str().unwrap()).unwrap();
+        let lock_path = write_base_dir_lock(&home, &base_dir);
 
         let candidates = discover_base_dir_lock_candidates(&home);
         let live_runner_base_dirs = HashSet::from([base_dir.clone()]);
@@ -5237,13 +5246,11 @@ mod tests {
         std::fs::create_dir_all(&locks_dir).unwrap();
 
         let missing_base_dir = dir.path().join("missing-runner-data");
-        let missing_lock = locks_dir.join("base-dir-missing.lock");
-        std::fs::write(&missing_lock, missing_base_dir.to_str().unwrap()).unwrap();
+        let missing_lock = write_base_dir_lock(&home, &missing_base_dir);
 
         let empty_base_dir = dir.path().join("empty-runner-data");
         std::fs::create_dir_all(empty_base_dir.join("workspaces")).unwrap();
-        let empty_lock = locks_dir.join("base-dir-empty-workspaces.lock");
-        std::fs::write(&empty_lock, empty_base_dir.to_str().unwrap()).unwrap();
+        let empty_lock = write_base_dir_lock(&home, &empty_base_dir);
 
         let empty_content_lock = locks_dir.join("base-dir-empty-content.lock");
         std::fs::write(&empty_content_lock, "").unwrap();
@@ -5288,8 +5295,7 @@ mod tests {
         let workspace = base_dir.join("workspaces").join("run-recent");
         std::fs::create_dir_all(&workspace).unwrap();
         std::fs::write(workspace.join("cow.img"), b"data").unwrap();
-        let lock_path = locks_dir.join("base-dir-test.lock");
-        std::fs::write(&lock_path, base_dir.to_str().unwrap()).unwrap();
+        let lock_path = write_base_dir_lock(&home, &base_dir);
 
         let candidates = discover_base_dir_lock_candidates(&home);
         let summary =
@@ -5336,11 +5342,7 @@ mod tests {
             .set_times(FileTimes::new().set_modified(old_time))
             .unwrap();
 
-        std::fs::write(
-            locks_dir.join("base-dir-test.lock"),
-            base_dir.to_str().unwrap(),
-        )
-        .unwrap();
+        write_base_dir_lock(&home, &base_dir);
 
         let summary = gc_workspace_orphans(&home, false).await.unwrap();
         assert_eq!(summary.workspaces_cleaned, 0);
@@ -5358,11 +5360,7 @@ mod tests {
         let base_dir = dir.path().join("runner-data");
         std::fs::create_dir_all(&base_dir).unwrap();
 
-        std::fs::write(
-            locks_dir.join("base-dir-test.lock"),
-            base_dir.to_str().unwrap(),
-        )
-        .unwrap();
+        write_base_dir_lock(&home, &base_dir);
 
         let summary = gc_workspace_orphans(&home, false).await.unwrap();
         assert_eq!(summary.workspaces_cleaned, 0);
@@ -5398,11 +5396,7 @@ mod tests {
         std::fs::write(new_ws.join("cow.img"), b"data").unwrap();
         // mtime = now (default)
 
-        std::fs::write(
-            locks_dir.join("base-dir-test.lock"),
-            base_dir.to_str().unwrap(),
-        )
-        .unwrap();
+        write_base_dir_lock(&home, &base_dir);
 
         let summary = gc_workspace_orphans(&home, false).await.unwrap();
 
@@ -5433,11 +5427,7 @@ mod tests {
         set_mtime(&outside_workspace, old_gc_time());
         std::os::unix::fs::symlink(&outside_workspaces, base_dir.join("workspaces")).unwrap();
 
-        std::fs::write(
-            locks_dir.join("base-dir-test.lock"),
-            base_dir.to_str().unwrap(),
-        )
-        .unwrap();
+        write_base_dir_lock(&home, &base_dir);
 
         let summary = gc_workspace_orphans(&home, false).await.unwrap();
 
@@ -5469,11 +5459,7 @@ mod tests {
         set_mtime(&outside_workspace, old_gc_time());
         std::os::unix::fs::symlink(&outside_base_dir, &base_dir).unwrap();
 
-        std::fs::write(
-            locks_dir.join("base-dir-test.lock"),
-            base_dir.to_str().unwrap(),
-        )
-        .unwrap();
+        write_base_dir_lock(&home, &base_dir);
 
         let summary = gc_workspace_orphans(&home, false).await.unwrap();
 
@@ -5504,11 +5490,7 @@ mod tests {
         let workspace_link = workspaces_dir.join("run-link");
         std::os::unix::fs::symlink(&outside_workspace, &workspace_link).unwrap();
 
-        std::fs::write(
-            locks_dir.join("base-dir-test.lock"),
-            base_dir.to_str().unwrap(),
-        )
-        .unwrap();
+        write_base_dir_lock(&home, &base_dir);
 
         let summary = gc_workspace_orphans(&home, false).await.unwrap();
 
@@ -5522,18 +5504,78 @@ mod tests {
     }
 
     #[test]
-    fn discover_dead_runner_base_dirs_trims_whitespace() {
+    fn discover_dead_runner_base_dirs_rejects_hash_mismatch() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
         let locks_dir = home.locks_dir();
         std::fs::create_dir_all(&locks_dir).unwrap();
 
-        // Content with trailing newline (e.g., written by shell tools)
-        std::fs::write(locks_dir.join("base-dir-ws.lock"), "/data/runner-01\n").unwrap();
+        let trimmed_base_dir = Path::new("/data/runner-01");
+        let lock_path = home.base_dir_lock(trimmed_base_dir);
+        std::fs::write(&lock_path, b"/data/runner-01\n").unwrap();
 
         let dirs = discover_dead_runner_base_dirs(&home.locks_dir());
         assert_eq!(dirs.len(), 1);
-        assert_eq!(dirs[0].base_dir, Some(PathBuf::from("/data/runner-01")));
+        assert_eq!(dirs[0].base_dir, None);
+    }
+
+    #[tokio::test]
+    async fn gc_workspace_orphans_does_not_scan_mismatched_base_dir_lock_name() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let base_dir = dir.path().join("runner-data");
+        let workspace = base_dir.join("workspaces").join("run-old");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::write(workspace.join("cow.img"), b"data").unwrap();
+        set_mtime(&workspace, old_gc_time());
+
+        let lock_path = locks_dir.join("base-dir-mismatch.lock");
+        std::fs::write(&lock_path, base_dir.as_os_str().as_encoded_bytes()).unwrap();
+
+        let summary = gc_workspace_orphans(&home, false).await.unwrap();
+
+        assert_eq!(summary.workspaces_cleaned, 0);
+        assert_eq!(summary.base_dir_locks_removed, 1);
+        assert!(
+            workspace.exists(),
+            "mismatched base-dir lock must not authorize workspace cleanup"
+        );
+        assert!(!lock_path.exists(), "mismatched lock should be removed");
+    }
+
+    #[test]
+    fn discover_dead_runner_base_dirs_preserves_trailing_space() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let base_dir = PathBuf::from("/data/runner-01 ");
+        write_base_dir_lock(&home, &base_dir);
+
+        let dirs = discover_dead_runner_base_dirs(&home.locks_dir());
+        assert_eq!(dirs.len(), 1);
+        assert_eq!(dirs[0].base_dir, Some(base_dir));
+    }
+
+    #[test]
+    fn discover_dead_runner_base_dirs_accepts_non_utf8_path_bytes() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let mut base_dir_bytes = b"/data/runner-".to_vec();
+        base_dir_bytes.push(0xff);
+        let base_dir = PathBuf::from(OsString::from_vec(base_dir_bytes.clone()));
+        write_base_dir_lock(&home, &base_dir);
+
+        let dirs = discover_dead_runner_base_dirs(&home.locks_dir());
+        assert_eq!(dirs.len(), 1);
+        assert_eq!(dirs[0].base_dir, Some(base_dir));
     }
 
     // -----------------------------------------------------------------------
@@ -6447,16 +6489,8 @@ mod tests {
         std::fs::write(ws_b.join("cow.img"), vec![0u8; 4096]).unwrap();
 
         // Register both in separate lock files
-        std::fs::write(
-            locks_dir.join("base-dir-aaa.lock"),
-            base_dir_a.to_str().unwrap(),
-        )
-        .unwrap();
-        std::fs::write(
-            locks_dir.join("base-dir-bbb.lock"),
-            base_dir_b.to_str().unwrap(),
-        )
-        .unwrap();
+        write_base_dir_lock(&home, &base_dir_a);
+        write_base_dir_lock(&home, &base_dir_b);
 
         // Age both workspaces past GC_MIN_AGE
         let old_time = SystemTime::now() - Duration::from_secs(3600);
