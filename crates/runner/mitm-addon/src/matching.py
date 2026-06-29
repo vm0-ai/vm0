@@ -46,8 +46,6 @@ firewall_base_config_is_valid = _firewall_base_url.firewall_base_config_is_valid
 match_base_url = _firewall_base_url.match_base_url
 
 CompiledPathPattern: _TypeAlias = _firewall_patterns.CompiledPathPattern
-SegmentParam: _TypeAlias = _firewall_patterns.SegmentParam
-ParsedSegment: _TypeAlias = _firewall_patterns.ParsedSegment
 _compiled_rule_path_is_valid = _firewall_patterns._compiled_rule_path_is_valid
 compile_path_pattern = _firewall_patterns.compile_path_pattern
 match_compiled_path = _firewall_patterns.match_compiled_path
