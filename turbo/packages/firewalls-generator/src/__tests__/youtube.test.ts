@@ -43,7 +43,7 @@ describe("YouTube permission manifest", () => {
     officialRouteKeys = buildYouTubeOfficialRouteKeys(await loadDiscovery());
   });
 
-  it("matches the official Discovery route set exactly", () => {
+  it("matches the official Discovery and resumable media route set exactly", () => {
     expect(officialRouteKeys.size).toBe(107);
 
     expect(() => {
