@@ -51,6 +51,7 @@ import builtin_host_policy
 import flow_metadata_keys as metadata_keys
 import matching
 import network_log_sanitization
+import public_destination
 import registry
 import request_streaming
 import response_streaming
@@ -187,6 +188,7 @@ _RequestClassificationKind = Literal[
     "browser_allow",
     "firewall_block",
     "firewall_allow",
+    "public_destination_denied",
     "allow",
 ]
 _AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
@@ -227,7 +229,17 @@ class _RequestClassification:
     authority_error: AuthorityValidationError | None = None
     firewall_block: matching.FirewallBlock | None = None
     firewall_allow: matching.FirewallAllow | None = None
+    public_destination_denial: "_PublicDestinationDenial | None" = None
     stale_tls_reason: str = ""
+
+
+@dataclass(frozen=True)
+class _PublicDestinationDenial:
+    name: str
+    base: str
+    trusted_authority_host: str
+    destination_host: str
+    reason: public_destination.DestinationDenialReason
 
 
 @dataclass(frozen=True)
@@ -597,6 +609,32 @@ def _store_trusted_authority_metadata(
     )
 
 
+def _public_destination_denial(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+    *,
+    trusted_authority_host: str,
+) -> _PublicDestinationDenial | None:
+    host_policy = allow.api_entry.get("hostPolicy")
+    if not isinstance(host_policy, dict) or host_policy.get("kind") != "publicDestination":
+        return None
+
+    validation = public_destination.validate_runtime_destination_host(flow.request.host)
+    if validation.allowed:
+        return None
+
+    raw_base = allow.api_entry.get("base", "")
+    base = raw_base if isinstance(raw_base, str) else ""
+    reason = validation.reason if validation.reason is not None else "invalid_destination"
+    return _PublicDestinationDenial(
+        name=allow.name,
+        base=base,
+        trusted_authority_host=trusted_authority_host,
+        destination_host=validation.destination_host,
+        reason=reason,
+    )
+
+
 def _classify_request(flow: http.HTTPFlow) -> _RequestClassification:
     client_ip = flow.client_conn.peername[0] if flow.client_conn.peername else None
     tls_admission = _tls_admission_for_client(flow.client_conn)
@@ -702,6 +740,17 @@ def _classify_request(flow: http.HTTPFlow) -> _RequestClassification:
                 firewall_block=result,
             )
         if isinstance(result, matching.FirewallAllow):
+            public_destination_denial = _public_destination_denial(
+                flow,
+                result,
+                trusted_authority_host=trusted_authority.host,
+            )
+            if public_destination_denial is not None:
+                return _RequestClassification(
+                    kind="public_destination_denied",
+                    vm_info=vm_info,
+                    public_destination_denial=public_destination_denial,
+                )
             return _RequestClassification(
                 kind="firewall_allow",
                 vm_info=vm_info,
@@ -725,6 +774,7 @@ def _classification_needs_request_timing(classification: _RequestClassification)
         "browser_allow",
         "firewall_block",
         "firewall_allow",
+        "public_destination_denied",
         "allow",
     )
 
@@ -2505,6 +2555,46 @@ def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallB
     )
 
 
+def _block_public_destination_denied(
+    flow: http.HTTPFlow,
+    denial: _PublicDestinationDenial,
+) -> None:
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = "unsafe_public_destination"
+    flow.metadata[metadata_keys.FIREWALL_BASE] = denial.base
+    flow.metadata[metadata_keys.FIREWALL_NAME] = denial.name
+
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "Request blocked: publicDestination resolved to a non-public destination",
+        type="public_destination",
+        name=denial.name,
+        firewall_base=denial.base,
+        destination_host=denial.destination_host,
+        trusted_authority_host=denial.trusted_authority_host,
+        reason=denial.reason,
+    )
+
+    error_body = json.dumps(
+        {
+            "error": "unsafe_public_destination",
+            "message": "Request blocked: publicDestination resolved to a non-public destination",
+            "name": denial.name,
+            "base": denial.base,
+            "destination_host": denial.destination_host,
+            "trusted_authority_host": denial.trusted_authority_host,
+            "reason": denial.reason,
+        }
+    )
+    flow.response = http.Response.make(
+        403,
+        error_body.encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
 async def request(flow: http.HTTPFlow) -> None:
     """
     Intercept request: inject firewall auth headers for configured firewall rules.
@@ -2575,6 +2665,11 @@ async def request(flow: http.HTTPFlow) -> None:
             firewall_block = classification.firewall_block
             if firewall_block is not None:
                 _set_firewall_block_response(flow, firewall_block)
+            return
+        if classification.kind == "public_destination_denied":
+            public_destination_denial = classification.public_destination_denial
+            if public_destination_denial is not None:
+                _block_public_destination_denied(flow, public_destination_denial)
             return
         if classification.kind == "firewall_allow":
             allow = classification.firewall_allow
