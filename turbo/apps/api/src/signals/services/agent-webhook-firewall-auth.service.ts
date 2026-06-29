@@ -605,17 +605,16 @@ const TEMPLATE_RE = /\$\{\{\s*(secrets|vars)\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
 function getRefreshProviderKeySourceType(
   providerKey: string,
 ): AccessSecretSource {
-  return isModelProviderRefreshProviderKey(providerKey)
+  return modelProviderTypeForProviderKey(providerKey)
     ? "model-provider"
     : "connector";
 }
 
-function modelProviderTypeForRefreshProviderKey(
+function modelProviderTypeForProviderKey(
   providerKey: string,
-): string | undefined {
-  return isModelProviderRefreshProviderKey(providerKey)
-    ? providerKey
-    : undefined;
+): ModelProviderType | undefined {
+  const parsedProviderType = modelProviderTypeSchema.safeParse(providerKey);
+  return parsedProviderType.success ? parsedProviderType.data : undefined;
 }
 
 function resolveSecretUserId(
@@ -641,7 +640,7 @@ function resolveRefreshMetadata(
     metadataKey:
       sourceType === "model-provider"
         ? (metadata?.metadataKey ??
-          modelProviderTypeForRefreshProviderKey(connectorType))
+          modelProviderTypeForProviderKey(connectorType))
         : undefined,
   };
 }
@@ -651,8 +650,7 @@ function modelProviderTypeForMetadata(
   metadata: SecretConnectorMetadata,
 ): ModelProviderType | undefined {
   const providerType =
-    metadata.metadataKey ??
-    modelProviderTypeForRefreshProviderKey(connectorType);
+    metadata.metadataKey ?? modelProviderTypeForProviderKey(connectorType);
   const parsedProviderType = providerType
     ? modelProviderTypeSchema.safeParse(providerType)
     : undefined;
@@ -1146,7 +1144,7 @@ function modelProviderSourceLookup(args: {
     providerKey: args.providerKey,
     providerType:
       metadata.metadataKey ??
-      modelProviderTypeForRefreshProviderKey(args.providerKey) ??
+      modelProviderTypeForProviderKey(args.providerKey) ??
       args.providerKey,
     userId: resolveSecretUserId(
       "model-provider",
