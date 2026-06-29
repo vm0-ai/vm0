@@ -139,6 +139,9 @@ class TestOpenAIResponsesSseUsageExtractor:
         )
         parse(b"event: response.future_delta\n")
         parse(b"data: " + large_delta + b"\n\n")
+
+        assert usage == {}
+
         parse(
             b"event: response.completed\n"
             b'data: {"response":{"model":"gpt-5.4","usage":{"output_tokens":6}}}\n\n'
