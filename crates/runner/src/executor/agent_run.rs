@@ -22,7 +22,7 @@ use super::diagnostics::{
 use super::env::{build_env_json, build_user_env_json, write_user_env_file};
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::session_history_download::{SessionHistoryMaterialization, SessionHistoryMaterializer};
-use super::session_restore::restore_session;
+use super::session_restore::{MaterializedResumeSession, restore_session};
 use super::storage::{apply_storage_fingerprint_reuse, download_storages, guest_download_has_work};
 use super::telemetry::{RunnerSpawnTiming, record_api_latency};
 use super::{
@@ -562,12 +562,18 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 return Err(error);
             }
         };
-        let resume_session = downloaded_resume_session
-            .as_ref()
-            .or(context.resume_session.as_ref());
+        let resume_session = downloaded_resume_session.map(Ok).or_else(|| {
+            context
+                .resume_session
+                .as_ref()
+                .map(MaterializedResumeSession::from_inline_resume_session)
+        });
         if let Some(session) = resume_session {
             let t = Instant::now();
-            let result = restore_session(sandbox, context, session).await;
+            let result = match session {
+                Ok(session) => restore_session(sandbox, context, &session).await,
+                Err(error) => Err(error),
+            };
             let err = result.as_ref().err().map(|e| e.to_string());
             telemetry.record(
                 "session_restore",

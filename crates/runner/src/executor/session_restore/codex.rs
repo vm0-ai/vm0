@@ -3,12 +3,13 @@ use shell_quote::quote_shell_arg;
 use tracing::info;
 
 use super::{
-    SessionRestoreDiagnostics, redact_session_restore_diagnostic, write_session_history_file,
+    MaterializedResumeSession, SessionRestoreDiagnostics, redact_session_restore_diagnostic,
+    write_session_history_file,
 };
 use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 use crate::paths::diagnostic_session_fingerprint;
 use crate::restored_session_identity::RestoredSessionIdentity;
-use crate::types::{ExecutionContext, ResumeSession};
+use crate::types::ExecutionContext;
 
 use super::super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
 use guest_contracts::codex_thread_id::CodexThreadId;
@@ -19,10 +20,12 @@ const CODEX_SESSION_CLEANUP_SCRIPT: &str =
 
 fn codex_restore_rollout_path(
     session_id: &str,
-    session_history: &str,
+    session_history: Option<&str>,
     fallback_timestamp: chrono::DateTime<chrono::Utc>,
 ) -> String {
-    let timestamp = codex_session_meta_timestamp(session_history).unwrap_or(fallback_timestamp);
+    let timestamp = session_history
+        .and_then(codex_session_meta_timestamp)
+        .unwrap_or(fallback_timestamp);
     format!(
         "{CODEX_HOME}/sessions/{}/{}/{}/rollout-{}-{session_id}.jsonl",
         timestamp.format("%Y"),
@@ -91,17 +94,17 @@ fn parse_codex_rollout_timestamp(raw: &str) -> Option<chrono::DateTime<chrono::U
 pub(super) async fn restore_codex_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    session: &ResumeSession,
+    session: &MaterializedResumeSession,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
-    let session_history = session.session_history().ok_or_else(|| {
-        RunnerError::Internal("resume session history was not materialized".into())
-    })?;
-    let thread_id = CodexThreadId::parse(&session.cli_agent_session_id)
+    let session_history = session.history_bytes();
+    let original_session_id = session.cli_agent_session_id();
+    let thread_id = CodexThreadId::parse(original_session_id)
         .ok_or_else(|| RunnerError::Internal("invalid codex session_id".into()))?;
     let session_id = thread_id.as_str();
     let session_filename_key = thread_id.filename_key();
 
-    let session_path = codex_restore_rollout_path(session_id, session_history, chrono::Utc::now());
+    let session_path =
+        codex_restore_rollout_path(session_id, session.history_text(), chrono::Utc::now());
 
     cleanup_existing_codex_session_files(
         sandbox,
@@ -115,7 +118,7 @@ pub(super) async fn restore_codex_session(
     write_session_history_file(
         sandbox,
         &session_path,
-        &[session_id, &session.cli_agent_session_id],
+        &[session_id, original_session_id],
         session_history,
     )
     .await?;

@@ -9,7 +9,7 @@ use tracing_subscriber::prelude::*;
 
 use super::super::DEFAULT_EXEC_TIMEOUT;
 use super::super::session_id::{canonical_codex_thread_id, is_valid_session_id};
-use super::super::session_restore::restore_session;
+use super::super::session_restore::{MaterializedResumeSession, restore_session};
 use super::support::{CapturedEvent, CapturedEvents, minimal_context, sandbox_write_file_error};
 use crate::paths::diagnostic_session_fingerprint;
 use crate::restored_session_identity::RestoredSessionIdentity;
@@ -18,6 +18,14 @@ use crate::types::{
 };
 
 static RESTORE_SESSION_LOG_CALLSITE_LOCK: Mutex<()> = Mutex::new(());
+
+fn materialized_text_session(session_id: String, history: String) -> MaterializedResumeSession {
+    MaterializedResumeSession::new(session_id, history.into_bytes())
+}
+
+fn materialized_bytes_session(session_id: String, history: &[u8]) -> MaterializedResumeSession {
+    MaterializedResumeSession::new(session_id, history.to_vec())
+}
 
 #[test]
 fn session_id_validation_rejects_path_traversal() {
@@ -198,7 +206,7 @@ fn restore_session_writes_history() {
             },
         },
     });
-    let session = ResumeSession::inline("sess-abc-123".into(), history.into());
+    let session = materialized_text_session("sess-abc-123".into(), history.into());
     let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
     let writes = sandbox.write_file_calls();
@@ -217,7 +225,7 @@ async fn restore_session_rejects_invalid_session_id() {
     let sandbox = MockSandbox::new("test");
     let ctx = minimal_context();
     let raw_session_id = "../../etc/passwd";
-    let session = ResumeSession::inline(raw_session_id.into(), "data".into());
+    let session = materialized_text_session(raw_session_id.into(), "data".into());
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
     let message = err.to_string();
     assert!(message.contains("invalid session_id"));
@@ -233,7 +241,7 @@ fn restore_session_logs_fingerprint_without_raw_claude_session_id() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "claude-code".into();
     let raw_session_id = "sess-sensitive-restore-17975";
-    let session = ResumeSession::inline(raw_session_id.into(), r#"{"type":"init"}"#.into());
+    let session = materialized_text_session(raw_session_id.into(), r#"{"type":"init"}"#.into());
 
     let (result, events) = capture_restore_events(restore_session(&sandbox, &ctx, &session));
 
@@ -243,10 +251,7 @@ fn restore_session_logs_fingerprint_without_raw_claude_session_id() {
         diagnostics.session_fingerprint,
         diagnostic_session_fingerprint(raw_session_id)
     );
-    assert_eq!(
-        diagnostics.bytes_in,
-        session.session_history().unwrap().len()
-    );
+    assert_eq!(diagnostics.bytes_in, session.history_bytes().len());
     assert_captured_events_do_not_contain(&events, raw_session_id);
     let event = captured_event(&events, "restored session history");
     assert_eq!(
@@ -268,7 +273,7 @@ fn restore_session_unknown_framework_uses_claude_fallback() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "custom-agent".into();
-    let session = ResumeSession::inline("sess-1".into(), "data".into());
+    let session = materialized_text_session("sess-1".into(), "data".into());
 
     run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
@@ -286,7 +291,7 @@ fn restore_session_allows_empty_agent_type() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = String::new(); // empty defaults to claude-code
-    let session = ResumeSession::inline("sess-1".into(), "{}".into());
+    let session = materialized_text_session("sess-1".into(), "{}".into());
     // Should proceed (empty agent type treated as claude-code).
     run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 }
@@ -325,7 +330,7 @@ fn restore_session_writes_codex_session() {
             },
         },
     });
-    let session = ResumeSession::inline(session_id.into(), history.clone());
+    let session = materialized_text_session(session_id.into(), history.clone());
     let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
     assert_codex_cleanup_call(&sandbox);
@@ -339,10 +344,7 @@ fn restore_session_writes_codex_session() {
         "codex resume history must be restored as a canonical rollout jsonl, got {}",
         writes[0].path
     );
-    assert_eq!(
-        writes[0].content,
-        session.session_history().unwrap().as_bytes()
-    );
+    assert_eq!(writes[0].content, session.history_bytes());
     let expected_identity = RestoredSessionIdentity::from_context(&ctx)
         .expect("restored identity")
         .with_guest_history(history.len() as u64, writes[0].path.clone());
@@ -358,7 +360,7 @@ fn restore_session_logs_fingerprint_without_raw_codex_session_id() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
     let raw_session_id = "019e9154-c304-70f0-adde-36efb1be1701";
-    let session = ResumeSession::inline(raw_session_id.into(), "{}\n".into());
+    let session = materialized_text_session(raw_session_id.into(), "{}\n".into());
 
     let (result, events) = capture_restore_events(restore_session(&sandbox, &ctx, &session));
 
@@ -368,10 +370,7 @@ fn restore_session_logs_fingerprint_without_raw_codex_session_id() {
         diagnostics.session_fingerprint,
         diagnostic_session_fingerprint(raw_session_id)
     );
-    assert_eq!(
-        diagnostics.bytes_in,
-        session.session_history().unwrap().len()
-    );
+    assert_eq!(diagnostics.bytes_in, session.history_bytes().len());
     assert_captured_events_do_not_contain(&events, raw_session_id);
     let restore_event = captured_event(&events, "restored session history");
     assert_eq!(
@@ -396,7 +395,7 @@ fn restore_session_writes_codex_session_with_canonical_fallback_filename() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
-    let session = ResumeSession::inline(
+    let session = materialized_text_session(
         "019e9154-c304-70f0-adde-36efb1be1701".into(),
         "{\"type\":\"thread.started\"}\n{not-json}\n".into(),
     );
@@ -425,10 +424,64 @@ fn restore_session_writes_codex_session_with_canonical_fallback_filename() {
         filename.ends_with("-019e9154-c304-70f0-adde-36efb1be1701.jsonl"),
         "codex resume history filename must include the thread id, got {filename}"
     );
+    assert_eq!(writes[0].content, session.history_bytes());
+}
+
+#[test]
+fn restore_session_writes_invalid_utf8_claude_history_bytes() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "claude-code".into();
+    let history = b"{\"type\":\"init\"}\n\xff\n";
+    let session = materialized_bytes_session("sess-non-utf8-123".into(), history);
+
+    let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
+
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
     assert_eq!(
-        writes[0].content,
-        session.session_history().unwrap().as_bytes()
+        writes[0].path,
+        "/home/user/.claude/projects/-home-user-workspace/sess-non-utf8-123.jsonl"
     );
+    assert_eq!(writes[0].content, history);
+    assert_eq!(diagnostics.bytes_in, history.len());
+}
+
+#[test]
+fn restore_session_writes_invalid_utf8_codex_history_with_fallback_filename() {
+    let sandbox = MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
+    let history = b"{\"type\":\"session_meta\",\"payload\":{\"timestamp\":\"2026-06-04T07:18:08.000Z\"}}\n\xff\n";
+    let session = materialized_bytes_session(session_id.into(), history);
+
+    let diagnostics = run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
+
+    assert_codex_cleanup_call(&sandbox);
+
+    let writes = sandbox.write_file_calls();
+    assert_eq!(writes.len(), 1);
+    assert!(
+        writes[0].path.starts_with("/home/user/.codex/sessions/"),
+        "codex resume history must be restored under codex sessions, got {}",
+        writes[0].path
+    );
+    let filename = writes[0]
+        .path
+        .rsplit('/')
+        .next()
+        .expect("restored codex path should have a filename");
+    assert!(
+        filename.starts_with("rollout-"),
+        "codex resume history filename must use rollout prefix, got {filename}"
+    );
+    assert!(
+        filename.ends_with("-019e9154-c304-70f0-adde-36efb1be1701.jsonl"),
+        "codex resume history filename must include the thread id, got {filename}"
+    );
+    assert_eq!(writes[0].content, history);
+    assert_eq!(diagnostics.bytes_in, history.len());
 }
 
 #[test]
@@ -436,7 +489,8 @@ fn restore_session_canonicalizes_codex_session_id() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
-    let session = ResumeSession::inline("019E9154C30470F0ADDE36EFB1BE1701".into(), "{}\n".into());
+    let session =
+        materialized_text_session("019E9154C30470F0ADDE36EFB1BE1701".into(), "{}\n".into());
 
     run_restore_session(restore_session(&sandbox, &ctx, &session)).unwrap();
 
@@ -460,7 +514,7 @@ async fn restore_session_rejects_invalid_codex_session_id() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
-    let session = ResumeSession::inline("../../etc/passwd".into(), "{}".into());
+    let session = materialized_text_session("../../etc/passwd".into(), "{}".into());
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
     assert!(err.to_string().contains("invalid session_id"));
 }
@@ -470,7 +524,7 @@ async fn restore_session_rejects_short_codex_session_id_without_cleanup() {
     let sandbox = MockSandbox::new("test");
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
-    let session = ResumeSession::inline("abc".into(), "{}".into());
+    let session = materialized_text_session("abc".into(), "{}".into());
 
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
 
@@ -493,7 +547,7 @@ async fn restore_session_rejects_decorated_codex_session_id_without_cleanup() {
         let sandbox = MockSandbox::new("test");
         let mut ctx = minimal_context();
         ctx.cli_agent_type = "codex".into();
-        let session = ResumeSession::inline(raw_session_id.into(), "{}".into());
+        let session = materialized_text_session(raw_session_id.into(), "{}".into());
 
         let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
 
@@ -514,7 +568,7 @@ async fn restore_session_fails_when_codex_cleanup_fails() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
     let session =
-        ResumeSession::inline("019e9154-c304-70f0-adde-36efb1be1701".into(), "{}\n".into());
+        materialized_text_session("019e9154-c304-70f0-adde-36efb1be1701".into(), "{}\n".into());
     sandbox.push_exec_result(Ok(ExecResult::new(
         1,
         b"cleanup stdout".to_vec(),
@@ -561,7 +615,7 @@ async fn restore_session_redacts_codex_cleanup_failure_output() {
     let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
     let session_id_no_dashes = session_id.replace('-', "");
     let session_path = "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
-    let session = ResumeSession::inline(
+    let session = materialized_text_session(
         session_id.into(),
         format!(
             "{}\n",
@@ -610,7 +664,7 @@ async fn restore_session_redacts_non_exited_codex_cleanup_failure_output() {
     let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
     let session_id_no_dashes = session_id.replace('-', "");
     let session_path = "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
-    let session = ResumeSession::inline(
+    let session = materialized_text_session(
         session_id.into(),
         format!(
             "{}\n",
@@ -652,7 +706,7 @@ async fn restore_session_redacts_claude_write_file_error() {
     let session_id = "sess-sensitive-write-17975";
     let session_path =
         "/home/user/.claude/projects/-home-user-workspace/sess-sensitive-write-17975.jsonl";
-    let session = ResumeSession::inline(session_id.into(), r#"{"type":"init"}"#.into());
+    let session = materialized_text_session(session_id.into(), r#"{"type":"init"}"#.into());
     sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
         "failed to write {session_path} for {session_id}"
     ))));
@@ -680,7 +734,7 @@ async fn restore_session_redacts_codex_write_file_error() {
     let session_id = "019e9154-c304-70f0-adde-36efb1be1701";
     let session_id_no_dashes = session_id.replace('-', "");
     let session_path = "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
-    let session = ResumeSession::inline(
+    let session = materialized_text_session(
         session_id.into(),
         format!(
             "{}\n",
@@ -725,7 +779,7 @@ async fn restore_session_redacts_codex_original_no_dash_write_file_error() {
     let raw_session_id = "019E9154C30470F0ADDE36EFB1BE1701";
     let canonical_session_id = "019e9154-c304-70f0-adde-36efb1be1701";
     let session_path = "/home/user/.codex/sessions/2026/06/04/rollout-2026-06-04T07-18-08-019e9154-c304-70f0-adde-36efb1be1701.jsonl";
-    let session = ResumeSession::inline(
+    let session = materialized_text_session(
         raw_session_id.into(),
         format!(
             "{}\n",
@@ -769,7 +823,7 @@ async fn restore_session_redacts_codex_mixed_case_original_write_file_error() {
     ctx.cli_agent_type = "codex".into();
     let raw_session_id = "019e9154C30470f0ADDE36efB1be1701";
     let canonical_session_id = "019e9154-c304-70f0-adde-36efb1be1701";
-    let session = ResumeSession::inline(
+    let session = materialized_text_session(
         raw_session_id.into(),
         format!(
             "{}\n",
@@ -809,7 +863,7 @@ async fn restore_session_redacts_write_file_invalid_state() {
     let session_id = "sess-invalid-state-17975";
     let session_path =
         "/home/user/.claude/projects/-home-user-workspace/sess-invalid-state-17975.jsonl";
-    let session = ResumeSession::inline(session_id.into(), r#"{"type":"init"}"#.into());
+    let session = materialized_text_session(session_id.into(), r#"{"type":"init"}"#.into());
     sandbox.push_write_file_result(Err(SandboxError::InvalidState {
         context: SandboxInvalidStateContext::Operation(SandboxOperation::WriteFile),
         state: format!("blocked for {session_path}"),
@@ -838,7 +892,7 @@ async fn restore_session_redaction_does_not_rewrite_markers() {
     ctx.cli_agent_type = "claude-code".into();
     let session_id = "session";
     let session_path = "/home/user/.claude/projects/-home-user-workspace/session.jsonl";
-    let session = ResumeSession::inline(session_id.into(), r#"{"type":"init"}"#.into());
+    let session = materialized_text_session(session_id.into(), r#"{"type":"init"}"#.into());
     sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
         "failed to write {session_path} for {session_id}"
     ))));
@@ -867,7 +921,7 @@ async fn restore_session_redaction_preserves_words_for_short_ids() {
     ctx.cli_agent_type = "claude-code".into();
     let session_id = "a";
     let session_path = "/home/user/.claude/projects/-home-user-workspace/a.jsonl";
-    let session = ResumeSession::inline(session_id.into(), r#"{"type":"init"}"#.into());
+    let session = materialized_text_session(session_id.into(), r#"{"type":"init"}"#.into());
     sandbox.push_write_file_result(Err(sandbox_write_file_error(format!(
         "failed to write {session_path} for {session_id}"
     ))));
@@ -893,7 +947,7 @@ async fn restore_session_redaction_preserves_words_for_short_ids() {
 async fn restore_session_fails_on_write_file_error() {
     let sandbox = MockSandbox::new("test");
     let ctx = minimal_context();
-    let session = ResumeSession::inline("sess-abc".into(), r#"{"type":"init"}"#.into());
+    let session = materialized_text_session("sess-abc".into(), r#"{"type":"init"}"#.into());
     sandbox.push_write_file_result(Err(sandbox_write_file_error("disk full")));
     let err = restore_session(&sandbox, &ctx, &session).await.unwrap_err();
     assert!(err.to_string().contains("disk full"), "got: {err}");

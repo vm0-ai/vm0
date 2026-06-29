@@ -60,6 +60,45 @@ fn restored_session_framework(framework: EffectiveCliFramework) -> RestoredSessi
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
+pub(super) struct MaterializedResumeSession {
+    cli_agent_session_id: String,
+    history_bytes: Vec<u8>,
+}
+
+impl MaterializedResumeSession {
+    pub(super) fn new(cli_agent_session_id: String, history_bytes: Vec<u8>) -> Self {
+        Self {
+            cli_agent_session_id,
+            history_bytes,
+        }
+    }
+
+    pub(super) fn from_inline_resume_session(session: &ResumeSession) -> RunnerResult<Self> {
+        let Some(session_history) = session.session_history() else {
+            return Err(RunnerError::Internal(
+                "resume session history was not materialized".into(),
+            ));
+        };
+        Ok(Self::new(
+            session.cli_agent_session_id.clone(),
+            session_history.as_bytes().to_vec(),
+        ))
+    }
+
+    pub(super) fn cli_agent_session_id(&self) -> &str {
+        &self.cli_agent_session_id
+    }
+
+    pub(super) fn history_bytes(&self) -> &[u8] {
+        &self.history_bytes
+    }
+
+    pub(super) fn history_text(&self) -> Option<&str> {
+        std::str::from_utf8(&self.history_bytes).ok()
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub(super) struct SessionRestoreDiagnostics {
     pub(super) framework: &'static str,
     pub(super) session_fingerprint: String,
@@ -70,20 +109,14 @@ pub(super) struct SessionRestoreDiagnostics {
 pub(super) async fn restore_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    session: &ResumeSession,
+    session: &MaterializedResumeSession,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
     // Validate the CLI agent session id to prevent path traversal.
     // Only allow alnum, dash, and underscore.
     // Applied up-front so unknown frameworks still reject malformed IDs in case the
     // skip branch is ever upgraded to a write.
-    if !is_valid_session_id(&session.cli_agent_session_id) {
+    if !is_valid_session_id(session.cli_agent_session_id()) {
         return Err(RunnerError::Internal("invalid session_id".into()));
-    }
-
-    if session.session_history().is_none() {
-        return Err(RunnerError::Internal(
-            "resume session history was not materialized".into(),
-        ));
     }
 
     match effective_cli_framework(&context.cli_agent_type) {
@@ -107,27 +140,20 @@ pub(super) async fn restore_session(
 pub(super) async fn restore_claude_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    session: &ResumeSession,
+    session: &MaterializedResumeSession,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
-    let session_history = session.session_history().ok_or_else(|| {
-        RunnerError::Internal("resume session history was not materialized".into())
-    })?;
+    let session_history = session.history_bytes();
     let project_name = CANONICAL_WORKING_DIR
         .trim_start_matches('/')
         .replace('/', "-");
     let session_dir = format!("/home/user/.claude/projects/-{project_name}");
-    let session_path = format!("{session_dir}/{}.jsonl", session.cli_agent_session_id);
+    let session_id = session.cli_agent_session_id();
+    let session_path = format!("{session_dir}/{session_id}.jsonl");
 
-    write_session_history_file(
-        sandbox,
-        &session_path,
-        &[&session.cli_agent_session_id],
-        session_history,
-    )
-    .await?;
+    write_session_history_file(sandbox, &session_path, &[session_id], session_history).await?;
     let diagnostics = SessionRestoreDiagnostics {
         framework: "claude-code",
-        session_fingerprint: diagnostic_session_fingerprint(&session.cli_agent_session_id),
+        session_fingerprint: diagnostic_session_fingerprint(session_id),
         bytes_in: session_history.len(),
         restored_session_identity: RestoredSessionIdentity::from_context(context).map(|identity| {
             identity.with_guest_history(session_history.len() as u64, session_path.clone())
@@ -147,10 +173,10 @@ async fn write_session_history_file(
     sandbox: &dyn Sandbox,
     session_path: &str,
     session_ids: &[&str],
-    session_history: &str,
+    session_history: &[u8],
 ) -> RunnerResult<()> {
     sandbox
-        .write_file(session_path, session_history.as_bytes())
+        .write_file(session_path, session_history)
         .await
         .map_err(|error| redact_session_restore_sandbox_error(error, session_ids, session_path))
 }
