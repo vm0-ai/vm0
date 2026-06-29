@@ -117,6 +117,7 @@ async fn run_codex_app_server(
     let log_file = guest_contracts::runtime_paths::create_private(paths::agent_log_file())?;
     let mut log_file = tokio::fs::File::from_std(log_file);
     let mut ingestor = CliEventIngestor::new();
+    let resume_thread_id = resume_thread_id_from_env()?;
     let mut client = CodexAppServerClient::spawn(codex_app_server_config())
         .map_err(|error| app_server_error(masker, error))?;
     let mut heartbeat_done = false;
@@ -130,14 +131,14 @@ async fn run_codex_app_server(
         )
         .await?;
         let thread_response = race_with_heartbeat(
-            start_or_resume_thread(&mut client),
+            start_or_resume_thread(&mut client, resume_thread_id.as_deref()),
             heartbeat_monitor,
             &mut heartbeat_done,
             masker,
         )
         .await?;
         let thread_identity = thread_identity_from_response(&thread_response)?;
-        validate_resumed_thread_id(&thread_identity.canonical_id)?;
+        validate_resumed_thread_id(&thread_identity.canonical_id, resume_thread_id.as_deref())?;
         let mut thread_started_emitted = false;
 
         while let Some(notification) = client.pop_notification() {
@@ -280,16 +281,20 @@ fn codex_app_server_config() -> CodexAppServerConfig {
 
 async fn start_or_resume_thread(
     client: &mut CodexAppServerClient,
+    resume_thread_id: Option<&str>,
 ) -> Result<Value, CodexAppServerError> {
-    let resume_id = env::resume_session_id();
-    if resume_id.is_empty() {
-        client.request_value("thread/start", thread_params()).await
-    } else {
-        let mut params = thread_param_fields();
-        params.insert("threadId".to_string(), Value::String(resume_id.to_string()));
-        client
-            .request_value("thread/resume", Value::Object(params))
-            .await
+    match resume_thread_id {
+        Some(resume_thread_id) => {
+            let mut params = thread_param_fields();
+            params.insert(
+                "threadId".to_string(),
+                Value::String(resume_thread_id.to_string()),
+            );
+            client
+                .request_value("thread/resume", Value::Object(params))
+                .await
+        }
+        None => client.request_value("thread/start", thread_params()).await,
     }
 }
 
@@ -609,16 +614,25 @@ fn thread_identity_from_response(response: &Value) -> Result<ThreadIdentity, Age
     })
 }
 
-fn validate_resumed_thread_id(canonical_thread_id: &str) -> Result<(), AgentError> {
+fn resume_thread_id_from_env() -> Result<Option<String>, AgentError> {
     let resume_id = env::resume_session_id();
     if resume_id.is_empty() {
-        return Ok(());
+        return Ok(None);
     }
-    let canonical_resume_id = canonical_codex_thread_id(
+    canonical_codex_thread_id(
         resume_id,
         "VM0_RESUME_SESSION_ID is not a valid Codex thread id",
-    )?;
-    if canonical_thread_id != canonical_resume_id {
+    )
+    .map(Some)
+}
+
+fn validate_resumed_thread_id(
+    canonical_thread_id: &str,
+    resume_thread_id: Option<&str>,
+) -> Result<(), AgentError> {
+    if let Some(resume_thread_id) = resume_thread_id
+        && canonical_thread_id != resume_thread_id
+    {
         return Err(AgentError::Execution(
             "thread/resume returned a different thread id".to_string(),
         ));
