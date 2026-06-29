@@ -77,6 +77,24 @@ function triggerSummary(
       scheduleSummary: null,
     };
   }
+  if (
+    trigger.kind === "event" &&
+    trigger.eventType === "github-label-applied"
+  ) {
+    return {
+      id: trigger.id,
+      ownerUserId: trigger.ownerUserId,
+      enabled: trigger.enabled,
+      chatThreadId: trigger.chatThreadId,
+      nextRunAt: trigger.nextRunAt,
+      lastRunAt: trigger.lastRunAt,
+      kind: "event",
+      eventType: "github-label-applied",
+      eventConfig: trigger.eventConfig,
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
   return {
     id: trigger.id,
     ownerUserId: trigger.ownerUserId,
@@ -401,6 +419,21 @@ function mockWorkflowTriggerExists(triggerId: string): boolean {
   );
 }
 
+function mockScheduleSummary(
+  schedule: Extract<
+    ZeroWorkflowTriggerSummary,
+    { kind: "schedule" }
+  >["schedule"],
+): string {
+  if (schedule.type === "cron") {
+    return `${schedule.cronExpression} (${schedule.timezone})`;
+  }
+  if (schedule.type === "once") {
+    return `Once at ${schedule.atTime}`;
+  }
+  return `Every ${schedule.intervalSeconds}s`;
+}
+
 function workflowTriggerListHandlers() {
   return [
     mockApi(zeroWorkflowTriggersContract.listWorkspace, ({ respond }) => {
@@ -432,6 +465,87 @@ function workflowTriggerListHandlers() {
             return trigger.chatThreadId === params.threadId;
           }),
         );
+      },
+    ),
+  ];
+}
+
+function workflowTriggerCreateHandlers() {
+  return [
+    mockApi(
+      zeroWorkflowTriggersContract.create,
+      ({ body, params, respond }) => {
+        const workflow = mockWorkflows.find((item) => {
+          return item.id === params.workflowId;
+        });
+        if (!workflow) {
+          return respond(404, notFound(params.workflowId));
+        }
+
+        const base = {
+          id: crypto.randomUUID(),
+          ownerUserId: "test-user-123",
+          enabled: body.enabled ?? true,
+          chatThreadId: "00000000-0000-4000-a000-000000000301",
+          nextRunAt: null,
+          lastRunAt: null,
+        };
+        let trigger: ZeroWorkflowTriggerSummary;
+        if ("schedule" in body) {
+          trigger = {
+            ...base,
+            kind: "schedule",
+            schedule: body.schedule,
+            scheduleSummary: mockScheduleSummary(body.schedule),
+          };
+        } else if (body.eventType === "webhook-received") {
+          trigger = {
+            ...base,
+            kind: "event",
+            eventType: "webhook-received",
+            eventConfig: body.eventConfig ?? {
+              provider: "webhook",
+              event: "received",
+              auth: { mode: "hmac-sha256" },
+            },
+            schedule: null,
+            scheduleSummary: null,
+            webhookUrl:
+              "http://localhost:3000/api/webhooks/workflow-triggers/mock",
+            secretLastFour: "mock",
+            lastReceivedAt: null,
+            webhookSecret: "mock-webhook-secret",
+          };
+        } else if (body.eventType === "gmail-new-message") {
+          trigger = {
+            ...base,
+            kind: "event",
+            eventType: "gmail-new-message",
+            eventConfig: body.eventConfig,
+            schedule: null,
+            scheduleSummary: null,
+          };
+        } else if (body.eventType === "gmail-label-applied") {
+          trigger = {
+            ...base,
+            kind: "event",
+            eventType: "gmail-label-applied",
+            eventConfig: body.eventConfig,
+            schedule: null,
+            scheduleSummary: null,
+          };
+        } else {
+          trigger = {
+            ...base,
+            kind: "event",
+            eventType: "github-label-applied",
+            eventConfig: body.eventConfig,
+            schedule: null,
+            scheduleSummary: null,
+          };
+        }
+        workflow.triggers = [...workflow.triggers, trigger];
+        return respond(201, trigger);
       },
     ),
   ];
@@ -525,6 +639,7 @@ function workflowTriggerUpdateHandlers() {
 function workflowTriggerHandlers() {
   return [
     ...workflowTriggerListHandlers(),
+    ...workflowTriggerCreateHandlers(),
     ...workflowTriggerEnabledHandlers(),
     ...workflowTriggerRunHandlers(),
     ...workflowTriggerUpdateHandlers(),

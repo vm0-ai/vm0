@@ -18,8 +18,8 @@ use std::path::PathBuf;
 use std::sync::Arc;
 use std::time::Duration;
 
-use agent_diagnostics::FailureDiagnostic;
 use futures_util::future::BoxFuture;
+use guest_contracts::diagnostics::FailureDiagnostic;
 use sandbox::{Sandbox, SandboxFactory, SandboxId};
 use tokio_util::sync::CancellationToken;
 

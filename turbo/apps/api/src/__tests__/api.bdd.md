@@ -347,7 +347,7 @@ Given app-level API requests, compatibility config, cron config, and telemetry c
 When the app handles registered routes, unmatched routes, CORS, proxy fallback, thrown errors, instrumentation, release graph, and cron config checks
 Then HTTP responses, config checks, and boundary initialization behavior match the API contract.
 
-Coverage: `app-factory`, `instrument`, `release-please-config`, `vercel-crons`, `web-api-compatibility`.
+Coverage: `app-factory`, `instrument`, `release-please-config`, `vercel-crons`.
 
 ## Chained Scenario Candidates
 

@@ -161,7 +161,6 @@ import {
   DEFAULT_USER_PERMISSION_GRANT_EXPIRES_IN,
   permissionGrantExpiresInByScope$,
   permissionGrantExpiryText,
-  requestedUserPermissionGrantExpirationAlreadyApplies,
   setPermissionGrantExpiresIn$,
 } from "../../signals/permission-allow/permission-grant-expiration.ts";
 import {
@@ -2332,15 +2331,20 @@ function HeaderWorkflowTriggerCard({
         dimmed={!trigger.enabled}
         actions={
           <>
-            <button
-              type="button"
-              className="rounded-md px-1 py-1 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
-              onClick={() => {
-                setEditingTriggerId(trigger.id);
-              }}
-            >
-              Edit
-            </button>
+            {trigger.trigger.kind === "schedule" ||
+            (trigger.trigger.kind === "event" &&
+              (trigger.trigger.eventType === "gmail-new-message" ||
+                trigger.trigger.eventType === "gmail-label-applied")) ? (
+              <button
+                type="button"
+                className="rounded-md px-1 py-1 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                onClick={() => {
+                  setEditingTriggerId(trigger.id);
+                }}
+              >
+                Edit
+              </button>
+            ) : null}
             <Button
               type="button"
               variant="outline"
@@ -5508,10 +5512,15 @@ function permissionActionStatusText(
   state: PermissionActionButtonState,
   action: "allow" | "deny",
 ): { label: string; className: string } | null {
-  if (state.saveDone || state.alreadyApplied) {
+  if (state.saveDone) {
     return action === "allow"
       ? { label: "Permissions updated", className: "text-green-600" }
       : { label: "Permission denied", className: "text-destructive" };
+  }
+  if (state.alreadyApplied) {
+    return action === "allow"
+      ? { label: "Already allowed", className: "text-green-600" }
+      : { label: "Already denied", className: "text-destructive" };
   }
   return null;
 }
@@ -5581,23 +5590,11 @@ function isPermissionActionAlreadyApplied(params: {
   hasAgent: boolean;
   userGrantPolicy: FirewallPolicyValue | undefined;
   action: "allow" | "deny";
-  expirationAvailable: boolean;
-  requestedExpiresIn: UserPermissionGrantExpiresIn | null;
-  currentExpiresAt: string | null | undefined;
 }): boolean {
   if (!params.hasAgent) {
     return false;
   }
-  if (params.userGrantPolicy !== params.action) {
-    return false;
-  }
-  if (!params.expirationAvailable || params.action !== "allow") {
-    return true;
-  }
-  return requestedUserPermissionGrantExpirationAlreadyApplies({
-    expiresIn: params.requestedExpiresIn,
-    currentExpiresAt: params.currentExpiresAt,
-  });
+  return params.userGrantPolicy === params.action;
 }
 
 function findPermissionActionPermission(
@@ -5685,8 +5682,6 @@ function createPermissionActionCardViewState(params: {
   permissionMetadataLoadable: LoadableLike<FirewallPermissionDetailMetadata | null>;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
   grantLoadableState: string;
-  expirationAvailable: boolean;
-  currentGrantExpiresAt: string | null | undefined;
 }) {
   const permissionMetadata =
     params.permissionMetadataLoadable.state === "hasData"
@@ -5721,9 +5716,6 @@ function createPermissionActionCardViewState(params: {
     hasAgent: params.hasAgent,
     userGrantPolicy,
     action: params.block.action,
-    expirationAvailable: params.expirationAvailable,
-    requestedExpiresIn: params.block.expiresIn,
-    currentExpiresAt: params.currentGrantExpiresAt,
   });
   const saveDone = params.grantLoadableState === "hasData";
   const buttonState = createPermissionActionCardButtonState({
@@ -5910,8 +5902,6 @@ function PermissionActionCardForTarget({
     permissionMetadataLoadable,
     userGrantsLoadable,
     grantLoadableState: grantLoadable.state,
-    expirationAvailable,
-    currentGrantExpiresAt: existingGrant?.expiresAt,
   });
   const grantExpiresAt =
     grantLoadable.state === "hasData"
@@ -6885,11 +6875,11 @@ function GoalUserMessage({
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
           <div
-            aria-label="Goal prompt"
+            aria-label="Goal"
             className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
           >
             <IconTarget size={15} stroke={1.8} className="shrink-0" />
-            <span>Goal prompt</span>
+            <span>Goal</span>
           </div>
           {bodyBlocks.length > 0 ? (
             <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden ring-1 ring-emerald-900/10">

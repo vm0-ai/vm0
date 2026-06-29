@@ -75,6 +75,13 @@ function formatGmailMatchSummary(config: GmailNewMessageEventConfig): string {
   return parts.length > 0 ? parts.join("; ") : "all inbound messages";
 }
 
+function formatGithubSubject(subject: string): string {
+  if (subject === "pull_requests") {
+    return "pull requests";
+  }
+  return subject;
+}
+
 function formatWorkflowTriggerEntry(
   trigger: ZeroWorkflowTriggerSummary,
 ): string {
@@ -83,6 +90,14 @@ function formatWorkflowTriggerEntry(
   }
   if (trigger.kind === "event" && trigger.eventType === "gmail-label-applied") {
     return `Gmail label applied: ${quote(trigger.eventConfig.labelName)}`;
+  }
+  if (
+    trigger.kind === "event" &&
+    trigger.eventType === "github-label-applied"
+  ) {
+    return `GitHub label applied: ${quote(trigger.eventConfig.labelName)} (${formatGithubSubject(
+      trigger.eventConfig.filters.subject,
+    )}, actor ${trigger.eventConfig.filters.actor.type})`;
   }
   if (isWebhookTrigger(trigger)) {
     return `Webhook: ${trigger.webhookUrl}`;
@@ -180,7 +195,9 @@ export function printWorkflowTriggerDetails(
           ? "Gmail new message"
           : trigger.eventType === "gmail-label-applied"
             ? "Gmail label applied"
-            : "Webhook"
+            : trigger.eventType === "github-label-applied"
+              ? "GitHub label applied"
+              : "Webhook"
         : formatWorkflowTriggerEntry(trigger)
     }`,
   );
@@ -191,6 +208,20 @@ export function printWorkflowTriggerDetails(
   }
   if (trigger.kind === "event" && trigger.eventType === "gmail-label-applied") {
     console.log(`${"Label:".padEnd(14)}${trigger.eventConfig.labelName}`);
+  }
+  if (
+    trigger.kind === "event" &&
+    trigger.eventType === "github-label-applied"
+  ) {
+    console.log(`${"Label:".padEnd(14)}${trigger.eventConfig.labelName}`);
+    console.log(
+      `${"Subject:".padEnd(14)}${formatGithubSubject(
+        trigger.eventConfig.filters.subject,
+      )}`,
+    );
+    console.log(
+      `${"Actor:".padEnd(14)}${trigger.eventConfig.filters.actor.type}`,
+    );
   }
   if (isWebhookTrigger(trigger)) {
     console.log(`${"Webhook URL:".padEnd(14)}${trigger.webhookUrl}`);

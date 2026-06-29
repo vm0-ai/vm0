@@ -5,7 +5,7 @@
 
 mod common;
 
-use agent_diagnostics::{CliTerminationReason, CliTerminationSignal};
+use guest_contracts::diagnostics::{CliTerminationReason, CliTerminationSignal};
 use std::time::Duration;
 
 #[tokio::test]
