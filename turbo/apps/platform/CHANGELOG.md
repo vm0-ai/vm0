@@ -1,5 +1,21 @@
 # Changelog
 
+## [0.504.6](https://github.com/vm0-ai/vm0/compare/app-v0.504.5...app-v0.504.6) (2026-06-29)
+
+
+### Bug Fixes
+
+* wrap webhook trigger signing details ([#19268](https://github.com/vm0-ai/vm0/issues/19268)) ([f339379](https://github.com/vm0-ai/vm0/commit/f3393799d8f4f8093ce79229f35741c8a51e93cd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.4
+    * @vm0/connectors bumped to 1.112.0
+    * @vm0/core bumped to 8.374.4
+
 ## [0.504.5](https://github.com/vm0-ai/vm0/compare/app-v0.504.4...app-v0.504.5) (2026-06-29)
 
 

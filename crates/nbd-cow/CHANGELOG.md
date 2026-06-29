@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.51](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.50...nbd-cow-v0.4.51) (2026-06-29)
+
+
+### Bug Fixes
+
+* guard netlink errno parsing ([#19261](https://github.com/vm0-ai/vm0/issues/19261)) ([cca95ba](https://github.com/vm0-ai/vm0/commit/cca95baaa9ca97f50545f96c9620419fd1132325))
+
 ## [0.4.50](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.49...nbd-cow-v0.4.50) (2026-06-27)
 
 
