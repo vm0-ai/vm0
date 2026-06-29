@@ -437,6 +437,31 @@ describe("connector auth method lifecycle helpers", () => {
       storedScopes: [],
     });
   });
+
+  it("computes OAuth scope diffs for historical stored scope snapshots", () => {
+    expect(
+      getConnectorAuthMethodScopeDiff("github", "oauth", ["repo"]),
+    ).toStrictEqual({
+      addedScopes: ["project", "workflow"],
+      removedScopes: [],
+      currentScopes: ["repo", "project", "workflow"],
+      storedScopes: ["repo"],
+    });
+
+    expect(
+      getConnectorAuthMethodScopeDiff("github", "oauth", [
+        "repo",
+        "project",
+        "workflow",
+        "delete_repo",
+      ]),
+    ).toStrictEqual({
+      addedScopes: [],
+      removedScopes: ["delete_repo"],
+      currentScopes: ["repo", "project", "workflow"],
+      storedScopes: ["repo", "project", "workflow", "delete_repo"],
+    });
+  });
 });
 
 describe("connector auth method config", () => {
