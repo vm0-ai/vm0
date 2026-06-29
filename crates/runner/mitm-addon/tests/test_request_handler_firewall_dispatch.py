@@ -186,6 +186,8 @@ async def test_firewall_match_calls_handler(
         ("10.0.0.1", "non_public_destination"),
         ("127.0.0.1", "non_public_destination"),
         ("169.254.169.254", "non_public_destination"),
+        ("::1", "non_public_destination"),
+        ("fe80::1", "non_public_destination"),
         ("service.example.com", "invalid_destination"),
     ],
 )
@@ -219,11 +221,12 @@ async def test_public_destination_blocks_unsafe_runtime_destination_before_auth(
     assert proxy_log_entry["reason"] == reason
 
 
+@pytest.mark.parametrize("destination_host", ["93.184.216.34", "2001:4860:4860::8888"])
 async def test_public_destination_allows_public_runtime_destination(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, destination_host
 ):
     reg_path = _write_public_destination_firewall_registry(tmp_path)
-    flow = _public_destination_flow(real_flow, headers, destination_host="93.184.216.34")
+    flow = _public_destination_flow(real_flow, headers, destination_host=destination_host)
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),

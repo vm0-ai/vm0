@@ -625,13 +625,14 @@ def _public_destination_denial(
 
     raw_base = allow.api_entry.get("base", "")
     base = raw_base if isinstance(raw_base, str) else ""
-    reason = validation.reason if validation.reason is not None else "invalid_destination"
+    if validation.reason is None:
+        raise RuntimeError("publicDestination denial is missing a reason")
     return _PublicDestinationDenial(
         name=allow.name,
         base=base,
         trusted_authority_host=trusted_authority_host,
         destination_host=validation.destination_host,
-        reason=reason,
+        reason=validation.reason,
     )
 
 
