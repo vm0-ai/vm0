@@ -4,6 +4,7 @@ import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
+import { v5 as uuidv5 } from "uuid";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
@@ -20,11 +21,6 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import {
-  IMAGE_IO_MODEL,
-  imagePricingKey,
-} from "../../services/zero-image-io-generate.service";
-import { builtInGenerationUsageIdempotencyKey } from "../../services/built-in-generation-usage-idempotency";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
 import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import { zeroImageIoGenerateRoutes } from "../zero-image-io-generate";
@@ -45,6 +41,9 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const TEST_BUCKET = "test-user-artifacts";
 const IMAGE_BYTES = Buffer.from("fake image bytes");
+const IMAGE_IO_MODEL = "gpt-image-1";
+const BUILT_IN_GENERATION_USAGE_NAMESPACE =
+  "7ed0d80f-a1be-4a53-b182-0195e2e8b7f4";
 const FAL_GPT_IMAGE_1_URL =
   "https://queue.fal.run/fal-ai/gpt-image-1/text-to-image";
 const FAL_GPT_IMAGE_15_URL = "https://queue.fal.run/fal-ai/gpt-image-1.5";
@@ -97,6 +96,24 @@ const tokenRequest = Object.freeze({
 });
 
 type ImagePricingCategory = (typeof IMAGE_PRICING_CATEGORIES)[number];
+
+function imagePricingKey(
+  model: string,
+  category: ImagePricingCategory,
+): string {
+  return `${model}:${category}`;
+}
+
+function builtInGenerationUsageIdempotencyKey(parts: {
+  readonly generationId: string;
+  readonly scope: string;
+  readonly category: string;
+}): string {
+  return uuidv5(
+    `${parts.generationId}:${parts.scope}:${parts.category}`,
+    BUILT_IN_GENERATION_USAGE_NAMESPACE,
+  );
+}
 
 interface ImageFixture {
   readonly orgId: string;

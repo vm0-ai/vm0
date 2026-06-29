@@ -5,6 +5,7 @@ import { createStore } from "ccstate";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
+import { v5 as uuidv5 } from "uuid";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
@@ -19,11 +20,6 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import {
-  BYTEPLUS_VIDEO_TASKS_URL,
-  VIDEO_IO_MODEL,
-} from "../../services/zero-video-io-generate.service";
-import { builtInGenerationUsageIdempotencyKey } from "../../services/built-in-generation-usage-idempotency";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
 import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import { zeroVideoIoGenerateRoutes } from "../zero-video-io-generate";
@@ -44,6 +40,11 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const TEST_BUCKET = "test-user-artifacts";
 const VIDEO_BYTES = Buffer.from("fake video bytes");
+const VIDEO_IO_MODEL = "dreamina-seedance-2-0-fast-260128";
+const BYTEPLUS_VIDEO_TASKS_URL =
+  "https://ark.ap-southeast.bytepluses.com/api/v3/contents/generations/tasks";
+const BUILT_IN_GENERATION_USAGE_NAMESPACE =
+  "7ed0d80f-a1be-4a53-b182-0195e2e8b7f4";
 const BYTEPLUS_VIDEO_URL =
   "https://ark-content.byteplus.example/files/video-output.mp4";
 const FAL_VEO_FAST_MODEL = "fal-ai/veo3.1/fast";
@@ -148,6 +149,17 @@ const VIDEO_PRICING_DEFAULTS = [
     unitSize: 1,
   },
 ] as const;
+
+function builtInGenerationUsageIdempotencyKey(parts: {
+  readonly generationId: string;
+  readonly scope: string;
+  readonly category: string;
+}): string {
+  return uuidv5(
+    `${parts.generationId}:${parts.scope}:${parts.category}`,
+    BUILT_IN_GENERATION_USAGE_NAMESPACE,
+  );
+}
 
 type VideoPricingDefault = (typeof VIDEO_PRICING_DEFAULTS)[number];
 type VideoPricingCategory = VideoPricingDefault["category"];

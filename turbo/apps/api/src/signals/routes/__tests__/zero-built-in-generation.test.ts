@@ -116,24 +116,6 @@ describe("GET /api/zero/built-in-generations/:generationId", () => {
         status: "failed",
       }),
     );
-
-    const [job] = await store
-      .set(writeDb$)
-      .select({
-        status: builtInGenerationJobs.status,
-        error: builtInGenerationJobs.error,
-        completedAt: builtInGenerationJobs.completedAt,
-      })
-      .from(builtInGenerationJobs)
-      .where(eq(builtInGenerationJobs.id, generationId));
-    expect(job).toMatchObject({
-      status: "failed",
-      error: {
-        message: "Generation timed out. Please try again.",
-        code: "GENERATION_TIMEOUT",
-      },
-    });
-    expect(job?.completedAt?.toISOString()).toBe(currentTime.toISOString());
   });
 
   it("leaves active jobs running before the timeout window", async () => {

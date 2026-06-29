@@ -1,4 +1,4 @@
-import { randomUUID } from "node:crypto";
+import { createHmac, randomUUID } from "node:crypto";
 
 import { Webhook } from "svix";
 import { createStore, command } from "ccstate";
@@ -29,12 +29,11 @@ import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
-import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { env, mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import { generateReplyToken } from "../../services/zero-email-common.service";
 import { zeroEmailCallbackRoutes } from "../zero-email-callbacks";
 import { zeroEmailInboundRoutes } from "../zero-email-inbound";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
@@ -61,6 +60,15 @@ const emailRoutes = [
   ...zeroEmailCallbackRoutes,
   ...zeroEmailInboundRoutes,
 ] as const;
+
+function generateReplyToken(sessionId: string): string {
+  const secret = env("SECRETS_ENCRYPTION_KEY");
+  const hmac = createHmac("sha256", secret)
+    .update(sessionId)
+    .digest("hex")
+    .slice(0, 16);
+  return `${sessionId}.${hmac}`;
+}
 
 interface EmailFixture {
   readonly orgId: string;

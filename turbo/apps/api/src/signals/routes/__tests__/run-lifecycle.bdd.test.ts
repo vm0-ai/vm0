@@ -22,13 +22,13 @@ import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
+import { v5 as uuidv5 } from "uuid";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
-import { assistantMessageIdForRunEvent } from "../../services/assistant-message-id";
 import {
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
@@ -63,6 +63,7 @@ const context = testContext();
 const store = createStore();
 const writeDb = store.set(writeDb$);
 const TEST_VM0_MANAGED_API_KEY = "vm0-key-run-lifecycle-bdd-default-model";
+const ASSISTANT_MESSAGE_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 
 // Sentinel provider id for model-first thread selections (the wire-protocol
 // value the chat composer sends when picking a model instead of a provider).
@@ -92,6 +93,14 @@ const CLAIM_ROUTE_TIMING_ACTION_TYPES = [
   ...CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES,
   ...CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES,
 ] as const;
+
+function assistantMessageIdForRunEvent(
+  runId: string,
+  runEventId: string,
+): string {
+  return uuidv5(`${runId}:${runEventId}`, ASSISTANT_MESSAGE_ID_NAMESPACE);
+}
+
 const RUNNER_POLL_TIMING_ACTION_TYPES = [
   "runner_poll_pending_job_lookup",
   "runner_poll_request_to_job_response",

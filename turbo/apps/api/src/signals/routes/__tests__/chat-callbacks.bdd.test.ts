@@ -17,7 +17,6 @@ import { mockOptionalEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { writeDb$ } from "../../external/db";
-import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../../services/zero-model-selection.service";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
@@ -40,6 +39,8 @@ const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const store = createStore();
 
+const MODEL_FIRST_SELECTION_PROVIDER_ID =
+  "00000000-0000-4000-8000-000000000000";
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
 
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;

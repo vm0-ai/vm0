@@ -18,16 +18,6 @@ import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import {
-  OPENAI_AUDIO_SPEECH_URL,
-  OPENAI_AUDIO_TRANSCRIPTIONS_URL,
-  SPEECH_CONTENT_TYPE,
-  sttDailyDurationKey,
-  sttDailyRateKey,
-  VOICE_IO_STT_VERBOSE_MODEL,
-  VOICE_IO_TTS_MODEL,
-  type SpeechPricing,
-} from "../../services/zero-voice-io-post.service";
 import { zeroVoiceIoSpeechRoutes } from "../zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "../zero-voice-io-stt";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
@@ -49,6 +39,19 @@ const AUDIO_INPUT_BEHAVIOR_KEY = "audio_input";
 const AUDIO_INPUT_FREE_QUOTA = 10;
 const PRO_DAILY_RATE_LIMIT = 300;
 const PRO_DAILY_DURATION_LIMIT_SECONDS = 200 * 60;
+const OPENAI_AUDIO_SPEECH_URL = "https://api.openai.com/v1/audio/speech";
+const OPENAI_AUDIO_TRANSCRIPTIONS_URL =
+  "https://api.openai.com/v1/audio/transcriptions";
+const VOICE_IO_TTS_MODEL = "gpt-4o-mini-tts";
+const VOICE_IO_STT_VERBOSE_MODEL = "whisper-1";
+const SPEECH_CONTENT_TYPE = "audio/wav";
+const DAILY_RATE_KEY_PREFIX = "audio_input_daily";
+const DAILY_DURATION_KEY_PREFIX = "audio_input_dur";
+
+interface SpeechPricing {
+  readonly unitPrice: number;
+  readonly unitSize: number;
+}
 
 interface VoiceFixture {
   readonly orgId: string;
@@ -69,6 +72,18 @@ function createVoiceIoTestApp() {
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
+}
+
+function currentDate(): Date {
+  return new Date(now());
+}
+
+function sttDailyRateKey(date: Date = currentDate()): string {
+  return `${DAILY_RATE_KEY_PREFIX}_${date.toISOString().slice(0, 10)}`;
+}
+
+function sttDailyDurationKey(date: Date = currentDate()): string {
+  return `${DAILY_DURATION_KEY_PREFIX}_${date.toISOString().slice(0, 10)}`;
 }
 
 function commandInput(command: unknown): Record<string, unknown> {

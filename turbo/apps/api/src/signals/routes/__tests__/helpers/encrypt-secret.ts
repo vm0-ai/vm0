@@ -1,10 +1,10 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
 import { env } from "../../../../lib/env";
-import { STORED_SECRET_ENVELOPE_PREFIX } from "../../../services/crypto.utils";
 
 const TEST_KMS_KEY_ID = "alias/vm0-secrets-test";
 const TEST_DATA_KEY = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
+const STORED_SECRET_ENVELOPE_PREFIX = "vm0secret:v1:";
 
 export function encryptSecretForTests(plaintext: string): string {
   const iv = randomBytes(12);
