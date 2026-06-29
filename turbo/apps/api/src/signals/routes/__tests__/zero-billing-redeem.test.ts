@@ -31,12 +31,17 @@ const APP_ORIGIN = "http://app.localhost:3002";
 const SUCCESS_URL = `${APP_ORIGIN}/redeem/${CAMPAIGN}?stripe=success`;
 const CANCEL_URL = `${APP_ORIGIN}/redeem/${CAMPAIGN}`;
 
-function setRedeemEnv(): void {
+function setRedeemEnv(options: { readonly coupon?: boolean } = {}): void {
   mockOptionalEnv("STRIPE_SECRET_KEY", "sk_test_fake");
   mockEnv("APP_URL", APP_ORIGIN);
   mockEnv(
     "ZERO_ONE_TIME_CAMPAIGN",
-    JSON.stringify({ [CAMPAIGN]: { priceId: PRICE_ID, couponId: COUPON_ID } }),
+    JSON.stringify({
+      [CAMPAIGN]: {
+        priceId: PRICE_ID,
+        ...(options.coupon ? { couponId: COUPON_ID } : {}),
+      },
+    }),
   );
 }
 
@@ -47,11 +52,7 @@ describe("POST /api/zero/billing/redeem/:campaign", () => {
 
   beforeEach(() => {
     setRedeemEnv();
-    // Default-safe coupon/price responses; specific tests override.
-    context.mocks.stripe.coupons.retrieve.mockResolvedValue({
-      id: COUPON_ID,
-      valid: true,
-    });
+    // Default-safe price response; specific tests override.
     context.mocks.stripe.prices.retrieve.mockResolvedValue({
       id: PRICE_ID,
       active: true,
@@ -218,7 +219,6 @@ describe("POST /api/zero/billing/redeem/:campaign", () => {
       expect.objectContaining({
         mode: "payment",
         line_items: [{ price: PRICE_ID, quantity: 1 }],
-        discounts: [{ coupon: COUPON_ID }],
         success_url: SUCCESS_URL,
         cancel_url: CANCEL_URL,
         metadata: {
@@ -228,6 +228,9 @@ describe("POST /api/zero/billing/redeem/:campaign", () => {
         },
       }),
     );
+    expect(
+      context.mocks.stripe.checkout.sessions.create.mock.calls[0]?.[0],
+    ).not.toHaveProperty("discounts");
 
     const row = await store.set(findOrgPromoRedemption$, {
       orgId: fixture.orgId,
@@ -281,6 +284,7 @@ describe("POST /api/zero/billing/redeem/:campaign", () => {
   });
 
   it("drops the cached session and returns campaign_misconfigured when the coupon was deleted", async () => {
+    setRedeemEnv({ coupon: true });
     const fixture = await track(
       store.set(
         seedRedeemOrg$,
@@ -337,6 +341,7 @@ describe("POST /api/zero/billing/redeem/:campaign", () => {
   });
 
   it("still drops the cached session row when expiring it in Stripe fails", async () => {
+    setRedeemEnv({ coupon: true });
     const fixture = await track(
       store.set(
         seedRedeemOrg$,
@@ -400,6 +405,7 @@ describe("POST /api/zero/billing/redeem/:campaign", () => {
   });
 
   it("drops the cached session and returns campaign_misconfigured when the coupon is no longer valid", async () => {
+    setRedeemEnv({ coupon: true });
     const fixture = await track(
       store.set(
         seedRedeemOrg$,
@@ -697,6 +703,7 @@ describe("POST /api/zero/billing/redeem/:campaign", () => {
   });
 
   it("returns campaign_misconfigured when Stripe coupon is missing at create time", async () => {
+    setRedeemEnv({ coupon: true });
     const fixture = await track(
       store.set(
         seedRedeemOrg$,

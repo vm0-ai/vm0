@@ -22,7 +22,7 @@ const log = logger("zero-billing-redeem");
  * - `already_granted`  — credits already landed in the org ledger.
  * - `processing`       — Stripe accepted the payment but the webhook hasn't
  *                        persisted the grant yet; the user should refresh.
- * - `stripe_error`     — Stripe rejected the create/retrieve/coupon/price
+ * - `stripe_error`     — Stripe rejected the create/retrieve/price/coupon
  *                        call; the route maps this to `campaign_misconfigured`.
  */
 type RedemptionResult =
@@ -238,11 +238,12 @@ const ensureCampaignStillAvailable$ = command(
     }
 
     const stripe = getStripeClient();
-    // Parallel: each is an independent Stripe read; wall time is one RTT.
     const fetched = await settle(
       Promise.all([
-        stripe.coupons.retrieve(campaign.couponId),
         stripe.prices.retrieve(campaign.priceId),
+        ...(campaign.couponId
+          ? [stripe.coupons.retrieve(campaign.couponId)]
+          : []),
       ]),
     );
     signal.throwIfAborted();
@@ -254,7 +255,7 @@ const ensureCampaignStillAvailable$ = command(
         log.warn("one_time_purchase stripe resource missing on resume", {
           orgId: args.orgId,
           campaignKey: args.campaignKey,
-          couponId: campaign.couponId,
+          couponId: campaign.couponId ?? null,
           priceId: campaign.priceId,
           stripeMessage: fetched.error.message,
         });
@@ -263,19 +264,19 @@ const ensureCampaignStillAvailable$ = command(
       throw fetched.error;
     }
     signal.throwIfAborted();
-    const [coupon, price] = fetched.value;
+    const [price, coupon] = fetched.value;
 
-    if (!coupon.valid) {
+    if (coupon && !coupon.valid) {
       log.warn("one_time_purchase coupon no longer valid on resume", {
         orgId: args.orgId,
         campaignKey: args.campaignKey,
-        couponId: campaign.couponId,
+        couponId: campaign.couponId ?? null,
       });
       await set(cleanupStaleRedemption$, { args, stripeSessionId }, signal);
       throw new StripeSDK.errors.StripeInvalidRequestError({
         type: "invalid_request_error",
         code: "resource_missing",
-        message: `Coupon ${campaign.couponId} is no longer valid`,
+        message: `Coupon ${campaign.couponId ?? ""} is no longer valid`,
       });
     }
 
@@ -353,7 +354,9 @@ const createOneTimeCheckoutSession$ = command(
       mode: "payment",
       customer: customerId,
       line_items: [{ price: campaign.priceId, quantity: 1 }],
-      discounts: [{ coupon: campaign.couponId }],
+      ...(campaign.couponId
+        ? { discounts: [{ coupon: campaign.couponId }] }
+        : {}),
       success_url: args.successUrl,
       cancel_url: args.cancelUrl,
       metadata: {

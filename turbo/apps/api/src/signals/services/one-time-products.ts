@@ -7,11 +7,12 @@ import { env } from "../../lib/env";
  * page (which calls `POST /api/zero/billing/redeem/:campaign`). It bundles:
  *   - business policy (credits, expiry, source) — hardcoded here so ops can't
  *     inflate credits by flipping an env var;
- *   - Stripe identifiers (priceId, couponId) — sourced from env so test and
- *     live Stripe accounts can point at different prices/coupons without a
+ *   - Stripe identifiers (priceId, optional couponId) — sourced from env so
+ *     test and live Stripe accounts can point at different prices/coupons without a
  *     code change.
  *
- * The redeem route uses `priceId`/`couponId`; the webhook handler (still on
+ * The redeem route uses `priceId` and applies `couponId` only when present;
+ * the webhook handler (still on
  * apps/web in this Wave) uses `credits`/`expiresDays`/`source`. Keep the
  * full registry shape so future webhook migration is a copy-paste.
  */
