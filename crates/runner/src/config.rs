@@ -109,7 +109,7 @@ pub struct FirecrackerConfig {
 /// (`rootfs_hash` covers the local rootfs, `snapshot_hash` is local-only).
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct ProfileConfig {
-    /// Content-addressed rootfs hash (shared across snapshot variants on this host).
+    /// Local rootfs image identity, shared across snapshot variants on this host.
     pub rootfs_hash: String,
     /// Host-local snapshot identity, covering rootfs identity plus VM shape,
     /// workspace disk size, and provider/runtime inputs.
