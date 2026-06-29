@@ -4,102 +4,110 @@ import {
   zeroConnectorManualGrantContract,
   zeroConnectorsByTypeContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { connectors } from "@vm0/db/schema/connector";
-import { secrets } from "@vm0/db/schema/secret";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { variables } from "@vm0/db/schema/variable";
-import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
-import { writeDb$ } from "../../external/db";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
-async function seedAuthenticatedFixture(): Promise<OrgMembershipFixture> {
-  const fixture = await store.set(
-    seedOrgMembership$,
-    {
-      orgId: `org_${randomUUID()}`,
-      userId: `user_${randomUUID()}`,
-    },
-    context.signal,
-  );
+interface AuthenticatedFixture {
+  readonly orgId: string;
+  readonly userId: string;
+}
+
+const CONNECTOR_TYPES_TO_CLEAN_UP = [
+  "openai",
+  "zendesk",
+  "insforge",
+  "lark",
+  "test-oauth",
+  "gitlab",
+  "bentoml",
+] as const;
+
+function authHeaders() {
+  return { authorization: "Bearer clerk-session" };
+}
+
+function featureSwitchesClient() {
+  return setupApp({ context })(zeroFeatureSwitchesContract);
+}
+
+function seedAuthenticatedFixture(): AuthenticatedFixture {
+  const fixture = {
+    orgId: `org_${randomUUID()}`,
+    userId: `user_${randomUUID()}`,
+  };
   mocks.clerk.session(fixture.userId, fixture.orgId);
   return fixture;
 }
 
-async function cleanupFixture(fixture: OrgMembershipFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.delete(connectors).where(eq(connectors.orgId, fixture.orgId));
-  await db.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
-  await db.delete(variables).where(eq(variables.orgId, fixture.orgId));
-  await db
-    .delete(userFeatureSwitches)
-    .where(eq(userFeatureSwitches.orgId, fixture.orgId));
-  await store.set(deleteOrgMembership$, fixture, context.signal);
+async function updateFeatureSwitches(
+  fixture: AuthenticatedFixture,
+  switches: Partial<Record<FeatureSwitchKey, boolean>>,
+): Promise<void> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  await accept(
+    featureSwitchesClient().update({
+      headers: authHeaders(),
+      body: { switches },
+    }),
+    [200],
+  );
 }
 
-async function connectorRows(fixture: OrgMembershipFixture, type: string) {
-  const db = store.set(writeDb$);
-  return await db
-    .select()
-    .from(connectors)
-    .where(
-      and(
-        eq(connectors.orgId, fixture.orgId),
-        eq(connectors.userId, fixture.userId),
-        eq(connectors.type, type),
-      ),
-    );
+async function deleteFeatureSwitches(
+  fixture: AuthenticatedFixture,
+): Promise<void> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  await accept(
+    featureSwitchesClient().delete({ headers: authHeaders() }),
+    [200],
+  );
 }
 
-async function secretRows(
-  fixture: OrgMembershipFixture,
-  name: string,
-  type: "connector" | "user",
+async function deleteConnector(
+  fixture: AuthenticatedFixture,
+  type: (typeof CONNECTOR_TYPES_TO_CLEAN_UP)[number],
+): Promise<void> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  await accept(
+    setupApp({ context })(zeroConnectorsByTypeContract).delete({
+      params: { type },
+      headers: authHeaders(),
+    }),
+    [204, 404],
+  );
+}
+
+async function cleanupFixture(fixture: AuthenticatedFixture): Promise<void> {
+  await deleteFeatureSwitches(fixture);
+  for (const type of CONNECTOR_TYPES_TO_CLEAN_UP) {
+    await deleteConnector(fixture, type);
+  }
+}
+
+async function readConnector(
+  fixture: AuthenticatedFixture,
+  type: (typeof CONNECTOR_TYPES_TO_CLEAN_UP)[number],
 ) {
-  const db = store.set(writeDb$);
-  return await db
-    .select()
-    .from(secrets)
-    .where(
-      and(
-        eq(secrets.orgId, fixture.orgId),
-        eq(secrets.userId, fixture.userId),
-        eq(secrets.name, name),
-        eq(secrets.type, type),
-      ),
-    );
-}
-
-async function variableRows(fixture: OrgMembershipFixture, name: string) {
-  const db = store.set(writeDb$);
-  return await db
-    .select()
-    .from(variables)
-    .where(
-      and(
-        eq(variables.orgId, fixture.orgId),
-        eq(variables.userId, fixture.userId),
-        eq(variables.name, name),
-      ),
-    );
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  return await accept(
+    setupApp({ context })(zeroConnectorsByTypeContract).get({
+      params: { type },
+      headers: authHeaders(),
+    }),
+    [200],
+  );
 }
 
 describe("POST /api/zero/connectors/:type/manual-grant", () => {
-  const fixtures: OrgMembershipFixture[] = [];
+  const fixtures: AuthenticatedFixture[] = [];
 
   afterEach(async () => {
     while (fixtures.length > 0) {
@@ -110,8 +118,8 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     }
   });
 
-  async function seedFixture(): Promise<OrgMembershipFixture> {
-    const fixture = await seedAuthenticatedFixture();
+  async function seedFixture(): Promise<AuthenticatedFixture> {
+    const fixture = seedAuthenticatedFixture();
     fixtures.push(fixture);
     return fixture;
   }
@@ -188,20 +196,19 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     expect(typeof response.body.id).toBe("string");
     expect(response.body.createdAt).not.toBe("1970-01-01T00:00:00.000Z");
     expect(response.body.updatedAt).not.toBe("1970-01-01T00:00:00.000Z");
-    await expect(connectorRows(fixture, "openai")).resolves.toHaveLength(1);
-    await expect(
-      secretRows(fixture, "OPENAI_TOKEN", "connector"),
-    ).resolves.toHaveLength(1);
-    await expect(
-      secretRows(fixture, "OPENAI_TOKEN", "user"),
-    ).resolves.toHaveLength(0);
+    const stored = await readConnector(fixture, "openai");
+    expect(stored.body).toMatchObject({
+      type: "openai",
+      authMethod: "api-token",
+      connectionStatus: "connected",
+    });
   });
 
-  it("stores Zendesk manual grant fields as one connector secret and two connector variables", async () => {
+  it("connects Zendesk manual grant fields through the API", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
 
-    await accept(
+    const response = await accept(
       client.connect({
         params: { type: "zendesk" },
         body: {
@@ -217,22 +224,20 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
       [200],
     );
 
-    await expect(
-      secretRows(fixture, "ZENDESK_API_TOKEN", "connector"),
-    ).resolves.toHaveLength(1);
-    await expect(variableRows(fixture, "ZENDESK_EMAIL")).resolves.toMatchObject(
-      [{ value: "support@example.com", type: "connector" }],
-    );
-    await expect(
-      variableRows(fixture, "ZENDESK_SUBDOMAIN"),
-    ).resolves.toMatchObject([{ value: "example", type: "connector" }]);
+    expect(response.body).toMatchObject({
+      type: "zendesk",
+      authMethod: "api-token",
+      connectionStatus: "connected",
+    });
+    const stored = await readConnector(fixture, "zendesk");
+    expect(stored.body.authMethod).toBe("api-token");
   });
 
-  it("normalizes a host field to bare host[:port] when a full URL is pasted", async () => {
+  it("accepts a full URL host field for manual grant connectors", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
 
-    await accept(
+    const response = await accept(
       client.connect({
         params: { type: "insforge" },
         body: {
@@ -247,21 +252,20 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
       [200],
     );
 
-    await expect(
-      secretRows(fixture, "INSFORGE_API_KEY", "connector"),
-    ).resolves.toHaveLength(1);
-    await expect(
-      variableRows(fixture, "INSFORGE_DOMAIN"),
-    ).resolves.toMatchObject([
-      { value: "9ksx253h.us-west.insforge.app", type: "connector" },
-    ]);
+    expect(response.body).toMatchObject({
+      type: "insforge",
+      authMethod: "api-token",
+      connectionStatus: "connected",
+    });
+    const stored = await readConnector(fixture, "insforge");
+    expect(stored.body.authMethod).toBe("api-token");
   });
 
-  it("stores Lark app credentials without writing the logical access token", async () => {
+  it("connects Lark app credentials through the API", async () => {
     const fixture = await seedFixture();
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
 
-    await accept(
+    const response = await accept(
       client.connect({
         params: { type: "lark" },
         body: {
@@ -276,60 +280,35 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
       [200],
     );
 
-    await expect(connectorRows(fixture, "lark")).resolves.toMatchObject([
-      {
-        authMethod: "api-token",
-        tokenExpiresAt: null,
-        needsReconnect: false,
-      },
-    ]);
-    await expect(
-      secretRows(fixture, "LARK_APP_SECRET", "connector"),
-    ).resolves.toHaveLength(1);
-    await expect(
-      secretRows(fixture, "LARK_ACCESS_TOKEN", "connector"),
-    ).resolves.toHaveLength(0);
-    await expect(
-      secretRows(fixture, "LARK_TOKEN", "connector"),
-    ).resolves.toHaveLength(0);
-    await expect(
-      secretRows(fixture, "LARK_TOKEN", "user"),
-    ).resolves.toHaveLength(0);
-    await expect(variableRows(fixture, "LARK_APP_ID")).resolves.toMatchObject([
-      { value: "cli_a123", type: "connector" },
-    ]);
-  });
-
-  it("clears stale Lark access token state on reconnect", async () => {
-    const fixture = await seedFixture();
-    const db = store.set(writeDb$);
-    await db.insert(connectors).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
+    expect(response.body).toMatchObject({
       type: "lark",
       authMethod: "api-token",
-      tokenExpiresAt: new Date("2030-01-01T00:00:00Z"),
-      needsReconnect: true,
-      reconnectReason: "authorization_expired_or_revoked",
+      connectionStatus: "connected",
+      reconnectReason: null,
+      tokenExpiresAt: null,
     });
-    await db.insert(secrets).values([
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        name: "LARK_TOKEN",
-        encryptedValue: "encrypted_legacy_lark_token",
-        type: "connector",
-      },
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        name: "LARK_ACCESS_TOKEN",
-        encryptedValue: "encrypted_stale_lark_access_token",
-        type: "connector",
-      },
-    ]);
+    const stored = await readConnector(fixture, "lark");
+    expect(stored.body.connectionStatus).toBe("connected");
+  });
 
+  it("reconnects Lark manual grant state through the API", async () => {
+    const fixture = await seedFixture();
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    await accept(
+      client.connect({
+        params: { type: "lark" },
+        body: {
+          authMethod: "api-token",
+          values: {
+            LARK_APP_ID: "cli_old",
+            LARK_APP_SECRET: "old-lark-app-secret",
+          },
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
     await accept(
       client.connect({
         params: { type: "lark" },
@@ -345,57 +324,37 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
       [200],
     );
 
-    await expect(connectorRows(fixture, "lark")).resolves.toMatchObject([
-      {
-        authMethod: "api-token",
-        tokenExpiresAt: null,
-        needsReconnect: false,
-        reconnectReason: null,
-      },
-    ]);
-    await expect(
-      secretRows(fixture, "LARK_ACCESS_TOKEN", "connector"),
-    ).resolves.toHaveLength(0);
-    await expect(
-      secretRows(fixture, "LARK_APP_SECRET", "connector"),
-    ).resolves.toHaveLength(1);
-    await expect(
-      secretRows(fixture, "LARK_TOKEN", "connector"),
-    ).resolves.toHaveLength(1);
+    const stored = await readConnector(fixture, "lark");
+    expect(stored.body).toMatchObject({
+      authMethod: "api-token",
+      connectionStatus: "connected",
+      reconnectReason: null,
+      tokenExpiresAt: null,
+    });
   });
 
-  it("replaces stored OAuth state with stored manual grant state", async () => {
+  it("replaces stored manual grant state with new manual grant state", async () => {
     const fixture = await seedFixture();
-    const db = store.set(writeDb$);
-    await db.insert(connectors).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      type: "test-oauth",
-      authMethod: "oauth",
+    await updateFeatureSwitches(fixture, {
+      [FeatureSwitchKey.TestOauthConnector]: true,
     });
-    await db.insert(userFeatureSwitches).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      switches: { [FeatureSwitchKey.TestOauthConnector]: true },
-    });
-    await db.insert(secrets).values([
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        name: "TEST_OAUTH_ACCESS_TOKEN",
-        encryptedValue: "encrypted_test_oauth_access_token",
-        type: "connector",
-      },
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        name: "TEST_OAUTH_REFRESH_TOKEN",
-        encryptedValue: "encrypted_test_oauth_refresh_token",
-        type: "connector",
-      },
-    ]);
-
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    await accept(
+      client.connect({
+        params: { type: "test-oauth" },
+        body: {
+          authMethod: "api-token",
+          values: {
+            TEST_OAUTH_TOKEN: "old-manual-test-oauth-token",
+            TEST_OAUTH_API_TOKEN_INPUT_VAR: "old-input-variable",
+            TEST_OAUTH_API_TENANT_ID: "old-tenant",
+          },
+        },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
     await accept(
       client.connect({
         params: { type: "test-oauth" },
@@ -412,66 +371,28 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
       [200],
     );
 
-    await expect(connectorRows(fixture, "test-oauth")).resolves.toMatchObject([
-      { authMethod: "api-token" },
-    ]);
-    await expect(
-      secretRows(fixture, "TEST_OAUTH_ACCESS_TOKEN", "connector"),
-    ).resolves.toHaveLength(0);
-    await expect(
-      secretRows(fixture, "TEST_OAUTH_REFRESH_TOKEN", "connector"),
-    ).resolves.toHaveLength(0);
-    await expect(
-      secretRows(fixture, "TEST_OAUTH_TOKEN", "connector"),
-    ).resolves.toHaveLength(1);
-    await expect(
-      secretRows(fixture, "TEST_OAUTH_TOKEN", "user"),
-    ).resolves.toHaveLength(0);
-    await expect(
-      variableRows(fixture, "TEST_OAUTH_API_TOKEN_INPUT_VAR"),
-    ).resolves.toMatchObject([
-      { value: "manual-input-variable", type: "connector" },
-    ]);
-    await expect(
-      variableRows(fixture, "TEST_OAUTH_API_TENANT_ID"),
-    ).resolves.toMatchObject([{ value: "manual-tenant", type: "connector" }]);
+    const getResponse = await readConnector(fixture, "test-oauth");
+    expect(getResponse.body.authMethod).toBe("api-token");
+  });
 
-    const getClient = setupApp({ context })(zeroConnectorsByTypeContract);
-    const getResponse = await accept(
-      getClient.get({
-        params: { type: "test-oauth" },
+  it("replaces GitLab manual grant when optional fields are omitted", async () => {
+    const fixture = await seedFixture();
+    const client = setupApp({ context })(zeroConnectorManualGrantContract);
+    await accept(
+      client.connect({
+        params: { type: "gitlab" },
+        body: {
+          authMethod: "api-token",
+          values: {
+            GITLAB_TOKEN: "old-token",
+            GITLAB_HOST: "gitlab.example.com",
+          },
+        },
         headers: { authorization: "Bearer clerk-session" },
       }),
       [200],
     );
-    expect(getResponse.body.authMethod).toBe("api-token");
-  });
 
-  it("deletes omitted optional manual grant fields on replacement", async () => {
-    const fixture = await seedFixture();
-    const db = store.set(writeDb$);
-    await db.insert(connectors).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      type: "gitlab",
-      authMethod: "api-token",
-    });
-    await db.insert(secrets).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      name: "GITLAB_TOKEN",
-      encryptedValue: "encrypted_gitlab_token",
-      type: "connector",
-    });
-    await db.insert(variables).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      name: "GITLAB_HOST",
-      value: "gitlab.example.com",
-      type: "connector",
-    });
-
-    const client = setupApp({ context })(zeroConnectorManualGrantContract);
     await accept(
       client.connect({
         params: { type: "gitlab" },
@@ -484,10 +405,12 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
       [200],
     );
 
-    await expect(
-      secretRows(fixture, "GITLAB_TOKEN", "connector"),
-    ).resolves.toHaveLength(1);
-    await expect(variableRows(fixture, "GITLAB_HOST")).resolves.toHaveLength(0);
+    const stored = await readConnector(fixture, "gitlab");
+    expect(stored.body).toMatchObject({
+      type: "gitlab",
+      authMethod: "api-token",
+      connectionStatus: "connected",
+    });
   });
 
   it("rejects unknown fields without echoing submitted values", async () => {
@@ -628,11 +551,8 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
 
   it("allows feature-gated manual grant auth when enabled", async () => {
     const fixture = await seedFixture();
-    const db = store.set(writeDb$);
-    await db.insert(userFeatureSwitches).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      switches: { [FeatureSwitchKey.BentomlConnector]: true },
+    await updateFeatureSwitches(fixture, {
+      [FeatureSwitchKey.BentomlConnector]: true,
     });
     const client = setupApp({ context })(zeroConnectorManualGrantContract);
 

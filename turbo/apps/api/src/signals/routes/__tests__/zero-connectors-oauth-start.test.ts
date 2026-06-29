@@ -9,7 +9,6 @@ import { getConnectorAuthMethodAuthCodeGrantConfig } from "@vm0/connectors/conne
 import { connectors } from "@vm0/db/schema/connector";
 import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
 import { secrets } from "@vm0/db/schema/secret";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -151,9 +150,6 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
       if (orgId) {
         await db.delete(connectors).where(eq(connectors.orgId, orgId));
         await db.delete(secrets).where(eq(secrets.orgId, orgId));
-        await db
-          .delete(userFeatureSwitches)
-          .where(eq(userFeatureSwitches.orgId, orgId));
       }
     }
   });
