@@ -493,14 +493,18 @@ exit 1
     #[test]
     fn verify_script_checks_sandbox_helper_runtime_commands() {
         assert!(
-            VERIFY_SCRIPT.contains(r#"sudo chroot "$MOUNT_DIR" /bin/sh -c 'test -x "$1"'"#),
-            "verify-rootfs.sh should resolve required executable symlinks inside the guest rootfs"
+            VERIFY_SCRIPT.contains("resolve_rootfs_path()"),
+            "verify-rootfs.sh should resolve required executable symlinks within the mounted rootfs"
         );
         assert!(
             VERIFY_SCRIPT.contains(
-                "for cmd in sudo unshare mount umount mountpoint stat mktemp sed grep chroot; do"
+                "for cmd in sudo unshare mount umount mountpoint stat mktemp sed grep readlink; do"
             ),
-            "verify-rootfs.sh should declare chroot as a host dependency"
+            "verify-rootfs.sh should declare readlink as a host dependency for safe symlink resolution"
+        );
+        assert!(
+            !VERIFY_SCRIPT.contains(r#"sudo chroot "$MOUNT_DIR" /bin/sh"#),
+            "verify-rootfs.sh must not execute binaries from the image it is verifying"
         );
 
         for (group, command_paths) in [
@@ -570,6 +574,66 @@ exit 1
                 "verify-rootfs.sh should verify {guest_binary_path} in rootfs mode"
             );
         }
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn verify_script_resolves_rootfs_symlinks_without_host_paths() {
+        use std::os::unix::fs::symlink;
+        use std::process::Command;
+
+        let resolver_start = VERIFY_SCRIPT
+            .find("resolve_rootfs_path() {")
+            .expect("verify-rootfs.sh should define resolve_rootfs_path");
+        let resolver_end = VERIFY_SCRIPT
+            .find("\ncheck_required_executable() {")
+            .expect("verify-rootfs.sh should define check_required_executable after resolver");
+        let resolver_function = &VERIFY_SCRIPT[resolver_start..resolver_end];
+
+        let rootfs = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(rootfs.path().join("usr/bin")).unwrap();
+        std::fs::create_dir_all(rootfs.path().join("etc/alternatives")).unwrap();
+        symlink("usr/bin", rootfs.path().join("bin")).unwrap();
+        symlink("/etc/alternatives/awk", rootfs.path().join("usr/bin/awk")).unwrap();
+        symlink(
+            "../../usr/bin/real-tool",
+            rootfs.path().join("etc/alternatives/awk"),
+        )
+        .unwrap();
+        let real_tool = rootfs.path().join("usr/bin/real-tool");
+        std::fs::write(&real_tool, b"#!/bin/sh\n").unwrap();
+        let mut perms = std::fs::metadata(&real_tool).unwrap().permissions();
+        std::os::unix::fs::PermissionsExt::set_mode(&mut perms, 0o755);
+        std::fs::set_permissions(&real_tool, perms).unwrap();
+        symlink("loop-b", rootfs.path().join("usr/bin/loop-a")).unwrap();
+        symlink("loop-a", rootfs.path().join("usr/bin/loop-b")).unwrap();
+
+        let script = format!(
+            r#"
+set -euo pipefail
+{resolver_function}
+resolved="$(resolve_rootfs_path /bin/awk)"
+test "$resolved" = "/usr/bin/real-tool"
+test -x "${{MOUNT_DIR}}${{resolved}}"
+if resolve_rootfs_path /usr/bin/loop-a >/dev/null; then
+  echo "loop not detected" >&2
+  exit 1
+fi
+"#
+        );
+        let output = Command::new("bash")
+            .arg("-c")
+            .arg(script)
+            .env("MOUNT_DIR", rootfs.path())
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "resolver script failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
     }
 
     #[test]

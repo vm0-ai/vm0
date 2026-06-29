@@ -107,7 +107,7 @@ trap cleanup EXIT
 # ---------------------------------------------------------------------------
 
 missing=()
-for cmd in sudo unshare mount umount mountpoint stat mktemp sed grep chroot; do
+for cmd in sudo unshare mount umount mountpoint stat mktemp sed grep readlink; do
   if ! command -v "$cmd" &> /dev/null; then
     missing+=("$cmd")
   fi
@@ -136,9 +136,69 @@ sudo mount -o loop,ro "$ROOTFS" "$MOUNT_DIR"
 
 errors=()
 
+resolve_rootfs_path() {
+  local rootfs_path="$1"
+  local resolved="/"
+  local remaining="${rootfs_path#/}"
+  local symlink_count=0
+  local component candidate target
+
+  while [[ -n "$remaining" ]]; do
+    component="${remaining%%/*}"
+    if [[ "$component" == "$remaining" ]]; then
+      remaining=""
+    else
+      remaining="${remaining#*/}"
+    fi
+
+    case "$component" in
+      ""|".")
+        continue
+        ;;
+      "..")
+        resolved="${resolved%/*}"
+        [[ -n "$resolved" ]] || resolved="/"
+        continue
+        ;;
+    esac
+
+    if [[ "$resolved" == "/" ]]; then
+      candidate="/${component}"
+    else
+      candidate="${resolved}/${component}"
+    fi
+
+    if [[ -L "${MOUNT_DIR}${candidate}" ]]; then
+      symlink_count=$((symlink_count + 1))
+      if [[ "$symlink_count" -gt 40 ]]; then
+        return 1
+      fi
+      target="$(readlink -- "${MOUNT_DIR}${candidate}")"
+      if [[ "$target" == /* ]]; then
+        resolved="/"
+        target="${target#/}"
+      fi
+      if [[ -n "$remaining" ]]; then
+        remaining="${target}/${remaining}"
+      else
+        remaining="$target"
+      fi
+    else
+      resolved="$candidate"
+    fi
+  done
+
+  printf '%s\n' "$resolved"
+}
+
 check_required_executable() {
   local path="$1" name="${2:-$1}"
-  if sudo chroot "$MOUNT_DIR" /bin/sh -c 'test -x "$1"' sh "$path" 2>/dev/null; then
+  local resolved_path
+  if ! resolved_path="$(resolve_rootfs_path "$path")"; then
+    errors+=("${name} cannot resolve rootfs path at ${path}")
+    return
+  fi
+  if [[ -f "${MOUNT_DIR}${resolved_path}" && -x "${MOUNT_DIR}${resolved_path}" ]]; then
     echo "  ${name}: found"
   else
     errors+=("${name} not found or not executable at ${path}")
