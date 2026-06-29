@@ -419,11 +419,7 @@ async fn ingest_notification(
             terminal_exit_code: None,
         });
     };
-    if is_unexpected_thread_started(&event, expected_thread_id) {
-        return Err(AgentError::Execution(
-            "codex app-server reported unexpected thread id in thread.started".to_string(),
-        ));
-    }
+    validate_event_scope(&event, expected_thread_id, active_turn_id)?;
     if is_duplicate_thread_started(&event, thread_started_emitted, expected_thread_id) {
         return Ok(NotificationIngestResult {
             emitted_thread_started: false,
@@ -437,6 +433,44 @@ async fn ingest_notification(
         emitted_thread_started,
         terminal_exit_code,
     })
+}
+
+fn validate_event_scope(
+    event: &Value,
+    expected_thread_id: &str,
+    active_turn_id: &str,
+) -> Result<(), AgentError> {
+    if let Some(thread_id) = event_thread_id(event)
+        && thread_id != expected_thread_id
+    {
+        return Err(AgentError::Execution(
+            "codex app-server reported unexpected thread id in event".to_string(),
+        ));
+    }
+    if let Some(turn_id) = event_turn_id(event) {
+        if active_turn_id.is_empty() {
+            return Err(AgentError::Execution(
+                "codex app-server reported turn-scoped event before turn/start".to_string(),
+            ));
+        }
+        if turn_id != active_turn_id {
+            return Err(AgentError::Execution(
+                "codex app-server reported unexpected turn id in event".to_string(),
+            ));
+        }
+    }
+    Ok(())
+}
+
+fn event_thread_id(event: &Value) -> Option<&str> {
+    event.get("thread_id").and_then(Value::as_str)
+}
+
+fn event_turn_id(event: &Value) -> Option<&str> {
+    event
+        .get("turn_id")
+        .and_then(Value::as_str)
+        .or_else(|| event.pointer("/turn/id").and_then(Value::as_str))
 }
 
 async fn ingest_event(event: Value, sink: &mut EventIngestSink<'_>) -> Result<(), AgentError> {
@@ -469,14 +503,9 @@ fn is_duplicate_thread_started(
     thread_started_emitted && is_thread_started_event(event, expected_thread_id)
 }
 
-fn is_unexpected_thread_started(event: &Value, expected_thread_id: &str) -> bool {
-    event.get("type").and_then(Value::as_str) == Some("thread.started")
-        && event.get("thread_id").and_then(Value::as_str) != Some(expected_thread_id)
-}
-
 fn is_thread_started_event(event: &Value, expected_thread_id: &str) -> bool {
     event.get("type").and_then(Value::as_str) == Some("thread.started")
-        && event.get("thread_id").and_then(Value::as_str) == Some(expected_thread_id)
+        && event_thread_id(event) == Some(expected_thread_id)
 }
 
 fn terminal_exit_code(

@@ -39,6 +39,7 @@ enum Scenario {
     NoActiveTurn,
     RuntimeTurnComplete,
     RuntimeTurnCompleteWithoutThreadStarted,
+    UnexpectedThreadTurnCompleted,
 }
 
 impl Scenario {
@@ -73,6 +74,7 @@ impl Scenario {
                 "runtime-turn-complete-without-thread-started" => {
                     Ok(Self::RuntimeTurnCompleteWithoutThreadStarted)
                 }
+                "unexpected-thread-turn-completed" => Ok(Self::UnexpectedThreadTurnCompleted),
                 _ => Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
                     format!("unsupported MOCK_CODEX_APP_SERVER_SCENARIO={value:?}"),
@@ -387,6 +389,13 @@ impl AppServerState {
                     params,
                 )?;
                 write_success(output, id, json!({ "turn": turn(&turn_id) }))?;
+                if self.scenario == Scenario::UnexpectedThreadTurnCompleted {
+                    write_json_line(
+                        output,
+                        &turn_completed_notification("unexpected-thread-id", &turn_id),
+                    )?;
+                    return Ok(ServerAction::Stop);
+                }
                 if matches!(
                     self.scenario,
                     Scenario::RuntimeTurnComplete
