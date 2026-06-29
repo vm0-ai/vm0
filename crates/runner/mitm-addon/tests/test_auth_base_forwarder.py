@@ -214,6 +214,15 @@ class TestAuthBaseForwarderSecurity:
 
         getaddrinfo.assert_not_called()
 
+    async def test_rejects_bracketed_non_ipv6_authority_before_dns(self):
+        with (
+            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            pytest.raises(ValueError, match="Invalid upstream URL: invalid host"),
+        ):
+            await forwarder.forward_request("https://[v1.invalid]/path", "GET", [], None)
+
+        getaddrinfo.assert_not_called()
+
     @pytest.mark.parametrize(
         "url",
         [

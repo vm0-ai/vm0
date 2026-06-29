@@ -86,6 +86,25 @@ def format_url_host(host: str) -> str:
     return candidate
 
 
+def bracketed_authority_host_is_ipv6(netloc: str) -> bool:
+    authority = netloc.rsplit("@", maxsplit=1)[-1]
+    if not authority.startswith("["):
+        return True
+
+    close_index = authority.find("]")
+    if close_index == -1:
+        return False
+    rest = authority[close_index + 1 :]
+    if rest and not rest.startswith(":"):
+        return False
+
+    try:
+        parsed = ipaddress.ip_address(authority[1:close_index])
+    except ValueError:
+        return False
+    return parsed.version == IPV6_VERSION
+
+
 def is_default_scheme_port(scheme: str, port: int) -> bool:
     return port == _DEFAULT_SCHEME_PORTS.get(scheme.lower())
 

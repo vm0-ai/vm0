@@ -22,6 +22,7 @@ from mitmproxy import http
 
 import flow_metadata_keys as metadata_keys
 import public_destination
+from authority_utils import bracketed_authority_host_is_ipv6
 from http_header_syntax import has_forbidden_header_value_control, is_http_header_name
 
 HOP_BY_HOP: frozenset[str] = frozenset(
@@ -596,6 +597,8 @@ def _forward_request_sync(
     parsed = urllib.parse.urlsplit(url)
     conn_factory = _connection_factory(parsed.scheme.lower())
     _reject_userinfo(parsed)
+    if not bracketed_authority_host_is_ipv6(parsed.netloc):
+        raise ValueError("Invalid upstream URL: invalid host")
     host = parsed.hostname
     if not host:
         raise ValueError("Invalid upstream URL: missing host")

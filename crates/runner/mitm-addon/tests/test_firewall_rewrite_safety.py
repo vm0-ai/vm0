@@ -236,6 +236,34 @@ class TestAuthBaseUrlRewriteSafety:
             assert "super-secret-token" not in json.dumps(log_call.args)
             assert "super-secret-token" not in json.dumps(log_call.kwargs)
 
+    async def test_resolved_base_bracketed_non_ipv6_fails_closed_without_forwarding(
+        self, real_flow, mitm_ctx, tmp_path
+    ):
+        """Secret-backed auth.base bracket syntax must be limited to IPv6 literals."""
+        flow, allow, vm_info, token_meta = make_safety_rewrite_inputs(
+            real_flow,
+            tmp_path,
+            resolved_base="https://[v1.invalid]/webhook/super-secret-token",
+        )
+        mock_forward = AsyncMock()
+        mock_log = MagicMock()
+        with (
+            patch.object(auth, "get_firewall_headers", AsyncMock(return_value=token_meta)),
+            patch.object(auth, "forward_request", mock_forward),
+            patch.object(auth, "log_proxy_entry", mock_log),
+            mitm_ctx(),
+        ):
+            await auth.handle_firewall_request(flow, allow, vm_info)
+
+        assert mock_forward.call_count == 0
+        assert flow.response is not None
+        assert flow.response.status_code == 502
+        assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "url_rewrite_forward_failed"
+        assert "super-secret-token" not in flow.response.text
+        for log_call in mock_log.call_args_list:
+            assert "super-secret-token" not in json.dumps(log_call.args)
+            assert "super-secret-token" not in json.dumps(log_call.kwargs)
+
     @pytest.mark.parametrize(
         "request_path",
         [
