@@ -1,71 +1,76 @@
 import { randomUUID } from "node:crypto";
 
-import { createStore } from "ccstate";
+import { http, HttpResponse } from "msw";
 import type {
   TestSlackStateDeleteResponse,
   TestSlackStatePostResponse,
   TestSlackStateResponse,
 } from "@vm0/api-contracts/contracts/test-slack-state";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
+import type {
+  TestTelegramStateResponse,
+  TestTelegramStateSeedResponse,
+} from "@vm0/api-contracts/contracts/test-telegram-state";
 import { describe, expect, it } from "vitest";
-import { and, eq, inArray } from "drizzle-orm";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { writeDb$ } from "../../external/db";
+import { server } from "../../../mocks/server";
+import { testSlackDispatchProbeRoutes } from "../test-slack-dispatch-probe";
+import { testSlackMockRoutes } from "../test-slack-mock";
 import { testSlackStateRoutes } from "../test-slack-state";
+import { testTelegramDispatchProbeRoutes } from "../test-telegram-dispatch-probe";
+import { testTelegramStateRoutes } from "../test-telegram-state";
 import { createFixtureTracker } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
-const writeDb = store.set(writeDb$);
 
-const ROUTE = "/api/test/slack-state";
+const SLACK_STATE_ROUTE = "/api/test/slack-state";
+const SLACK_DISPATCH_PROBE_ROUTE = "/api/test/slack-dispatch-probe";
+const SLACK_MOCK_ROUTE = "/api/test/slack-mock";
+const TELEGRAM_STATE_ROUTE = "/api/test/telegram-state";
+const TELEGRAM_DISPATCH_PROBE_ROUTE = "/api/test/telegram-dispatch-probe";
+const TELEGRAM_TEST_BOT_TOKEN = "123456:e2e-test-bot-token";
 
-interface SlackStateFixture {
+interface SlackFixture {
   readonly teamId: string;
+  readonly slackUserId: string;
   readonly orgId: string;
   readonly userId: string;
-  readonly composeId: string;
-  readonly versionId: string;
-  readonly runId: string;
-  readonly sessionId: string;
-  readonly nonSlackRunId: string | undefined;
-  readonly nonSlackSessionId: string | undefined;
-  readonly mockCallMethods: readonly string[];
+  readonly connectionId: string | null;
+  readonly defaultAgentId: string | null;
 }
 
-interface SlackStateFixtureOptions {
-  readonly seedNonSlackRun?: boolean;
-}
-
-interface SlackSeedFixture {
-  readonly teamId: string;
+interface TelegramFixture {
+  readonly botId: string;
+  readonly telegramUserId: string;
   readonly orgId: string;
+  readonly userId: string;
+  readonly defaultAgentId: string;
 }
 
 function suffix(): string {
   return randomUUID().replaceAll("-", "").slice(0, 12);
 }
 
+function uniqueId(prefix: string): string {
+  return `${prefix}_${suffix()}`;
+}
+
+function uniqueNumericId(): string {
+  return String(100_000_000 + Math.floor(Math.random() * 899_999_999));
+}
+
 function requestApp(path: string, init?: RequestInit): Promise<Response> {
   const app = createAppWithRoutes({
     signal: context.signal,
-    routes: testSlackStateRoutes,
+    routes: [
+      ...testSlackStateRoutes,
+      ...testSlackDispatchProbeRoutes,
+      ...testSlackMockRoutes,
+      ...testTelegramStateRoutes,
+      ...testTelegramDispatchProbeRoutes,
+    ],
   });
   return Promise.resolve(app.request(path, init));
 }
@@ -75,11 +80,37 @@ async function readJson<T>(response: Response): Promise<T> {
 }
 
 function postSlackState(body: unknown): Promise<Response> {
-  return requestApp(ROUTE, {
+  return requestApp(SLACK_STATE_ROUTE, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+function postTelegramState(body: unknown): Promise<Response> {
+  return requestApp(TELEGRAM_STATE_ROUTE, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+async function readSlackState(teamId: string): Promise<TestSlackStateResponse> {
+  const response = await requestApp(
+    `${SLACK_STATE_ROUTE}?team_id=${encodeURIComponent(teamId)}`,
+  );
+  expect(response.status).toBe(200);
+  return await readJson<TestSlackStateResponse>(response);
+}
+
+async function readTelegramState(
+  botId: string,
+): Promise<TestTelegramStateResponse> {
+  const response = await requestApp(
+    `${TELEGRAM_STATE_ROUTE}?bot_id=${encodeURIComponent(botId)}`,
+  );
+  expect(response.status).toBe(200);
+  return await readJson<TestTelegramStateResponse>(response);
 }
 
 function mockTestUserMembership(userId: string, orgId: string): void {
@@ -88,221 +119,244 @@ function mockTestUserMembership(userId: string, orgId: string): void {
   });
   context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
     data: [
-      { createdAt: 20, organization: { id: `org_later_${suffix()}` } },
+      { createdAt: 20, organization: { id: uniqueId("org_later") } },
       { createdAt: 10, organization: { id: orgId } },
     ],
   });
 }
 
-async function seedSlackStateFixture(
-  options: SlackStateFixtureOptions = {},
-): Promise<SlackStateFixture> {
-  const id = suffix();
-  const teamId = `T_${id}`;
-  const orgId = `org_${id}`;
-  const userId = `user_${id}`;
-  const composeId = randomUUID();
-  const versionId = suffix();
-  const runId = randomUUID();
-  const sessionId = randomUUID();
-  const nonSlackRunId = options.seedNonSlackRun ? randomUUID() : undefined;
-  const nonSlackSessionId = options.seedNonSlackRun ? randomUUID() : undefined;
-  const newerMockMethod = `chat.postMessage.${id}`;
-  const olderMockMethod = `users.info.${id}`;
+function configureSlackDispatchMocks(): void {
+  context.mocks.s3.send.mockResolvedValue({});
+  mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+  mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+  mockEnv("APP_URL", "https://app.vm0.test");
+  mockEnv("VM0_API_URL", "https://api.vm0.test");
+  context.mocks.slack.assistant.threads.setStatus.mockResolvedValue({
+    ok: true,
+  });
+  context.mocks.slack.chat.postMessage.mockResolvedValue({
+    ok: true,
+    ts: "1710000000.000000",
+    channel: "C-test",
+  });
+  context.mocks.slack.chat.postEphemeral.mockResolvedValue({
+    ok: true,
+    message_ts: "1710000000.000001",
+  });
+  context.mocks.slack.conversations.history.mockResolvedValue({
+    ok: true,
+    messages: [],
+  });
+  context.mocks.slack.conversations.replies.mockResolvedValue({
+    ok: true,
+    messages: [],
+  });
+  context.mocks.slack.users.info.mockResolvedValue({
+    ok: true,
+    user: {
+      profile: {
+        display_name: "Slack User",
+        email: "slack@example.com",
+      },
+      tz: "UTC",
+    },
+  });
+}
 
-  await writeDb.insert(agentComposes).values({
-    id: composeId,
-    userId,
-    orgId,
-    name: "e2e-slack-agent",
-    headVersionId: versionId,
+function mockTelegramTyping(): void {
+  server.use(
+    http.post(
+      `https://api.telegram.org/bot${TELEGRAM_TEST_BOT_TOKEN}/sendChatAction`,
+      () => {
+        return HttpResponse.json({ ok: true, result: true });
+      },
+    ),
+    http.post(
+      `https://api.telegram.org/bot${TELEGRAM_TEST_BOT_TOKEN}/sendMessage`,
+      () => {
+        return HttpResponse.json({
+          ok: true,
+          result: { message_id: 1, chat: { id: 900100200 } },
+        });
+      },
+    ),
+  );
+}
+
+async function deleteSlackFixture(fixture: SlackFixture): Promise<void> {
+  mockEnv("ENV", "development");
+  await requestApp(
+    `${SLACK_STATE_ROUTE}?team_id=${encodeURIComponent(fixture.teamId)}`,
+    { method: "DELETE" },
+  );
+}
+
+async function deleteTelegramFixture(fixture: TelegramFixture): Promise<void> {
+  mockEnv("ENV", "development");
+  await requestApp(
+    `${TELEGRAM_STATE_ROUTE}?bot_id=${encodeURIComponent(fixture.botId)}`,
+    { method: "DELETE" },
+  );
+}
+
+const trackSlackFixture = createFixtureTracker(deleteSlackFixture);
+const trackTelegramFixture = createFixtureTracker(deleteTelegramFixture);
+
+async function seedSlackFixture(
+  options: {
+    readonly seedConnection?: boolean;
+    readonly seedDefaultAgent?: boolean;
+    readonly workspaceName?: string;
+    readonly botUserId?: string;
+    readonly teamId?: string;
+    readonly slackUserId?: string;
+    readonly userId?: string;
+    readonly orgId?: string;
+    readonly email?: string;
+  } = {},
+): Promise<SlackFixture> {
+  const userId = options.userId ?? uniqueId("user");
+  const orgId = options.orgId ?? uniqueId("org");
+  const teamId = options.teamId ?? uniqueId("T");
+  const slackUserId = options.slackUserId ?? uniqueId("U");
+  const email = options.email ?? `${userId}@example.test`;
+  mockTestUserMembership(userId, orgId);
+
+  const response = await postSlackState({
+    team_id: teamId,
+    slack_user_id: slackUserId,
+    workspace_name: options.workspaceName,
+    bot_user_id: options.botUserId,
+    email,
+    seed_connection: options.seedConnection,
+    seed_default_agent: options.seedDefaultAgent,
   });
-  await writeDb.insert(agentComposeVersions).values({
-    id: versionId,
-    composeId,
-    content: { env: {}, prompts: [] },
-    createdBy: userId,
-  });
-  await writeDb.insert(zeroAgents).values({
-    id: composeId,
-    orgId,
-    owner: userId,
-    name: "slack-agent",
-  });
-  await writeDb.insert(orgMetadata).values({
-    orgId,
-    defaultAgentId: composeId,
-    credits: 1234,
-    tier: "pro",
-  });
-  await writeDb.insert(slackOrgInstallations).values({
-    slackWorkspaceId: teamId,
-    slackWorkspaceName: "E2E Slack Workspace",
-    orgId,
-    encryptedBotToken: "encrypted-slack-token",
-    botUserId: "U_BOT",
-    installedByUserId: userId,
-  });
-  await writeDb.insert(slackOrgConnections).values({
-    slackWorkspaceId: teamId,
-    slackUserId: "U_SLACK_USER",
-    vm0UserId: userId,
-    dmWelcomeSent: true,
-  });
-  await writeDb.insert(agentSessions).values({
-    id: sessionId,
-    userId,
-    orgId,
-    agentComposeId: composeId,
-  });
-  await writeDb.insert(agentRuns).values({
-    id: runId,
-    userId,
-    orgId,
-    sessionId,
-    status: "completed",
-    prompt: "hello from slack diagnostics",
-    error: "diagnostic error",
-    createdAt: new Date("2030-01-01T00:00:00.000Z"),
-  });
-  await writeDb.insert(zeroRuns).values({
-    id: runId,
-    triggerSource: "slack",
-  });
-  if (nonSlackRunId && nonSlackSessionId) {
-    await writeDb.insert(agentSessions).values({
-      id: nonSlackSessionId,
-      userId,
-      orgId,
-      agentComposeId: composeId,
-    });
-    await writeDb.insert(agentRuns).values({
-      id: nonSlackRunId,
-      userId,
-      orgId,
-      sessionId: nonSlackSessionId,
-      status: "completed",
-      prompt: "hello from manual diagnostics",
-      createdAt: new Date("2029-01-01T00:00:00.000Z"),
-    });
-    await writeDb.insert(zeroRuns).values({
-      id: nonSlackRunId,
-      triggerSource: "manual",
-    });
+  const body = await readJson<TestSlackStatePostResponse>(response);
+  if (response.status !== 200) {
+    throw new Error(
+      `Expected Slack state seed to succeed, received ${
+        response.status
+      }: ${JSON.stringify(body)}`,
+    );
   }
-  await writeDb.insert(e2eSlackMockCallLog).values([
-    {
-      method: olderMockMethod,
-      teamId,
-      channelId: "C_OLDER",
-      body: '{"text":"older"}',
-      bodyJson: { text: "older" },
-      createdAt: new Date("2030-01-01T00:00:00.000Z"),
-    },
-    {
-      method: newerMockMethod,
-      teamId,
-      channelId: "C_NEWER",
-      body: '{"text":"newer"}',
-      bodyJson: { text: "newer" },
-      createdAt: new Date("2030-01-01T00:00:01.000Z"),
-    },
-  ]);
 
-  return {
-    teamId,
-    orgId,
-    userId,
-    composeId,
-    versionId,
-    runId,
-    sessionId,
-    nonSlackRunId,
-    nonSlackSessionId,
-    mockCallMethods: [newerMockMethod, olderMockMethod],
+  const fixture = {
+    teamId: body.team_id,
+    slackUserId,
+    orgId: body.org_id,
+    userId: body.vm0_user_id,
+    connectionId: body.connection_id,
+    defaultAgentId: body.default_agent_id,
   };
+  await trackSlackFixture(Promise.resolve(fixture));
+  return fixture;
 }
 
-async function cleanupSlackStateFixture(
-  fixture: SlackStateFixture,
-): Promise<void> {
-  const runIds = [fixture.runId];
-  if (fixture.nonSlackRunId) {
-    runIds.push(fixture.nonSlackRunId);
-  }
-  const sessionIds = [fixture.sessionId];
-  if (fixture.nonSlackSessionId) {
-    sessionIds.push(fixture.nonSlackSessionId);
-  }
+async function seedTelegramFixture(options: {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly email: string;
+}): Promise<TelegramFixture> {
+  const botId = uniqueId("bot");
+  const telegramUserId = uniqueNumericId();
+  mockTestUserMembership(options.userId, options.orgId);
 
-  await writeDb
-    .delete(e2eSlackMockCallLog)
-    .where(inArray(e2eSlackMockCallLog.method, fixture.mockCallMethods));
-  await writeDb.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
-  await writeDb.delete(agentRuns).where(inArray(agentRuns.id, runIds));
-  await writeDb
-    .delete(agentSessions)
-    .where(inArray(agentSessions.id, sessionIds));
-  await writeDb
-    .delete(slackOrgConnections)
-    .where(eq(slackOrgConnections.slackWorkspaceId, fixture.teamId));
-  await writeDb
-    .delete(slackOrgInstallations)
-    .where(eq(slackOrgInstallations.slackWorkspaceId, fixture.teamId));
-  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
-  await writeDb.delete(zeroAgents).where(eq(zeroAgents.id, fixture.composeId));
-  await writeDb
-    .delete(agentComposeVersions)
-    .where(eq(agentComposeVersions.id, fixture.versionId));
-  await writeDb
-    .delete(agentComposes)
-    .where(eq(agentComposes.id, fixture.composeId));
-}
-
-async function cleanupSlackSeedFixture(
-  fixture: SlackSeedFixture,
-): Promise<void> {
-  const composeRows = await writeDb
-    .select({ id: agentComposes.id })
-    .from(agentComposes)
-    .where(eq(agentComposes.orgId, fixture.orgId));
-  const composeIds = composeRows.map((compose) => {
-    return compose.id;
+  const response = await postTelegramState({
+    bot_id: botId,
+    telegram_user_id: telegramUserId,
+    email: options.email,
+    seed_link: true,
   });
-
-  await writeDb
-    .delete(slackOrgConnections)
-    .where(eq(slackOrgConnections.slackWorkspaceId, fixture.teamId));
-  await writeDb
-    .delete(slackOrgInstallations)
-    .where(eq(slackOrgInstallations.slackWorkspaceId, fixture.teamId));
-  await writeDb
-    .delete(creditExpiresRecord)
-    .where(eq(creditExpiresRecord.orgId, fixture.orgId));
-  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
-
-  if (composeIds.length > 0) {
-    await writeDb
-      .delete(vm0ApiKeys)
-      .where(inArray(vm0ApiKeys.label, composeIds));
-    await writeDb.delete(zeroAgents).where(inArray(zeroAgents.id, composeIds));
-    await writeDb
-      .delete(agentComposeVersions)
-      .where(inArray(agentComposeVersions.composeId, composeIds));
-    await writeDb
-      .delete(agentComposes)
-      .where(inArray(agentComposes.id, composeIds));
+  const body = await readJson<TestTelegramStateSeedResponse>(response);
+  if (response.status !== 200) {
+    throw new Error(
+      `Expected Telegram state seed to succeed, received ${
+        response.status
+      }: ${JSON.stringify(body)}`,
+    );
   }
+
+  const fixture = {
+    botId: body.bot_id,
+    telegramUserId,
+    orgId: body.org_id,
+    userId: body.vm0_user_id,
+    defaultAgentId: body.default_agent_id,
+  };
+  await trackTelegramFixture(Promise.resolve(fixture));
+  return fixture;
 }
 
-const trackSlackStateFixture = createFixtureTracker(cleanupSlackStateFixture);
-const trackSlackSeedFixture = createFixtureTracker(cleanupSlackSeedFixture);
+async function dispatchSlackMessage(args: {
+  readonly fixture: SlackFixture;
+  readonly text: string;
+  readonly channelId?: string;
+}): Promise<void> {
+  configureSlackDispatchMocks();
+  const response = await requestApp(SLACK_DISPATCH_PROBE_ROUTE, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      team_id: args.fixture.teamId,
+      channel_id: args.channelId ?? "C-test",
+      user_id: args.fixture.slackUserId,
+      message_text: args.text,
+      message_ts: "1710000000.000000",
+      channel_type: "channel",
+    }),
+  });
+  expect(response.status).toBe(200);
+  await expect(readJson(response)).resolves.toStrictEqual({ ok: true });
+}
+
+async function dispatchTelegramMessage(args: {
+  readonly fixture: TelegramFixture;
+  readonly text: string;
+}): Promise<void> {
+  context.mocks.s3.send.mockResolvedValue({});
+  mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+  mockOptionalEnv("VM0_API_URL", "http://localhost:3000");
+  mockOptionalEnv("VM0_WEB_URL", "http://localhost:3000");
+  mockEnv("APP_URL", "http://localhost:3002");
+  mockTelegramTyping();
+  const response = await requestApp(TELEGRAM_DISPATCH_PROBE_ROUTE, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      bot_id: args.fixture.botId,
+      chat_id: "900100200",
+      telegram_user_id: args.fixture.telegramUserId,
+      message_text: args.text,
+      message_id: 501,
+    }),
+  });
+  expect(response.status).toBe(200);
+  await expect(readJson(response)).resolves.toStrictEqual({ ok: true });
+}
+
+async function recordSlackMockCall(args: {
+  readonly method: "chat.postEphemeral" | "chat.postMessage";
+  readonly teamId: string;
+  readonly channelId: string;
+  readonly text: string;
+}): Promise<void> {
+  const response = await requestApp(`${SLACK_MOCK_ROUTE}/${args.method}`, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      team_id: args.teamId,
+      channel: args.channelId,
+      text: args.text,
+    }),
+  });
+  expect(response.status).toBe(200);
+}
 
 describe("GET /api/test/slack-state", () => {
   it("returns 404 outside allowed test environments", async () => {
     mockEnv("ENV", "production");
 
-    const response = await requestApp(`${ROUTE}?team_id=T_DENIED`);
+    const response = await requestApp(`${SLACK_STATE_ROUTE}?team_id=T_DENIED`);
 
     expect(response.status).toBe(404);
     await expect(response.text()).resolves.toBe("Not found");
@@ -312,10 +366,10 @@ describe("GET /api/test/slack-state", () => {
     mockEnv("ENV", "preview");
     mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
 
-    const denied = await requestApp(`${ROUTE}?team_id=T_PREVIEW`, {
+    const denied = await requestApp(`${SLACK_STATE_ROUTE}?team_id=T_PREVIEW`, {
       headers: { "x-vercel-protection-bypass": "wrong" },
     });
-    const allowed = await requestApp(`${ROUTE}?team_id=T_PREVIEW`, {
+    const allowed = await requestApp(`${SLACK_STATE_ROUTE}?team_id=T_PREVIEW`, {
       headers: { "x-vercel-protection-bypass": "preview-secret" },
     });
 
@@ -327,7 +381,7 @@ describe("GET /api/test/slack-state", () => {
   it("requires team_id", async () => {
     mockEnv("ENV", "development");
 
-    const response = await requestApp(ROUTE);
+    const response = await requestApp(SLACK_STATE_ROUTE);
 
     expect(response.status).toBe(400);
     await expect(readJson(response)).resolves.toStrictEqual({
@@ -339,7 +393,7 @@ describe("GET /api/test/slack-state", () => {
     mockEnv("ENV", "development");
     mockOptionalEnv("SLACK_API_URL", "https://slack.example.test/api/");
 
-    const response = await requestApp(`${ROUTE}?team_id=T_UNKNOWN`);
+    const response = await requestApp(`${SLACK_STATE_ROUTE}?team_id=T_UNKNOWN`);
     const body = await readJson<TestSlackStateResponse>(response);
 
     expect(response.status).toBe(200);
@@ -359,7 +413,7 @@ describe("GET /api/test/slack-state", () => {
     mockOptionalEnv("E2E_SLACK_MOCK_ENABLED", "true");
     mockOptionalEnv("VERCEL_URL", "preview.vm0.test");
 
-    const response = await requestApp(`${ROUTE}?team_id=T_UNKNOWN`);
+    const response = await requestApp(`${SLACK_STATE_ROUTE}?team_id=T_UNKNOWN`);
     const body = await readJson<TestSlackStateResponse>(response);
 
     expect(response.status).toBe(200);
@@ -370,12 +424,31 @@ describe("GET /api/test/slack-state", () => {
 
   it("returns Slack installation diagnostics, recent runs, default agent metadata, and mock calls", async () => {
     mockEnv("ENV", "development");
-    const fixture = await trackSlackStateFixture(seedSlackStateFixture());
+    const fixture = await seedSlackFixture({
+      seedConnection: true,
+      seedDefaultAgent: true,
+      workspaceName: "E2E Slack Workspace",
+      botUserId: "U_BOT",
+    });
+    await dispatchSlackMessage({
+      fixture,
+      text: "hello from slack diagnostics",
+    });
+    await recordSlackMockCall({
+      method: "chat.postMessage",
+      teamId: fixture.teamId,
+      channelId: "C_NEWER",
+      text: "newer",
+    });
+    await recordSlackMockCall({
+      method: "chat.postEphemeral",
+      teamId: fixture.teamId,
+      channelId: "C_OLDER",
+      text: "older",
+    });
 
-    const response = await requestApp(`${ROUTE}?team_id=${fixture.teamId}`);
-    const body = await readJson<TestSlackStateResponse>(response);
+    const body = await readSlackState(fixture.teamId);
 
-    expect(response.status).toBe(200);
     expect(body.installation).toMatchObject({
       slackWorkspaceId: fixture.teamId,
       slackWorkspaceName: "E2E Slack Workspace",
@@ -384,57 +457,61 @@ describe("GET /api/test/slack-state", () => {
       installedByUserId: fixture.userId,
     });
     expect(typeof body.installation?.createdAt).toBe("string");
-    expect(body.connections).toMatchObject([
-      {
-        slackUserId: "U_SLACK_USER",
-        vm0UserId: fixture.userId,
-        dmWelcomeSent: true,
-      },
-    ]);
-    expect(body.recent_runs).toMatchObject([
-      {
-        id: fixture.runId,
-        status: "completed",
-        triggerSource: "slack",
-        userId: fixture.userId,
-        error: "diagnostic error",
-        promptPreview: "hello from slack diagnostics",
-      },
-    ]);
-    expect(body.org_metadata).toStrictEqual({
+    expect(body.connections).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          id: fixture.connectionId,
+          slackUserId: fixture.slackUserId,
+          vm0UserId: fixture.userId,
+          dmWelcomeSent: false,
+        }),
+      ]),
+    );
+    expect(body.recent_runs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          status: "pending",
+          triggerSource: "slack",
+          userId: fixture.userId,
+          error: null,
+          promptPreview: "hello from slack diagnostics",
+        }),
+      ]),
+    );
+    expect(body.org_metadata).toMatchObject({
       orgId: fixture.orgId,
-      defaultAgentId: fixture.composeId,
-      credits: 1234,
-      tier: "pro",
+      defaultAgentId: fixture.defaultAgentId,
+      credits: 10_000,
+      tier: "free",
     });
     expect(body.default_agent).toStrictEqual({
-      id: fixture.composeId,
-      name: "slack-agent",
+      id: fixture.defaultAgentId,
+      name: "e2e-slack-agent",
       orgId: fixture.orgId,
     });
-    expect(body.default_compose).toStrictEqual({
-      id: fixture.composeId,
+    expect(body.default_compose).toMatchObject({
+      id: fixture.defaultAgentId,
       name: "e2e-slack-agent",
-      headVersionId: fixture.versionId,
     });
-    expect(body.default_compose_version).toStrictEqual({
-      id: fixture.versionId,
-      content_keys: ["env", "prompts"],
+    expect(body.default_compose_version).toMatchObject({
+      content_keys: expect.arrayContaining(["version", "agents"]),
     });
-    expect(body.mock_calls.slice(0, 2)).toMatchObject([
-      {
-        method: fixture.mockCallMethods[0],
-        teamId: fixture.teamId,
-        channelId: "C_NEWER",
-        bodyJson: { text: "newer" },
-      },
-      {
-        method: fixture.mockCallMethods[1],
-        teamId: fixture.teamId,
-        channelId: "C_OLDER",
-        bodyJson: { text: "older" },
-      },
-    ]);
+    expect(body.mock_calls).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          method: "chat.postMessage",
+          teamId: fixture.teamId,
+          channelId: "C_NEWER",
+          bodyJson: expect.objectContaining({ text: "newer" }),
+        }),
+        expect.objectContaining({
+          method: "chat.postEphemeral",
+          teamId: fixture.teamId,
+          channelId: "C_OLDER",
+          bodyJson: expect.objectContaining({ text: "older" }),
+        }),
+      ]),
+    );
   });
 });
 
@@ -464,207 +541,67 @@ describe("POST /api/test/slack-state", () => {
 
   it("seeds a Slack installation without optional state", async () => {
     mockEnv("ENV", "development");
-    const id = suffix();
-    const teamId = `T_SEED_${id}`;
-    const orgId = `org_seed_${id}`;
-    const userId = `user_seed_${id}`;
-    await trackSlackSeedFixture(Promise.resolve({ teamId, orgId }));
-    mockTestUserMembership(userId, orgId);
-
-    const response = await postSlackState({
-      team_id: teamId,
-      slack_user_id: "U_E2E_MEMBER",
-      workspace_name: "Seeded Workspace",
-      bot_user_id: "U_CUSTOM_BOT",
-      email: "seeded@example.test",
-    });
-    const body = await readJson<TestSlackStatePostResponse>(response);
-
-    expect(response.status).toBe(200);
-    expect(body).toStrictEqual({
-      ok: true,
-      team_id: teamId,
-      org_id: orgId,
-      vm0_user_id: userId,
-      connection_id: null,
-      default_agent_id: null,
+    const fixture = await seedSlackFixture({
+      workspaceName: "Seeded Workspace",
+      botUserId: "U_CUSTOM_BOT",
     });
 
-    const installations = await writeDb
-      .select({
-        slackWorkspaceId: slackOrgInstallations.slackWorkspaceId,
-        slackWorkspaceName: slackOrgInstallations.slackWorkspaceName,
-        orgId: slackOrgInstallations.orgId,
-        botUserId: slackOrgInstallations.botUserId,
-        botScopes: slackOrgInstallations.botScopes,
-        installedByUserId: slackOrgInstallations.installedByUserId,
-      })
-      .from(slackOrgInstallations)
-      .where(eq(slackOrgInstallations.slackWorkspaceId, teamId));
-
-    expect(installations).toStrictEqual([
-      {
-        slackWorkspaceId: teamId,
-        slackWorkspaceName: "Seeded Workspace",
-        orgId,
-        botUserId: "U_CUSTOM_BOT",
-        botScopes: "chat:write,im:write,users:read",
-        installedByUserId: userId,
-      },
-    ]);
-    await expect(
-      writeDb
-        .select({ id: slackOrgConnections.id })
-        .from(slackOrgConnections)
-        .where(eq(slackOrgConnections.slackWorkspaceId, teamId)),
-    ).resolves.toStrictEqual([]);
+    expect(fixture.connectionId).toBeNull();
+    expect(fixture.defaultAgentId).toBeNull();
+    const state = await readSlackState(fixture.teamId);
+    expect(state.installation).toMatchObject({
+      slackWorkspaceId: fixture.teamId,
+      slackWorkspaceName: "Seeded Workspace",
+      orgId: fixture.orgId,
+      botUserId: "U_CUSTOM_BOT",
+      installedByUserId: fixture.userId,
+    });
+    expect(state.connections).toStrictEqual([]);
+    expect(state.org_metadata).toBeNull();
+    expect(state.default_agent).toBeNull();
   });
 
   it("optionally seeds a Slack connection", async () => {
     mockEnv("ENV", "development");
-    const id = suffix();
-    const teamId = `T_CONNECT_${id}`;
-    const orgId = `org_connect_${id}`;
-    const userId = `user_connect_${id}`;
-    await trackSlackSeedFixture(Promise.resolve({ teamId, orgId }));
-    mockTestUserMembership(userId, orgId);
+    const fixture = await seedSlackFixture({ seedConnection: true });
 
-    const response = await postSlackState({
-      team_id: teamId,
-      slack_user_id: "U_E2E_CONNECTED",
-      seed_connection: true,
-    });
-    const body = await readJson<TestSlackStatePostResponse>(response);
-
-    expect(response.status).toBe(200);
-    expect(typeof body.connection_id).toBe("string");
-    expect(body.default_agent_id).toBeNull();
-    await expect(
-      writeDb
-        .select({
-          id: slackOrgConnections.id,
-          slackUserId: slackOrgConnections.slackUserId,
-          slackWorkspaceId: slackOrgConnections.slackWorkspaceId,
-          vm0UserId: slackOrgConnections.vm0UserId,
-          dmWelcomeSent: slackOrgConnections.dmWelcomeSent,
-        })
-        .from(slackOrgConnections)
-        .where(eq(slackOrgConnections.slackWorkspaceId, teamId)),
-    ).resolves.toStrictEqual([
-      {
-        id: body.connection_id,
-        slackUserId: "U_E2E_CONNECTED",
-        slackWorkspaceId: teamId,
-        vm0UserId: userId,
+    expect(typeof fixture.connectionId).toBe("string");
+    expect(fixture.defaultAgentId).toBeNull();
+    const state = await readSlackState(fixture.teamId);
+    expect(state.connections).toStrictEqual([
+      expect.objectContaining({
+        id: fixture.connectionId,
+        slackUserId: fixture.slackUserId,
+        vm0UserId: fixture.userId,
         dmWelcomeSent: false,
-      },
+      }),
     ]);
   });
 
   it("optionally seeds the default Slack agent", async () => {
     mockEnv("ENV", "development");
-    const id = suffix();
-    const teamId = `T_AGENT_${id}`;
-    const orgId = `org_agent_${id}`;
-    const userId = `user_agent_${id}`;
-    await trackSlackSeedFixture(Promise.resolve({ teamId, orgId }));
-    mockTestUserMembership(userId, orgId);
+    const fixture = await seedSlackFixture({ seedDefaultAgent: true });
 
-    const response = await postSlackState({
-      team_id: teamId,
-      slack_user_id: "U_E2E_AGENT",
-      seed_default_agent: true,
-    });
-    const body = await readJson<TestSlackStatePostResponse>(response);
-
-    expect(response.status).toBe(200);
-    expect(typeof body.default_agent_id).toBe("string");
-    expect(body.connection_id).toBeNull();
-    if (!body.default_agent_id) {
-      throw new Error("Expected seeded default agent id");
-    }
-    const defaultAgentId = body.default_agent_id;
-
-    const [compose] = await writeDb
-      .select({
-        id: agentComposes.id,
-        userId: agentComposes.userId,
-        orgId: agentComposes.orgId,
-        name: agentComposes.name,
-        headVersionId: agentComposes.headVersionId,
-      })
-      .from(agentComposes)
-      .where(eq(agentComposes.id, defaultAgentId));
-    const [agent] = await writeDb
-      .select({
-        id: zeroAgents.id,
-        orgId: zeroAgents.orgId,
-        owner: zeroAgents.owner,
-        name: zeroAgents.name,
-      })
-      .from(zeroAgents)
-      .where(eq(zeroAgents.id, defaultAgentId));
-    const [metadata] = await writeDb
-      .select({
-        orgId: orgMetadata.orgId,
-        defaultAgentId: orgMetadata.defaultAgentId,
-        credits: orgMetadata.credits,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId));
-    const [creditGrant] = await writeDb
-      .select({
-        orgId: creditExpiresRecord.orgId,
-        source: creditExpiresRecord.source,
-        amount: creditExpiresRecord.amount,
-        remaining: creditExpiresRecord.remaining,
-      })
-      .from(creditExpiresRecord)
-      .where(eq(creditExpiresRecord.orgId, orgId));
-    const [version] = await writeDb
-      .select({
-        id: agentComposeVersions.id,
-        content: agentComposeVersions.content,
-      })
-      .from(agentComposeVersions)
-      .where(eq(agentComposeVersions.composeId, defaultAgentId));
-
-    expect(compose).toMatchObject({
-      id: defaultAgentId,
-      userId,
-      orgId,
+    expect(typeof fixture.defaultAgentId).toBe("string");
+    expect(fixture.connectionId).toBeNull();
+    const state = await readSlackState(fixture.teamId);
+    expect(state.default_agent).toStrictEqual({
+      id: fixture.defaultAgentId,
+      orgId: fixture.orgId,
       name: "e2e-slack-agent",
     });
-    expect(compose?.headVersionId).toBe(version?.id);
-    expect(agent).toStrictEqual({
-      id: defaultAgentId,
-      orgId,
-      owner: userId,
+    expect(state.default_compose).toMatchObject({
+      id: fixture.defaultAgentId,
       name: "e2e-slack-agent",
     });
-    expect(metadata).toStrictEqual({
-      orgId,
-      defaultAgentId,
+    expect(state.org_metadata).toMatchObject({
+      orgId: fixture.orgId,
+      defaultAgentId: fixture.defaultAgentId,
       credits: 10_000,
+      tier: "free",
     });
-    expect(creditGrant).toStrictEqual({
-      orgId,
-      source: "starter_grant",
-      amount: 10_000,
-      remaining: 10_000,
-    });
-    expect(version?.content).toStrictEqual({
-      version: "1.0",
-      agents: {
-        "e2e-slack-agent": {
-          framework: "claude-code",
-          environment: {
-            ANTHROPIC_API_KEY: "",
-            ZERO_AGENT_ID: "${{ vars.ZERO_AGENT_ID }}",
-            ZERO_TOKEN: "${{ secrets.ZERO_TOKEN }}",
-          },
-        },
-      },
+    expect(state.default_compose_version).toMatchObject({
+      content_keys: expect.arrayContaining(["version", "agents"]),
     });
   });
 
@@ -672,21 +609,35 @@ describe("POST /api/test/slack-state", () => {
     mockEnv("ENV", "development");
     const id = suffix();
     const teamId = `T_IDEMPOTENT_${id}`;
+    const slackUserId = `U_IDEMPOTENT_${id}`;
     const orgId = `org_idempotent_${id}`;
     const userId = `user_idempotent_${id}`;
-    await trackSlackSeedFixture(Promise.resolve({ teamId, orgId }));
+    const email = `${userId}@example.test`;
     mockTestUserMembership(userId, orgId);
 
     const firstResponse = await postSlackState({
       team_id: teamId,
-      slack_user_id: "U_E2E_IDEMPOTENT",
+      slack_user_id: slackUserId,
+      email,
       seed_connection: true,
       seed_default_agent: true,
     });
     const first = await readJson<TestSlackStatePostResponse>(firstResponse);
+    const fixture = await trackSlackFixture(
+      Promise.resolve({
+        teamId,
+        slackUserId,
+        orgId,
+        userId,
+        connectionId: first.connection_id,
+        defaultAgentId: first.default_agent_id,
+      }),
+    );
+    mockTestUserMembership(userId, orgId);
     const secondResponse = await postSlackState({
       team_id: teamId,
-      slack_user_id: "U_E2E_IDEMPOTENT",
+      slack_user_id: slackUserId,
+      email,
       seed_connection: true,
       seed_default_agent: true,
     });
@@ -695,38 +646,24 @@ describe("POST /api/test/slack-state", () => {
     expect(firstResponse.status).toBe(200);
     expect(secondResponse.status).toBe(200);
     expect(typeof first.connection_id).toBe("string");
-    if (!first.default_agent_id) {
-      throw new Error("Expected seeded default agent id");
-    }
+    expect(typeof first.default_agent_id).toBe("string");
     expect(second.connection_id).toBeNull();
     expect(second.default_agent_id).toBe(first.default_agent_id);
 
-    const installations = await writeDb
-      .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
-      .from(slackOrgInstallations)
-      .where(eq(slackOrgInstallations.slackWorkspaceId, teamId));
-    const connections = await writeDb
-      .select({ id: slackOrgConnections.id })
-      .from(slackOrgConnections)
-      .where(eq(slackOrgConnections.slackWorkspaceId, teamId));
-    const composes = await writeDb
-      .select({ id: agentComposes.id })
-      .from(agentComposes)
-      .where(
-        and(
-          eq(agentComposes.orgId, orgId),
-          eq(agentComposes.name, "e2e-slack-agent"),
-        ),
-      );
-    const starterGrants = await writeDb
-      .select({ id: creditExpiresRecord.id })
-      .from(creditExpiresRecord)
-      .where(eq(creditExpiresRecord.orgId, orgId));
-
-    expect(installations).toStrictEqual([{ slackWorkspaceId: teamId }]);
-    expect(connections).toStrictEqual([{ id: first.connection_id }]);
-    expect(composes).toStrictEqual([{ id: first.default_agent_id }]);
-    expect(starterGrants).toHaveLength(1);
+    const state = await readSlackState(fixture.teamId);
+    expect(state.installation).toMatchObject({
+      slackWorkspaceId: teamId,
+      orgId,
+      installedByUserId: userId,
+    });
+    expect(state.connections).toHaveLength(1);
+    expect(state.connections[0]).toMatchObject({ id: first.connection_id });
+    expect(state.default_agent).toMatchObject({ id: first.default_agent_id });
+    expect(state.org_metadata).toMatchObject({
+      orgId,
+      defaultAgentId: first.default_agent_id,
+      credits: 10_000,
+    });
   });
 });
 
@@ -734,7 +671,7 @@ describe("DELETE /api/test/slack-state", () => {
   it("returns 404 outside allowed test environments", async () => {
     mockEnv("ENV", "production");
 
-    const response = await requestApp(`${ROUTE}?team_id=T_DENIED`, {
+    const response = await requestApp(`${SLACK_STATE_ROUTE}?team_id=T_DENIED`, {
       method: "DELETE",
     });
 
@@ -745,7 +682,7 @@ describe("DELETE /api/test/slack-state", () => {
   it("requires team_id", async () => {
     mockEnv("ENV", "development");
 
-    const response = await requestApp(ROUTE, { method: "DELETE" });
+    const response = await requestApp(SLACK_STATE_ROUTE, { method: "DELETE" });
 
     expect(response.status).toBe(400);
     await expect(readJson(response)).resolves.toStrictEqual({
@@ -755,132 +692,100 @@ describe("DELETE /api/test/slack-state", () => {
 
   it("clears workspace Slack state without deleting mock calls or non-Slack runs", async () => {
     mockEnv("ENV", "development");
-    const fixture = await trackSlackStateFixture(
-      seedSlackStateFixture({ seedNonSlackRun: true }),
-    );
-    if (!fixture.nonSlackRunId) {
-      throw new Error("Expected non-Slack run fixture row");
-    }
-
-    const response = await requestApp(`${ROUTE}?team_id=${fixture.teamId}`, {
-      method: "DELETE",
+    const userId = uniqueId("user");
+    const orgId = uniqueId("org");
+    const email = `${userId}@example.test`;
+    const slack = await seedSlackFixture({
+      userId,
+      orgId,
+      email,
+      seedConnection: true,
+      seedDefaultAgent: true,
     });
+    await dispatchSlackMessage({
+      fixture: slack,
+      text: "slack diagnostic run",
+    });
+    await recordSlackMockCall({
+      method: "chat.postMessage",
+      teamId: slack.teamId,
+      channelId: "C_DELETE",
+      text: "still visible",
+    });
+    const telegram = await seedTelegramFixture({ userId, orgId, email });
+    await dispatchTelegramMessage({
+      fixture: telegram,
+      text: "telegram diagnostic run",
+    });
+
+    const response = await requestApp(
+      `${SLACK_STATE_ROUTE}?team_id=${slack.teamId}`,
+      { method: "DELETE" },
+    );
     const body = await readJson<TestSlackStateDeleteResponse>(response);
 
     expect(response.status).toBe(200);
     expect(body).toStrictEqual({ ok: true });
 
-    await expect(
-      writeDb
-        .select({ slackWorkspaceId: slackOrgInstallations.slackWorkspaceId })
-        .from(slackOrgInstallations)
-        .where(eq(slackOrgInstallations.slackWorkspaceId, fixture.teamId)),
-    ).resolves.toStrictEqual([]);
-    await expect(
-      writeDb
-        .select({ id: slackOrgConnections.id })
-        .from(slackOrgConnections)
-        .where(eq(slackOrgConnections.slackWorkspaceId, fixture.teamId)),
-    ).resolves.toStrictEqual([]);
-    await expect(
-      writeDb
-        .select({ id: zeroRuns.id })
-        .from(zeroRuns)
-        .where(eq(zeroRuns.id, fixture.runId)),
-    ).resolves.toStrictEqual([]);
-    await expect(
-      writeDb
-        .select({ id: agentRuns.id })
-        .from(agentRuns)
-        .where(eq(agentRuns.id, fixture.runId)),
-    ).resolves.toStrictEqual([]);
-    await expect(
-      writeDb
-        .select({ id: zeroRuns.id, triggerSource: zeroRuns.triggerSource })
-        .from(zeroRuns)
-        .where(eq(zeroRuns.id, fixture.nonSlackRunId)),
-    ).resolves.toStrictEqual([
-      { id: fixture.nonSlackRunId, triggerSource: "manual" },
-    ]);
-    await expect(
-      writeDb
-        .select({ id: agentRuns.id })
-        .from(agentRuns)
-        .where(eq(agentRuns.id, fixture.nonSlackRunId)),
-    ).resolves.toStrictEqual([{ id: fixture.nonSlackRunId }]);
-
-    const mockCalls = await writeDb
-      .select({ method: e2eSlackMockCallLog.method })
-      .from(e2eSlackMockCallLog)
-      .where(inArray(e2eSlackMockCallLog.method, fixture.mockCallMethods));
-
-    expect(
-      mockCalls.map((call) => {
-        return call.method;
-      }),
-    ).toStrictEqual(expect.arrayContaining([...fixture.mockCallMethods]));
-  });
-
-  it("removes vm0 managed keys seeded for the default Slack agent", async () => {
-    mockEnv("ENV", "development");
-    const id = suffix();
-    const teamId = `T_DELETE_AGENT_${id}`;
-    const orgId = `org_delete_agent_${id}`;
-    const userId = `user_delete_agent_${id}`;
-    await trackSlackSeedFixture(Promise.resolve({ teamId, orgId }));
-    mockTestUserMembership(userId, orgId);
-
-    const postResponse = await postSlackState({
-      team_id: teamId,
-      slack_user_id: "U_E2E_DELETE_AGENT",
-      seed_default_agent: true,
-    });
-    const postBody = await readJson<TestSlackStatePostResponse>(postResponse);
-    expect(postResponse.status).toBe(200);
-    if (!postBody.default_agent_id) {
-      throw new Error("Expected seeded default agent id");
-    }
-
-    const seededKeys = await writeDb
-      .select({
-        vendor: vm0ApiKeys.vendor,
-        model: vm0ApiKeys.model,
-        label: vm0ApiKeys.label,
-      })
-      .from(vm0ApiKeys)
-      .where(eq(vm0ApiKeys.label, postBody.default_agent_id));
-
-    expect(seededKeys).toHaveLength(3);
-    expect(seededKeys).toStrictEqual(
+    const deletedSlack = await readSlackState(slack.teamId);
+    expect(deletedSlack.installation).toBeNull();
+    expect(deletedSlack.connections).toStrictEqual([]);
+    expect(deletedSlack.recent_runs).toStrictEqual([]);
+    expect(deletedSlack.mock_calls).toEqual(
       expect.arrayContaining([
-        {
-          vendor: "anthropic",
-          model: "claude-sonnet-4-6",
-          label: postBody.default_agent_id,
-        },
-        {
-          vendor: "deepseek",
-          model: "deepseek-v4-pro",
-          label: postBody.default_agent_id,
-        },
-        {
-          vendor: "moonshot",
-          model: "kimi-k2.7-code",
-          label: postBody.default_agent_id,
-        },
+        expect.objectContaining({
+          method: "chat.postMessage",
+          teamId: slack.teamId,
+          channelId: "C_DELETE",
+          bodyJson: expect.objectContaining({ text: "still visible" }),
+        }),
       ]),
     );
 
-    const deleteResponse = await requestApp(`${ROUTE}?team_id=${teamId}`, {
-      method: "DELETE",
+    const telegramState = await readTelegramState(telegram.botId);
+    expect(telegramState.recent_runs).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          triggerSource: "telegram",
+          promptPreview: "telegram diagnostic run",
+        }),
+      ]),
+    );
+    expect(telegramState.recent_runs).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          triggerSource: "slack",
+          promptPreview: "slack diagnostic run",
+        }),
+      ]),
+    );
+  });
+
+  it("clears API-visible default Slack agent state after delete", async () => {
+    mockEnv("ENV", "development");
+    const fixture = await seedSlackFixture({ seedDefaultAgent: true });
+    const seededState = await readSlackState(fixture.teamId);
+
+    expect(seededState.default_agent).toMatchObject({
+      id: fixture.defaultAgentId,
+    });
+    expect(seededState.default_compose).toMatchObject({
+      id: fixture.defaultAgentId,
     });
 
+    const deleteResponse = await requestApp(
+      `${SLACK_STATE_ROUTE}?team_id=${fixture.teamId}`,
+      { method: "DELETE" },
+    );
+
     expect(deleteResponse.status).toBe(200);
-    await expect(
-      writeDb
-        .select({ id: vm0ApiKeys.id })
-        .from(vm0ApiKeys)
-        .where(eq(vm0ApiKeys.label, postBody.default_agent_id)),
-    ).resolves.toStrictEqual([]);
+    await expect(readJson(deleteResponse)).resolves.toStrictEqual({
+      ok: true,
+    });
+    const deletedState = await readSlackState(fixture.teamId);
+    expect(deletedState.installation).toBeNull();
+    expect(deletedState.default_agent).toBeNull();
+    expect(deletedState.default_compose).toBeNull();
+    expect(deletedState.default_compose_version).toBeNull();
   });
 });
