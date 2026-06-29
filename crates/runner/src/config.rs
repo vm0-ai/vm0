@@ -15,15 +15,21 @@
 //! 4. Callers derive runtime objects (e.g. [`sandbox::FactoryConfig`]) from
 //!    the loaded config.
 //!
-//! # Image identity: two content hashes per profile
-//! Each [`ProfileConfig`] carries two hashes with different scopes:
-//! - `rootfs_hash` — content hash of the bootable guest filesystem image on
-//!   this runner. Shared across snapshot variants on the same host.
-//! - `snapshot_hash` — content hash of the rootfs hash plus the
-//!   FC/kernel/vcpu/memory/provider config used to capture the memory snapshot.
-//!   Local-only: snapshots are produced on each runner by booting the rootfs
-//!   and capturing state, since the captured memory binds to host-specific
-//!   state.
+//! # Image identity: two image-identity hashes per profile
+//! Each [`ProfileConfig`] carries two hashes with different scopes. They are
+//! image identities, not just artifact byte digests: cache versions and local
+//! build inputs can also affect them.
+//! - `rootfs_hash` — identity of the bootable guest filesystem image on this
+//!   runner. Shared across snapshot variants on the same host.
+//! - `snapshot_hash` — host-local identity of the snapshot captured from that
+//!   rootfs. It includes `rootfs_hash` plus VM/snapshot shape inputs such as
+//!   `vcpu`, `memory_mb`, and `workspace_disk_mb`, along with
+//!   Firecracker/kernel/provider config inputs. Snapshots are produced on each
+//!   runner by booting the rootfs and capturing state, since the captured
+//!   memory binds to host-specific state.
+//!
+//! `rootfs_disk_mb` affects `snapshot_hash` through `rootfs_hash`, not as a
+//! separate direct snapshot input.
 //!
 //! Together they identify an exact boot image on this host.
 //!
@@ -105,7 +111,8 @@ pub struct FirecrackerConfig {
 pub struct ProfileConfig {
     /// Content-addressed rootfs hash (shared across snapshot variants on this host).
     pub rootfs_hash: String,
-    /// Content-addressed snapshot hash (local-only, covers rootfs plus VM/provider config).
+    /// Host-local snapshot identity, covering rootfs identity plus VM shape,
+    /// workspace disk size, and provider/runtime inputs.
     pub snapshot_hash: String,
     /// Guest vCPU count. Must be non-zero and ≤ 1024.
     pub vcpu: u32,

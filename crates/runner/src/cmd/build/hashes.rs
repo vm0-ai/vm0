@@ -28,6 +28,7 @@ const SNAPSHOT_CACHE_VERSION: u32 = 3;
 /// Inputs:
 ///   - `TEMPLATE_CACHE_VERSION` — bump to force invalidation
 ///   - `TEMPLATE_BUILD_SCRIPT` — template build script content
+///   - `std::env::consts::ARCH` — host build architecture
 ///   - `rootfs_disk_mb` — rootfs disk size from profile
 ///
 /// Guest binaries and host-local CA are deliberately excluded; those belong
