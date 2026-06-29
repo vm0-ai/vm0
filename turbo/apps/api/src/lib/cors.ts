@@ -6,10 +6,8 @@ import type { MiddlewareHandler } from "hono";
 import { safeUrlParse } from "../signals/utils";
 import { env } from "./env";
 
-// Mirrors apps/web/proxy.cors.ts. Now that /api/zero/* is served by hono
-// directly (not proxied to Next), responses from registered routes need their
-// own CORS headers — the web proxy fallthrough is no longer in the request
-// path for migrated endpoints.
+// Hono owns CORS for /api/zero/* directly. Responses from registered routes
+// need their own CORS headers because they no longer fall through a Next proxy.
 const STATIC_ALLOWED_ORIGINS = Object.freeze(
   new Set(["https://www.vm0.ai", "https://vm0.ai", "https://app.vm7.ai:8443"]),
 );

@@ -71,14 +71,14 @@ caddy.on("exit", (code) => {
 setTimeout(() => {
   console.log("\n✅ Caddy is running!");
   console.log("\n📱 Available at:");
-  console.log("   Web:       https://www.vm7.ai:8443");
+  console.log("   Marketing: https://www.vm7.ai:8443");
   console.log("   App:       https://app.vm7.ai:8443");
   console.log("   API:       https://api.vm7.ai:8443");
   console.log("   SO:        https://so.vm7.ai:8443");
   console.log("\n💡 Make sure your applications are running:");
-  console.log("   Web:       pnpm --filter web dev (port 3000)");
   console.log("   App:       pnpm --filter @vm0/app dev (port 3002)");
   console.log("   API:       pnpm --filter api dev (port 3001)");
+  console.log("   Marketing/SO is proxied to staging-so.vm6.ai");
   console.log(
     "\n🔐 Certificates are provisioned automatically via Let's Encrypt.",
   );
