@@ -457,7 +457,7 @@ async def test_server_connect_cancelled_waiter_does_not_cancel_shared_dns_lookup
         cancelled_task.cancel()
         release_lookup.set()
         await asyncio.gather(cancelled_task, return_exceptions=True)
-        await completed_task
+        _ = await completed_task
 
     assert calls == [("pr-test-api.vm6.ai", 443)]
     assert cancelled.server.address == ("198.18.20.34", 443)
