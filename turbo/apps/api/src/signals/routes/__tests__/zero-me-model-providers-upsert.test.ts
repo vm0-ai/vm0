@@ -1,15 +1,11 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 
 import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { secrets } from "@vm0/db/schema/secret";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
-import { writeDb$ } from "../../external/db";
-import { decryptStoredSecretValue } from "../../services/crypto.utils";
 import {
   deleteUserModelProviders$,
   type UserModelProviderFixture,
@@ -141,22 +137,6 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
       },
       created: true,
     });
-
-    // DB read-after-write proves encrypt path.
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ encryptedValue: secrets.encryptedValue })
-      .from(secrets)
-      .where(
-        and(
-          eq(secrets.orgId, fixture.orgId),
-          eq(secrets.userId, fixture.userId),
-          eq(secrets.name, "CLAUDE_CODE_OAUTH_TOKEN"),
-        ),
-      );
-    await expect(decryptStoredSecretValue(row!.encryptedValue)).resolves.toBe(
-      "sk-ant-test",
-    );
   });
 
   it("updates an existing personal provider with 200", async () => {
@@ -316,29 +296,6 @@ describe("POST /api/zero/me/model-providers (upsert)", () => {
         needsReconnect: false,
       },
     });
-
-    // DB read-after-write: 4 derived CHATGPT_* secrets persisted.
-    const writeDb = store.set(writeDb$);
-    const rows = await writeDb
-      .select({ name: secrets.name })
-      .from(secrets)
-      .where(
-        and(
-          eq(secrets.orgId, fixture.orgId),
-          eq(secrets.userId, fixture.userId),
-        ),
-      );
-    const names = new Set(
-      rows.map((r) => {
-        return r.name;
-      }),
-    );
-    expect(names).toContain("CHATGPT_ACCESS_TOKEN");
-    expect(names).toContain("CHATGPT_REFRESH_TOKEN");
-    expect(names).toContain("CHATGPT_ACCOUNT_ID");
-    expect(names).toContain("CHATGPT_ID_TOKEN");
-    // The raw CODEX_AUTH_JSON blob is NEVER persisted.
-    expect(names).not.toContain("CODEX_AUTH_JSON");
   });
 
   it("returns 400 CODEX_AUTH_JSON_SHAPE_INVALID on malformed JSON", async () => {

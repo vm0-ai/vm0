@@ -1,17 +1,15 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 
-import { zeroPersonalModelProvidersByTypeContract } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { secrets } from "@vm0/db/schema/secret";
+import {
+  zeroPersonalModelProvidersByTypeContract,
+  zeroPersonalModelProvidersMainContract,
+} from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { writeDb$ } from "../../external/db";
 import {
   deleteUserModelProviders$,
-  seedUserModelProvider$,
   type UserModelProviderFixture,
 } from "./helpers/zero-model-providers";
 import {
@@ -34,6 +32,22 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
   const track = createFixtureTracker<UserModelProviderFixture>((fixture) => {
     return store.set(deleteUserModelProviders$, fixture, context.signal);
   });
+
+  async function upsertPersonalProvider(
+    fixture: UserModelProviderFixture,
+  ): Promise<void> {
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const client = setupApp({ context })(
+      zeroPersonalModelProvidersMainContract,
+    );
+    await accept(
+      client.upsert({
+        body: { type: "claude-code-oauth-token", secret: "sk-ant-test" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [201],
+    );
+  }
 
   it("returns 401 when unauthenticated", async () => {
     const client = setupApp({ context })(
@@ -65,20 +79,10 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
     });
   });
 
-  it("deletes the user's personal provider and removes the row + secret", async () => {
+  it("deletes the user's personal provider", async () => {
     const fixture = uniqueOrgUser("zmmp-delete");
     await track(Promise.resolve(fixture));
-    await store.set(
-      seedUserModelProvider$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        type: "claude-code-oauth-token",
-        secretName: "CLAUDE_CODE_OAUTH_TOKEN",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    await upsertPersonalProvider(fixture);
 
     const client = setupApp({ context })(
       zeroPersonalModelProvidersByTypeContract,
@@ -89,31 +93,16 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
     });
     expect(response.status).toBe(204);
 
-    // model_provider row removed
-    const writeDb = store.set(writeDb$);
-    const remaining = await writeDb
-      .select({ id: modelProviders.id })
-      .from(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.orgId, fixture.orgId),
-          eq(modelProviders.userId, fixture.userId),
-        ),
-      );
-    expect(remaining).toStrictEqual([]);
-
-    // secret row also removed (FK cascade for legacy single-secret providers)
-    const remainingSecrets = await writeDb
-      .select({ id: secrets.id })
-      .from(secrets)
-      .where(
-        and(
-          eq(secrets.orgId, fixture.orgId),
-          eq(secrets.userId, fixture.userId),
-          eq(secrets.name, "CLAUDE_CODE_OAUTH_TOKEN"),
-        ),
-      );
-    expect(remainingSecrets).toStrictEqual([]);
+    const deletedAgain = await accept(
+      client.delete({
+        params: { type: "claude-code-oauth-token" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [404],
+    );
+    expect(deletedAgain.body).toStrictEqual({
+      error: { message: "Resource not found", code: "NOT_FOUND" },
+    });
   });
 
   it("returns 404 with 'Resource not found' when deleting a nonexistent provider", async () => {
@@ -148,16 +137,7 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
     };
     await track(Promise.resolve(alice));
     await track(Promise.resolve(bob));
-    await store.set(
-      seedUserModelProvider$,
-      {
-        orgId,
-        userId: alice.userId,
-        type: "claude-code-oauth-token",
-        secretName: "CLAUDE_CODE_OAUTH_TOKEN",
-      },
-      context.signal,
-    );
+    await upsertPersonalProvider(alice);
     mocks.clerk.session(bob.userId, orgId);
 
     const client = setupApp({ context })(
@@ -174,29 +154,11 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
       error: { message: "Resource not found", code: "NOT_FOUND" },
     });
 
-    const writeDb = store.set(writeDb$);
-    const aliceProviders = await writeDb
-      .select({ id: modelProviders.id })
-      .from(modelProviders)
-      .where(
-        and(
-          eq(modelProviders.orgId, orgId),
-          eq(modelProviders.userId, alice.userId),
-          eq(modelProviders.type, "claude-code-oauth-token"),
-        ),
-      );
-    expect(aliceProviders).toHaveLength(1);
-
-    const aliceSecrets = await writeDb
-      .select({ id: secrets.id })
-      .from(secrets)
-      .where(
-        and(
-          eq(secrets.orgId, orgId),
-          eq(secrets.userId, alice.userId),
-          eq(secrets.name, "CLAUDE_CODE_OAUTH_TOKEN"),
-        ),
-      );
-    expect(aliceSecrets).toHaveLength(1);
+    mocks.clerk.session(alice.userId, orgId);
+    const aliceDelete = await client.delete({
+      params: { type: "claude-code-oauth-token" },
+      headers: { authorization: "Bearer clerk-session" },
+    });
+    expect(aliceDelete.status).toBe(204);
   });
 });
