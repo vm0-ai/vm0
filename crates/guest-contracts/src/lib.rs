@@ -8,3 +8,4 @@
 pub mod codex_thread_id;
 pub mod env;
 pub mod runtime_paths;
+pub mod session_history_identity;
