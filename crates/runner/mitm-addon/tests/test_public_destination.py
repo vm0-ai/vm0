@@ -16,8 +16,12 @@ import public_destination
         ("192.0.2.1", False),
         ("2001:4860:4860::8888", True),
         ("2001:db8::1", False),
+        ("[2001:4860:4860::8888]", True),
+        ("[::1]", False),
         ("2002::1", False),
         ("::ffff:93.184.216.34", False),
+        ("93.184.216.34 ", True),
+        (" service.example.com ", None),
         ("service.example.com", None),
     ],
 )

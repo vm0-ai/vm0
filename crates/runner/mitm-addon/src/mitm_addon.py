@@ -624,9 +624,19 @@ def _public_destination_runtime_hosts(flow: http.HTTPFlow) -> tuple[object, ...]
 
     server_address = _server_address(flow.server_conn)
     if server_address is not None:
-        return (server_address[0],)
+        return (_public_destination_endpoint_host_for_request(flow, server_address),)
 
     return (flow.request.host,)
+
+
+def _public_destination_endpoint_host_for_request(
+    flow: http.HTTPFlow,
+    endpoint: tuple[str, int],
+) -> str | None:
+    endpoint_host, endpoint_port = endpoint
+    if endpoint_port != flow.request.port:
+        return None
+    return endpoint_host
 
 
 def _public_destination_original_and_request_hosts(
@@ -635,7 +645,7 @@ def _public_destination_original_and_request_hosts(
 ) -> list[object]:
     hosts: list[object] = []
     if original_address is not None:
-        hosts.append(original_address[0])
+        hosts.append(_public_destination_endpoint_host_for_request(flow, original_address))
     if public_destination.public_ip_literal_is_public(flow.request.host) is not None:
         hosts.append(flow.request.host)
     return hosts

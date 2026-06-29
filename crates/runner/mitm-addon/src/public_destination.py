@@ -51,8 +51,11 @@ class RuntimeDestinationCheck:
 
 def public_ip_literal_is_public(hostname: str) -> bool | None:
     """Return public-IP status for an IP literal, or None when input is a hostname."""
+    ip_text = hostname.strip()
+    if ip_text.startswith("[") and ip_text.endswith("]"):
+        ip_text = ip_text[1:-1]
     try:
-        ip = ipaddress.ip_address(hostname)
+        ip = ipaddress.ip_address(ip_text)
     except ValueError:
         return None
     return _ip_address_is_public(ip)
