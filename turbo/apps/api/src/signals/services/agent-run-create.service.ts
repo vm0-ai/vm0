@@ -2430,7 +2430,7 @@ async function materializeStoredConnectorContext(
     return emptyConnectorRuntimeContext();
   }
 
-  const decryptRows = filterOverriddenStoredConnectorSecretRows({
+  const availableSecretRows = filterOverriddenStoredConnectorSecretRows({
     rows: snapshot.secretRows,
     bindingSets: snapshot.bindingSets,
     overriddenSecretAliases: args.overriddenSecretAliases,
@@ -2463,7 +2463,9 @@ async function materializeStoredConnectorContext(
     },
     {
       ...args.timingDimensions,
-      stored_connector_secret_count_bucket: countBucket(decryptRows.length),
+      stored_connector_secret_count_bucket: countBucket(
+        availableSecretRows.length,
+      ),
     },
   );
 }
