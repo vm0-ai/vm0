@@ -16,6 +16,7 @@ from body_limits import STREAM_BUFFER_LIMIT
 from tests.request_handler_helpers import (
     _single_firewall_vm,
     _vm_without_firewalls,
+    _write_github_firewall_registry,
     _write_registry,
 )
 from tests.requestheaders_helpers import await_requestheaders_result
@@ -394,23 +395,9 @@ async def test_api_allow_current_server_binding_mismatch_blocks_even_with_prior_
 async def test_firewall_allow_current_server_binding_address_mismatch_blocks(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    reg_path = _write_registry(
+    reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            api_entry={
-                "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-            network_policy={
-                "allow": ["full-access"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "allow",
-            },
-            vm_fields={"captureNetworkBodies": True},
-        ),
+        vm_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -944,23 +931,9 @@ def test_non_stream_requestheaders_probe_restores_request_metadata(tmp_path, rea
 async def test_capture_enabled_firewall_allow_header_auth_installs_request_stream(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, request_header_pairs
 ):
-    reg_path = _write_registry(
+    reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            api_entry={
-                "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-            network_policy={
-                "allow": ["full-access"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "allow",
-            },
-            vm_fields={"captureNetworkBodies": True},
-        ),
+        vm_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -995,23 +968,9 @@ async def test_capture_enabled_firewall_allow_header_auth_installs_request_strea
 async def test_firewall_allow_header_auth_requestheaders_falls_back_when_upstream_is_unbound(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    reg_path = _write_registry(
+    reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            api_entry={
-                "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-            network_policy={
-                "allow": ["full-access"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "allow",
-            },
-            vm_fields={"captureNetworkBodies": True},
-        ),
+        vm_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -1052,23 +1011,9 @@ async def test_firewall_allow_header_auth_requestheaders_falls_back_when_upstrea
 async def test_firewall_allow_header_auth_uses_connected_upstream_when_tls_verified(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    reg_path = _write_registry(
+    reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            api_entry={
-                "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-            network_policy={
-                "allow": ["full-access"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "allow",
-            },
-            vm_fields={"captureNetworkBodies": True},
-        ),
+        vm_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -1117,23 +1062,9 @@ async def test_firewall_allow_header_auth_uses_connected_upstream_when_tls_verif
 async def test_firewall_allow_header_auth_blocks_without_verified_connected_tls(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    reg_path = _write_registry(
+    reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            api_entry={
-                "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-            network_policy={
-                "allow": ["full-access"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "allow",
-            },
-            vm_fields={"captureNetworkBodies": True},
-        ),
+        vm_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -1177,23 +1108,9 @@ async def test_firewall_allow_header_auth_blocks_without_verified_connected_tls(
 async def test_firewall_allow_prior_client_binding_endpoint_mismatch_blocks(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    reg_path = _write_registry(
+    reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            api_entry={
-                "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-            network_policy={
-                "allow": ["full-access"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "allow",
-            },
-            vm_fields={"captureNetworkBodies": True},
-        ),
+        vm_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -1246,23 +1163,9 @@ async def test_firewall_allow_prior_client_binding_endpoint_mismatch_blocks(
 async def test_firewall_allow_prior_client_binding_endpoint_match_still_requires_tls(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    reg_path = _write_registry(
+    reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            api_entry={
-                "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-            network_policy={
-                "allow": ["full-access"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "allow",
-            },
-            vm_fields={"captureNetworkBodies": True},
-        ),
+        vm_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -1319,23 +1222,9 @@ async def test_firewall_allow_prior_client_binding_endpoint_match_still_requires
 async def test_firewall_allow_header_auth_requestheaders_retargets_unconnected_upstream(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    reg_path = _write_registry(
+    reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            api_entry={
-                "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-            network_policy={
-                "allow": ["full-access"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "allow",
-            },
-            vm_fields={"captureNetworkBodies": True},
-        ),
+        vm_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -1377,23 +1266,9 @@ async def test_firewall_allow_header_auth_requestheaders_retargets_unconnected_u
 def test_capture_enabled_firewall_allow_small_bounded_body_does_not_install_request_stream(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    reg_path = _write_registry(
+    reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            api_entry={
-                "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-            network_policy={
-                "allow": ["full-access"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "allow",
-            },
-            vm_fields={"captureNetworkBodies": True},
-        ),
+        vm_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -1419,23 +1294,9 @@ def test_capture_enabled_firewall_allow_small_bounded_body_does_not_install_requ
 async def test_firewall_allow_small_bounded_body_retargets_unconnected_upstream(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    reg_path = _write_registry(
+    reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            api_entry={
-                "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-            network_policy={
-                "allow": ["full-access"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "allow",
-            },
-            vm_fields={"captureNetworkBodies": True},
-        ),
+        vm_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -1471,23 +1332,9 @@ async def test_firewall_allow_small_bounded_body_retargets_unconnected_upstream(
 async def test_firewall_allow_small_bounded_body_uses_connected_upstream_when_tls_verified(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    reg_path = _write_registry(
+    reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            api_entry={
-                "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-            network_policy={
-                "allow": ["full-access"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "allow",
-            },
-            vm_fields={"captureNetworkBodies": True},
-        ),
+        vm_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -1531,23 +1378,9 @@ async def test_firewall_allow_small_bounded_body_uses_connected_upstream_when_tl
 async def test_firewall_allow_small_bounded_body_blocks_without_verified_connected_tls(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    reg_path = _write_registry(
+    reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            api_entry={
-                "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-            network_policy={
-                "allow": ["full-access"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "allow",
-            },
-            vm_fields={"captureNetworkBodies": True},
-        ),
+        vm_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -1589,23 +1422,7 @@ async def test_firewall_allow_small_bounded_body_blocks_without_verified_connect
 async def test_firewall_allow_unknown_body_length_retargets_unconnected_upstream(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
-    reg_path = _write_registry(
-        tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            api_entry={
-                "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-            network_policy={
-                "allow": ["full-access"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "allow",
-            },
-        ),
-    )
+    reg_path = _write_github_firewall_registry(tmp_path)
     flow = real_flow(
         with_response=False,
         client_ip="10.200.0.5",
@@ -1640,23 +1457,9 @@ async def test_firewall_allow_unknown_body_length_retargets_unconnected_upstream
 async def test_firewall_allow_header_auth_failure_falls_back_to_request_hook(
     tmp_path, real_flow, mitm_ctx, headers
 ):
-    reg_path = _write_registry(
+    reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            api_entry={
-                "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-            network_policy={
-                "allow": ["full-access"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "allow",
-            },
-            vm_fields={"captureNetworkBodies": True},
-        ),
+        vm_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,
@@ -1694,23 +1497,9 @@ async def test_firewall_allow_header_auth_failure_falls_back_to_request_hook(
 async def test_firewall_allow_header_auth_cancellation_restores_probe_state(
     tmp_path, real_flow, mitm_ctx, headers
 ):
-    reg_path = _write_registry(
+    reg_path = _write_github_firewall_registry(
         tmp_path,
-        vm_info=_single_firewall_vm(
-            tmp_path,
-            api_entry={
-                "base": "https://api.github.com",
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-            },
-            network_policy={
-                "allow": ["full-access"],
-                "deny": [],
-                "ask": [],
-                "unknownPolicy": "allow",
-            },
-            vm_fields={"captureNetworkBodies": True},
-        ),
+        vm_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
         with_response=False,

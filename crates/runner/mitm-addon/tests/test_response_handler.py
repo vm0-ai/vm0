@@ -28,8 +28,8 @@ from tests.jsonl_log_helpers import (
     read_jsonl_entries_after_flush,
 )
 from tests.request_handler_helpers import (
-    _single_firewall_vm,
     _vm_without_firewalls,
+    _write_github_firewall_registry,
     _write_registry,
 )
 from tests.requestheaders_helpers import await_requestheaders_result
@@ -1118,23 +1118,9 @@ class TestResponseHandler:
     async def test_firewalled_streamed_request_logs_size_and_capture_body(
         self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
     ):
-        reg_path = _write_registry(
+        reg_path = _write_github_firewall_registry(
             tmp_path,
-            vm_info=_single_firewall_vm(
-                tmp_path,
-                api_entry={
-                    "base": "https://api.github.com",
-                    "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                    "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-                },
-                network_policy={
-                    "allow": ["full-access"],
-                    "deny": [],
-                    "ask": [],
-                    "unknownPolicy": "allow",
-                },
-                vm_fields={"captureNetworkBodies": True},
-            ),
+            vm_fields={"captureNetworkBodies": True},
         )
         flow = real_flow(
             with_response=False,
@@ -1179,23 +1165,9 @@ class TestResponseHandler:
     async def test_firewalled_partial_streamed_request_marks_capture_truncated(
         self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
     ):
-        reg_path = _write_registry(
+        reg_path = _write_github_firewall_registry(
             tmp_path,
-            vm_info=_single_firewall_vm(
-                tmp_path,
-                api_entry={
-                    "base": "https://api.github.com",
-                    "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                    "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-                },
-                network_policy={
-                    "allow": ["full-access"],
-                    "deny": [],
-                    "ask": [],
-                    "unknownPolicy": "allow",
-                },
-                vm_fields={"captureNetworkBodies": True},
-            ),
+            vm_fields={"captureNetworkBodies": True},
         )
         flow = real_flow(
             with_response=False,
@@ -1234,23 +1206,9 @@ class TestResponseHandler:
     async def test_firewalled_empty_incomplete_streamed_request_marks_capture_truncated(
         self, tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
     ):
-        reg_path = _write_registry(
+        reg_path = _write_github_firewall_registry(
             tmp_path,
-            vm_info=_single_firewall_vm(
-                tmp_path,
-                api_entry={
-                    "base": "https://api.github.com",
-                    "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
-                    "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
-                },
-                network_policy={
-                    "allow": ["full-access"],
-                    "deny": [],
-                    "ask": [],
-                    "unknownPolicy": "allow",
-                },
-                vm_fields={"captureNetworkBodies": True},
-            ),
+            vm_fields={"captureNetworkBodies": True},
         )
         flow = real_flow(
             with_response=False,
