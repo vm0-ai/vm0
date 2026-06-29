@@ -503,7 +503,10 @@ exit 1
             "verify-rootfs.sh should declare readlink as a host dependency for safe symlink resolution"
         );
         assert!(
-            !VERIFY_SCRIPT.contains(r#"chroot "$MOUNT_DIR""#),
+            VERIFY_SCRIPT
+                .lines()
+                .filter(|line| !line.trim_start().starts_with('#'))
+                .all(|line| !line.contains("chroot")),
             "verify-rootfs.sh must not chroot into the image it is verifying"
         );
 
@@ -655,6 +658,7 @@ fi
         std::fs::create_dir_all(rootfs.path().join("bin")).unwrap();
         std::fs::create_dir_all(rootfs.path().join("usr/bin")).unwrap();
         symlink("/bin/bash", rootfs.path().join("bin/awk")).unwrap();
+        symlink("../../../../bin/bash", rootfs.path().join("bin/sh")).unwrap();
         let non_executable = rootfs.path().join("usr/bin/not-executable");
         std::fs::write(&non_executable, b"#!/bin/sh\n").unwrap();
         let mut perms = std::fs::metadata(&non_executable).unwrap().permissions();
@@ -674,6 +678,7 @@ assert_check_error() {{
   test "${{errors[0]}}" = "$expected"
 }}
 assert_check_error /bin/awk awk "awk not found or not executable at /bin/awk"
+assert_check_error /bin/sh sh "sh not found or not executable at /bin/sh"
 assert_check_error \
   /usr/bin/not-executable \
   not-executable \
