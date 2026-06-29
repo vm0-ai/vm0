@@ -2571,6 +2571,8 @@ def _release_terminal_flow_state(
     request_streaming.release_request_stream_state(flow)
     response_streaming.release_response_stream_state(flow)
     auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+    if flow.error is not None:
+        upstream_destination_binding.forget_server_binding(flow.server_conn)
     if release_tracking:
         _release_tracked_usage_flow(flow)
 
