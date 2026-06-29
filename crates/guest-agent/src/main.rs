@@ -12,6 +12,7 @@ use guest_agent::http::HttpClient;
 use guest_agent::masker;
 use guest_agent::metrics;
 use guest_agent::paths;
+use guest_agent::session_history_identity;
 use guest_agent::session_metadata;
 use guest_agent::telemetry::{Telemetry, UploadMode};
 
@@ -35,9 +36,33 @@ const CODEX_OAUTH_TOKEN_CONNECTOR: &str = "codex-oauth-token";
 
 #[tokio::main]
 async fn main() {
+    if let Some(exit_code) = helper_exit_code_from_args() {
+        std::process::exit(exit_code);
+    }
     guest_common::log::enable_system_log_file();
     let exit_code = run().await;
     std::process::exit(exit_code);
+}
+
+fn helper_exit_code_from_args() -> Option<i32> {
+    let mut args = std::env::args_os();
+    let _program = args.next()?;
+    let command = args.next()?;
+    if command != "verify-session-history-identity" {
+        return None;
+    }
+    let metadata_path = args
+        .next()
+        .unwrap_or_else(|| paths::final_session_history_identity_file().into());
+    if args.next().is_some() {
+        return Some(2);
+    }
+    Some(
+        match session_history_identity::verify_final_session_history_identity_file(metadata_path) {
+            Ok(()) => 0,
+            Err(_) => 1,
+        },
+    )
 }
 
 /// Top-level orchestrator. Returns exit code directly (never panics/errors out).

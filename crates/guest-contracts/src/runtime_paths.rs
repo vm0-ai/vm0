@@ -154,6 +154,11 @@ pub fn checkpoint_error_file(run_dir: impl AsRef<Path>) -> PathBuf {
     file(run_dir, "checkpoint-error")
 }
 
+/// Return the run-root `final-session-history-identity.json` file.
+pub fn final_session_history_identity_file(run_dir: impl AsRef<Path>) -> PathBuf {
+    file(run_dir, "final-session-history-identity.json")
+}
+
 /// Return the run-root `failure-diagnostic.json` file.
 pub fn failure_diagnostic_file(run_dir: impl AsRef<Path>) -> PathBuf {
     file(run_dir, "failure-diagnostic.json")
@@ -874,6 +879,7 @@ mod tests {
             session_history_marker_file(&run_dir),
             event_error_file(&run_dir),
             checkpoint_error_file(&run_dir),
+            final_session_history_identity_file(&run_dir),
             failure_diagnostic_file(&run_dir),
             system_log_file(&run_dir),
             agent_log_file(&run_dir),
