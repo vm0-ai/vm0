@@ -94,6 +94,7 @@ def _write_auth_base_firewall_registry(
 def _write_public_destination_firewall_registry(
     tmp_path,
     *,
+    auth_config: dict[str, object] | None = None,
     vm_fields: dict[str, object] | None = None,
 ):
     return _write_registry(
@@ -104,7 +105,8 @@ def _write_public_destination_firewall_registry(
             api_entry={
                 "base": "https://service.example.com",
                 "hostPolicy": {"kind": "publicDestination"},
-                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.EXAMPLE_TOKEN }}"}},
+                "auth": auth_config
+                or {"headers": {"Authorization": "Bearer ${{ secrets.EXAMPLE_TOKEN }}"}},
                 "permissions": [{"name": "call", "rules": ["ANY /{path+}"]}],
             },
             network_policy={
@@ -480,6 +482,46 @@ async def test_public_destination_revalidates_connected_peer_after_requestheader
         destination_host="10.0.0.1",
         reason="non_public_destination",
     )
+
+
+async def test_public_destination_revalidates_cached_auth_base_classification(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_public_destination_firewall_registry(
+        tmp_path,
+        auth_config={"headers": {}, "base": "${{ secrets.WEBHOOK_URL }}"},
+    )
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="93.184.216.34",
+        method="POST",
+        extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        assert mitm_addon.requestheaders(flow) is None
+        assert mitm_addon._REQUEST_CLASSIFICATION in flow.metadata
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
+            1,
+            mitm_addon.STREAM_BUFFER_LIMIT + 1,
+        )
+
+        flow.server_conn.peername = ("10.0.0.1", 443)
+        flow.server_conn.state = connection.ConnectionState.OPEN
+        flow.server_conn.sni = "service.example.com"
+        flow.server_conn.timestamp_tls_setup = 1.0
+        flow.server_conn.certificate_list = (object(),)
+        flow.server_conn.error = None
+
+        await mitm_addon.request(flow)
+
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
 
 @pytest.mark.parametrize("request_stream", [False, True])
