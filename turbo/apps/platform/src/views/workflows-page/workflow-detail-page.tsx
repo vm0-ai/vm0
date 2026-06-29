@@ -1,12 +1,14 @@
 // Agent-scoped workflow detail at /agents/:agentId/workflows/:workflowId. Hosts
 // the instruction editor, supplementary file manager (SKILL.md is never shown),
 // triggers, visibility controls, metadata editing, slash use, copy, and delete.
-import type { FormEvent, ReactNode } from "react";
+import { useState, type FormEvent, type ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type {
   GmailLabelAppliedEventConfig,
   GmailNewMessageEventConfig,
+  GithubLabelAppliedEventConfig,
+  GithubLabelAppliedSubjectFilter,
   WorkflowFileEntry,
   WorkflowFileMetadata,
   ZeroWorkflowDetailResponse,
@@ -17,6 +19,7 @@ import type {
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
   IconAlertTriangle,
+  IconBrandGithub,
   IconChevronDown,
   IconClock,
   IconCopy,
@@ -63,6 +66,7 @@ import { agents$ } from "../../signals/agent.ts";
 import { user$ } from "../../signals/auth.ts";
 import {
   changeWorkflowVisibility$,
+  createWorkflowGithubLabelAppliedTrigger$,
   createWorkflowGmailLabelAppliedTrigger$,
   createWorkflowGmailNewMessageTrigger$,
   createWorkflowWebhookTrigger$,
@@ -92,6 +96,7 @@ import {
   setWorkflowFileDraft$,
   setWorkflowTriggerCreateDialog$,
   setWorkflowTriggerEnabled$,
+  updateWorkflowGithubLabelAppliedTrigger$,
   updateWorkflowGmailNewMessageTrigger$,
   updateWorkflowGmailLabelAppliedTrigger$,
   updateWorkflowScheduleTrigger$,
@@ -116,6 +121,10 @@ import { ROUTES } from "../../signals/route-paths.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { writeToClipboard } from "../../signals/zero-page/clipboard.ts";
+import {
+  connectGithubInstallation$,
+  githubIntegrationData$,
+} from "../../signals/zero-page/zero-github.ts";
 import {
   atTimeInTimezone,
   buildCronExpression,
@@ -164,6 +173,13 @@ type GmailWorkflowTriggerSummary = Extract<
     readonly eventType: "gmail-new-message" | "gmail-label-applied";
   }
 >;
+type GithubWorkflowTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  {
+    readonly kind: "event";
+    readonly eventType: "github-label-applied";
+  }
+>;
 type WebhookWorkflowTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
@@ -178,6 +194,23 @@ const GMAIL_TEXT_FIELDS: readonly {
   { field: "body", label: "Body" },
   { field: "to", label: "To" },
   { field: "cc", label: "Cc" },
+];
+
+const GITHUB_SUBJECT_OPTIONS: readonly {
+  readonly value: GithubLabelAppliedSubjectFilter;
+  readonly label: string;
+}[] = [
+  { value: "both", label: "Issues and pull requests" },
+  { value: "issues", label: "Issues only" },
+  { value: "pull_requests", label: "Pull requests only" },
+];
+
+const GITHUB_ACTOR_OPTIONS: readonly {
+  readonly value: "me" | "anyone";
+  readonly label: string;
+}[] = [
+  { value: "me", label: "Me" },
+  { value: "anyone", label: "Anyone" },
 ];
 
 const WORKFLOW_CRON_FREQUENCY_OPTIONS: readonly {
@@ -231,6 +264,14 @@ function isGmailWorkflowTrigger(
     trigger.kind === "event" &&
     (trigger.eventType === "gmail-new-message" ||
       trigger.eventType === "gmail-label-applied")
+  );
+}
+
+function isGithubWorkflowTrigger(
+  trigger: ZeroWorkflowTriggerSummary,
+): trigger is GithubWorkflowTriggerSummary {
+  return (
+    trigger.kind === "event" && trigger.eventType === "github-label-applied"
   );
 }
 
@@ -1913,6 +1954,53 @@ function buildGmailLabelAppliedEventConfig(
   };
 }
 
+function githubSubjectFilterValue(
+  value: FormDataEntryValue | null,
+  fallback: GithubLabelAppliedSubjectFilter,
+): GithubLabelAppliedSubjectFilter {
+  if (value === "both" || value === "issues" || value === "pull_requests") {
+    return value;
+  }
+  return fallback;
+}
+
+function githubActorFilterValue(
+  value: FormDataEntryValue | null,
+  fallback: "me" | "anyone",
+): "me" | "anyone" {
+  if (value === "me" || value === "anyone") {
+    return value;
+  }
+  return fallback;
+}
+
+function buildGithubLabelAppliedEventConfig(
+  form: FormData,
+  baseConfig?: GithubLabelAppliedEventConfig,
+): GithubLabelAppliedEventConfig | null {
+  const labelName = formTextValue(form, "labelName") ?? baseConfig?.labelName;
+  if (!labelName) {
+    return null;
+  }
+  return {
+    provider: "github",
+    event: "label_applied",
+    labelName,
+    filters: {
+      subject: githubSubjectFilterValue(
+        form.get("subject"),
+        baseConfig?.filters.subject ?? "both",
+      ),
+      actor: {
+        type: githubActorFilterValue(
+          form.get("actor"),
+          baseConfig?.filters.actor.type ?? "me",
+        ),
+      },
+    },
+  };
+}
+
 function quote(value: string): string {
   return `"${value}"`;
 }
@@ -1969,6 +2057,9 @@ function workflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "gmail-label-applied") {
     return "Gmail label applied";
   }
+  if (trigger.eventType === "github-label-applied") {
+    return "GitHub label applied";
+  }
   return "Webhook";
 }
 
@@ -1983,6 +2074,15 @@ function workflowTriggerSummary(
   }
   if (trigger.eventType === "gmail-label-applied") {
     return `Label ${quote(trigger.eventConfig.labelName)}`;
+  }
+  if (trigger.eventType === "github-label-applied") {
+    const subject =
+      GITHUB_SUBJECT_OPTIONS.find((option) => {
+        return option.value === trigger.eventConfig.filters.subject;
+      })?.label ?? "Issues and pull requests";
+    const actor =
+      trigger.eventConfig.filters.actor.type === "me" ? "me" : "anyone";
+    return `Label ${quote(trigger.eventConfig.labelName)} · ${subject} · Actor ${actor}`;
   }
   return null;
 }
@@ -2000,13 +2100,16 @@ type TriggerCreateDialogKind =
   | "scheduled"
   | "gmail"
   | "gmail-label"
+  | "github-label"
   | "webhook";
 
 function TriggerCreateMenu({
   onSelect,
+  githubLabelTriggersEnabled,
   webhookTriggersEnabled,
 }: {
   readonly onSelect: (kind: TriggerCreateDialogKind) => void;
+  readonly githubLabelTriggersEnabled: boolean;
   readonly webhookTriggersEnabled: boolean;
 }) {
   return (
@@ -2095,6 +2198,28 @@ function TriggerCreateMenu({
             </span>
           </span>
         </DropdownMenuItem>
+        {githubLabelTriggersEnabled ? (
+          <DropdownMenuItem
+            className="items-start gap-2 py-2"
+            onSelect={() => {
+              onSelect("github-label");
+            }}
+          >
+            <IconBrandGithub
+              size={15}
+              stroke={1.5}
+              className="mt-0.5 shrink-0 text-muted-foreground"
+            />
+            <span className="min-w-0">
+              <span className="block text-sm font-medium">
+                GitHub label applied
+              </span>
+              <span className="block text-xs text-muted-foreground">
+                Run when an issue or pull request gets a label.
+              </span>
+            </span>
+          </DropdownMenuItem>
+        ) : null}
         {webhookTriggersEnabled ? (
           <DropdownMenuItem
             className="items-start gap-2 py-2"
@@ -2136,6 +2261,8 @@ function TriggersSection({
   const triggers = detail.triggers;
   const webhookTriggersEnabled =
     features[FeatureSwitchKey.WorkflowWebhookTriggers] ?? false;
+  const githubLabelTriggersEnabled =
+    features[FeatureSwitchKey.WorkflowGithubLabelEventTriggers] ?? false;
 
   return (
     <section className="mx-auto flex max-w-[900px] flex-col gap-3">
@@ -2148,6 +2275,7 @@ function TriggersSection({
         </div>
         <TriggerCreateMenu
           onSelect={setCreateDialog}
+          githubLabelTriggersEnabled={githubLabelTriggersEnabled}
           webhookTriggersEnabled={webhookTriggersEnabled}
         />
       </div>
@@ -2196,6 +2324,13 @@ function TriggersSection({
         open={createDialog === "gmail-label"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "gmail-label" : null);
+        }}
+      />
+      <CreateGithubLabelAppliedTriggerDialog
+        workflowId={detail.id}
+        open={createDialog === "github-label"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "github-label" : null);
         }}
       />
       <CreateWebhookTriggerDialog
@@ -2953,6 +3088,224 @@ function CreateGmailLabelAppliedTriggerDialog({
   );
 }
 
+function GithubLabelTriggerFields({
+  disabled,
+  actor,
+  defaultConfig,
+  onActorChange,
+}: {
+  readonly disabled: boolean;
+  readonly actor: "me" | "anyone";
+  readonly defaultConfig?: GithubLabelAppliedEventConfig;
+  readonly onActorChange: (actor: "me" | "anyone") => void;
+}) {
+  return (
+    <div className="flex flex-col gap-3">
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Label name
+        <input
+          name="labelName"
+          aria-label="GitHub label name"
+          required
+          disabled={disabled}
+          defaultValue={defaultConfig?.labelName ?? ""}
+          placeholder="triage"
+          className={FIELD_CLASS}
+        />
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Subject
+        <Select
+          name="subject"
+          defaultValue={defaultConfig?.filters.subject ?? "both"}
+          disabled={disabled}
+        >
+          <SelectTrigger className="h-9 w-full" aria-label="Subject">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {GITHUB_SUBJECT_OPTIONS.map((option) => {
+              return (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      </label>
+      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        Triggered by
+        <Select
+          name="actor"
+          value={actor}
+          disabled={disabled}
+          onValueChange={(value) => {
+            onActorChange(value === "anyone" ? "anyone" : "me");
+          }}
+        >
+          <SelectTrigger className="h-9 w-full" aria-label="Triggered by">
+            <SelectValue />
+          </SelectTrigger>
+          <SelectContent>
+            {GITHUB_ACTOR_OPTIONS.map((option) => {
+              return (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              );
+            })}
+          </SelectContent>
+        </Select>
+      </label>
+    </div>
+  );
+}
+
+function CreateGithubLabelAppliedTriggerDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const githubLoadable = useLoadable(githubIntegrationData$);
+  const githubData =
+    githubLoadable.state === "hasData" ? githubLoadable.data : null;
+  const [actor, setActor] = useState<"me" | "anyone">("me");
+  const [createLoadable, createGithubLabelTrigger] = useLoadableSet(
+    createWorkflowGithubLabelAppliedTrigger$,
+  );
+  const [connectLoadable, connectGithub] = useLoadableSet(
+    connectGithubInstallation$,
+  );
+  const creating = createLoadable.state === "loading";
+  const connecting = connectLoadable.state === "loading";
+  const loadingGithub = githubLoadable.state === "loading";
+  const githubLoadError = githubLoadable.state === "hasError";
+  const isInstalled = githubData?.isInstalled ?? false;
+  const needsConnection =
+    isInstalled && actor === "me" && !githubData?.isConnected;
+  const submitDisabled =
+    creating ||
+    loadingGithub ||
+    githubLoadError ||
+    !isInstalled ||
+    needsConnection;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (nextOpen) {
+          setActor("me");
+        }
+        onOpenChange(nextOpen);
+      }}
+    >
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add GitHub label trigger</DialogTitle>
+          <DialogDescription>
+            Run this workflow when a GitHub label is applied.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label="Add GitHub label trigger"
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            const eventConfig = buildGithubLabelAppliedEventConfig(form);
+            if (!eventConfig) {
+              return;
+            }
+            detach(
+              (async () => {
+                await createGithubLabelTrigger(
+                  { workflowId, eventConfig },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <GithubLabelTriggerFields
+            disabled={creating || loadingGithub || githubLoadError}
+            actor={actor}
+            onActorChange={setActor}
+          />
+          {githubLoadable.state === "hasData" && !isInstalled ? (
+            <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              GitHub is not installed for this workspace.
+              <Button
+                asChild
+                type="button"
+                variant="link"
+                className="ml-1 h-auto p-0 text-xs"
+              >
+                <Link pathname={ROUTES.works} title="Open integrations">
+                  Open integrations
+                </Link>
+              </Button>
+            </div>
+          ) : null}
+          {needsConnection ? (
+            <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              Connect your GitHub account to use Me.
+              <Button
+                type="button"
+                variant="link"
+                disabled={connecting}
+                className="ml-1 h-auto p-0 text-xs"
+                onClick={() => {
+                  if (!githubData) {
+                    return;
+                  }
+                  detach(
+                    connectGithub(githubData.connectUrl, pageSignal),
+                    Reason.DomCallback,
+                  );
+                }}
+              >
+                Connect GitHub
+              </Button>
+            </div>
+          ) : null}
+          {githubLoadError ? (
+            <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+              GitHub settings could not be loaded.
+            </div>
+          ) : null}
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={submitDisabled}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : null}
+              Add label trigger
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function CreateWebhookTriggerDialog({
   workflowId,
   open,
@@ -3356,7 +3709,11 @@ function TriggerControls({
 }
 
 function canEditWorkflowTrigger(trigger: ZeroWorkflowTriggerSummary): boolean {
-  return trigger.kind === "schedule" || isGmailWorkflowTrigger(trigger);
+  return (
+    trigger.kind === "schedule" ||
+    isGmailWorkflowTrigger(trigger) ||
+    isGithubWorkflowTrigger(trigger)
+  );
 }
 
 function editWorkflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
@@ -3364,9 +3721,10 @@ function editWorkflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
     return "Edit schedule";
   }
 
-  return trigger.eventType === "gmail-label-applied"
-    ? "Edit label"
-    : "Edit match";
+  if (trigger.eventType === "gmail-new-message") {
+    return "Edit match";
+  }
+  return "Edit label";
 }
 
 function EditWorkflowTriggerDialog({
@@ -3387,7 +3745,11 @@ function EditWorkflowTriggerDialog({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent
-        className={isGmailWorkflowTrigger(trigger) ? "max-w-2xl" : ""}
+        className={
+          trigger.kind === "event" && trigger.eventType === "gmail-new-message"
+            ? "max-w-2xl"
+            : ""
+        }
       >
         <DialogHeader>
           <DialogTitle>{editWorkflowTriggerTitle(trigger)}</DialogTitle>
@@ -3410,6 +3772,13 @@ function EditWorkflowTriggerDialog({
         {trigger.kind === "event" &&
         trigger.eventType === "gmail-label-applied" ? (
           <UpdateGmailLabelAppliedTriggerForm
+            trigger={trigger}
+            onCancel={close}
+          />
+        ) : null}
+        {trigger.kind === "event" &&
+        trigger.eventType === "github-label-applied" ? (
+          <UpdateGithubLabelAppliedTriggerForm
             trigger={trigger}
             onCancel={close}
           />
@@ -3671,6 +4040,142 @@ function UpdateGmailLabelAppliedTriggerForm({
             <IconLoader2 size={13} className="animate-spin" />
           ) : (
             <IconMail size={13} stroke={1.5} />
+          )}
+          <span>Save label</span>
+        </Button>
+      </DialogFooter>
+    </form>
+  );
+}
+
+function UpdateGithubLabelAppliedTriggerForm({
+  trigger,
+  onCancel,
+}: {
+  readonly trigger: Extract<
+    ZeroWorkflowTriggerSummary,
+    { eventType: "github-label-applied" }
+  >;
+  readonly onCancel: () => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const githubLoadable = useLoadable(githubIntegrationData$);
+  const githubData =
+    githubLoadable.state === "hasData" ? githubLoadable.data : null;
+  const [actor, setActor] = useState<"me" | "anyone">(
+    trigger.eventConfig.filters.actor.type,
+  );
+  const [updateLoadable, updateGithubLabelTrigger] = useLoadableSet(
+    updateWorkflowGithubLabelAppliedTrigger$,
+  );
+  const [connectLoadable, connectGithub] = useLoadableSet(
+    connectGithubInstallation$,
+  );
+  const saving = updateLoadable.state === "loading";
+  const connecting = connectLoadable.state === "loading";
+  const loadingGithub = githubLoadable.state === "loading";
+  const githubLoadError = githubLoadable.state === "hasError";
+  const isInstalled = githubData?.isInstalled ?? false;
+  const needsConnection =
+    isInstalled && actor === "me" && !githubData?.isConnected;
+  const submitDisabled =
+    saving ||
+    loadingGithub ||
+    githubLoadError ||
+    !isInstalled ||
+    needsConnection;
+
+  return (
+    <form
+      aria-label="Update GitHub label trigger"
+      className="flex flex-col gap-4"
+      onSubmit={(event) => {
+        event.preventDefault();
+        const form = new FormData(event.currentTarget);
+        const eventConfig = buildGithubLabelAppliedEventConfig(
+          form,
+          trigger.eventConfig,
+        );
+        if (!eventConfig) {
+          return;
+        }
+        detach(
+          (async () => {
+            await updateGithubLabelTrigger(
+              {
+                triggerId: trigger.id,
+                eventConfig,
+              },
+              pageSignal,
+            );
+            onCancel();
+          })(),
+          Reason.DomCallback,
+        );
+      }}
+    >
+      <GithubLabelTriggerFields
+        disabled={saving || loadingGithub || githubLoadError}
+        actor={actor}
+        defaultConfig={trigger.eventConfig}
+        onActorChange={setActor}
+      />
+      {githubLoadable.state === "hasData" && !isInstalled ? (
+        <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          GitHub is not installed for this workspace.
+          <Button
+            asChild
+            type="button"
+            variant="link"
+            className="ml-1 h-auto p-0 text-xs"
+          >
+            <Link pathname={ROUTES.works} title="Open integrations">
+              Open integrations
+            </Link>
+          </Button>
+        </div>
+      ) : null}
+      {needsConnection ? (
+        <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          Connect your GitHub account to use Me.
+          <Button
+            type="button"
+            variant="link"
+            disabled={connecting}
+            className="ml-1 h-auto p-0 text-xs"
+            onClick={() => {
+              if (!githubData) {
+                return;
+              }
+              detach(
+                connectGithub(githubData.connectUrl, pageSignal),
+                Reason.DomCallback,
+              );
+            }}
+          >
+            Connect GitHub
+          </Button>
+        </div>
+      ) : null}
+      {githubLoadError ? (
+        <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+          GitHub settings could not be loaded.
+        </div>
+      ) : null}
+      <DialogFooter>
+        <Button
+          type="button"
+          variant="outline"
+          disabled={saving}
+          onClick={onCancel}
+        >
+          Cancel
+        </Button>
+        <Button type="submit" disabled={submitDisabled}>
+          {saving ? (
+            <IconLoader2 size={13} className="animate-spin" />
+          ) : (
+            <IconBrandGithub size={13} stroke={1.5} />
           )}
           <span>Save label</span>
         </Button>

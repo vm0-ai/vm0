@@ -6,6 +6,7 @@ import {
   zeroWorkflowVisibilityContract,
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
+  type GithubLabelAppliedEventConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowSummary,
@@ -34,6 +35,7 @@ type WorkflowTriggerCreateDialog =
   | "scheduled"
   | "gmail"
   | "gmail-label"
+  | "github-label"
   | "webhook"
   | null;
 type WorkflowWebhookTriggerSummary = Extract<
@@ -595,6 +597,33 @@ export const createWorkflowGmailLabelAppliedTrigger$ = command(
   },
 );
 
+export const createWorkflowGithubLabelAppliedTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: GithubLabelAppliedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "github-label-applied",
+          eventConfig: input.eventConfig,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
 export const createWorkflowWebhookTrigger$ = command(
   async (
     { get },
@@ -658,6 +687,29 @@ export const updateWorkflowGmailLabelAppliedTrigger$ = command(
     input: {
       readonly triggerId: string;
       readonly eventConfig: GmailLabelAppliedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.update({
+        params: { id: input.triggerId },
+        body: { eventConfig: input.eventConfig },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const updateWorkflowGithubLabelAppliedTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly triggerId: string;
+      readonly eventConfig: GithubLabelAppliedEventConfig;
     },
     signal: AbortSignal,
   ) => {

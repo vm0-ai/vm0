@@ -284,6 +284,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.WorkflowGithubLabelEventTriggers]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Allow GitHub label workflow event triggers. Matching GitHub issue and pull request label events run the linked workflow.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.WorkflowWebhookTriggers]: {
     maintainer: "lancy@vm0.ai",
     description:

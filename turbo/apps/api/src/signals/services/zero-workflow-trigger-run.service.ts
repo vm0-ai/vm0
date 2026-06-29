@@ -210,7 +210,7 @@ export const runWorkflowTriggerNow$ = command(
     const db = set(writeDb$);
     const { trigger, agentId, workflowName, chatThreadId } = args.due;
 
-    if (trigger.lastRunId) {
+    if (args.recordLastRunId !== false && trigger.lastRunId) {
       const [lastRun] = await db
         .select({ status: agentRuns.status })
         .from(agentRuns)

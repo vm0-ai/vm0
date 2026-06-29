@@ -10,6 +10,8 @@ import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
 import { gmailWatchStates } from "@vm0/db/schema/gmail-event";
+import { githubInstallations } from "@vm0/db/schema/github-installation";
+import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -156,6 +158,58 @@ async function enableWebhookWorkflowTriggers(
     });
 }
 
+async function enableGithubWorkflowTriggers(
+  fixture: WorkflowsFixture,
+): Promise<void> {
+  await store
+    .set(writeDb$)
+    .insert(userFeatureSwitches)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      switches: { [FeatureSwitchKey.WorkflowGithubLabelEventTriggers]: true },
+    });
+}
+
+async function seedGithubInstallation(args: {
+  readonly fixture: WorkflowsFixture;
+  readonly composeId: string;
+  readonly installationId?: string;
+}): Promise<string> {
+  const [installation] = await store
+    .set(writeDb$)
+    .insert(githubInstallations)
+    .values({
+      installationId: args.installationId ?? `github-${randomUUID()}`,
+      status: "active",
+      orgId: args.fixture.orgId,
+      targetType: "Organization",
+      targetId: "12345",
+      targetName: "vm0-ai",
+      defaultComposeId: args.composeId,
+    })
+    .returning({ id: githubInstallations.id });
+  if (!installation) {
+    throw new Error("Expected GitHub installation to be created");
+  }
+  return installation.id;
+}
+
+async function seedGithubUserLink(args: {
+  readonly installationId: string;
+  readonly userId: string;
+  readonly githubUserId?: string;
+}): Promise<void> {
+  await store
+    .set(writeDb$)
+    .insert(githubUserLinks)
+    .values({
+      installationId: args.installationId,
+      vm0UserId: args.userId,
+      githubUserId: args.githubUserId ?? "101",
+    });
+}
+
 async function seedGmailConnector(fixture: WorkflowsFixture): Promise<string> {
   const db = store.set(writeDb$);
   const [connector] = await db
@@ -222,6 +276,9 @@ describe("zero workflow triggers", () => {
     const db = store.set(writeDb$);
     await db.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
     await db.delete(connectors).where(eq(connectors.orgId, fixture.orgId));
+    await db
+      .delete(githubInstallations)
+      .where(eq(githubInstallations.orgId, fixture.orgId));
     await store.set(deleteWorkflowsForFixture$, fixture, context.signal);
   });
 
@@ -908,6 +965,133 @@ describe("zero workflow triggers", () => {
       event: "label_applied",
       labelName: "Escalated",
       resolvedLabelId: "Label_escalated",
+    });
+  });
+
+  it("creates and updates GitHub label applied triggers", async () => {
+    const { fixture, agentId, workflowId } = await setupFixture();
+    await enableGithubWorkflowTriggers(fixture);
+    const installationId = await seedGithubInstallation({
+      fixture,
+      composeId: agentId,
+    });
+    await seedGithubUserLink({
+      installationId,
+      userId: fixture.userId,
+      githubUserId: "101",
+    });
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "github-label-applied",
+          eventConfig: {
+            provider: "github",
+            event: "label_applied",
+            labelName: "triage",
+            filters: {
+              subject: "pull_requests",
+              actor: { type: "me" },
+            },
+          },
+        },
+      }),
+      [201],
+    );
+
+    expect(created.body).toMatchObject({
+      kind: "event",
+      eventType: "github-label-applied",
+      eventConfig: {
+        provider: "github",
+        event: "label_applied",
+        labelName: "triage",
+        filters: {
+          subject: "pull_requests",
+          actor: { type: "me" },
+        },
+      },
+      schedule: null,
+      scheduleSummary: null,
+      enabled: true,
+      nextRunAt: null,
+    });
+
+    const updated = await accept(
+      triggersClient().update({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+        body: {
+          eventConfig: {
+            provider: "github",
+            event: "label_applied",
+            labelName: "Escalated",
+            filters: {
+              subject: "issues",
+              actor: { type: "anyone" },
+            },
+          },
+        },
+      }),
+      [200],
+    );
+
+    expect(updated.body.kind).toBe("event");
+    if (
+      updated.body.kind !== "event" ||
+      updated.body.eventType !== "github-label-applied"
+    ) {
+      throw new Error("Expected a GitHub label applied trigger");
+    }
+    expect(updated.body.eventConfig).toStrictEqual({
+      provider: "github",
+      event: "label_applied",
+      labelName: "Escalated",
+      filters: {
+        subject: "issues",
+        actor: { type: "anyone" },
+      },
+    });
+  });
+
+  it("rejects GitHub label applied triggers with actor me when GitHub user is not connected", async () => {
+    const { fixture, agentId, workflowId } = await setupFixture();
+    await enableGithubWorkflowTriggers(fixture);
+    await seedGithubInstallation({
+      fixture,
+      composeId: agentId,
+    });
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "github-label-applied",
+          eventConfig: {
+            provider: "github",
+            event: "label_applied",
+            labelName: "triage",
+            filters: {
+              subject: "both",
+              actor: { type: "me" },
+            },
+          },
+        },
+      }),
+      [400],
+    );
+
+    expect(created.body).toStrictEqual({
+      error: {
+        code: "BAD_REQUEST",
+        message:
+          "Connect your GitHub account before using Triggered by me for GitHub label workflow triggers",
+      },
     });
   });
 

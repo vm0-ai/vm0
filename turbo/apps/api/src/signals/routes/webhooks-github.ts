@@ -118,7 +118,11 @@ const postGithubWebhook$ = command(
         tapError(
           set(
             handleGithubIssuesEvent$,
-            { payload: parsed.data, apiStartTime },
+            {
+              payload: parsed.data,
+              deliveryId: headers.deliveryId,
+              apiStartTime,
+            },
             signal,
           ),
           (error) => {
@@ -142,7 +146,11 @@ const postGithubWebhook$ = command(
         tapError(
           set(
             handleGithubPullRequestEvent$,
-            { payload: parsed.data, apiStartTime },
+            {
+              payload: parsed.data,
+              deliveryId: headers.deliveryId,
+              apiStartTime,
+            },
             signal,
           ),
           (error) => {

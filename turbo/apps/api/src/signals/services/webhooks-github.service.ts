@@ -38,6 +38,8 @@ import {
   githubIssuesCallbackPayloadSchema,
   type GitHubIssuesCallbackPayload,
 } from "./github-issues-callback-payload";
+import { dispatchGithubLabelWorkflowTriggers$ } from "./github-workflow-event.service";
+import { isAbortError } from "../utils";
 
 const L = logger("WebhookGithub");
 const RUN_START_FALLBACK_MESSAGE =
@@ -1282,6 +1284,7 @@ interface LabelTriggerEventParams {
     readonly label: z.infer<typeof gitHubLabelSchema> | undefined;
     readonly repository: z.infer<typeof gitHubRepositorySchema>;
     readonly installation: z.infer<typeof gitHubInstallationRefSchema>;
+    readonly sender: z.infer<typeof gitHubUserSchema>;
   };
   readonly subjectKind: GitHubTriggerKind;
   readonly apiStartTime: number;
@@ -1370,19 +1373,45 @@ export const handleGithubIssuesEvent$ = command(
     { set },
     args: {
       readonly payload: GitHubIssuesEvent;
+      readonly deliveryId: string;
       readonly apiStartTime: number;
     },
     signal: AbortSignal,
   ): Promise<void> => {
+    try {
+      await set(
+        dispatchMatchingLabelListener$,
+        {
+          payload: {
+            action: args.payload.action,
+            issue: args.payload.issue,
+            label: args.payload.label,
+            repository: args.payload.repository,
+            installation: args.payload.installation,
+            sender: args.payload.sender,
+          },
+          subjectKind: "issue",
+          apiStartTime: args.apiStartTime,
+        },
+        signal,
+      );
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+      L.error("Error dispatching GitHub label listener", { error });
+    }
     await set(
-      dispatchMatchingLabelListener$,
+      dispatchGithubLabelWorkflowTriggers$,
       {
+        deliveryId: args.deliveryId,
         payload: {
           action: args.payload.action,
           issue: args.payload.issue,
           label: args.payload.label,
           repository: args.payload.repository,
           installation: args.payload.installation,
+          sender: args.payload.sender,
         },
         subjectKind: "issue",
         apiStartTime: args.apiStartTime,
@@ -1397,19 +1426,45 @@ export const handleGithubPullRequestEvent$ = command(
     { set },
     args: {
       readonly payload: GitHubPullRequestEvent;
+      readonly deliveryId: string;
       readonly apiStartTime: number;
     },
     signal: AbortSignal,
   ): Promise<void> => {
+    try {
+      await set(
+        dispatchMatchingLabelListener$,
+        {
+          payload: {
+            action: args.payload.action,
+            issue: args.payload.pull_request,
+            label: args.payload.label,
+            repository: args.payload.repository,
+            installation: args.payload.installation,
+            sender: args.payload.sender,
+          },
+          subjectKind: "pull_request",
+          apiStartTime: args.apiStartTime,
+        },
+        signal,
+      );
+    } catch (error) {
+      if (isAbortError(error)) {
+        throw error;
+      }
+      L.error("Error dispatching GitHub label listener", { error });
+    }
     await set(
-      dispatchMatchingLabelListener$,
+      dispatchGithubLabelWorkflowTriggers$,
       {
+        deliveryId: args.deliveryId,
         payload: {
           action: args.payload.action,
           issue: args.payload.pull_request,
           label: args.payload.label,
           repository: args.payload.repository,
           installation: args.payload.installation,
+          sender: args.payload.sender,
         },
         subjectKind: "pull_request",
         apiStartTime: args.apiStartTime,

@@ -39,6 +39,7 @@ const OTHER_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000203";
 const PENDING_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000204";
 const GMAIL_TRIGGER_ID = "workflow-trigger-gmail-new-message";
 const GMAIL_LABEL_TRIGGER_ID = "workflow-trigger-gmail-label-applied";
+const GITHUB_LABEL_TRIGGER_ID = "workflow-trigger-github-label-applied";
 const WORKFLOW_CHAT_THREAD_ID = "00000000-0000-4000-a000-000000000300";
 const TRIGGER_RUN_THREAD_ID = "00000000-0000-4000-a000-000000000301";
 
@@ -63,6 +64,10 @@ type WorkflowWebhookTriggerSummary = Extract<
 type WorkflowGmailLabelAppliedTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { kind: "event"; eventType: "gmail-label-applied" }
+>;
+type WorkflowGithubLabelAppliedTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "event"; eventType: "github-label-applied" }
 >;
 
 function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
@@ -126,6 +131,30 @@ function gmailLabelWorkflowTrigger(): WorkflowGmailLabelAppliedTriggerSummary {
     ownerUserId: CURRENT_USER_ID,
     enabled: true,
     chatThreadId: "thread_gmail_label_applied",
+    nextRunAt: null,
+    lastRunAt: null,
+  };
+}
+
+function githubLabelWorkflowTrigger(): WorkflowGithubLabelAppliedTriggerSummary {
+  return {
+    id: GITHUB_LABEL_TRIGGER_ID,
+    kind: "event",
+    eventType: "github-label-applied",
+    eventConfig: {
+      provider: "github",
+      event: "label_applied",
+      labelName: "triage",
+      filters: {
+        subject: "both",
+        actor: { type: "me" },
+      },
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_github_label_applied",
     nextRunAt: null,
     lastRunAt: null,
   };
@@ -472,6 +501,12 @@ function mockCreateWorkflowTrigger(
           eventConfig: body.eventConfig,
         });
       }
+      if (body.eventType === "github-label-applied") {
+        return respond(201, {
+          ...githubLabelWorkflowTrigger(),
+          eventConfig: body.eventConfig,
+        });
+      }
       return respond(201, {
         ...gmailWorkflowTrigger(),
         eventConfig: body.eventConfig,
@@ -488,6 +523,13 @@ function mockUpdateWorkflowTrigger(
     ({ params, body, respond }) => {
       onUpdate(params.id, body);
       if ("eventConfig" in body) {
+        if (body.eventConfig.provider === "github") {
+          return respond(200, {
+            ...githubLabelWorkflowTrigger(),
+            id: params.id,
+            eventConfig: body.eventConfig,
+          });
+        }
         if (body.eventConfig.event === "label_applied") {
           return respond(200, {
             ...gmailLabelWorkflowTrigger(),

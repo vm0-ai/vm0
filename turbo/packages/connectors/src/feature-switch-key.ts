@@ -50,6 +50,7 @@ export enum FeatureSwitchKey {
   HtmlArtifactCommentEditing = "htmlArtifactCommentEditing",
   ChatSlashWorkflowCommands = "chatSlashWorkflowCommands",
   WorkflowGmailEventTriggers = "workflowGmailEventTriggers",
+  WorkflowGithubLabelEventTriggers = "workflowGithubLabelEventTriggers",
   WorkflowWebhookTriggers = "workflowWebhookTriggers",
   SwitchScheduleAutomationToWorkflowTrigger = "switchScheduleAutomationToWorkflowTrigger",
   GoalWorkflows = "goalWorkflows",
