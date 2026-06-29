@@ -42,6 +42,7 @@ import { githubOauthRoutes } from "./routes/github-oauth";
 import { legacyFileRoutes } from "./routes/legacy-file";
 import { logsSearchRoutes } from "./routes/logs-search";
 import { modelStatsRoutes } from "./routes/model-stats";
+import { presentationImagesRoutes } from "./routes/presentation-images";
 import { registryResourceDownloadRoutes } from "./routes/registry-resources-download";
 import { runnersRoutes } from "./routes/runners";
 import { usageRoutes } from "./routes/usage";
@@ -357,6 +358,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...chatThreadsV1Routes,
   ...audioTranscriptionsV1Routes,
   ...modelStatsRoutes,
+  ...presentationImagesRoutes,
   ...runnersRoutes,
   ...testOAuthProviderAuthorizeRoutes,
   ...testOAuthProviderDeviceAuthRoutes,
