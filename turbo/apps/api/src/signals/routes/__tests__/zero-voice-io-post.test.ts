@@ -30,10 +30,7 @@ import {
 } from "../../services/zero-voice-io-post.service";
 import { zeroVoiceIoSpeechRoutes } from "../zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "../zero-voice-io-stt";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -315,7 +312,6 @@ async function deleteVoiceFixture(fixture: VoiceFixture): Promise<void> {
     );
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
   await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
-  await store.set(deleteOrgMembership$, fixture, context.signal);
   if (fixture.pricingInserted) {
     await writeDb
       .delete(usagePricing)
