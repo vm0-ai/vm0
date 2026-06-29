@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
-import { createStore } from "ccstate";
 
 import {
   zeroPersonalModelProvidersByTypeContract,
@@ -8,18 +7,15 @@ import {
 } from "@vm0/api-contracts/contracts/zero-personal-model-providers";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import {
-  deleteUserModelProviders$,
-  type UserModelProviderFixture,
-} from "./helpers/zero-model-providers";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
+
+interface UserModelProviderFixture {
+  readonly orgId: string;
+  readonly userId: string;
+}
 
 function uniqueOrgUser(prefix: string): UserModelProviderFixture {
   return {
@@ -29,10 +25,6 @@ function uniqueOrgUser(prefix: string): UserModelProviderFixture {
 }
 
 describe("DELETE /api/zero/me/model-providers/:type", () => {
-  const track = createFixtureTracker<UserModelProviderFixture>((fixture) => {
-    return store.set(deleteUserModelProviders$, fixture, context.signal);
-  });
-
   async function upsertPersonalProvider(
     fixture: UserModelProviderFixture,
   ): Promise<void> {
@@ -81,7 +73,6 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
 
   it("deletes the user's personal provider", async () => {
     const fixture = uniqueOrgUser("zmmp-delete");
-    await track(Promise.resolve(fixture));
     await upsertPersonalProvider(fixture);
 
     const client = setupApp({ context })(
@@ -107,7 +98,6 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
 
   it("returns 404 with 'Resource not found' when deleting a nonexistent provider", async () => {
     const fixture = uniqueOrgUser("zmmp-missing");
-    await track(Promise.resolve(fixture));
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(
@@ -135,8 +125,6 @@ describe("DELETE /api/zero/me/model-providers/:type", () => {
       orgId,
       userId: `user_bob_${randomUUID().slice(0, 8)}`,
     };
-    await track(Promise.resolve(alice));
-    await track(Promise.resolve(bob));
     await upsertPersonalProvider(alice);
     mocks.clerk.session(bob.userId, orgId);
 

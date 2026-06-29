@@ -15,11 +15,6 @@ import { now } from "../../../lib/time";
 import { generateSandboxToken } from "../../auth/tokens";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
-  deleteOrgModelProviders$,
-  seedOrgModelProvider$,
-  type OrgModelProviderFixture,
-} from "./helpers/zero-model-providers";
-import {
   deleteUsageInsightFixture$,
   seedCompose$,
   seedRun$,
@@ -181,10 +176,6 @@ async function markOrgCodexProviderStaleViaFirewall(
 }
 
 describe("GET /api/zero/model-providers", () => {
-  const track = createFixtureTracker<OrgModelProviderFixture>((fixture) => {
-    return store.set(deleteOrgModelProviders$, fixture, context.signal);
-  });
-
   it("returns 401 when the request is unauthenticated", async () => {
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -211,7 +202,6 @@ describe("GET /api/zero/model-providers", () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
-    await track(Promise.resolve({ orgId }));
 
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -226,7 +216,6 @@ describe("GET /api/zero/model-providers", () => {
   it("allows organization members to list org providers", async () => {
     const fixture = uniqueOrgUser("zmp-list-member");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
 
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -241,7 +230,6 @@ describe("GET /api/zero/model-providers", () => {
   it("lists org providers", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    await track(Promise.resolve({ orgId }));
 
     mocks.clerk.session(userId, orgId, "org:admin");
 
@@ -267,7 +255,6 @@ describe("GET /api/zero/model-providers", () => {
   it("does not show first provider as default", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    await track(Promise.resolve({ orgId }));
 
     mocks.clerk.session(userId, orgId, "org:admin");
 
@@ -292,7 +279,6 @@ describe("GET /api/zero/model-providers", () => {
   it("does not show same-framework providers as default", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    await track(Promise.resolve({ orgId }));
 
     mocks.clerk.session(userId, orgId, "org:admin");
 
@@ -335,7 +321,6 @@ describe("GET /api/zero/model-providers", () => {
   it("does not mark provider rows as framework defaults via list", async () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    await track(Promise.resolve({ orgId }));
 
     mocks.clerk.session(userId, orgId, "org:admin");
 
@@ -366,7 +351,6 @@ describe("GET /api/zero/model-providers", () => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     mocks.clerk.session(userId, orgId);
-    await track(Promise.resolve({ orgId }));
 
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -385,7 +369,6 @@ describe("GET /api/zero/model-providers", () => {
 
   it("surfaces OAuth refresh state on listed providers", async () => {
     const fixture = uniqueOrgUser("zmp-list-stale");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const expiredAccess = makeJwt({
       exp: Math.floor(now() / 1000) - 60,
@@ -425,10 +408,6 @@ describe("GET /api/zero/model-providers", () => {
 });
 
 describe("POST /api/zero/model-providers", () => {
-  const track = createFixtureTracker<OrgModelProviderFixture>((fixture) => {
-    return store.set(deleteOrgModelProviders$, fixture, context.signal);
-  });
-
   it("returns 401 when the request is unauthenticated", async () => {
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -461,7 +440,6 @@ describe("POST /api/zero/model-providers", () => {
 
   it("returns 403 when the caller is not an org admin", async () => {
     const fixture = uniqueOrgUser("zmp-upsert-member");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -480,7 +458,6 @@ describe("POST /api/zero/model-providers", () => {
 
   it("creates and updates an org single-secret provider", async () => {
     const fixture = uniqueOrgUser("zmp-upsert-single");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -526,7 +503,6 @@ describe("POST /api/zero/model-providers", () => {
 
   it("rejects whitespace-only org single-secret provider secrets", async () => {
     const fixture = uniqueOrgUser("zmp-upsert-blank-secret");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -557,7 +533,6 @@ describe("POST /api/zero/model-providers", () => {
 
   it("creates org-level AWS Bedrock multi-auth provider", async () => {
     const fixture = uniqueOrgUser("zmp-upsert-bedrock");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -607,7 +582,6 @@ describe("POST /api/zero/model-providers", () => {
 
   it("rejects invalid multi-auth shape for single-secret providers", async () => {
     const fixture = uniqueOrgUser("zmp-upsert-bad-multi");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -628,7 +602,6 @@ describe("POST /api/zero/model-providers", () => {
 
   it("creates an openai-api-key provider by default", async () => {
     const fixture = uniqueOrgUser("zmp-openai");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
@@ -657,7 +630,6 @@ describe("POST /api/zero/model-providers", () => {
 
   it("does not mark provider rows as defaults across frameworks", async () => {
     const fixture = uniqueOrgUser("zmp-cross-framework");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -702,7 +674,6 @@ describe("POST /api/zero/model-providers", () => {
 
   it("creates a vm0 no-secret org provider", async () => {
     const fixture = uniqueOrgUser("zmp-vm0");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -722,7 +693,6 @@ describe("POST /api/zero/model-providers", () => {
 
   it("handles codex auth_json paste", async () => {
     const fixture = uniqueOrgUser("zmp-codex-paste");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -752,7 +722,6 @@ describe("POST /api/zero/model-providers", () => {
 
   it("returns typed codex auth_json validation errors", async () => {
     const fixture = uniqueOrgUser("zmp-codex-invalid");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -824,7 +793,6 @@ describe("POST /api/zero/model-providers", () => {
 
   it("re-paste clears codex reconnect state", async () => {
     const fixture = uniqueOrgUser("zmp-codex-repaste");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const expiredAccess = makeJwt({
       exp: Math.floor(now() / 1000) - 60,
@@ -884,10 +852,6 @@ describe("POST /api/zero/model-providers", () => {
 });
 
 describe("DELETE /api/zero/model-providers/:type", () => {
-  const track = createFixtureTracker<OrgModelProviderFixture>((fixture) => {
-    return store.set(deleteOrgModelProviders$, fixture, context.signal);
-  });
-
   it("returns 401 when unauthenticated", async () => {
     const client = setupApp({ context })(zeroModelProvidersByTypeContract);
 
@@ -917,7 +881,6 @@ describe("DELETE /api/zero/model-providers/:type", () => {
 
   it("returns 403 for non-admin members", async () => {
     const fixture = uniqueOrgUser("zmp-delete-member");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
     const client = setupApp({ context })(zeroModelProvidersByTypeContract);
 
@@ -936,7 +899,6 @@ describe("DELETE /api/zero/model-providers/:type", () => {
 
   it("returns 404 when the target provider is absent", async () => {
     const fixture = uniqueOrgUser("zmp-delete-missing");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const client = setupApp({ context })(zeroModelProvidersByTypeContract);
 
@@ -953,7 +915,6 @@ describe("DELETE /api/zero/model-providers/:type", () => {
 
   it("deletes an org single-secret provider", async () => {
     const fixture = uniqueOrgUser("zmp-delete-legacy");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const mainClient = setupApp({ context })(zeroModelProvidersMainContract);
     const byTypeClient = setupApp({ context })(
@@ -999,7 +960,6 @@ describe("DELETE /api/zero/model-providers/:type", () => {
 
   it("deletes a codex auth_json provider", async () => {
     const fixture = uniqueOrgUser("zmp-delete-multiauth");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const mainClient = setupApp({ context })(zeroModelProvidersMainContract);
     const byTypeClient = setupApp({ context })(
@@ -1046,32 +1006,27 @@ describe("DELETE /api/zero/model-providers/:type", () => {
     expect(deletedAgain.body.error.message).toBe("Resource not found");
   });
 
-  it("does not promote another provider when deleting an old default row", async () => {
+  it("does not promote another provider when deleting a provider", async () => {
     const fixture = uniqueOrgUser("zmp-delete-default");
-    await track(Promise.resolve({ orgId: fixture.orgId }));
-    await store.set(
-      seedOrgModelProvider$,
-      {
-        orgId: fixture.orgId,
-        type: "anthropic-api-key",
-        secretName: "ANTHROPIC_API_KEY",
-        isDefault: true,
-      },
-      context.signal,
-    );
-    await store.set(
-      seedOrgModelProvider$,
-      {
-        orgId: fixture.orgId,
-        type: "openai-api-key",
-        secretName: "OPENAI_API_KEY",
-      },
-      context.signal,
-    );
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
     const mainClient = setupApp({ context })(zeroModelProvidersMainContract);
     const byTypeClient = setupApp({ context })(
       zeroModelProvidersByTypeContract,
+    );
+
+    await accept(
+      mainClient.upsert({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { type: "anthropic-api-key", secret: "sk-ant-test" },
+      }),
+      [201],
+    );
+    await accept(
+      mainClient.upsert({
+        headers: { authorization: "Bearer clerk-session" },
+        body: { type: "openai-api-key", secret: "sk-proj-test" },
+      }),
+      [201],
     );
 
     await accept(
