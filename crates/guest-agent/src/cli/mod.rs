@@ -33,7 +33,9 @@ pub use codex_setup::setup_codex;
 pub use command::build_cli_command;
 pub use framework::{ClaudeResultStatus, ClaudeResultSummary};
 
-use crate::active_input::{ActiveInputRuntime, ActiveInputWriter, ReplayUserEventAction};
+use crate::active_input::{
+    ActiveInputController, ActiveInputRuntime, ActiveInputWriter, ReplayUserEventAction,
+};
 use crate::constants;
 use crate::env;
 use crate::error::AgentError;
@@ -46,18 +48,17 @@ use event_delivery::{AckedEventPrefix, PreparedEvent};
 use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
-use guest_contracts::diagnostics::{
-    CliTerminationDiagnostic, CliTerminationReason as DiagnosticTerminationReason,
-    CliTerminationSignal, FailureDetailSource, FailureReason,
-};
+use guest_contracts::diagnostics::{CliTerminationDiagnostic, FailureDetailSource, FailureReason};
 use process_group::ChildProcessGroup;
 use std::collections::HashMap;
 use std::path::Path;
-use std::process::Stdio;
+use std::pin::Pin;
+use std::process::{ExitStatus, Stdio};
 use std::time::{Duration, Instant};
-use termination::{PostResultCleanupState, TerminationReason, TerminationState, deadline_after};
+use termination::{CliTerminationRuntime, ControlTerminationLog, TerminationReason};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
+use tokio::time::Sleep;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
@@ -622,7 +623,6 @@ async fn execute_cli_inner(
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut post_result_cleanup_result = None;
-    let mut post_result_cleanup = None;
     let mut event_ingestor = CliEventIngestor::new();
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
@@ -633,24 +633,30 @@ async fn execute_cli_inner(
                 }
             }, if claude_stdin_write_handle.is_some() => {
                 claude_stdin_write_handle = None;
-                let can_terminate_for_stdin_error =
-                    matches!(termination_runtime.state, TerminationState::Idle)
-                        && cli_status.is_none();
+                match try_observe_cli_exit(
+                    &mut child,
+                    &mut cli_status,
+                    &mut cli_exit_at,
+                    &active_input_controller,
+                    &mut termination_runtime,
+                    stdout_eof,
+                    drain_deadline.as_mut(),
+                )? {
+                    CliExitObservation::NoNewExit => {}
+                    CliExitObservation::ExitedDrainingStdout => continue,
+                    CliExitObservation::ExitedAndStdoutEof => break Ok(()),
+                }
+                let can_terminate_for_stdin_error = termination_runtime
+                    .can_begin_initial_prompt_stdin_control_failure(cli_status.is_some());
                 match stdin_write_result {
                     Some(Ok(Ok(()))) => {}
                     Some(Ok(Err(error))) if can_terminate_for_stdin_error => {
                         active_input_controller.close_terminal();
-                        log_warn!(
-                            LOG_TAG,
-                            "Claude stdin writer failed, SIGTERM pgid={}: {error}",
-                            termination_runtime
-                                .pgid
-                                .map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
-                        );
-                        termination_runtime.begin_forced_sigkill_pending(
+                        let error_log = error.to_string();
+                        termination_runtime.begin_control_failure(
                             TerminationReason::InitialPromptStdin,
                             error,
-                            &mut post_result_cleanup,
+                            ControlTerminationLog::ClaudeStdinWriterFailed { error: error_log },
                             termination_deadline.as_mut(),
                         );
                     }
@@ -659,19 +665,13 @@ async fn execute_cli_inner(
                     }
                     Some(Err(error)) if can_terminate_for_stdin_error => {
                         active_input_controller.close_terminal();
-                        log_warn!(
-                            LOG_TAG,
-                            "Claude stdin writer task failed, SIGTERM pgid={}: {error}",
-                            termination_runtime
-                                .pgid
-                                .map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
-                        );
-                        termination_runtime.begin_forced_sigkill_pending(
+                        let error_log = error.to_string();
+                        let control_error =
+                            AgentError::Execution(format!("Claude stdin writer task failed: {error_log}"));
+                        termination_runtime.begin_control_failure(
                             TerminationReason::InitialPromptStdin,
-                            AgentError::Execution(format!(
-                                "Claude stdin writer task failed: {error}"
-                            )),
-                            &mut post_result_cleanup,
+                            control_error,
+                            ControlTerminationLog::ClaudeStdinWriterTaskFailed { error: error_log },
                             termination_deadline.as_mut(),
                         );
                     }
@@ -727,7 +727,8 @@ async fn execute_cli_inner(
                                 }
                             }
 
-                            let post_result_cleanup_was_armed = post_result_cleanup.is_some();
+                            let post_result_cleanup_was_armed =
+                                termination_runtime.has_post_result_cleanup();
                             match event_ingestor
                                 .begin_event(
                                     &mut log_file,
@@ -741,8 +742,24 @@ async fn execute_cli_inner(
                                 ParsedEventAction::Forward => {}
                                 ParsedEventAction::Skip => continue,
                             }
+                            let is_result_event = behavior.handles_claude_result_event(&event);
+                            if post_result_cleanup_was_armed || is_result_event {
+                                match try_observe_cli_exit(
+                                    &mut child,
+                                    &mut cli_status,
+                                    &mut cli_exit_at,
+                                    &active_input_controller,
+                                    &mut termination_runtime,
+                                    stdout_eof,
+                                    drain_deadline.as_mut(),
+                                )? {
+                                    CliExitObservation::NoNewExit
+                                    | CliExitObservation::ExitedDrainingStdout => {}
+                                    CliExitObservation::ExitedAndStdoutEof => break Ok(()),
+                                }
+                            }
                             // Print Claude Code final result to stdout if applicable.
-                            if behavior.handles_claude_result_event(&event) {
+                            if is_result_event {
                                 let result_summary = ClaudeResultSummary::from_event(&event);
                                 claude_result = Some(result_summary);
                                 if let Some(diagnostic) =
@@ -773,48 +790,22 @@ async fn execute_cli_inner(
                                     active_input_controller.close_for_result_if_idle();
                                 // Arm the post-result reap deadline once per
                                 // run when no active follow-up input is still
-                                // pending — see `TerminationState::should_arm_post_result`.
+                                // pending.
                                 if active_input_idle
-                                    && termination_runtime
-                                        .state
-                                        .should_arm_post_result(cli_status.is_some())
+                                    && termination_runtime.arm_post_result_cleanup(
+                                        cli_status.is_some(),
+                                        termination_deadline.as_mut(),
+                                    )
                                 {
-                                    let now = tokio::time::Instant::now();
-                                    let cleanup = PostResultCleanupState::arm(
-                                        now,
-                                        env::post_result_sigterm_grace(),
-                                        env::post_result_total_cap(),
-                                    );
-                                    if let Some(next_deadline) = cleanup.next_deadline() {
-                                        termination_runtime.state =
-                                            TerminationState::SigtermPending {
-                                            reason: TerminationReason::PostResult,
-                                        };
-                                        termination_deadline.as_mut().reset(next_deadline);
-                                        post_result_cleanup = Some(cleanup);
-                                        post_result_cleanup_result = Some(result_summary);
-                                    }
+                                    post_result_cleanup_result = Some(result_summary);
                                 }
                             }
                             // Extract tool info BEFORE masking (masker may replace tool names).
                             behavior.track_claude_tool_events(&event, &mut stuck_tool_tracker);
-                            if post_result_cleanup_was_armed
-                                && matches!(
-                                    termination_runtime.state,
-                                    TerminationState::SigtermPending {
-                                        reason: TerminationReason::PostResult
-                                    }
-                                )
-                                && let Some(cleanup) = post_result_cleanup.as_mut()
-                            {
-                                let next_deadline = cleanup.record_meaningful_event(
-                                    tokio::time::Instant::now(),
-                                    env::post_result_sigterm_grace(),
-                                );
-                                if let Some(next_deadline) = next_deadline {
-                                    termination_deadline.as_mut().reset(next_deadline);
-                                }
-                            }
+                            termination_runtime.record_post_result_activity(
+                                post_result_cleanup_was_armed,
+                                termination_deadline.as_mut(),
+                            );
                             // Prepare event payload (mask secrets, add seq) and enqueue
                             // for background sending. Network I/O stays off the reading loop.
                             event_ingestor.enqueue_event(event, masker, should_send_events, &event_tx);
@@ -835,157 +826,39 @@ async fn execute_cli_inner(
             status = child.wait(), if cli_status.is_none() => {
                 match status {
                     Ok(s) => {
-                        cli_exit_at = Some(Instant::now());
-                        log_info!(LOG_TAG, "CLI process exited (status: {s}), draining stdout");
-                        cli_status = Some(s);
-                        active_input_controller.close_terminal();
-                        // CLI exited on its own (possibly in response to our
-                        // SIGTERM). Park the termination FSM so it can't
-                        // re-arm on any late `type=result` event.
-                        termination_runtime.state = TerminationState::Done;
-                        post_result_cleanup = None;
-                        if stdout_eof {
+                        if matches!(
+                            record_cli_exit(
+                                s,
+                                &mut cli_status,
+                                &mut cli_exit_at,
+                                &active_input_controller,
+                                &mut termination_runtime,
+                                stdout_eof,
+                                drain_deadline.as_mut(),
+                            ),
+                            CliExitObservation::ExitedAndStdoutEof
+                        ) {
                             break Ok(());
                         }
-                        drain_deadline.as_mut().reset(
-                            tokio::time::Instant::now()
-                                + Duration::from_secs(constants::STDOUT_DRAIN_DEADLINE_SECS),
-                        );
                     }
                     Err(e) => break Err(AgentError::Io(e)),
                 }
             }
-            () = &mut termination_deadline, if termination_runtime.state.is_pending() && cli_status.is_none() => {
-                // Process-group signal results are intentionally discarded in
-                // both arms: ESRCH (child reaped since the is_pending() /
-                // is_none() check) is racy-but-harmless, and every other
-                // error would be unrecoverable from userspace.
-                // The sigkill_grace deadline is the escalation path if
-                // the signal fails to take effect in time.
-                match termination_runtime.state {
-                    TerminationState::SigtermPending { reason } => {
-                        let now = tokio::time::Instant::now();
-                        let cleanup_timeout =
-                            (reason == TerminationReason::PostResult)
-                                .then(|| {
-                                    post_result_cleanup
-                                        .as_mut()
-                                        .and_then(|cleanup| cleanup.mark_signal_sent(now))
-                                })
-                                .flatten();
-                        let grace = cleanup_timeout
-                            .map(|timeout| timeout.elapsed)
-                            .unwrap_or_else(env::post_result_sigterm_grace);
-                        if let Some(pid) = termination_runtime.pgid {
-                            if reason == TerminationReason::PostResult {
-                                if let Some(timeout) = cleanup_timeout {
-                                    let trigger = timeout.trigger.label();
-                                    let elapsed_ms = timeout.elapsed.as_millis();
-                                    let quiet_ms = timeout.quiet_for.as_millis();
-                                    let meaningful_events = timeout.meaningful_event_count;
-                                    let detail = format!(
-                                        "trigger={trigger} signal=sigterm elapsed_ms={elapsed_ms} quiet_ms={quiet_ms} meaningful_events={meaningful_events}"
-                                    );
-                                    log_warn!(
-                                        LOG_TAG,
-                                        "Post-result cleanup {trigger} reached after {elapsed_ms}ms (quiet {quiet_ms}ms, meaningful events {meaningful_events}), SIGTERM pgid={pid}"
-                                    );
-                                    record_sandbox_op(
-                                        "post_result_cleanup_terminated",
-                                        timeout.elapsed,
-                                        true,
-                                        Some(&detail),
-                                    );
-                                } else {
-                                    log_warn!(
-                                        LOG_TAG,
-                                        "Post-result cleanup deadline fired without state, SIGTERM pgid={pid}"
-                                    );
-                                }
-                            } else {
-                                log_warn!(
-                                    LOG_TAG,
-                                    "CLI still running after {} sigterm grace {}ms, SIGTERM pgid={pid}",
-                                    reason.label(),
-                                    grace.as_millis()
-                                );
-                            }
-                            record_cli_termination_signal(
-                                &mut termination_runtime.diagnostic,
-                                reason,
-                                CliTerminationSignal::Sigterm,
-                                termination_runtime.pgid,
-                                grace,
-                            );
-                            if let Some(process_group) = termination_runtime.process_group {
-                                process_group.sigterm();
-                            }
-                        }
-                        termination_runtime.state = TerminationState::SigkillPending { reason };
-                        termination_deadline.as_mut().reset(deadline_after(
-                            tokio::time::Instant::now(),
-                            env::post_result_sigkill_grace(),
-                        ));
-                    }
-                    TerminationState::SigkillPending { reason } => {
-                        let grace = env::post_result_sigkill_grace();
-                        let now = tokio::time::Instant::now();
-                        if let Some(pid) = termination_runtime.pgid {
-                            log_warn!(
-                                LOG_TAG,
-                                "CLI did not exit after {} SIGTERM+{}ms, SIGKILL pgid={pid}",
-                                reason.label(),
-                                grace.as_millis()
-                            );
-                            if reason == TerminationReason::PostResult
-                                && let Some(cleanup) = post_result_cleanup
-                            {
-                                let elapsed = cleanup.elapsed(now);
-                                let quiet_ms = cleanup.quiet_for(now).as_millis();
-                                let meaningful_events = cleanup.meaningful_event_count();
-                                let elapsed_ms = elapsed.as_millis();
-                                let detail = format!(
-                                    "trigger=sigkill_escalation signal=sigkill elapsed_ms={elapsed_ms} quiet_ms={quiet_ms} meaningful_events={meaningful_events}"
-                                );
-                                record_sandbox_op(
-                                    "post_result_cleanup_terminated",
-                                    elapsed,
-                                    true,
-                                    Some(&detail),
-                                );
-                            }
-                            record_cli_termination_signal(
-                                &mut termination_runtime.diagnostic,
-                                reason,
-                                CliTerminationSignal::Sigkill,
-                                termination_runtime.pgid,
-                                grace,
-                            );
-                            if let Some(process_group) = termination_runtime.process_group {
-                                process_group.sigkill();
-                            }
-                        }
-                        post_result_cleanup = None;
-                        termination_runtime.state = TerminationState::Done;
-                    }
-                    // Unreachable by the is_pending() guard. Log in
-                    // every build so any future FSM regression surfaces
-                    // in production runner logs; debug_assert adds a
-                    // fail-fast panic under cfg(debug_assertions) so
-                    // CI / dev tests abort on the same condition.
-                    TerminationState::Idle | TerminationState::Done => {
-                        log_warn!(
-                            LOG_TAG,
-                            "termination_deadline fired in non-pending state {:?}",
-                            termination_runtime.state
-                        );
-                        debug_assert!(
-                            false,
-                            "termination_deadline fired in non-pending state {:?}",
-                            termination_runtime.state
-                        );
-                    }
+            () = &mut termination_deadline, if termination_runtime.has_pending_deadline() && cli_status.is_none() => {
+                match try_observe_cli_exit(
+                    &mut child,
+                    &mut cli_status,
+                    &mut cli_exit_at,
+                    &active_input_controller,
+                    &mut termination_runtime,
+                    stdout_eof,
+                    drain_deadline.as_mut(),
+                )? {
+                    CliExitObservation::NoNewExit => {}
+                    CliExitObservation::ExitedDrainingStdout => continue,
+                    CliExitObservation::ExitedAndStdoutEof => break Ok(()),
                 }
+                termination_runtime.handle_deadline(termination_deadline.as_mut());
             }
             () = &mut drain_deadline, if cli_status.is_some() => {
                 log_warn!(
@@ -995,7 +868,7 @@ async fn execute_cli_inner(
                 );
                 break Ok(());
             }
-            _ = tick_optional_interval(&mut stuck_tool_check) => {
+            _ = tick_optional_interval(&mut stuck_tool_check), if cli_status.is_none() => {
                 let timeout_secs = env::stuck_tool_timeout_secs();
                 // Find the oldest network tool that has exceeded the timeout.
                 let stuck = stuck_tool_tracker
@@ -1007,22 +880,27 @@ async fn execute_cli_inner(
                     .min_by_key(|(_, started)| *started)
                     .map(|(name, started)| (name.clone(), started.elapsed().as_secs()));
                 if let Some((name, elapsed)) = stuck
-                    && termination_runtime.control_error.is_none()
                 {
+                    match try_observe_cli_exit(
+                        &mut child,
+                        &mut cli_status,
+                        &mut cli_exit_at,
+                        &active_input_controller,
+                        &mut termination_runtime,
+                        stdout_eof,
+                        drain_deadline.as_mut(),
+                    )? {
+                        CliExitObservation::NoNewExit => {}
+                        CliExitObservation::ExitedDrainingStdout => continue,
+                        CliExitObservation::ExitedAndStdoutEof => break Ok(()),
+                    }
                     let timeout_error = AgentError::Execution(format!(
                         "Tool timeout: {name} exceeded {timeout_secs}s without returning a result"
                     ));
-                    log_warn!(
-                        LOG_TAG,
-                        "Tool timeout: {name} stuck for {elapsed}s, SIGTERM pgid={}",
-                        termination_runtime
-                            .pgid
-                            .map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
-                    );
-                    termination_runtime.begin_forced_sigkill_pending(
+                    termination_runtime.begin_control_failure(
                         TerminationReason::StuckTool,
                         timeout_error,
-                        &mut post_result_cleanup,
+                        ControlTerminationLog::StuckTool { name, elapsed },
                         termination_deadline.as_mut(),
                     );
                 }
@@ -1035,26 +913,30 @@ async fn execute_cli_inner(
                             .await
                     }
                 }
-            }, if !heartbeat_done => {
+            }, if !heartbeat_done && cli_status.is_none() => {
                 heartbeat_done = true;
+                match try_observe_cli_exit(
+                    &mut child,
+                    &mut cli_status,
+                    &mut cli_exit_at,
+                    &active_input_controller,
+                    &mut termination_runtime,
+                    stdout_eof,
+                    drain_deadline.as_mut(),
+                )? {
+                    CliExitObservation::NoNewExit => {}
+                    CliExitObservation::ExitedDrainingStdout => continue,
+                    CliExitObservation::ExitedAndStdoutEof => break Ok(()),
+                }
                 match heartbeat_result {
                     Ok(HeartbeatStatus::Failed(e)) => {
                         // Heartbeat failed — kill process group
-                        if termination_runtime.control_error.is_none() {
-                            log_warn!(
-                                LOG_TAG,
-                                "Heartbeat failed, SIGTERM pgid={}",
-                                termination_runtime
-                                    .pgid
-                                    .map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
-                            );
-                            termination_runtime.begin_forced_sigkill_pending(
-                                TerminationReason::HeartbeatError,
-                                e,
-                                &mut post_result_cleanup,
-                                termination_deadline.as_mut(),
-                            );
-                        }
+                        termination_runtime.begin_control_failure(
+                            TerminationReason::HeartbeatError,
+                            e,
+                            ControlTerminationLog::HeartbeatFailed,
+                            termination_deadline.as_mut(),
+                        );
                     }
                     Ok(HeartbeatStatus::Stopped) => {
                         // Heartbeat shutdown (should not happen before CLI exits)
@@ -1062,39 +944,21 @@ async fn execute_cli_inner(
                     }
                     Ok(HeartbeatStatus::TaskFailed(message)) => {
                         let error = AgentError::Execution(format!("heartbeat task panicked: {message}"));
-                        if termination_runtime.control_error.is_none() {
-                            log_warn!(
-                                LOG_TAG,
-                                "Heartbeat task panicked, SIGTERM pgid={}",
-                                termination_runtime
-                                    .pgid
-                                    .map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
-                            );
-                            termination_runtime.begin_forced_sigkill_pending(
-                                TerminationReason::HeartbeatPanic,
-                                error,
-                                &mut post_result_cleanup,
-                                termination_deadline.as_mut(),
-                            );
-                        }
+                        termination_runtime.begin_control_failure(
+                            TerminationReason::HeartbeatPanic,
+                            error,
+                            ControlTerminationLog::HeartbeatTaskPanicked,
+                            termination_deadline.as_mut(),
+                        );
                     }
                     Err(e) => {
                         let error = AgentError::Execution(format!("heartbeat task stopped before reporting status: {e}"));
-                        if termination_runtime.control_error.is_none() {
-                            log_warn!(
-                                LOG_TAG,
-                                "Heartbeat task stopped before reporting status, SIGTERM pgid={}",
-                                termination_runtime
-                                    .pgid
-                                    .map_or_else(|| "unknown".to_string(), |pid| pid.to_string())
-                            );
-                            termination_runtime.begin_forced_sigkill_pending(
-                                TerminationReason::HeartbeatPanic,
-                                error,
-                                &mut post_result_cleanup,
-                                termination_deadline.as_mut(),
-                            );
-                        }
+                        termination_runtime.begin_control_failure(
+                            TerminationReason::HeartbeatPanic,
+                            error,
+                            ControlTerminationLog::HeartbeatStoppedBeforeStatus,
+                            termination_deadline.as_mut(),
+                        );
                     }
                 }
             }
@@ -1126,7 +990,7 @@ async fn execute_cli_inner(
         }
     }
 
-    let has_control_error = termination_runtime.control_error.is_some();
+    let has_control_error = termination_runtime.has_control_error();
     let event_error = if has_control_error {
         None
     } else {
@@ -1215,13 +1079,7 @@ async fn execute_cli_inner(
     };
     let masked_stderr_lines = masker.mask_diagnostic_lines(stderr_lines);
 
-    let CliTerminationRuntime {
-        control_error,
-        diagnostic: cli_termination,
-        ..
-    } = termination_runtime;
-    let cli_termination =
-        cli_termination.map(|diagnostic| diagnostic.with_observed_exit_code(exit_code));
+    let (control_error, cli_termination) = termination_runtime.finish(exit_code);
 
     if let Some(err) = event_error {
         return Err(err);
@@ -1239,74 +1097,70 @@ async fn execute_cli_inner(
     })
 }
 
-struct CliTerminationRuntime {
-    process_group: Option<ChildProcessGroup>,
-    pgid: Option<i32>,
-    state: TerminationState,
-    control_error: Option<AgentError>,
-    diagnostic: Option<CliTerminationDiagnostic>,
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CliExitObservation {
+    NoNewExit,
+    ExitedDrainingStdout,
+    ExitedAndStdoutEof,
 }
 
-impl CliTerminationRuntime {
-    fn new(process_group: Option<ChildProcessGroup>) -> Self {
-        Self {
-            process_group,
-            pgid: process_group.map(ChildProcessGroup::raw_pgid),
-            state: TerminationState::Idle,
-            control_error: None,
-            diagnostic: None,
-        }
+fn try_observe_cli_exit(
+    child: &mut tokio::process::Child,
+    cli_status: &mut Option<ExitStatus>,
+    cli_exit_at: &mut Option<Instant>,
+    active_input_controller: &ActiveInputController,
+    termination_runtime: &mut CliTerminationRuntime,
+    stdout_eof: bool,
+    drain_deadline: Pin<&mut Sleep>,
+) -> Result<CliExitObservation, AgentError> {
+    if cli_status.is_some() {
+        return Ok(CliExitObservation::NoNewExit);
     }
 
-    fn begin_forced_sigkill_pending(
-        &mut self,
-        reason: TerminationReason,
-        error: AgentError,
-        post_result_cleanup: &mut Option<PostResultCleanupState>,
-        mut termination_deadline: std::pin::Pin<&mut tokio::time::Sleep>,
-    ) {
-        let grace = env::post_result_sigkill_grace();
-        record_cli_termination_signal(
-            &mut self.diagnostic,
-            reason,
-            CliTerminationSignal::Sigterm,
-            self.pgid,
-            grace,
-        );
-        if let Some(process_group) = self.process_group {
-            process_group.sigterm();
-        }
-        self.control_error = Some(error);
-        *post_result_cleanup = None;
-        self.state = TerminationState::SigkillPending { reason };
-        termination_deadline
-            .as_mut()
-            .reset(deadline_after(tokio::time::Instant::now(), grace));
-    }
+    let Some(status) = child.try_wait().map_err(AgentError::Io)? else {
+        return Ok(CliExitObservation::NoNewExit);
+    };
+
+    Ok(record_cli_exit(
+        status,
+        cli_status,
+        cli_exit_at,
+        active_input_controller,
+        termination_runtime,
+        stdout_eof,
+        drain_deadline,
+    ))
 }
 
-fn record_cli_termination_signal(
-    cli_termination: &mut Option<CliTerminationDiagnostic>,
-    reason: TerminationReason,
-    signal: CliTerminationSignal,
-    pgid: Option<i32>,
-    grace: Duration,
-) {
-    let diagnostic = cli_termination
-        .take()
-        .unwrap_or_else(|| CliTerminationDiagnostic::new(diagnostic_termination_reason(reason)));
-    let grace_ms = u64::try_from(grace.as_millis()).unwrap_or(u64::MAX);
-    *cli_termination = Some(diagnostic.record_signal(signal, pgid, Some(grace_ms)));
-}
-
-fn diagnostic_termination_reason(reason: TerminationReason) -> DiagnosticTerminationReason {
-    match reason {
-        TerminationReason::PostResult => DiagnosticTerminationReason::PostResultReap,
-        TerminationReason::InitialPromptStdin => DiagnosticTerminationReason::InitialPromptStdin,
-        TerminationReason::StuckTool => DiagnosticTerminationReason::StuckToolWatchdog,
-        TerminationReason::HeartbeatError => DiagnosticTerminationReason::HeartbeatError,
-        TerminationReason::HeartbeatPanic => DiagnosticTerminationReason::HeartbeatPanic,
+fn record_cli_exit(
+    status: ExitStatus,
+    cli_status: &mut Option<ExitStatus>,
+    cli_exit_at: &mut Option<Instant>,
+    active_input_controller: &ActiveInputController,
+    termination_runtime: &mut CliTerminationRuntime,
+    stdout_eof: bool,
+    mut drain_deadline: Pin<&mut Sleep>,
+) -> CliExitObservation {
+    debug_assert!(cli_status.is_none(), "CLI exit recorded more than once");
+    *cli_exit_at = Some(Instant::now());
+    log_info!(
+        LOG_TAG,
+        "CLI process exited (status: {status}), draining stdout"
+    );
+    *cli_status = Some(status);
+    active_input_controller.close_terminal();
+    // CLI exited on its own (possibly in response to our SIGTERM). Park the
+    // termination FSM so it can't re-arm on late result/control events while
+    // stdout is draining.
+    termination_runtime.mark_child_exited();
+    if stdout_eof {
+        return CliExitObservation::ExitedAndStdoutEof;
     }
+
+    drain_deadline.as_mut().reset(
+        tokio::time::Instant::now() + Duration::from_secs(constants::STDOUT_DRAIN_DEADLINE_SECS),
+    );
+    CliExitObservation::ExitedDrainingStdout
 }
 
 fn set_cli_current_dir(cmd: &mut tokio::process::Command, path: &str) -> Result<(), AgentError> {
@@ -1376,15 +1230,15 @@ fn with_carried_failure_reason(
 
 #[cfg(test)]
 mod tests {
+    use super::termination::CliTerminationRuntime;
     use super::{
-        AgentError, CliFailureDiagnostic, CliTerminationRuntime, PostResultCleanupState,
-        TerminationReason, TerminationState, claude_initial_prompt_frame,
-        record_cli_termination_signal, select_failure_diagnostic, set_cli_current_dir,
-        with_carried_failure_reason,
+        CliExitObservation, CliFailureDiagnostic, claude_initial_prompt_frame, record_cli_exit,
+        select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
     };
-    use guest_contracts::diagnostics::{
-        CliTerminationReason, CliTerminationSignal, FailureDetailSource, FailureReason,
-    };
+    use crate::active_input::ActiveInputRuntime;
+    use guest_contracts::diagnostics::{FailureDetailSource, FailureReason};
+    #[cfg(unix)]
+    use std::os::unix::process::ExitStatusExt;
     use std::time::Duration;
 
     #[test]
@@ -1420,81 +1274,6 @@ mod tests {
         uuid::Uuid::parse_str(uuid).expect("valid uuid");
     }
 
-    #[test]
-    fn cli_termination_signal_records_initial_prompt_stdin_and_escalation() {
-        let mut diagnostic = None;
-
-        record_cli_termination_signal(
-            &mut diagnostic,
-            TerminationReason::InitialPromptStdin,
-            CliTerminationSignal::Sigterm,
-            Some(42),
-            Duration::from_secs(1),
-        );
-
-        let first = diagnostic.expect("diagnostic after SIGTERM");
-        assert_eq!(first.reason, CliTerminationReason::InitialPromptStdin);
-        assert_eq!(first.signal_sent, Some(CliTerminationSignal::Sigterm));
-        assert_eq!(first.signal_pgid, Some(42));
-        assert_eq!(first.signal_grace_ms, Some(1_000));
-        assert!(!first.escalated);
-
-        let mut diagnostic = Some(first);
-        record_cli_termination_signal(
-            &mut diagnostic,
-            TerminationReason::InitialPromptStdin,
-            CliTerminationSignal::Sigkill,
-            Some(42),
-            Duration::from_secs(2),
-        );
-
-        let escalated = diagnostic.expect("diagnostic after SIGKILL");
-        assert_eq!(escalated.reason, CliTerminationReason::InitialPromptStdin);
-        assert_eq!(escalated.signal_sent, Some(CliTerminationSignal::Sigkill));
-        assert_eq!(escalated.signal_pgid, Some(42));
-        assert_eq!(escalated.signal_grace_ms, Some(2_000));
-        assert!(escalated.escalated);
-    }
-
-    #[tokio::test]
-    async fn forced_sigkill_pending_records_control_failure_transition() {
-        let deadline = tokio::time::sleep(Duration::MAX);
-        tokio::pin!(deadline);
-        let mut runtime = CliTerminationRuntime::new(None);
-        let now = tokio::time::Instant::now();
-        let mut post_result_cleanup = Some(PostResultCleanupState::arm(
-            now,
-            Duration::from_secs(1),
-            Duration::from_secs(2),
-        ));
-
-        runtime.begin_forced_sigkill_pending(
-            TerminationReason::HeartbeatError,
-            AgentError::Execution("heartbeat failed".to_string()),
-            &mut post_result_cleanup,
-            deadline.as_mut(),
-        );
-
-        let control_error = runtime
-            .control_error
-            .as_ref()
-            .expect("control error should be stored");
-        assert!(control_error.to_string().contains("heartbeat failed"));
-        assert!(post_result_cleanup.is_none());
-        assert_eq!(
-            runtime.state,
-            TerminationState::SigkillPending {
-                reason: TerminationReason::HeartbeatError
-            }
-        );
-        let diagnostic = runtime.diagnostic.expect("diagnostic should be recorded");
-        assert_eq!(diagnostic.reason, CliTerminationReason::HeartbeatError);
-        assert_eq!(diagnostic.signal_sent, Some(CliTerminationSignal::Sigterm));
-        assert_eq!(diagnostic.signal_pgid, None);
-        assert!(diagnostic.signal_grace_ms.is_some());
-        assert!(!diagnostic.escalated);
-    }
-
     #[tokio::test]
     async fn cli_current_dir_helper_sets_child_working_directory() {
         let dir = tempfile::tempdir().expect("tempdir");
@@ -1510,6 +1289,38 @@ mod tests {
             String::from_utf8_lossy(&output.stdout).trim(),
             dir.path().to_string_lossy()
         );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cli_exit_observation_distinguishes_stdout_drain_from_loop_completion() {
+        let active_input = ActiveInputRuntime::new_disabled("run-exit-observation");
+        let controller = active_input.controller();
+        let termination_deadline = tokio::time::sleep(Duration::MAX);
+        tokio::pin!(termination_deadline);
+        let drain_deadline = tokio::time::sleep(Duration::MAX);
+        tokio::pin!(drain_deadline);
+        let mut runtime = CliTerminationRuntime::new(None);
+        assert!(runtime.arm_post_result_cleanup(false, termination_deadline.as_mut()));
+
+        let mut cli_status = None;
+        let mut cli_exit_at = None;
+        let observation = record_cli_exit(
+            std::process::ExitStatus::from_raw(0),
+            &mut cli_status,
+            &mut cli_exit_at,
+            &controller,
+            &mut runtime,
+            false,
+            drain_deadline.as_mut(),
+        );
+
+        assert_eq!(observation, CliExitObservation::ExitedDrainingStdout);
+        assert!(cli_status.is_some());
+        assert!(cli_exit_at.is_some());
+        assert!(!runtime.has_pending_deadline());
+        assert!(!runtime.has_post_result_cleanup());
+        assert!(!runtime.arm_post_result_cleanup(false, termination_deadline.as_mut()));
     }
 
     #[test]
