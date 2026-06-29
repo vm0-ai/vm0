@@ -95,7 +95,8 @@ pub(super) fn parse_nl_header(buf: &[u8], n: usize) -> Result<NlHeader> {
 }
 
 /// Parse a single generic-netlink response from the buffer. Returns
-/// `GenlResponse` on success, or an error for NLMSG_ERROR with non-zero errno.
+/// `GenlResponse` on success, or an error for NLMSG_ERROR with a non-zero or
+/// malformed error code.
 pub(super) fn parse_genl_response(buf: &[u8], n: usize) -> Result<GenlResponse<'_>> {
     let received = received_slice(buf, n)?;
     let header = parse_nl_header(buf, n)?;
