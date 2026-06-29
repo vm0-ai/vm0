@@ -1,22 +1,30 @@
 import { randomUUID } from "node:crypto";
 
-import { and, eq } from "drizzle-orm";
 import { createStore } from "ccstate";
 import {
   zeroModelProvidersByTypeContract,
   zeroModelProvidersMainContract,
 } from "@vm0/api-contracts/contracts/zero-model-providers";
 import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
-import { modelProviders } from "@vm0/db/schema/model-provider";
+import { webhookFirewallAuthContract } from "@vm0/api-contracts/contracts/webhooks";
+import { HttpResponse, http } from "msw";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
-import { writeDb$ } from "../../external/db";
+import { generateSandboxToken } from "../../auth/tokens";
+import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import {
   deleteOrgModelProviders$,
   seedOrgModelProvider$,
   type OrgModelProviderFixture,
 } from "./helpers/zero-model-providers";
+import {
+  deleteUsageInsightFixture$,
+  seedCompose$,
+  seedRun$,
+  type UsageInsightFixture,
+} from "./helpers/zero-usage-insight";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -25,7 +33,11 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
-const ORG_SENTINEL_USER_ID = "__org__";
+const trackUsageFixture = createFixtureTracker<UsageInsightFixture>(
+  (fixture) => {
+    return store.set(deleteUsageInsightFixture$, fixture, context.signal);
+  },
+);
 
 function uniqueOrgUser(prefix: string): {
   readonly orgId: string;
@@ -90,24 +102,82 @@ function makeAuthJson(overrides?: {
   });
 }
 
-async function setOrgModelProviderStale(
-  orgId: string,
-  type: string,
+function secretTemplate(name: string): string {
+  return `\${{ secrets.${name} }}`;
+}
+
+function encryptedSecretsBody(values: Record<string, string>): string {
+  return encryptSecretForTests(JSON.stringify(values));
+}
+
+async function markOrgCodexProviderStaleViaFirewall(
+  fixture: {
+    readonly orgId: string;
+    readonly userId: string;
+  },
+  accessToken: string,
 ): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .update(modelProviders)
-    .set({
-      needsReconnect: true,
-      lastRefreshErrorCode: "refresh_token_expired",
-    })
-    .where(
-      and(
-        eq(modelProviders.orgId, orgId),
-        eq(modelProviders.userId, ORG_SENTINEL_USER_ID),
-        eq(modelProviders.type, type),
-      ),
-    );
+  await trackUsageFixture(Promise.resolve(fixture));
+  const { composeId } = await store.set(
+    seedCompose$,
+    {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      displayName: "Firewall Auth Test",
+    },
+    context.signal,
+  );
+  const { runId } = await store.set(
+    seedRun$,
+    {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      composeId,
+    },
+    context.signal,
+  );
+
+  server.use(
+    http.post("https://auth.openai.com/oauth/token", () => {
+      return HttpResponse.json(
+        {
+          error: {
+            code: "refresh_token_expired",
+            message: "expired refresh token",
+          },
+        },
+        { status: 401 },
+      );
+    }),
+  );
+
+  const client = setupApp({ context })(webhookFirewallAuthContract);
+  const failed = await accept(
+    client.resolve({
+      headers: {
+        authorization: `Bearer ${generateSandboxToken(
+          fixture.userId,
+          runId,
+          fixture.orgId,
+        )}`,
+      },
+      body: {
+        encryptedSecrets: encryptedSecretsBody({
+          CHATGPT_ACCESS_TOKEN: accessToken,
+        }),
+        authHeaders: {
+          Authorization: `Bearer ${secretTemplate("CHATGPT_ACCESS_TOKEN")}`,
+        },
+        secretConnectorMap: {
+          CHATGPT_ACCESS_TOKEN: "codex-oauth-token",
+        },
+      },
+    }),
+    [502],
+  );
+
+  expect(failed.body.error.code).toBe("TOKEN_REFRESH_FAILED");
+  expect(failed.body.error.failureReason).toBe("reconnect_required");
 }
 
 describe("GET /api/zero/model-providers", () => {
@@ -317,6 +387,10 @@ describe("GET /api/zero/model-providers", () => {
     const fixture = uniqueOrgUser("zmp-list-stale");
     await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const expiredAccess = makeJwt({
+      exp: Math.floor(now() / 1000) - 60,
+      sub: "expired",
+    });
 
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
@@ -326,12 +400,14 @@ describe("GET /api/zero/model-providers", () => {
         body: {
           type: "codex-oauth-token",
           authMethod: "auth_json",
-          secrets: { CODEX_AUTH_JSON: makeAuthJson() },
+          secrets: {
+            CODEX_AUTH_JSON: makeAuthJson({ accessToken: expiredAccess }),
+          },
         },
       }),
       [201],
     );
-    await setOrgModelProviderStale(fixture.orgId, "codex-oauth-token");
+    await markOrgCodexProviderStaleViaFirewall(fixture, expiredAccess);
 
     const response = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
@@ -750,6 +826,10 @@ describe("POST /api/zero/model-providers", () => {
     const fixture = uniqueOrgUser("zmp-codex-repaste");
     await track(Promise.resolve({ orgId: fixture.orgId }));
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const expiredAccess = makeJwt({
+      exp: Math.floor(now() / 1000) - 60,
+      sub: "expired",
+    });
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
     await accept(
@@ -758,12 +838,14 @@ describe("POST /api/zero/model-providers", () => {
         body: {
           type: "codex-oauth-token",
           authMethod: "auth_json",
-          secrets: { CODEX_AUTH_JSON: makeAuthJson() },
+          secrets: {
+            CODEX_AUTH_JSON: makeAuthJson({ accessToken: expiredAccess }),
+          },
         },
       }),
       [201],
     );
-    await setOrgModelProviderStale(fixture.orgId, "codex-oauth-token");
+    await markOrgCodexProviderStaleViaFirewall(fixture, expiredAccess);
     const stale = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
