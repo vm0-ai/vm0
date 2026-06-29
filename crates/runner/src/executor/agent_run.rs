@@ -148,9 +148,14 @@ async fn verify_restored_session_identity_for_reuse(
             )
             .await
         }
-        RestoredSessionHistoryVerification::FinalIdentityMetadata { runtime_dir } => {
+        RestoredSessionHistoryVerification::FinalIdentityMetadata {
+            metadata_path,
+            runtime_dir,
+        } => {
+            let metadata_path = metadata_path.to_owned();
             let runtime_dir = runtime_dir.to_owned();
-            verify_final_identity_metadata(sandbox, context, identity, &runtime_dir).await
+            verify_final_identity_metadata(sandbox, context, identity, &metadata_path, &runtime_dir)
+                .await
         }
     }
 }
@@ -206,9 +211,10 @@ async fn verify_final_identity_metadata(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
     identity: RestoredSessionIdentity,
+    metadata_path: &str,
     runtime_dir: &str,
 ) -> Option<RestoredSessionIdentity> {
-    let command = build_final_identity_verify_command(guest::RUN_AGENT);
+    let command = build_final_identity_verify_command(guest::RUN_AGENT, metadata_path);
     let env = [(
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         runtime_dir,
@@ -244,9 +250,10 @@ async fn verify_final_identity_metadata(
     }
 }
 
-fn build_final_identity_verify_command(run_agent_path: &str) -> String {
+fn build_final_identity_verify_command(run_agent_path: &str, metadata_path: &str) -> String {
     let run_agent_path = quote_shell_arg(run_agent_path);
-    format!("{run_agent_path} verify-session-history-identity")
+    let metadata_path = quote_shell_arg(metadata_path);
+    format!("{run_agent_path} verify-session-history-identity {metadata_path}")
 }
 
 async fn read_final_session_history_identity(

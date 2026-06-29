@@ -56,6 +56,7 @@ pub(crate) enum RestoredSessionHistoryVerification<'a> {
         read_limit: u64,
     },
     FinalIdentityMetadata {
+        metadata_path: &'a str,
         runtime_dir: &'a str,
     },
 }
@@ -191,7 +192,10 @@ impl RestoredSessionIdentity {
                 if !metadata_path.starts_with('/') || !runtime_dir.starts_with('/') {
                     return None;
                 }
-                Some(RestoredSessionHistoryVerification::FinalIdentityMetadata { runtime_dir })
+                Some(RestoredSessionHistoryVerification::FinalIdentityMetadata {
+                    metadata_path,
+                    runtime_dir,
+                })
             }
         }
     }

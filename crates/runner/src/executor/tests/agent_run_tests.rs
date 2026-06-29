@@ -619,6 +619,7 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
     assert_eq!(exec_calls.len(), 1);
     for call in exec_calls {
         assert!(call.cmd.contains("verify-session-history-identity"));
+        assert!(call.cmd.contains(previous_metadata_path));
         assert_eq!(
             call.env_keys,
             vec![guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV]
@@ -677,7 +678,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_fails()
     )
     .unwrap();
     let idle_identity =
-        RestoredSessionIdentity::from_final_metadata(metadata, metadata_path, runtime_dir)
+        RestoredSessionIdentity::from_final_metadata(metadata, metadata_path.clone(), runtime_dir)
             .expect("checkpointed identity");
     sandbox.push_exec_result(Ok(ExecResult::new(1, Vec::new(), Vec::new())));
     sandbox.push_read_file_result(Ok(None));
@@ -715,7 +716,9 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_fails()
         restored_identity.history_size_bytes(),
         Some(history.len() as u64)
     );
-    assert_eq!(sandbox.exec_calls().len(), 1);
+    let exec_calls = sandbox.exec_calls();
+    assert_eq!(exec_calls.len(), 1);
+    assert!(exec_calls[0].cmd.contains(&metadata_path));
     history_mock.assert_calls_async(1).await;
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
