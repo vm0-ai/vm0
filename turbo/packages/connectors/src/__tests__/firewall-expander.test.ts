@@ -98,6 +98,11 @@ describe("firewall expander helpers", () => {
     }).toThrow("host policy does not allow non-public IP literal");
     expect(() => {
       return collectAndValidatePermissions(
+        config("https://8.8.8.8.", { kind: "publicDestination" }),
+      );
+    }).toThrow("host policy does not allow non-public IP literal");
+    expect(() => {
+      return collectAndValidatePermissions(
         config("https://api.evil.test", {
           kind: "providerOwned",
           suffixes: ["example.com"],
@@ -1754,6 +1759,7 @@ describe("resolveFirewallBaseUrlVars", () => {
   it("rejects public-destination template base URLs with non-public IP literals", () => {
     for (const STRAPI_BASE_URL of [
       "https://127.0.0.1",
+      "https://8.8.8.8.",
       "https://10.0.0.5",
       "https://169.254.1.2",
       "https://192.168.1.10",

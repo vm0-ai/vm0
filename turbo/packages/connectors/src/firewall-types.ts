@@ -1612,7 +1612,15 @@ function hostPolicyIpLiteralIsPublic(hostname: string): boolean | null {
   }
 
   const ipv4Parts = parseCanonicalIpv4Address(hostname);
-  return ipv4Parts ? isPublicIpv4Address(ipv4Parts) : null;
+  if (ipv4Parts) {
+    return isPublicIpv4Address(ipv4Parts);
+  }
+
+  const normalizedIpv4Host = normalizeHostForIpv4LiteralSyntax(hostname);
+  if (isIpv4LiteralLike(normalizedIpv4Host)) {
+    return false;
+  }
+  return null;
 }
 
 function providerOwnedHostMatches(
@@ -1688,6 +1696,7 @@ export function validateBaseUrlHostPolicy({
 
   const authorityHasParams = baseUrlAuthorityHasParams(base);
   const url = urlForHostPolicyValidation(base, serviceName);
+  const rawAuthority = rawAuthorityFromBaseUrl(base);
   const hostname = normalizeHostPolicyHostname(url.hostname);
   if (hostPolicy.kind === "providerOwned") {
     if (
@@ -1715,7 +1724,9 @@ export function validateBaseUrlHostPolicy({
     return;
   }
 
-  const publicIpLiteral = hostPolicyIpLiteralIsPublic(hostname);
+  const publicDestinationHost =
+    rawAuthority === null ? url.hostname : rawHostFromAuthority(rawAuthority);
+  const publicIpLiteral = hostPolicyIpLiteralIsPublic(publicDestinationHost);
   if (publicIpLiteral === false) {
     throw new Error(
       errMsg(
