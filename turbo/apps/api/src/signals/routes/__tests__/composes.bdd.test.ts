@@ -18,7 +18,6 @@ import {
   AMBIGUOUS_VERSION_IDS,
   AMBIGUOUS_VERSION_PREFIX,
   createComposesBddApi,
-  mockComposeInstructionsDownloads,
   sandboxComposeToken,
 } from "./helpers/api-bdd-composes";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
@@ -28,8 +27,8 @@ import { createStoragesBddApi } from "./helpers/api-bdd-storages";
  * COMPOSE-01 round-5 expansion. The compose lifecycle chain (create, read,
  * list, metadata, delete through public APIs) lives in
  * auth-org-agents.bdd.test.ts and stays there; this file adds version
- * resolution, instructions, token scoping, zero-route errors, and delete
- * protection/sweep behavior.
+ * resolution, token scoping, zero-route errors, and delete protection/sweep
+ * behavior.
  *
  * - Version ids are sha256 hashes of canonical compose content, so the
  *   ambiguous-prefix 400 is API-constructible from the precomputed
@@ -41,9 +40,7 @@ import { createStoragesBddApi } from "./helpers/api-bdd-storages";
  * - Unreachable arms intentionally not exercised (see api.bdd.md):
  *   agent-composes-read.service `agentComposeVersionResolution` no-head 400
  *   ("Agent compose has no versions...") — every public write path sets a
- *   head version; and `agentComposeInstructions` safeParse-failure
- *   `{content:null, filename:null}` — stored content is contract-validated
- *   on every public write path.
+ *   head version.
  */
 
 const context = testContext();
@@ -467,138 +464,6 @@ describe("COMPOSE-01 create and metadata validation", () => {
   });
 });
 
-describe("COMPOSE-01 instructions", () => {
-  it("serves canonical defaults and storage-backed instructions across actors", async () => {
-    mockEnv("R2_USER_STORAGES_BUCKET_NAME", "test-bucket");
-    const admin = api.user();
-    storages.mockStoragePresignedUrls();
-    storages.mockStorageObjectsExist();
-
-    const plainName = slug("bdd-instr-a");
-    const plain = await api.createCompose(admin, composeWith(plainName));
-    const canonical = await composes.readComposeInstructions(
-      admin,
-      plain.composeId,
-    );
-    expect(canonical).toStrictEqual({ content: null, filename: "CLAUDE.md" });
-
-    const explicitName = slug("bdd-instr-b");
-    const explicit = await api.createCompose(
-      admin,
-      composeWith(explicitName, { instructions: "AGENTS.md" }),
-    );
-    const storageAbsent = await composes.readComposeInstructions(
-      admin,
-      explicit.composeId,
-    );
-    expect(storageAbsent).toStrictEqual({
-      content: null,
-      filename: "AGENTS.md",
-    });
-
-    // The instructions volume is created through the public storages API
-    // (recipe: storages.bdd.test.ts volume prepare/commit); only the S3
-    // download boundary is mocked for the read-back.
-    const storageName = getInstructionsStorageName(explicitName);
-    const instructionsFile = storageTextFile(
-      "CLAUDE.md",
-      "# Shared Instructions",
-    );
-    const prepared = await storages.prepareStorage(admin, {
-      storageName,
-      storageType: "volume",
-      files: [instructionsFile],
-    });
-    await storages.commitStorage(admin, {
-      storageName,
-      storageType: "volume",
-      versionId: prepared.versionId,
-      files: [instructionsFile],
-    });
-
-    mockComposeInstructionsDownloads(context, {
-      storageName,
-      filename: "CLAUDE.md",
-      manifestPath: "./CLAUDE.md",
-      content: "# Shared Instructions",
-    });
-
-    const member = api.user({
-      orgId: orgIdOf(admin),
-      orgRole: "org:member",
-    });
-    const memberRead = await composes.readComposeInstructions(
-      member,
-      explicit.composeId,
-    );
-    expect(memberRead).toStrictEqual({
-      content: "# Shared Instructions",
-      filename: "AGENTS.md",
-    });
-
-    // Sandbox tokens minted for another org still read instructions: the
-    // route resolves the org from the compose itself.
-    const foreignSandbox = {
-      bearer: sandboxComposeToken({
-        userId: `user_${randomUUID()}`,
-        orgId: `org_${randomUUID()}`,
-      }),
-    };
-    const sandboxRead = await composes.readComposeInstructions(
-      foreignSandbox,
-      explicit.composeId,
-    );
-    expect(sandboxRead).toStrictEqual({
-      content: "# Shared Instructions",
-      filename: "AGENTS.md",
-    });
-
-    const outsider = api.user();
-    const crossOrg = await composes.requestReadComposeInstructions(
-      outsider,
-      explicit.composeId,
-      [404],
-    );
-    expectApiError(crossOrg.body);
-    expect(crossOrg.body.error.message).toBe("Agent compose not found");
-
-    const noOrg = api.user({ orgId: null });
-    const noOrgRead = await composes.requestReadComposeInstructions(
-      noOrg,
-      explicit.composeId,
-      [404],
-    );
-    expectApiError(noOrgRead.body);
-    expect(noOrgRead.body.error.message).toBe("Agent compose not found");
-
-    const unauthenticated = await composes.requestReadComposeInstructions(
-      null,
-      explicit.composeId,
-      [401],
-    );
-    expect(unauthenticated.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-
-    const missing = await composes.requestReadComposeInstructions(
-      admin,
-      randomUUID(),
-      [404],
-    );
-    expectApiError(missing.body);
-    expect(missing.body.error.message).toBe("Agent compose not found");
-
-    const malformed = await composes.rawRequest(admin, {
-      method: "GET",
-      path: "/api/agent/composes/91fc0bd84bba673393d9adfc1a0f4dec/instructions",
-    });
-    expect(malformed.status).toBe(400);
-    expect(malformed.body).toMatchObject({
-      error: { code: "BAD_REQUEST" },
-    });
-  });
-});
-
 describe("COMPOSE-01 token access", () => {
   it("scopes sandbox and zero tokens across compose routes", async () => {
     const admin = api.user();
@@ -655,16 +520,6 @@ describe("COMPOSE-01 token access", () => {
         return compose.id === composeId;
       }),
     ).toMatchObject({ displayName: "Sandbox Updated" });
-
-    const instructions = await composes.requestReadComposeInstructions(
-      sandbox,
-      composeId,
-      [200],
-    );
-    expect(instructions.body).toStrictEqual({
-      content: null,
-      filename: "CLAUDE.md",
-    });
 
     const foreignSandbox = {
       bearer: sandboxComposeToken({
@@ -724,13 +579,6 @@ describe("COMPOSE-01 token access", () => {
       [401],
     );
     expect(versions.body).toStrictEqual(unauthenticatedBody);
-
-    const instructions = await composes.requestReadComposeInstructions(
-      null,
-      missingId,
-      [401],
-    );
-    expect(instructions.body).toStrictEqual(unauthenticatedBody);
 
     const metadata = await composes.requestUpdateComposeMetadata(
       null,
