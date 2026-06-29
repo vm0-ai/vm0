@@ -1,5 +1,11 @@
 import { randomUUID } from "node:crypto";
 
+import {
+  DecryptCommand,
+  type DecryptCommandOutput,
+  GenerateDataKeyCommand,
+  type GenerateDataKeyCommandOutput,
+} from "@aws-sdk/client-kms";
 import { command } from "ccstate";
 import { testAutomationsStateContract } from "@vm0/api-contracts/contracts/test-automations-state";
 import {
@@ -10,6 +16,7 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -24,19 +31,28 @@ import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, inArray } from "drizzle-orm";
+import { and, asc, eq, inArray } from "drizzle-orm";
 
 import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
 import {
+  resetSecretKmsClientForTests,
+  setSecretKmsClientForTests,
+  type SecretKmsClient,
+} from "../services/crypto.utils";
+import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
 } from "./test-oauth-provider-helpers";
 
 const postBody$ = bodyResultOf(testAutomationsStateContract.post);
+const getQuery$ = queryOf(testAutomationsStateContract.get);
+const patchBody$ = bodyResultOf(testAutomationsStateContract.patch);
+const actionBody$ = bodyResultOf(testAutomationsStateContract.action);
 const deleteQuery$ = queryOf(testAutomationsStateContract.delete);
+const fakeKmsDataKey = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
 interface AutomationSeed {
   readonly name: string;
@@ -359,6 +375,286 @@ async function deleteAutomationsScenario(
   signal.throwIfAborted();
 }
 
+function iso(value: Date | null | undefined): string | null {
+  return value ? value.toISOString() : null;
+}
+
+function idsFromCsv(value: string | undefined): string[] {
+  return value?.split(",").filter(Boolean) ?? [];
+}
+
+async function loadAutomationState(db: Db, automationId: string | undefined) {
+  if (!automationId) {
+    return null;
+  }
+  const [automation] = await db
+    .select({
+      id: automations.id,
+      orgId: automations.orgId,
+      enabled: automations.enabled,
+      interpreterKind: automations.interpreterKind,
+      chatThreadId: automations.chatThreadId,
+    })
+    .from(automations)
+    .where(eq(automations.id, automationId))
+    .limit(1);
+  if (!automation) {
+    return null;
+  }
+  const [thread] = await db
+    .select({
+      title: chatThreads.title,
+      userId: chatThreads.userId,
+      agentComposeId: chatThreads.agentComposeId,
+    })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, automation.chatThreadId))
+    .limit(1);
+  return {
+    id: automation.id,
+    org_id: automation.orgId,
+    enabled: automation.enabled,
+    interpreter_kind: automation.interpreterKind,
+    chat_thread_id: automation.chatThreadId,
+    chat_thread: thread
+      ? {
+          title: thread.title,
+          user_id: thread.userId,
+          agent_compose_id: thread.agentComposeId,
+        }
+      : null,
+  };
+}
+
+async function loadTriggerRows(db: Db, automationIds: readonly string[]) {
+  if (automationIds.length === 0) {
+    return [];
+  }
+  const rows = await db
+    .select({
+      id: automationTriggers.id,
+      automationId: automationTriggers.automationId,
+      kind: automationTriggers.kind,
+      cronExpression: automationTriggers.cronExpression,
+      atTime: automationTriggers.atTime,
+      intervalSeconds: automationTriggers.intervalSeconds,
+      timezone: automationTriggers.timezone,
+      enabled: automationTriggers.enabled,
+      nextRunAt: automationTriggers.nextRunAt,
+      lastRunId: automationTriggers.lastRunId,
+      consecutiveFailures: automationTriggers.consecutiveFailures,
+    })
+    .from(automationTriggers)
+    .where(inArray(automationTriggers.automationId, [...automationIds]))
+    .orderBy(asc(automationTriggers.createdAt), asc(automationTriggers.id));
+  return rows.map((row) => {
+    return {
+      id: row.id,
+      automation_id: row.automationId,
+      kind: row.kind,
+      cron_expression: row.cronExpression,
+      at_time: iso(row.atTime),
+      interval_seconds: row.intervalSeconds,
+      timezone: row.timezone,
+      enabled: row.enabled,
+      next_run_at: iso(row.nextRunAt),
+      last_run_id: row.lastRunId,
+      consecutive_failures: row.consecutiveFailures,
+    };
+  });
+}
+
+async function loadRunsForAutomations(
+  db: Db,
+  automationIds: readonly string[],
+) {
+  if (automationIds.length === 0) {
+    return [];
+  }
+  const rows = await db
+    .select({
+      id: zeroRuns.id,
+      automationId: zeroRuns.automationId,
+    })
+    .from(zeroRuns)
+    .where(inArray(zeroRuns.automationId, [...automationIds]));
+  return rows.map((row) => {
+    return {
+      id: row.id,
+      automation_id: row.automationId,
+    };
+  });
+}
+
+async function loadRunState(db: Db, runId: string | undefined) {
+  if (!runId) {
+    return null;
+  }
+  const [zeroRun] = await db
+    .select({
+      triggerSource: zeroRuns.triggerSource,
+      automationId: zeroRuns.automationId,
+      triggerId: zeroRuns.triggerId,
+      chatThreadId: zeroRuns.chatThreadId,
+    })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, runId))
+    .limit(1);
+  const [agentRun] = await db
+    .select({
+      prompt: agentRuns.prompt,
+      appendSystemPrompt: agentRuns.appendSystemPrompt,
+    })
+    .from(agentRuns)
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  const callbacks = await db
+    .select({
+      url: agentRunCallbacks.url,
+      internalKind: agentRunCallbacks.internalKind,
+      payload: agentRunCallbacks.payload,
+    })
+    .from(agentRunCallbacks)
+    .where(eq(agentRunCallbacks.runId, runId));
+  const messages = await db
+    .select({
+      role: chatMessages.role,
+      content: chatMessages.content,
+      automationTitle: chatMessages.automationTitle,
+      automationSnapshot: chatMessages.automationSnapshot,
+    })
+    .from(chatMessages)
+    .where(eq(chatMessages.runId, runId));
+  return {
+    zero_run: zeroRun
+      ? {
+          trigger_source: zeroRun.triggerSource,
+          automation_id: zeroRun.automationId,
+          trigger_id: zeroRun.triggerId,
+          chat_thread_id: zeroRun.chatThreadId,
+        }
+      : null,
+    agent_run: agentRun
+      ? {
+          prompt: agentRun.prompt,
+          append_system_prompt: agentRun.appendSystemPrompt,
+        }
+      : null,
+    callbacks: callbacks.map((callback) => {
+      return {
+        url: callback.url,
+        internal_kind: callback.internalKind,
+        payload: callback.payload,
+      };
+    }),
+    messages: messages.map((message) => {
+      return {
+        role: message.role,
+        content: message.content,
+        automation_title: message.automationTitle,
+        automation_snapshot: message.automationSnapshot,
+      };
+    }),
+  };
+}
+
+async function cleanupCreatedAutomations(
+  db: Db,
+  orgId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const rows = await db
+    .select({ id: automations.id, chatThreadId: automations.chatThreadId })
+    .from(automations)
+    .where(eq(automations.orgId, orgId));
+  signal.throwIfAborted();
+  for (const row of rows) {
+    await db.delete(automations).where(eq(automations.id, row.id));
+    signal.throwIfAborted();
+    await db.delete(chatThreads).where(eq(chatThreads.id, row.chatThreadId));
+    signal.throwIfAborted();
+  }
+}
+
+async function seedCompose(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly composeId?: string;
+  },
+): Promise<string> {
+  const composeId = args.composeId ?? randomUUID();
+  await db.insert(agentComposes).values({
+    id: composeId,
+    userId: args.userId,
+    orgId: args.orgId,
+    name: `agent-extra-${composeId.slice(0, 8)}`,
+  });
+  return composeId;
+}
+
+async function seedRun(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly composeId: string;
+    readonly status?: string;
+    readonly prompt?: string;
+  },
+): Promise<string> {
+  const [session] = await db
+    .insert(agentSessions)
+    .values({
+      userId: args.userId,
+      orgId: args.orgId,
+      agentComposeId: args.composeId,
+    })
+    .returning({ id: agentSessions.id });
+  if (!session) {
+    throw new Error("seedRun: agent session insert returned no row");
+  }
+  const [run] = await db
+    .insert(agentRuns)
+    .values({
+      userId: args.userId,
+      orgId: args.orgId,
+      sessionId: session.id,
+      status: args.status ?? "completed",
+      prompt: args.prompt ?? "prior run",
+    })
+    .returning({ id: agentRuns.id });
+  if (!run) {
+    throw new Error("seedRun: agent run insert returned no row");
+  }
+  return run.id;
+}
+
+function fakeSecretKmsClient(): SecretKmsClient {
+  function send(
+    command: GenerateDataKeyCommand,
+  ): Promise<GenerateDataKeyCommandOutput>;
+  function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
+  async function send(
+    command: GenerateDataKeyCommand | DecryptCommand,
+  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
+    if (command instanceof GenerateDataKeyCommand) {
+      return {
+        $metadata: {},
+        KeyId: command.input.KeyId,
+        CiphertextBlob: Buffer.from(
+          `encrypted-data-key:${command.input.KeyId}`,
+          "utf8",
+        ),
+        Plaintext: fakeKmsDataKey,
+      };
+    }
+    return { $metadata: {}, Plaintext: fakeKmsDataKey };
+  }
+  return { send };
+}
+
 const postAutomationsState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -399,6 +695,154 @@ const postAutomationsState$ = command(
   },
 );
 
+const getAutomationsState$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    if (!isTestEndpointAllowed(get(request$))) {
+      return testEndpointNotFoundResponse();
+    }
+
+    const query = get(getQuery$);
+    const automationIds = [
+      ...(query.automation_id ? [query.automation_id] : []),
+      ...idsFromCsv(query.automation_ids),
+    ];
+    const db = set(writeDb$);
+    const body = {
+      automation: await loadAutomationState(db, query.automation_id),
+      triggers: await loadTriggerRows(db, automationIds),
+      runs: await loadRunsForAutomations(db, automationIds),
+      run: await loadRunState(db, query.run_id),
+    };
+    signal.throwIfAborted();
+    return { status: 200 as const, body };
+  },
+);
+
+const patchAutomationTriggerState$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    if (!isTestEndpointAllowed(get(request$))) {
+      return testEndpointNotFoundResponse();
+    }
+
+    const bodyResult = await get(patchBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const body = bodyResult.data;
+    if (!body.trigger_id && !body.automation_id) {
+      return {
+        status: 400 as const,
+        body: { error: "trigger_id or automation_id is required" },
+      };
+    }
+
+    const setValues: Partial<typeof automationTriggers.$inferInsert> = {};
+    if ("at_time" in body) {
+      setValues.atTime = parseOptionalDate(body.at_time);
+    }
+    if ("next_run_at" in body) {
+      setValues.nextRunAt = parseOptionalDate(body.next_run_at);
+    }
+    if ("enabled" in body) {
+      setValues.enabled = body.enabled;
+    }
+    if ("last_run_id" in body) {
+      setValues.lastRunId = body.last_run_id ?? null;
+    }
+    if ("consecutive_failures" in body) {
+      setValues.consecutiveFailures = body.consecutive_failures;
+    }
+
+    const db = set(writeDb$);
+    if (body.trigger_id) {
+      await db
+        .update(automationTriggers)
+        .set(setValues)
+        .where(eq(automationTriggers.id, body.trigger_id));
+    } else if (body.automation_id) {
+      await db
+        .update(automationTriggers)
+        .set(setValues)
+        .where(eq(automationTriggers.automationId, body.automation_id));
+    }
+    signal.throwIfAborted();
+    return { status: 200 as const, body: { ok: true as const } };
+  },
+);
+
+const postAutomationsStateAction$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    if (!isTestEndpointAllowed(get(request$))) {
+      return testEndpointNotFoundResponse();
+    }
+
+    const bodyResult = await get(actionBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const body = bodyResult.data;
+    const db = set(writeDb$);
+    switch (body.action) {
+      case "cleanup-created-automations":
+        await cleanupCreatedAutomations(db, body.org_id, signal);
+        return { status: 200 as const, body: { ok: true as const } };
+      case "seed-compose": {
+        const composeId = await seedCompose(db, {
+          orgId: body.org_id,
+          userId: body.user_id,
+          composeId: body.compose_id,
+        });
+        signal.throwIfAborted();
+        return {
+          status: 200 as const,
+          body: { ok: true as const, compose_id: composeId },
+        };
+      }
+      case "delete-compose":
+        await db
+          .delete(agentComposes)
+          .where(eq(agentComposes.id, body.compose_id));
+        signal.throwIfAborted();
+        return { status: 200 as const, body: { ok: true as const } };
+      case "seed-run": {
+        const runId = await seedRun(db, {
+          orgId: body.org_id,
+          userId: body.user_id,
+          composeId: body.compose_id,
+          status: body.status,
+          prompt: body.prompt,
+        });
+        signal.throwIfAborted();
+        return {
+          status: 200 as const,
+          body: { ok: true as const, run_id: runId },
+        };
+      }
+      case "delete-org-member":
+        await db
+          .delete(orgMembersCache)
+          .where(
+            and(
+              eq(orgMembersCache.orgId, body.org_id),
+              eq(orgMembersCache.userId, body.user_id),
+            ),
+          );
+        signal.throwIfAborted();
+        return { status: 200 as const, body: { ok: true as const } };
+      case "enable-fake-kms":
+        setSecretKmsClientForTests(fakeSecretKmsClient());
+        return { status: 200 as const, body: { ok: true as const } };
+      case "reset-fake-kms":
+        resetSecretKmsClientForTests();
+        return { status: 200 as const, body: { ok: true as const } };
+    }
+  },
+);
+
 const deleteAutomationsState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -433,6 +877,18 @@ export const testAutomationsStateRoutes: readonly RouteEntry[] = [
   {
     route: testAutomationsStateContract.post,
     handler: postAutomationsState$,
+  },
+  {
+    route: testAutomationsStateContract.get,
+    handler: getAutomationsState$,
+  },
+  {
+    route: testAutomationsStateContract.patch,
+    handler: patchAutomationTriggerState$,
+  },
+  {
+    route: testAutomationsStateContract.action,
+    handler: postAutomationsStateAction$,
   },
   {
     route: testAutomationsStateContract.delete,

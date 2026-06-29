@@ -1,6 +1,11 @@
 import type {
+  TestAutomationsStateActionBody,
+  TestAutomationsStateActionResponse,
+  TestAutomationsStatePatchBody,
   TestAutomationsStatePostBody,
   TestAutomationsStatePostResponse,
+  TestAutomationsStateReadResponse,
+  TestAutomationsStateTriggerRow,
 } from "@vm0/api-contracts/contracts/test-automations-state";
 
 import { createAppWithRoutes } from "../../../../app-factory-core";
@@ -41,6 +46,14 @@ export interface AutomationsFixture {
   readonly composeId: string;
   readonly automationIds: readonly string[];
 }
+
+export type AutomationState = NonNullable<
+  TestAutomationsStateReadResponse["automation"]
+>;
+export type AutomationRunState = NonNullable<
+  TestAutomationsStateReadResponse["run"]
+>;
+export type AutomationTriggerRow = TestAutomationsStateTriggerRow;
 
 function requestAutomationsState(
   context: TestContext,
@@ -101,6 +114,23 @@ async function expectOk(response: Response, operation: string): Promise<void> {
   throw new Error(`${operation} failed with ${response.status}`);
 }
 
+async function postAction(
+  context: TestContext,
+  body: TestAutomationsStateActionBody,
+): Promise<TestAutomationsStateActionResponse> {
+  const response = await requestAutomationsState(
+    context,
+    `${AUTOMATIONS_STATE_ROUTE}/action`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  await expectOk(response, `automations action ${body.action}`);
+  return await readJson<TestAutomationsStateActionResponse>(response);
+}
+
 export async function seedAutomationsScenario(
   context: TestContext,
   values: AutomationsScenarioValues,
@@ -139,4 +169,147 @@ export async function deleteAutomationsScenario(
     { method: "DELETE" },
   );
   await expectOk(response, "deleteAutomationsScenario");
+}
+
+export async function readAutomationsState(
+  context: TestContext,
+  params: {
+    readonly automationId?: string;
+    readonly automationIds?: readonly string[];
+    readonly runId?: string;
+    readonly orgId?: string;
+  },
+): Promise<TestAutomationsStateReadResponse> {
+  const query = new URLSearchParams();
+  if (params.automationId) {
+    query.set("automation_id", params.automationId);
+  }
+  if (params.automationIds && params.automationIds.length > 0) {
+    query.set("automation_ids", params.automationIds.join(","));
+  }
+  if (params.runId) {
+    query.set("run_id", params.runId);
+  }
+  if (params.orgId) {
+    query.set("org_id", params.orgId);
+  }
+  const response = await requestAutomationsState(
+    context,
+    `${AUTOMATIONS_STATE_ROUTE}/read?${query.toString()}`,
+  );
+  await expectOk(response, "readAutomationsState");
+  return await readJson<TestAutomationsStateReadResponse>(response);
+}
+
+export async function findAutomationTriggerRows(
+  context: TestContext,
+  automationId: string,
+): Promise<readonly AutomationTriggerRow[]> {
+  const state = await readAutomationsState(context, {
+    automationIds: [automationId],
+  });
+  return state.triggers;
+}
+
+export async function patchAutomationTriggerState(
+  context: TestContext,
+  body: Omit<TestAutomationsStatePatchBody, "at_time" | "next_run_at"> & {
+    readonly at_time?: Date | null;
+    readonly next_run_at?: Date | null;
+  },
+): Promise<void> {
+  const wireBody: TestAutomationsStatePatchBody = {
+    ...body,
+    at_time: dateToWire(body.at_time),
+    next_run_at: dateToWire(body.next_run_at),
+  };
+  const response = await requestAutomationsState(
+    context,
+    `${AUTOMATIONS_STATE_ROUTE}/trigger`,
+    {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(wireBody),
+    },
+  );
+  await expectOk(response, "patchAutomationTriggerState");
+}
+
+export async function cleanupCreatedAutomations(
+  context: TestContext,
+  fixture: AutomationsFixture,
+): Promise<void> {
+  await postAction(context, {
+    action: "cleanup-created-automations",
+    org_id: fixture.orgId,
+  });
+}
+
+export async function seedExtraCompose(
+  context: TestContext,
+  fixture: AutomationsFixture,
+  composeId: string,
+): Promise<string> {
+  const response = await postAction(context, {
+    action: "seed-compose",
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+    compose_id: composeId,
+  });
+  if (!response.compose_id) {
+    throw new Error("seedExtraCompose did not return compose_id");
+  }
+  return response.compose_id;
+}
+
+export async function deleteExtraCompose(
+  context: TestContext,
+  composeId: string,
+): Promise<void> {
+  await postAction(context, {
+    action: "delete-compose",
+    compose_id: composeId,
+  });
+}
+
+export async function seedAutomationRun(
+  context: TestContext,
+  fixture: AutomationsFixture,
+  options: { readonly status?: string; readonly prompt?: string } = {},
+): Promise<string> {
+  const response = await postAction(context, {
+    action: "seed-run",
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+    compose_id: fixture.composeId,
+    status: options.status,
+    prompt: options.prompt,
+  });
+  if (!response.run_id) {
+    throw new Error("seedAutomationRun did not return run_id");
+  }
+  return response.run_id;
+}
+
+export async function deleteOrgMembership(
+  context: TestContext,
+  fixture: AutomationsFixture,
+): Promise<void> {
+  await postAction(context, {
+    action: "delete-org-member",
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+  });
+}
+
+export async function enableAutomationsFakeKms(
+  context: TestContext,
+): Promise<void> {
+  await postAction(context, { action: "enable-fake-kms" });
+}
+
+export async function resetAutomationsFakeKms(
+  context: TestContext,
+): Promise<void> {
+  await postAction(context, { action: "reset-fake-kms" });
 }

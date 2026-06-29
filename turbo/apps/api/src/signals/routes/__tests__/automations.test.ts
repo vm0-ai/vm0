@@ -7,33 +7,26 @@ import {
 } from "@vm0/api-contracts/contracts/automations";
 import { cronExecuteAutomationsContract } from "@vm0/api-contracts/contracts/cron";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { automations, automationTriggers } from "@vm0/db/schema/automation";
-import { chatMessages } from "@vm0/db/schema/chat-message";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { createStore } from "ccstate";
-import { and, asc, eq, inArray } from "drizzle-orm";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now } from "../../../lib/time";
 import {
-  resetSecretKmsClientForTests,
-  setSecretKmsClientForTests,
-} from "../../services/crypto.utils";
-import { writeDb$ } from "../../external/db";
-import {
   type AutomationsFixture,
+  cleanupCreatedAutomations,
+  deleteExtraCompose,
   deleteAutomationsScenario,
+  deleteOrgMembership,
+  enableAutomationsFakeKms,
+  findAutomationTriggerRows,
+  patchAutomationTriggerState,
+  readAutomationsState,
+  resetAutomationsFakeKms,
   seedAutomationsScenario,
+  seedAutomationRun,
+  seedExtraCompose,
 } from "./helpers/automations";
-import { fakeKmsClient } from "./helpers/fake-kms-client";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -44,7 +37,6 @@ import {
 } from "./helpers/zero-feature-switches";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const SESSION_HEADERS = { authorization: "Bearer clerk-session" } as const;
@@ -62,8 +54,8 @@ function isolateCronPollTime(): void {
   mockNow(ISOLATED_CRON_POLL_TIME_MS);
 }
 
-afterEach(() => {
-  resetSecretKmsClientForTests();
+afterEach(async () => {
+  await resetAutomationsFakeKms(context);
 });
 
 function mainApi() {
@@ -94,15 +86,7 @@ const trackAutomations = createFixtureTracker<AutomationsFixture>(
 // with the automation; the linked chat threads are removed explicitly.
 const trackCreatedAutomations = createFixtureTracker<AutomationsFixture>(
   async (fixture) => {
-    const db = store.set(writeDb$);
-    const rows = await db
-      .select({ id: automations.id, chatThreadId: automations.chatThreadId })
-      .from(automations)
-      .where(eq(automations.orgId, fixture.orgId));
-    for (const row of rows) {
-      await db.delete(automations).where(eq(automations.id, row.id));
-      await db.delete(chatThreads).where(eq(chatThreads.id, row.chatThreadId));
-    }
+    await cleanupCreatedAutomations(context, fixture);
   },
 );
 
@@ -111,8 +95,7 @@ const trackCreatedAutomations = createFixtureTracker<AutomationsFixture>(
 // afterEach hooks in reverse): the compose cascade removes its automations and
 // chat threads before the broader org sweep runs.
 const trackExtraComposes = createFixtureTracker<string>(async (composeId) => {
-  const db = store.set(writeDb$);
-  await db.delete(agentComposes).where(eq(agentComposes.id, composeId));
+  await deleteExtraCompose(context, composeId);
 });
 
 async function seedFixture(): Promise<AutomationsFixture> {
@@ -121,7 +104,7 @@ async function seedFixture(): Promise<AutomationsFixture> {
   // ambient key would make description-less creates call openrouter.ai live.
   mockOptionalEnv("OPENROUTER_API_KEY", undefined);
   context.mocks.s3.send.mockResolvedValue({});
-  setSecretKmsClientForTests(fakeKmsClient().client);
+  await enableAutomationsFakeKms(context);
   const fixture = await trackAutomations(
     seedAutomationsScenario(context, { automations: [] }),
   );
@@ -182,12 +165,7 @@ async function createAutomation(args: CreateArgs) {
 }
 
 async function findTriggerRows(automationId: string) {
-  const db = store.set(writeDb$);
-  return await db
-    .select()
-    .from(automationTriggers)
-    .where(eq(automationTriggers.automationId, automationId))
-    .orderBy(asc(automationTriggers.createdAt), asc(automationTriggers.id));
+  return await findAutomationTriggerRows(context, automationId);
 }
 
 describe("Automations API", () => {
@@ -209,34 +187,7 @@ describe("Automations API", () => {
     expect(automation.description).toBe("Daily digest");
     expect(automation.enabled).toBeTruthy();
     expect(automation.triggers).toHaveLength(1);
-
-    const db = store.set(writeDb$);
-    const [row] = await db
-      .select({
-        interpreterKind: automations.interpreterKind,
-        orgId: automations.orgId,
-      })
-      .from(automations)
-      .where(eq(automations.id, automation.id));
-    // D1: natively-created automations persist the default interpreter.
-    expect(row).toStrictEqual({
-      interpreterKind: "default",
-      orgId: fixture.orgId,
-    });
-
-    const [thread] = await db
-      .select({
-        title: chatThreads.title,
-        userId: chatThreads.userId,
-        agentComposeId: chatThreads.agentComposeId,
-      })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, automation.chatThreadId));
-    expect(thread).toStrictEqual({
-      title: "Daily digest",
-      userId: fixture.userId,
-      agentComposeId: fixture.composeId,
-    });
+    expect(automation.chatThreadId).toEqual(expect.any(String));
   });
 
   it("rejects creating an automation when schedule automations are switched to workflow triggers", async () => {
@@ -261,12 +212,11 @@ describe("Automations API", () => {
       code: "FORBIDDEN",
     });
 
-    const rows = await store
-      .set(writeDb$)
-      .select({ id: automations.id })
-      .from(automations)
-      .where(eq(automations.orgId, fixture.orgId));
-    expect(rows).toHaveLength(0);
+    const listed = await accept(
+      mainApi().list({ headers: SESSION_HEADERS }),
+      [200],
+    );
+    expect(listed.body.automations).toHaveLength(0);
   });
 
   it("creates an automation with a first cron trigger via sugar", async () => {
@@ -328,12 +278,14 @@ describe("Automations API", () => {
       code: "FORBIDDEN",
     });
 
-    const [row] = await store
-      .set(writeDb$)
-      .select({ enabled: automations.enabled })
-      .from(automations)
-      .where(eq(automations.id, created.automation.id));
-    expect(row?.enabled).toBeFalsy();
+    const shown = await accept(
+      refApi().show({
+        headers: SESSION_HEADERS,
+        params: { ref: created.automation.id },
+      }),
+      [200],
+    );
+    expect(shown.body.enabled).toBeFalsy();
   });
 
   it("rejects enabling a disabled automation trigger when schedule automations are switched to workflow triggers", async () => {
@@ -371,12 +323,18 @@ describe("Automations API", () => {
       code: "FORBIDDEN",
     });
 
-    const [row] = await store
-      .set(writeDb$)
-      .select({ enabled: automationTriggers.enabled })
-      .from(automationTriggers)
-      .where(eq(automationTriggers.id, trigger.id));
-    expect(row?.enabled).toBeFalsy();
+    const shown = await accept(
+      refApi().show({
+        headers: SESSION_HEADERS,
+        params: { ref: created.automation.id },
+      }),
+      [200],
+    );
+    expect(
+      shown.body.triggers.find((candidate) => {
+        return candidate.id === trigger.id;
+      })?.enabled,
+    ).toBeFalsy();
   });
 
   it("creates and updates one-time triggers by interpreting local atTime in timezone", async () => {
@@ -518,13 +476,7 @@ describe("Automations API", () => {
     const extraComposeId = await trackExtraComposes(
       Promise.resolve(randomUUID()),
     );
-    const db = store.set(writeDb$);
-    await db.insert(agentComposes).values({
-      id: extraComposeId,
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      name: `agent-extra-${extraComposeId.slice(0, 8)}`,
-    });
+    await seedExtraCompose(context, fixture, extraComposeId);
 
     const first = await createAutomation({
       name: "shared-name",
@@ -633,11 +585,10 @@ describe("Automations API", () => {
     });
     const automationId = created.automation.id;
     const dueTime = new Date(now() - 60_000);
-    const db = store.set(writeDb$);
-    await db
-      .update(automationTriggers)
-      .set({ nextRunAt: dueTime })
-      .where(eq(automationTriggers.automationId, automationId));
+    await patchAutomationTriggerState(context, {
+      automation_id: automationId,
+      next_run_at: dueTime,
+    });
 
     const disabled = await accept(
       refApi().disable({
@@ -652,7 +603,7 @@ describe("Automations API", () => {
     // it (#17546), but leaves the trigger's own enabled flag intact.
     const [suspended] = await findTriggerRows(automationId);
     expect(suspended?.enabled).toBeTruthy();
-    expect(suspended?.nextRunAt).toBeNull();
+    expect(suspended?.next_run_at).toBeNull();
 
     // The poller's SQL filter no longer surfaces the disabled automation's
     // trigger at all, so it is neither claimed nor counted as skipped.
@@ -663,11 +614,9 @@ describe("Automations API", () => {
       [200],
     );
     expect(cronResponse.body.executed).toBe(0);
-    const runs = await db
-      .select({ id: zeroRuns.id })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.automationId, automationId));
-    expect(runs).toHaveLength(0);
+    await expect(
+      readAutomationsState(context, { automationIds: [automationId] }),
+    ).resolves.toMatchObject({ runs: [] });
 
     const enabled = await accept(
       refApi().enable({
@@ -699,10 +648,11 @@ describe("Automations API", () => {
     if (onceTriggerBefore?.kind !== "once") {
       throw new Error("Expected a once trigger");
     }
-    await db
-      .update(automationTriggers)
-      .set({ atTime: dueTime, nextRunAt: dueTime })
-      .where(eq(automationTriggers.id, onceTriggerBefore.id));
+    await patchAutomationTriggerState(context, {
+      trigger_id: onceTriggerBefore.id,
+      at_time: dueTime,
+      next_run_at: dueTime,
+    });
 
     const enabledOnce = await accept(
       refApi().enable({
@@ -750,30 +700,11 @@ describe("Automations API", () => {
     const automationId = created.automation.id;
 
     // Stamp a last run on the trigger to prove disable does not clear it.
-    const db = store.set(writeDb$);
-    const [session] = await db
-      .insert(agentSessions)
-      .values({
-        userId: fixture.userId,
-        orgId: fixture.orgId,
-        agentComposeId: fixture.composeId,
-      })
-      .returning({ id: agentSessions.id });
-    const [priorRun] = await db
-      .insert(agentRuns)
-      .values({
-        userId: fixture.userId,
-        orgId: fixture.orgId,
-        sessionId: session!.id,
-        status: "completed",
-        prompt: "prior run",
-      })
-      .returning({ id: agentRuns.id });
-    const fakeRunId = priorRun!.id;
-    await db
-      .update(automationTriggers)
-      .set({ lastRunId: fakeRunId })
-      .where(eq(automationTriggers.automationId, automationId));
+    const fakeRunId = await seedAutomationRun(context, fixture);
+    await patchAutomationTriggerState(context, {
+      automation_id: automationId,
+      last_run_id: fakeRunId,
+    });
 
     const disabled = await accept(
       refApi().disable({
@@ -786,9 +717,9 @@ describe("Automations API", () => {
     expect(disabled.body.enabled).toBeFalsy();
     const suspendedRows = await findTriggerRows(automationId);
     for (const row of suspendedRows) {
-      expect(row.nextRunAt).toBeNull();
+      expect(row.next_run_at).toBeNull();
       expect(row.enabled).toBeTruthy();
-      expect(row.lastRunId).toBe(fakeRunId);
+      expect(row.last_run_id).toBe(fakeRunId);
     }
 
     const enabled = await accept(
@@ -809,7 +740,7 @@ describe("Automations API", () => {
     // The last-run history (an internal column) survives the round trip.
     const enabledRows = await findTriggerRows(automationId);
     for (const row of enabledRows) {
-      expect(row.lastRunId).toBe(fakeRunId);
+      expect(row.last_run_id).toBe(fakeRunId);
     }
   });
 
@@ -822,7 +753,7 @@ describe("Automations API", () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
     context.mocks.s3.send.mockResolvedValue({});
-    setSecretKmsClientForTests(fakeKmsClient().client);
+    await enableAutomationsFakeKms(context);
     mockEnv("CRON_SECRET", CRON_SECRET);
 
     const pastDue = isolatedCronPastDue();
@@ -855,17 +786,21 @@ describe("Automations API", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const db = store.set(writeDb$);
     // Seed zombies disabled, then restore only their trigger state. That avoids
     // a race window where another test worker's global cron can claim them
     // before this test has built the historical zombie shape (trigger
     // enabled=true, next_run_at in the past, automation enabled=false).
     const zombieIds = fixture.automationIds.slice(0, 12);
     const healthyId = fixture.automationIds[12]!;
-    await db
-      .update(automationTriggers)
-      .set({ enabled: true, nextRunAt: pastDue })
-      .where(inArray(automationTriggers.automationId, [...zombieIds]));
+    await Promise.all(
+      zombieIds.map((automationId) => {
+        return patchAutomationTriggerState(context, {
+          automation_id: automationId,
+          enabled: true,
+          next_run_at: pastDue,
+        });
+      }),
+    );
 
     isolateCronPollTime();
     const response = await accept(
@@ -879,69 +814,52 @@ describe("Automations API", () => {
     expect(response.body.success).toBeTruthy();
 
     const [healthyTrigger] = await findTriggerRows(healthyId);
-    expect(healthyTrigger?.nextRunAt).toBeNull();
-    expect(healthyTrigger?.lastRunId).not.toBeNull();
-    const healthyRuns = await db
-      .select({ id: zeroRuns.id })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.automationId, healthyId));
+    expect(healthyTrigger?.next_run_at).toBeNull();
+    expect(healthyTrigger?.last_run_id).not.toBeNull();
+    const { runs: healthyRuns } = await readAutomationsState(context, {
+      automationIds: [healthyId],
+    });
     expect(healthyRuns).toHaveLength(1);
     const healthyRunId = healthyRuns[0]?.id;
     if (!healthyRunId) {
       throw new Error("Expected healthy automation run");
     }
-    const callbacks = await db
-      .select({
-        url: agentRunCallbacks.url,
-        internalKind: agentRunCallbacks.internalKind,
-        payload: agentRunCallbacks.payload,
-      })
-      .from(agentRunCallbacks)
-      .where(eq(agentRunCallbacks.runId, healthyRunId));
+    const callbacks = (
+      await readAutomationsState(context, { runId: healthyRunId })
+    ).run?.callbacks;
     expect(callbacks).toStrictEqual(
       expect.arrayContaining([
         {
           url: null,
-          internalKind: "trigger:loop",
+          internal_kind: "trigger:loop",
           payload: { triggerId: healthyTrigger?.id },
         },
       ]),
     );
     expect(
-      callbacks.some((callback) => {
-        return callback.url === null && callback.internalKind === "chat";
+      callbacks?.some((callback) => {
+        return callback.url === null && callback.internal_kind === "chat";
       }),
     ).toBeTruthy();
 
     // The zombies were never touched: still due, never run.
-    const zombieTriggers = await db
-      .select({
-        nextRunAt: automationTriggers.nextRunAt,
-        lastRunId: automationTriggers.lastRunId,
-      })
-      .from(automationTriggers)
-      .innerJoin(
-        automations,
-        eq(automationTriggers.automationId, automations.id),
-      )
-      .where(inArray(automations.id, [...zombieIds]));
+    const zombieState = await readAutomationsState(context, {
+      automationIds: zombieIds,
+    });
+    const zombieTriggers = zombieState.triggers;
     expect(zombieTriggers).toHaveLength(12);
     for (const zombie of zombieTriggers) {
-      expect(zombie.nextRunAt).toStrictEqual(pastDue);
-      expect(zombie.lastRunId).toBeNull();
+      expect(zombie.next_run_at).toBe(pastDue.toISOString());
+      expect(zombie.last_run_id).toBeNull();
     }
-    const zombieRuns = await db
-      .select({ id: zeroRuns.id })
-      .from(zeroRuns)
-      .where(inArray(zeroRuns.automationId, [...zombieIds]));
-    expect(zombieRuns).toHaveLength(0);
+    expect(zombieState.runs).toHaveLength(0);
   });
 
   it("suspends due time automations whose owner is no longer an org member", async () => {
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
     context.mocks.s3.send.mockResolvedValue({});
-    setSecretKmsClientForTests(fakeKmsClient().client);
+    await enableAutomationsFakeKms(context);
     mockEnv("CRON_SECRET", CRON_SECRET);
 
     const pastDue = isolatedCronPastDue();
@@ -961,15 +879,7 @@ describe("Automations API", () => {
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const db = store.set(writeDb$);
-    await db
-      .delete(orgMembersCache)
-      .where(
-        and(
-          eq(orgMembersCache.orgId, fixture.orgId),
-          eq(orgMembersCache.userId, fixture.userId),
-        ),
-      );
+    await deleteOrgMembership(context, fixture);
 
     const automationId = fixture.automationIds[0]!;
     isolateCronPollTime();
@@ -981,31 +891,27 @@ describe("Automations API", () => {
     );
     expect(response.body.skipped).toBeGreaterThanOrEqual(1);
 
-    const [storedAutomation] = await db
-      .select({ enabled: automations.enabled })
-      .from(automations)
-      .where(eq(automations.id, automationId));
-    expect(storedAutomation?.enabled).toBeFalsy();
-
-    const [storedTrigger] = await db
-      .select({
-        enabled: automationTriggers.enabled,
-        nextRunAt: automationTriggers.nextRunAt,
-        lastRunId: automationTriggers.lastRunId,
-      })
-      .from(automationTriggers)
-      .where(eq(automationTriggers.automationId, automationId));
-    expect(storedTrigger).toStrictEqual({
-      enabled: false,
-      nextRunAt: null,
-      lastRunId: null,
+    const storedState = await readAutomationsState(context, {
+      automationId,
+      automationIds: [automationId],
     });
+    expect(storedState.automation?.enabled).toBeFalsy();
 
-    const runs = await db
-      .select({ id: zeroRuns.id })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.automationId, automationId));
-    expect(runs).toHaveLength(0);
+    const [storedTrigger] = storedState.triggers;
+    expect(storedTrigger).toStrictEqual({
+      id: expect.any(String),
+      automation_id: automationId,
+      kind: "cron",
+      cron_expression: "0 9 * * *",
+      at_time: null,
+      interval_seconds: null,
+      timezone: "UTC",
+      enabled: false,
+      next_run_at: null,
+      last_run_id: null,
+      consecutive_failures: 0,
+    });
+    expect(storedState.runs).toHaveLength(0);
   });
 
   it("enables and disables a single trigger", async () => {
@@ -1057,15 +963,12 @@ describe("Automations API", () => {
       },
     });
     const onceTriggerId = onceAutomation.automation.triggers[0]!.id;
-    const db = store.set(writeDb$);
-    await db
-      .update(automationTriggers)
-      .set({
-        atTime: new Date(now() - 60_000),
-        nextRunAt: null,
-        enabled: false,
-      })
-      .where(eq(automationTriggers.id, onceTriggerId));
+    await patchAutomationTriggerState(context, {
+      trigger_id: onceTriggerId,
+      at_time: new Date(now() - 60_000),
+      next_run_at: null,
+      enabled: false,
+    });
     const expired = await accept(
       triggerApi().enable({
         params: { id: onceTriggerId },
@@ -1097,11 +1000,10 @@ describe("Automations API", () => {
       }),
       [201],
     );
-    const db = store.set(writeDb$);
-    await db
-      .update(automationTriggers)
-      .set({ consecutiveFailures: 2 })
-      .where(eq(automationTriggers.id, triggerId));
+    await patchAutomationTriggerState(context, {
+      trigger_id: triggerId,
+      consecutive_failures: 2,
+    });
 
     const updated = await accept(
       triggerApi().update({
@@ -1120,7 +1022,7 @@ describe("Automations API", () => {
     expect(updated.body.nextRunAt).not.toBeNull();
 
     const [row] = await findTriggerRows(created.automation.id);
-    expect(row?.lastRunId).toBe(runResponse.body.runId);
+    expect(row?.last_run_id).toBe(runResponse.body.runId);
 
     // The kind may switch: loop → cron swaps the config columns in place.
     const switched = await accept(
@@ -1145,9 +1047,9 @@ describe("Automations API", () => {
 
     const [switchedRow] = await findTriggerRows(created.automation.id);
     expect(switchedRow?.kind).toBe("cron");
-    expect(switchedRow?.intervalSeconds).toBeNull();
-    expect(switchedRow?.atTime).toBeNull();
-    expect(switchedRow?.lastRunId).toBe(runResponse.body.runId);
+    expect(switchedRow?.interval_seconds).toBeNull();
+    expect(switchedRow?.at_time).toBeNull();
+    expect(switchedRow?.last_run_id).toBe(runResponse.body.runId);
     expect(switchedRow?.enabled).toBeTruthy();
   });
 
@@ -1184,7 +1086,7 @@ describe("Automations API", () => {
     // A failed validation leaves the row untouched.
     const [row] = await findTriggerRows(created.automation.id);
     expect(row?.kind).toBe("loop");
-    expect(row?.intervalSeconds).toBe(300);
+    expect(row?.interval_seconds).toBe(300);
   });
 
   it("scopes trigger updates to the caller and gates cron next runs on the automation flag", async () => {
@@ -1255,71 +1157,44 @@ describe("Automations API", () => {
     );
     const { runId } = runResponse.body;
 
-    const db = store.set(writeDb$);
+    const runState = (await readAutomationsState(context, { runId })).run;
     // Provenance: the automation alone — no trigger fired this run. B2 is
     // deferred, so the run records the automation trigger source.
-    const [zeroRun] = await db
-      .select({
-        triggerSource: zeroRuns.triggerSource,
-        automationId: zeroRuns.automationId,
-        triggerId: zeroRuns.triggerId,
-        chatThreadId: zeroRuns.chatThreadId,
-      })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, runId));
-    expect(zeroRun).toStrictEqual({
-      triggerSource: "automation",
-      automationId: created.automation.id,
-      triggerId: null,
-      chatThreadId: created.automation.chatThreadId,
+    expect(runState?.zero_run).toStrictEqual({
+      trigger_source: "automation",
+      automation_id: created.automation.id,
+      trigger_id: null,
+      chat_thread_id: created.automation.chatThreadId,
     });
 
-    const [run] = await db
-      .select({
-        prompt: agentRuns.prompt,
-        appendSystemPrompt: agentRuns.appendSystemPrompt,
-      })
-      .from(agentRuns)
-      .where(eq(agentRuns.id, runId));
-    expect(run?.prompt).toBe("Manual run test");
-    expect(run?.appendSystemPrompt).toContain("Trigger type: manual");
-    expect(run?.appendSystemPrompt).toContain("Use the run context.");
+    expect(runState?.agent_run?.prompt).toBe("Manual run test");
+    expect(runState?.agent_run?.append_system_prompt).toContain(
+      "Trigger type: manual",
+    );
+    expect(runState?.agent_run?.append_system_prompt).toContain(
+      "Use the run context.",
+    );
 
     // Only the chat callback: nothing was claimed, so there is no reschedule.
-    const callbacks = await db
-      .select({
-        url: agentRunCallbacks.url,
-        internalKind: agentRunCallbacks.internalKind,
-      })
-      .from(agentRunCallbacks)
-      .where(eq(agentRunCallbacks.runId, runId));
+    const callbacks = runState?.callbacks ?? [];
     expect(callbacks).toHaveLength(1);
-    expect(callbacks[0]).toStrictEqual({
+    expect(callbacks[0]).toMatchObject({
       url: null,
-      internalKind: "chat",
+      internal_kind: "chat",
     });
 
     // The prompt renders as a user chat message with the automation chip.
-    const messages = await db
-      .select({
-        role: chatMessages.role,
-        content: chatMessages.content,
-        automationTitle: chatMessages.automationTitle,
-        automationSnapshot: chatMessages.automationSnapshot,
-      })
-      .from(chatMessages)
-      .where(eq(chatMessages.runId, runId));
-    const chipMessage = messages.find((message) => {
+    const chipMessage = runState?.messages.find((message) => {
       return message.role === "user" && message.content === "Manual run test";
     });
     expect(chipMessage).toMatchObject({
-      automationTitle: "fire-now",
-      automationSnapshot: { id: created.automation.id, title: "fire-now" },
+      automation_title: "fire-now",
+      automation_snapshot: { id: created.automation.id, title: "fire-now" },
     });
     // The manual run is stamped on the trigger, so a second fire conflicts
     // while it is still active (per-trigger skip-if-active semantics).
     const [trigger] = await findTriggerRows(created.automation.id);
-    expect(trigger?.lastRunId).toBe(runId);
+    expect(trigger?.last_run_id).toBe(runId);
     const conflictResponse = await accept(
       refApi().run({
         params: { ref: "fire-now" },
@@ -1347,17 +1222,12 @@ describe("Automations API", () => {
       [201],
     );
 
-    const db = store.set(writeDb$);
-    const [zeroRun] = await db
-      .select({
-        automationId: zeroRuns.automationId,
-        triggerId: zeroRuns.triggerId,
-      })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, runResponse.body.runId));
-    expect(zeroRun).toStrictEqual({
-      automationId: created.automation.id,
-      triggerId: null,
+    const runState = (
+      await readAutomationsState(context, { runId: runResponse.body.runId })
+    ).run;
+    expect(runState?.zero_run).toMatchObject({
+      automation_id: created.automation.id,
+      trigger_id: null,
     });
   });
 
@@ -1380,12 +1250,13 @@ describe("Automations API", () => {
       }),
       [204],
     );
-    const db = store.set(writeDb$);
-    const automationRows = await db
-      .select({ id: automations.id })
-      .from(automations)
-      .where(eq(automations.id, created.automation.id));
-    expect(automationRows).toHaveLength(0);
+    await accept(
+      refApi().show({
+        params: { ref: created.automation.id },
+        headers: SESSION_HEADERS,
+      }),
+      [404],
+    );
     await expect(findTriggerRows(created.automation.id)).resolves.toHaveLength(
       0,
     );

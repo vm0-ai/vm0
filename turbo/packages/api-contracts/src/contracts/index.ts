@@ -309,16 +309,26 @@ export {
   type TestComputerUseStatePostResponse,
 } from "./test-computer-use-state";
 export {
+  testAutomationsStateActionBodySchema,
+  testAutomationsStateActionResponseSchema,
   testAutomationsStateContract,
   testAutomationsStateDeleteResponseSchema,
+  testAutomationsStatePatchBodySchema,
   testAutomationsStatePostBodySchema,
   testAutomationsStatePostResponseSchema,
+  testAutomationsStateReadResponseSchema,
   testAutomationsStateSeedSchema,
+  testAutomationsStateTriggerRowSchema,
+  type TestAutomationsStateActionBody,
+  type TestAutomationsStateActionResponse,
   type TestAutomationsStateContract,
   type TestAutomationsStateDeleteResponse,
+  type TestAutomationsStatePatchBody,
   type TestAutomationsStatePostBody,
   type TestAutomationsStatePostResponse,
+  type TestAutomationsStateReadResponse,
   type TestAutomationsStateSeed,
+  type TestAutomationsStateTriggerRow,
 } from "./test-automations-state";
 export {
   testSlackDispatchProbeBodySchema,
