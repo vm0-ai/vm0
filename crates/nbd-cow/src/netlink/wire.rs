@@ -117,7 +117,14 @@ pub(super) fn parse_genl_response(buf: &[u8], n: usize) -> Result<GenlResponse<'
         if error == 0 {
             return Ok(GenlResponse::Ack);
         }
-        let errno = -error;
+        if error > 0 {
+            return Err(NbdCowError::Netlink(
+                "invalid positive netlink error code".into(),
+            ));
+        }
+        let errno = error
+            .checked_neg()
+            .ok_or_else(|| NbdCowError::Netlink("invalid netlink error code".into()))?;
         return Err(NbdCowError::NetlinkErrno {
             errno,
             message: std::io::Error::from_raw_os_error(errno).to_string(),
@@ -496,6 +503,22 @@ mod tests {
             result,
             Err(NbdCowError::NetlinkErrno { errno, .. }) if errno == libc::EBUSY
         ));
+    }
+
+    #[test]
+    fn parse_genl_response_error_rejects_i32_min() {
+        let msg = build_nlmsg_error_for_test(2, i32::MIN);
+
+        let result = parse_genl_response(&msg, msg.len());
+        assert!(matches!(result, Err(NbdCowError::Netlink(_))));
+    }
+
+    #[test]
+    fn parse_genl_response_error_rejects_positive_code() {
+        let msg = build_nlmsg_error_for_test(2, 5);
+
+        let result = parse_genl_response(&msg, msg.len());
+        assert!(matches!(result, Err(NbdCowError::Netlink(_))));
     }
 
     #[test]
