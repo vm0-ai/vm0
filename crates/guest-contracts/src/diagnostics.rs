@@ -2,26 +2,41 @@
 
 use serde::{Deserialize, Serialize};
 
+/// Current JSON schema version for failure diagnostics.
 pub const FAILURE_DIAGNOSTIC_SCHEMA_VERSION: u8 = 1;
 
+/// Structured information describing why a guest agent run failed.
 #[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct FailureDiagnostic {
+    /// Version of the serialized diagnostic schema.
     pub schema_version: u8,
+    /// Coarse failure category used by runner-side handling.
     pub failure_class: FailureClass,
+    /// CLI framework that produced the diagnostic.
     pub framework: AgentFramework,
+    /// Exit code observed from the CLI process, when available.
     pub cli_exit_code: Option<i32>,
+    /// Guest-agent termination details for the CLI process, when available.
     pub cli_termination: Option<CliTerminationDiagnostic>,
+    /// Number of turns reported by Claude Code, when available.
     pub claude_num_turns: Option<u64>,
+    /// Source that supplied the detailed failure reason, when available.
     pub failure_detail_source: Option<FailureDetailSource>,
+    /// Parsed detailed failure reason, when available.
     pub failure_reason: Option<FailureReason>,
+    /// Availability of session history at the time of failure.
     pub session_history_status: SessionHistoryStatus,
+    /// Content-safe shape classification for the submitted prompt.
     pub prompt_shape: PromptShape,
+    /// Prompt length in bytes.
     pub prompt_bytes: u64,
+    /// First prompt line length in bytes after stripping a trailing carriage return.
     pub first_line_bytes: u64,
 }
 
 impl FailureDiagnostic {
+    /// Create a diagnostic with required fields and empty optional details.
     #[must_use]
     pub fn new(
         failure_class: FailureClass,
@@ -44,24 +59,28 @@ impl FailureDiagnostic {
         }
     }
 
+    /// Attach the CLI process exit code.
     #[must_use]
     pub fn with_cli_exit_code(mut self, cli_exit_code: i32) -> Self {
         self.cli_exit_code = Some(cli_exit_code);
         self
     }
 
+    /// Attach CLI termination details.
     #[must_use]
     pub fn with_cli_termination(mut self, cli_termination: CliTerminationDiagnostic) -> Self {
         self.cli_termination = Some(cli_termination);
         self
     }
 
+    /// Attach the Claude Code turn count, preserving absence when unknown.
     #[must_use]
     pub fn with_claude_num_turns(mut self, claude_num_turns: Option<u64>) -> Self {
         self.claude_num_turns = claude_num_turns;
         self
     }
 
+    /// Attach the source that supplied the detailed failure reason.
     #[must_use]
     pub fn with_failure_detail_source(
         mut self,
@@ -71,12 +90,14 @@ impl FailureDiagnostic {
         self
     }
 
+    /// Attach the detailed failure reason.
     #[must_use]
     pub fn with_failure_reason(mut self, failure_reason: FailureReason) -> Self {
         self.failure_reason = Some(failure_reason);
         self
     }
 
+    /// Attach the session history status.
     #[must_use]
     pub fn with_session_history_status(
         mut self,
@@ -87,19 +108,28 @@ impl FailureDiagnostic {
     }
 }
 
+/// Details about how the guest agent terminated a CLI process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct CliTerminationDiagnostic {
+    /// Component that initiated termination.
     pub initiator: CliTerminationInitiator,
+    /// Reason termination was requested.
     pub reason: CliTerminationReason,
+    /// Signal sent to the process group, when a signal was sent.
     pub signal_sent: Option<CliTerminationSignal>,
+    /// Process group ID targeted by the signal, when available.
     pub signal_pgid: Option<i32>,
+    /// Grace period in milliseconds associated with the signal, when available.
     pub signal_grace_ms: Option<u64>,
+    /// Whether termination escalated from SIGTERM to SIGKILL.
     pub escalated: bool,
+    /// Exit code observed after termination, when available.
     pub observed_exit_code: Option<i32>,
 }
 
 impl CliTerminationDiagnostic {
+    /// Create termination details with the guest agent as initiator.
     #[must_use]
     pub const fn new(reason: CliTerminationReason) -> Self {
         Self {
@@ -145,6 +175,7 @@ impl CliTerminationDiagnostic {
         self
     }
 
+    /// Attach the exit code observed after termination.
     #[must_use]
     pub fn with_observed_exit_code(mut self, observed_exit_code: i32) -> Self {
         self.observed_exit_code = Some(observed_exit_code);
@@ -152,13 +183,16 @@ impl CliTerminationDiagnostic {
     }
 }
 
+/// Component that initiated CLI termination.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CliTerminationInitiator {
+    /// The guest agent initiated termination.
     GuestAgent,
 }
 
 impl CliTerminationInitiator {
+    /// Return the stable snake_case string representation.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -167,17 +201,24 @@ impl CliTerminationInitiator {
     }
 }
 
+/// Reason the guest agent terminated a CLI process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CliTerminationReason {
+    /// The guest agent reaped the process after receiving a final result.
     PostResultReap,
+    /// The stuck-tool watchdog terminated the process.
     StuckToolWatchdog,
+    /// Heartbeat handling failed and required termination.
     HeartbeatError,
+    /// Heartbeat handling panicked and required termination.
     HeartbeatPanic,
+    /// Writing the initial prompt to stdin failed and required termination.
     InitialPromptStdin,
 }
 
 impl CliTerminationReason {
+    /// Return the stable snake_case string representation.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -190,14 +231,18 @@ impl CliTerminationReason {
     }
 }
 
+/// Signal sent by the guest agent to terminate a CLI process.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum CliTerminationSignal {
+    /// SIGTERM was sent.
     Sigterm,
+    /// SIGKILL was sent.
     Sigkill,
 }
 
 impl CliTerminationSignal {
+    /// Return the stable snake_case string representation.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -207,18 +252,26 @@ impl CliTerminationSignal {
     }
 }
 
+/// Coarse failure class for runner-side handling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FailureClass {
+    /// Working directory setup failed before launching the CLI.
     WorkingDirSetupFailed,
+    /// The CLI could not be executed.
     CliExecutionError,
+    /// The CLI exited with a non-zero status.
     CliNonzero,
+    /// Claude Code produced zero turns and no usable session history.
     ClaudeZeroTurnNoHistory,
+    /// Uploading events failed.
     EventUploadFailed,
+    /// Creating or uploading a checkpoint failed.
     CheckpointFailed,
 }
 
 impl FailureClass {
+    /// Return the stable snake_case string representation.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -232,21 +285,32 @@ impl FailureClass {
     }
 }
 
+/// Detailed failure reason parsed from CLI output or fallback signals.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FailureReason {
+    /// The provider account has insufficient credits.
     InsufficientCredits,
+    /// The configured API key is invalid.
     InvalidApiKey,
+    /// The configured credentials are invalid.
     InvalidCredentials,
+    /// The provider stopped because an output-token limit was reached.
     OutputTokenLimit,
+    /// The provider reported overload.
     ProviderOverloaded,
+    /// The provider stream timed out.
     ProviderStreamTimeout,
+    /// The provider returned a server error.
     ProviderServerError,
+    /// The CLI requires reconnecting or re-authentication.
     ReconnectRequired,
+    /// The provider reported a usage limit.
     UsageLimit,
 }
 
 impl FailureReason {
+    /// Return the stable snake_case string representation.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -263,16 +327,22 @@ impl FailureReason {
     }
 }
 
+/// Source used to derive a detailed failure reason.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum FailureDetailSource {
+    /// The reason came from a Claude result payload.
     ClaudeResult,
+    /// The reason came from Codex JSONL output.
     CodexJsonl,
+    /// The reason came from stderr output.
     Stderr,
+    /// The reason was inferred from a fallback exit-code mapping.
     FallbackExitCode,
 }
 
 impl FailureDetailSource {
+    /// Return the stable snake_case string representation.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -284,14 +354,18 @@ impl FailureDetailSource {
     }
 }
 
+/// Agent CLI framework that produced the diagnostic.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum AgentFramework {
+    /// Anthropic Claude Code.
     ClaudeCode,
+    /// OpenAI Codex CLI.
     Codex,
 }
 
 impl AgentFramework {
+    /// Return the stable snake_case string representation.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -301,17 +375,24 @@ impl AgentFramework {
     }
 }
 
+/// Session-history availability observed during failure handling.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum SessionHistoryStatus {
+    /// Session history file was expected but missing.
     Missing,
+    /// Session history file existed but had no useful content.
     Empty,
+    /// Session history file existed with content.
     Present,
+    /// Session history status could not be determined.
     Unknown,
+    /// Session history is not applicable to the framework or failure mode.
     NotApplicable,
 }
 
 impl SessionHistoryStatus {
+    /// Return the stable snake_case string representation.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -324,15 +405,20 @@ impl SessionHistoryStatus {
     }
 }
 
+/// Content-safe prompt shape classification.
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize)]
 #[serde(rename_all = "snake_case")]
 pub enum PromptShape {
+    /// The prompt is empty after trimming whitespace.
     Empty,
+    /// The prompt starts with a slash after leading whitespace.
     SlashLike,
+    /// The prompt contains plain non-slash content.
     Plain,
 }
 
 impl PromptShape {
+    /// Return the stable snake_case string representation.
     #[must_use]
     pub const fn as_str(self) -> &'static str {
         match self {
@@ -343,14 +429,19 @@ impl PromptShape {
     }
 }
 
+/// Content-safe metadata derived from a prompt.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub struct PromptMetadata {
+    /// Content-safe prompt shape.
     pub prompt_shape: PromptShape,
+    /// Prompt length in bytes.
     pub prompt_bytes: u64,
+    /// First prompt line length in bytes after stripping a trailing carriage return.
     pub first_line_bytes: u64,
 }
 
 impl PromptMetadata {
+    /// Build prompt metadata without retaining prompt content.
     #[must_use]
     pub fn from_prompt(prompt: &str) -> Self {
         let raw_first_line = prompt.split_once('\n').map_or(prompt, |(line, _)| line);

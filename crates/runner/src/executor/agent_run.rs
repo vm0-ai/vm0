@@ -1,6 +1,6 @@
 use std::time::{Duration, Instant};
 
-use agent_diagnostics::FailureDiagnostic;
+use guest_contracts::diagnostics::FailureDiagnostic;
 use guest_contracts::session_history_identity::FinalSessionHistoryIdentity;
 use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, ProcessControlMode, ProcessOutputMode,

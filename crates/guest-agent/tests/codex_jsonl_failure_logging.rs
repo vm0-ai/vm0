@@ -5,10 +5,10 @@
 
 mod common;
 
-use agent_diagnostics::{FailureDetailSource, FailureReason};
 use common::SystemLogOverrideGuard;
 use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
+use guest_contracts::diagnostics::{FailureDetailSource, FailureReason};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 

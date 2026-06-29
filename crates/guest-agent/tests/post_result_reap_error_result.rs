@@ -3,8 +3,10 @@
 
 mod common;
 
-use agent_diagnostics::{CliTerminationReason, CliTerminationSignal, FailureDetailSource};
 use guest_agent::cli::ClaudeResultStatus;
+use guest_contracts::diagnostics::{
+    CliTerminationReason, CliTerminationSignal, FailureDetailSource,
+};
 use std::time::Duration;
 
 #[tokio::test]

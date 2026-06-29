@@ -42,14 +42,14 @@ use crate::http::HttpClient;
 use crate::masker::SecretMasker;
 use crate::paths;
 use crate::timing;
-use agent_diagnostics::{
-    CliTerminationDiagnostic, CliTerminationReason as DiagnosticTerminationReason,
-    CliTerminationSignal, FailureDetailSource, FailureReason,
-};
 use event_delivery::{AckedEventPrefix, PreparedEvent};
 use framework::CliFrameworkBehavior;
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_info, log_warn};
+use guest_contracts::diagnostics::{
+    CliTerminationDiagnostic, CliTerminationReason as DiagnosticTerminationReason,
+    CliTerminationSignal, FailureDetailSource, FailureReason,
+};
 use process_group::ChildProcessGroup;
 use std::collections::HashMap;
 use std::path::Path;
@@ -1382,7 +1382,7 @@ mod tests {
         record_cli_termination_signal, select_failure_diagnostic, set_cli_current_dir,
         with_carried_failure_reason,
     };
-    use agent_diagnostics::{
+    use guest_contracts::diagnostics::{
         CliTerminationReason, CliTerminationSignal, FailureDetailSource, FailureReason,
     };
     use std::time::Duration;
