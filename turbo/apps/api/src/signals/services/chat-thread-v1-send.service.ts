@@ -7,6 +7,7 @@ import { and, eq } from "drizzle-orm";
 import { notFound } from "../../lib/error";
 import type { AuthContext } from "../../types/auth";
 import { sendNormalMessage$ } from "../routes/zero-chat-messages";
+import { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 import { writeDb$ } from "../external/db";
 
 export const sendChatThreadMessageV1$ = command(
@@ -41,6 +42,7 @@ export const sendChatThreadMessageV1$ = command(
     }
 
     const messageId = randomUUID();
+    const timing = new ApiDispatchTimingCollector();
     const result = await set(
       sendNormalMessage$,
       {
@@ -48,6 +50,7 @@ export const sendChatThreadMessageV1$ = command(
         userId: args.auth.userId,
         orgId: args.auth.orgId,
         apiStartTime: args.apiStartTime,
+        timing,
         body: {
           agentId: thread.agentComposeId,
           threadId: thread.id,
