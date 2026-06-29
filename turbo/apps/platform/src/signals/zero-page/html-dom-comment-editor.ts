@@ -102,7 +102,7 @@ const FRAME_NAVIGATION_CURSOR_SVG = renderToStaticMarkup(
 );
 const FRAME_NAVIGATION_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
   FRAME_NAVIGATION_CURSOR_SVG,
-)}") 10 10, pointer`;
+)}") 3 3, pointer`;
 
 const internalLoadState$ = state<EditorLoadState>({ status: "loading" });
 const internalStageElement$ = state<HTMLDivElement | null>(null);
