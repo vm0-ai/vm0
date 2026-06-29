@@ -1911,6 +1911,7 @@ const ALLOWED_BASE_URL_SCHEMES = new Set(["http", "https"]);
 const REQUIRED_AUTH_BASE_URL_SCHEME = "https";
 const WHITESPACE_PATTERN = /\s/u;
 const UNICODE_CONTROL_PATTERN = /\p{C}/u;
+const UNICODE_DECIMAL_NUMBER_PATTERN = /^\p{Decimal_Number}+$/u;
 const UNICODE_MARK_PATTERN = /\p{M}/u;
 const UNICODE_LETTER_PATTERN = /\p{L}/u;
 const GREEK_COMBINING_YPOGEGRAMMENI = "\u0345";
@@ -2032,9 +2033,7 @@ function isIpv4NumberComponent(value: string): boolean {
       })
     );
   }
-  return [...value].every((char) => {
-    return char >= "0" && char <= "9";
-  });
+  return UNICODE_DECIMAL_NUMBER_PATTERN.test(value);
 }
 
 function isIpv4LiteralLike(value: string): boolean {

@@ -103,6 +103,13 @@ describe("firewall expander helpers", () => {
     }).toThrow("host policy does not allow non-public IP literal");
     expect(() => {
       return collectAndValidatePermissions(
+        config("https://\u0668.\u0668.\u0668.\u0668", {
+          kind: "publicDestination",
+        }),
+      );
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return collectAndValidatePermissions(
         config("https://api.evil.test", {
           kind: "providerOwned",
           suffixes: ["example.com"],
@@ -907,6 +914,9 @@ describe("validateBaseUrl", () => {
     }).toThrow("host must use canonical IPv4 address syntax");
     expect(() => {
       return validateBaseUrl("https://127.0.0.1。", "fw");
+    }).toThrow("host must use canonical IPv4 address syntax");
+    expect(() => {
+      return validateBaseUrl("https://\u0668.\u0668.\u0668.\u0668", "fw");
     }).toThrow("host must use canonical IPv4 address syntax");
     expect(() => {
       return validateBaseUrl("https://127.0.0.1.", "fw");
