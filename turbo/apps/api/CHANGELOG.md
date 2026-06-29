@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.187.2](https://github.com/vm0-ai/vm0/compare/api-v1.187.1...api-v1.187.2) (2026-06-29)
+
+
+### Bug Fixes
+
+* allow concurrent workflow event triggers ([#19314](https://github.com/vm0-ai/vm0/issues/19314)) ([1f21d42](https://github.com/vm0-ai/vm0/commit/1f21d42c3fbbeb5c7061d9389b72451a2055d8b9))
+
 ## [1.187.1](https://github.com/vm0-ai/vm0/compare/api-v1.187.0...api-v1.187.1) (2026-06-29)
 
 
