@@ -1598,8 +1598,16 @@ fn acquire_dead_runner_base_dir_lease(
     // reading the file to prevent a new runner from starting and overwriting the
     // content between the probe and the read, and keep it held while workspace
     // GC deletes under the base_dir or removes an unusable free lock file.
-    let LockProbe::Free(lock_guard) = probe_lock(&candidate.lock_path) else {
-        return None;
+    let lock_guard = match probe_existing_lock(&candidate.lock_path) {
+        ExistingLockProbe::Free(lock_guard) => lock_guard,
+        ExistingLockProbe::Held | ExistingLockProbe::Missing => return None,
+        ExistingLockProbe::Error(e) => {
+            warn!(
+                "workspace gc: cannot probe base-dir lock {}: {e}",
+                candidate.lock_path.display()
+            );
+            return None;
+        }
     };
     let content = match std::fs::read_to_string(&candidate.lock_path) {
         Ok(c) => c,
@@ -4915,6 +4923,33 @@ mod tests {
             ExistingLockProbe::Free(_) => {}
             _ => panic!("candidate discovery must not hold base-dir locks"),
         }
+    }
+
+    #[tokio::test]
+    async fn gc_workspace_orphans_does_not_recreate_missing_candidate_lock() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let lock_path = locks_dir.join("base-dir-dead.lock");
+        std::fs::write(&lock_path, "/data/dead-runner").unwrap();
+
+        let candidates = discover_base_dir_lock_candidates(&home);
+        assert_eq!(candidates.len(), 1);
+        std::fs::remove_file(&lock_path).unwrap();
+
+        let summary =
+            gc_workspace_orphans_with_candidates(candidates, &[], &HashSet::new(), false, true)
+                .await
+                .unwrap();
+
+        assert_eq!(summary.workspaces_cleaned, 0);
+        assert_eq!(summary.base_dir_locks_removed, 0);
+        assert!(
+            !lock_path.exists(),
+            "GC must not recreate a lock path that disappeared after discovery"
+        );
     }
 
     #[tokio::test]
