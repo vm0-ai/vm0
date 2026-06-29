@@ -4344,6 +4344,249 @@ const RESOURCE_REGISTRY: readonly RegistryEntry[] = [
   },
 ];
 
+// ── Presentation runbook packages ────────────────────────────────────────────
+// Self-contained per-template presentation packages (agent runbook + renderer)
+// uploaded to private R2 as one archive each. Gated behind the
+// `presentationTemplateRunbook` feature switch: when on, the agent pulls exactly
+// one of these by template, then selects a color system at runtime — no separate
+// design system or color archive to resolve. These are intentionally NOT part of
+// RESOURCE_REGISTRY so they never leak into the legacy multi-resource candidate
+// slice (selectResourceCandidates) or listTemplates.
+
+export interface PresentationRunbookPackage {
+  /** Picker template id (the legacy `template:html-ppt-*` id the user selects). */
+  readonly templateId: string;
+  /** Pull id for the runbook archive; distinct from `templateId`. */
+  readonly resourceId: string;
+  /** Top-level directory inside the archive; also the runbook command prefix. */
+  readonly slug: string;
+  /** Default color-system token applied when the user selects no color system. */
+  readonly defaultColorSystem: string;
+  readonly source: ResourceSourceRef;
+}
+
+// Placeholder digests — replaced when the archives are uploaded to private R2.
+const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
+  "playful-launch": "xxx",
+  bloom: "xxx",
+  "blueprint-academy": "xxx",
+  "botane-organic": "xxx",
+  "business-data": "xxx",
+  crayon: "xxx",
+  "creative-agency": "xxx",
+  "data-report": "xxx",
+  "editorial-magazine": "xxx",
+  "landing-consulting": "xxx",
+  lumina: "xxx",
+  meridian: "xxx",
+  "mosaic-geometric": "xxx",
+  "neo-brutalism": "xxx",
+  nocturne: "xxx",
+  "pixel-glitch": "xxx",
+  "playful-pop": "xxx",
+  prospectus: "xxx",
+  schoolhouse: "xxx",
+  "sticker-scrapbook": "xxx",
+  strata: "xxx",
+  "taped-consulting": "xxx",
+  vantage: "xxx",
+};
+
+// Each entry maps a picker template id to its runbook package slug (the
+// presentation-final directory name) and the renderer's default color token.
+const PRESENTATION_RUNBOOK_PACKAGE_DEFS: readonly {
+  readonly templateId: string;
+  readonly slug: string;
+  readonly defaultColorSystem: string;
+}[] = [
+  {
+    templateId: "template:html-ppt-playful-launch",
+    slug: "playful-launch",
+    defaultColorSystem: "carnival",
+  },
+  {
+    templateId: "template:html-ppt-bloom-pitch",
+    slug: "bloom",
+    defaultColorSystem: "carnival",
+  },
+  {
+    templateId: "template:html-ppt-blueprint-academy",
+    slug: "blueprint-academy",
+    defaultColorSystem: "forest_editorial",
+  },
+  {
+    templateId: "template:html-ppt-botane-organic",
+    slug: "botane-organic",
+    defaultColorSystem: "mauve_dusk",
+  },
+  {
+    templateId: "template:html-ppt-business-data",
+    slug: "business-data",
+    defaultColorSystem: "berry_pop",
+  },
+  {
+    templateId: "template:html-ppt-crayon",
+    slug: "crayon",
+    defaultColorSystem: "prism",
+  },
+  {
+    templateId: "template:html-ppt-creative-agency",
+    slug: "creative-agency",
+    defaultColorSystem: "coral_studio",
+  },
+  {
+    templateId: "template:html-ppt-data-report",
+    slug: "data-report",
+    defaultColorSystem: "prism",
+  },
+  {
+    templateId: "template:html-ppt-editorial-magazine",
+    slug: "editorial-magazine",
+    defaultColorSystem: "warm_sand",
+  },
+  {
+    templateId: "template:html-ppt-landing-consulting",
+    slug: "landing-consulting",
+    defaultColorSystem: "pop_art",
+  },
+  {
+    templateId: "template:html-ppt-lumina",
+    slug: "lumina",
+    defaultColorSystem: "prism",
+  },
+  {
+    templateId: "template:html-ppt-meridian",
+    slug: "meridian",
+    defaultColorSystem: "slate_corporate",
+  },
+  {
+    templateId: "template:html-ppt-mosaic-geometric",
+    slug: "mosaic-geometric",
+    defaultColorSystem: "carnival",
+  },
+  {
+    templateId: "template:html-ppt-neo-brutalism",
+    slug: "neo-brutalism",
+    defaultColorSystem: "mono_ink",
+  },
+  {
+    templateId: "template:html-ppt-nocturne",
+    slug: "nocturne",
+    defaultColorSystem: "midnight_mono",
+  },
+  {
+    templateId: "template:html-ppt-pixel-glitch",
+    slug: "pixel-glitch",
+    defaultColorSystem: "bauhaus_primary",
+  },
+  {
+    templateId: "template:html-ppt-playful-pop",
+    slug: "playful-pop",
+    defaultColorSystem: "pop_art",
+  },
+  {
+    templateId: "template:html-ppt-prospectus",
+    slug: "prospectus",
+    defaultColorSystem: "slate_corporate",
+  },
+  {
+    templateId: "template:html-ppt-schoolhouse",
+    slug: "schoolhouse",
+    defaultColorSystem: "bauhaus_primary",
+  },
+  {
+    templateId: "template:html-ppt-sticker-scrapbook",
+    slug: "sticker-scrapbook",
+    defaultColorSystem: "prism",
+  },
+  {
+    templateId: "template:html-ppt-strata",
+    slug: "strata",
+    defaultColorSystem: "mono_ink",
+  },
+  {
+    templateId: "template:html-ppt-taped-consulting",
+    slug: "taped-consulting",
+    defaultColorSystem: "slate_corporate",
+  },
+  {
+    templateId: "template:html-ppt-vantage",
+    slug: "vantage",
+    defaultColorSystem: "slate_corporate",
+  },
+];
+
+const PRESENTATION_RUNBOOK_PACKAGES: readonly PresentationRunbookPackage[] =
+  PRESENTATION_RUNBOOK_PACKAGE_DEFS.map((def) => {
+    return {
+      templateId: def.templateId,
+      resourceId: `${def.templateId}-runbook`,
+      slug: def.slug,
+      defaultColorSystem: def.defaultColorSystem,
+      source: privateR2ArchiveSource(
+        def.slug,
+        PRESENTATION_RUNBOOK_ARCHIVE_SHA256[def.slug] ?? "xxx",
+      ),
+    };
+  });
+
+/** Resolve the runbook package for a picker template id, if one exists. */
+export function findPresentationRunbookPackage(
+  templateId: string,
+): PresentationRunbookPackage | undefined {
+  return PRESENTATION_RUNBOOK_PACKAGES.find((pkg) => {
+    return pkg.templateId === templateId;
+  });
+}
+
+/**
+ * Resolve a runbook package archive by its pull resource id, shaped as a
+ * RegistryEntry so the download route and `zero resource pull` can treat it like
+ * any other private archive.
+ */
+export function findPresentationRunbookResource(
+  resourceId: string,
+): RegistryEntry | undefined {
+  const pkg = PRESENTATION_RUNBOOK_PACKAGES.find((entry) => {
+    return entry.resourceId === resourceId;
+  });
+  if (!pkg) {
+    return undefined;
+  }
+  // Reuse the legacy template's display name and description — the runbook
+  // package renders the same template, so they describe it accurately and stay
+  // in sync without a second copy. Only id and source diverge.
+  const template = findTemplate(pkg.templateId);
+  return {
+    id: pkg.resourceId,
+    kind: "template",
+    name: template?.name ?? pkg.slug,
+    description:
+      template?.description ??
+      "Self-contained presentation runbook package pulled as a single private R2 archive.",
+    source: pkg.source,
+    targets: ["presentation"],
+  };
+}
+
+const COLOR_SYSTEM_ID_PREFIX = "color-system:";
+
+/**
+ * Map a registry color-system id (`color-system:warm-sand`) to the snake_case
+ * token the runbook deck JSON expects (`warm_sand`). Returns undefined when the
+ * id is not a known color system.
+ */
+export function presentationColorSystemToken(
+  colorSystemId: string,
+): string | undefined {
+  if (!findColorSystem(colorSystemId)) {
+    return undefined;
+  }
+  return colorSystemId
+    .slice(COLOR_SYSTEM_ID_PREFIX.length)
+    .replaceAll("-", "_");
+}
+
 function filterByKind(kind: ResourceKind): readonly RegistryEntry[] {
   return RESOURCE_REGISTRY.filter((entry) => {
     return entry.kind === kind;

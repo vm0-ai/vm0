@@ -4,6 +4,7 @@ import {
   findColorSystem,
   findDesignSystem,
   findImageStyle,
+  findPresentationRunbookResource,
   findSkill,
   findTemplate,
   findTool,
@@ -176,6 +177,31 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
     "b4639811099781c662a9671126762c67c1cc726e7a545b7bfbed18032faace9b",
   "template:html-ppt-vantage":
     "93e9a05f8c9c7f5ad99b51b1b9dae87a16d026782458edcfa629a514242de3f6",
+  // Presentation runbook packages (feature: presentationTemplateRunbook).
+  // Placeholder version ids — replaced when the archives are uploaded to R2.
+  "template:html-ppt-playful-launch-runbook": "xxx",
+  "template:html-ppt-bloom-pitch-runbook": "xxx",
+  "template:html-ppt-blueprint-academy-runbook": "xxx",
+  "template:html-ppt-botane-organic-runbook": "xxx",
+  "template:html-ppt-business-data-runbook": "xxx",
+  "template:html-ppt-crayon-runbook": "xxx",
+  "template:html-ppt-creative-agency-runbook": "xxx",
+  "template:html-ppt-data-report-runbook": "xxx",
+  "template:html-ppt-editorial-magazine-runbook": "xxx",
+  "template:html-ppt-landing-consulting-runbook": "xxx",
+  "template:html-ppt-lumina-runbook": "xxx",
+  "template:html-ppt-meridian-runbook": "xxx",
+  "template:html-ppt-mosaic-geometric-runbook": "xxx",
+  "template:html-ppt-neo-brutalism-runbook": "xxx",
+  "template:html-ppt-nocturne-runbook": "xxx",
+  "template:html-ppt-pixel-glitch-runbook": "xxx",
+  "template:html-ppt-playful-pop-runbook": "xxx",
+  "template:html-ppt-prospectus-runbook": "xxx",
+  "template:html-ppt-schoolhouse-runbook": "xxx",
+  "template:html-ppt-sticker-scrapbook-runbook": "xxx",
+  "template:html-ppt-strata-runbook": "xxx",
+  "template:html-ppt-taped-consulting-runbook": "xxx",
+  "template:html-ppt-vantage-runbook": "xxx",
 } as const satisfies Record<string, string>;
 
 function privateRegistryResourceArchive(
@@ -203,7 +229,8 @@ function findRegistryResource(id: string): PullableRegistryEntry | undefined {
     findDesignSystem(id) ??
     findColorSystem(id) ??
     findImageStyle(id) ??
-    findVideoTemplate(id)
+    findVideoTemplate(id) ??
+    findPresentationRunbookResource(id)
   );
 }
 

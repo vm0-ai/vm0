@@ -69,8 +69,11 @@ import {
 } from "../services/zero-model-selection.service";
 import { visibleChatMessageCondition } from "../services/zero-chat-message-shared.service";
 import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
+import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { bestEffort } from "../utils";
 import type { RouteEntry } from "../route";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { buildGenerationTemplatePrompt } from "./generation-template-prompt";
 import { resolveThreadGenerationTemplatePrompt } from "./thread-generation-template";
 
@@ -2071,11 +2074,16 @@ const prepareNormalSend$ = command(
       thread.incompleteContext,
     );
     signal.throwIfAborted();
+    const presentationRunbookEnabled = isFeatureEnabled(
+      FeatureSwitchKey.PresentationTemplateRunbook,
+      await loadUserFeatureSwitchContext(db, args.orgId, args.userId),
+    );
     const generationTemplatePrompt =
       await resolveThreadGenerationTemplatePrompt({
         db,
         threadId: thread.threadId,
         explicit: args.body.generationTemplate,
+        presentationRunbookEnabled,
       });
     signal.throwIfAborted();
     const persistedExplicitSelection =

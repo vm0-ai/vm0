@@ -58,4 +58,5 @@ export enum FeatureSwitchKey {
   GoalWorkflows = "goalWorkflows",
   ComputerUseDelegatedAuthorization = "computerUseDelegatedAuthorization",
   ConnectorAccessManagement = "connectorAccessManagement",
+  PresentationTemplateRunbook = "presentationTemplateRunbook",
 }

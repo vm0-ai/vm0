@@ -59,8 +59,11 @@ import {
 } from "./zero-chat-title.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
+import { loadUserFeatureSwitchContext } from "./feature-switches.service";
 import { settle, tapError } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
+import { isFeatureEnabled } from "@vm0/core/feature-switch";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
@@ -1397,10 +1400,15 @@ async function buildCreateQueuedChatRunInput(args: {
     startNewSession,
     incompleteContext,
   });
+  const presentationRunbookEnabled = isFeatureEnabled(
+    FeatureSwitchKey.PresentationTemplateRunbook,
+    await loadUserFeatureSwitchContext(args.db, args.agent.orgId, args.userId),
+  );
   const generationTemplatePrompt = await resolveThreadGenerationTemplatePrompt({
     db: args.db,
     threadId: args.threadId,
     explicit: resolvedQueuedMessage.generationTemplate,
+    presentationRunbookEnabled,
   });
 
   return {
