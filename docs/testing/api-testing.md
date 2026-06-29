@@ -17,101 +17,56 @@ Place route tests under the API route test directory:
 ```text
 turbo/apps/api/src/signals/routes/__tests__/
 +-- zero-runs-runner.test.ts
-+-- helpers/
-    +-- zero-route-test.ts
 ```
-
-Shared fixture helpers for one route family belong in
-`turbo/apps/api/src/signals/routes/__tests__/helpers/`. Keep helpers scoped to
-the route family unless there is already a reusable helper with the same shape.
 
 ## Route Test Structure
 
 ```typescript
-import { randomUUID } from "node:crypto";
-
-import { zeroRunRunnerContract } from "@vm0/api-contracts/contracts/zero-runs";
-import { createStore } from "ccstate";
+import { zeroAgentsMainContract } from "@vm0/api-contracts/contracts/zero-agents";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import {
-  deleteUsageInsightFixture$,
-  seedCompose$,
-  seedRun$,
-  seedUsageInsightFixture$,
-  type UsageInsightFixture,
-} from "./helpers/zero-usage-insight";
-import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
-const mocks = createZeroRouteMocks(context);
 
-describe("GET /api/zero/runs/:id/runner", () => {
-  const track = createFixtureTracker<UsageInsightFixture>((fixture) => {
-    return store.set(deleteUsageInsightFixture$, fixture, context.signal);
-  });
+function authHeaders() {
+  return { authorization: "Bearer clerk-session" };
+}
 
-  it("returns the sandbox reuse result", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    const compose = await store.set(
-      seedCompose$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
-    const { runId } = await store.set(
-      seedRun$,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        composeId: compose.composeId,
-        status: "completed",
-        sandboxReuseResult: "reused",
-      },
-      context.signal,
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+function apiClient() {
+  return setupApp({ context })(zeroAgentsMainContract);
+}
 
-    const client = setupApp({ context })(zeroRunRunnerContract);
+describe("GET /api/zero/agents", () => {
+  it("returns an agent created through POST /api/zero/agents", async () => {
+    context.mocks.clerk.session("user_api_test", "org_api_test");
+    context.mocks.s3.send.mockResolvedValue({});
 
-    const response = await accept(
-      client.getRunner({
-        params: { id: runId },
-        headers: { authorization: "Bearer clerk-session" },
+    const created = await accept(
+      apiClient().create({
+        headers: authHeaders(),
+        body: {
+          displayName: "Listed Agent",
+          description: "desc",
+          sound: "friendly",
+        },
       }),
+      [201],
+    );
+
+    const listed = await accept(
+      apiClient().list({ headers: authHeaders() }),
       [200],
     );
 
-    expect(response.body).toStrictEqual({ sandboxReuseResult: "reused" });
-  });
-
-  it("returns 404 when the run does not exist", async () => {
-    const fixture = await track(
-      store.set(seedUsageInsightFixture$, undefined, context.signal),
-    );
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-
-    const client = setupApp({ context })(zeroRunRunnerContract);
-
-    const response = await accept(
-      client.getRunner({
-        params: { id: randomUUID() },
-        headers: { authorization: "Bearer clerk-session" },
+    expect(listed.body).toContainEqual(
+      expect.objectContaining({
+        agentId: created.body.agentId,
+        ownerId: "user_api_test",
+        displayName: "Listed Agent",
+        description: "desc",
+        sound: "friendly",
       }),
-      [404],
     );
-
-    expect(response.body).toStrictEqual({
-      error: {
-        message: "Agent run not found",
-        code: "NOT_FOUND",
-      },
-    });
   });
 });
 ```
@@ -121,12 +76,9 @@ Key points:
 1. Import the contract from `@vm0/api-contracts`, then call it through
    `setupApp({ context })(contract)`.
 2. Use `accept()` to narrow the response type and produce useful failure output.
-3. Put `testContext()` and `createStore()` at module scope.
-4. Mock auth and external services through `context.mocks` or focused helper
-   wrappers such as `createZeroRouteMocks(context)`.
-5. Use API calls for setup and verification. If the state is not reachable
-   through an existing endpoint, treat that as an explicit exception and document
-   why the production API surface cannot construct it.
+3. Put `testContext()` at module scope.
+4. Use API calls for setup and verification.
+5. Mock only auth identity and external services through `context.mocks`.
 
 ## What To Test
 
@@ -136,7 +88,7 @@ Route tests should cover user-visible HTTP behavior:
 - validation failures that callers can hit
 - permission and no-existence-leak behavior
 - success response bodies and status codes
-- persisted side effects when the response alone is not enough
+- persisted side effects through follow-up API calls
 - external service calls at the boundary, using the centralized mocks
 
 `setupApp()` creates the Hono app with the real route registry and validates
@@ -152,14 +104,14 @@ Only mock external services. API tests use the shared mock registry in
 Good examples:
 
 ```typescript
-mocks.clerk.session(userId, orgId);
+context.mocks.clerk.session(userId, orgId);
 context.mocks.slack.chat.postMessage.mockResolvedValue({ ok: true });
 context.mocks.axiom.query.mockResolvedValue({ buckets: [] });
 ```
 
 Avoid `vi.mock()` for internal modules such as services, route files, database
-helpers, or ccstate signals. That bypasses the behavior the route integration
-test is supposed to cover.
+schemas, fixture helpers, or ccstate signals. That bypasses the behavior the
+route integration test is supposed to cover.
 
 ## External Behavior Boundary
 
@@ -172,28 +124,12 @@ or call services from API tests. Those tests couple to table shape, service
 boundaries, and internal state transitions instead of the behavior external
 callers rely on.
 
-If a case is truly impossible to construct through the production API surface,
-document the exception in the test and keep it narrow. Setup that is merely
-verbose, slow, or already available as a DB helper is not an exception.
+If a case is not constructible through the production API surface, do not add an
+API route test that reaches into internals. Add the missing API surface first, or
+raise the gap during review.
 
 For the full reasoning, see
 [Testing External Behavior](./testing-external-behavior.md).
-
-## Service-Level Exceptions
-
-Route tests are the default. A service-level test is acceptable only when there
-is no HTTP route that exercises the behavior, or when the behavior runs before a
-route handler can execute.
-
-Typical exceptions:
-
-- auth or middleware resolution
-- cron and internal queue operations without a client route
-- webhook verification helpers without a public wrapper
-- external client adapters
-- complex pure functions or state-machine transition tables
-
-If a route wraps the service, test through the route.
 
 ## Migration From apps/web
 
