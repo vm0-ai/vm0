@@ -178,30 +178,52 @@ const PRIVATE_REGISTRY_RESOURCE_ARCHIVE_VERSION_IDS = {
   "template:html-ppt-vantage":
     "93e9a05f8c9c7f5ad99b51b1b9dae87a16d026782458edcfa629a514242de3f6",
   // Presentation runbook packages (feature: presentationTemplateRunbook).
-  // Placeholder version ids — replaced when the archives are uploaded to R2.
-  "template:html-ppt-playful-launch-runbook": "xxx",
-  "template:html-ppt-bloom-pitch-runbook": "xxx",
-  "template:html-ppt-blueprint-academy-runbook": "xxx",
-  "template:html-ppt-botane-organic-runbook": "xxx",
-  "template:html-ppt-business-data-runbook": "xxx",
-  "template:html-ppt-crayon-runbook": "xxx",
-  "template:html-ppt-creative-agency-runbook": "xxx",
-  "template:html-ppt-data-report-runbook": "xxx",
-  "template:html-ppt-editorial-magazine-runbook": "xxx",
-  "template:html-ppt-landing-consulting-runbook": "xxx",
-  "template:html-ppt-lumina-runbook": "xxx",
-  "template:html-ppt-meridian-runbook": "xxx",
-  "template:html-ppt-mosaic-geometric-runbook": "xxx",
-  "template:html-ppt-neo-brutalism-runbook": "xxx",
-  "template:html-ppt-nocturne-runbook": "xxx",
-  "template:html-ppt-pixel-glitch-runbook": "xxx",
-  "template:html-ppt-playful-pop-runbook": "xxx",
-  "template:html-ppt-prospectus-runbook": "xxx",
-  "template:html-ppt-schoolhouse-runbook": "xxx",
-  "template:html-ppt-sticker-scrapbook-runbook": "xxx",
-  "template:html-ppt-strata-runbook": "xxx",
-  "template:html-ppt-taped-consulting-runbook": "xxx",
-  "template:html-ppt-vantage-runbook": "xxx",
+  "template:html-ppt-playful-launch-runbook":
+    "f6f83c0a080db0a5b9f568c7b2640c1d179b06e1946cc5c339560bc76ee5e966",
+  "template:html-ppt-bloom-pitch-runbook":
+    "525f84ccfd25448284b1e668e2a036078a6aa6ad9da9d95497a2157b0f251b42",
+  "template:html-ppt-blueprint-academy-runbook":
+    "444945a0bcb95e3267ec65539275bd0c366b658af0d345481b9f59a70854661a",
+  "template:html-ppt-botane-organic-runbook":
+    "7a9d31935c465409720a7b5ac07924b0ee53b4c7ebb9c0fa2a5146661956e83e",
+  "template:html-ppt-business-data-runbook":
+    "1b3d0d01ab23b65d1819850b2a90563c243cef1cb75dff9d5f7592ca6bc40cf5",
+  "template:html-ppt-crayon-runbook":
+    "1b0f3872495a9698dc028d2e895a6681cfe59904064525c5e365ac4d2998fa13",
+  "template:html-ppt-creative-agency-runbook":
+    "b5d2c2495c919955a62090c015bf5ecec38c71675762f19c7c6224d5e16d6c7b",
+  "template:html-ppt-data-report-runbook":
+    "18d5e4485c3c8e8cf593124681798589c4c85b4cac8fc1bf36a7e2bfce952493",
+  "template:html-ppt-editorial-magazine-runbook":
+    "ee4b42751a319bbbb22843e4f3804ed91eb589cf7e93ac626831db213c5c66aa",
+  "template:html-ppt-landing-consulting-runbook":
+    "94ae28f81fd407e01c65091c28247d9d81283fc427ef4e7cb71df376eac7eb69",
+  "template:html-ppt-lumina-runbook":
+    "da319f7028fa7faa5d6182f98b33f90ae8c70e4a629c7b7a558f0120e22ae4df",
+  "template:html-ppt-meridian-runbook":
+    "3933f7aef70f5438207294da66af16d874c60d71a46d8883761b10108bf0fb8c",
+  "template:html-ppt-mosaic-geometric-runbook":
+    "e7c22f6243ee257e98c8f846115c161e136f8404c7ab92f7ea56967f36cf1637",
+  "template:html-ppt-neo-brutalism-runbook":
+    "28021eb23255a26c2c79b2df4781da76757adcc5a0444c27fdf694b2f64d544d",
+  "template:html-ppt-nocturne-runbook":
+    "e2cd45c05cd85f56fd9d0923118403c6d01cfeefffaa340d37d3773aa1f99f98",
+  "template:html-ppt-pixel-glitch-runbook":
+    "0cb9fa7100802558fc83caf5ae7b0b2b568bbab68cb97770b5408b7647ef4806",
+  "template:html-ppt-playful-pop-runbook":
+    "5ed8baaf3f0a1a17a87a6282d5c7e77d9c47ee6a2d66fdebaf1069aca37aff14",
+  "template:html-ppt-prospectus-runbook":
+    "22c33504b41722ddc7eedfe058dccdda99a8633996b2f507bb1e170c48312a98",
+  "template:html-ppt-schoolhouse-runbook":
+    "1d1ffea23e9d1c9c0d45476fac0fd633a5fad09b79b3221564352667e8915b88",
+  "template:html-ppt-sticker-scrapbook-runbook":
+    "d39c7cee5ad1734f631e23a442f822f5288ea6f272f32e852b2a60c8fcfe2a6b",
+  "template:html-ppt-strata-runbook":
+    "35205bdbf924f06920f62dbcb8acafa6016aceaec519d1d51d1beff4415dc374",
+  "template:html-ppt-taped-consulting-runbook":
+    "5b61c1e607017376ce39cb5ac0694421abd0c190d3e29ca71bb753b0633d98ad",
+  "template:html-ppt-vantage-runbook":
+    "c60678d5a3c45721118a4c6ed553a8fe3a4f33f7586ece1de55ad7bcaf4562b9",
 } as const satisfies Record<string, string>;
 
 function privateRegistryResourceArchive(
