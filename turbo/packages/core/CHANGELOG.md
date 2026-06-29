@@ -1,5 +1,19 @@
 # Changelog
 
+## [8.376.1](https://github.com/vm0-ai/vm0/compare/core-v8.376.0...core-v8.376.1) (2026-06-29)
+
+
+### Refactoring
+
+* remove legacy agent run telemetry route ([#19358](https://github.com/vm0-ai/vm0/issues/19358)) ([be6301c](https://github.com/vm0-ai/vm0/commit/be6301cd6a9dc5f81f87c37d511e845f9c512f20))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.126.1
+
 ## [8.376.0](https://github.com/vm0-ai/vm0/compare/core-v8.375.0...core-v8.376.0) (2026-06-29)
 
 

@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.17...guest-agent-v0.41.18) (2026-06-29)
+
+
+### Refactoring
+
+* centralize guest-agent cli termination runtime ([#19342](https://github.com/vm0-ai/vm0/issues/19342)) ([fe032a9](https://github.com/vm0-ai/vm0/commit/fe032a9714a6d577bdba1c31c0001f5cac128954))
+
 ## [0.41.17](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.16...guest-agent-v0.41.17) (2026-06-29)
 
 
