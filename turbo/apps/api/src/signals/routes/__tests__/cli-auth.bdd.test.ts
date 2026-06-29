@@ -5,7 +5,6 @@ import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { generateSandboxToken } from "../../auth/tokens";
-import { DEFAULT_TEST_EMAIL } from "../../services/cli-auth.service";
 import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import {
   createAuthDeviceApiActions,
@@ -19,6 +18,7 @@ const authDevice = createAuthDeviceApiActions(context);
 const support = createAuthDeviceSupportApi(context);
 
 const DEVICE_CODE_EXPIRY_MS = 16 * 60 * 1000;
+const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 
 const LEGACY_CODEX_OAUTH_BODY = {
   accessToken: "REAL-AT-7f3a82d1-9b4c-4e5f-a1b2-c3d4e5f60718",
