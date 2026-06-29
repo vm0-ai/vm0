@@ -355,81 +355,6 @@ describe("COMPOSE-01 create and metadata validation", () => {
     expect(Object.keys(storedAgent)).toStrictEqual(["framework"]);
   });
 
-  it("updates compose metadata through partial patches with visible list reads", async () => {
-    const admin = api.user();
-    const created = await api.createCompose(
-      admin,
-      composeWith(slug("bdd-meta")),
-    );
-    await api.updateComposeMetadata(admin, created.composeId, {
-      displayName: "Initial Name",
-      description: "Initial description",
-      sound: "calm",
-    });
-
-    const invalidBody = await composes.rawRequest(admin, {
-      method: "PATCH",
-      path: `/api/agent/composes/${created.composeId}/metadata`,
-      jsonBody: { displayName: 12_345 },
-    });
-    expect(invalidBody.status).toBe(400);
-    expect(invalidBody.body).toMatchObject({
-      error: { code: "BAD_REQUEST" },
-    });
-
-    const noOrg = api.user({ orgId: null });
-    const noOrgPatch = await composes.requestUpdateComposeMetadata(
-      noOrg,
-      created.composeId,
-      { displayName: "No Org" },
-      [400],
-    );
-    expectApiError(noOrgPatch.body);
-    expect(noOrgPatch.body.error.message).toBe(
-      "Explicit org context required — ensure active org in session",
-    );
-
-    const missing = await composes.requestUpdateComposeMetadata(
-      admin,
-      randomUUID(),
-      { displayName: "Missing" },
-      [404],
-    );
-    expectApiError(missing.body);
-    expect(missing.body.error.message).toBe("Agent compose not found");
-
-    const outsider = api.user();
-    const crossOrg = await composes.requestUpdateComposeMetadata(
-      outsider,
-      created.composeId,
-      { displayName: "Cross Org" },
-      [404],
-    );
-    expectApiError(crossOrg.body);
-    expect(crossOrg.body.error.code).toBe("NOT_FOUND");
-
-    const member = api.user({
-      orgId: orgIdOf(admin),
-      orgRole: "org:member",
-    });
-    await composes.requestUpdateComposeMetadata(
-      member,
-      created.composeId,
-      { displayName: "Member Updated" },
-      [200],
-    );
-    const listed = await api.listComposes(admin);
-    expect(
-      listed.find((compose) => {
-        return compose.id === created.composeId;
-      }),
-    ).toMatchObject({
-      displayName: "Member Updated",
-      description: "Initial description",
-      sound: "calm",
-    });
-  });
-
   it("returns visible read errors for missing names, org-less lists, and invalid queries", async () => {
     const admin = api.user();
     const missingName = slug("bdd-missing");
@@ -508,19 +433,6 @@ describe("COMPOSE-01 token access", () => {
       tag: "latest",
     });
 
-    await composes.requestUpdateComposeMetadata(
-      sandbox,
-      composeId,
-      { displayName: "Sandbox Updated" },
-      [200],
-    );
-    const adminListed = await api.listComposes(admin);
-    expect(
-      adminListed.find((compose) => {
-        return compose.id === composeId;
-      }),
-    ).toMatchObject({ displayName: "Sandbox Updated" });
-
     const foreignSandbox = {
       bearer: sandboxComposeToken({
         userId: `user_${randomUUID()}`,
@@ -579,14 +491,6 @@ describe("COMPOSE-01 token access", () => {
       [401],
     );
     expect(versions.body).toStrictEqual(unauthenticatedBody);
-
-    const metadata = await composes.requestUpdateComposeMetadata(
-      null,
-      missingId,
-      { displayName: "Unauthenticated" },
-      [401],
-    );
-    expect(metadata.body).toStrictEqual(unauthenticatedBody);
 
     const zeroByName = await composes.requestReadZeroComposeByName(
       null,

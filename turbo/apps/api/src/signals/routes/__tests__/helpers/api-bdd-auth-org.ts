@@ -11,7 +11,6 @@ import {
   composesByIdContract,
   composesListContract,
   composesMainContract,
-  composesMetadataContract,
   type ComposeListItem,
   type ComposeResponse,
   agentComposeApiContentSchema,
@@ -110,7 +109,6 @@ import { mockEnv } from "../../../../lib/env";
 import { server } from "../../../../mocks/server";
 import { agentComposesRoutes } from "../../agent-composes";
 import { agentComposesByIdRoutes } from "../../agent-composes-id";
-import { agentComposesMetadataRoutes } from "../../agent-composes-metadata";
 import { agentComposesReadRoutes } from "../../agent-composes-read";
 import { authMeRoutes } from "../../auth-me";
 import { zeroAgentsRoutes } from "../../zero-agents";
@@ -272,7 +270,6 @@ const authOrgRoutes = [
   ...agentComposesRoutes,
   ...agentComposesReadRoutes,
   ...agentComposesByIdRoutes,
-  ...agentComposesMetadataRoutes,
   ...zeroComposesRoutes,
   ...zeroCustomConnectorsRoutes,
   ...zeroCustomConnectorsCreateRoutes,
@@ -1671,28 +1668,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         [200],
       );
       return response.body.composes;
-    },
-
-    async updateComposeMetadata(
-      actor: ApiTestUser,
-      composeId: string,
-      body: {
-        readonly displayName?: string;
-        readonly description?: string;
-        readonly sound?: string;
-      },
-    ): Promise<void> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        composesMetadataContract,
-      );
-      await accept(
-        client.updateMetadata({
-          headers: authenticate(actor),
-          params: { id: composeId },
-          body,
-        }),
-        [200],
-      );
     },
 
     async readZeroComposeById(
