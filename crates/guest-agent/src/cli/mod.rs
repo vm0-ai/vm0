@@ -823,7 +823,7 @@ async fn execute_cli_inner(
                 );
                 break Ok(());
             }
-            _ = tick_optional_interval(&mut stuck_tool_check) => {
+            _ = tick_optional_interval(&mut stuck_tool_check), if cli_status.is_none() => {
                 let timeout_secs = env::stuck_tool_timeout_secs();
                 // Find the oldest network tool that has exceeded the timeout.
                 let stuck = stuck_tool_tracker
@@ -855,7 +855,7 @@ async fn execute_cli_inner(
                             .await
                     }
                 }
-            }, if !heartbeat_done => {
+            }, if !heartbeat_done && cli_status.is_none() => {
                 heartbeat_done = true;
                 match heartbeat_result {
                     Ok(HeartbeatStatus::Failed(e)) => {

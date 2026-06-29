@@ -341,7 +341,7 @@ impl CliTerminationRuntime {
         log: ControlTerminationLog,
         termination_deadline: Pin<&mut Sleep>,
     ) -> bool {
-        if self.control_error.is_some() {
+        if self.control_error.is_some() || matches!(self.state, TerminationState::Done) {
             return false;
         }
 
@@ -742,6 +742,14 @@ mod tests {
         assert!(!runtime.has_pending_deadline());
         assert!(!runtime.has_post_result_cleanup());
         assert!(!runtime.arm_post_result_cleanup(false, deadline.as_mut()));
+        assert!(!runtime.begin_control_failure(
+            TerminationReason::HeartbeatError,
+            AgentError::Execution("late heartbeat failure".to_string()),
+            ControlTerminationLog::HeartbeatFailed,
+            deadline.as_mut(),
+        ));
+        assert!(runtime.control_error.is_none());
+        assert!(runtime.diagnostic.is_none());
         assert_eq!(runtime.state, TerminationState::Done);
     }
 
