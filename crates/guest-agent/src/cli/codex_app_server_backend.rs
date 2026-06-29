@@ -112,15 +112,23 @@ async fn run_codex_app_server(
     let log_file = guest_contracts::runtime_paths::create_private(paths::agent_log_file())?;
     let mut log_file = tokio::fs::File::from_std(log_file);
     let mut ingestor = CliEventIngestor::new();
-    let mut client = CodexAppServerClient::spawn(codex_app_server_config())?;
+    let mut client = CodexAppServerClient::spawn(codex_app_server_config())
+        .map_err(|error| app_server_error(masker, error))?;
     let mut heartbeat_done = false;
 
     let run_result = async {
-        race_with_heartbeat(client.initialize(), heartbeat_monitor, &mut heartbeat_done).await?;
+        race_with_heartbeat(
+            client.initialize(),
+            heartbeat_monitor,
+            &mut heartbeat_done,
+            masker,
+        )
+        .await?;
         let thread_response = race_with_heartbeat(
             start_or_resume_thread(&mut client),
             heartbeat_monitor,
             &mut heartbeat_done,
+            masker,
         )
         .await?;
         let thread_id = thread_id_from_response(&thread_response)?;
@@ -161,14 +169,19 @@ async fn run_codex_app_server(
             client.request_value("turn/start", turn_start_params(&thread_id)),
             heartbeat_monitor,
             &mut heartbeat_done,
+            masker,
         )
         .await?;
         let turn_id = turn_id_from_response(&turn_response)?;
 
         let exit_code = loop {
-            let notification =
-                next_notification_or_heartbeat(&mut client, heartbeat_monitor, &mut heartbeat_done)
-                    .await?;
+            let notification = next_notification_or_heartbeat(
+                &mut client,
+                heartbeat_monitor,
+                &mut heartbeat_done,
+                masker,
+            )
+            .await?;
             let mut sink = EventIngestSink {
                 ingestor: &mut ingestor,
                 log_file: &mut log_file,
@@ -216,10 +229,12 @@ async fn run_codex_app_server(
             Ok(result)
         }
         (Ok(_result), Err(error)) => Err(AgentError::Execution(format!(
-            "codex app-server shutdown failed: {error}"
+            "codex app-server shutdown failed: {}",
+            masker.mask_string(&error.to_string())
         ))),
         (Err(error), Ok(())) => Err(error),
         (Err(error), Err(shutdown_error)) => {
+            let shutdown_error = masker.mask_string(&shutdown_error.to_string());
             log_warn!(
                 LOG_TAG,
                 "codex app-server shutdown failed after run error: {shutdown_error}"
@@ -354,11 +369,13 @@ async fn next_notification_or_heartbeat(
     client: &mut CodexAppServerClient,
     heartbeat_monitor: &mut HeartbeatMonitor,
     heartbeat_done: &mut bool,
+    masker: &SecretMasker,
 ) -> Result<ServerNotification, AgentError> {
     race_with_heartbeat(
         client.next_notification(TURN_NOTIFICATION_LABEL),
         heartbeat_monitor,
         heartbeat_done,
+        masker,
     )
     .await
 }
@@ -367,17 +384,22 @@ async fn race_with_heartbeat<T>(
     app_server_wait: impl Future<Output = Result<T, CodexAppServerError>>,
     heartbeat_monitor: &mut HeartbeatMonitor,
     heartbeat_done: &mut bool,
+    masker: &SecretMasker,
 ) -> Result<T, AgentError> {
     // If heartbeat wins, the caller exits the run and shuts the app-server
     // down. We intentionally do not try to reuse a possibly half-read JSON-RPC
     // stream after cancelling `app_server_wait`.
     tokio::select! {
-        result = app_server_wait => Ok(result?),
+        result = app_server_wait => result.map_err(|error| app_server_error(masker, error)),
         heartbeat_result = wait_for_heartbeat(heartbeat_monitor), if !*heartbeat_done => {
             *heartbeat_done = true;
             Err(heartbeat_error(heartbeat_result))
         }
     }
+}
+
+fn app_server_error(masker: &SecretMasker, error: impl std::fmt::Display) -> AgentError {
+    AgentError::Execution(masker.mask_string(&error.to_string()))
 }
 
 async fn wait_for_heartbeat(
