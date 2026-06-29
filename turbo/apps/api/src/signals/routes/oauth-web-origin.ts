@@ -31,6 +31,21 @@ function isTrustedOrigin(origin: string, role: Vm0HostRole): boolean {
   return url.protocol === "https:" && isVm0Host(url.hostname, role);
 }
 
+function isTrustedHostedOrigin(origin: string, role: Vm0HostRole): boolean {
+  if (!URL.canParse(origin)) {
+    return false;
+  }
+
+  const url = new URL(origin);
+  return (
+    url.protocol === "https:" &&
+    url.pathname === "/" &&
+    url.search === "" &&
+    url.hash === "" &&
+    isVm0Host(url.hostname, role)
+  );
+}
+
 function isTrustedWebOrigin(origin: string): boolean {
   return isTrustedOrigin(origin, "www");
 }
@@ -86,6 +101,11 @@ export function getOAuthWebOrigin(_request: Request): string {
 }
 
 export function getOAuthApiOrigin(_request: Request): string {
+  const configuredApiOrigin = new URL(env("VM0_API_URL")).origin;
+  if (isTrustedHostedOrigin(configuredApiOrigin, "api")) {
+    return configuredApiOrigin;
+  }
+
   const canonicalApiOrigin = canonicalSiblingOriginForHost(
     new URL(env("VM0_WEB_URL")),
     "www",
@@ -95,7 +115,7 @@ export function getOAuthApiOrigin(_request: Request): string {
     return canonicalApiOrigin;
   }
 
-  return new URL(env("VM0_API_URL")).origin;
+  return configuredApiOrigin;
 }
 
 export function getOAuthCanonicalRedirectUrl(request: Request): string | null {
