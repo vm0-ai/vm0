@@ -33,10 +33,11 @@ class AuthEndpointResponse:
 class FakeAuthEndpoint:
     """Threaded local auth endpoint for mitm-addon auth-related tests.
 
-    The endpoint is live only inside ``run()``. It handles POST requests,
-    records method, path, raw body, and lower-cased headers, and serves queued
-    responses in FIFO order. Requests without a queued response receive a
-    synthetic HTTP 500 response so accidental extra auth calls fail visibly.
+    The endpoint is live only inside ``run()``. It only implements POST
+    handling, records method, path, raw body, and lower-cased headers, and
+    serves queued responses in FIFO order. Requests without a queued response
+    receive a synthetic HTTP 500 response so accidental extra auth calls fail
+    visibly.
 
     Queued responses may include a ``release_event`` to block sending the
     response. Context teardown releases pending events so blocked handler
