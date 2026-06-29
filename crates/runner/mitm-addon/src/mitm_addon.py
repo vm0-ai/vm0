@@ -615,22 +615,30 @@ def _public_destination_runtime_hosts(flow: http.HTTPFlow) -> tuple[object, ...]
     )
 
     if flow.server_conn.connected:
-        hosts: list[object] = []
-        if original_address is not None:
-            hosts.append(original_address[0])
-        elif public_destination.public_ip_literal_is_public(flow.request.host) is not None:
-            hosts.append(flow.request.host)
+        hosts = _public_destination_original_and_request_hosts(flow, original_address)
         hosts.extend(_public_destination_connected_runtime_hosts(flow))
         return tuple(hosts)
 
     if original_address is not None:
-        return (original_address[0],)
+        return tuple(_public_destination_original_and_request_hosts(flow, original_address))
 
     server_address = _server_address(flow.server_conn)
     if server_address is not None:
         return (server_address[0],)
 
     return (flow.request.host,)
+
+
+def _public_destination_original_and_request_hosts(
+    flow: http.HTTPFlow,
+    original_address: tuple[str, int] | None,
+) -> list[object]:
+    hosts: list[object] = []
+    if original_address is not None:
+        hosts.append(original_address[0])
+    if public_destination.public_ip_literal_is_public(flow.request.host) is not None:
+        hosts.append(flow.request.host)
+    return hosts
 
 
 def _public_destination_connected_runtime_hosts(flow: http.HTTPFlow) -> tuple[object, ...]:
