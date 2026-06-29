@@ -1683,6 +1683,7 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     const actor = bdd.user();
     const orgId = orgOf(actor);
     const grantExpiresAtUnix = epochSeconds(7);
+    const renewedGrantExpiresAtUnix = epochSeconds(14);
     const suffix = randomUUID().slice(0, 8);
     api.configureStripeBillingEnv();
     await bdd.setupOnboarding(actor, { displayName: "BDD Atom Grant" });
@@ -1734,6 +1735,61 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
         source: "subscription_renewal",
       }),
     ]);
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_atom_grant_renewed_${suffix}`,
+          customer: `cus_bdd_atom_${suffix}`,
+          metadata: {
+            type: "atom_grant",
+            purpose: "atom_grant",
+            source: "atom_entitlement",
+            orgId,
+            tier: "team",
+            duration: "7d",
+            atomGrantExpiresAt: isoOf(renewedGrantExpiresAtUnix),
+          },
+          parent: null,
+          lines: {
+            data: [
+              {
+                id: `il_bdd_atom_grant_renewed_${suffix}`,
+                quantity: 1,
+                price: { id: "price_bdd_atom_grant" },
+                period: {
+                  start: grantExpiresAtUnix,
+                  end: renewedGrantExpiresAtUnix,
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    const renewed = await billing.readBillingStatus(actor);
+    expect(renewed.tier).toBe("team");
+    expect(renewed.credits).toBe(240_000);
+    expect(renewed.hasSubscription).toBeFalsy();
+    expect(renewed.currentPeriodEnd).toBe(isoOf(renewedGrantExpiresAtUnix));
+    expect(renewed.creditGrants).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          amount: 120_000,
+          expiresAt: isoOf(grantExpiresAtUnix),
+          source: "subscription_renewal",
+        }),
+        expect.objectContaining({
+          amount: 120_000,
+          expiresAt: isoOf(renewedGrantExpiresAtUnix),
+          source: "subscription_renewal",
+        }),
+      ]),
+    );
 
     const db = store.set(writeDb$);
     const expiredAt = new Date(now() - 1000);

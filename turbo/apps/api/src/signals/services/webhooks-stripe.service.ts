@@ -539,6 +539,24 @@ function atomGrantInvoiceDetails(
   };
 }
 
+function atomGrantWouldReplaceWithSameOrLowerTier(args: {
+  readonly lockedOrg: LockedInvoicePaidOrg;
+  readonly targetTier: "pro" | "team";
+}): boolean {
+  if (
+    args.lockedOrg.subscriptionStatus === ATOM_GRANT_SUBSCRIPTION_STATUS &&
+    args.lockedOrg.stripeSubscriptionId === null &&
+    args.lockedOrg.tier === args.targetTier
+  ) {
+    return false;
+  }
+
+  return checkoutWouldReplaceWithSameOrLowerTier({
+    currentTier: args.lockedOrg.tier,
+    targetTier: args.targetTier,
+  });
+}
+
 function stripePreviewMetadataForEvent(
   event: Stripe.Event,
 ): readonly (Readonly<Record<string, string>> | null | undefined)[] | null {
@@ -861,8 +879,8 @@ async function processAtomGrantInvoicePaid(
       return true;
     }
     if (
-      checkoutWouldReplaceWithSameOrLowerTier({
-        currentTier: lockedOrg.tier,
+      atomGrantWouldReplaceWithSameOrLowerTier({
+        lockedOrg,
         targetTier: details.tier,
       })
     ) {
