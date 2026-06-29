@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.6...guest-contracts-v0.2.7) (2026-06-29)
+
+
+### Performance Improvements
+
+* park checkpointed session history identity ([#19270](https://github.com/vm0-ai/vm0/issues/19270)) ([e21745b](https://github.com/vm0-ai/vm0/commit/e21745be11c34b09052a27182971d4c48ab881c1))
+
 ## [0.2.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.5...guest-contracts-v0.2.6) (2026-06-27)
 
 

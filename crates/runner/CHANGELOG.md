@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.130.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.1...runner-rs-v0.130.2) (2026-06-29)
+
+
+### Performance Improvements
+
+* park checkpointed session history identity ([#19270](https://github.com/vm0-ai/vm0/issues/19270)) ([e21745b](https://github.com/vm0-ai/vm0/commit/e21745be11c34b09052a27182971d4c48ab881c1))
+
 ## [0.130.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.0...runner-rs-v0.130.1) (2026-06-29)
 
 

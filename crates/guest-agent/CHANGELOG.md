@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.41.15](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.14...guest-agent-v0.41.15) (2026-06-29)
+
+
+### Performance Improvements
+
+* park checkpointed session history identity ([#19270](https://github.com/vm0-ai/vm0/issues/19270)) ([e21745b](https://github.com/vm0-ai/vm0/commit/e21745be11c34b09052a27182971d4c48ab881c1))
+
 ## [0.41.14](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.13...guest-agent-v0.41.14) (2026-06-29)
 
 ## [0.41.13](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.12...guest-agent-v0.41.13) (2026-06-27)
