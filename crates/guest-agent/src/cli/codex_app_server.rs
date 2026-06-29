@@ -27,7 +27,6 @@ const METHOD_NOT_FOUND: i64 = -32601;
 const NOTIFICATION_QUEUE_CAPACITY: usize = 128;
 const NOTIFICATION_QUEUE_MAX_BYTES: usize = 16 * 1024 * 1024;
 const STDOUT_MAX_LINE_BYTES: usize = 64 * 1024 * 1024;
-const SHUTDOWN_SIGTERM_GRACE: Duration = Duration::from_secs(2);
 const SHUTDOWN_SIGKILL_GRACE: Duration = Duration::from_secs(2);
 const STDERR_DRAIN_GRACE: Duration = Duration::from_secs(2);
 
@@ -383,17 +382,16 @@ impl CodexAppServerClient {
         let requested_graceful_shutdown = self.stdin.is_some();
         self.close_io_handles();
         let child_exited = if requested_graceful_shutdown {
-            self.wait_for_child(SHUTDOWN_SIGTERM_GRACE).await?
+            tokio::task::yield_now().await;
+            self.try_finish_child_wait()?.is_some()
         } else {
             self.try_finish_child_wait()?.is_some()
         };
         if self.wait_rx.is_some() && !child_exited {
             self.sigterm_process_group();
+            self.sigkill_process_group();
             if !self.wait_for_child(SHUTDOWN_SIGKILL_GRACE).await? {
-                self.sigkill_process_group();
-                if !self.wait_for_child(SHUTDOWN_SIGKILL_GRACE).await? {
-                    return Err(CodexAppServerError::ShutdownTimeout);
-                }
+                return Err(CodexAppServerError::ShutdownTimeout);
             }
         }
 
