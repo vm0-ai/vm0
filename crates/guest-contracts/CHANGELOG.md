@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.2.8](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.7...guest-contracts-v0.2.8) (2026-06-29)
+
+
+### Bug Fixes
+
+* declare guest-contracts serde dependencies ([#19291](https://github.com/vm0-ai/vm0/issues/19291)) ([8e739bc](https://github.com/vm0-ai/vm0/commit/8e739bc813a2eaa5dbeabbf24616a5ff0a3a34c9))
+
 ## [0.2.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.6...guest-contracts-v0.2.7) (2026-06-29)
 
 
