@@ -492,6 +492,17 @@ exit 1
 
     #[test]
     fn verify_script_checks_sandbox_helper_runtime_commands() {
+        assert!(
+            VERIFY_SCRIPT.contains(r#"sudo chroot "$MOUNT_DIR" /bin/sh -c 'test -x "$1"'"#),
+            "verify-rootfs.sh should resolve required executable symlinks inside the guest rootfs"
+        );
+        assert!(
+            VERIFY_SCRIPT.contains(
+                "for cmd in sudo unshare mount umount mountpoint stat mktemp sed grep chroot; do"
+            ),
+            "verify-rootfs.sh should declare chroot as a host dependency"
+        );
+
         for (group, command_paths) in [
             (
                 "shell wrapper runtime",

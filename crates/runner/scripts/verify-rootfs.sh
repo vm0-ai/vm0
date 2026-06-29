@@ -107,7 +107,7 @@ trap cleanup EXIT
 # ---------------------------------------------------------------------------
 
 missing=()
-for cmd in sudo unshare mount umount mountpoint stat mktemp sed grep; do
+for cmd in sudo unshare mount umount mountpoint stat mktemp sed grep chroot; do
   if ! command -v "$cmd" &> /dev/null; then
     missing+=("$cmd")
   fi
@@ -138,8 +138,7 @@ errors=()
 
 check_required_executable() {
   local path="$1" name="${2:-$1}"
-  local check_path="${MOUNT_DIR}${path}"
-  if [[ -x "$check_path" ]]; then
+  if sudo chroot "$MOUNT_DIR" /bin/sh -c 'test -x "$1"' sh "$path" 2>/dev/null; then
     echo "  ${name}: found"
   else
     errors+=("${name} not found or not executable at ${path}")
