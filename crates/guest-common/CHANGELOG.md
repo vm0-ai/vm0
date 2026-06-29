@@ -1,5 +1,7 @@
 # Changelog
 
+## [0.2.23](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.22...guest-common-v0.2.23) (2026-06-29)
+
 ## [0.2.22](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.21...guest-common-v0.2.22) (2026-06-29)
 
 ## [0.2.21](https://github.com/vm0-ai/vm0/compare/guest-common-v0.2.20...guest-common-v0.2.21) (2026-06-29)
