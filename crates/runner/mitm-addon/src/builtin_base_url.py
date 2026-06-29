@@ -19,14 +19,18 @@ _PORT_VAR_PATTERN = re.compile(r"^[0-9]+$")
 _MAX_PATH_VAR_PERCENT_DECODE_PASSES = 5
 
 
+class BuiltinBaseUrlResolutionError(ValueError):
+    """Builtin firewall base URL variables could not produce a safe runtime URL."""
+
+
 def _string_record(value: object, field_name: str) -> dict[str, str]:
     if not isinstance(value, dict):
-        raise TypeError(f"{field_name} must be an object")
+        raise BuiltinBaseUrlResolutionError(f"{field_name} must be an object")
 
     result: dict[str, str] = {}
     for key, nested in value.items():
         if not isinstance(key, str) or not isinstance(nested, str):
-            raise TypeError(f"{field_name} must contain string values")
+            raise BuiltinBaseUrlResolutionError(f"{field_name} must contain string values")
         result[key] = nested
     return result
 
@@ -43,8 +47,8 @@ def _base_url_variable_error(
     base: str,
     name: str,
     detail: str,
-) -> ValueError:
-    return ValueError(
+) -> BuiltinBaseUrlResolutionError:
+    return BuiltinBaseUrlResolutionError(
         f'builtin firewall "{firewall_name}" base URL variable "{name}" {detail}: {base}'
     )
 
@@ -380,7 +384,7 @@ def resolve_base_url_template(
         name = match.group(1)
         value = vars_map.get(name)
         if not value:
-            raise ValueError(
+            raise BuiltinBaseUrlResolutionError(
                 f'builtin firewall "{firewall_name}" base URL requires variable "{name}"'
             )
         _validate_base_url_template_variable(
@@ -398,9 +402,11 @@ def resolve_base_url_template(
     resolved_parts.append(base[last_index:])
     resolved = "".join(resolved_parts)
     if not matching.firewall_base_config_is_valid(resolved):
-        raise ValueError(f'builtin firewall "{firewall_name}" resolved base URL is invalid')
+        raise BuiltinBaseUrlResolutionError(
+            f'builtin firewall "{firewall_name}" resolved base URL is invalid'
+        )
     if has_unsafe_path(urllib.parse.urlsplit(resolved).path):
-        raise ValueError(
+        raise BuiltinBaseUrlResolutionError(
             f'builtin firewall "{firewall_name}" resolved base URL has unsafe path segments'
         )
     return resolved

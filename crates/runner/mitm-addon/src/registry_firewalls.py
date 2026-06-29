@@ -70,7 +70,7 @@ def _resolve_builtin_firewall_entry(entry: dict) -> _ResolvedBuiltinFirewallEntr
 
     try:
         vars_map = builtin_base_url.base_url_vars_for_entry(entry)
-    except (TypeError, ValueError) as e:
+    except builtin_base_url.BuiltinBaseUrlResolutionError as e:
         raise _resolution_error(e) from e
 
     resolved_bases: list[str] = []
@@ -92,7 +92,10 @@ def _resolve_builtin_firewall_entry(entry: dict) -> _ResolvedBuiltinFirewallEntr
                 auth_config=api.get("auth"),
                 host_policy=api.get("hostPolicy"),
             )
-        except (TypeError, ValueError) as e:
+        except (
+            builtin_base_url.BuiltinBaseUrlResolutionError,
+            builtin_host_policy.BuiltinHostPolicyError,
+        ) as e:
             raise _resolution_error(e) from e
         api["base"] = resolved_base
         resolved_bases.append(resolved_base)

@@ -55,6 +55,10 @@ _IPV6_DRONE_REMOTE_ID_SECOND_MIN = 0x0030
 _IPV6_DRONE_REMOTE_ID_SECOND_MAX = 0x003F
 
 
+class BuiltinHostPolicyError(ValueError):
+    """Builtin firewall host policy rejected a credentialed runtime base URL."""
+
+
 def validate_credentialed_builtin_base(
     *,
     firewall_name: str,
@@ -67,7 +71,9 @@ def validate_credentialed_builtin_base(
     parsed = urllib.parse.urlsplit(base)
     scheme = parsed.scheme.lower()
     if scheme != "https":
-        raise ValueError(f'builtin firewall "{firewall_name}" credentialed base URL must use https')
+        raise BuiltinHostPolicyError(
+            f'builtin firewall "{firewall_name}" credentialed base URL must use https'
+        )
     _validate_builtin_base_host_policy(
         firewall_name=firewall_name,
         parsed=parsed,
@@ -87,7 +93,7 @@ def _host_policy_string_list(policy: dict, key: str) -> list[str]:
     if value is None:
         return []
     if not isinstance(value, list) or not all(isinstance(item, str) for item in value):
-        raise ValueError(f"builtin firewall hostPolicy.{key} must be a string list")
+        raise BuiltinHostPolicyError(f"builtin firewall hostPolicy.{key} must be a string list")
     return value
 
 
@@ -100,7 +106,7 @@ def _validate_host_policy_keys(
     extra_keys = sorted(set(policy) - allowed_keys)
     if extra_keys:
         joined = ", ".join(extra_keys)
-        raise ValueError(
+        raise BuiltinHostPolicyError(
             f'builtin firewall "{firewall_name}" hostPolicy has unsupported keys: {joined}'
         )
 
@@ -110,7 +116,9 @@ def _host_policy_optional_bool(*, firewall_name: str, policy: dict, key: str) ->
     if value is None:
         return False
     if not isinstance(value, bool):
-        raise TypeError(f'builtin firewall "{firewall_name}" hostPolicy.{key} must be a boolean')
+        raise BuiltinHostPolicyError(
+            f'builtin firewall "{firewall_name}" hostPolicy.{key} must be a boolean'
+        )
     return value
 
 
@@ -184,7 +192,9 @@ def _validate_provider_owned_host_policy(
     policy: dict,
 ) -> None:
     if parsed.hostname is None:
-        raise ValueError(f'builtin firewall "{firewall_name}" resolved base URL is invalid')
+        raise BuiltinHostPolicyError(
+            f'builtin firewall "{firewall_name}" resolved base URL is invalid'
+        )
     hostname = _normalize_host_policy_hostname(parsed.hostname)
     exact_hosts = _host_policy_string_list(policy, "exactHosts")
     suffixes = _host_policy_string_list(policy, "suffixes")
@@ -194,19 +204,19 @@ def _validate_provider_owned_host_policy(
         key="allowNonDefaultPort",
     )
     if not exact_hosts and not suffixes:
-        raise ValueError(
+        raise BuiltinHostPolicyError(
             f'builtin firewall "{firewall_name}" providerOwned hostPolicy '
             "requires exactHosts or suffixes"
         )
     for exact_host in exact_hosts:
         if not _host_policy_host_has_fixed_ownership(exact_host, allow_leading_dot=False):
-            raise ValueError(
+            raise BuiltinHostPolicyError(
                 f'builtin firewall "{firewall_name}" providerOwned hostPolicy '
                 "exactHosts must be fixed hostnames with at least two labels"
             )
     for suffix in suffixes:
         if not _host_policy_host_has_fixed_ownership(suffix, allow_leading_dot=True):
-            raise ValueError(
+            raise BuiltinHostPolicyError(
                 f'builtin firewall "{firewall_name}" providerOwned hostPolicy '
                 "suffixes must be fixed hostnames with at least two labels"
             )
@@ -215,7 +225,7 @@ def _validate_provider_owned_host_policy(
         exact_hosts=exact_hosts,
         suffixes=suffixes,
     ):
-        raise ValueError(
+        raise BuiltinHostPolicyError(
             f'builtin firewall "{firewall_name}" host policy does not allow '
             f'resolved host "{hostname}"'
         )
@@ -224,7 +234,7 @@ def _validate_provider_owned_host_policy(
         and parsed.port is not None
         and parsed.port != _DEFAULT_HTTPS_PORT
     ):
-        raise ValueError(
+        raise BuiltinHostPolicyError(
             f'builtin firewall "{firewall_name}" host policy does not allow non-default ports'
         )
 
@@ -297,11 +307,13 @@ def _validate_public_destination_host_policy(
     parsed: urllib.parse.SplitResult,
 ) -> None:
     if parsed.hostname is None:
-        raise ValueError(f'builtin firewall "{firewall_name}" resolved base URL is invalid')
+        raise BuiltinHostPolicyError(
+            f'builtin firewall "{firewall_name}" resolved base URL is invalid'
+        )
     hostname = _normalize_host_policy_hostname(parsed.hostname)
     public_ip_literal = _ip_literal_is_public(hostname)
     if public_ip_literal is False:
-        raise ValueError(
+        raise BuiltinHostPolicyError(
             f'builtin firewall "{firewall_name}" host policy does not allow '
             f'non-public IP literal "{hostname}"'
         )
@@ -316,7 +328,9 @@ def _validate_builtin_base_host_policy(
     if host_policy is None:
         return
     if not isinstance(host_policy, dict):
-        raise TypeError(f'builtin firewall "{firewall_name}" hostPolicy must be an object')
+        raise BuiltinHostPolicyError(
+            f'builtin firewall "{firewall_name}" hostPolicy must be an object'
+        )
     kind = host_policy.get("kind")
     if kind == "providerOwned":
         _validate_host_policy_keys(
@@ -341,4 +355,4 @@ def _validate_builtin_base_host_policy(
             parsed=parsed,
         )
         return
-    raise ValueError(f'builtin firewall "{firewall_name}" hostPolicy kind is invalid')
+    raise BuiltinHostPolicyError(f'builtin firewall "{firewall_name}" hostPolicy kind is invalid')
