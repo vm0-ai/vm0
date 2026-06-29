@@ -77,9 +77,9 @@ function parseDeniedMethod(method: string): string {
   return upperMethod;
 }
 
-function rawAuthorityContainsBackslash(url: string): boolean {
+function rawAuthorityFromDeniedUrl(url: string): string | null {
   const schemeEnd = url.indexOf("://");
-  if (schemeEnd === -1) return false;
+  if (schemeEnd === -1) return null;
 
   const authorityStart = schemeEnd + 3;
   let authorityEnd = url.length;
@@ -87,14 +87,27 @@ function rawAuthorityContainsBackslash(url: string): boolean {
     const index = url.indexOf(delimiter, authorityStart);
     if (index !== -1) authorityEnd = Math.min(authorityEnd, index);
   }
-  return url.slice(authorityStart, authorityEnd).includes("\\");
+  const authority = url.slice(authorityStart, authorityEnd);
+  return authority === "" ? null : authority;
+}
+
+function rawAuthorityHasUnsafeSyntax(url: string): boolean {
+  const authority = rawAuthorityFromDeniedUrl(url);
+  if (authority === null) return false;
+  return (
+    authority.includes("\\") ||
+    authority.includes("%") ||
+    [...authority].some((char) => {
+      return char.charCodeAt(0) > 0x7f;
+    })
+  );
 }
 
 function parseDeniedUrl(url: string): URL {
   if (
     !url.includes("://") ||
     /\s/.test(url) ||
-    rawAuthorityContainsBackslash(url)
+    rawAuthorityHasUnsafeSyntax(url)
   ) {
     throw invalidUrlError();
   }
