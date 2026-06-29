@@ -26,6 +26,17 @@ async function withoutConfiguredOnboarding<T>(
   }
 }
 
+async function withProductionDeployment<T>(
+  callback: () => T | Promise<T>,
+): Promise<T> {
+  vi.stubEnv("VITE_VERCEL_ENV", "production");
+  try {
+    return await callback();
+  } finally {
+    vi.stubEnv("VITE_VERCEL_ENV", "");
+  }
+}
+
 describe("platform auth URLs", () => {
   it("uses the configured onboarding origin for auth URLs", () => {
     setBrowserUrl("https://pr-18532-app.vm6.ai/agents");
@@ -76,6 +87,17 @@ describe("platform auth URLs", () => {
       setBrowserUrl("https://app.vm0.ai/agents");
 
       expect(resolveWebAuthUrl("/sign-in")).toBe("https://www.vm0.ai/sign-in");
+    });
+  });
+
+  it("keeps production auth on the derived web origin", async () => {
+    await withProductionDeployment(() => {
+      setBrowserUrl("https://app.vm0.ai/agents");
+
+      const url = new URL(resolveWebAuthUrl("/sign-in"));
+      expect(url.origin).toBe("https://www.vm0.ai");
+      expect(url.pathname).toBe("/sign-in");
+      expect(url.searchParams.has("domain")).toBeFalsy();
     });
   });
 });
