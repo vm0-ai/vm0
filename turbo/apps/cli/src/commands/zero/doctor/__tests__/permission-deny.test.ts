@@ -387,6 +387,28 @@ describe("zero doctor permission-deny command", () => {
       expect(mockConsoleLog).not.toHaveBeenCalled();
     });
 
+    it("should reject invalid HTTP methods", async () => {
+      await expect(async () => {
+        await permissionDenyCommand.parseAsync([
+          "node",
+          "cli",
+          "slack",
+          "--method",
+          "BAD METHOD",
+          "--url",
+          "https://slack.com/api/conversations.list",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "permission-deny requires --method to be one of GET, POST, PUT, PATCH, DELETE, HEAD, or OPTIONS.",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleLog).not.toHaveBeenCalled();
+    });
+
     it("should reject URLs outside the selected connector bases", async () => {
       await expect(async () => {
         await permissionDenyCommand.parseAsync([

@@ -30,6 +30,15 @@ interface PermissionDenyBaseMatch {
 }
 
 const BASE_URL_VAR_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+const VALID_DENIED_METHODS = new Set([
+  "GET",
+  "POST",
+  "PUT",
+  "PATCH",
+  "DELETE",
+  "HEAD",
+  "OPTIONS",
+]);
 
 function pathOnlyError(): Error {
   return new Error(
@@ -41,6 +50,20 @@ function invalidUrlError(): Error {
   return new Error(
     "permission-deny requires --url to be a valid absolute http or https URL.",
   );
+}
+
+function invalidMethodError(): Error {
+  return new Error(
+    "permission-deny requires --method to be one of GET, POST, PUT, PATCH, DELETE, HEAD, or OPTIONS.",
+  );
+}
+
+function parseDeniedMethod(method: string): string {
+  const upperMethod = method.toUpperCase();
+  if (!VALID_DENIED_METHODS.has(upperMethod)) {
+    throw invalidMethodError();
+  }
+  return upperMethod;
 }
 
 function parseDeniedUrl(url: string): URL {
@@ -213,6 +236,7 @@ Notes:
         if (!opts.url) {
           throw pathOnlyError();
         }
+        const method = parseDeniedMethod(opts.method);
         const deniedUrl = parseDeniedUrl(opts.url);
 
         if (
@@ -239,7 +263,6 @@ Notes:
           );
         }
 
-        const method = opts.method.toUpperCase();
         const permissions = findMatchingRoutingPermissions(
           method,
           match.relativePath,
