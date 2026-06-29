@@ -82,7 +82,6 @@ enum SessionHistoryIdentityReason {
     FinalizeMetadataReadFailed,
     FinalizeInvalidMetadata,
     FinalizeUnverifiableMetadata,
-    VerifyMissingIdentity,
     VerifyRequestMissing,
     VerifyRequestMismatch,
     VerifyMissingVerifier,
@@ -112,7 +111,6 @@ impl SessionHistoryIdentityReason {
             Self::FinalizeUnverifiableMetadata => {
                 "session_history_identity_finalize_unverifiable_metadata"
             }
-            Self::VerifyMissingIdentity => "session_history_identity_verify_missing_identity",
             Self::VerifyRequestMissing => "session_history_identity_verify_request_missing",
             Self::VerifyRequestMismatch => "session_history_identity_verify_request_mismatch",
             Self::VerifyMissingVerifier => "session_history_identity_verify_missing_verifier",
@@ -189,11 +187,8 @@ pub(super) fn build_agent_start_command(run_agent_path: &str) -> String {
 async fn verify_restored_session_identity_for_reuse(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    identity: Option<RestoredSessionIdentity>,
+    identity: RestoredSessionIdentity,
 ) -> Result<RestoredSessionIdentity, SessionHistoryIdentityReason> {
-    let Some(identity) = identity else {
-        return Err(SessionHistoryIdentityReason::VerifyMissingIdentity);
-    };
     let Some(requested_identity) = RestoredSessionIdentity::from_context(context) else {
         debug!(
             run_id = %context.run_id,
@@ -737,8 +732,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let mut produced_restored_session_identity = false;
     let session_history_materializer = match session_history_restore_plan {
         SessionHistoryRestorePlan::SkipVerified(identity) => {
-            match verify_restored_session_identity_for_reuse(sandbox, context, Some(identity)).await
-            {
+            match verify_restored_session_identity_for_reuse(sandbox, context, identity).await {
                 Ok(identity) => {
                     telemetry.record(
                         "session_history_identity_reuse_hit",
@@ -1313,7 +1307,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     match verify_restored_session_identity_for_reuse(
                         sandbox,
                         context,
-                        Some(restored_identity),
+                        restored_identity,
                     )
                     .await
                     {
