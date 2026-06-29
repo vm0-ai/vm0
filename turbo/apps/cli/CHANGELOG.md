@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.215.0](https://github.com/vm0-ai/vm0/compare/cli-v9.214.0...cli-v9.215.0) (2026-06-29)
+
+
+### Features
+
+* add Google Calendar event-created workflow trigger ([#19345](https://github.com/vm0-ai/vm0/issues/19345)) ([8219bad](https://github.com/vm0-ai/vm0/commit/8219bad3a8ebd3cc0ae373e0546e99118b866466))
+* add presentation template runbook generation switch ([#19341](https://github.com/vm0-ai/vm0/issues/19341)) ([a933ab7](https://github.com/vm0-ai/vm0/commit/a933ab7626d0e5f5f73868f23b21622911afb5b1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.126.0
+    * @vm0/connectors bumped to 1.114.0
+    * @vm0/core bumped to 8.376.0
+
 ## [9.214.0](https://github.com/vm0-ai/vm0/compare/cli-v9.213.7...cli-v9.214.0) (2026-06-29)
 
 
