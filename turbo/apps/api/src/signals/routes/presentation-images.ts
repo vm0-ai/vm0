@@ -10,6 +10,7 @@ import { env } from "../../lib/env";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf } from "../context/request";
 import type { RouteEntry } from "../route-entry";
+import { safeJsonParse, settle } from "../utils";
 
 const UNSPLASH_SEARCH_URL = "https://api.unsplash.com/search/photos";
 const UNSPLASH_HOME_URL = "https://unsplash.com/";
@@ -175,16 +176,22 @@ async function trackUnsplashDownload(
     return false;
   }
 
-  const response = await fetch(downloadLocation, {
-    headers: {
-      Authorization: `Client-ID ${accessKey}`,
-      "Accept-Version": "v1",
-      "User-Agent": "vm0-presentation-image-resolver/1.0",
-    },
+  const responseResult = await settle(
+    fetch(downloadLocation, {
+      headers: {
+        Authorization: `Client-ID ${accessKey}`,
+        "Accept-Version": "v1",
+        "User-Agent": "vm0-presentation-image-resolver/1.0",
+      },
+      signal,
+    }),
     signal,
-  });
+  );
+  if (!responseResult.ok) {
+    return false;
+  }
 
-  return response.ok;
+  return responseResult.value.ok;
 }
 
 async function searchUnsplash(
@@ -201,22 +208,36 @@ async function searchUnsplash(
     url.searchParams.set("orientation", item.orientation);
   }
 
-  const response = await fetch(url, {
-    headers: {
-      Authorization: `Client-ID ${accessKey}`,
-      "Accept-Version": "v1",
-      "User-Agent": "vm0-presentation-image-resolver/1.0",
-    },
+  const responseResult = await settle(
+    fetch(url, {
+      headers: {
+        Authorization: `Client-ID ${accessKey}`,
+        "Accept-Version": "v1",
+        "User-Agent": "vm0-presentation-image-resolver/1.0",
+      },
+      signal,
+    }),
     signal,
-  });
+  );
+  if (!responseResult.ok) {
+    return providerError(`Unsplash search failed for "${item.query}"`);
+  }
 
+  const response = responseResult.value;
   if (!response.ok) {
     return providerError(
       `Unsplash search failed with ${response.status} ${response.statusText}`,
     );
   }
 
-  const parsed = unsplashSearchResponseSchema.safeParse(await response.json());
+  const bodyResult = await settle(response.text(), signal);
+  if (!bodyResult.ok) {
+    return providerError("Unsplash search returned an unreadable response");
+  }
+
+  const parsed = unsplashSearchResponseSchema.safeParse(
+    safeJsonParse(bodyResult.value),
+  );
   if (!parsed.success) {
     return providerError("Unsplash search returned an unexpected response");
   }

@@ -266,6 +266,40 @@ describe("POST /api/presentation/images/resolve", () => {
     ]);
   });
 
+  it("returns unresolved items when the Unsplash request fails", async () => {
+    const fixture = createFixture();
+    routeMocks.clerk.session(fixture.userId, fixture.orgId);
+    mockEnv("UNSPLASH_ACCESS_KEY", "test-unsplash-key");
+    server.use(
+      http.get(UNSPLASH_SEARCH_URL, () => {
+        return HttpResponse.error();
+      }),
+    );
+
+    const client = setupApp({ context })(presentationImagesContract);
+    const response = await accept(
+      client.resolve({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          items: [{ path: "$.pages[0].visual", query: "network failure" }],
+        },
+      }),
+      [200],
+    );
+
+    expect(response.body.items).toStrictEqual([
+      {
+        path: "$.pages[0].visual",
+        query: "network failure",
+        status: "unresolved",
+        error: {
+          code: "PROVIDER_ERROR",
+          message: 'Unsplash search failed for "network failure"',
+        },
+      },
+    ]);
+  });
+
   it("returns 503 when Unsplash is not configured", async () => {
     const fixture = createFixture();
     routeMocks.clerk.session(fixture.userId, fixture.orgId);
