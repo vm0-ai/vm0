@@ -15,7 +15,6 @@ import { automations, automationTriggers } from "@vm0/db/schema/automation";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
 import { and, asc, eq, inArray } from "drizzle-orm";
@@ -39,6 +38,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
@@ -127,16 +127,9 @@ async function seedFixture(): Promise<AutomationsFixture> {
 async function enableScheduleAutomationToWorkflowTriggerSwitch(
   fixture: AutomationsFixture,
 ): Promise<void> {
-  await store
-    .set(writeDb$)
-    .insert(userFeatureSwitches)
-    .values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      switches: {
-        [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
-      },
-    });
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
+  });
 }
 
 interface CreateArgs {

@@ -14,7 +14,6 @@ import { telegramMessages } from "@vm0/db/schema/telegram-message";
 import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
 import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { testContext } from "../../../__tests__/test-context";
@@ -25,6 +24,10 @@ import { handleTelegramInternalCallback$ } from "../../services/internal-telegra
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/zero-feature-switches";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -139,14 +142,7 @@ async function deleteFixture(fixture: TelegramFixture): Promise<void> {
         eq(telegramOfficialUserLinks.vm0UserId, fixture.userId),
       ),
     );
-  await db
-    .delete(userFeatureSwitches)
-    .where(
-      and(
-        eq(userFeatureSwitches.orgId, fixture.orgId),
-        eq(userFeatureSwitches.userId, fixture.userId),
-      ),
-    );
+  await deleteFeatureSwitchesForUser(context, fixture);
   await db
     .delete(modelProviders)
     .where(eq(modelProviders.orgId, fixture.orgId));
@@ -345,11 +341,8 @@ function completedOutput(text = "**Done** with `code`"): void {
 }
 
 async function enableAuditLink(fixture: TelegramFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(userFeatureSwitches).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    switches: { [FeatureSwitchKey.ZeroDebug]: true },
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.ZeroDebug]: true,
   });
 }
 

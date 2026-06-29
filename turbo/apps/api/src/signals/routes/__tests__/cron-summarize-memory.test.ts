@@ -6,7 +6,6 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import { memoryChangeItems } from "@vm0/db/schema/memory-change-item";
 import { memoryChangeSummaries } from "@vm0/db/schema/memory-change-summary";
 import { storageVersions } from "@vm0/db/schema/storage";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { and, asc, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
@@ -31,6 +30,10 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
@@ -66,27 +69,18 @@ interface OpenRouterRequestBody {
 /**
  * Enable the Memory Viewer feature for a fixture's org/user. The cron only
  * processes users who can see the Memory page; fixtures use random org IDs that
- * do not match the staff-org rollout, so tests opt in via a DB override exactly
- * as the platform's per-user feature-switch overrides do.
+ * do not match the staff-org rollout, so tests opt in through the same
+ * per-user feature-switch API available to users.
  */
 async function enableMemoryViewer(fixture: MemoryFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db
-    .insert(userFeatureSwitches)
-    .values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      switches: { [FeatureSwitchKey.MemoryViewer]: true },
-    })
-    .onConflictDoNothing();
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.MemoryViewer]: true,
+  });
 }
 
 const track = createFixtureTracker<MemoryFixture>(async (fixture) => {
   await store.set(deleteMemoryForFixture$, fixture, context.signal);
-  const db = store.set(writeDb$);
-  await db
-    .delete(userFeatureSwitches)
-    .where(eq(userFeatureSwitches.orgId, fixture.orgId));
+  await deleteFeatureSwitchesForUser(context, fixture);
 });
 
 function apiClient() {
@@ -862,10 +856,7 @@ describe("GET /api/cron/summarize-memory", () => {
 
     // The disabled user has no feature-switch override, so MemoryViewer is off
     // for their random (non-staff) org.
-    const db = store.set(writeDb$);
-    await db
-      .delete(userFeatureSwitches)
-      .where(eq(userFeatureSwitches.orgId, disabled.fixture.orgId));
+    await deleteFeatureSwitchesForUser(context, disabled.fixture);
 
     mockMemoryVersions(context, [
       {

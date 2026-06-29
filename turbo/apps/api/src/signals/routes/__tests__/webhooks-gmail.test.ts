@@ -11,7 +11,6 @@ import {
   gmailWatchStates,
 } from "@vm0/db/schema/gmail-event";
 import { secrets } from "@vm0/db/schema/secret";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   zeroWorkflowTriggers,
@@ -44,6 +43,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
@@ -255,14 +255,9 @@ async function postGmailWebhook(
 async function enableGmailWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
-  await store
-    .set(writeDb$)
-    .insert(userFeatureSwitches)
-    .values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      switches: { [FeatureSwitchKey.WorkflowGmailEventTriggers]: true },
-    });
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.WorkflowGmailEventTriggers]: true,
+  });
 }
 
 async function seedGmailConnector(fixture: WorkflowsFixture): Promise<string> {

@@ -11,7 +11,6 @@ import {
   type BankingConnectionStatus,
   type BankingOperationScope,
 } from "@vm0/db/schema/banking";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
@@ -22,7 +21,7 @@ import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
-import { now, nowDate } from "../../external/time";
+import { now } from "../../external/time";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -35,6 +34,7 @@ import {
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
@@ -119,12 +119,16 @@ async function seedBankingFixture(
   const disabledAccountId = randomProviderId("acct-disabled");
   const db = store.set(writeDb$);
   if (args.featureSwitchEnabled ?? true) {
-    await db.insert(userFeatureSwitches).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      switches: { [FeatureSwitchKey.Banking]: true },
-      updatedAt: nowDate(),
-    });
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+      },
+      {
+        [FeatureSwitchKey.Banking]: true,
+      },
+    );
   }
 
   const [connection] = await db

@@ -4,7 +4,6 @@ import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import {
   zeroWorkflowGithubProcessedEvents,
   zeroWorkflows,
@@ -32,6 +31,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
@@ -52,14 +52,9 @@ function triggersClient() {
 async function enableGithubWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
-  await store
-    .set(writeDb$)
-    .insert(userFeatureSwitches)
-    .values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      switches: { [FeatureSwitchKey.WorkflowGithubLabelEventTriggers]: true },
-    });
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.WorkflowGithubLabelEventTriggers]: true,
+  });
 }
 
 async function seedGithubInstallation(args: {

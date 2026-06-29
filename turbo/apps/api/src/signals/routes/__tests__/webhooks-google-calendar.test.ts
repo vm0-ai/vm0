@@ -7,7 +7,6 @@ import {
   googleCalendarWatchStates,
 } from "@vm0/db/schema/google-calendar-event";
 import { secrets } from "@vm0/db/schema/secret";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
@@ -35,6 +34,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
@@ -54,16 +54,9 @@ function triggersClient() {
 async function enableGoogleCalendarWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
-  await store
-    .set(writeDb$)
-    .insert(userFeatureSwitches)
-    .values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      switches: {
-        [FeatureSwitchKey.WorkflowGoogleCalendarEventTriggers]: true,
-      },
-    });
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.WorkflowGoogleCalendarEventTriggers]: true,
+  });
 }
 
 async function seedGoogleCalendarConnector(

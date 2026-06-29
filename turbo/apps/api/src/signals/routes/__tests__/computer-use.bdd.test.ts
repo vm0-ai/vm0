@@ -9,7 +9,6 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
 import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
@@ -29,6 +28,7 @@ import {
   zeroComputerUseToken,
 } from "./helpers/api-bdd-computer-use";
 import { mockClerkMembership } from "./helpers/api-bdd-github";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 /*
  * FILE-03 timing notes:
@@ -62,12 +62,17 @@ function requireOrg(actor: ApiTestUser): string {
 async function enableComputerUseDelegatedAuthorization(
   actor: ApiTestUser,
 ): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(userFeatureSwitches).values({
-    orgId: requireOrg(actor),
-    userId: actor.userId,
-    switches: { [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: true },
-  });
+  await updateFeatureSwitchesForUser(
+    context,
+    {
+      userId: actor.userId,
+      orgId: requireOrg(actor),
+      orgRole: actor.orgRole,
+    },
+    {
+      [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: true,
+    },
+  );
 }
 
 async function seedZeroRun(args: {

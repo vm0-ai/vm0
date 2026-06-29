@@ -4,7 +4,6 @@ import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { threadGoals } from "@vm0/db/schema/thread-goal";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
 import { and, asc, eq } from "drizzle-orm";
@@ -30,6 +29,10 @@ import {
   deleteOrgMembership$,
   seedOrgMembership$,
 } from "./helpers/zero-org-membership";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
@@ -48,6 +51,7 @@ interface GoalApiFixture extends UsageInsightFixture {
 }
 
 const track = createFixtureTracker<GoalApiFixture>(async (fixture) => {
+  await deleteFeatureSwitchesForUser(context, fixture);
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
   await store.set(deleteOrgMembership$, fixture, context.signal);
 });
@@ -119,14 +123,9 @@ async function seedGoalApiFixture(args: {
     context.signal,
   );
   if (args.featureEnabled) {
-    await store
-      .set(writeDb$)
-      .insert(userFeatureSwitches)
-      .values({
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        switches: { [FeatureSwitchKey.GoalWorkflows]: true },
-      });
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.GoalWorkflows]: true,
+    });
   }
   return await track(
     Promise.resolve({

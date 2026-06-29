@@ -13,8 +13,7 @@ import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -42,21 +41,11 @@ function currentSecond(): number {
 }
 
 const seedModelPolicyFixture$ = command(
-  async (
-    { set },
-    switches: Record<string, boolean>,
-    signal: AbortSignal,
-  ): Promise<ModelPolicyFixture> => {
+  async ({ set }, signal: AbortSignal): Promise<ModelPolicyFixture> => {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
     const writeDb = set(writeDb$);
 
-    await writeDb.insert(userFeatureSwitches).values({
-      orgId,
-      userId,
-      switches,
-    });
-    signal.throwIfAborted();
     await writeDb.insert(orgMembersCache).values({
       orgId,
       userId,
@@ -91,15 +80,6 @@ const deleteModelPolicyFixture$ = command(
     await writeDb
       .delete(orgMembersCache)
       .where(eq(orgMembersCache.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(userFeatureSwitches)
-      .where(
-        and(
-          eq(userFeatureSwitches.orgId, fixture.orgId),
-          eq(userFeatureSwitches.userId, fixture.userId),
-        ),
-      );
     signal.throwIfAborted();
   },
 );
@@ -177,10 +157,8 @@ async function putRawModelPolicies(body: string): Promise<{
   };
 }
 
-function seedFixture(
-  switches: Record<string, boolean>,
-): Promise<ModelPolicyFixture> {
-  return track(store.set(seedModelPolicyFixture$, switches, context.signal));
+function seedFixture(): Promise<ModelPolicyFixture> {
+  return track(store.set(seedModelPolicyFixture$, context.signal));
 }
 
 const track = createFixtureTracker<ModelPolicyFixture>((fixture) => {
@@ -208,7 +186,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("returns 401 for sessions without an active organization", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, null);
     const client = apiClient();
 
@@ -231,7 +209,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("lists model policy controls without a feature switch", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -247,7 +225,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("lists seeded curated models and the explicit default when enabled", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
@@ -279,7 +257,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("lists restricted policies for limited-free-1 workspace UI gating", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     const writeDb = store.set(writeDb$);
     await writeDb.insert(orgMetadata).values({
       orgId: fixture.orgId,
@@ -306,7 +284,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("allows members to read policy controls", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const response = await accept(
@@ -327,7 +305,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("allows zero tokens to read policy controls without a model-provider capability", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
       scope: "zero",
@@ -352,7 +330,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("requires admins for policy writes", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
 
     const response = await apiClient().update({
@@ -370,7 +348,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("updates the explicit workspace default", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const client = apiClient();
     const listResponse = await accept(
@@ -408,7 +386,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("removes supported models omitted from an update", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const client = apiClient();
     const listResponse = await accept(
@@ -450,7 +428,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("allows adding a supported model that was not seeded by default", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const client = apiClient();
     const listResponse = await accept(
@@ -482,7 +460,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects restricted policy writes for limited-free-1 workspaces", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     const writeDb = store.set(writeDb$);
     await writeDb.insert(orgMetadata).values({
       orgId: fixture.orgId,
@@ -517,7 +495,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("allows compatible GLM 5.2 org provider routes", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const openRouterProviderId = await store.set(
       insertOrgProvider$,
@@ -594,7 +572,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("allows compatible member OAuth provider routes", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const client = apiClient();
     const listResponse = await accept(
@@ -633,7 +611,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects workspace-scoped OAuth provider routes", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const providerId = await store.set(
       insertOrgProvider$,
@@ -669,7 +647,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects incompatible provider routes", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const providerId = await store.set(
       insertOrgProvider$,
@@ -705,7 +683,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects org provider routes without a provider id", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const client = apiClient();
     const listResponse = await accept(
@@ -739,7 +717,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects duplicate model updates", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const client = apiClient();
     const listResponse = await accept(
@@ -770,7 +748,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects updates without exactly one default model", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
     const client = apiClient();
     const listResponse = await accept(
@@ -796,7 +774,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects update bodies that are not valid JSON", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await putRawModelPolicies("not-json");
@@ -811,7 +789,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects malformed update bodies", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await putRawModelPolicies("{}");
@@ -823,7 +801,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects removed model policy updates", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await putRawModelPolicies(
@@ -847,7 +825,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects incomplete update payloads", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await apiClient().update({

@@ -2,7 +2,6 @@ import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   zeroWorkflowTriggers,
@@ -33,6 +32,7 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
@@ -133,14 +133,9 @@ async function markTriggerWithActiveRun(args: {
 async function enableWebhookWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
-  await store
-    .set(writeDb$)
-    .insert(userFeatureSwitches)
-    .values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      switches: { [FeatureSwitchKey.WorkflowWebhookTriggers]: true },
-    });
+  await updateFeatureSwitchesForUser(context, fixture, {
+    [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
+  });
 }
 
 async function postWorkflowWebhook(args: {
