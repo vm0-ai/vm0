@@ -125,7 +125,15 @@ export async function runLayers(
  * pages (/sign-up). Auth pages live outside the [locale] route tree, so
  * /:locale/sign-up would 404 without this redirect.
  */
-const LOCALE_AUTH_RE = /^\/(\w{2})\/(sign-in|sign-up)(\/.*)?$/;
+const LOCALE_PATTERN = locales
+  .map((locale) => {
+    return locale.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+  })
+  .join("|");
+
+const LOCALE_AUTH_RE = new RegExp(
+  `^/(${LOCALE_PATTERN})/(sign-in|sign-up)(/.*)?$`,
+);
 
 export const authRedirectLayer: ProxyLayer = (ctx) => {
   const match = ctx.request.nextUrl.pathname.match(LOCALE_AUTH_RE);
@@ -143,8 +151,9 @@ export const authRedirectLayer: ProxyLayer = (ctx) => {
  * route tree: legal pages use Termly iframe embeds (Termly handles its own
  * language) and /support is English-only per Slack App Directory guidelines.
  */
-const LOCALE_LEGAL_RE =
-  /^\/(\w{2})\/(privacy-policy|terms-of-use|support)(\/.*)?$/;
+const LOCALE_LEGAL_RE = new RegExp(
+  `^/(${LOCALE_PATTERN})/(privacy-policy|terms-of-use|support)(/.*)?$`,
+);
 
 export const legalRedirectLayer: ProxyLayer = (ctx) => {
   const match = ctx.request.nextUrl.pathname.match(LOCALE_LEGAL_RE);

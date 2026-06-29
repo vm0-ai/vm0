@@ -43,7 +43,6 @@ import {
   type FirewallExecutionMetadataConnectorType,
   type FirewallPermissionIndex,
 } from "@vm0/connectors/firewall-metadata/server";
-import { getModelProviderRefreshMetadata } from "@vm0/connectors/auth-providers/model-provider-auth";
 import {
   extractSecretNamesFromApis,
   resolveFirewallBaseUrlVars,
@@ -181,7 +180,6 @@ type ArtifactMissingRootPolicy = NonNullable<
 >;
 const AUTO_MEMORY_MISSING_ROOT_POLICY: ArtifactMissingRootPolicy =
   "preserveParentVersion";
-const STORED_CONNECTOR_SECRET_DECRYPT_CONCURRENCY = 4;
 
 const TIER_LIMITS = Object.freeze({
   free: 1,
@@ -207,6 +205,7 @@ const CONNECTOR_SECRET_REF_PREFIX = "$secrets.";
 const CONNECTOR_VAR_REF_PREFIX = "$vars.";
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
   "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
+const EAGER_STORED_CONNECTOR_SECRET_DECRYPT_CONCURRENCY = 4;
 const STORED_CONNECTOR_COUNT_BUCKET_DIMENSIONS = [
   "0",
   "1",
@@ -1181,33 +1180,86 @@ function hasUsableModelProviderSecretValue(value: string): boolean {
   return value.trim().length > 0;
 }
 
-function modelProviderEnvironment(
-  id: string | null,
-  type: ModelProviderType,
-  config: SingleSecretModelProviderConfig,
-  secretValue: string,
-  selectedModel: string | null,
-): ResolvedModelProviderEnvironment {
-  const model = selectedModel ?? config.defaultModel ?? "";
-  const runtimeModel = model ? getProviderRuntimeModel(type, model) : "";
+function modelProviderFirewallAuthMaps(
+  providerType: ModelProviderType,
+  sourceUserId: string,
+  secretNames: readonly string[],
+):
+  | {
+      readonly secretConnectorMap: Record<string, string>;
+      readonly secretConnectorMetadataMap: Record<
+        string,
+        SecretConnectorMetadata
+      >;
+    }
+  | undefined {
+  if (getModelProviderFirewall(providerType) === undefined) {
+    return undefined;
+  }
+
+  const uniqueSecretNames = [...new Set(secretNames)];
+  if (uniqueSecretNames.length === 0) {
+    return undefined;
+  }
+
+  const secretConnectorMap = Object.fromEntries(
+    uniqueSecretNames.map((secretName) => {
+      return [secretName, providerType];
+    }),
+  );
+  const secretConnectorMetadataMap = Object.fromEntries(
+    uniqueSecretNames.map((secretName) => {
+      return [
+        secretName,
+        {
+          sourceType: "model-provider" as const,
+          sourceUserId,
+          metadataKey: providerType,
+        },
+      ];
+    }),
+  );
+
+  return { secretConnectorMap, secretConnectorMetadataMap };
+}
+
+function modelProviderEnvironment(args: {
+  readonly id: string | null;
+  readonly type: ModelProviderType;
+  readonly config: SingleSecretModelProviderConfig;
+  readonly secretValue: string | undefined;
+  readonly sourceUserId: string;
+  readonly selectedModel: string | null;
+}): ResolvedModelProviderEnvironment {
+  const hasFirewallAuth = getModelProviderFirewall(args.type) !== undefined;
+  if (!hasFirewallAuth && args.secretValue === undefined) {
+    throw new Error(`Missing eager secret for model provider ${args.type}`);
+  }
+  const model = args.selectedModel ?? args.config.defaultModel ?? "";
+  const runtimeModel = model ? getProviderRuntimeModel(args.type, model) : "";
   const environmentSecret = modelProviderEnvironmentSecretValue(
-    type,
-    config.secretName,
-    secretValue,
+    args.type,
+    args.config.secretName,
+    args.secretValue ?? "",
   );
   const environment: Record<string, string> = {};
-  for (const [key, value] of Object.entries(config.envBindings)) {
+  for (const [key, value] of Object.entries(args.config.envBindings)) {
     environment[key] = value
       .replaceAll("$secret", environmentSecret)
       .replaceAll("$model", runtimeModel);
   }
 
   return {
-    id,
-    type,
+    id: args.id,
+    type: args.type,
     environment,
-    secrets: { [config.secretName]: secretValue },
+    secrets: hasFirewallAuth
+      ? {}
+      : { [args.config.secretName]: args.secretValue ?? "" },
     selectedModel: model || null,
+    ...modelProviderFirewallAuthMaps(args.type, args.sourceUserId, [
+      args.config.secretName,
+    ]),
   };
 }
 
@@ -1312,53 +1364,6 @@ function vm0ApiKeySelectionOrder() {
   return sql`case when ${vm0ApiKeys.label} = 'dev-seed' then 0 else 1 end`;
 }
 
-function modelProviderRefreshMaps(
-  providerType: ModelProviderType,
-  sourceUserId: string,
-):
-  | {
-      readonly secretConnectorMap: Record<string, string>;
-      readonly secretConnectorMetadataMap: Record<
-        string,
-        SecretConnectorMetadata
-      >;
-    }
-  | undefined {
-  const metadata = getModelProviderRefreshMetadata(providerType);
-  if (!metadata?.isRefreshable) {
-    return undefined;
-  }
-
-  const secretConnectorMap: Record<string, string> = {};
-  const envBindings = getModelProviderEnvBindings(providerType);
-  // Firewall auth templates reference runtime env aliases (for example, the
-  // `CHATGPT_ACCESS_TOKEN` in `${{ secrets.CHATGPT_ACCESS_TOKEN }}`), so the
-  // refresh map is keyed by envName, not by the backing provider storage key.
-  for (const [envName, valueRef] of Object.entries(envBindings ?? {})) {
-    if (
-      valueRef.startsWith("$secrets.") &&
-      metadata.refreshableSecrets.includes(valueRef.slice("$secrets.".length))
-    ) {
-      secretConnectorMap[envName] = providerType;
-    }
-  }
-
-  const secretConnectorMetadataMap = Object.fromEntries(
-    Object.keys(secretConnectorMap).map((key) => {
-      return [
-        key,
-        {
-          sourceType: "model-provider" as const,
-          sourceUserId,
-          metadataKey: providerType,
-        },
-      ];
-    }),
-  );
-
-  return { secretConnectorMap, secretConnectorMetadataMap };
-}
-
 async function multiAuthModelProviderEnvironment(
   db: Db,
   args: {
@@ -1379,10 +1384,13 @@ async function multiAuthModelProviderEnvironment(
     return null;
   }
 
+  const hasFirewallAuth = getModelProviderFirewall(args.type) !== undefined;
   const secretRows = await db
     .select({
       name: secretsTable.name,
-      encryptedValue: secretsTable.encryptedValue,
+      encryptedValue: hasFirewallAuth
+        ? sql<string | null>`NULL`
+        : secretsTable.encryptedValue,
     })
     .from(secretsTable)
     .where(
@@ -1393,11 +1401,20 @@ async function multiAuthModelProviderEnvironment(
       ),
     );
   const storedSecrets: Record<string, string> = {};
-  for (const row of secretRows) {
-    storedSecrets[row.name] = await decryptStoredSecretValue(
-      row.encryptedValue,
-      args.featureSwitchContext,
-    );
+  if (hasFirewallAuth) {
+    for (const row of secretRows) {
+      storedSecrets[row.name] = "__lazy_model_provider_secret__";
+    }
+  } else {
+    for (const row of secretRows) {
+      if (row.encryptedValue === null) {
+        continue;
+      }
+      storedSecrets[row.name] = await decryptStoredSecretValue(
+        row.encryptedValue,
+        args.featureSwitchContext,
+      );
+    }
   }
 
   const forwardableSecrets: Record<string, string> = {};
@@ -1419,7 +1436,11 @@ async function multiAuthModelProviderEnvironment(
   const runtimeModel = selectedModel
     ? getProviderRuntimeModel(args.type, selectedModel)
     : null;
-  const refreshMaps = modelProviderRefreshMaps(args.type, args.userId);
+  const authMaps = modelProviderFirewallAuthMaps(
+    args.type,
+    args.userId,
+    Object.keys(forwardableSecrets),
+  );
   return {
     id: args.id,
     type: args.type,
@@ -1428,10 +1449,10 @@ async function multiAuthModelProviderEnvironment(
       forwardableSecrets,
       runtimeModel,
     ),
-    secrets: forwardableSecrets,
+    secrets: hasFirewallAuth ? {} : forwardableSecrets,
     selectedModel,
-    secretConnectorMap: refreshMaps?.secretConnectorMap,
-    secretConnectorMetadataMap: refreshMaps?.secretConnectorMetadataMap,
+    secretConnectorMap: authMaps?.secretConnectorMap,
+    secretConnectorMetadataMap: authMaps?.secretConnectorMetadataMap,
   };
 }
 
@@ -1565,6 +1586,16 @@ async function resolveCandidateModelProviderEnvironment(
   if (!isSingleSecretModelProviderConfig(config) || !row.encryptedValue) {
     return null;
   }
+  if (getModelProviderFirewall(row.type) !== undefined) {
+    return modelProviderEnvironment({
+      id: row.id,
+      type: row.type,
+      config,
+      secretValue: undefined,
+      sourceUserId: row.userId,
+      selectedModel: args.selectedModelOverride ?? row.selectedModel,
+    });
+  }
   const secretValue = await decryptStoredSecretValue(
     row.encryptedValue,
     args.featureSwitchContext,
@@ -1572,13 +1603,14 @@ async function resolveCandidateModelProviderEnvironment(
   if (!hasUsableModelProviderSecretValue(secretValue)) {
     return null;
   }
-  return modelProviderEnvironment(
-    row.id,
-    row.type,
+  return modelProviderEnvironment({
+    id: row.id,
+    type: row.type,
     config,
     secretValue,
-    args.selectedModelOverride ?? row.selectedModel,
-  );
+    sourceUserId: row.userId,
+    selectedModel: args.selectedModelOverride ?? row.selectedModel,
+  });
 }
 
 async function resolveModelProviderEnvironment(
@@ -1851,6 +1883,9 @@ interface StoredConnectorMaterializationPlan {
 
 interface StoredConnectorSecretRow {
   readonly name: string;
+}
+
+interface StoredConnectorEncryptedSecretRow extends StoredConnectorSecretRow {
   readonly encryptedValue: string;
 }
 
@@ -2084,7 +2119,6 @@ async function loadStoredConnectorSecretRows(
     db
       .select({
         name: secretsTable.name,
-        encryptedValue: secretsTable.encryptedValue,
       })
       .from(secretsTable)
       .where(
@@ -2118,8 +2152,36 @@ async function loadStoredConnectorSecretRows(
   return rows;
 }
 
-async function decryptStoredConnectorSecrets(
-  rows: readonly StoredConnectorSecretRow[],
+async function loadStoredConnectorEncryptedSecretRows(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly names: ReadonlySet<string>;
+  },
+): Promise<readonly StoredConnectorEncryptedSecretRow[]> {
+  if (args.names.size === 0) {
+    return [];
+  }
+
+  return await db
+    .select({
+      name: secretsTable.name,
+      encryptedValue: secretsTable.encryptedValue,
+    })
+    .from(secretsTable)
+    .where(
+      and(
+        eq(secretsTable.orgId, args.orgId),
+        eq(secretsTable.userId, args.userId),
+        eq(secretsTable.type, "connector"),
+        inArray(secretsTable.name, [...args.names]),
+      ),
+    );
+}
+
+async function decryptStoredConnectorSecretRows(
+  rows: readonly StoredConnectorEncryptedSecretRow[],
   args: {
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly timingDimensions: ApiDispatchTimingDimensions;
@@ -2137,7 +2199,7 @@ async function decryptStoredConnectorSecrets(
     async () => {
       const decryptedRows = await mapWithBoundedConcurrency(
         rows,
-        STORED_CONNECTOR_SECRET_DECRYPT_CONCURRENCY,
+        EAGER_STORED_CONNECTOR_SECRET_DECRYPT_CONCURRENCY,
         async (row) => {
           return {
             name: row.name,
@@ -2148,11 +2210,11 @@ async function decryptStoredConnectorSecrets(
           };
         },
       );
-      const values: Record<string, string> = {};
-      for (const row of decryptedRows) {
-        values[row.name] = row.value;
-      }
-      return values;
+      return Object.fromEntries(
+        decryptedRows.map((row) => {
+          return [row.name, row.value];
+        }),
+      );
     },
     {
       ...args.timingDimensions,
@@ -2338,10 +2400,22 @@ function overriddenRuntimeSecretAliases(
   return aliases;
 }
 
+function referencedEnvironmentSecretAliases(
+  environment: Record<string, string> | undefined,
+): ReadonlySet<string> {
+  if (!environment) {
+    return new Set();
+  }
+  return new Set(
+    extractAndGroupVariables(environment).secrets.map((ref) => {
+      return ref.name;
+    }),
+  );
+}
+
 async function materializeStoredConnectorContext(
   snapshot: StoredConnectorMaterializationSnapshot | null,
   args: {
-    readonly featureSwitchContext: FeatureSwitchContext;
     readonly overriddenSecretAliases: ReadonlySet<string>;
     readonly timingDimensions: ApiDispatchTimingDimensions;
   },
@@ -2351,19 +2425,11 @@ async function materializeStoredConnectorContext(
     return emptyConnectorRuntimeContext();
   }
 
-  const decryptRows = filterOverriddenStoredConnectorSecretRows({
+  const availableSecretRows = filterOverriddenStoredConnectorSecretRows({
     rows: snapshot.secretRows,
     bindingSets: snapshot.bindingSets,
     overriddenSecretAliases: args.overriddenSecretAliases,
   });
-  const connectorSecrets = await decryptStoredConnectorSecrets(
-    decryptRows,
-    {
-      featureSwitchContext: args.featureSwitchContext,
-      timingDimensions: args.timingDimensions,
-    },
-    timing,
-  );
   const availableSecretNames = availableStoredConnectorSecretNames(
     snapshot.secretRows,
   );
@@ -2375,7 +2441,7 @@ async function materializeStoredConnectorContext(
     () => {
       const resolved = resolveStoredConnectorState(
         snapshot.bindingSets,
-        connectorSecrets,
+        {},
         snapshot.variableValues,
         availableSecretNames,
       );
@@ -2392,9 +2458,125 @@ async function materializeStoredConnectorContext(
     },
     {
       ...args.timingDimensions,
-      stored_connector_secret_count_bucket: countBucket(decryptRows.length),
+      stored_connector_secret_count_bucket: countBucket(
+        availableSecretRows.length,
+      ),
     },
   );
+}
+
+function eagerStoredConnectorSecretNames(args: {
+  readonly snapshot: StoredConnectorMaterializationSnapshot;
+  readonly storedEnvironment: Record<string, string> | undefined;
+  readonly referencedEnvironmentSecretAliases: ReadonlySet<string>;
+  readonly environmentSecretPlaceholders:
+    | Readonly<Record<string, string>>
+    | undefined;
+  readonly overriddenSecretAliases: ReadonlySet<string>;
+}): ReadonlySet<string> {
+  const names = new Set<string>();
+
+  for (const { runtimeBindings } of args.snapshot.bindingSets) {
+    for (const { envName, source } of runtimeBindings) {
+      const isNeededByStoredEnvironment =
+        args.storedEnvironment?.[envName] !== undefined;
+      const isNeededByExplicitEnvironment =
+        args.referencedEnvironmentSecretAliases.has(envName);
+      if (
+        source.kind !== "connector-secret" ||
+        (!isNeededByStoredEnvironment && !isNeededByExplicitEnvironment) ||
+        args.environmentSecretPlaceholders?.[envName] !== undefined ||
+        args.overriddenSecretAliases.has(envName)
+      ) {
+        continue;
+      }
+      names.add(source.name);
+    }
+  }
+  return names;
+}
+
+async function materializeEagerStoredConnectorSecrets(
+  db: Db,
+  snapshot: StoredConnectorMaterializationSnapshot | null,
+  context: ConnectorRuntimeContext,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly featureSwitchContext: FeatureSwitchContext;
+    readonly eagerStoredEnvironment: Record<string, string> | undefined;
+    readonly referencedEnvironmentSecretAliases: ReadonlySet<string>;
+    readonly environmentSecretPlaceholders:
+      | Readonly<Record<string, string>>
+      | undefined;
+    readonly overriddenSecretAliases: ReadonlySet<string>;
+    readonly timingDimensions: ApiDispatchTimingDimensions;
+  },
+  timing?: ApiDispatchTimingCollector,
+): Promise<ConnectorRuntimeContext> {
+  if (!snapshot) {
+    return context;
+  }
+
+  const eagerNames = eagerStoredConnectorSecretNames({
+    snapshot,
+    storedEnvironment: args.eagerStoredEnvironment,
+    referencedEnvironmentSecretAliases: args.referencedEnvironmentSecretAliases,
+    environmentSecretPlaceholders: args.environmentSecretPlaceholders,
+    overriddenSecretAliases: args.overriddenSecretAliases,
+  });
+  if (eagerNames.size === 0) {
+    return context;
+  }
+
+  const encryptedRows = await loadStoredConnectorEncryptedSecretRows(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    names: eagerNames,
+  });
+  const connectorSecrets = await decryptStoredConnectorSecretRows(
+    encryptedRows,
+    {
+      featureSwitchContext: args.featureSwitchContext,
+      timingDimensions: args.timingDimensions,
+    },
+    timing,
+  );
+  const resolved = resolveStoredConnectorState(
+    snapshot.bindingSets,
+    connectorSecrets,
+    snapshot.variableValues,
+    availableStoredConnectorSecretNames(snapshot.secretRows),
+  );
+
+  return {
+    ...context,
+    secrets: mergeRecords(context.secrets, resolved.secrets),
+  };
+}
+
+function eagerStoredConnectorSecretInputs(args: {
+  readonly content: AgentComposeContent;
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly connectorContext: ConnectorRuntimeContext;
+}): {
+  readonly eagerStoredEnvironment: Record<string, string> | undefined;
+  readonly referencedEnvironmentSecretAliases: ReadonlySet<string>;
+} {
+  const additionalEnvironment = args.modelProvider?.environment;
+  return {
+    eagerStoredEnvironment: effectiveStoredConnectorEnvironment({
+      content: args.content,
+      additionalEnvironment,
+      storedConnectorEnvironment: args.connectorContext.storedEnvironment,
+    }),
+    referencedEnvironmentSecretAliases: referencedEnvironmentSecretAliases(
+      environmentTemplates({
+        content: args.content,
+        additionalEnvironment,
+      }),
+    ),
+  };
 }
 
 async function loadStoredConnectorMaterializationPlan(
@@ -4263,6 +4445,7 @@ function buildStoredExecutionSecrets(args: {
     secretConnectorMap: args.connectorContext.secretConnectorMap,
     overriddenSecrets: [
       args.modelProvider?.secrets,
+      args.modelProvider?.secretConnectorMap,
       args.bodySecrets,
       args.customConnectorContext.secrets,
     ],
@@ -5358,14 +5541,15 @@ async function prepareRunRuntimeContext(args: {
     scopeSource: args.connectorScope.source,
     connectorCount: storedConnectorSnapshot?.allowedConnectorRows.length ?? 0,
   });
+  const overriddenConnectorSecretAliases = overriddenRuntimeSecretAliases([
+    modelProvider?.secrets,
+    modelProvider?.secretConnectorMap,
+    body.secrets,
+  ]);
   const connectorContextPromise = materializeStoredConnectorContext(
     storedConnectorSnapshot,
     {
-      featureSwitchContext,
-      overriddenSecretAliases: overriddenRuntimeSecretAliases([
-        modelProvider?.secrets,
-        body.secrets,
-      ]),
+      overriddenSecretAliases: overriddenConnectorSecretAliases,
       timingDimensions: storedConnectorTiming,
     },
     args.timing,
@@ -5391,6 +5575,26 @@ async function prepareRunRuntimeContext(args: {
   if (isRouteError(permissionManifest)) {
     return permissionManifest;
   }
+  const finalConnectorContext = await materializeEagerStoredConnectorSecrets(
+    args.db,
+    storedConnectorSnapshot,
+    connectorContext,
+    {
+      orgId: args.createArgs.orgId,
+      userId: args.createArgs.userId,
+      featureSwitchContext,
+      ...eagerStoredConnectorSecretInputs({
+        content: resolved.content,
+        modelProvider,
+        connectorContext,
+      }),
+      environmentSecretPlaceholders:
+        permissionManifest?.environmentSecretPlaceholders,
+      overriddenSecretAliases: overriddenConnectorSecretAliases,
+      timingDimensions: storedConnectorTiming,
+    },
+    args.timing,
+  );
   const modelUsageContext = prepareModelUsageContext({
     modelProvider,
     permissionManifest,
@@ -5402,7 +5606,7 @@ async function prepareRunRuntimeContext(args: {
   return {
     framework,
     modelProvider,
-    connectorContext,
+    connectorContext: finalConnectorContext,
     customConnectorContext,
     permissionManifest,
     billableFirewalls: modelUsageContext.billableFirewalls,

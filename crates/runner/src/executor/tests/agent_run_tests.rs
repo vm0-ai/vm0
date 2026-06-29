@@ -326,7 +326,7 @@ async fn run_in_sandbox_materializes_resume_session_history_ref_before_restore()
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
-    let history = br#"{"type":"init"}"#;
+    let history = b"{\"type\":\"init\"}\n\xff\n";
     let mut ctx = minimal_context();
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: "sess-ref-123".into(),
@@ -371,7 +371,7 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
-    let history = br#"{"type":"init"}"#;
+    let history = b"{\"type\":\"init\"}\n\xff\n";
     let (request_received_tx, request_received_rx) = oneshot::channel();
     let release_response = Arc::new(Notify::new());
     let mut ctx = minimal_context();
