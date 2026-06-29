@@ -606,14 +606,14 @@ describe("chat message action cards", () => {
     const permissionCard = await screen.findByTestId("permission-action-card");
     await waitFor(() => {
       expect(
-        within(permissionCard).getByText("Couldn’t load permission status"),
+        within(permissionCard).getByText("Couldn't load permission status"),
       ).toBeInTheDocument();
     });
     expect(
       queryButtonByText("Failed to load permissions", permissionCard),
     ).toBeNull();
     expect(
-      queryButtonByText("Couldn’t load permission status", permissionCard),
+      queryButtonByText("Couldn't load permission status", permissionCard),
     ).toBeNull();
     expect(queryButtonByText("Confirm", permissionCard)).toBeNull();
     expect(listRequests).toBe(1);
@@ -665,11 +665,11 @@ describe("chat message action cards", () => {
 
     await waitFor(() => {
       expect(
-        within(permissionCard).getByText("Couldn’t update permissions"),
+        within(permissionCard).getByText("Couldn't update permissions"),
       ).toBeInTheDocument();
     });
     expect(
-      queryButtonByText("Couldn’t update permissions", permissionCard),
+      queryButtonByText("Couldn't update permissions", permissionCard),
     ).toBeNull();
     await waitForButtonByText("Confirm", permissionCard);
     expect(

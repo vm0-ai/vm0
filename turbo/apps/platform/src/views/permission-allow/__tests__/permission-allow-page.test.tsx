@@ -500,7 +500,7 @@ describe("permission allow page", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByText("Couldn’t update permissions"),
+        screen.getByText("Couldn't update permissions"),
       ).toBeInTheDocument();
     });
     expect(

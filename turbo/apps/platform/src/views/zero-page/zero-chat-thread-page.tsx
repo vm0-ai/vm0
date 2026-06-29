@@ -5565,7 +5565,7 @@ function PermissionActionInlineStatus({
       return (
         <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
           <IconAlertCircle size={13} />
-          <span>Couldn’t load permission status</span>
+          <span>Couldn&apos;t load permission status</span>
         </div>
       );
     }
@@ -5573,7 +5573,7 @@ function PermissionActionInlineStatus({
       return (
         <div className="mt-1 flex items-center gap-1.5 text-xs font-medium text-destructive">
           <IconAlertCircle size={13} />
-          <span>Couldn’t update permissions</span>
+          <span>Couldn&apos;t update permissions</span>
         </div>
       );
     }

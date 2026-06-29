@@ -413,7 +413,7 @@ function ConfirmGrantCard({
           {saveError && (
             <div className="flex items-center justify-center gap-2 text-sm font-medium text-destructive">
               <IconAlertTriangle size={16} />
-              <span>Couldn’t update permissions</span>
+              <span>Couldn&apos;t update permissions</span>
             </div>
           )}
           <Button
