@@ -423,6 +423,7 @@ class TestRegistryBuiltinBaseUrlVars:
     def test_builtin_public_destination_rejects_non_public_ip_literals(self, tmp_path):
         for value in [
             "https://127.0.0.1",
+            "https://127.0.0.1.",
             "https://10.0.0.5",
             "https://169.254.1.2",
             "https://192.168.1.10",
@@ -460,6 +461,25 @@ class TestRegistryBuiltinBaseUrlVars:
             invalid_vm = state.invalid_vms["10.200.0.1"]
             assert invalid_vm.reason == "invalid_firewalls"
             assert "host policy does not allow non-public IP literal" in invalid_vm.message
+
+    def test_builtin_public_destination_rejects_trailing_dot_ip_literal(self, tmp_path):
+        path = tmp_path / "registry.json"
+        write_builtin_firewall_registry(
+            path,
+            run_id="run-strapi",
+            name="strapi",
+            base_url_vars={"STRAPI_BASE_URL": "https://8.8.8.8."},
+        )
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            context = registry.get_vm_context("10.200.0.1", str(path))
+            state = registry.load_registry_state(str(path))
+
+        assert context is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        invalid_vm = state.invalid_vms["10.200.0.1"]
+        assert invalid_vm.reason == "invalid_firewalls"
+        assert "host policy does not allow non-public IP literal" in invalid_vm.message
 
     def test_builtin_public_destination_rejects_scoped_ip_literal(self, tmp_path):
         path = tmp_path / "registry.json"

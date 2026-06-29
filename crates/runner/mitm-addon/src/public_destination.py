@@ -184,6 +184,8 @@ def _looks_like_ipv4_number_component(value: str) -> bool:
 
 def _looks_like_legacy_ipv4_literal(hostname: str) -> bool:
     normalized = hostname.translate(_HOST_DOT_EQUIVALENT_TRANSLATION)
+    if normalized.endswith("."):
+        normalized = normalized[:-1]
     parts = normalized.split(".")
     return 1 <= len(parts) <= _IPV4_LITERAL_MAX_COMPONENTS and all(
         _looks_like_ipv4_number_component(part) for part in parts

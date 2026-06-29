@@ -407,7 +407,14 @@ async def test_public_destination_allows_bracketed_public_ipv6_host_with_public_
 
 @pytest.mark.parametrize(
     "destination_host",
-    ["0177.0.0.1", "0x7f.0.0.1", "2130706433", "127.1"],
+    [
+        "0177.0.0.1",
+        "0x7f.0.0.1",
+        "2130706433",
+        "127.1",
+        "127.0.0.1.",
+        "93.184.216.34.",
+    ],
 )
 async def test_public_destination_blocks_legacy_ipv4_host_despite_public_original(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, destination_host
