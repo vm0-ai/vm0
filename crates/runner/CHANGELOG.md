@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.130.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.4...runner-rs-v0.130.5) (2026-06-29)
+
+
+### Refactoring
+
+* **mitm-addon:** split registry firewall resolution ([#19316](https://github.com/vm0-ai/vm0/issues/19316)) ([3239f0c](https://github.com/vm0-ai/vm0/commit/3239f0cf87250934fdf8988aa760a1a5ec9fa58d))
+
 ## [0.130.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.3...runner-rs-v0.130.4) (2026-06-29)
 
 

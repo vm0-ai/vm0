@@ -2522,7 +2522,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.130.4"
+version = "0.130.5"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
