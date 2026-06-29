@@ -250,3 +250,82 @@ def test_compiled_matches_parameterized_host_nonstandard_port_rejection():
         policies,
     )
     assert compiled is None
+
+
+@pytest.mark.parametrize(
+    ("base", "host", "port"),
+    [
+        ("https://api.github.com", "api.github.com", 443),
+        ("https://api.github.com:8443", "api.github.com", 8443),
+        ("https://{sub}.github.com", "api.github.com", 443),
+        ("https://{deployment+}.bentoml.ai", "team.prod.bentoml.ai", 443),
+        ("https://api.github.com.", "api.github.com", 443),
+    ],
+)
+def test_compiled_matches_ordinary_credential_authority(base, host, port):
+    fws = wrap_firewalls(
+        [
+            {
+                "base": base,
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [
+                    {"name": "read", "rules": ["GET /items"]},
+                ],
+            }
+        ],
+        name="example",
+    )
+
+    assert compile_firewalls_or_fail(fws).matches_ordinary_credential_authority(host, port)
+
+
+@pytest.mark.parametrize(
+    "api_entry",
+    [
+        {
+            "base": "http://api.github.com",
+            "auth": {"headers": {"Authorization": "Bearer token"}},
+            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+        },
+        {
+            "base": "https://api.github.com",
+            "auth": {"base": "${{ secrets.WEBHOOK_URL }}"},
+            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+        },
+        {
+            "base": "https://api.github.com",
+            "auth": {"headers": {}},
+            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+        },
+        {
+            "base": "https://api.github.com",
+            "auth": {"headers": None},
+            "permissions": [{"name": "read", "rules": ["GET /items"]}],
+        },
+    ],
+    ids=["http", "auth-base-only", "empty-headers", "malformed-auth"],
+)
+def test_compiled_skips_non_ordinary_credential_authority_candidates(api_entry):
+    fws = wrap_firewalls([api_entry], name="example")
+
+    assert not compile_firewalls_or_fail(fws).matches_ordinary_credential_authority(
+        "api.github.com",
+        443,
+    )
+
+
+def test_compiled_ordinary_credential_authority_respects_nondefault_port():
+    fws = wrap_firewalls(
+        [
+            {
+                "base": "https://api.github.com:8443",
+                "auth": {"query": {"api_key": "${{ secrets.API_KEY }}"}},
+                "permissions": [{"name": "read", "rules": ["GET /items"]}],
+            }
+        ],
+        name="example",
+    )
+    compiled = compile_firewalls_or_fail(fws)
+
+    assert compiled.matches_ordinary_credential_authority("api.github.com", 8443)
+    assert not compiled.matches_ordinary_credential_authority("api.github.com", 443)

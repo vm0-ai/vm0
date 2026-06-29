@@ -13,9 +13,11 @@ This addon runs on the runner HOST (not inside VMs) and:
 
 import asyncio
 import functools
+import ipaddress
 import json
 import os
 import signal
+import socket
 import tempfile
 import threading
 import time
@@ -51,6 +53,7 @@ import network_log_sanitization
 import registry
 import request_streaming
 import response_streaming
+import upstream_destination_binding
 import usage
 from auth import (
     FirewallAuthHandlingResult,
@@ -69,6 +72,7 @@ from firewall_auth_cache import (
     clear_cached_firewall_headers,
     request_force_refresh,
 )
+from firewall_auth_config import auth_config_injects_ordinary_upstream_credentials
 from logging_utils import (
     add_firewall_metadata,
     flush_log_path,
@@ -76,7 +80,7 @@ from logging_utils import (
     log_proxy_entry,
     shutdown_log_writer,
 )
-from url_utils import AuthorityValidationError, get_trusted_authority
+from url_utils import AuthorityValidationError, get_trusted_authority, normalize_trusted_hostname
 
 # HTTP status boundaries used in response-phase classification.
 _HTTP_STATUS_UNAUTHORIZED = 401
@@ -84,6 +88,7 @@ _HTTP_STATUS_FORBIDDEN = 403
 _HTTP_STATUS_FAILED_DEPENDENCY = 424
 _HTTP_STATUS_BAD_GATEWAY = 502
 _HTTP_STATUS_ERROR_MIN = 400  # inclusive: start of 4xx/5xx error range
+_ADDRESS_PAIR_LENGTH = 2
 _HTTP_DEFAULT_PORT = 80
 _HTTPS_DEFAULT_PORT = 443
 _BROWSER_USER_AGENT_MARKERS = (
@@ -97,6 +102,7 @@ _BROWSER_USER_AGENT_MARKERS = (
     " opr/",
     " safari/",
 )
+_TEST_ENDPOINT_BYPASS_HEADER: Final = "x-vm0-test-endpoint-bypass"
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
 _MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED = "_model_websocket_message_trim_scheduled"
 _TCP_MESSAGE_DRAIN_SCHEDULED = "_tcp_message_drain_scheduled"
@@ -157,6 +163,10 @@ _TLS_ADMISSION_VALID_REGISTRY_VM: Final = "valid_registry_vm"
 _TLS_ADMISSION_INVALID_REGISTRY_VM: Final = "invalid_registry_vm"
 _TLS_ADMISSION_REGISTRY_UNAVAILABLE: Final = "registry_unavailable"
 _STALE_TLS_ADMISSION_ERROR: Final = "stale_tls_admission"
+_UPSTREAM_DESTINATION_UNBOUND_ERROR: Final = "upstream_destination_unbound"
+_UPSTREAM_BINDING_DIAGNOSTICS = "_upstream_binding_diagnostics"
+_TRUSTED_HOST_ADDRESS_CACHE_TTL_SECONDS: Final = 60.0
+_TRUSTED_HOST_ADDRESS_CACHE_MAX_ENTRIES: Final = 512
 
 _TlsAdmissionKind = Literal[
     "valid_registry_vm",
@@ -177,6 +187,7 @@ _RequestClassificationKind = Literal[
     "allow",
 ]
 _AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
+_trusted_host_address_cache: dict[tuple[str, int], tuple[float, frozenset[str]]] = {}
 _REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
 _REQUEST_CLASSIFICATION = "_request_classification"
 _FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS = "_firewall_auth_applied_in_requestheaders"
@@ -200,6 +211,7 @@ class _TlsAdmission:
     client_ip: str
     kind: _TlsAdmissionKind
     run_id: str | None = None
+    sni: str | None = None
 
 
 @dataclass(frozen=True)
@@ -727,6 +739,51 @@ def _should_try_firewall_stream_capture_request(classification: _RequestClassifi
     return isinstance(vm_info, dict) and bool(vm_info.get("captureNetworkBodies", False))
 
 
+def _prebind_requestheaders_upstream_destination(
+    flow: http.HTTPFlow,
+    classification: _RequestClassification,
+) -> None:
+    """Bind privileged upstreams while requestheaders can still retarget."""
+    if classification.kind == "api_allow":
+        _ensure_bound_upstream_destination(flow, kind="api_allow")
+        return
+    if classification.kind != "firewall_allow":
+        return
+    allow = classification.firewall_allow
+    if allow is None or not _firewall_allow_injects_ordinary_upstream_credentials(allow):
+        return
+    _ensure_bound_upstream_destination(flow, kind="connector_auth")
+
+
+def _prebind_bounded_requestheaders_upstream_destination(flow: http.HTTPFlow) -> None:
+    metadata_snapshot = {
+        key: flow.metadata[key]
+        for key in _REQUEST_HEADERS_PROBE_METADATA_KEYS
+        if key in flow.metadata
+    }
+    try:
+        try:
+            trusted_authority = get_trusted_authority(flow)
+        except AuthorityValidationError:
+            return
+        flow.metadata[metadata_keys.TRUSTED_AUTHORITY_HOST] = trusted_authority.host
+        if _api_hostname_matches(trusted_authority.host) and not flow.request.path.startswith(
+            "/api/test/"
+        ):
+            classification = _classify_request(flow)
+            if classification.kind == "api_allow":
+                _ensure_bound_upstream_destination(flow, kind="api_allow")
+            return
+        if _has_bound_upstream_destination(
+            flow,
+            allowed_kinds=frozenset(("connector_auth",)),
+        ):
+            return
+        _prebind_requestheaders_upstream_destination(flow, _classify_request(flow))
+    finally:
+        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+
+
 def _start_request_timing(flow: http.HTTPFlow) -> None:
     if metadata_keys.HTTP_REQUEST_START_MONOTONIC not in flow.metadata:
         flow.metadata[metadata_keys.HTTP_REQUEST_START_MONOTONIC] = time.monotonic()
@@ -736,6 +793,119 @@ def _firewall_allow_auth_base(allow: matching.FirewallAllow) -> str | None:
     auth_config = allow.api_entry.get("auth", {})
     auth_base = auth_config.get("base") if isinstance(auth_config, dict) else None
     return auth_base if isinstance(auth_base, str) and auth_base else None
+
+
+def _firewall_allow_injects_ordinary_upstream_credentials(
+    allow: matching.FirewallAllow,
+) -> bool:
+    return auth_config_injects_ordinary_upstream_credentials(allow.api_entry.get("auth"))
+
+
+def _has_bound_upstream_destination(
+    flow: http.HTTPFlow,
+    *,
+    allowed_kinds: frozenset[upstream_destination_binding.BindingKind],
+) -> bool:
+    return upstream_destination_binding.flow_matches_bound_destination(
+        flow,
+        allowed_kinds=allowed_kinds,
+    )
+
+
+def _bind_flow_upstream_destination(
+    flow: http.HTTPFlow,
+    *,
+    kind: upstream_destination_binding.BindingKind,
+) -> bool:
+    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
+    if not isinstance(trusted_host, str) or not trusted_host:
+        return False
+    try:
+        normalized_host = normalize_trusted_hostname(trusted_host)
+    except (UnicodeError, ValueError):
+        return False
+
+    original_address = _server_address(flow.server_conn)
+    has_server_binding = upstream_destination_binding.has_server_binding(flow.server_conn)
+    if _requires_platform_connector_auth_bypass(
+        kind=kind,
+        normalized_host=normalized_host,
+    ) and not _request_allows_platform_connector_auth(flow):
+        return False
+
+    if has_server_binding:
+        if upstream_destination_binding.add_server_binding_kind_if_matching(
+            flow.server_conn,
+            client=flow.client_conn,
+            host=normalized_host,
+            port=flow.request.port,
+            kind=kind,
+        ):
+            return True
+        if flow.server_conn.connected:
+            connected_address = _connected_verified_tls_destination_endpoint(
+                flow.server_conn,
+                host=normalized_host,
+                port=flow.request.port,
+                extra_endpoints=(_connection_sockname(flow.client_conn),),
+            )
+            if connected_address is None:
+                return False
+            return (
+                upstream_destination_binding.refresh_server_binding_connected_address_if_matching(
+                    flow.server_conn,
+                    client=flow.client_conn,
+                    host=normalized_host,
+                    port=flow.request.port,
+                    kind=kind,
+                    connected_address=connected_address,
+                )
+            )
+        return False
+
+    if flow.server_conn.connected:
+        connected_address = _connected_verified_tls_destination_endpoint(
+            flow.server_conn,
+            host=normalized_host,
+            port=flow.request.port,
+            extra_endpoints=(_connection_sockname(flow.client_conn),),
+        )
+        if connected_address is None:
+            return False
+        original_address = connected_address
+    else:
+        flow.server_conn.address = (normalized_host, flow.request.port)
+
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host=normalized_host,
+        port=flow.request.port,
+        kinds=frozenset((kind,)),
+        original_address=original_address,
+    )
+    return True
+
+
+def _ensure_bound_upstream_destination(
+    flow: http.HTTPFlow,
+    *,
+    kind: upstream_destination_binding.BindingKind,
+) -> bool:
+    if _flow_requires_platform_connector_auth_bypass(
+        flow,
+        kind=kind,
+    ) and not _request_allows_platform_connector_auth(flow):
+        return False
+
+    allowed_kinds = frozenset((kind,))
+    has_bound_destination = _has_bound_upstream_destination(flow, allowed_kinds=allowed_kinds)
+    if has_bound_destination and upstream_destination_binding.has_server_binding(flow.server_conn):
+        return True
+    # If has_bound_destination is true here, it is only an unconnected address
+    # or prior-client match. That is retargetable, not durable proof for later
+    # keepalive reuse, and connected flows still need current upstream TLS proof.
+    return _bind_flow_upstream_destination(flow, kind=kind)
 
 
 def _auth_base_body_header_check(flow: http.HTTPFlow) -> _AuthBaseBodyCheck:
@@ -1296,6 +1466,14 @@ def _http_network_log_entry(
         "request_size": request_size,
         "response_size": response_size,
     }
+    firewall_error = flow.metadata.get(metadata_keys.FIREWALL_ERROR)
+    if isinstance(firewall_error, str):
+        entry["firewall_error"] = firewall_error
+    upstream_binding_diagnostics = flow.metadata.get(_UPSTREAM_BINDING_DIAGNOSTICS)
+    if isinstance(upstream_binding_diagnostics, dict):
+        for key, value in upstream_binding_diagnostics.items():
+            if isinstance(value, (str, int, bool)):
+                entry[f"upstream_binding_{key}"] = value
     if flow.metadata.get(metadata_keys.BROWSER_USER_AGENT):
         entry["browser_user_agent"] = True
     return entry
@@ -1393,6 +1571,83 @@ def _block_stale_tls_admission(flow: http.HTTPFlow, *, reason: str) -> None:
     )
 
 
+def _block_upstream_destination_unbound(
+    flow: http.HTTPFlow,
+    *,
+    reason: upstream_destination_binding.BindingKind,
+) -> None:
+    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    server_address = getattr(flow.server_conn, "address", None)
+    diagnostics = _upstream_binding_diagnostics(flow, reason=reason)
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "Request blocked: upstream destination is not bound to the trusted authority",
+        type="upstream_destination_binding",
+        reason=reason,
+        trusted_host=trusted_host,
+        request_host=flow.request.host,
+        request_port=flow.request.port,
+        server_address=server_address,
+        diagnostics=diagnostics,
+    )
+    flow.metadata[_UPSTREAM_BINDING_DIAGNOSTICS] = diagnostics
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = _UPSTREAM_DESTINATION_UNBOUND_ERROR
+    body: dict[str, object] = {
+        "error": _UPSTREAM_DESTINATION_UNBOUND_ERROR,
+        "message": "Request blocked: upstream destination is not bound to trusted authority",
+        "reason": reason,
+        "trusted_host": trusted_host,
+        "request_host": flow.request.host,
+        "request_port": flow.request.port,
+    }
+    firewall_base = flow.metadata.get(metadata_keys.FIREWALL_BASE)
+    if isinstance(firewall_base, str):
+        body["base"] = firewall_base
+    flow.response = http.Response.make(
+        403,
+        json.dumps(body).encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
+def _endpoint_text(address: tuple[str, int] | None) -> str:
+    if address is None:
+        return ""
+    host, port = address
+    return f"{host}:{port}"
+
+
+def _upstream_binding_diagnostics(
+    flow: http.HTTPFlow,
+    *,
+    reason: upstream_destination_binding.BindingKind,
+) -> dict[str, object]:
+    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST, "")
+    if not isinstance(trusted_host, str):
+        trusted_host = ""
+    diagnostics = upstream_destination_binding.diagnostic_snapshot_for_flow(
+        flow,
+        allowed_kinds=frozenset((reason,)),
+    )
+    diagnostics.update(
+        {
+            "reason": reason,
+            "trusted_host": trusted_host,
+            "request_host": flow.request.host,
+            "request_port": flow.request.port,
+            "server_connected": bool(getattr(flow.server_conn, "connected", False)),
+            "server_address": _endpoint_text(_server_address(flow.server_conn)),
+            "server_peername": _endpoint_text(_server_peername(flow.server_conn)),
+            "server_sockname": _endpoint_text(_connection_sockname(flow.server_conn)),
+            "client_sockname": _endpoint_text(_connection_sockname(flow.client_conn)),
+        }
+    )
+    return diagnostics
+
+
 def _client_connection_id(client: object) -> str | None:
     client_id = getattr(client, "id", None)
     if isinstance(client_id, str) and client_id:
@@ -1423,6 +1678,432 @@ def reset_tls_admission_state_for_tests() -> None:
     _tls_admissions.clear()
 
 
+def _server_address(server: object) -> tuple[str, int] | None:
+    return _connection_address_pair(getattr(server, "address", None))
+
+
+def _server_peername(server: object) -> tuple[str, int] | None:
+    return _connection_address_pair(getattr(server, "peername", None))
+
+
+def _connection_sockname(connection: object) -> tuple[str, int] | None:
+    return _connection_address_pair(getattr(connection, "sockname", None))
+
+
+def _connection_address_pair(address: object) -> tuple[str, int] | None:
+    if not isinstance(address, tuple) or len(address) < _ADDRESS_PAIR_LENGTH:
+        return None
+    host, port = address[:_ADDRESS_PAIR_LENGTH]
+    if not isinstance(host, str) or not isinstance(port, int):
+        return None
+    return host, port
+
+
+def _ip_address_text(host: str) -> str | None:
+    try:
+        address = ipaddress.ip_address(host)
+    except ValueError:
+        return None
+    return str(address)
+
+
+def _is_authoritative_connected_endpoint(endpoint: tuple[str, int] | None) -> bool:
+    if endpoint is None:
+        return False
+    endpoint_host, _endpoint_port = endpoint
+    try:
+        endpoint_ip = ipaddress.ip_address(endpoint_host)
+    except ValueError:
+        return False
+    return not endpoint_ip.is_loopback and not endpoint_ip.is_unspecified
+
+
+def _connected_destination_candidate_endpoints(
+    server: object,
+    *,
+    extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
+) -> tuple[tuple[str, int] | None, ...]:
+    peername = _server_peername(server)
+    if _is_authoritative_connected_endpoint(peername):
+        return (peername,)
+
+    server_address = _server_address(server)
+    if _is_authoritative_connected_endpoint(server_address):
+        return (server_address,)
+
+    return (peername, server_address, *extra_endpoints)
+
+
+def _resolved_trusted_host_addresses(host: str, port: int) -> frozenset[str]:
+    now = time.monotonic()
+    cache_key = (host, port)
+    cached = _trusted_host_address_cache.get(cache_key)
+    if cached is not None:
+        expires_at, cached_addresses = cached
+        if expires_at > now:
+            return cached_addresses
+        _trusted_host_address_cache.pop(cache_key, None)
+
+    try:
+        infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
+    except OSError:
+        return frozenset()
+
+    address_set: set[str] = set()
+    for info in infos:
+        sockaddr = info[4]
+        if not sockaddr:
+            continue
+        sockaddr_host = sockaddr[0]
+        if not isinstance(sockaddr_host, str):
+            continue
+        resolved_ip = _ip_address_text(sockaddr_host)
+        if resolved_ip is not None:
+            address_set.add(resolved_ip)
+
+    resolved_addresses = frozenset(address_set)
+    if not resolved_addresses:
+        return resolved_addresses
+
+    if len(_trusted_host_address_cache) >= _TRUSTED_HOST_ADDRESS_CACHE_MAX_ENTRIES:
+        expired_keys = [
+            key
+            for key, (expires_at, _addresses) in _trusted_host_address_cache.items()
+            if expires_at <= now
+        ]
+        for key in expired_keys:
+            _trusted_host_address_cache.pop(key, None)
+        if len(_trusted_host_address_cache) >= _TRUSTED_HOST_ADDRESS_CACHE_MAX_ENTRIES:
+            _trusted_host_address_cache.pop(next(iter(_trusted_host_address_cache)), None)
+
+    _trusted_host_address_cache[cache_key] = (
+        now + _TRUSTED_HOST_ADDRESS_CACHE_TTL_SECONDS,
+        resolved_addresses,
+    )
+    return resolved_addresses
+
+
+def _connected_verified_tls_destination_endpoint(
+    server: object,
+    *,
+    host: str,
+    port: int,
+    extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
+) -> tuple[str, int] | None:
+    if bool(getattr(getattr(ctx, "options", object()), "ssl_insecure", False)):
+        return None
+    if not bool(getattr(server, "tls_established", False)):
+        return None
+    if getattr(server, "error", None):
+        return None
+    server_sni = getattr(server, "sni", None)
+    if not isinstance(server_sni, str):
+        return None
+    try:
+        normalized_sni = normalize_trusted_hostname(server_sni)
+    except (UnicodeError, ValueError):
+        return None
+    if normalized_sni != host:
+        return None
+    if not getattr(server, "certificate_list", ()):
+        return None
+
+    # mitmproxy verifies the upstream certificate against server.sni when
+    # ssl_insecure is false. At this point the connected IP is authenticated as
+    # the same host we plan to bind, so CDN/Anycast DNS drift does not matter.
+    return _connected_ip_destination_endpoint(
+        server,
+        port=port,
+        extra_endpoints=extra_endpoints,
+    )
+
+
+def _connected_ip_destination_endpoint(
+    server: object,
+    *,
+    port: int,
+    extra_endpoints: tuple[tuple[str, int] | None, ...] = (),
+) -> tuple[str, int] | None:
+    for peer in _connected_destination_candidate_endpoints(
+        server,
+        extra_endpoints=extra_endpoints,
+    ):
+        if peer is None:
+            continue
+
+        _peer_host, peer_port = peer
+        if peer_port != port:
+            continue
+
+        if _is_authoritative_connected_endpoint(peer):
+            return peer
+
+    return None
+
+
+def _request_has_platform_test_endpoint_bypass(flow: http.HTTPFlow) -> bool:
+    if not flow.request.path.startswith("/api/test/"):
+        return False
+    expected_bypass = os.environ.get("VERCEL_AUTOMATION_BYPASS_SECRET", "")
+    if not expected_bypass:
+        return False
+    return flow.request.headers.get(_TEST_ENDPOINT_BYPASS_HEADER) == expected_bypass
+
+
+def _request_allows_platform_connector_auth(flow: http.HTTPFlow) -> bool:
+    # Synthetic test providers live on the platform API preview host but
+    # intentionally exercise connector auth injection instead of API auto-allow.
+    # Keep this path limited to test endpoints gated by the same internal
+    # bypass secret that the API route validates.
+    return _request_has_platform_test_endpoint_bypass(flow)
+
+
+def _requires_platform_connector_auth_bypass(
+    *,
+    kind: upstream_destination_binding.BindingKind,
+    normalized_host: str,
+) -> bool:
+    return kind == "connector_auth" and _api_hostname_matches(normalized_host)
+
+
+def _flow_requires_platform_connector_auth_bypass(
+    flow: http.HTTPFlow,
+    *,
+    kind: upstream_destination_binding.BindingKind,
+) -> bool:
+    if kind != "connector_auth":
+        return False
+    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
+    if not isinstance(trusted_host, str) or not trusted_host:
+        return False
+    try:
+        normalized_host = normalize_trusted_hostname(trusted_host)
+    except (UnicodeError, ValueError):
+        return False
+    return _requires_platform_connector_auth_bypass(
+        kind=kind,
+        normalized_host=normalized_host,
+    )
+
+
+def reset_upstream_destination_resolution_cache_for_tests() -> None:
+    _trusted_host_address_cache.clear()
+
+
+def _api_hostname_matches(hostname: str) -> bool:
+    api_destination = _api_destination()
+    if api_destination is None:
+        return False
+    api_hostname, _api_port = api_destination
+    return hostname == api_hostname or hostname.endswith(f".{api_hostname}")
+
+
+def _api_destination() -> tuple[str, int] | None:
+    try:
+        api_url = get_api_url()
+    except AttributeError:
+        return None
+    if not api_url:
+        return None
+    parsed_api = urllib.parse.urlparse(api_url)
+    if not parsed_api.hostname:
+        return None
+    try:
+        api_hostname = normalize_trusted_hostname(parsed_api.hostname)
+    except (UnicodeError, ValueError):
+        return None
+    if parsed_api.port is not None:
+        api_port = parsed_api.port
+    elif parsed_api.scheme.lower() == "http":
+        api_port = 80
+    else:
+        api_port = 443
+    return api_hostname, api_port
+
+
+def _address_resolves_to_trusted_host(
+    address: tuple[str, int] | None,
+    *,
+    host: str,
+    port: int,
+) -> bool:
+    if address is None:
+        return False
+    address_host, address_port = address
+    if address_port != port:
+        return False
+    address_ip = _ip_address_text(address_host)
+    if address_ip is None:
+        return False
+    return address_ip in _resolved_trusted_host_addresses(host, port)
+
+
+def _bind_api_upstream_destination_from_original_address(
+    *,
+    client: object,
+    server: connection.Server,
+) -> bool:
+    if bool(getattr(server, "connected", False)):
+        return False
+
+    api_destination = _api_destination()
+    if api_destination is None:
+        return False
+    api_hostname, api_port = api_destination
+
+    original_address = next(
+        (
+            address
+            for address in (_server_address(server), _connection_sockname(client))
+            if _address_resolves_to_trusted_host(
+                address,
+                host=api_hostname,
+                port=api_port,
+            )
+        ),
+        None,
+    )
+    if original_address is None:
+        return False
+
+    server.address = (api_hostname, api_port)
+    upstream_destination_binding.record_server_binding(
+        server,
+        client=client,
+        host=api_hostname,
+        port=api_port,
+        kinds=frozenset(("api_allow",)),
+        original_address=original_address,
+    )
+    return True
+
+
+def _server_connect_binding_kinds(
+    *,
+    hostname: str,
+    port: int,
+    compiled_firewalls: matching.CompiledFirewallSet | None,
+) -> frozenset[upstream_destination_binding.BindingKind]:
+    kinds: set[upstream_destination_binding.BindingKind] = set()
+    is_api_host = _api_hostname_matches(hostname)
+    if is_api_host:
+        kinds.add("api_allow")
+    if (
+        not is_api_host
+        and compiled_firewalls is not None
+        and compiled_firewalls.matches_ordinary_credential_authority(
+            hostname,
+            port,
+        )
+    ):
+        kinds.add("connector_auth")
+    return frozenset(kinds)
+
+
+def _bind_privileged_upstream_destination(
+    *,
+    client: object,
+    server: connection.Server,
+    raw_sni: object,
+    registry_state: registry.RegistryState,
+    client_ip: str,
+    run_id: str,
+) -> None:
+    if isinstance(registry_state, registry.RegistryUnavailable):
+        return
+
+    tls_admission = _tls_admission_for_client(client)
+    if tls_admission is not None and (
+        tls_admission.client_ip != client_ip
+        or tls_admission.kind != _TLS_ADMISSION_VALID_REGISTRY_VM
+        or (tls_admission.run_id is not None and tls_admission.run_id != run_id)
+    ):
+        return
+
+    if not isinstance(raw_sni, str) or not raw_sni.strip():
+        return
+    try:
+        hostname = normalize_trusted_hostname(raw_sni.strip())
+    except (UnicodeError, ValueError):
+        return
+
+    address = _server_address(server)
+    if address is None:
+        return
+    _original_host, port = address
+
+    kinds = _server_connect_binding_kinds(
+        hostname=hostname,
+        port=port,
+        compiled_firewalls=registry_state.compiled_firewalls.get(client_ip),
+    )
+    if not kinds:
+        return
+
+    if bool(getattr(server, "connected", False)):
+        return
+
+    server.address = (hostname, port)
+
+    upstream_destination_binding.record_server_binding(
+        server,
+        client=client,
+        host=hostname,
+        port=port,
+        kinds=kinds,
+        original_address=address,
+    )
+
+
+def server_connect(data: object) -> None:
+    """Bind privileged HTTPS upstream connections to their trusted SNI host."""
+    client = getattr(data, "client", None)
+    server = getattr(data, "server", None)
+    if client is None or server is None:
+        return
+
+    client_ip = client.peername[0] if getattr(client, "peername", None) else None
+    if not client_ip:
+        return
+
+    registry_state = registry.load_registry_state(get_registry_path())
+    if isinstance(registry_state, registry.RegistryUnavailable):
+        return
+
+    vm_info = registry_state.vms.get(client_ip)
+    if vm_info is None:
+        return
+
+    run_id = vm_info.get("runId", "")
+    tls_admission = _tls_admission_for_client(client)
+    raw_sni = getattr(client, "sni", None)
+    if not raw_sni and tls_admission is not None:
+        raw_sni = tls_admission.sni
+    if not raw_sni and _bind_api_upstream_destination_from_original_address(
+        client=client,
+        server=server,
+    ):
+        return
+    _bind_privileged_upstream_destination(
+        client=client,
+        server=server,
+        raw_sni=raw_sni,
+        registry_state=registry_state,
+        client_ip=client_ip,
+        run_id=run_id,
+    )
+
+
+def server_disconnected(data: object) -> None:
+    server = getattr(data, "server", data)
+    upstream_destination_binding.forget_server_binding(server)
+
+
+def server_connect_error(data: object) -> None:
+    server = getattr(data, "server", data)
+    upstream_destination_binding.forget_server_binding(server)
+
+
 # ============================================================================
 # TLS ClientHello Handler
 # ============================================================================
@@ -1451,13 +2132,24 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
 
     vm_info = registry_state.vms.get(client_ip)
     if vm_info is not None:
+        run_id = vm_info.get("runId", "")
+        raw_sni = data.client_hello.sni
         _record_tls_admission(
             data.context.client,
             _TlsAdmission(
                 client_ip=client_ip,
                 kind=_TLS_ADMISSION_VALID_REGISTRY_VM,
-                run_id=vm_info.get("runId", ""),
+                run_id=run_id,
+                sni=raw_sni if isinstance(raw_sni, str) else None,
             ),
+        )
+        _bind_privileged_upstream_destination(
+            client=data.context.client,
+            server=data.context.server,
+            raw_sni=raw_sni,
+            registry_state=registry_state,
+            client_ip=client_ip,
+            run_id=run_id,
         )
         return
 
@@ -1479,6 +2171,7 @@ def tls_clienthello(data: tls.ClientHelloData) -> None:
 
 def client_disconnected(client: connection.Client) -> None:
     _forget_tls_admission(client)
+    upstream_destination_binding.forget_client_bindings(client)
 
 
 # ============================================================================
@@ -1489,7 +2182,9 @@ def client_disconnected(client: connection.Client) -> None:
 def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     """Handle request-header-only decisions before mitmproxy buffers bodies."""
     body_check = _auth_base_body_header_check(flow)
-    if body_check.kind == "ok" and _request_body_fits_stream_buffer(flow):
+    body_fits_stream_buffer = body_check.kind == "ok" and _request_body_fits_stream_buffer(flow)
+    if body_fits_stream_buffer:
+        _prebind_bounded_requestheaders_upstream_destination(flow)
         return None
 
     metadata_snapshot = {
@@ -1501,6 +2196,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     allow = classification.firewall_allow
     vm_info = classification.vm_info
     auth_base = _firewall_allow_auth_base(allow) if allow is not None else None
+    _prebind_requestheaders_upstream_destination(flow, classification)
     if (
         classification.kind == "firewall_allow"
         and allow is not None
@@ -1528,6 +2224,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
             )
         flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+        upstream_destination_binding.forget_server_binding(flow.server_conn)
         flow.kill()
         return None
 
@@ -1557,6 +2254,7 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
             )
             flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
             flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+            upstream_destination_binding.forget_server_binding(flow.server_conn)
             flow.kill()
             return None
         try:
@@ -1568,6 +2266,12 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
         return None
 
     if _should_stream_capture_request(classification):
+        if classification.kind == "api_allow" and not _ensure_bound_upstream_destination(
+            flow,
+            kind="api_allow",
+        ):
+            _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+            return None
         _maybe_record_allow_connector_diagnostic_context(flow, classification)
         flow.metadata[_REQUEST_CLASSIFICATION] = classification
         _start_request_timing(flow)
@@ -1596,12 +2300,18 @@ async def _try_firewall_request_stream_capture_from_headers(
     if allow is None or vm_info is None:
         _restore_request_headers_probe_metadata(flow, metadata_snapshot)
         return
+    if _firewall_allow_injects_ordinary_upstream_credentials(
+        allow
+    ) and not _ensure_bound_upstream_destination(flow, kind="connector_auth"):
+        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+        return
 
     _start_request_timing(flow)
     try:
         result = await try_apply_stream_safe_firewall_auth_for_requestheaders(flow, allow, vm_info)
     except (asyncio.CancelledError, Exception):
         _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+        upstream_destination_binding.forget_server_binding(flow.server_conn)
         raise
     if result is not FirewallHeaderPhaseAuthResult.APPLIED:
         _restore_request_headers_probe_metadata(flow, metadata_snapshot)
@@ -1669,18 +2379,20 @@ async def request(flow: http.HTTPFlow) -> None:
     """
     if flow.metadata.get(_REQUEST_HEADERS_TERMINATED):
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+        upstream_destination_binding.forget_server_binding(flow.server_conn)
         flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         return
 
     if flow.response is not None or flow.error is not None:
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+        upstream_destination_binding.forget_server_binding(flow.server_conn)
         flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         return
 
-    if request_streaming.streamed_request_size(flow) is not None:
-        flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
-
     try:
+        if request_streaming.streamed_request_size(flow) is not None:
+            flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
+
         classification = _request_classification(flow)
 
         if _classification_needs_request_timing(classification):
@@ -1710,6 +2422,9 @@ async def request(flow: http.HTTPFlow) -> None:
                 _block_authority_validation_error(flow, authority_error)
             return
         if classification.kind == "api_allow":
+            if not _ensure_bound_upstream_destination(flow, kind="api_allow"):
+                _block_upstream_destination_unbound(flow, reason="api_allow")
+                return
             flow.metadata[metadata_keys.FIREWALL_ACTION] = "ALLOW"
             return
         if classification.kind == "browser_allow":
@@ -1730,6 +2445,12 @@ async def request(flow: http.HTTPFlow) -> None:
             if allow is None or vm_info is None:
                 return
             if flow.metadata.get(_FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS):
+                return
+            if _firewall_allow_injects_ordinary_upstream_credentials(
+                allow
+            ) and not _ensure_bound_upstream_destination(flow, kind="connector_auth"):
+                prepare_firewall_metadata(flow, allow, vm_info)
+                _block_upstream_destination_unbound(flow, reason="connector_auth")
                 return
             _maybe_track_usage_flow(
                 flow,
@@ -1760,9 +2481,12 @@ async def request(flow: http.HTTPFlow) -> None:
     except (asyncio.CancelledError, Exception):
         flow.metadata.pop(metadata_keys.HTTP_REQUEST_START_MONOTONIC, None)
         auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+        upstream_destination_binding.forget_server_binding(flow.server_conn)
         _release_tracked_usage_flow(flow)
         raise
     finally:
+        if flow.response is not None or flow.error is not None:
+            upstream_destination_binding.forget_server_binding(flow.server_conn)
         flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
 
 
@@ -1955,6 +2679,8 @@ def _release_terminal_flow_state(
     _release_connector_diagnostic_response_stream_state(flow)
     response_streaming.release_response_stream_state(flow)
     auth_base_forwarder.release_forward_request_admission_from_flow(flow)
+    if flow.error is not None:
+        upstream_destination_binding.forget_server_binding(flow.server_conn)
     if release_tracking:
         _release_tracked_usage_flow(flow)
 
@@ -2385,6 +3111,9 @@ def _log_tcp(flow: tcp.TCPFlow) -> None:
 
 # mitmproxy addon registration
 addons = [
+    server_connect,
+    server_disconnected,
+    server_connect_error,
     tls_clienthello,
     client_disconnected,
     request,

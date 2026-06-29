@@ -1,10 +1,11 @@
 """Firewall dispatch and network policy tests for the request hook."""
 
+import asyncio
 import json
 from unittest.mock import AsyncMock, patch
 
 import pytest
-from mitmproxy import http
+from mitmproxy import connection, http
 from mitmproxy.flow import Error
 
 import auth
@@ -12,6 +13,7 @@ import auth_base_forwarder
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_streaming
+import upstream_destination_binding
 import usage
 from tests.auth_base_forwarder_helpers import fake_forwarder_upstream
 from tests.jsonl_log_helpers import (
@@ -64,8 +66,10 @@ def _assert_fal_local_connector_diagnostic(flow):
 def _write_auth_base_firewall_registry(
     tmp_path,
     *,
+    auth_config: dict[str, object] | None = None,
     vm_fields: dict[str, object] | None = None,
 ):
+    auth_config = auth_config or {"headers": {}, "base": "${{ secrets.WEBHOOK_URL }}"}
     return _write_registry(
         tmp_path,
         vm_info=_single_firewall_vm(
@@ -73,7 +77,7 @@ def _write_auth_base_firewall_registry(
             firewall_name="webhook",
             api_entry={
                 "base": "https://placeholder.example.com",
-                "auth": {"headers": {}, "base": "${{ secrets.WEBHOOK_URL }}"},
+                "auth": auth_config,
                 "permissions": [{"name": "send", "rules": ["ANY /"]}],
             },
             network_policy={
@@ -313,6 +317,14 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
     flow = real_flow(
         with_response=False, client_ip="10.200.0.5", host="api.github.com", path="/orgs"
     )
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("api.github.com", 443),
+    )
 
     with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
         await mitm_addon.request(flow)
@@ -335,6 +347,7 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["name"] == "github"
     assert proxy_log_entry["reason"] == "unknown_endpoint"
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 async def test_firewall_malformed_config_block_reports_reason(
@@ -747,6 +760,73 @@ async def test_http_firewall_without_managed_credentials_still_matches(
     assert "Authorization" not in flow.request.headers
 
 
+@pytest.mark.parametrize(
+    "auth_config",
+    [
+        {"headers": {"Authorization": "Bearer ${{ secrets.API_TOKEN }}"}},
+        {"query": {"api_key": "${{ secrets.API_TOKEN }}"}},
+        {
+            "awsSigv4": {
+                "accessKeyId": "${{ secrets.AWS_ACCESS_KEY_ID }}",
+                "secretAccessKey": "${{ secrets.AWS_SECRET_ACCESS_KEY }}",
+            }
+        },
+    ],
+    ids=["headers", "query", "aws-sigv4"],
+)
+async def test_https_firewall_with_ordinary_credentials_blocks_when_upstream_is_unbound(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    auth_config,
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": auth_config,
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        path="/repos/octocat/hello",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+    flow.server_conn.state = connection.ConnectionState.OPEN
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "upstream_destination_unbound"
+    assert body["reason"] == "connector_auth"
+    assert body["base"] == "https://api.github.com"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    assert "Authorization" not in flow.request.headers
+
+
 async def test_oversized_auth_base_request_does_not_capture_request_body(
     tmp_path, real_flow, mitm_ctx, headers
 ):
@@ -814,6 +894,10 @@ async def test_auth_base_requestheaders_rejects_oversized_content_length_before_
 ):
     reg_path = _write_auth_base_firewall_registry(
         tmp_path,
+        auth_config={
+            "headers": {"Authorization": "Bearer ${{ secrets.WEBHOOK_TOKEN }}"},
+            "base": "${{ secrets.WEBHOOK_URL }}",
+        },
         vm_fields={"captureNetworkBodies": True},
     )
     flow = real_flow(
@@ -844,6 +928,7 @@ async def test_auth_base_requestheaders_rejects_oversized_content_length_before_
     assert flow.error.msg == Error.KILLED_MESSAGE
     assert flow.live is False
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "auth_base_request_body_too_large"
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
     network_log_text = read_jsonl_text_after_flush(tmp_path / "net.jsonl")
     network_log_entry = json.loads(network_log_text)
@@ -1180,7 +1265,13 @@ async def test_auth_base_requestheaders_accepts_body_at_limit(
 async def test_auth_base_requestheaders_admission_released_after_success(
     tmp_path, real_flow, mitm_ctx, headers
 ):
-    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    reg_path = _write_auth_base_firewall_registry(
+        tmp_path,
+        auth_config={
+            "headers": {"Authorization": "Bearer ${{ secrets.WEBHOOK_TOKEN }}"},
+            "base": "${{ secrets.WEBHOOK_URL }}",
+        },
+    )
     request_body = b"x" * (mitm_addon.STREAM_BUFFER_LIMIT + 1)
     flow = real_flow(
         with_response=False,
@@ -1195,7 +1286,7 @@ async def test_auth_base_requestheaders_admission_released_after_success(
         request_body=request_body,
     )
     token_meta = {
-        "headers": {},
+        "headers": {"Authorization": "Bearer resolved"},
         "base": "https://real.example.com/webhook",
         "resolved_secrets": ["WEBHOOK_URL"],
         "refreshed_connectors": [],
@@ -1218,6 +1309,7 @@ async def test_auth_base_requestheaders_admission_released_after_success(
     assert flow.response is not None
     assert flow.response.status_code == 202
     assert flow.response.content == b"accepted"
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
     assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
 
 
@@ -1305,7 +1397,13 @@ async def test_auth_base_requestheaders_admission_released_when_resolved_base_mi
 async def test_auth_base_requestheaders_admission_released_when_request_already_has_response(
     tmp_path, real_flow, mitm_ctx, headers
 ):
-    reg_path = _write_auth_base_firewall_registry(tmp_path)
+    reg_path = _write_auth_base_firewall_registry(
+        tmp_path,
+        auth_config={
+            "headers": {"Authorization": "Bearer ${{ secrets.WEBHOOK_TOKEN }}"},
+            "base": "${{ secrets.WEBHOOK_URL }}",
+        },
+    )
     declared_size = mitm_addon.STREAM_BUFFER_LIMIT + 1
     flow = real_flow(
         with_response=False,
@@ -1332,7 +1430,74 @@ async def test_auth_base_requestheaders_admission_released_when_request_already_
     assert flow.response is not None
     assert flow.response.status_code == 204
     assert metadata_keys.AUTH_BASE_FORWARD_ADMISSION not in flow.metadata
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
     assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+
+async def test_firewall_auth_cancellation_clears_upstream_binding(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.github.com",
+        path="/repos/octocat/hello",
+        request_headers=headers(("Host", "api.github.com")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(auth, "get_firewall_headers", AsyncMock(side_effect=asyncio.CancelledError)),
+        pytest.raises(asyncio.CancelledError),
+    ):
+        await mitm_addon.request(flow)
+
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
+async def test_request_stream_metadata_error_clears_upstream_binding(tmp_path, real_flow, mitm_ctx):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos/octocat/hello",
+    )
+    flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE] = {}
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("api.github.com", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        pytest.raises(KeyError, match="total_bytes"),
+    ):
+        await mitm_addon.request(flow)
+
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 @pytest.mark.parametrize(
