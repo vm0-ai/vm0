@@ -509,6 +509,85 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     });
   });
 
+  it("keeps API-origin OAuth callbacks on the PR API when onboarding uses staging web", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mocks.clerk.session(userId, orgId);
+    mockEnv("VM0_API_URL", "https://pr-19337-api.vm6.ai");
+    mockEnv("VM0_WEB_URL", "https://staging-www.vm6.ai");
+
+    const response = await requestOauthStart("cloudflare", {
+      headers: { authorization: "Bearer clerk-session" },
+      origin: "https://pr-19337-api.vm6.ai",
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      readonly authorizationUrl: string;
+    };
+    const authorizationUrl = new URL(body.authorizationUrl);
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      "https://pr-19337-api.vm6.ai/api/connectors/cloudflare/callback",
+    );
+    expectCloudflareAuthorizationScopes(authorizationUrl);
+
+    const state = authorizationUrl.searchParams.get("state");
+    const db = store.set(writeDb$);
+    const [storedState] = await db
+      .select()
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.state, state!));
+    expect(storedState).toBeDefined();
+    stateIds.push(storedState!.id);
+    expect(storedState).toMatchObject({
+      state,
+      type: "cloudflare",
+      authMethod: "oauth",
+      userId,
+      orgId,
+      redirectUri:
+        "https://pr-19337-api.vm6.ai/api/connectors/cloudflare/callback",
+      consumedAt: null,
+    });
+  });
+
+  it("uses the canonical API origin when VM0_API_URL is localhost", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    orgIds.push(orgId);
+    mocks.clerk.session(userId, orgId);
+    mockEnv("VM0_API_URL", LOCAL_ORIGIN);
+    mockEnv("VM0_WEB_URL", WEB_ORIGIN);
+
+    const response = await requestOauthStart("cloudflare", {
+      headers: { authorization: "Bearer clerk-session" },
+      origin: LOCAL_ORIGIN,
+    });
+
+    expect(response.status).toBe(200);
+    const body = (await response.json()) as {
+      readonly authorizationUrl: string;
+    };
+    const authorizationUrl = new URL(body.authorizationUrl);
+    expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
+      `${API_ORIGIN}/api/connectors/cloudflare/callback`,
+    );
+    expectCloudflareAuthorizationScopes(authorizationUrl);
+
+    const state = authorizationUrl.searchParams.get("state");
+    const db = store.set(writeDb$);
+    const [storedState] = await db
+      .select()
+      .from(connectorOauthStates)
+      .where(eq(connectorOauthStates.state, state!));
+    expect(storedState).toBeDefined();
+    stateIds.push(storedState!.id);
+    expect(storedState?.redirectUri).toBe(
+      `${API_ORIGIN}/api/connectors/cloudflare/callback`,
+    );
+  });
+
   it("keeps Cloudflare OAuth callbacks on the canonical API origin when VM0_API_URL is a tunnel", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

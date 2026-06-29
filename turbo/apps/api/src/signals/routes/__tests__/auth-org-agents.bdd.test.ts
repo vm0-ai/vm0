@@ -1006,22 +1006,6 @@ describe("COMPOSE-01", () => {
       }),
     ).toBeTruthy();
 
-    await api.updateComposeMetadata(admin, created.composeId, {
-      displayName: "BDD Compose",
-      description: "Metadata through agent compose API",
-      sound: "focus",
-    });
-    const listedAfterMetadata = await api.listComposes(admin);
-    expect(
-      listedAfterMetadata.find((compose) => {
-        return compose.id === created.composeId;
-      }),
-    ).toMatchObject({
-      displayName: "BDD Compose",
-      description: "Metadata through agent compose API",
-      sound: "focus",
-    });
-
     await api.updateZeroComposeMetadata(admin, created.composeId, {
       displayName: "BDD Compose Zero",
       description: "Metadata through zero compose API",

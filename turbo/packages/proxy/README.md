@@ -22,7 +22,7 @@ Browser
 Caddy Proxy (HTTPS: 8443, HTTP: 8080)
   ↓              ↓              ↓              ↓
 Web App        App            API            SO staging
-(port 3000)    (port 3002)    (port 3001)    (staging-so.vm6.ai)
+(port 3000)    (port 3002)    (port 3001)    (staging-www.vm6.ai)
 ```
 
 ## Quick Start
@@ -80,7 +80,7 @@ The `Caddyfile` defines:
 
 | Domain          | Port | Backend                     |
 | --------------- | ---- | --------------------------- |
-| www.vm7.ai:8443 | 8443 | staging-so.vm6.ai           |
+| www.vm7.ai:8443 | 8443 | staging-www.vm6.ai          |
 | app.vm7.ai:8443 | 8443 | localhost:3002 (Vite app)   |
 | api.vm7.ai:8443 | 8443 | localhost:3001 (Hono API)   |
 | so.vm7.ai:8443  | 8443 | staging-so.vm6.ai           |

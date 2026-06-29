@@ -138,12 +138,12 @@ describe("createApp", () => {
       mockEnv("VM0_WEB_URL", "https://pr-123-www.vm6.ai");
       const app = createApp({ signal: context.signal });
       const response = await app.request(
-        "https://pr-123-api.vm6.ai/sign-up?redirect_url=https%3A%2F%2Fstaging-so.vm6.ai%2Fonboarding%2F2afcf6%3Fdomain%3Dpr-123-api.vm6.ai",
+        "https://pr-123-api.vm6.ai/sign-up?redirect_url=https%3A%2F%2Fstaging-www.vm6.ai%2Fonboarding%2F2afcf6%3Fdomain%3Dpr-123-api.vm6.ai",
       );
 
       expect(response.status).toBe(302);
       expect(response.headers.get("location")).toBe(
-        "https://pr-123-www.vm6.ai/sign-up?redirect_url=https%3A%2F%2Fstaging-so.vm6.ai%2Fonboarding%2F2afcf6%3Fdomain%3Dpr-123-api.vm6.ai",
+        "https://pr-123-www.vm6.ai/sign-up?redirect_url=https%3A%2F%2Fstaging-www.vm6.ai%2Fonboarding%2F2afcf6%3Fdomain%3Dpr-123-api.vm6.ai",
       );
     });
 
