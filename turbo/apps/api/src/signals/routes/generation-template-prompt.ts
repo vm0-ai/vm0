@@ -213,7 +213,7 @@ function buildPresentationRunbookPrompt(
       "",
       "To produce the presentation:",
       `- Pull the package: zero resource pull ${runbookPackage.resourceId} --dir ./generated/resources`,
-      `- Follow ./generated/resources/${slug}/agent/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
+      `- Follow ./generated/resources/${slug}/AGENT_RUNBOOK.md, running its commands from ./generated/resources. Set "colorSystem": "${colorSystemToken}" in the deck JSON.`,
       "- Use the slide count the user asks for; if unspecified, default to 8 pages.",
       "- Host the finished deck: zero host <output-dir> --site <slug> --artifact-kind presentation-html",
       "- Return only the generated HTML deck as the final deliverable.",

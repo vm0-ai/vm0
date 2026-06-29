@@ -106,7 +106,7 @@ describe("buildGenerationTemplatePrompt", () => {
       "zero resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
     );
     expect(result.prompt).toContain(
-      "./generated/resources/playful-launch/agent/AGENT_RUNBOOK.md",
+      "./generated/resources/playful-launch/AGENT_RUNBOOK.md",
     );
     // Color system is a runtime token in the deck JSON.
     expect(result.prompt).toContain('"colorSystem": "carnival"');
