@@ -99,6 +99,12 @@ function formatWorkflowTriggerEntry(
       trigger.eventConfig.filters.subject,
     )}, actor ${trigger.eventConfig.filters.actor.type})`;
   }
+  if (
+    trigger.kind === "event" &&
+    trigger.eventType === "google-calendar-event-created"
+  ) {
+    return `Google Calendar event created: ${trigger.eventConfig.calendarId}`;
+  }
   if (isWebhookTrigger(trigger)) {
     return `Webhook: ${trigger.webhookUrl}`;
   }
@@ -197,7 +203,9 @@ export function printWorkflowTriggerDetails(
             ? "Gmail label applied"
             : trigger.eventType === "github-label-applied"
               ? "GitHub label applied"
-              : "Webhook"
+              : trigger.eventType === "google-calendar-event-created"
+                ? "Google Calendar event created"
+                : "Webhook"
         : formatWorkflowTriggerEntry(trigger)
     }`,
   );
@@ -222,6 +230,12 @@ export function printWorkflowTriggerDetails(
     console.log(
       `${"Actor:".padEnd(14)}${trigger.eventConfig.filters.actor.type}`,
     );
+  }
+  if (
+    trigger.kind === "event" &&
+    trigger.eventType === "google-calendar-event-created"
+  ) {
+    console.log(`${"Calendar:".padEnd(14)}${trigger.eventConfig.calendarId}`);
   }
   if (isWebhookTrigger(trigger)) {
     console.log(`${"Webhook URL:".padEnd(14)}${trigger.webhookUrl}`);

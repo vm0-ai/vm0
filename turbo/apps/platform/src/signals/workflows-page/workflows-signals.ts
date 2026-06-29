@@ -6,6 +6,7 @@ import {
   zeroWorkflowVisibilityContract,
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
+  type GoogleCalendarEventCreatedEventConfig,
   type GithubLabelAppliedEventConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
@@ -51,6 +52,7 @@ type WorkflowTriggerCreateDialog =
   | "gmail"
   | "gmail-label"
   | "github-label"
+  | "google-calendar"
   | "webhook"
   | null;
 type WorkflowWebhookTriggerSummary = Extract<
@@ -687,6 +689,33 @@ export const createWorkflowGithubLabelAppliedTrigger$ = command(
         body: {
           kind: "event",
           eventType: "github-label-applied",
+          eventConfig: input.eventConfig,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const createWorkflowGoogleCalendarEventCreatedTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: GoogleCalendarEventCreatedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
           eventConfig: input.eventConfig,
         },
         fetchOptions: { signal },

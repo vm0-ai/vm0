@@ -102,6 +102,7 @@ export const zeroWorkflowEventTypeSchema = z.enum([
   "gmail-new-message",
   "gmail-label-applied",
   "github-label-applied",
+  "google-calendar-event-created",
   "webhook-received",
 ]);
 export type ZeroWorkflowEventType = z.infer<typeof zeroWorkflowEventTypeSchema>;
@@ -219,6 +220,20 @@ export type GithubLabelAppliedEventConfig = z.infer<
 
 export type GithubWorkflowEventConfig = GithubLabelAppliedEventConfig;
 
+export const googleCalendarEventCreatedEventConfigSchema = z
+  .object({
+    provider: z.literal("google-calendar"),
+    event: z.literal("event_created"),
+    calendarId: z.string().trim().min(1).max(1024).default("primary"),
+  })
+  .strict();
+export type GoogleCalendarEventCreatedEventConfig = z.infer<
+  typeof googleCalendarEventCreatedEventConfigSchema
+>;
+
+export type GoogleCalendarWorkflowEventConfig =
+  GoogleCalendarEventCreatedEventConfig;
+
 /**
  * Schedule configuration, discriminated by `type`. Aligned with Automation's
  * time-trigger model:
@@ -292,6 +307,15 @@ export const zeroWorkflowGithubLabelAppliedTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
+export const zeroWorkflowGoogleCalendarEventCreatedTriggerSummarySchema =
+  zeroWorkflowTriggerSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("google-calendar-event-created"),
+    eventConfig: googleCalendarEventCreatedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const zeroWorkflowWebhookReceivedTriggerSummarySchema =
   zeroWorkflowTriggerSummaryBaseSchema.extend({
     kind: z.literal("event"),
@@ -311,6 +335,7 @@ export const zeroWorkflowEventTriggerSummarySchema = z.discriminatedUnion(
     zeroWorkflowGmailNewMessageTriggerSummarySchema,
     zeroWorkflowGmailLabelAppliedTriggerSummarySchema,
     zeroWorkflowGithubLabelAppliedTriggerSummarySchema,
+    zeroWorkflowGoogleCalendarEventCreatedTriggerSummarySchema,
     zeroWorkflowWebhookReceivedTriggerSummarySchema,
   ],
 );
@@ -372,11 +397,21 @@ export const chatThreadWorkflowGithubLabelAppliedTriggerSchema =
     scheduleSummary: z.null(),
   });
 
+export const chatThreadWorkflowGoogleCalendarEventCreatedTriggerSchema =
+  chatThreadWorkflowTriggerBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("google-calendar-event-created"),
+    eventConfig: googleCalendarEventCreatedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const chatThreadWorkflowTriggerSchema = z.union([
   chatThreadWorkflowScheduleTriggerSchema,
   chatThreadWorkflowGmailNewMessageTriggerSchema,
   chatThreadWorkflowGmailLabelAppliedTriggerSchema,
   chatThreadWorkflowGithubLabelAppliedTriggerSchema,
+  chatThreadWorkflowGoogleCalendarEventCreatedTriggerSchema,
 ]);
 export type ChatThreadWorkflowTrigger = z.infer<
   typeof chatThreadWorkflowTriggerSchema
@@ -412,6 +447,18 @@ export const zeroWorkflowGithubLabelAppliedTriggerCreateRequestSchema =
     enabled: z.boolean().optional(),
   });
 
+export const zeroWorkflowGoogleCalendarEventCreatedTriggerCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("google-calendar-event-created"),
+    eventConfig: googleCalendarEventCreatedEventConfigSchema.optional().default({
+      provider: "google-calendar",
+      event: "event_created",
+      calendarId: "primary",
+    }),
+    enabled: z.boolean().optional(),
+  });
+
 export const zeroWorkflowWebhookReceivedTriggerCreateRequestSchema = z.object({
   kind: z.literal("event"),
   eventType: z.literal("webhook-received"),
@@ -424,6 +471,7 @@ export const zeroWorkflowTriggerCreateRequestSchema = z.union([
   zeroWorkflowGmailNewMessageTriggerCreateRequestSchema,
   zeroWorkflowGmailLabelAppliedTriggerCreateRequestSchema,
   zeroWorkflowGithubLabelAppliedTriggerCreateRequestSchema,
+  zeroWorkflowGoogleCalendarEventCreatedTriggerCreateRequestSchema,
   zeroWorkflowWebhookReceivedTriggerCreateRequestSchema,
 ]);
 export type ZeroWorkflowTriggerCreateRequest = z.infer<

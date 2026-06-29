@@ -83,6 +83,7 @@ type WorkflowAutomationKind =
   | "scheduled"
   | "once"
   | "webhook"
+  | "google-calendar-event-created"
   | "gmail-new-message"
   | "gmail-label-applied";
 
@@ -127,6 +128,14 @@ const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
     Icon: IconLink,
     prompt:
       "I'd like to set up a webhook workflow trigger that runs when an inbound webhook is received. Help me define the workflow.",
+  },
+  {
+    kind: "google-calendar-event-created",
+    title: "Calendar event",
+    description: "Run a workflow when a Google Calendar event is created.",
+    Icon: IconCalendarTime,
+    prompt:
+      "I'd like to set up a Google Calendar workflow trigger that runs when a new calendar event is created. Help me define the workflow.",
   },
   {
     kind: "gmail-new-message",

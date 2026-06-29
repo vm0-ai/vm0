@@ -2,10 +2,12 @@ import { command } from "ccstate";
 import {
   gmailLabelAppliedEventConfigSchema,
   gmailNewMessageEventConfigSchema,
+  googleCalendarEventCreatedEventConfigSchema,
   githubLabelAppliedEventConfigSchema,
   webhookReceivedEventConfigSchema,
   type ChatThreadWorkflowTrigger,
   type GmailWorkflowEventConfig,
+  type GoogleCalendarWorkflowEventConfig,
   type GithubWorkflowEventConfig,
   type WebhookReceivedEventConfig,
   type ZeroWorkflowEventType,
@@ -41,6 +43,10 @@ import {
   resolveGmailLabelForUser,
 } from "./gmail-workflow-event.service";
 import {
+  ensureGoogleCalendarWatchForUser,
+  googleCalendarWorkflowEventTriggersEnabledForOwner,
+} from "./google-calendar-workflow-event.service";
+import {
   prepareGithubLabelEventConfigForPersist,
   workflowGithubLabelEventTriggersEnabledForOwner,
 } from "./github-workflow-event.service";
@@ -73,6 +79,10 @@ type GmailWorkflowEventType = Extract<
 type GithubWorkflowEventType = Extract<
   ZeroWorkflowEventType,
   "github-label-applied"
+>;
+type GoogleCalendarWorkflowEventType = Extract<
+  ZeroWorkflowEventType,
+  "google-calendar-event-created"
 >;
 
 /**
@@ -256,6 +266,7 @@ function supportedWorkflowEventType(
     eventType === "gmail-new-message" ||
     eventType === "gmail-label-applied" ||
     eventType === "github-label-applied" ||
+    eventType === "google-calendar-event-created" ||
     eventType === "webhook-received"
   );
 }
@@ -272,6 +283,12 @@ function supportedGithubEventType(
   eventType: string | null,
 ): eventType is GithubWorkflowEventType {
   return eventType === "github-label-applied";
+}
+
+function supportedGoogleCalendarEventType(
+  eventType: string | null,
+): eventType is GoogleCalendarWorkflowEventType {
+  return eventType === "google-calendar-event-created";
 }
 
 function rowSummaryBase(row: TriggerRow, chatThreadId: string | null) {
@@ -327,6 +344,21 @@ async function rowToSummary(
       kind: "event",
       eventType: "github-label-applied",
       eventConfig: githubLabelAppliedEventConfigSchema.parse(row.eventConfig),
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
+  if (
+    row.kind === "event" &&
+    row.eventType === "google-calendar-event-created"
+  ) {
+    return {
+      ...rowSummaryBase(row, chatThreadId),
+      kind: "event",
+      eventType: "google-calendar-event-created",
+      eventConfig: googleCalendarEventCreatedEventConfigSchema.parse(
+        row.eventConfig,
+      ),
       schedule: null,
       scheduleSummary: null,
     };
@@ -707,6 +739,18 @@ export async function listThreadBoundWorkflowTriggers(
           },
         ];
       }
+      if (summary.eventType === "google-calendar-event-created") {
+        return [
+          {
+            ...base,
+            kind: "event",
+            eventType: "google-calendar-event-created",
+            eventConfig: summary.eventConfig,
+            schedule: null,
+            scheduleSummary: null,
+          },
+        ];
+      }
       return [];
     },
   );
@@ -768,6 +812,15 @@ interface CreateGithubEventTriggerInput {
   readonly enabled: boolean;
 }
 
+interface CreateGoogleCalendarEventTriggerInput {
+  readonly orgId: string;
+  readonly member: WorkflowMember;
+  readonly workflowId: string;
+  readonly eventType: GoogleCalendarWorkflowEventType;
+  readonly eventConfig: GoogleCalendarWorkflowEventConfig;
+  readonly enabled: boolean;
+}
+
 interface CreateWebhookEventTriggerInput {
   readonly orgId: string;
   readonly member: WorkflowMember;
@@ -781,6 +834,7 @@ type CreateTriggerInput =
   | CreateScheduleTriggerInput
   | CreateGmailEventTriggerInput
   | CreateGithubEventTriggerInput
+  | CreateGoogleCalendarEventTriggerInput
   | CreateWebhookEventTriggerInput;
 type CreateEventTriggerInput = Exclude<
   CreateTriggerInput,
@@ -798,7 +852,8 @@ async function insertWorkflowEventTrigger(
   args: {
     readonly input:
       | CreateGmailEventTriggerInput
-      | CreateGithubEventTriggerInput;
+      | CreateGithubEventTriggerInput
+      | CreateGoogleCalendarEventTriggerInput;
     readonly workflowId: string;
     readonly agentId: string;
     readonly workflowTitle: string;
@@ -1088,6 +1143,47 @@ const createEventTriggerForWorkflow$ = command(
       return { kind: "ok", summary };
     }
 
+    if (input.eventType === "google-calendar-event-created") {
+      const featureEnabled = await get(
+        googleCalendarWorkflowEventTriggersEnabledForOwner(
+          input.orgId,
+          input.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return {
+          kind: "bad-request",
+          message: "Google Calendar workflow event triggers are not enabled",
+        };
+      }
+
+      const preparedConfig = googleCalendarEventCreatedEventConfigSchema.parse(
+        input.eventConfig,
+      );
+      const watchResult = await ensureGoogleCalendarWatchForUser({
+        db: args.db,
+        orgId: input.orgId,
+        userId: input.member.userId,
+        calendarId: preparedConfig.calendarId,
+        signal,
+      });
+      signal.throwIfAborted();
+      if (watchResult.kind !== "ok") {
+        return { kind: "bad-request", message: watchResult.message };
+      }
+
+      const summary = await insertWorkflowEventTrigger(args.db, {
+        input: { ...input, eventConfig: preparedConfig },
+        workflowId: args.workflowId,
+        agentId: args.agentId,
+        workflowTitle: args.workflowTitle,
+        currentTime: nowDate(),
+      });
+      signal.throwIfAborted();
+      return { kind: "ok", summary };
+    }
+
     const featureEnabled = await get(
       gmailWorkflowEventTriggersEnabledForOwner(
         input.orgId,
@@ -1314,6 +1410,12 @@ const updateEventTriggerForWorkflow$ = command(
       return {
         kind: "bad-request",
         message: "Webhook event triggers cannot be updated",
+      };
+    }
+    if (supportedGoogleCalendarEventType(args.trigger.eventType)) {
+      return {
+        kind: "bad-request",
+        message: "Google Calendar event triggers cannot be updated",
       };
     }
     if (args.eventConfig === undefined) {
@@ -1679,6 +1781,37 @@ const ensureEventTriggerCanBeEnabled$ = command(
       );
       signal.throwIfAborted();
       return preparedConfig.kind === "ok" ? null : preparedConfig;
+    }
+
+    if (args.trigger.eventType === "google-calendar-event-created") {
+      const featureEnabled = await get(
+        googleCalendarWorkflowEventTriggersEnabledForOwner(
+          args.orgId,
+          args.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return {
+          kind: "bad-request",
+          message: "Google Calendar workflow event triggers are not enabled",
+        };
+      }
+      const config = googleCalendarEventCreatedEventConfigSchema.parse(
+        args.trigger.eventConfig,
+      );
+      const watchResult = await ensureGoogleCalendarWatchForUser({
+        db: args.db,
+        orgId: args.orgId,
+        userId: args.member.userId,
+        calendarId: config.calendarId,
+        signal,
+      });
+      signal.throwIfAborted();
+      if (watchResult.kind !== "ok") {
+        return { kind: "bad-request", message: watchResult.message };
+      }
+      return null;
     }
 
     if (args.trigger.eventType === "webhook-received") {

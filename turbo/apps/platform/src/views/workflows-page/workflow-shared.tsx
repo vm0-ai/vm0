@@ -194,6 +194,9 @@ export function gmailTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "github-label-applied") {
     return "GitHub label applied";
   }
+  if (trigger.eventType === "google-calendar-event-created") {
+    return "Google Calendar event created";
+  }
   return "Webhook trigger";
 }
 
@@ -211,6 +214,9 @@ export function gmailTriggerSummary(
   }
   if (trigger.eventType === "github-label-applied") {
     return `Label ${quote(trigger.eventConfig.labelName)}`;
+  }
+  if (trigger.eventType === "google-calendar-event-created") {
+    return `Calendar ${quote(trigger.eventConfig.calendarId)}`;
   }
   return null;
 }

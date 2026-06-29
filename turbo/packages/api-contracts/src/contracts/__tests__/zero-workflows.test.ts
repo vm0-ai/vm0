@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 
 import {
+  googleCalendarEventCreatedEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
   gmailNewMessageEventConfigSchema,
   zeroWorkflowUpdateRequestSchema,
@@ -67,6 +68,38 @@ describe("Gmail label applied workflow trigger contract", () => {
     });
 
     expect(parsed.success).toBe(true);
+  });
+});
+
+describe("Google Calendar event-created workflow trigger contract", () => {
+  it("defaults to the primary calendar", () => {
+    const parsed = googleCalendarEventCreatedEventConfigSchema.parse({
+      provider: "google-calendar",
+      event: "event_created",
+    });
+
+    expect(parsed).toStrictEqual({
+      provider: "google-calendar",
+      event: "event_created",
+      calendarId: "primary",
+    });
+  });
+
+  it("accepts event-created trigger create requests without explicit config", () => {
+    const parsed = zeroWorkflowTriggerCreateRequestSchema.parse({
+      kind: "event",
+      eventType: "google-calendar-event-created",
+    });
+
+    expect(parsed).toStrictEqual({
+      kind: "event",
+      eventType: "google-calendar-event-created",
+      eventConfig: {
+        provider: "google-calendar",
+        event: "event_created",
+        calendarId: "primary",
+      },
+    });
   });
 });
 

@@ -291,6 +291,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.WorkflowGoogleCalendarEventTriggers]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Allow Google Calendar event-created workflow triggers. Creating/enabling requires a connected Google Calendar connector and Calendar watch setup; newly observed calendar events run the linked workflow.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.WorkflowWebhookTriggers]: {
     maintainer: "lancy@vm0.ai",
     description:
