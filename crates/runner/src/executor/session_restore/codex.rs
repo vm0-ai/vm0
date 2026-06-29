@@ -300,8 +300,10 @@ mod tests {
         assert!(command.contains("codex_home='/home/user/.codex'"));
         assert!(command.contains("root=\"$codex_home/sessions\""));
         assert!(command.contains("scan_budget="));
-        assert!(command.contains("scan_session_tree \"$root\" validate"));
-        assert!(command.contains("scan_session_tree \"$root\" delete"));
+        assert!(command.contains("count_session_entries"));
+        assert!(command.contains("find \"$root\" -mindepth 1 -print"));
+        assert!(command.contains("delete_matching_session_entries"));
+        assert!(!command.contains("for path in \"$dir\"/*"));
     }
 
     #[test]
@@ -450,7 +452,10 @@ mod tests {
         fs::create_dir_all(&codex_home).unwrap();
         let restore_path = restore_path(&codex_home);
 
-        let output = run_cleanup(&codex_home, &restore_path);
+        let output = cleanup_command(&codex_home, &restore_path, SESSION_ID, SESSION_ID_NO_DASHES)
+            .env("TMPDIR", temp.path().join("missing-tmp"))
+            .output()
+            .unwrap();
 
         assert_success(&output);
     }

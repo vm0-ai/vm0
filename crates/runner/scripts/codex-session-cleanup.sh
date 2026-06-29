@@ -82,77 +82,76 @@ if [ "$scan_budget" -eq 0 ]; then
 fi
 id_lc=$(printf '%s' "$id" | tr '[:upper:]' '[:lower:]')
 id_no_dashes_lc=$(printf '%s' "$id_no_dashes" | tr '[:upper:]' '[:lower:]')
-scanned_entries=0
-check_scan_budget() {
-  scanned_entries=$((scanned_entries + 1))
-  if [ "$scanned_entries" -gt "$scan_budget" ]; then
+# Codex resume can see matching session files anywhere below sessions; the
+# explicit entry budget keeps that required duplicate cleanup bounded.
+scan_error_file=""
+cleanup_scan_error_file() {
+  if [ -n "$scan_error_file" ]; then
+    rm -f -- "$scan_error_file"
+  fi
+}
+cleanup_scan_error_file_and_exit() {
+  cleanup_scan_error_file
+  exit 1
+}
+trap cleanup_scan_error_file EXIT
+trap cleanup_scan_error_file_and_exit HUP INT TERM
+count_session_entries() {
+  : > "$scan_error_file" || {
+    echo "failed to reset codex session cleanup temp file" >&2
+    exit 1
+  }
+  entry_count=$(
+    find "$root" -mindepth 1 -print 2>"$scan_error_file" |
+      awk -v budget="$scan_budget" '
+        NR > budget {
+          print NR
+          exit
+        }
+        END {
+          if (NR <= budget) {
+            print NR
+          }
+        }
+      '
+  )
+  if [ "$entry_count" -gt "$scan_budget" ]; then
     echo "codex session cleanup exceeded scan budget" >&2
     exit 1
   fi
-}
-ensure_scannable_session_dir() {
-  dir="$1"
-  if [ ! -r "$dir" ] || [ ! -x "$dir" ]; then
+  if [ -s "$scan_error_file" ]; then
     echo "cannot scan codex session directory" >&2
     exit 1
   fi
 }
-session_filename_matches() {
-  name="${1##*/}"
-  case "$name" in
-    *[ABCDEFGHIJKLMNOPQRSTUVWXYZ]*)
-      name=$(printf '%s' "$name" | tr '[:upper:]' '[:lower:]')
-      ;;
-  esac
-  case "$name" in
-    *"$id_lc"*.jsonl|\
-    *"$id_lc"*.jsonl.zst|\
-    *"$id_lc"*.jsonl.vm0tmp-*|\
-    *"$id_lc"*.jsonl.zst.vm0tmp-*|\
-    *"$id_no_dashes_lc"*.jsonl|\
-    *"$id_no_dashes_lc"*.jsonl.zst|\
-    *"$id_no_dashes_lc"*.jsonl.vm0tmp-*|\
-    *"$id_no_dashes_lc"*.jsonl.zst.vm0tmp-*)
-      return 0
-      ;;
-  esac
-  return 1
-}
-delete_matching_session_entry() {
-  path="$1"
-  if [ ! -f "$path" ] && [ ! -L "$path" ]; then
-    return
+delete_matching_session_entries() {
+  : > "$scan_error_file" || {
+    echo "failed to reset codex session cleanup temp file" >&2
+    exit 1
+  }
+  if ! find "$root" \( -type f -o -type l \) \( \
+    -iname "*${id_lc}*.jsonl" -o \
+    -iname "*${id_lc}*.jsonl.zst" -o \
+    -iname "*${id_lc}*.jsonl.vm0tmp-*" -o \
+    -iname "*${id_lc}*.jsonl.zst.vm0tmp-*" -o \
+    -iname "*${id_no_dashes_lc}*.jsonl" -o \
+    -iname "*${id_no_dashes_lc}*.jsonl.zst" -o \
+    -iname "*${id_no_dashes_lc}*.jsonl.vm0tmp-*" -o \
+    -iname "*${id_no_dashes_lc}*.jsonl.zst.vm0tmp-*" \
+  \) -delete 2>"$scan_error_file"; then
+    echo "failed to delete codex session files" >&2
+    exit 1
   fi
-  if session_filename_matches "$path"; then
-    rm -f -- "$path" || {
-      echo "failed to delete codex session file" >&2
-      exit 1
-    }
+  if [ -s "$scan_error_file" ]; then
+    echo "failed to delete codex session files" >&2
+    exit 1
   fi
-}
-# Codex resume can see matching session files anywhere below sessions; the
-# explicit entry budget keeps that required duplicate cleanup bounded.
-scan_session_tree() {
-  dir="$1"
-  action="$2"
-  ensure_scannable_session_dir "$dir"
-  for path in "$dir"/* "$dir"/.[!.]* "$dir"/..?*; do
-    if [ ! -e "$path" ] && [ ! -L "$path" ]; then
-      continue
-    fi
-    check_scan_budget
-    case "$action" in
-      delete)
-        delete_matching_session_entry "$path"
-        ;;
-    esac
-    if [ -d "$path" ] && [ ! -L "$path" ]; then
-      scan_session_tree "$path" "$action"
-    fi
-  done
 }
 if [ -d "$root" ]; then
-  scan_session_tree "$root" validate
-  scanned_entries=0
-  scan_session_tree "$root" delete
+  scan_error_file=$(mktemp "${TMPDIR:-/tmp}/codex-session-cleanup.XXXXXX") || {
+    echo "failed to create codex session cleanup temp file" >&2
+    exit 1
+  }
+  count_session_entries
+  delete_matching_session_entries
 fi
