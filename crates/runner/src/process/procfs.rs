@@ -116,14 +116,24 @@ pub async fn read_service_unit(pid: u32) -> Option<String> {
 
 /// Scan `/proc` for all process argvs.
 ///
-/// Returns `(pid, argv)` pairs for every readable process.
-pub(super) async fn scan_proc_cmdlines() -> Vec<(u32, Vec<String>)> {
+/// Returns `(pid, argv)` pairs for every readable process plus whether the
+/// top-level directory scan completed without errors.
+pub(super) struct ProcCmdlineScan {
+    pub(super) entries: Vec<(u32, Vec<String>)>,
+    pub(super) complete: bool,
+}
+
+pub(super) async fn scan_proc_cmdlines() -> ProcCmdlineScan {
     let mut result = Vec::new();
+    let mut complete = true;
     let mut entries = match tokio::fs::read_dir("/proc").await {
         Ok(e) => e,
         Err(e) => {
             tracing::warn!("scan_proc_cmdlines: cannot read /proc: {e}");
-            return result;
+            return ProcCmdlineScan {
+                entries: result,
+                complete: false,
+            };
         }
     };
     loop {
@@ -132,6 +142,7 @@ pub(super) async fn scan_proc_cmdlines() -> Vec<(u32, Vec<String>)> {
             Ok(None) => break,
             Err(e) => {
                 tracing::warn!("scan_proc_cmdlines: read entry in /proc: {e}");
+                complete = false;
                 continue;
             }
         };
@@ -146,7 +157,10 @@ pub(super) async fn scan_proc_cmdlines() -> Vec<(u32, Vec<String>)> {
             result.push((pid, argv));
         }
     }
-    result
+    ProcCmdlineScan {
+        entries: result,
+        complete,
+    }
 }
 
 #[cfg(test)]

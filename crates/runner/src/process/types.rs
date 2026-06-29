@@ -69,3 +69,9 @@ pub struct DiscoveredProcesses {
     pub mitmdumps: Vec<MitmproxyProcessInfo>,
     pub dnsmasqs: Vec<DnsmasqProcessInfo>,
 }
+
+/// Process discovery plus whether the top-level `/proc` scan completed.
+pub struct ProcessDiscovery {
+    pub processes: DiscoveredProcesses,
+    pub proc_scan_complete: bool,
+}

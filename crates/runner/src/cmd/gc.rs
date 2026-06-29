@@ -1626,7 +1626,14 @@ async fn gc_workspace_orphans(home: &HomePaths, dry_run: bool) -> RunnerResult<W
     // 1. Discover active workspaces from any running Firecracker process.
     //    This protects orphaned FCs whose parent runner already died but
     //    whose VM is still running.
-    let discovered = crate::process::discover_all().await;
+    let discovered = crate::process::discover_all_with_status().await;
+    if !discovered.proc_scan_complete {
+        warn!(
+            "workspace gc: process discovery scan is incomplete; skipping workspace orphan cleanup"
+        );
+        return Ok(WorkspaceGcSummary::default());
+    }
+    let discovered = discovered.processes;
     let live_runners = match crate::live_runner_instances::try_list(home).await {
         Ok(runners) => runners,
         Err(e) => {
@@ -1676,13 +1683,11 @@ async fn gc_workspace_orphans_with_leases(
     base_dirs: Vec<DeadRunnerBaseDirLease>,
     firecrackers: &[crate::process::FirecrackerProcessInfo],
     live_runner_base_dirs: &HashSet<PathBuf>,
-    firecracker_discovery_uncertain: bool,
+    process_discovery_uncertain: bool,
     dry_run: bool,
 ) -> RunnerResult<WorkspaceGcSummary> {
-    if firecracker_discovery_uncertain {
-        warn!(
-            "workspace gc: Firecracker discovery is incomplete; skipping workspace orphan cleanup"
-        );
+    if process_discovery_uncertain {
+        warn!("workspace gc: process discovery is incomplete; skipping workspace orphan cleanup");
         return Ok(WorkspaceGcSummary::default());
     }
 
@@ -4936,6 +4941,35 @@ mod tests {
         assert!(
             workspace.exists(),
             "uncertain discovery must preserve workspace"
+        );
+        assert!(lock_path.exists(), "lock must remain for a later retry");
+    }
+
+    #[tokio::test]
+    async fn gc_workspace_orphans_skips_when_process_discovery_incomplete() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let base_dir = dir.path().join("runner-data");
+        let workspace = base_dir.join("workspaces").join("run-old");
+        std::fs::create_dir_all(&workspace).unwrap();
+        std::fs::write(workspace.join("cow.img"), b"data").unwrap();
+        set_mtime(&workspace, old_gc_time());
+        let lock_path = locks_dir.join("base-dir-test.lock");
+        std::fs::write(&lock_path, base_dir.to_str().unwrap()).unwrap();
+
+        let leases = discover_dead_runner_base_dirs(&home.locks_dir());
+        let summary = gc_workspace_orphans_with_leases(leases, &[], &HashSet::new(), true, false)
+            .await
+            .unwrap();
+
+        assert_eq!(summary.workspaces_cleaned, 0);
+        assert_eq!(summary.base_dir_locks_removed, 0);
+        assert!(
+            workspace.exists(),
+            "incomplete process discovery must preserve workspace"
         );
         assert!(lock_path.exists(), "lock must remain for a later retry");
     }

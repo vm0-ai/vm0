@@ -3,7 +3,7 @@ use std::path::{Path, PathBuf};
 use super::procfs::{read_cmdline, read_cwd, read_ppid, read_process_stat, scan_proc_cmdlines};
 use super::types::{
     DiscoveredProcesses, DnsmasqProcessInfo, FirecrackerProcessIdentity, FirecrackerProcessInfo,
-    MitmproxyProcessInfo, ProcessStat, process_stat_is_live,
+    MitmproxyProcessInfo, ProcessDiscovery, ProcessStat, process_stat_is_live,
 };
 
 /// Check if an argv belongs to a firecracker process.
@@ -253,13 +253,21 @@ async fn resolve_firecracker_candidate(pid: u32) -> FirecrackerCandidateResoluti
 /// Live runner identity is published by `live_runner_instances`; this scan
 /// intentionally does not infer runner identity from argv.
 pub async fn discover_all() -> DiscoveredProcesses {
-    let procs = scan_proc_cmdlines().await;
+    discover_all_with_status().await.processes
+}
+
+/// Scan `/proc` once and include whether the top-level process scan completed.
+///
+/// Destructive cleanup code should use this variant so it can fail closed when
+/// `/proc` could not be scanned reliably.
+pub async fn discover_all_with_status() -> ProcessDiscovery {
+    let proc_scan = scan_proc_cmdlines().await;
 
     let mut firecrackers = Vec::new();
     let mut mitmdumps = Vec::new();
     let mut dnsmasqs = Vec::new();
 
-    for (pid, argv) in &procs {
+    for (pid, argv) in &proc_scan.entries {
         if is_firecracker_cmdline(argv) {
             firecrackers.push(*pid);
         }
@@ -286,10 +294,13 @@ pub async fn discover_all() -> DiscoveredProcesses {
         mitm_infos.push(MitmproxyProcessInfo { pid, ppid, port });
     }
 
-    DiscoveredProcesses {
-        firecrackers: fc_infos,
-        mitmdumps: mitm_infos,
-        dnsmasqs,
+    ProcessDiscovery {
+        processes: DiscoveredProcesses {
+            firecrackers: fc_infos,
+            mitmdumps: mitm_infos,
+            dnsmasqs,
+        },
+        proc_scan_complete: proc_scan.complete,
     }
 }
 
