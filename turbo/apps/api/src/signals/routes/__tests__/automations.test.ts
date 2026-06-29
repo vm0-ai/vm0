@@ -30,8 +30,8 @@ import {
 import { writeDb$ } from "../../external/db";
 import {
   type AutomationsFixture,
-  deleteAutomationsScenario$,
-  seedAutomationsScenario$,
+  deleteAutomationsScenario,
+  seedAutomationsScenario,
 } from "./helpers/automations";
 import { fakeKmsClient } from "./helpers/fake-kms-client";
 import {
@@ -85,7 +85,7 @@ function cronApi() {
 const trackAutomations = createFixtureTracker<AutomationsFixture>(
   async (fixture) => {
     await deleteFeatureSwitchesForUser(context, fixture);
-    await store.set(deleteAutomationsScenario$, fixture, context.signal);
+    await deleteAutomationsScenario(context, fixture);
   },
 );
 
@@ -123,7 +123,7 @@ async function seedFixture(): Promise<AutomationsFixture> {
   context.mocks.s3.send.mockResolvedValue({});
   setSecretKmsClientForTests(fakeKmsClient().client);
   const fixture = await trackAutomations(
-    store.set(seedAutomationsScenario$, { automations: [] }, context.signal),
+    seedAutomationsScenario(context, { automations: [] }),
   );
   await trackCreatedAutomations(Promise.resolve(fixture));
   mocks.clerk.session(fixture.userId, fixture.orgId);
@@ -827,35 +827,31 @@ describe("Automations API", () => {
 
     const pastDue = isolatedCronPastDue();
     const fixture = await trackAutomations(
-      store.set(
-        seedAutomationsScenario$,
-        {
-          automations: [
-            // 12 zombies: enabled loop triggers, automation flag flipped off
-            // below. >10 proves the old LIMIT 10 starvation.
-            ...Array.from({ length: 12 }, (_, index) => {
-              return {
-                name: `zombie-${index}`,
-                prompt: "Zombie task",
-                triggerType: "loop" as const,
-                intervalSeconds: 300,
-                enabled: false,
-                nextRunAt: pastDue,
-              };
-            }),
-            // The one healthy, enabled automation with a due loop trigger.
-            {
-              name: "healthy",
-              prompt: "Healthy task",
+      seedAutomationsScenario(context, {
+        automations: [
+          // 12 zombies: enabled loop triggers, automation flag flipped off
+          // below. >10 proves the old LIMIT 10 starvation.
+          ...Array.from({ length: 12 }, (_, index) => {
+            return {
+              name: `zombie-${index}`,
+              prompt: "Zombie task",
               triggerType: "loop" as const,
               intervalSeconds: 300,
-              enabled: true,
+              enabled: false,
               nextRunAt: pastDue,
-            },
-          ],
-        },
-        context.signal,
-      ),
+            };
+          }),
+          // The one healthy, enabled automation with a due loop trigger.
+          {
+            name: "healthy",
+            prompt: "Healthy task",
+            triggerType: "loop" as const,
+            intervalSeconds: 300,
+            enabled: true,
+            nextRunAt: pastDue,
+          },
+        ],
+      }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -950,22 +946,18 @@ describe("Automations API", () => {
 
     const pastDue = isolatedCronPastDue();
     const fixture = await trackAutomations(
-      store.set(
-        seedAutomationsScenario$,
-        {
-          automations: [
-            {
-              name: "orphaned-member",
-              prompt: "Should not run after membership removal",
-              triggerType: "cron",
-              cronExpression: "0 9 * * *",
-              enabled: true,
-              nextRunAt: pastDue,
-            },
-          ],
-        },
-        context.signal,
-      ),
+      seedAutomationsScenario(context, {
+        automations: [
+          {
+            name: "orphaned-member",
+            prompt: "Should not run after membership removal",
+            triggerType: "cron",
+            cronExpression: "0 9 * * *",
+            enabled: true,
+            nextRunAt: pastDue,
+          },
+        ],
+      }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
@@ -1200,15 +1192,11 @@ describe("Automations API", () => {
 
     // Another user's trigger resolves as not found.
     const otherFixture = await trackAutomations(
-      store.set(
-        seedAutomationsScenario$,
-        {
-          automations: [
-            { name: "other-loop", prompt: "Other task", intervalSeconds: 300 },
-          ],
-        },
-        context.signal,
-      ),
+      seedAutomationsScenario(context, {
+        automations: [
+          { name: "other-loop", prompt: "Other task", intervalSeconds: 300 },
+        ],
+      }),
     );
     const [otherTrigger] = await findTriggerRows(
       otherFixture.automationIds[0]!,

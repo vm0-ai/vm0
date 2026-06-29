@@ -1,31 +1,13 @@
-import { randomUUID } from "node:crypto";
+import type {
+  TestAutomationsStatePostBody,
+  TestAutomationsStatePostResponse,
+} from "@vm0/api-contracts/contracts/test-automations-state";
 
-import { command } from "ccstate";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { automations, automationTriggers } from "@vm0/db/schema/automation";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { connectors } from "@vm0/db/schema/connector";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { secrets } from "@vm0/db/schema/secret";
-import { userCache } from "@vm0/db/schema/user-cache";
-import { userConnectors } from "@vm0/db/schema/user-connector";
-import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, inArray } from "drizzle-orm";
+import { createAppWithRoutes } from "../../../../app-factory-core";
+import type { TestContext } from "../../../../__tests__/test-context";
+import { testAutomationsStateRoutes } from "../../test-automations-state";
 
-import { writeDb$, type Db } from "../../../external/db";
+const AUTOMATIONS_STATE_ROUTE = "/api/test/automations-state";
 
 interface AutomationSeed {
   readonly name: string;
@@ -53,19 +35,6 @@ interface AutomationsScenarioValues {
   readonly framework?: "claude-code" | "codex";
 }
 
-function resolveTriggerType(seed: AutomationSeed): "cron" | "once" | "loop" {
-  if (seed.triggerType) {
-    return seed.triggerType;
-  }
-  if (seed.cronExpression) {
-    return "cron";
-  }
-  if (seed.atTime) {
-    return "once";
-  }
-  return "loop";
-}
-
 export interface AutomationsFixture {
   readonly orgId: string;
   readonly userId: string;
@@ -73,284 +42,101 @@ export interface AutomationsFixture {
   readonly automationIds: readonly string[];
 }
 
-function agentEnvironment(
-  framework: "claude-code" | "codex",
-): Record<string, string> {
-  return framework === "codex"
-    ? { OPENAI_API_KEY: "test-key" }
-    : { ANTHROPIC_API_KEY: "test-key" };
-}
-
-// Automations live on the events-first tables (phase 3 of #16847): seed an
-// automation (identity + intent) plus its single time trigger (recurrence +
-// runtime state). The returned id is the automation id.
-async function seedAutomation(
-  writeDb: Db,
-  args: {
-    readonly seed: AutomationSeed;
-    readonly composeId: string;
-    readonly userId: string;
-    readonly orgId: string;
-  },
-): Promise<string> {
-  const [thread] = await writeDb
-    .insert(chatThreads)
-    .values({ userId: args.userId, agentComposeId: args.composeId })
-    .returning({ id: chatThreads.id });
-  if (!thread) {
-    throw new Error("seedAutomation: chat thread insert returned no row");
-  }
-  const enabled = args.seed.enabled ?? true;
-  const [automation] = await writeDb
-    .insert(automations)
-    .values({
-      agentId: args.composeId,
-      userId: args.userId,
-      orgId: args.orgId,
-      name: args.seed.name,
-      chatThreadId: thread.id,
-      instruction: args.seed.prompt,
-      description: args.seed.description ?? null,
-      appendSystemPrompt: args.seed.appendSystemPrompt ?? null,
-      interpreterKind: "time",
-      enabled,
-    })
-    .returning({ id: automations.id });
-  if (!automation) {
-    throw new Error("seedAutomation: automation insert returned no row");
-  }
-  await writeDb.insert(automationTriggers).values({
-    automationId: automation.id,
-    kind: resolveTriggerType(args.seed),
-    cronExpression: args.seed.cronExpression ?? null,
-    atTime: args.seed.atTime ?? null,
-    intervalSeconds: args.seed.intervalSeconds ?? null,
-    timezone: args.seed.timezone ?? "UTC",
-    nextRunAt: args.seed.nextRunAt ?? null,
-    lastRunId: args.seed.lastRunId ?? null,
-    enabled,
-    consecutiveFailures: args.seed.consecutiveFailures ?? 0,
+function requestAutomationsState(
+  context: TestContext,
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: testAutomationsStateRoutes,
   });
-  return automation.id;
+  return Promise.resolve(app.request(path, init));
 }
 
-export const seedAutomationsScenario$ = command(
-  async (
-    { set },
-    values: AutomationsScenarioValues,
-    signal: AbortSignal,
-  ): Promise<AutomationsFixture> => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    const composeId = randomUUID();
-    const versionId = randomUUID();
-    const writeDb = set(writeDb$);
-    const agentName = values.agentName ?? `agent-${composeId.slice(0, 8)}`;
-    const framework = values.framework ?? "claude-code";
+function dateToWire(value: Date | null | undefined): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  return value.toISOString();
+}
 
-    await writeDb.insert(agentComposes).values({
-      id: composeId,
-      userId,
-      orgId,
-      name: agentName,
-    });
-    signal.throwIfAborted();
+function toPostBody(
+  values: AutomationsScenarioValues,
+): TestAutomationsStatePostBody {
+  return {
+    ...values,
+    automations: values.automations.map((seed) => {
+      return {
+        ...seed,
+        atTime: dateToWire(seed.atTime) ?? undefined,
+        nextRunAt: dateToWire(seed.nextRunAt),
+      };
+    }),
+  };
+}
 
-    await writeDb.insert(agentComposeVersions).values({
-      id: versionId,
-      composeId,
-      content: {
-        version: "1.0",
-        agents: {
-          [agentName]: {
-            framework,
-            environment: agentEnvironment(framework),
-          },
-        },
-      },
-      createdBy: userId,
-    });
-    signal.throwIfAborted();
+function fromPostResponse(
+  response: TestAutomationsStatePostResponse,
+): AutomationsFixture {
+  return {
+    orgId: response.org_id,
+    userId: response.user_id,
+    composeId: response.compose_id,
+    automationIds: response.automation_ids,
+  };
+}
 
-    await writeDb
-      .update(agentComposes)
-      .set({ headVersionId: versionId })
-      .where(eq(agentComposes.id, composeId));
-    signal.throwIfAborted();
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
 
-    await writeDb.insert(zeroAgents).values({
-      id: composeId,
-      orgId,
-      owner: userId,
-      name: agentName,
-      displayName: values.displayName ?? "Test Agent",
-      description: null,
-      sound: null,
-    });
-    signal.throwIfAborted();
+async function expectOk(response: Response, operation: string): Promise<void> {
+  if (response.ok) {
+    return;
+  }
+  throw new Error(`${operation} failed with ${response.status}`);
+}
 
-    await writeDb.insert(userCache).values({
-      userId,
-      name: values.userName ?? null,
-      email: values.userEmail ?? `${userId}@example.com`,
-    });
-    signal.throwIfAborted();
+export async function seedAutomationsScenario(
+  context: TestContext,
+  values: AutomationsScenarioValues,
+): Promise<AutomationsFixture> {
+  const response = await requestAutomationsState(
+    context,
+    AUTOMATIONS_STATE_ROUTE,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(toPostBody(values)),
+    },
+  );
+  await expectOk(response, "seedAutomationsScenario");
+  return fromPostResponse(
+    await readJson<TestAutomationsStatePostResponse>(response),
+  );
+}
 
-    await writeDb.insert(orgMetadata).values({
-      orgId,
-      tier: "free",
-      credits: 10_000,
-    });
-    signal.throwIfAborted();
+export async function deleteAutomationsScenario(
+  context: TestContext,
+  fixture: AutomationsFixture,
+): Promise<void> {
+  const query = new URLSearchParams({
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+    compose_id: fixture.composeId,
+  });
+  if (fixture.automationIds.length > 0) {
+    query.set("automation_ids", fixture.automationIds.join(","));
+  }
 
-    await writeDb.insert(orgMembersMetadata).values({
-      userId,
-      orgId,
-      timezone: values.timezone ?? null,
-    });
-    signal.throwIfAborted();
-
-    await writeDb.insert(orgMembersCache).values({
-      userId,
-      orgId,
-      role: "member",
-    });
-    signal.throwIfAborted();
-
-    const automationIds: string[] = [];
-    for (const seed of values.automations) {
-      const automationId = await seedAutomation(writeDb, {
-        seed,
-        composeId,
-        userId,
-        orgId,
-      });
-      signal.throwIfAborted();
-      automationIds.push(automationId);
-    }
-
-    return { orgId, userId, composeId, automationIds };
-  },
-);
-
-export const deleteAutomationsScenario$ = command(
-  async (
-    { set },
-    fixture: AutomationsFixture,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    const runRows = await writeDb
-      .select({ id: agentRuns.id })
-      .from(agentRuns)
-      .where(
-        and(
-          eq(agentRuns.orgId, fixture.orgId),
-          eq(agentRuns.userId, fixture.userId),
-        ),
-      );
-    signal.throwIfAborted();
-    const runIds = runRows.map((row) => {
-      return row.id;
-    });
-    if (runIds.length > 0) {
-      await writeDb
-        .delete(agentRunCallbacks)
-        .where(inArray(agentRunCallbacks.runId, runIds));
-      signal.throwIfAborted();
-      await writeDb
-        .delete(runnerJobQueue)
-        .where(inArray(runnerJobQueue.runId, runIds));
-      signal.throwIfAborted();
-      await writeDb.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
-      signal.throwIfAborted();
-    }
-
-    if (fixture.automationIds.length > 0) {
-      // Trigger rows are removed by the FK cascade.
-      await writeDb
-        .delete(automations)
-        .where(inArray(automations.id, [...fixture.automationIds]));
-      signal.throwIfAborted();
-    }
-    if (runIds.length > 0) {
-      await writeDb.delete(agentRuns).where(inArray(agentRuns.id, runIds));
-      signal.throwIfAborted();
-    }
-    await writeDb
-      .delete(agentSessions)
-      .where(
-        and(
-          eq(agentSessions.orgId, fixture.orgId),
-          eq(agentSessions.userId, fixture.userId),
-        ),
-      );
-    signal.throwIfAborted();
-    await writeDb
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.composeId, fixture.composeId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(userPermissionGrants)
-      .where(
-        and(
-          eq(userPermissionGrants.orgId, fixture.orgId),
-          eq(userPermissionGrants.userId, fixture.userId),
-        ),
-      );
-    signal.throwIfAborted();
-    await writeDb
-      .delete(userConnectors)
-      .where(
-        and(
-          eq(userConnectors.orgId, fixture.orgId),
-          eq(userConnectors.userId, fixture.userId),
-        ),
-      );
-    signal.throwIfAborted();
-    await writeDb
-      .delete(zeroAgents)
-      .where(eq(zeroAgents.id, fixture.composeId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(modelProviders)
-      .where(eq(modelProviders.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await writeDb.delete(connectors).where(eq(connectors.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await writeDb.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(agentComposes)
-      .where(eq(agentComposes.id, fixture.composeId));
-    signal.throwIfAborted();
-    await writeDb.delete(userCache).where(eq(userCache.userId, fixture.userId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(orgModelPolicies)
-      .where(eq(orgModelPolicies.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(orgMembersMetadata)
-      .where(
-        and(
-          eq(orgMembersMetadata.orgId, fixture.orgId),
-          eq(orgMembersMetadata.userId, fixture.userId),
-        ),
-      );
-    signal.throwIfAborted();
-    await writeDb
-      .delete(orgMembersCache)
-      .where(
-        and(
-          eq(orgMembersCache.orgId, fixture.orgId),
-          eq(orgMembersCache.userId, fixture.userId),
-        ),
-      );
-    signal.throwIfAborted();
-  },
-);
+  const response = await requestAutomationsState(
+    context,
+    `${AUTOMATIONS_STATE_ROUTE}?${query.toString()}`,
+    { method: "DELETE" },
+  );
+  await expectOk(response, "deleteAutomationsScenario");
+}
