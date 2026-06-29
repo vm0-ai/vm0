@@ -37,6 +37,8 @@ const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 const DEFAULT_TEST_AGENT_NAME = "e2e-slack-agent";
 const STARTER_GRANT_AMOUNT = 10_000;
 const STARTER_GRANT_SOURCE = "starter_grant";
+const ZERO_AGENT_ID_TEMPLATE = ["$", "{{ vars.ZERO_AGENT_ID }}"].join("");
+const ZERO_TOKEN_TEMPLATE = ["$", "{{ secrets.ZERO_TOKEN }}"].join("");
 const TELEGRAM_E2E_FIXTURES = {
   botUsername: "vm0_e2e_bot",
   botToken: "123456:e2e-test-bot-token",
@@ -327,6 +329,8 @@ function defaultAgentContent(name: string) {
         framework: "claude-code",
         environment: {
           ANTHROPIC_API_KEY: "",
+          ZERO_AGENT_ID: ZERO_AGENT_ID_TEMPLATE,
+          ZERO_TOKEN: ZERO_TOKEN_TEMPLATE,
         },
       },
     },
