@@ -537,6 +537,17 @@ mod tests {
     }
 
     #[test]
+    fn parse_genl_response_error_accepts_max_errno() {
+        let msg = build_nlmsg_error_for_test(2, -MAX_NETLINK_ERRNO);
+
+        let result = parse_genl_response(&msg, msg.len());
+        assert!(matches!(
+            result,
+            Err(NbdCowError::NetlinkErrno { errno, .. }) if errno == MAX_NETLINK_ERRNO
+        ));
+    }
+
+    #[test]
     fn parse_genl_response_too_short() {
         let buf = [0u8; NLMSG_HEADER_LEN - 1];
         let result = parse_genl_response(&buf, buf.len());
