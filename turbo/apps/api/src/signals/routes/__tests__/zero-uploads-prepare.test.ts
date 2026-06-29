@@ -1,20 +1,18 @@
 import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
 import { describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
 
 import { zeroUploadsContract } from "@vm0/api-contracts/contracts/zero-uploads";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { createBddApi } from "./helpers/api-bdd";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -24,6 +22,7 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const bdd = createBddApi(context);
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
@@ -33,26 +32,8 @@ function validBody() {
   return { filename: "hello.txt", contentType: "text/plain", size: 13 };
 }
 
-async function seedOrgTier(
-  orgId: string,
-  tier: "free" | "pro-suspend",
-): Promise<void> {
-  await store
-    .set(writeDb$)
-    .insert(orgMetadata)
-    .values({ orgId, tier, credits: 10_000 })
-    .onConflictDoUpdate({
-      target: orgMetadata.orgId,
-      set: { tier, credits: 10_000 },
-    });
-}
-
 describe("POST /api/zero/uploads/prepare", () => {
   const track = createFixtureTracker<OrgMembershipFixture>(async (fixture) => {
-    await store
-      .set(writeDb$)
-      .delete(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId));
     await store.set(deleteOrgMembership$, fixture, context.signal);
   });
 
@@ -72,7 +53,6 @@ describe("POST /api/zero/uploads/prepare", () => {
     await track(
       store.set(seedOrgMembership$, { orgId, userId }, context.signal),
     );
-    await seedOrgTier(orgId, "free");
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
       scope: "zero",
@@ -157,7 +137,6 @@ describe("POST /api/zero/uploads/prepare", () => {
   it("returns presigned upload URL and final CDN URL with full body shape", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await seedOrgTier(orgId, "free");
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroUploadsContract);
@@ -182,10 +161,11 @@ describe("POST /api/zero/uploads/prepare", () => {
   });
 
   it("rejects suspended orgs with insufficient credits", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    await seedOrgTier(orgId, "pro-suspend");
-    mocks.clerk.session(userId, orgId);
+    const actor = bdd.user();
+    await bdd.setupOnboarding(actor, {
+      displayName: "Suspended upload prepare agent",
+    });
+    mocks.clerk.session(actor.userId, actor.orgId);
 
     const client = setupApp({ context })(zeroUploadsContract);
     const response = await accept(
