@@ -183,6 +183,27 @@ else
   fi
 fi
 
+# Check required sandbox runtime commands. Runner helper exec scripts run inside
+# the sandbox via `sh -c`, so missing POSIX utilities should fail image
+# verification instead of surfacing during a user session restore.
+check_bin() {
+  local pattern="$1" name="$2"
+  # shellcheck disable=SC2086
+  if ls ${MOUNT_DIR}${pattern} &>/dev/null; then
+    echo "  ${name}: found"
+  else
+    errors+=("${name} not found (pattern: ${pattern})")
+  fi
+}
+
+check_bin "/bin/sh"        "sh"
+check_bin "/usr/bin/find"  "find"
+check_bin "/usr/bin/awk"   "awk"
+check_bin "/usr/bin/xargs" "xargs"
+check_bin "/usr/bin/mktemp" "mktemp"
+check_bin "/usr/bin/tr"    "tr"
+check_bin "/usr/bin/rm"    "rm"
+
 # Check CLIs
 if [[ -f "${MOUNT_DIR}/usr/bin/gh" ]]; then
   echo "  gh CLI: found"
@@ -207,16 +228,6 @@ fi
 # Some binaries use update-alternatives symlinks or versioned names (e.g.
 # php8.3 instead of php, javac under /usr/lib/jvm/). Use glob patterns
 # and ls to handle both exact paths and wildcards.
-check_bin() {
-  local pattern="$1" name="$2"
-  # shellcheck disable=SC2086
-  if ls ${MOUNT_DIR}${pattern} &>/dev/null; then
-    echo "  ${name}: found"
-  else
-    errors+=("${name} not found (pattern: ${pattern})")
-  fi
-}
-
 check_bin "/usr/bin/ruby"                      "ruby"
 check_bin "/usr/bin/php*"                      "php"
 check_bin "/usr/lib/jvm/java-*/bin/javac"      "javac"

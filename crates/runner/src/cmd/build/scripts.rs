@@ -491,6 +491,24 @@ exit 1
     }
 
     #[test]
+    fn verify_script_checks_sandbox_helper_runtime_commands() {
+        for command_path in [
+            "/bin/sh",
+            "/usr/bin/find",
+            "/usr/bin/awk",
+            "/usr/bin/xargs",
+            "/usr/bin/mktemp",
+            "/usr/bin/tr",
+            "/usr/bin/rm",
+        ] {
+            assert!(
+                VERIFY_SCRIPT.contains(command_path),
+                "verify-rootfs.sh should verify {command_path} is present for sandbox helper exec scripts"
+            );
+        }
+    }
+
+    #[test]
     fn build_script_publishes_debootstrap_cache_atomically() {
         assert!(
             TEMPLATE_BUILD_SCRIPT.contains(r#"CACHE_TMP_TAR="${cache_tar%.tar}.tmp.$$.tar""#),
