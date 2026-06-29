@@ -32,6 +32,10 @@ def _github_policies(*, unknown_policy="allow"):
     return {"github": network_policy(allow=["repo-read"], unknown_policy=unknown_policy)}
 
 
+def test_bracketed_non_ipv6_base_authority_is_invalid():
+    assert not matching.firewall_base_config_is_valid("https://[v1.invalid]")
+
+
 def test_malformed_firewall_config_fails_closed_only_after_base_match():
     compiled_firewalls = compile_firewalls_or_fail(
         _github_firewalls(GITHUB_BASE, rule="GET /repos/{a}literal{b}")

@@ -72,6 +72,11 @@ class _CompiledBase(NamedTuple):
     path_segments: tuple[ParsedSegment, ...]
 
 
+class _RawAuthorityHost(NamedTuple):
+    hostname: str
+    bracketed: bool
+
+
 def _has_base_url_params(base: str) -> bool:
     return "{" in base and "}" in base
 
@@ -103,7 +108,7 @@ def _is_ascii(value: str) -> bool:
     return all(ord(char) <= _ASCII_MAX for char in value)
 
 
-def _extract_raw_hostname(netloc: str) -> str | None:
+def _extract_raw_hostname(netloc: str) -> _RawAuthorityHost | None:
     authority = netloc.rsplit("@", maxsplit=1)[-1]
     if not authority:
         return None
@@ -115,12 +120,12 @@ def _extract_raw_hostname(netloc: str) -> str | None:
         rest = authority[close_index + 1 :]
         if rest and not rest.startswith(":"):
             return None
-        return authority[1:close_index]
+        return _RawAuthorityHost(authority[1:close_index], bracketed=True)
 
     if authority.count(":") == 1:
         host, _, _port = authority.rpartition(":")
-        return host or None
-    return authority
+        return _RawAuthorityHost(host, bracketed=False) if host else None
+    return _RawAuthorityHost(authority, bracketed=False)
 
 
 def _normalize_host_pattern_dots(host: str) -> str:
@@ -234,7 +239,12 @@ def _split_base_match_url(
     )
 
 
-def _normalize_authority_host(host: str, *, allow_host_params: bool = False) -> tuple[str, bool]:
+def _normalize_authority_host(
+    raw_host: _RawAuthorityHost,
+    *,
+    allow_host_params: bool = False,
+) -> tuple[str, bool]:
+    host = raw_host.hostname
     decoded_host, percent_malformed = _percent_decode_authority_host(host)
     normalized = decoded_host
     if not normalized:
@@ -243,6 +253,14 @@ def _normalize_authority_host(host: str, *, allow_host_params: bool = False) -> 
         return normalized.lower(), True
     if _has_invalid_authority_host_chars(normalized, allow_host_params=allow_host_params):
         return normalized.lower(), True
+    if raw_host.bracketed:
+        try:
+            parsed_ip = ipaddress.ip_address(normalized)
+        except ValueError:
+            return normalized.lower(), True
+        if parsed_ip.version != IPV6_VERSION:
+            return normalized.lower(), True
+        return f"[{parsed_ip.compressed.lower()}]", False
     if ":" in normalized:
         try:
             parsed_ip = ipaddress.ip_address(normalized)
@@ -261,7 +279,7 @@ def _normalize_authority_host(host: str, *, allow_host_params: bool = False) -> 
 
 def _normalize_authority(
     scheme: str,
-    host: str | None,
+    host: _RawAuthorityHost | None,
     port: int | None,
     *,
     allow_host_params: bool = False,
@@ -566,7 +584,16 @@ def _match_compiled_base_url_parts(
 
 
 def _split_https_authority_parts(host: str, port: int) -> _BaseUrlParts | None:
-    authority_result = _normalize_authority("https", host, port)
+    raw_host = (
+        _RawAuthorityHost(host[1:-1], bracketed=True)
+        if host.startswith("[") and host.endswith("]")
+        else _RawAuthorityHost(host, bracketed=False)
+    )
+    authority_result = _normalize_authority(
+        "https",
+        raw_host,
+        port,
+    )
     if authority_result is None:
         return None
     authority, host_malformed = authority_result
