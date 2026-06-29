@@ -19,7 +19,7 @@ Examples:
   Check a URL?           zero doctor check-connector --url https://api.github.com/repos/owner/repo
   Check credits?         zero doctor credit
   Check with permission? zero doctor check-connector --env-name SLACK_TOKEN --check-permission chat:write
-  Permission denied?     zero doctor permission-deny github --method GET --path /repos/owner/repo
+  Permission denied?     zero doctor permission-deny github --method GET --url https://api.github.com/repos/owner/repo
   Change a permission?   zero doctor permission-change github --permission contents:read --enable --duration 1h
   Disable unknown URLs?  zero doctor permission-change cloudflare --permission __unknown__ --disable
 
