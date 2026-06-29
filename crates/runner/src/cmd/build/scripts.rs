@@ -636,6 +636,49 @@ fi
         );
     }
 
+    #[cfg(unix)]
+    #[test]
+    fn verify_script_does_not_treat_host_executables_as_rootfs_executables() {
+        use std::os::unix::fs::symlink;
+        use std::process::Command;
+
+        let functions_start = VERIFY_SCRIPT
+            .find("resolve_rootfs_path() {")
+            .expect("verify-rootfs.sh should define resolve_rootfs_path");
+        let functions_end = VERIFY_SCRIPT
+            .find("\ncheck_bin() {")
+            .expect("verify-rootfs.sh should define check_bin after executable checks");
+        let verifier_functions = &VERIFY_SCRIPT[functions_start..functions_end];
+
+        let rootfs = tempfile::tempdir().unwrap();
+        std::fs::create_dir_all(rootfs.path().join("bin")).unwrap();
+        symlink("/bin/bash", rootfs.path().join("bin/awk")).unwrap();
+
+        let script = format!(
+            r#"
+set -euo pipefail
+{verifier_functions}
+errors=()
+check_required_executable /bin/awk awk
+test "${{#errors[@]}}" -eq 1
+test "${{errors[0]}}" = "awk not found or not executable at /bin/awk"
+"#
+        );
+        let output = Command::new("bash")
+            .arg("-c")
+            .arg(script)
+            .env("MOUNT_DIR", rootfs.path())
+            .output()
+            .unwrap();
+
+        assert!(
+            output.status.success(),
+            "rootfs executable check script failed\nstdout:\n{}\nstderr:\n{}",
+            String::from_utf8_lossy(&output.stdout),
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+
     #[test]
     fn verify_script_documents_optional_diagnostic_commands() {
         assert!(
