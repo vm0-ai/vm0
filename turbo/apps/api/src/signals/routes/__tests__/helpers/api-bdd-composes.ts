@@ -5,7 +5,6 @@ import {
   composesByIdContract,
   composesListContract,
   composesMainContract,
-  composesMetadataContract,
   composesVersionsContract,
 } from "@vm0/api-contracts/contracts/composes";
 import {
@@ -22,7 +21,6 @@ import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { now } from "../../../../lib/time";
 import { signSandboxJwtForTests } from "../../../auth/tokens";
 import { agentComposesByIdRoutes } from "../../agent-composes-id";
-import { agentComposesMetadataRoutes } from "../../agent-composes-metadata";
 import { agentComposesReadRoutes } from "../../agent-composes-read";
 import { agentComposesRoutes } from "../../agent-composes";
 import { zeroComposesRoutes } from "../../zero-composes";
@@ -40,12 +38,6 @@ type ComposeAuth = ApiTestUser | { readonly bearer: string } | null;
 
 interface AuthHeaders {
   readonly authorization?: string;
-}
-
-interface ComposeMetadataBody {
-  readonly displayName?: string;
-  readonly description?: string;
-  readonly sound?: string;
 }
 
 interface ZeroComposeMetadataBody {
@@ -81,7 +73,6 @@ const composeRoutes = [
   ...agentComposesRoutes,
   ...agentComposesReadRoutes,
   ...agentComposesByIdRoutes,
-  ...agentComposesMetadataRoutes,
   ...zeroComposesRoutes,
 ] as const;
 
@@ -219,12 +210,6 @@ export function createComposesBddApi(context: TestContext) {
   function versionsClient() {
     return setupAppWithRoutes({ context, routes: composeRoutes })(
       composesVersionsContract,
-    );
-  }
-
-  function metadataClient() {
-    return setupAppWithRoutes({ context, routes: composeRoutes })(
-      composesMetadataContract,
     );
   }
 
@@ -377,22 +362,6 @@ export function createComposesBddApi(context: TestContext) {
         versionsClient().resolveVersion({
           headers: authenticate(auth),
           query,
-        }),
-        statuses,
-      );
-    },
-
-    async requestUpdateComposeMetadata<TStatus extends ReadStatus>(
-      auth: ComposeAuth,
-      composeId: string,
-      body: ComposeMetadataBody,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        metadataClient().updateMetadata({
-          headers: authenticate(auth),
-          params: { id: composeId },
-          body,
         }),
         statuses,
       );
