@@ -2,9 +2,11 @@ import { z } from "zod";
 
 import {
   SUPPORTED_RUN_MODELS,
-  VM0_MODEL_CREDIT_MULTIPLIER,
+  VM0_MODEL_PRICE_TIER,
+  VM0_MODEL_PRICE_TIER_LABEL,
   type SupportedRunModel,
-} from "./model-credit-multipliers";
+  type Vm0ModelPriceTier,
+} from "./model-price-tiers";
 import {
   MODEL_PROVIDER_TYPE_IDS,
   type ModelProviderFramework,
@@ -22,8 +24,10 @@ export type {
 
 export {
   SUPPORTED_RUN_MODELS,
-  VM0_MODEL_CREDIT_MULTIPLIER,
+  VM0_MODEL_PRICE_TIER,
+  VM0_MODEL_PRICE_TIER_LABEL,
   type SupportedRunModel,
+  type Vm0ModelPriceTier,
 };
 
 /**
@@ -80,7 +84,7 @@ export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
 ] as const satisfies readonly SupportedRunModel[];
 
 export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
-  "kimi-k2.7-code" as const satisfies SupportedRunModel;
+  "claude-sonnet-4-6" as const satisfies SupportedRunModel;
 
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
 
@@ -125,10 +129,14 @@ export function isSupportedRunModel(
   return typeof model === "string" && SUPPORTED_RUN_MODEL_SET.has(model);
 }
 
-export function getVm0ModelMultiplier(model: string): number | undefined {
-  return isSupportedRunModel(model)
-    ? VM0_MODEL_CREDIT_MULTIPLIER[model]
-    : undefined;
+export function getVm0ModelPriceTier(
+  model: string,
+): Vm0ModelPriceTier | undefined {
+  return isSupportedRunModel(model) ? VM0_MODEL_PRICE_TIER[model] : undefined;
+}
+
+export function getVm0ModelPriceTierLabel(tier: Vm0ModelPriceTier): string {
+  return VM0_MODEL_PRICE_TIER_LABEL[tier];
 }
 
 export function getCanonicalModelDisplayName(model: string): string {

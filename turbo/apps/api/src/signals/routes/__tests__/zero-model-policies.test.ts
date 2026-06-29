@@ -415,7 +415,12 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
       [200],
     );
-    const removedModel = "claude-sonnet-4-6";
+    const removedModel = DEFAULT_ORG_MODEL_POLICY_MODELS.find((model) => {
+      return model !== DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL;
+    });
+    if (!removedModel) {
+      throw new Error("Default policy seed must include a non-default model");
+    }
     const updates = toUpdate(listResponse.body).filter((policy) => {
       return policy.model !== removedModel;
     });

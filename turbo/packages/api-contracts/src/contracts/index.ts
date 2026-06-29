@@ -434,7 +434,8 @@ export {
   modelProviderCredentialScopeSchema,
   MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,
-  VM0_MODEL_CREDIT_MULTIPLIER,
+  VM0_MODEL_PRICE_TIER,
+  VM0_MODEL_PRICE_TIER_LABEL,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getFrameworkForType,
@@ -455,7 +456,8 @@ export {
   isModelSupportedByProvider,
   isSupportedRunModel,
   normalizeRunModelId,
-  getVm0ModelMultiplier,
+  getVm0ModelPriceTier,
+  getVm0ModelPriceTierLabel,
   // Selectable provider filtering
   getSelectableProviderTypes,
   // Multi-auth provider support
@@ -468,6 +470,7 @@ export {
   type ModelProviderFramework,
   type ModelProviderEnvBindings,
   type ModelProviderResponse,
+  type Vm0ModelPriceTier,
   type ModelProviderListResponse,
   type UpsertModelProviderRequest,
   type UpsertModelProviderResponse,
