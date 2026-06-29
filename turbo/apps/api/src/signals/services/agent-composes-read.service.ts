@@ -1,25 +1,17 @@
 import { computed, type Computed } from "ccstate";
-import {
-  agentComposeApiContentSchema,
-  type ComposeListItem,
-  type ComposeResponse,
+import type {
+  ComposeListItem,
+  ComposeResponse,
 } from "@vm0/api-contracts/contracts/composes";
-import { getInstructionsFilename } from "@vm0/core/frameworks";
-import { stripMetadataFrontmatter } from "@vm0/core/instructions-frontmatter";
-import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { and, desc, eq, like } from "drizzle-orm";
 
 import { badRequestMessage, notFound } from "../../lib/error";
-import { env } from "../../lib/env";
-import { extractFileFromTarGz } from "../../lib/tar";
 import { db$ } from "../external/db";
-import { downloadManifest, downloadS3Buffer } from "../external/s3";
 
 type AgentComposeNotFoundResponse = ReturnType<typeof notFound>;
 type AgentComposeBadRequestResponse = ReturnType<typeof badRequestMessage>;
@@ -27,11 +19,6 @@ type AgentComposeBadRequestResponse = ReturnType<typeof badRequestMessage>;
 interface ComposeAccessRow {
   readonly userId: string;
   readonly orgId: string;
-}
-
-interface AgentInstructionsResult {
-  readonly content: string | null;
-  readonly filename: string | null;
 }
 
 interface VersionResolution {
@@ -254,107 +241,5 @@ export function agentComposeVersionResolution(args: {
     }
 
     return { versionId: match.id };
-  });
-}
-
-export function agentComposeInstructions(args: {
-  readonly composeId: string;
-  readonly userId: string;
-  readonly orgId: string;
-}): Computed<Promise<AgentInstructionsResult | null>> {
-  return computed(async (get): Promise<AgentInstructionsResult | null> => {
-    const [compose] = await get(db$)
-      .select({
-        id: agentComposes.id,
-        userId: agentComposes.userId,
-        orgId: agentComposes.orgId,
-        name: agentComposes.name,
-        content: agentComposeVersions.content,
-      })
-      .from(agentComposes)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentComposes.headVersionId, agentComposeVersions.id),
-      )
-      .where(eq(agentComposes.id, args.composeId))
-      .limit(1);
-
-    if (!compose || !canAccessCompose(args.userId, args.orgId, compose)) {
-      return null;
-    }
-
-    const parsed = agentComposeApiContentSchema.safeParse(compose.content);
-    if (!parsed.success) {
-      return { content: null, filename: null };
-    }
-
-    const agentKeys = Object.keys(parsed.data.agents);
-    const firstKey = agentKeys[0];
-    const agentDef = firstKey ? parsed.data.agents[firstKey] : undefined;
-    const instructionsFilename =
-      agentDef?.instructions ?? getInstructionsFilename(agentDef?.framework);
-
-    const storageName = getInstructionsStorageName(compose.name);
-    const [storage] = await get(db$)
-      .select({ headVersionId: storages.headVersionId })
-      .from(storages)
-      .where(
-        and(
-          eq(storages.orgId, compose.orgId),
-          eq(storages.name, storageName),
-          eq(storages.type, "volume"),
-        ),
-      )
-      .limit(1);
-
-    if (!storage?.headVersionId) {
-      return { content: null, filename: instructionsFilename };
-    }
-
-    const [version] = await get(db$)
-      .select({ s3Key: storageVersions.s3Key })
-      .from(storageVersions)
-      .where(eq(storageVersions.id, storage.headVersionId))
-      .limit(1);
-
-    if (!version) {
-      return { content: null, filename: instructionsFilename };
-    }
-
-    const bucket = env("R2_USER_STORAGES_BUCKET_NAME");
-    const manifest = await get(downloadManifest(bucket, version.s3Key));
-    const normalize = (path: string): string => {
-      return path.replace(/^\.\//, "");
-    };
-
-    const canonicalFilename = getInstructionsFilename(agentDef?.framework);
-    const instructionFile = manifest.files.find((file) => {
-      return normalize(file.path) === normalize(canonicalFilename);
-    });
-
-    if (!instructionFile) {
-      return { content: null, filename: instructionsFilename };
-    }
-
-    const archiveBuffer = await get(
-      downloadS3Buffer(bucket, `${version.s3Key}/archive.tar.gz`),
-    );
-    const rawContent = extractFileFromTarGz(
-      archiveBuffer,
-      instructionFile.path,
-    );
-
-    if (rawContent === null) {
-      return { content: null, filename: instructionsFilename };
-    }
-
-    const hasLegacyBlocks =
-      rawContent.includes("[AGENT_PROFILE]") ||
-      rawContent.includes("<!-- ZERO_PROFILE");
-    const content = hasLegacyBlocks
-      ? stripMetadataFrontmatter(rawContent)
-      : rawContent;
-
-    return { content, filename: instructionsFilename };
   });
 }
