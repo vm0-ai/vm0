@@ -262,6 +262,7 @@ async def test_capture_enabled_api_allow_uses_prior_client_binding_when_server_c
     flow.server_conn.peername = None
     flow.server_conn.state = connection.ConnectionState.OPEN
     flow.client_conn.sockname = ("198.18.20.34", 443)
+    _mark_upstream_tls_verified(flow, sni="api.vm0.ai")
 
     server_connect_server = connection.Server(address=("198.18.20.34", 443))
     upstream_destination_binding.record_server_binding(
@@ -280,6 +281,10 @@ async def test_capture_enabled_api_allow_uses_prior_client_binding_when_server_c
         await mitm_addon.request(flow)
 
     assert flow.response is None
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[flow.server_conn.id]
+    assert binding.host == "api.vm0.ai"
+    assert binding.kinds == frozenset(("api_allow",))
+    assert binding.original_address == ("198.18.20.34", 443)
 
 
 async def test_api_allow_prior_client_binding_endpoint_mismatch_blocks(
@@ -448,7 +453,7 @@ async def test_firewall_allow_current_server_binding_address_mismatch_blocks(
     assert diagnostics["direct_binding_present"] is True
     assert diagnostics["server_connected"] is False
     assert diagnostics["server_address"] == "203.0.113.99:443"
-    assert flow.server_conn.id not in upstream_destination_binding.binding_snapshot_for_tests()
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 async def test_api_allow_small_bounded_body_retargets_unconnected_upstream(
@@ -1179,6 +1184,79 @@ async def test_firewall_allow_prior_client_binding_endpoint_mismatch_blocks(
         flow.metadata[mitm_addon._UPSTREAM_BINDING_DIAGNOSTICS]["client_binding_endpoint_match"]
         is False
     )
+
+
+async def test_firewall_allow_prior_client_binding_endpoint_match_still_requires_tls(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+            vm_fields={"captureNetworkBodies": True},
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="172.66.0.243",
+        sni="api.github.com",
+        method="POST",
+        path="/repos/octocat/hello",
+        request_headers=headers(
+            ("Host", "api.github.com"),
+            ("Content-Length", str(STREAM_BUFFER_LIMIT + 1)),
+        ),
+    )
+    flow.server_conn.peername = ("172.66.0.243", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+
+    server_connect_server = connection.Server(address=("172.66.0.243", 443))
+    upstream_destination_binding.record_server_binding(
+        server_connect_server,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("172.66.0.243", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            side_effect=AssertionError("unverified connected connector must not use fresh DNS"),
+        ),
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        await await_requestheaders_result(requestheaders_result)
+        _assert_no_request_stream(flow)
+        assert "Authorization" not in flow.request.headers
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    assert (
+        flow.metadata[mitm_addon._UPSTREAM_BINDING_DIAGNOSTICS]["client_binding_endpoint_match"]
+        is True
+    )
+    assert flow.server_conn.id not in upstream_destination_binding.binding_snapshot_for_tests()
 
 
 async def test_firewall_allow_header_auth_requestheaders_retargets_unconnected_upstream(

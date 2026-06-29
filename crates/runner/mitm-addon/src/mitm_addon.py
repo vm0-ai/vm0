@@ -891,13 +891,11 @@ def _ensure_bound_upstream_destination(
 ) -> bool:
     allowed_kinds = frozenset((kind,))
     has_bound_destination = _has_bound_upstream_destination(flow, allowed_kinds=allowed_kinds)
-    if has_bound_destination and (
-        upstream_destination_binding.has_server_binding(flow.server_conn)
-        or bool(getattr(flow.server_conn, "connected", False))
-    ):
+    if has_bound_destination and upstream_destination_binding.has_server_binding(flow.server_conn):
         return True
     # If has_bound_destination is true here, it is only an unconnected address
-    # match. That is retargetable, not durable proof for later keepalive reuse.
+    # or prior-client match. That is retargetable, not durable proof for later
+    # keepalive reuse, and connected flows still need current upstream TLS proof.
     return _bind_flow_upstream_destination(flow, kind=kind)
 
 
