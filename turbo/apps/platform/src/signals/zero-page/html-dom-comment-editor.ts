@@ -1,8 +1,5 @@
 import { createElement } from "react";
-import {
-  IconMessageCircleFilled,
-  IconPointer2,
-} from "@tabler/icons-react";
+import { IconMessageCircleFilled, IconPointer2 } from "@tabler/icons-react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { command, computed, state } from "ccstate";
 import {
