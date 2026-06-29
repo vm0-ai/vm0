@@ -1,7 +1,7 @@
 // Agent-scoped workflow detail at /agents/:agentId/workflows/:workflowId. Hosts
 // the instruction editor, supplementary file manager (SKILL.md is never shown),
 // triggers, visibility controls, metadata editing, slash use, copy, and delete.
-import { useState, type FormEvent, type ReactNode } from "react";
+import type { FormEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import type {
@@ -71,6 +71,7 @@ import {
   createWorkflowGmailLabelAppliedTrigger$,
   createWorkflowGmailNewMessageTrigger$,
   createWorkflowWebhookTrigger$,
+  createGithubLabelActor$,
   createScheduleCronFields$,
   createWorkflowScheduleTrigger$,
   createdWorkflowWebhookTrigger$,
@@ -80,6 +81,7 @@ import {
   deleteWorkflow$,
   deleteWorkflowTrigger$,
   editingScheduleCronFields$,
+  editingGithubLabelActors$,
   editingWorkflowTriggerId$,
   patchWorkflowMetadataForm$,
   openWorkflowChat$,
@@ -88,8 +90,10 @@ import {
   resetWorkflowMetadataForm$,
   runWorkflowTriggerNow$,
   selectedWorkflowFilePath$,
+  setCreateGithubLabelActor$,
   setCreateScheduleCronFields$,
   setCreatedWorkflowWebhookTrigger$,
+  setEditingGithubLabelActor$,
   setEditingScheduleCronFields$,
   setEditingWorkflowTriggerId$,
   setSelectedWorkflowFilePath$,
@@ -2481,26 +2485,20 @@ type TriggerCreateDialogKind =
   | "github-label"
   | "webhook";
 
-interface TriggerCreateMenuItemProps {
-  readonly Icon: typeof IconClock;
-  readonly title: string;
-  readonly description: string;
-  readonly onSelect: () => void;
-}
-
 function TriggerCreateMenuItem({
-  Icon,
+  icon,
   title,
   description,
   onSelect,
-}: TriggerCreateMenuItemProps) {
+}: {
+  readonly icon: ReactNode;
+  readonly title: string;
+  readonly description: string;
+  readonly onSelect: () => void;
+}) {
   return (
     <DropdownMenuItem className="items-start gap-2 py-2" onSelect={onSelect}>
-      <Icon
-        size={15}
-        stroke={1.5}
-        className="mt-0.5 shrink-0 text-muted-foreground"
-      />
+      {icon}
       <span className="min-w-0">
         <span className="block text-sm font-medium">{title}</span>
         <span className="block text-xs text-muted-foreground">
@@ -2533,50 +2531,86 @@ function TriggerCreateMenu({
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
         <TriggerCreateMenuItem
-          Icon={IconRepeat}
           title="Interval"
           description="Run this workflow on a fixed interval."
+          icon={
+            <IconRepeat
+              size={15}
+              stroke={1.5}
+              className="mt-0.5 shrink-0 text-muted-foreground"
+            />
+          }
           onSelect={() => {
             onSelect("interval");
           }}
         />
         <TriggerCreateMenuItem
-          Icon={IconClock}
           title="Scheduled time"
           description="Run this workflow from a time rule."
+          icon={
+            <IconClock
+              size={15}
+              stroke={1.5}
+              className="mt-0.5 shrink-0 text-muted-foreground"
+            />
+          }
           onSelect={() => {
             onSelect("scheduled");
           }}
         />
         <TriggerCreateMenuItem
-          Icon={IconClock}
           title="One-time run"
           description="Run this workflow once at a date and time."
+          icon={
+            <IconClock
+              size={15}
+              stroke={1.5}
+              className="mt-0.5 shrink-0 text-muted-foreground"
+            />
+          }
           onSelect={() => {
             onSelect("once");
           }}
         />
         <TriggerCreateMenuItem
-          Icon={IconMail}
           title="Gmail new message"
           description="Run this workflow from matching email."
+          icon={
+            <IconMail
+              size={15}
+              stroke={1.5}
+              className="mt-0.5 shrink-0 text-muted-foreground"
+            />
+          }
           onSelect={() => {
             onSelect("gmail");
           }}
         />
         <TriggerCreateMenuItem
-          Icon={IconMail}
           title="Gmail label applied"
           description="Run when a named Gmail label is applied."
+          icon={
+            <IconMail
+              size={15}
+              stroke={1.5}
+              className="mt-0.5 shrink-0 text-muted-foreground"
+            />
+          }
           onSelect={() => {
             onSelect("gmail-label");
           }}
         />
         {githubLabelTriggersEnabled ? (
           <TriggerCreateMenuItem
-            Icon={IconBrandGithub}
             title="GitHub label applied"
             description="Run when an issue or pull request gets a label."
+            icon={
+              <IconBrandGithub
+                size={15}
+                stroke={1.5}
+                className="mt-0.5 shrink-0 text-muted-foreground"
+              />
+            }
             onSelect={() => {
               onSelect("github-label");
             }}
@@ -2584,9 +2618,15 @@ function TriggerCreateMenu({
         ) : null}
         {webhookTriggersEnabled ? (
           <TriggerCreateMenuItem
-            Icon={IconLink}
             title="Webhook"
             description="Run this workflow from a signed POST."
+            icon={
+              <IconLink
+                size={15}
+                stroke={1.5}
+                className="mt-0.5 shrink-0 text-muted-foreground"
+              />
+            }
             onSelect={() => {
               onSelect("webhook");
             }}
@@ -3611,6 +3651,84 @@ function GithubLabelTriggerFields({
   );
 }
 
+function GithubLabelTriggerAvailabilityMessages({
+  githubLoaded,
+  isInstalled,
+  needsConnection,
+  githubLoadError,
+  connecting,
+  onConnect,
+}: {
+  readonly githubLoaded: boolean;
+  readonly isInstalled: boolean;
+  readonly needsConnection: boolean;
+  readonly githubLoadError: boolean;
+  readonly connecting: boolean;
+  readonly onConnect: () => void;
+}) {
+  return (
+    <>
+      {githubLoaded && !isInstalled ? <GithubNotInstalledNotice /> : null}
+      {needsConnection ? (
+        <GithubAccountConnectionNotice
+          connecting={connecting}
+          onConnect={onConnect}
+        />
+      ) : null}
+      {githubLoadError ? <GithubLoadErrorNotice /> : null}
+    </>
+  );
+}
+
+function GithubNotInstalledNotice() {
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+      GitHub is not installed for this workspace.
+      <Button
+        asChild
+        type="button"
+        variant="link"
+        className="ml-1 h-auto p-0 text-xs"
+      >
+        <Link pathname={ROUTES.works} title="Open integrations">
+          Open integrations
+        </Link>
+      </Button>
+    </div>
+  );
+}
+
+function GithubAccountConnectionNotice({
+  connecting,
+  onConnect,
+}: {
+  readonly connecting: boolean;
+  readonly onConnect: () => void;
+}) {
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+      Connect your GitHub account to use Me.
+      <Button
+        type="button"
+        variant="link"
+        disabled={connecting}
+        className="ml-1 h-auto p-0 text-xs"
+        onClick={onConnect}
+      >
+        Connect GitHub
+      </Button>
+    </div>
+  );
+}
+
+function GithubLoadErrorNotice() {
+  return (
+    <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
+      GitHub settings could not be loaded.
+    </div>
+  );
+}
+
 function CreateGithubLabelAppliedTriggerDialog({
   workflowId,
   open,
@@ -3624,7 +3742,8 @@ function CreateGithubLabelAppliedTriggerDialog({
   const githubLoadable = useLoadable(githubIntegrationData$);
   const githubData =
     githubLoadable.state === "hasData" ? githubLoadable.data : null;
-  const [actor, setActor] = useState<"me" | "anyone">("me");
+  const actor = useGet(createGithubLabelActor$);
+  const setActor = useSet(setCreateGithubLabelActor$);
   const [createLoadable, createGithubLabelTrigger] = useLoadableSet(
     createWorkflowGithubLabelAppliedTrigger$,
   );
@@ -3644,6 +3763,15 @@ function CreateGithubLabelAppliedTriggerDialog({
     githubLoadError ||
     !isInstalled ||
     needsConnection;
+  const connectCurrentGithubAccount = () => {
+    if (!githubData) {
+      return;
+    }
+    detach(
+      connectGithub(githubData.connectUrl, pageSignal),
+      Reason.DomCallback,
+    );
+  };
 
   return (
     <Dialog
@@ -3689,48 +3817,14 @@ function CreateGithubLabelAppliedTriggerDialog({
             actor={actor}
             onActorChange={setActor}
           />
-          {githubLoadable.state === "hasData" && !isInstalled ? (
-            <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              GitHub is not installed for this workspace.
-              <Button
-                asChild
-                type="button"
-                variant="link"
-                className="ml-1 h-auto p-0 text-xs"
-              >
-                <Link pathname={ROUTES.works} title="Open integrations">
-                  Open integrations
-                </Link>
-              </Button>
-            </div>
-          ) : null}
-          {needsConnection ? (
-            <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              Connect your GitHub account to use Me.
-              <Button
-                type="button"
-                variant="link"
-                disabled={connecting}
-                className="ml-1 h-auto p-0 text-xs"
-                onClick={() => {
-                  if (!githubData) {
-                    return;
-                  }
-                  detach(
-                    connectGithub(githubData.connectUrl, pageSignal),
-                    Reason.DomCallback,
-                  );
-                }}
-              >
-                Connect GitHub
-              </Button>
-            </div>
-          ) : null}
-          {githubLoadError ? (
-            <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-              GitHub settings could not be loaded.
-            </div>
-          ) : null}
+          <GithubLabelTriggerAvailabilityMessages
+            githubLoaded={githubLoadable.state === "hasData"}
+            isInstalled={isInstalled}
+            needsConnection={needsConnection}
+            githubLoadError={githubLoadError}
+            connecting={connecting}
+            onConnect={connectCurrentGithubAccount}
+          />
           <DialogFooter>
             <Button
               type="button"
@@ -4511,9 +4605,11 @@ function UpdateGithubLabelAppliedTriggerForm({
   const githubLoadable = useLoadable(githubIntegrationData$);
   const githubData =
     githubLoadable.state === "hasData" ? githubLoadable.data : null;
-  const [actor, setActor] = useState<"me" | "anyone">(
-    trigger.eventConfig.filters.actor.type,
-  );
+  const editingGithubLabelActors = useGet(editingGithubLabelActors$);
+  const setEditingGithubLabelActor = useSet(setEditingGithubLabelActor$);
+  const actor =
+    editingGithubLabelActors[trigger.id] ??
+    trigger.eventConfig.filters.actor.type;
   const [updateLoadable, updateGithubLabelTrigger] = useLoadableSet(
     updateWorkflowGithubLabelAppliedTrigger$,
   );
@@ -4533,6 +4629,15 @@ function UpdateGithubLabelAppliedTriggerForm({
     githubLoadError ||
     !isInstalled ||
     needsConnection;
+  const connectCurrentGithubAccount = () => {
+    if (!githubData) {
+      return;
+    }
+    detach(
+      connectGithub(githubData.connectUrl, pageSignal),
+      Reason.DomCallback,
+    );
+  };
 
   return (
     <form
@@ -4567,50 +4672,21 @@ function UpdateGithubLabelAppliedTriggerForm({
         disabled={saving || loadingGithub || githubLoadError}
         actor={actor}
         defaultConfig={trigger.eventConfig}
-        onActorChange={setActor}
+        onActorChange={(nextActor) => {
+          setEditingGithubLabelActor({
+            triggerId: trigger.id,
+            actor: nextActor,
+          });
+        }}
       />
-      {githubLoadable.state === "hasData" && !isInstalled ? (
-        <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          GitHub is not installed for this workspace.
-          <Button
-            asChild
-            type="button"
-            variant="link"
-            className="ml-1 h-auto p-0 text-xs"
-          >
-            <Link pathname={ROUTES.works} title="Open integrations">
-              Open integrations
-            </Link>
-          </Button>
-        </div>
-      ) : null}
-      {needsConnection ? (
-        <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          Connect your GitHub account to use Me.
-          <Button
-            type="button"
-            variant="link"
-            disabled={connecting}
-            className="ml-1 h-auto p-0 text-xs"
-            onClick={() => {
-              if (!githubData) {
-                return;
-              }
-              detach(
-                connectGithub(githubData.connectUrl, pageSignal),
-                Reason.DomCallback,
-              );
-            }}
-          >
-            Connect GitHub
-          </Button>
-        </div>
-      ) : null}
-      {githubLoadError ? (
-        <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
-          GitHub settings could not be loaded.
-        </div>
-      ) : null}
+      <GithubLabelTriggerAvailabilityMessages
+        githubLoaded={githubLoadable.state === "hasData"}
+        isInstalled={isInstalled}
+        needsConnection={needsConnection}
+        githubLoadError={githubLoadError}
+        connecting={connecting}
+        onConnect={connectCurrentGithubAccount}
+      />
       <DialogFooter>
         <Button
           type="button"

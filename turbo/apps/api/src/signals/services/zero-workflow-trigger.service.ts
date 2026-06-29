@@ -1,4 +1,4 @@
-import { command, type Getter } from "ccstate";
+import { command } from "ccstate";
 import {
   gmailLabelAppliedEventConfigSchema,
   gmailNewMessageEventConfigSchema,
@@ -1010,65 +1010,119 @@ async function insertScheduleTrigger(
   });
 }
 
-async function createEventTriggerForWorkflow(args: {
-  readonly get: Getter;
-  readonly db: Db;
-  readonly input: CreateEventTriggerInput;
-  readonly workflowId: string;
-  readonly agentId: string;
-  readonly workflowTitle: string;
-  readonly signal: AbortSignal;
-}): Promise<TriggerResult> {
-  const { input } = args;
-  if (input.eventType === "webhook-received") {
-    const featureEnabled = await args.get(
-      workflowWebhookTriggersEnabledForOwner(input.orgId, input.member.userId),
-    );
-    args.signal.throwIfAborted();
-    if (!featureEnabled) {
-      return {
-        kind: "bad-request",
-        message: "Workflow webhook triggers are not enabled",
-      };
+const createEventTriggerForWorkflow$ = command(
+  async (
+    { get },
+    args: {
+      readonly db: Db;
+      readonly input: CreateEventTriggerInput;
+      readonly workflowId: string;
+      readonly agentId: string;
+      readonly workflowTitle: string;
+    },
+    signal: AbortSignal,
+  ): Promise<TriggerResult> => {
+    const { input } = args;
+    if (input.eventType === "webhook-received") {
+      const featureEnabled = await get(
+        workflowWebhookTriggersEnabledForOwner(
+          input.orgId,
+          input.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return {
+          kind: "bad-request",
+          message: "Workflow webhook triggers are not enabled",
+        };
+      }
+
+      const summary = await insertWebhookEventTrigger(args.db, {
+        input,
+        workflowId: args.workflowId,
+        agentId: args.agentId,
+        workflowTitle: args.workflowTitle,
+        currentTime: nowDate(),
+      });
+      signal.throwIfAborted();
+      return { kind: "ok", summary };
     }
 
-    const summary = await insertWebhookEventTrigger(args.db, {
-      input,
-      workflowId: args.workflowId,
-      agentId: args.agentId,
-      workflowTitle: args.workflowTitle,
-      currentTime: nowDate(),
-    });
-    args.signal.throwIfAborted();
-    return { kind: "ok", summary };
-  }
+    if (input.eventType === "github-label-applied") {
+      const featureEnabled = await get(
+        workflowGithubLabelEventTriggersEnabledForOwner(
+          input.orgId,
+          input.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return {
+          kind: "bad-request",
+          message: "GitHub label workflow event triggers are not enabled",
+        };
+      }
 
-  if (input.eventType === "github-label-applied") {
-    const featureEnabled = await args.get(
-      workflowGithubLabelEventTriggersEnabledForOwner(
+      const preparedConfig = await prepareGithubLabelEventConfigForPersist(
+        args.db,
+        {
+          orgId: input.orgId,
+          userId: input.member.userId,
+          eventConfig: input.eventConfig,
+        },
+      );
+      signal.throwIfAborted();
+      if (preparedConfig.kind !== "ok") {
+        return preparedConfig;
+      }
+
+      const summary = await insertWorkflowEventTrigger(args.db, {
+        input: { ...input, eventConfig: preparedConfig.eventConfig },
+        workflowId: args.workflowId,
+        agentId: args.agentId,
+        workflowTitle: args.workflowTitle,
+        currentTime: nowDate(),
+      });
+      signal.throwIfAborted();
+      return { kind: "ok", summary };
+    }
+
+    const featureEnabled = await get(
+      gmailWorkflowEventTriggersEnabledForOwner(
         input.orgId,
         input.member.userId,
       ),
     );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     if (!featureEnabled) {
       return {
         kind: "bad-request",
-        message: "GitHub label workflow event triggers are not enabled",
+        message: "Gmail workflow event triggers are not enabled",
       };
     }
 
-    const preparedConfig = await prepareGithubLabelEventConfigForPersist(
-      args.db,
-      {
-        orgId: input.orgId,
-        userId: input.member.userId,
-        eventConfig: input.eventConfig,
-      },
-    );
-    args.signal.throwIfAborted();
+    const preparedConfig = await prepareGmailEventConfigForPersist(args.db, {
+      orgId: input.orgId,
+      userId: input.member.userId,
+      eventType: input.eventType,
+      eventConfig: input.eventConfig,
+      signal,
+    });
+    signal.throwIfAborted();
     if (preparedConfig.kind !== "ok") {
       return preparedConfig;
+    }
+
+    const watchResult = await ensureGmailWatchForUser({
+      db: args.db,
+      orgId: input.orgId,
+      userId: input.member.userId,
+      signal,
+    });
+    signal.throwIfAborted();
+    if (watchResult.kind !== "ok") {
+      return { kind: "bad-request", message: watchResult.message };
     }
 
     const summary = await insertWorkflowEventTrigger(args.db, {
@@ -1078,58 +1132,14 @@ async function createEventTriggerForWorkflow(args: {
       workflowTitle: args.workflowTitle,
       currentTime: nowDate(),
     });
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     return { kind: "ok", summary };
-  }
-
-  const featureEnabled = await args.get(
-    gmailWorkflowEventTriggersEnabledForOwner(input.orgId, input.member.userId),
-  );
-  args.signal.throwIfAborted();
-  if (!featureEnabled) {
-    return {
-      kind: "bad-request",
-      message: "Gmail workflow event triggers are not enabled",
-    };
-  }
-
-  const preparedConfig = await prepareGmailEventConfigForPersist(args.db, {
-    orgId: input.orgId,
-    userId: input.member.userId,
-    eventType: input.eventType,
-    eventConfig: input.eventConfig,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
-  if (preparedConfig.kind !== "ok") {
-    return preparedConfig;
-  }
-
-  const watchResult = await ensureGmailWatchForUser({
-    db: args.db,
-    orgId: input.orgId,
-    userId: input.member.userId,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
-  if (watchResult.kind !== "ok") {
-    return { kind: "bad-request", message: watchResult.message };
-  }
-
-  const summary = await insertWorkflowEventTrigger(args.db, {
-    input: { ...input, eventConfig: preparedConfig.eventConfig },
-    workflowId: args.workflowId,
-    agentId: args.agentId,
-    workflowTitle: args.workflowTitle,
-    currentTime: nowDate(),
-  });
-  args.signal.throwIfAborted();
-  return { kind: "ok", summary };
-}
+  },
+);
 
 export const createWorkflowTrigger$ = command(
   async (
-    { get, set },
+    { set },
     args: CreateTriggerInput,
     signal: AbortSignal,
   ): Promise<TriggerResult> => {
@@ -1167,15 +1177,17 @@ export const createWorkflowTrigger$ = command(
     const workflowTitle = workflow.displayName ?? workflow.name;
 
     if (!triggerCreateInputIsSchedule(args)) {
-      return await createEventTriggerForWorkflow({
-        get,
-        db: writeDb,
-        input: args,
-        workflowId: workflow.id,
-        agentId: agent.id,
-        workflowTitle,
+      return await set(
+        createEventTriggerForWorkflow$,
+        {
+          db: writeDb,
+          input: args,
+          workflowId: workflow.id,
+          agentId: agent.id,
+          workflowTitle,
+        },
         signal,
-      });
+      );
     }
 
     const now = nowDate();
@@ -1284,59 +1296,97 @@ async function updateTriggerEventConfig(
   return await rowToSummary(db, row);
 }
 
-async function updateEventTriggerForWorkflow(args: {
-  readonly get: Getter;
-  readonly db: Db;
-  readonly orgId: string;
-  readonly member: WorkflowMember;
-  readonly trigger: TriggerRow;
-  readonly eventConfig?: GmailWorkflowEventConfig | GithubWorkflowEventConfig;
-  readonly signal: AbortSignal;
-}): Promise<TriggerResult> {
-  if (args.trigger.eventType === "webhook-received") {
-    return {
-      kind: "bad-request",
-      message: "Webhook event triggers cannot be updated",
-    };
-  }
-  if (args.eventConfig === undefined) {
-    return {
-      kind: "bad-request",
-      message: "eventConfig is required for event triggers",
-    };
-  }
-  if (supportedGithubEventType(args.trigger.eventType)) {
-    const parsedConfig = githubLabelAppliedEventConfigSchema.safeParse(
-      args.eventConfig,
-    );
+const updateEventTriggerForWorkflow$ = command(
+  async (
+    { get },
+    args: {
+      readonly db: Db;
+      readonly orgId: string;
+      readonly member: WorkflowMember;
+      readonly trigger: TriggerRow;
+      readonly eventConfig?:
+        | GmailWorkflowEventConfig
+        | GithubWorkflowEventConfig;
+    },
+    signal: AbortSignal,
+  ): Promise<TriggerResult> => {
+    if (args.trigger.eventType === "webhook-received") {
+      return {
+        kind: "bad-request",
+        message: "Webhook event triggers cannot be updated",
+      };
+    }
+    if (args.eventConfig === undefined) {
+      return {
+        kind: "bad-request",
+        message: "eventConfig is required for event triggers",
+      };
+    }
+    if (supportedGithubEventType(args.trigger.eventType)) {
+      const parsedConfig = githubLabelAppliedEventConfigSchema.safeParse(
+        args.eventConfig,
+      );
+      if (!parsedConfig.success) {
+        return {
+          kind: "bad-request",
+          message: "eventConfig must be a GitHub label applied config",
+        };
+      }
+      const featureEnabled = await get(
+        workflowGithubLabelEventTriggersEnabledForOwner(
+          args.orgId,
+          args.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return {
+          kind: "bad-request",
+          message: "GitHub label workflow event triggers are not enabled",
+        };
+      }
+      const preparedConfig = await prepareGithubLabelEventConfigForPersist(
+        args.db,
+        {
+          orgId: args.orgId,
+          userId: args.member.userId,
+          eventConfig: parsedConfig.data,
+        },
+      );
+      signal.throwIfAborted();
+      if (preparedConfig.kind !== "ok") {
+        return preparedConfig;
+      }
+      return {
+        kind: "ok",
+        summary: await updateTriggerEventConfig(args.db, {
+          triggerId: args.trigger.id,
+          eventConfig: preparedConfig.eventConfig,
+          signal,
+        }),
+      };
+    }
+    if (!supportedGmailEventType(args.trigger.eventType)) {
+      return { kind: "not-found" };
+    }
+    const parsedConfig =
+      args.trigger.eventType === "gmail-label-applied"
+        ? gmailLabelAppliedEventConfigSchema.safeParse(args.eventConfig)
+        : gmailNewMessageEventConfigSchema.safeParse(args.eventConfig);
     if (!parsedConfig.success) {
       return {
         kind: "bad-request",
-        message: "eventConfig must be a GitHub label applied config",
+        message: "eventConfig must be a Gmail event config",
       };
     }
-    const featureEnabled = await args.get(
-      workflowGithubLabelEventTriggersEnabledForOwner(
-        args.orgId,
-        args.member.userId,
-      ),
-    );
-    args.signal.throwIfAborted();
-    if (!featureEnabled) {
-      return {
-        kind: "bad-request",
-        message: "GitHub label workflow event triggers are not enabled",
-      };
-    }
-    const preparedConfig = await prepareGithubLabelEventConfigForPersist(
-      args.db,
-      {
-        orgId: args.orgId,
-        userId: args.member.userId,
-        eventConfig: parsedConfig.data,
-      },
-    );
-    args.signal.throwIfAborted();
+    const preparedConfig = await prepareGmailEventConfigForPersist(args.db, {
+      orgId: args.orgId,
+      userId: args.member.userId,
+      eventType: args.trigger.eventType,
+      eventConfig: parsedConfig.data,
+      signal,
+    });
+    signal.throwIfAborted();
     if (preparedConfig.kind !== "ok") {
       return preparedConfig;
     }
@@ -1345,47 +1395,15 @@ async function updateEventTriggerForWorkflow(args: {
       summary: await updateTriggerEventConfig(args.db, {
         triggerId: args.trigger.id,
         eventConfig: preparedConfig.eventConfig,
-        signal: args.signal,
+        signal,
       }),
     };
-  }
-  if (!supportedGmailEventType(args.trigger.eventType)) {
-    return { kind: "not-found" };
-  }
-  const parsedConfig =
-    args.trigger.eventType === "gmail-label-applied"
-      ? gmailLabelAppliedEventConfigSchema.safeParse(args.eventConfig)
-      : gmailNewMessageEventConfigSchema.safeParse(args.eventConfig);
-  if (!parsedConfig.success) {
-    return {
-      kind: "bad-request",
-      message: "eventConfig must be a Gmail event config",
-    };
-  }
-  const preparedConfig = await prepareGmailEventConfigForPersist(args.db, {
-    orgId: args.orgId,
-    userId: args.member.userId,
-    eventType: args.trigger.eventType,
-    eventConfig: parsedConfig.data,
-    signal: args.signal,
-  });
-  args.signal.throwIfAborted();
-  if (preparedConfig.kind !== "ok") {
-    return preparedConfig;
-  }
-  return {
-    kind: "ok",
-    summary: await updateTriggerEventConfig(args.db, {
-      triggerId: args.trigger.id,
-      eventConfig: preparedConfig.eventConfig,
-      signal: args.signal,
-    }),
-  };
-}
+  },
+);
 
 export const updateWorkflowTrigger$ = command(
   async (
-    { get, set },
+    { set },
     args: UpdateTriggerInput,
     signal: AbortSignal,
   ): Promise<TriggerResult> => {
@@ -1402,15 +1420,17 @@ export const updateWorkflowTrigger$ = command(
     const { trigger } = owned;
 
     if (trigger.kind === "event") {
-      return await updateEventTriggerForWorkflow({
-        get,
-        db: writeDb,
-        orgId: args.orgId,
-        member: args.member,
-        trigger,
-        eventConfig: args.eventConfig,
+      return await set(
+        updateEventTriggerForWorkflow$,
+        {
+          db: writeDb,
+          orgId: args.orgId,
+          member: args.member,
+          trigger,
+          eventConfig: args.eventConfig,
+        },
         signal,
-      });
+      );
     }
 
     if (args.schedule === undefined) {
@@ -1593,86 +1613,93 @@ export const deleteWorkflowTrigger$ = command(
   },
 );
 
-async function ensureEventTriggerCanBeEnabled(args: {
-  readonly get: Getter;
-  readonly db: Db;
-  readonly orgId: string;
-  readonly member: WorkflowMember;
-  readonly trigger: TriggerRow;
-  readonly signal: AbortSignal;
-}): Promise<TriggerActionFailure | null> {
-  if (args.trigger.eventType === "gmail-new-message") {
-    const featureEnabled = await args.get(
-      gmailWorkflowEventTriggersEnabledForOwner(args.orgId, args.member.userId),
-    );
-    args.signal.throwIfAborted();
-    if (!featureEnabled) {
-      return {
-        kind: "bad-request",
-        message: "Gmail workflow event triggers are not enabled",
-      };
-    }
+const ensureEventTriggerCanBeEnabled$ = command(
+  async (
+    { get },
+    args: {
+      readonly db: Db;
+      readonly orgId: string;
+      readonly member: WorkflowMember;
+      readonly trigger: TriggerRow;
+    },
+    signal: AbortSignal,
+  ): Promise<TriggerActionFailure | null> => {
+    if (args.trigger.eventType === "gmail-new-message") {
+      const featureEnabled = await get(
+        gmailWorkflowEventTriggersEnabledForOwner(
+          args.orgId,
+          args.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return {
+          kind: "bad-request",
+          message: "Gmail workflow event triggers are not enabled",
+        };
+      }
 
-    const watchResult = await ensureGmailWatchForUser({
-      db: args.db,
-      orgId: args.orgId,
-      userId: args.member.userId,
-      signal: args.signal,
-    });
-    args.signal.throwIfAborted();
-    if (watchResult.kind !== "ok") {
-      return { kind: "bad-request", message: watchResult.message };
-    }
-    return null;
-  }
-
-  if (args.trigger.eventType === "github-label-applied") {
-    const featureEnabled = await args.get(
-      workflowGithubLabelEventTriggersEnabledForOwner(
-        args.orgId,
-        args.member.userId,
-      ),
-    );
-    args.signal.throwIfAborted();
-    if (!featureEnabled) {
-      return {
-        kind: "bad-request",
-        message: "GitHub label workflow event triggers are not enabled",
-      };
-    }
-    const config = githubLabelAppliedEventConfigSchema.parse(
-      args.trigger.eventConfig,
-    );
-    const preparedConfig = await prepareGithubLabelEventConfigForPersist(
-      args.db,
-      {
+      const watchResult = await ensureGmailWatchForUser({
+        db: args.db,
         orgId: args.orgId,
         userId: args.member.userId,
-        eventConfig: config,
-      },
-    );
-    args.signal.throwIfAborted();
-    return preparedConfig.kind === "ok" ? null : preparedConfig;
-  }
-
-  if (args.trigger.eventType === "webhook-received") {
-    const featureEnabled = await args.get(
-      workflowWebhookTriggersEnabledForOwner(args.orgId, args.member.userId),
-    );
-    args.signal.throwIfAborted();
-    if (!featureEnabled) {
-      return {
-        kind: "bad-request",
-        message: "Workflow webhook triggers are not enabled",
-      };
+        signal,
+      });
+      signal.throwIfAborted();
+      if (watchResult.kind !== "ok") {
+        return { kind: "bad-request", message: watchResult.message };
+      }
+      return null;
     }
-  }
-  return null;
-}
+
+    if (args.trigger.eventType === "github-label-applied") {
+      const featureEnabled = await get(
+        workflowGithubLabelEventTriggersEnabledForOwner(
+          args.orgId,
+          args.member.userId,
+        ),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return {
+          kind: "bad-request",
+          message: "GitHub label workflow event triggers are not enabled",
+        };
+      }
+      const config = githubLabelAppliedEventConfigSchema.parse(
+        args.trigger.eventConfig,
+      );
+      const preparedConfig = await prepareGithubLabelEventConfigForPersist(
+        args.db,
+        {
+          orgId: args.orgId,
+          userId: args.member.userId,
+          eventConfig: config,
+        },
+      );
+      signal.throwIfAborted();
+      return preparedConfig.kind === "ok" ? null : preparedConfig;
+    }
+
+    if (args.trigger.eventType === "webhook-received") {
+      const featureEnabled = await get(
+        workflowWebhookTriggersEnabledForOwner(args.orgId, args.member.userId),
+      );
+      signal.throwIfAborted();
+      if (!featureEnabled) {
+        return {
+          kind: "bad-request",
+          message: "Workflow webhook triggers are not enabled",
+        };
+      }
+    }
+    return null;
+  },
+);
 
 export const enableWorkflowTrigger$ = command(
   async (
-    { get, set },
+    { set },
     args: TriggerActionInput,
     signal: AbortSignal,
   ): Promise<TriggerResult> => {
@@ -1718,14 +1745,16 @@ export const enableWorkflowTrigger$ = command(
         ? resolveNextRunAt(rowToSchedule(trigger), true, now, trigger.lastRunAt)
         : trigger.nextRunAt;
     if (trigger.kind === "event") {
-      const failure = await ensureEventTriggerCanBeEnabled({
-        get,
-        db: writeDb,
-        orgId: args.orgId,
-        member: args.member,
-        trigger,
+      const failure = await set(
+        ensureEventTriggerCanBeEnabled$,
+        {
+          db: writeDb,
+          orgId: args.orgId,
+          member: args.member,
+          trigger,
+        },
         signal,
-      });
+      );
       signal.throwIfAborted();
       if (failure) {
         return failure;
