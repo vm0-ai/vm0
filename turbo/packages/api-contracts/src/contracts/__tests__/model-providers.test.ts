@@ -311,7 +311,7 @@ describe("model-first canonical catalog", () => {
       "glm-5.2",
       "gpt-5.5",
     ]);
-    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("kimi-k2.7-code");
+    expect(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL).toBe("claude-sonnet-4-6");
     expect(getDefaultOrgModelPolicySeed()).toEqual(
       DEFAULT_ORG_MODEL_POLICY_MODELS.map((model) => {
         return {
