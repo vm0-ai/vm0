@@ -295,6 +295,16 @@ function hasGithubTriggerOptions(options: AddOptions | UpdateOptions): boolean {
   return options.subject !== undefined || options.actor !== undefined;
 }
 
+function scheduleUpdateFlagCount(options: UpdateOptions): number {
+  return [options.expr, options.at, options.every].filter((value) => {
+    return value !== undefined;
+  }).length;
+}
+
+function hasScheduleUpdateOptions(options: UpdateOptions): boolean {
+  return scheduleUpdateFlagCount(options) > 0 || options.timezone !== undefined;
+}
+
 function parseGithubSubject(
   value: string | undefined,
   fallback: GithubLabelAppliedSubjectFilter = "both",
@@ -462,37 +472,17 @@ function buildCreateRequest(
   return { schedule: buildSchedule(kind, options) };
 }
 
-function buildUpdate(
+function buildEventUpdate(
   options: UpdateOptions,
-  existing: ZeroWorkflowTriggerSummary,
+  existing: Extract<ZeroWorkflowTriggerSummary, { readonly kind: "event" }>,
 ): ZeroWorkflowTriggerUpdateRequest {
-  const flagCount = [options.expr, options.at, options.every].filter(
-    (value) => {
-      return value !== undefined;
-    },
-  ).length;
   const hasGmailOptions = hasGmailTriggerOptions(options);
   const hasLabelOption = hasGmailLabelOption(options);
   const hasGithubOptions = hasGithubTriggerOptions(options);
-  if (
-    (flagCount > 0 || options.timezone !== undefined) &&
-    (hasGmailOptions || hasLabelOption || hasGithubOptions)
-  ) {
-    throw new Error("Use either schedule flags or event trigger options");
-  }
-  if (hasGmailOptions && hasLabelOption) {
-    throw new Error("Use either Gmail match options or --label");
-  }
 
-  if (
-    existing.kind === "event" &&
-    existing.eventType === "github-label-applied"
-  ) {
+  if (existing.eventType === "github-label-applied") {
     if (hasGmailOptions) {
       throw new Error("Gmail match flags only apply to Gmail event triggers");
-    }
-    if (flagCount > 0 || options.timezone !== undefined) {
-      throw new Error("Schedule flags only apply to schedule triggers");
     }
     if (!hasLabelOption && !hasGithubOptions) {
       throw new Error(
@@ -508,25 +498,28 @@ function buildUpdate(
     throw new Error("GitHub trigger flags only apply to GitHub event triggers");
   }
 
-  if (existing.kind === "event") {
-    if (flagCount > 0 || options.timezone !== undefined) {
-      throw new Error("Schedule flags only apply to schedule triggers");
+  if (existing.eventType === "gmail-label-applied") {
+    if (!hasLabelOption || hasGmailOptions) {
+      throw new Error("Use --label for gmail-label-applied triggers");
     }
-    if (existing.eventType === "gmail-label-applied") {
-      if (!hasLabelOption || hasGmailOptions) {
-        throw new Error("Use --label for gmail-label-applied triggers");
-      }
-      return { eventConfig: buildGmailLabelAppliedEventConfig(options) };
-    }
-    if (!hasGmailOptions || hasLabelOption) {
-      throw new Error("Use Gmail match options for gmail-new-message triggers");
-    }
-    return { eventConfig: buildGmailNewMessageEventConfig(options) };
+    return { eventConfig: buildGmailLabelAppliedEventConfig(options) };
   }
 
+  if (!hasGmailOptions || hasLabelOption) {
+    throw new Error("Use Gmail match options for gmail-new-message triggers");
+  }
+  return { eventConfig: buildGmailNewMessageEventConfig(options) };
+}
+
+function buildScheduleUpdate(
+  options: UpdateOptions,
+): ZeroWorkflowTriggerUpdateRequest {
+  const hasGmailOptions = hasGmailTriggerOptions(options);
+  const hasLabelOption = hasGmailLabelOption(options);
   if (hasGmailOptions || hasLabelOption) {
     throw new Error("Gmail trigger flags only apply to Gmail event triggers");
   }
+  const flagCount = scheduleUpdateFlagCount(options);
   if (flagCount !== 1) {
     throw new Error(EXACTLY_ONE_FLAG_MESSAGE);
   }
@@ -540,6 +533,34 @@ function buildUpdate(
     return { schedule: buildSchedule("once", options) };
   }
   return { schedule: buildSchedule("loop", options) };
+}
+
+function buildUpdate(
+  options: UpdateOptions,
+  existing: ZeroWorkflowTriggerSummary,
+): ZeroWorkflowTriggerUpdateRequest {
+  const hasEventOptions =
+    hasGmailTriggerOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubTriggerOptions(options);
+  if (hasScheduleUpdateOptions(options) && hasEventOptions) {
+    throw new Error("Use either schedule flags or event trigger options");
+  }
+  if (hasGmailTriggerOptions(options) && hasGmailLabelOption(options)) {
+    throw new Error("Use either Gmail match options or --label");
+  }
+
+  if (existing.kind === "event") {
+    if (hasScheduleUpdateOptions(options)) {
+      throw new Error("Schedule flags only apply to schedule triggers");
+    }
+    return buildEventUpdate(options, existing);
+  }
+
+  if (hasGithubTriggerOptions(options)) {
+    throw new Error("GitHub trigger flags only apply to GitHub event triggers");
+  }
+  return buildScheduleUpdate(options);
 }
 
 async function resolveWorkflowId(

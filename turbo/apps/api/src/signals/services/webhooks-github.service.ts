@@ -39,7 +39,7 @@ import {
   type GitHubIssuesCallbackPayload,
 } from "./github-issues-callback-payload";
 import { dispatchGithubLabelWorkflowTriggers$ } from "./github-workflow-event.service";
-import { isAbortError } from "../utils";
+import { tapError } from "../utils";
 
 const L = logger("WebhookGithub");
 const RUN_START_FALLBACK_MESSAGE =
@@ -1378,8 +1378,8 @@ export const handleGithubIssuesEvent$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    try {
-      await set(
+    await tapError(
+      set(
         dispatchMatchingLabelListener$,
         {
           payload: {
@@ -1394,13 +1394,12 @@ export const handleGithubIssuesEvent$ = command(
           apiStartTime: args.apiStartTime,
         },
         signal,
-      );
-    } catch (error) {
-      if (isAbortError(error)) {
-        throw error;
-      }
-      L.error("Error dispatching GitHub label listener", { error });
-    }
+      ),
+      (error) => {
+        L.error("Error dispatching GitHub label listener", { error });
+      },
+    );
+    signal.throwIfAborted();
     await set(
       dispatchGithubLabelWorkflowTriggers$,
       {
@@ -1431,8 +1430,8 @@ export const handleGithubPullRequestEvent$ = command(
     },
     signal: AbortSignal,
   ): Promise<void> => {
-    try {
-      await set(
+    await tapError(
+      set(
         dispatchMatchingLabelListener$,
         {
           payload: {
@@ -1447,13 +1446,12 @@ export const handleGithubPullRequestEvent$ = command(
           apiStartTime: args.apiStartTime,
         },
         signal,
-      );
-    } catch (error) {
-      if (isAbortError(error)) {
-        throw error;
-      }
-      L.error("Error dispatching GitHub label listener", { error });
-    }
+      ),
+      (error) => {
+        L.error("Error dispatching GitHub label listener", { error });
+      },
+    );
+    signal.throwIfAborted();
     await set(
       dispatchGithubLabelWorkflowTriggers$,
       {

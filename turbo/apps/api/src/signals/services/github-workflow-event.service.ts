@@ -1,4 +1,4 @@
-import { command, computed, type Getter, type Setter } from "ccstate";
+import { command, computed } from "ccstate";
 import { and, asc, eq } from "drizzle-orm";
 
 import {
@@ -76,13 +76,13 @@ interface GithubLabelEventTriggerRow {
   readonly config: GithubLabelAppliedEventConfig;
 }
 
-type GithubWorkflowRunStarter = (args: {
+type GithubWorkflowRunStartArgs = {
   readonly trigger: GithubLabelEventTriggerRow;
   readonly deliveryId: string;
   readonly payload: GithubLabelWorkflowEventPayload;
   readonly subjectKind: GithubWorkflowSubjectKind;
   readonly matchedLabelName: string;
-}) => Promise<"ok" | "error">;
+};
 
 interface GithubWorkflowDispatchCounts {
   readonly dispatched: number;
@@ -117,7 +117,7 @@ export function setGithubWorkflowRunStarterForTests(
   };
 }
 
-export function normalizeGithubWorkflowLabelName(labelName: string): string {
+function normalizeGithubWorkflowLabelName(labelName: string): string {
   return labelName.trim().toLowerCase();
 }
 
@@ -135,7 +135,7 @@ export function workflowGithubLabelEventTriggersEnabledForOwner(
   });
 }
 
-export async function loadOrgGithubWorkflowInstallation(
+async function loadOrgGithubWorkflowInstallation(
   db: ReadonlyDb,
   orgId: string,
 ): Promise<GithubInstallationRecord | null> {
@@ -450,20 +450,14 @@ async function dispatchGithubTriggerEvent(args: {
   readonly payload: GithubLabelWorkflowEventPayload;
   readonly subjectKind: GithubWorkflowSubjectKind;
   readonly matchedLabelName: string;
-  readonly startRun: GithubWorkflowRunStarter;
+  readonly startRun: () => Promise<"ok" | "error">;
 }): Promise<"dispatched" | "duplicate" | { readonly kind: "run_error" }> {
   const processedId = await insertGithubProcessedEvent(args);
   if (!processedId) {
     return "duplicate";
   }
 
-  const result = await args.startRun({
-    trigger: args.trigger,
-    deliveryId: args.deliveryId,
-    payload: args.payload,
-    subjectKind: args.subjectKind,
-    matchedLabelName: args.matchedLabelName,
-  });
+  const result = await args.startRun();
   if (result !== "ok") {
     await args.db
       .delete(zeroWorkflowGithubProcessedEvents)
@@ -474,77 +468,64 @@ async function dispatchGithubTriggerEvent(args: {
   return "dispatched";
 }
 
-function createGithubWorkflowRunStarter(args: {
-  readonly set: Setter;
-  readonly apiStartTime: number;
-  readonly signal: AbortSignal;
-}): GithubWorkflowRunStarter {
-  const runStarterOverride = githubWorkflowRunStarterOverride.get();
-  if (runStarterOverride) {
-    return async ({
-      trigger,
-      deliveryId,
-      payload,
-      subjectKind,
-      matchedLabelName,
-    }) => {
-      return await runStarterOverride({
-        triggerId: trigger.trigger.id,
-        workflowName: trigger.workflowName,
-        deliveryId,
-        repo: payload.repository.full_name,
-        subjectType: subjectKind,
-        subjectNumber: payload.issue.number,
-        action: payload.action,
-        labelName: matchedLabelName,
-        actorLogin: payload.sender.login,
-      });
-    };
-  }
-
-  return async ({
-    trigger,
-    deliveryId,
-    payload,
-    subjectKind,
-    matchedLabelName,
-  }) => {
-    const result = await args.set(
+const startGithubWorkflowRun$ = command(
+  async (
+    { set },
+    args: GithubWorkflowRunStartArgs & {
+      readonly apiStartTime: number;
+    },
+    signal: AbortSignal,
+  ): Promise<"ok" | "error"> => {
+    const result = await set(
       runWorkflowTriggerNow$,
       {
         due: {
-          trigger: trigger.trigger,
-          agentId: trigger.agentId,
-          workflowName: trigger.workflowName,
-          chatThreadId: trigger.chatThreadId,
+          trigger: args.trigger.trigger,
+          agentId: args.trigger.agentId,
+          workflowName: args.trigger.workflowName,
+          chatThreadId: args.trigger.chatThreadId,
         },
         apiStartTime: args.apiStartTime,
         triggerSource: "workflow-event",
-        appendSystemPrompt: buildGithubWorkflowEventSystemPrompt({
-          trigger,
-          deliveryId,
-          payload,
-          subjectKind,
-          matchedLabelName,
-        }),
+        appendSystemPrompt: buildGithubWorkflowEventSystemPrompt(args),
         callbacks: buildChatOnlyWorkflowTriggerCallbacks(
-          trigger.chatThreadId,
-          trigger.agentId,
+          args.trigger.chatThreadId,
+          args.trigger.agentId,
         ),
         activePreviousRunPolicy: "allow",
         recordLastRunId: false,
         recordLastRunAt: true,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
       },
-      args.signal,
+      signal,
     );
-    args.signal.throwIfAborted();
+    signal.throwIfAborted();
     return result.kind === "ok" ? "ok" : "error";
-  };
+  },
+);
+
+async function startGithubWorkflowRunOverride(
+  args: GithubWorkflowRunStartArgs,
+): Promise<"ok" | "error" | null> {
+  const runStarterOverride = githubWorkflowRunStarterOverride.get();
+  if (!runStarterOverride) {
+    return null;
+  }
+  return await runStarterOverride({
+    triggerId: args.trigger.trigger.id,
+    workflowName: args.trigger.workflowName,
+    deliveryId: args.deliveryId,
+    repo: args.payload.repository.full_name,
+    subjectType: args.subjectKind,
+    subjectNumber: args.payload.issue.number,
+    action: args.payload.action,
+    labelName: args.matchedLabelName,
+    actorLogin: args.payload.sender.login,
+  });
 }
 
 async function matchedLabelForTrigger(args: {
-  readonly get: Getter;
+  readonly gateEnabled: boolean;
   readonly db: Db;
   readonly installation: GithubInstallationRecord;
   readonly trigger: GithubLabelEventTriggerRow;
@@ -553,14 +534,7 @@ async function matchedLabelForTrigger(args: {
   readonly sender: GithubUser;
   readonly signal: AbortSignal;
 }): Promise<string | null> {
-  const gateEnabled = await args.get(
-    workflowGithubLabelEventTriggersEnabledForOwner(
-      args.trigger.trigger.orgId,
-      args.trigger.trigger.ownerUserId,
-    ),
-  );
-  args.signal.throwIfAborted();
-  if (!gateEnabled) {
+  if (!args.gateEnabled) {
     return null;
   }
   if (
@@ -588,63 +562,90 @@ async function matchedLabelForTrigger(args: {
   return actorMatches ? matchedLabelName : null;
 }
 
-async function dispatchMatchedGithubTriggers(args: {
-  readonly get: Getter;
-  readonly db: Db;
-  readonly installation: GithubInstallationRecord;
-  readonly triggers: readonly GithubLabelEventTriggerRow[];
-  readonly labelNames: readonly string[];
-  readonly deliveryId: string;
-  readonly payload: GithubLabelWorkflowEventPayload;
-  readonly subjectKind: GithubWorkflowSubjectKind;
-  readonly startRun: GithubWorkflowRunStarter;
-  readonly signal: AbortSignal;
-}): Promise<GithubWorkflowDispatchCounts> {
-  let dispatched = 0;
-  let duplicates = 0;
-  for (const trigger of args.triggers) {
-    const matchedLabelName = await matchedLabelForTrigger({
-      get: args.get,
-      db: args.db,
-      installation: args.installation,
-      trigger,
-      labelNames: args.labelNames,
-      subjectKind: args.subjectKind,
-      sender: args.payload.sender,
-      signal: args.signal,
-    });
-    if (!matchedLabelName) {
-      continue;
-    }
-
-    const result = await dispatchGithubTriggerEvent({
-      db: args.db,
-      trigger,
-      deliveryId: args.deliveryId,
-      payload: args.payload,
-      subjectKind: args.subjectKind,
-      matchedLabelName,
-      startRun: args.startRun,
-    });
-    args.signal.throwIfAborted();
-    if (typeof result !== "string") {
-      log.warn("Failed to start GitHub label workflow run", {
-        triggerId: trigger.trigger.id,
-        deliveryId: args.deliveryId,
-        repo: args.payload.repository.full_name,
-        subjectNumber: args.payload.issue.number,
+const dispatchMatchedGithubTriggers$ = command(
+  async (
+    { get, set },
+    args: {
+      readonly db: Db;
+      readonly installation: GithubInstallationRecord;
+      readonly triggers: readonly GithubLabelEventTriggerRow[];
+      readonly labelNames: readonly string[];
+      readonly deliveryId: string;
+      readonly payload: GithubLabelWorkflowEventPayload;
+      readonly subjectKind: GithubWorkflowSubjectKind;
+      readonly apiStartTime: number;
+    },
+    signal: AbortSignal,
+  ): Promise<GithubWorkflowDispatchCounts> => {
+    let dispatched = 0;
+    let duplicates = 0;
+    for (const trigger of args.triggers) {
+      const gateEnabled = await get(
+        workflowGithubLabelEventTriggersEnabledForOwner(
+          trigger.trigger.orgId,
+          trigger.trigger.ownerUserId,
+        ),
+      );
+      signal.throwIfAborted();
+      const matchedLabelName = await matchedLabelForTrigger({
+        gateEnabled,
+        db: args.db,
+        installation: args.installation,
+        trigger,
+        labelNames: args.labelNames,
+        subjectKind: args.subjectKind,
+        sender: args.payload.sender,
+        signal,
       });
-      continue;
+      if (!matchedLabelName) {
+        continue;
+      }
+
+      const runArgs = {
+        trigger,
+        deliveryId: args.deliveryId,
+        payload: args.payload,
+        subjectKind: args.subjectKind,
+        matchedLabelName,
+      };
+      const result = await dispatchGithubTriggerEvent({
+        db: args.db,
+        trigger,
+        deliveryId: args.deliveryId,
+        payload: args.payload,
+        subjectKind: args.subjectKind,
+        matchedLabelName,
+        startRun: async () => {
+          return (
+            (await startGithubWorkflowRunOverride(runArgs)) ??
+            (await set(
+              startGithubWorkflowRun$,
+              { ...runArgs, apiStartTime: args.apiStartTime },
+              signal,
+            ))
+          );
+        },
+      });
+      signal.throwIfAborted();
+      if (typeof result !== "string") {
+        log.warn("Failed to start GitHub label workflow run", {
+          triggerId: trigger.trigger.id,
+          deliveryId: args.deliveryId,
+          repo: args.payload.repository.full_name,
+          subjectNumber: args.payload.issue.number,
+        });
+        continue;
+      }
+      dispatched += result === "dispatched" ? 1 : 0;
+      duplicates += result === "duplicate" ? 1 : 0;
     }
-    dispatched += result === "dispatched" ? 1 : 0;
-    duplicates += result === "duplicate" ? 1 : 0;
-  }
-  return { dispatched, duplicates };
-}
+    return { dispatched, duplicates };
+  },
+);
 
 export const dispatchGithubLabelWorkflowTriggers$ = command(
   async (
-    { get, set },
+    { set },
     args: {
       readonly deliveryId: string;
       readonly payload: GithubLabelWorkflowEventPayload;
@@ -691,22 +692,20 @@ export const dispatchGithubLabelWorkflowTriggers$ = command(
       orgId: installationRecord.orgId,
       signal,
     });
-    const counts = await dispatchMatchedGithubTriggers({
-      get,
-      db,
-      installation: installationRecord,
-      triggers,
-      labelNames,
-      deliveryId: args.deliveryId,
-      payload: args.payload,
-      subjectKind: args.subjectKind,
-      startRun: createGithubWorkflowRunStarter({
-        set,
+    const counts = await set(
+      dispatchMatchedGithubTriggers$,
+      {
+        db,
+        installation: installationRecord,
+        triggers,
+        labelNames,
+        deliveryId: args.deliveryId,
+        payload: args.payload,
+        subjectKind: args.subjectKind,
         apiStartTime: args.apiStartTime,
-        signal,
-      }),
+      },
       signal,
-    });
+    );
 
     return { kind: "ok", ...counts };
   },

@@ -217,11 +217,7 @@ export type GithubLabelAppliedEventConfig = z.infer<
   typeof githubLabelAppliedEventConfigSchema
 >;
 
-export const githubWorkflowEventConfigSchema =
-  githubLabelAppliedEventConfigSchema;
-export type GithubWorkflowEventConfig = z.infer<
-  typeof githubWorkflowEventConfigSchema
->;
+export type GithubWorkflowEventConfig = GithubLabelAppliedEventConfig;
 
 /**
  * Schedule configuration, discriminated by `type`. Aligned with Automation's
@@ -443,7 +439,7 @@ export const zeroWorkflowGmailEventTriggerUpdateRequestSchema = z.object({
 });
 
 export const zeroWorkflowGithubEventTriggerUpdateRequestSchema = z.object({
-  eventConfig: githubWorkflowEventConfigSchema,
+  eventConfig: githubLabelAppliedEventConfigSchema,
 });
 
 export const zeroWorkflowTriggerUpdateRequestSchema = z.union([
