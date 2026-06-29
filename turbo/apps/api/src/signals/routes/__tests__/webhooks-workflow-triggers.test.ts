@@ -32,7 +32,10 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
@@ -169,6 +172,7 @@ async function postWorkflowWebhook(args: {
 
 describe("POST /api/webhooks/workflow-triggers/:token", () => {
   const track = createFixtureTracker<WorkflowsFixture>(async (fixture) => {
+    await deleteFeatureSwitchesForUser(context, fixture);
     await store.set(deleteWorkflowsForFixture$, fixture, context.signal);
   });
 

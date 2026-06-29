@@ -20,7 +20,6 @@ import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { userCache } from "@vm0/db/schema/user-cache";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { users } from "@vm0/db/schema/user";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -43,6 +42,10 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const resendMocks = context.mocks.resend;
@@ -155,15 +158,6 @@ const deleteEmailFixture$ = command(
     signal.throwIfAborted();
     await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
     signal.throwIfAborted();
-    await db
-      .delete(userFeatureSwitches)
-      .where(
-        and(
-          eq(userFeatureSwitches.orgId, fixture.orgId),
-          eq(userFeatureSwitches.userId, fixture.userId),
-        ),
-      );
-    signal.throwIfAborted();
     await db.delete(orgCache).where(eq(orgCache.orgId, fixture.orgId));
     signal.throwIfAborted();
     await db
@@ -261,8 +255,9 @@ const seedEmailFixture$ = command(
   },
 );
 
-const track = createFixtureTracker<EmailFixture>((fixture) => {
-  return store.set(deleteEmailFixture$, fixture, context.signal);
+const track = createFixtureTracker<EmailFixture>(async (fixture) => {
+  await deleteFeatureSwitchesForUser(context, fixture);
+  await store.set(deleteEmailFixture$, fixture, context.signal);
 });
 
 async function fixture(): Promise<EmailFixture> {
@@ -722,11 +717,8 @@ describe("POST /api/zero/email/callbacks/reply", () => {
     const { callbackId, runId, thread } = await seedReplyCallback({
       fixture: fx,
     });
-    const db = store.set(writeDb$);
-    await db.insert(userFeatureSwitches).values({
-      orgId: fx.orgId,
-      userId: fx.userId,
-      switches: { [FeatureSwitchKey.ZeroDebug]: true },
+    await updateFeatureSwitchesForUser(context, fx, {
+      [FeatureSwitchKey.ZeroDebug]: true,
     });
     mockRunOutput("audited email answer");
 
@@ -1002,11 +994,8 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
       fixture: fx,
       result: { agentSessionId },
     });
-    const db = store.set(writeDb$);
-    await db.insert(userFeatureSwitches).values({
-      orgId: fx.orgId,
-      userId: fx.userId,
-      switches: { [FeatureSwitchKey.ZeroDebug]: true },
+    await updateFeatureSwitchesForUser(context, fx, {
+      [FeatureSwitchKey.ZeroDebug]: true,
     });
     mockRunOutput("audited trigger response");
 

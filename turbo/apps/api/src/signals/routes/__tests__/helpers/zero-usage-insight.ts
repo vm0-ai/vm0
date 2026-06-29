@@ -15,7 +15,6 @@ import { secrets } from "@vm0/db/schema/secret";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { userConnectors } from "@vm0/db/schema/user-connector";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { automations } from "@vm0/db/schema/automation";
@@ -156,16 +155,6 @@ export const deleteUsageInsightFixture$ = command(
         and(
           eq(modelUsageObservation.orgId, orgId),
           eq(modelUsageObservation.userId, userId),
-        ),
-      );
-    signal.throwIfAborted();
-
-    await db
-      .delete(userFeatureSwitches)
-      .where(
-        and(
-          eq(userFeatureSwitches.orgId, orgId),
-          eq(userFeatureSwitches.userId, userId),
         ),
       );
     signal.throwIfAborted();

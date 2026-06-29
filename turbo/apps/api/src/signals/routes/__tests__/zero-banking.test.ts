@@ -34,7 +34,10 @@ import {
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
 import { createFixtureTracker } from "./helpers/zero-route-test";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
@@ -236,6 +239,7 @@ async function deleteBankingFixture(fixture: BankingFixture): Promise<void> {
       ),
     );
   await store.set(deleteOrgMembership$, fixture, context.signal);
+  await deleteFeatureSwitchesForUser(context, fixture);
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
 }
 

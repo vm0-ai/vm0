@@ -16,7 +16,6 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
-import { loadActiveUserPermissionGrants } from "../../services/zero-user-permission-grants.service";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -875,15 +874,7 @@ describe("zero user permission grants", () => {
         .sort(),
     ).toStrictEqual([UNKNOWN_PERMISSION_GRANT, SLACK_WRITE_PERMISSION].sort());
 
-    const active = await loadActiveUserPermissionGrants(
-      db,
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        agentId,
-      },
-      checkedAt,
-    );
+    const active = listed.body;
     expect(
       active
         .map((grant) => {

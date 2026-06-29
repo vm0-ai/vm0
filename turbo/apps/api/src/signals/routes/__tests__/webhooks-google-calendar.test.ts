@@ -34,7 +34,10 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
@@ -237,6 +240,7 @@ function webhookHeaders(
 describe("POST /api/webhooks/google-calendar", () => {
   const track = createFixtureTracker<WorkflowsFixture>(async (fixture) => {
     const db = store.set(writeDb$);
+    await deleteFeatureSwitchesForUser(context, fixture);
     await db.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
     await db.delete(connectors).where(eq(connectors.orgId, fixture.orgId));
     await store.set(deleteWorkflowsForFixture$, fixture, context.signal);

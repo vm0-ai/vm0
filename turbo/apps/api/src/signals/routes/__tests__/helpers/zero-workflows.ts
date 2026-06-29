@@ -14,10 +14,9 @@ import {
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
-import { and, eq } from "drizzle-orm";
+import { eq } from "drizzle-orm";
 
 import type { TestContext } from "../../../../__tests__/test-context";
 import { writeDb$ } from "../../../external/db";
@@ -70,15 +69,6 @@ export const deleteWorkflowsForFixture$ = command(
     await db
       .delete(agentComposes)
       .where(eq(agentComposes.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await db
-      .delete(userFeatureSwitches)
-      .where(
-        and(
-          eq(userFeatureSwitches.orgId, fixture.orgId),
-          eq(userFeatureSwitches.userId, fixture.userId),
-        ),
-      );
     signal.throwIfAborted();
   },
 );

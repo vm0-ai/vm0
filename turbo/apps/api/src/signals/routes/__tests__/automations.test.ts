@@ -38,7 +38,10 @@ import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const store = createStore();
@@ -79,9 +82,12 @@ function cronApi() {
   return setupApp({ context })(cronExecuteAutomationsContract);
 }
 
-const trackAutomations = createFixtureTracker<AutomationsFixture>((fixture) => {
-  return store.set(deleteAutomationsScenario$, fixture, context.signal);
-});
+const trackAutomations = createFixtureTracker<AutomationsFixture>(
+  async (fixture) => {
+    await deleteFeatureSwitchesForUser(context, fixture);
+    await store.set(deleteAutomationsScenario$, fixture, context.signal);
+  },
+);
 
 // Automations created through the API are not part of the schedule fixture, so
 // delete them by their org scope after each test. The trigger rows cascade

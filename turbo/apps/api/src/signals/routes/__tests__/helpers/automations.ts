@@ -20,7 +20,6 @@ import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets } from "@vm0/db/schema/secret";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { userConnectors } from "@vm0/db/schema/user-connector";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -320,15 +319,6 @@ export const deleteAutomationsScenario$ = command(
     await writeDb.delete(connectors).where(eq(connectors.orgId, fixture.orgId));
     signal.throwIfAborted();
     await writeDb.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(userFeatureSwitches)
-      .where(
-        and(
-          eq(userFeatureSwitches.orgId, fixture.orgId),
-          eq(userFeatureSwitches.userId, fixture.userId),
-        ),
-      );
     signal.throwIfAborted();
     await writeDb
       .delete(agentComposes)

@@ -11,14 +11,18 @@ import { createStore } from "ccstate";
 import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
 import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { eq } from "drizzle-orm";
+import { onTestFinished } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
+import {
+  deleteOrgMembership$,
+  seedOrgMembership$,
+} from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -91,7 +95,6 @@ async function deleteOrgRow(orgId: string): Promise<void> {
   await writeDb
     .delete(orgConcurrencyEntitlements)
     .where(eq(orgConcurrencyEntitlements.orgId, orgId));
-  await writeDb.delete(orgMembersCache).where(eq(orgMembersCache.orgId, orgId));
   await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
 }
 
@@ -100,8 +103,14 @@ async function seedMemberRole(args: {
   readonly userId: string;
   readonly role: "admin" | "member";
 }): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(orgMembersCache).values(args);
+  const fixture = await store.set(
+    seedOrgMembership$,
+    { ...args, seedOrgCache: false },
+    context.signal,
+  );
+  onTestFinished(async () => {
+    await store.set(deleteOrgMembership$, fixture, context.signal);
+  });
 }
 
 describe("POST /api/zero/billing/checkout", () => {
