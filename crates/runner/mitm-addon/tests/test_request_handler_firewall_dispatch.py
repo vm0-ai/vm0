@@ -343,6 +343,7 @@ async def test_firewall_permission_blocks_unmatched(tmp_path, real_flow, mitm_ct
     assert body["permissions"] == []
     assert body["reason"] == "unknown_endpoint"
     assert body["base"] == "https://api.github.com"
+    assert body["url"] == "https://api.github.com/orgs"
     proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["name"] == "github"
@@ -586,9 +587,55 @@ async def test_firewall_permission_denied_block_reports_reason(
     body = json.loads(flow.response.content)
     assert body["permissions"] == ["read-repos"]
     assert body["reason"] == "permission_denied"
+    assert body["url"] == "https://api.github.com/repos/org/repo"
     proxy_log_entry = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")[0]
     assert proxy_log_entry["type"] == "firewall_block"
     assert proxy_log_entry["reason"] == "permission_denied"
+
+
+async def test_firewall_block_response_url_joins_base_path_without_double_slash(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="example",
+            api_entry={
+                "base": "https://api.example.com/v1/",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.EXAMPLE_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "read-items",
+                        "rules": ["GET /items/{id}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": [],
+                "deny": ["read-items"],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.example.com",
+        path="/v1/items/123",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["base"] == "https://api.example.com/v1"
+    assert body["path"] == "/items/123"
+    assert body["url"] == "https://api.example.com/v1/items/123"
 
 
 async def test_firewall_permission_allows_matched(

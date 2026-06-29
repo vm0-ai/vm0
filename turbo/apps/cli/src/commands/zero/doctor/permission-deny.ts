@@ -222,6 +222,7 @@ Examples:
 
 Notes:
   - Identifies which named permission covers a denied request
+  - If the firewall denial response includes a url field, pass that value to --url
   - Requires the denied URL origin and path because method/path alone can match the wrong API base
   - Query strings and fragments are ignored for matching; omit them when they may contain secrets
   - Use permission-change to request or enable the permission

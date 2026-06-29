@@ -2349,12 +2349,14 @@ def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallB
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
     flow.metadata[metadata_keys.FIREWALL_BASE] = result.base
     flow.metadata[metadata_keys.FIREWALL_NAME] = result.name
+    diagnostic_url = f"{result.base.rstrip('/')}{result.path}"
     error_body = json.dumps(
         {
             "error": "permission_denied",
             "message": response_message,
             "method": result.method,
             "path": result.path,
+            "url": diagnostic_url,
             "name": result.name,
             "permissions": list(result.permissions),
             "reason": result.reason,
