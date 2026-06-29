@@ -157,6 +157,15 @@ def _assert_public_destination_denied(flow, *, destination_host: str, reason: st
     }
 
 
+def _assert_public_destination_headers_terminated(flow) -> None:
+    assert flow.response is None
+    assert flow.error is not None
+    assert flow.error.msg == Error.KILLED_MESSAGE
+    assert flow.live is False
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_public_destination"
+
+
 async def test_firewall_match_calls_handler(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
@@ -243,8 +252,9 @@ async def test_public_destination_allows_public_runtime_destination(
     assert flow.request.headers["Authorization"] == "Bearer x"
 
 
+@pytest.mark.parametrize("request_stream", [False, True])
 async def test_public_destination_requestheaders_blocks_before_early_auth(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, request_stream
 ):
     reg_path = _write_public_destination_firewall_registry(
         tmp_path,
@@ -257,7 +267,7 @@ async def test_public_destination_requestheaders_blocks_before_early_auth(
         method="POST",
         extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
     )
-    flow.request.stream = True
+    flow.request.stream = request_stream
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -265,11 +275,36 @@ async def test_public_destination_requestheaders_blocks_before_early_auth(
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
         assert requestheaders_result is None
-        _assert_public_destination_denied(
-            flow,
-            destination_host="10.0.0.1",
-            reason="non_public_destination",
-        )
+        _assert_public_destination_headers_terminated(flow)
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.request.stream is False
+    assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+    [proxy_log_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert proxy_log_entry["type"] == "public_destination"
+
+
+async def test_public_destination_requestheaders_kills_unknown_length_before_early_auth(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="10.0.0.1",
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        assert requestheaders_result is None
+        _assert_public_destination_headers_terminated(flow)
         await mitm_addon.request(flow)
 
     auth_fetch.assert_not_called()
