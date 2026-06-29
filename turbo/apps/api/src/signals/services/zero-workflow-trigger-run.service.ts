@@ -45,6 +45,7 @@ export type RunWorkflowTriggerResult =
   | { readonly kind: "run_error"; readonly response: RunErrorResponse };
 
 export type RunFailure = Exclude<RunWorkflowTriggerResult, { kind: "ok" }>;
+type ActivePreviousRunPolicy = "block" | "allow";
 
 interface InternalRunCallbackInput {
   readonly internalKind: InternalRunCallbackKind;
@@ -201,6 +202,7 @@ export const runWorkflowTriggerNow$ = command(
       readonly triggerSource?: TriggerSource;
       readonly appendSystemPrompt?: string;
       readonly callbacks?: readonly InternalRunCallbackInput[];
+      readonly activePreviousRunPolicy?: ActivePreviousRunPolicy;
       readonly recordLastRunId?: boolean;
       readonly recordLastRunAt?: boolean;
       readonly dispatchFailedCallbacks: DispatchFailedRunCallbacks;
@@ -210,7 +212,7 @@ export const runWorkflowTriggerNow$ = command(
     const db = set(writeDb$);
     const { trigger, agentId, workflowName, chatThreadId } = args.due;
 
-    if (args.recordLastRunId !== false && trigger.lastRunId) {
+    if (args.activePreviousRunPolicy !== "allow" && trigger.lastRunId) {
       const [lastRun] = await db
         .select({ status: agentRuns.status })
         .from(agentRuns)

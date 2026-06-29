@@ -531,6 +531,7 @@ function createGithubWorkflowRunStarter(args: {
           trigger.chatThreadId,
           trigger.agentId,
         ),
+        activePreviousRunPolicy: "allow",
         recordLastRunId: false,
         recordLastRunAt: true,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,

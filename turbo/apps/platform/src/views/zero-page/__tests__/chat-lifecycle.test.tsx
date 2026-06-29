@@ -3695,7 +3695,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Latest goal result")).toBeInTheDocument();
-      expect(screen.getByLabelText("Goal prompt")).toBeInTheDocument();
+      expect(screen.getByLabelText("Goal")).toBeInTheDocument();
       expect(screen.getByText(goalPrompt)).toBeInTheDocument();
       expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
         "3 mins for Keep the release moving",
@@ -3797,7 +3797,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Latest workflow result")).toBeInTheDocument();
-      expect(screen.queryByLabelText("Goal prompt")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Goal")).not.toBeInTheDocument();
       expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
         "1 run for Daily workflow summary",
       );

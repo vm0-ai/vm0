@@ -6890,11 +6890,11 @@ function GoalUserMessage({
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
           <div
-            aria-label="Goal prompt"
+            aria-label="Goal"
             className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
           >
             <IconTarget size={15} stroke={1.8} className="shrink-0" />
-            <span>Goal prompt</span>
+            <span>Goal</span>
           </div>
           {bodyBlocks.length > 0 ? (
             <div className="zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden ring-1 ring-emerald-900/10">
