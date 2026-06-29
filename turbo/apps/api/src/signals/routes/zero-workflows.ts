@@ -18,9 +18,12 @@ import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
   workflowUserTriggerThreads,
+  zeroWorkflowTriggers,
+  zeroWorkflowWebhookTriggers,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
 import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
+import { workflowUserPermissionGrants } from "@vm0/db/schema/workflow-user-permission-grant";
 import { and, eq, ne } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -39,6 +42,13 @@ import { zeroWorkflowDetail } from "../services/zero-workflow-detail.service";
 import { ensureWorkflowUserTriggerThread } from "../services/zero-workflow-user-trigger-thread.service";
 import { updateZeroWorkflow$ } from "../services/zero-workflow-update.service";
 import { loadWorkflowVolumeFiles } from "../services/zero-workflow-volume.service";
+import {
+  encryptWorkflowWebhookSecret,
+  encryptWorkflowWebhookToken,
+  hashWorkflowWebhookToken,
+  mintWorkflowWebhookSecret,
+  mintWorkflowWebhookToken,
+} from "../services/workflow-webhook-trigger.service";
 import {
   unavailableUserConnectorTypes,
   userConnectorAvailability,
@@ -631,6 +641,275 @@ const deleteWorkflowInner$ = command(
   },
 );
 
+type WorkflowCopyTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+interface CopyWorkflowRuntimeArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly sourceWorkflow: WorkflowRow;
+  readonly targetAgentId: string;
+  readonly currentTime: Date;
+}
+
+interface CopyWorkflowScopedRowsArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly sourceWorkflowId: string;
+  readonly targetWorkflowId: string;
+  readonly currentTime: Date;
+}
+
+interface CopyWorkflowTriggerRowsArgs extends CopyWorkflowScopedRowsArgs {
+  readonly targetAgentId: string;
+  readonly workflowTitle: string;
+}
+
+async function insertCopiedWorkflowRow(
+  tx: WorkflowCopyTransaction,
+  args: CopyWorkflowRuntimeArgs,
+): Promise<{ readonly id: string } | undefined> {
+  const [workflow] = await tx
+    .insert(zeroWorkflows)
+    .values({
+      orgId: args.orgId,
+      agentId: args.targetAgentId,
+      name: args.sourceWorkflow.name,
+      visibility: "private",
+      instruction: args.sourceWorkflow.instruction,
+      ownerUserId: args.userId,
+      displayName: args.sourceWorkflow.displayName,
+      description: args.sourceWorkflow.description,
+      createdBy: args.userId,
+      updatedBy: args.userId,
+      createdAt: args.currentTime,
+      updatedAt: args.currentTime,
+    })
+    .returning({ id: zeroWorkflows.id });
+  return workflow;
+}
+
+async function copyWorkflowUserConnectors(
+  tx: WorkflowCopyTransaction,
+  args: CopyWorkflowScopedRowsArgs,
+): Promise<void> {
+  const rows = await tx
+    .select({ connectorType: workflowUserConnectors.connectorType })
+    .from(workflowUserConnectors)
+    .where(
+      and(
+        eq(workflowUserConnectors.orgId, args.orgId),
+        eq(workflowUserConnectors.userId, args.userId),
+        eq(workflowUserConnectors.workflowId, args.sourceWorkflowId),
+      ),
+    );
+  if (rows.length === 0) {
+    return;
+  }
+
+  await tx.insert(workflowUserConnectors).values(
+    rows.map((row) => {
+      return {
+        orgId: args.orgId,
+        userId: args.userId,
+        workflowId: args.targetWorkflowId,
+        connectorType: row.connectorType,
+        createdAt: args.currentTime,
+      };
+    }),
+  );
+}
+
+async function copyWorkflowUserPermissionGrants(
+  tx: WorkflowCopyTransaction,
+  args: CopyWorkflowScopedRowsArgs,
+): Promise<void> {
+  const rows = await tx
+    .select({
+      connectorRef: workflowUserPermissionGrants.connectorRef,
+      permission: workflowUserPermissionGrants.permission,
+      action: workflowUserPermissionGrants.action,
+      expiresAt: workflowUserPermissionGrants.expiresAt,
+    })
+    .from(workflowUserPermissionGrants)
+    .where(
+      and(
+        eq(workflowUserPermissionGrants.orgId, args.orgId),
+        eq(workflowUserPermissionGrants.userId, args.userId),
+        eq(workflowUserPermissionGrants.workflowId, args.sourceWorkflowId),
+      ),
+    );
+  if (rows.length === 0) {
+    return;
+  }
+
+  await tx.insert(workflowUserPermissionGrants).values(
+    rows.map((row) => {
+      return {
+        orgId: args.orgId,
+        userId: args.userId,
+        workflowId: args.targetWorkflowId,
+        connectorRef: row.connectorRef,
+        permission: row.permission,
+        action: row.action,
+        expiresAt: row.expiresAt,
+        createdAt: args.currentTime,
+        updatedAt: args.currentTime,
+      };
+    }),
+  );
+}
+
+async function copyWorkflowWebhookTriggerConfig(
+  tx: WorkflowCopyTransaction,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly sourceTriggerId: string;
+    readonly targetTriggerId: string;
+    readonly currentTime: Date;
+  },
+): Promise<void> {
+  const [sourceWebhook] = await tx
+    .select({
+      encryptedSecret: zeroWorkflowWebhookTriggers.encryptedSecret,
+      secretLastFour: zeroWorkflowWebhookTriggers.secretLastFour,
+    })
+    .from(zeroWorkflowWebhookTriggers)
+    .where(eq(zeroWorkflowWebhookTriggers.triggerId, args.sourceTriggerId))
+    .limit(1);
+  const token = mintWorkflowWebhookToken();
+  let encryptedSecret: string;
+  let secretLastFour: string;
+  if (sourceWebhook) {
+    encryptedSecret = sourceWebhook.encryptedSecret;
+    secretLastFour = sourceWebhook.secretLastFour;
+  } else {
+    const secret = mintWorkflowWebhookSecret();
+    encryptedSecret = await encryptWorkflowWebhookSecret(secret, {
+      orgId: args.orgId,
+      userId: args.userId,
+    });
+    secretLastFour = secret.slice(-4);
+  }
+
+  await tx.insert(zeroWorkflowWebhookTriggers).values({
+    triggerId: args.targetTriggerId,
+    tokenHash: hashWorkflowWebhookToken(token),
+    encryptedToken: await encryptWorkflowWebhookToken(token, {
+      orgId: args.orgId,
+      userId: args.userId,
+    }),
+    encryptedSecret,
+    secretLastFour,
+    createdAt: args.currentTime,
+    updatedAt: args.currentTime,
+  });
+}
+
+async function copyWorkflowTriggerRow(
+  tx: WorkflowCopyTransaction,
+  args: CopyWorkflowScopedRowsArgs & {
+    readonly trigger: typeof zeroWorkflowTriggers.$inferSelect;
+  },
+): Promise<void> {
+  const [copiedTrigger] = await tx
+    .insert(zeroWorkflowTriggers)
+    .values({
+      orgId: args.orgId,
+      workflowId: args.targetWorkflowId,
+      ownerUserId: args.userId,
+      kind: args.trigger.kind,
+      eventType: args.trigger.eventType,
+      eventConfig: args.trigger.eventConfig,
+      scheduleType: args.trigger.scheduleType,
+      cronExpression: args.trigger.cronExpression,
+      intervalSeconds: args.trigger.intervalSeconds,
+      atTime: args.trigger.atTime,
+      timezone: args.trigger.timezone,
+      enabled: args.trigger.enabled,
+      nextRunAt: args.trigger.nextRunAt,
+      lastRunAt: null,
+      lastRunId: null,
+      consecutiveFailures: 0,
+      createdAt: args.currentTime,
+      updatedAt: args.currentTime,
+    })
+    .returning({ id: zeroWorkflowTriggers.id });
+  if (!copiedTrigger) {
+    throw new Error("Failed to copy workflow trigger");
+  }
+
+  if (
+    args.trigger.kind === "event" &&
+    args.trigger.eventType === "webhook-received"
+  ) {
+    await copyWorkflowWebhookTriggerConfig(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      sourceTriggerId: args.trigger.id,
+      targetTriggerId: copiedTrigger.id,
+      currentTime: args.currentTime,
+    });
+  }
+}
+
+async function copyWorkflowUserTriggers(
+  tx: WorkflowCopyTransaction,
+  args: CopyWorkflowTriggerRowsArgs,
+): Promise<void> {
+  const rows = await tx
+    .select()
+    .from(zeroWorkflowTriggers)
+    .where(
+      and(
+        eq(zeroWorkflowTriggers.orgId, args.orgId),
+        eq(zeroWorkflowTriggers.ownerUserId, args.userId),
+        eq(zeroWorkflowTriggers.workflowId, args.sourceWorkflowId),
+      ),
+    );
+  if (rows.length === 0) {
+    return;
+  }
+
+  await ensureWorkflowUserTriggerThread(tx, {
+    orgId: args.orgId,
+    userId: args.userId,
+    workflowId: args.targetWorkflowId,
+    agentId: args.targetAgentId,
+    workflowTitle: args.workflowTitle,
+    currentTime: args.currentTime,
+  });
+  for (const trigger of rows) {
+    await copyWorkflowTriggerRow(tx, { ...args, trigger });
+  }
+}
+
+async function copyWorkflowRuntimeConfiguration(
+  tx: WorkflowCopyTransaction,
+  args: CopyWorkflowRuntimeArgs,
+): Promise<{ readonly id: string } | undefined> {
+  const workflow = await insertCopiedWorkflowRow(tx, args);
+  if (!workflow) {
+    return undefined;
+  }
+
+  const scopedRowsArgs = {
+    orgId: args.orgId,
+    userId: args.userId,
+    sourceWorkflowId: args.sourceWorkflow.id,
+    targetWorkflowId: workflow.id,
+    currentTime: args.currentTime,
+  };
+  await copyWorkflowUserConnectors(tx, scopedRowsArgs);
+  await copyWorkflowUserPermissionGrants(tx, scopedRowsArgs);
+  await copyWorkflowUserTriggers(tx, {
+    ...scopedRowsArgs,
+    targetAgentId: args.targetAgentId,
+    workflowTitle: args.sourceWorkflow.displayName ?? args.sourceWorkflow.name,
+  });
+  return workflow;
+}
+
 const copyWorkflowInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -672,22 +951,18 @@ const copyWorkflowInner$ = command(
     }
 
     // A copy is a fork owned by the caller: a new private workflow under the
-    // target agent, carrying the source instruction/metadata and volume files.
-    const [inserted] = await writeDb
-      .insert(zeroWorkflows)
-      .values({
+    // target agent. User-scoped runtime configuration is cloned only for the
+    // caller so copies do not leak another user's triggers or authorization.
+    const currentTime = nowDate();
+    const inserted = await writeDb.transaction(async (tx) => {
+      return await copyWorkflowRuntimeConfiguration(tx, {
         orgId: auth.orgId,
-        agentId: targetAgent.id,
-        name: source.workflow.name,
-        visibility: "private",
-        instruction: source.workflow.instruction,
-        ownerUserId: auth.userId,
-        displayName: source.workflow.displayName,
-        description: source.workflow.description,
-        createdBy: auth.userId,
-        updatedBy: auth.userId,
-      })
-      .returning({ id: zeroWorkflows.id });
+        userId: auth.userId,
+        sourceWorkflow: source.workflow,
+        targetAgentId: targetAgent.id,
+        currentTime,
+      });
+    });
     signal.throwIfAborted();
     if (!inserted) {
       throw new Error("Failed to copy workflow");

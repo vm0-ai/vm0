@@ -222,7 +222,14 @@ export const apiWorkflowsHandlers = [
       updatedByUserId: "test-user-123",
       createdAt: now,
       updatedAt: now,
-      triggers: [],
+      triggers: source.triggers.map((trigger) => {
+        return {
+          ...trigger,
+          id: crypto.randomUUID(),
+          ownerUserId: "test-user-123",
+          lastRunAt: null,
+        };
+      }),
     };
     mockWorkflows = [...mockWorkflows, copied];
     return respond(201, summary(copied));
