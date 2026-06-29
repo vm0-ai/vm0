@@ -173,7 +173,6 @@ import {
 } from "./agent-connector-scope.service";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
-const QUEUED_RUN_TTL_MS = 2 * 60 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
 type ArtifactMissingRootPolicy = NonNullable<
   StorageManifest["artifacts"][number]["missingRootPolicy"]
@@ -4845,7 +4844,7 @@ function dispatchRun(
                 profile: payload.profile,
                 cliAgentSessionId: payload.cliAgentSessionId,
                 executionContext: payload.executionContext,
-                expiresAt: new Date(now() + 2 * 60 * 60 * 1000),
+                expiresAt: sql`now() + interval '2 hours'`,
               });
             },
           );
@@ -4943,7 +4942,7 @@ function enqueueRunForConcurrency(
         orgId: args.orgId,
         encryptedParams,
         createdAt: args.run.createdAt,
-        expiresAt: new Date(now() + QUEUED_RUN_TTL_MS),
+        expiresAt: sql`now() + interval '2 hours'`,
       });
       const [depthRow] = await tx
         .select({ depth: count() })
