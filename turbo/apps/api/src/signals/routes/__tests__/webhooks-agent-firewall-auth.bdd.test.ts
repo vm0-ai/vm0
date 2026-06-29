@@ -1412,6 +1412,36 @@ describe("FW-8: static access tokens and unavailable sources", () => {
 });
 
 describe("FW-9: codex model-provider access", () => {
+  it("resolves static model-provider auth from an empty runtime namespace", async () => {
+    const fw = createFirewallApi(context);
+    const { headers } = await firewallRun();
+
+    const resolved = await fw.requestFirewallAuth(
+      headers,
+      {
+        encryptedSecrets: fw.encryptedSecretsBody({}),
+        authHeaders: {
+          "x-api-key": secretTemplate("ANTHROPIC_API_KEY"),
+        },
+        secretConnectorMap: { ANTHROPIC_API_KEY: "anthropic-api-key" },
+        secretConnectorMetadataMap: {
+          ANTHROPIC_API_KEY: {
+            sourceType: "model-provider" as const,
+            sourceUserId: ORG_SENTINEL_USER_ID,
+            metadataKey: "anthropic-api-key",
+          },
+        },
+      },
+      [200],
+    );
+    if (resolved.status !== 200) {
+      throw new Error("Expected static model-provider auth to resolve");
+    }
+    expect(resolved.body.headers["x-api-key"]).toBe("test-anthropic-key");
+    expect(resolved.body.resolvedSecrets).toStrictEqual(["ANTHROPIC_API_KEY"]);
+    expect(resolved.body.refreshedConnectors).toStrictEqual([]);
+  });
+
   it("refreshes an expired org codex provider and serves the stored token afterwards", async () => {
     const fw = createFirewallApi(context);
     const { actor, headers } = await firewallRun();
