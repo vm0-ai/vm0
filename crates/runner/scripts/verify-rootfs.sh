@@ -136,6 +136,8 @@ sudo mount -o loop,ro "$ROOTFS" "$MOUNT_DIR"
 
 errors=()
 
+# Resolve inside the mounted rootfs without chroot: verification may inspect
+# cached or downloaded images, so it must not execute binaries from the image.
 resolve_rootfs_path() {
   local rootfs_path="$1"
   local resolved="/"
