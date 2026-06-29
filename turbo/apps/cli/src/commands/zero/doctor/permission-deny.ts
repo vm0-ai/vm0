@@ -131,12 +131,13 @@ function connectorRefHostToken(connectorRef: string): string {
 function hostnameMatchesConnectorRef(url: URL, connectorRef: string): boolean {
   const token = connectorRefHostToken(connectorRef);
   if (token.length < 3) return false;
-  return (url.hostname || "")
+  const labels = (url.hostname || "")
     .toLowerCase()
     .split(/[^a-z0-9]+/)
-    .some((part) => {
-      return part === token;
+    .filter((part) => {
+      return part !== "";
     });
+  return labels.length >= 2 && labels[labels.length - 2] === token;
 }
 
 function stripUrlQueryAndFragment(url: string): string {
