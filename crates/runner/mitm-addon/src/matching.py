@@ -12,10 +12,12 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Literal, NamedTuple
+from typing import Literal, NamedTuple, TypeAlias
 from urllib.parse import urlsplit
 
 from firewall_auth_config import auth_config_injects_ordinary_upstream_credentials
+from firewall_matching import base_url as _firewall_base_url
+from firewall_matching import patterns as _firewall_patterns
 from firewall_matching.base_url import (
     _BaseUrlParts,
     _compile_base,
@@ -26,15 +28,6 @@ from firewall_matching.base_url import (
     _split_base_match_url,
     _split_https_authority_parts,
 )
-from firewall_matching.base_url import (
-    firewall_base_config_is_valid as firewall_base_config_is_valid,
-)
-from firewall_matching.base_url import (
-    match_base_url as match_base_url,
-)
-from firewall_matching.patterns import (
-    CompiledPathPattern as CompiledPathPattern,
-)
 from firewall_matching.patterns import (
     SegmentError,
     SegmentLiteral,
@@ -42,35 +35,24 @@ from firewall_matching.patterns import (
     _match_compiled_path_segments,
     _split_path_segments,
 )
-from firewall_matching.patterns import (
-    SegmentParam as SegmentParam,
-)
-from firewall_matching.patterns import (
-    _compiled_rule_path_is_valid as _compiled_rule_path_is_valid,
-)
-from firewall_matching.patterns import (
-    compile_path_pattern as compile_path_pattern,
-)
-from firewall_matching.patterns import (
-    match_compiled_path as match_compiled_path,
-)
-from firewall_matching.patterns import (
-    match_host as match_host,
-)
-from firewall_matching.patterns import (
-    match_path as match_path,
-)
-from firewall_matching.patterns import (
-    match_path_prefix as match_path_prefix,
-)
-from firewall_matching.patterns import (
-    parse_segment as parse_segment,
-)
 from path_security import has_unsafe_path
 from url_syntax import (
     has_raw_whitespace,
     has_unsafe_url_codepoint,
 )
+
+firewall_base_config_is_valid = _firewall_base_url.firewall_base_config_is_valid
+match_base_url = _firewall_base_url.match_base_url
+
+CompiledPathPattern: TypeAlias = _firewall_patterns.CompiledPathPattern
+SegmentParam: TypeAlias = _firewall_patterns.SegmentParam
+_compiled_rule_path_is_valid = _firewall_patterns._compiled_rule_path_is_valid
+compile_path_pattern = _firewall_patterns.compile_path_pattern
+match_compiled_path = _firewall_patterns.match_compiled_path
+match_host = _firewall_patterns.match_host
+match_path = _firewall_patterns.match_path
+match_path_prefix = _firewall_patterns.match_path_prefix
+parse_segment = _firewall_patterns.parse_segment
 
 # Firewall rules are encoded as ``"METHOD path"`` — a single-whitespace-split
 # yields exactly two tokens.  Rows that fail this shape are malformed.
