@@ -90,7 +90,7 @@ async def test_registry_unavailable_blocks_vm0_api_auto_allow(registry_file, rea
 
 
 async def test_vm0_api_test_paths_skip_auto_allow(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
 ):
     """`/api/test/*` routes exist to exercise the firewall pipeline itself.
 
@@ -121,7 +121,16 @@ async def test_vm0_api_test_paths_skip_auto_allow(
         ),
     )
 
-    flow = real_flow(with_response=False, host="api.vm0.ai", path="/api/test/oauth-provider/echo")
+    flow = real_flow(
+        with_response=False,
+        host="api.vm0.ai",
+        path="/api/test/oauth-provider/echo",
+        request_headers=headers(
+            ("Host", "api.vm0.ai"),
+            ("x-vm0-test-endpoint-bypass", "preview-secret"),
+        ),
+    )
+    monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
