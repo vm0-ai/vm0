@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.504.8](https://github.com/vm0-ai/vm0/compare/app-v0.504.7...app-v0.504.8) (2026-06-29)
+
+
+### Bug Fixes
+
+* shorten goal message label ([#19306](https://github.com/vm0-ai/vm0/issues/19306)) ([3082607](https://github.com/vm0-ai/vm0/commit/3082607aa23b52ab5c59209ce235fcb4abc33a1b))
+
 ## [0.504.7](https://github.com/vm0-ai/vm0/compare/app-v0.504.6...app-v0.504.7) (2026-06-29)
 
 
