@@ -1,5 +1,23 @@
 # Changelog
 
+## [0.130.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.0...runner-rs-v0.130.1) (2026-06-29)
+
+
+### Bug Fixes
+
+* bind mitm credential upstream destinations ([#19195](https://github.com/vm0-ai/vm0/issues/19195)) ([63cd505](https://github.com/vm0-ai/vm0/commit/63cd505775d743b23c839617d51455e8d38f61e9))
+* bound codex session cleanup traversal ([#19265](https://github.com/vm0-ai/vm0/issues/19265)) ([0ad8dd7](https://github.com/vm0-ai/vm0/commit/0ad8dd7cc4a2ba0e4d1f0e3732b7cc2596b5b38f))
+
+
+### Documentation
+
+* document fake auth endpoint helper contract ([#19274](https://github.com/vm0-ai/vm0/issues/19274)) ([07e4d7e](https://github.com/vm0-ai/vm0/commit/07e4d7ef4ec0436814a053be9f6988eac91e4df0))
+
+
+### Refactoring
+
+* split local provider tests ([#19264](https://github.com/vm0-ai/vm0/issues/19264)) ([9b57df8](https://github.com/vm0-ai/vm0/commit/9b57df8026dcebdb8fa7823a7e0af87fb12c6786))
+
 ## [0.130.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.129.42...runner-rs-v0.130.0) (2026-06-29)
 
 

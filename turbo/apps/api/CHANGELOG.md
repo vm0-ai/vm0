@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.187.0](https://github.com/vm0-ai/vm0/compare/api-v1.186.5...api-v1.187.0) (2026-06-29)
+
+
+### Features
+
+* add atom grant invoice entitlements ([#19275](https://github.com/vm0-ai/vm0/issues/19275)) ([2c00769](https://github.com/vm0-ai/vm0/commit/2c007696e9588b4a53d9ec5115f735ece6bd63e4))
+
+
+### Refactoring
+
+* remove workflow permission grants ([#19271](https://github.com/vm0-ai/vm0/issues/19271)) ([07e590a](https://github.com/vm0-ai/vm0/commit/07e590af6b59fd53a565a7be9341d685f0321299))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.5
+    * @vm0/core bumped to 8.374.5
+    * @vm0/db bumped to 1.76.7
+
 ## [1.186.5](https://github.com/vm0-ai/vm0/compare/api-v1.186.4...api-v1.186.5) (2026-06-29)
 
 

@@ -1,5 +1,19 @@
 # Changelog
 
+## [12.444.6](https://github.com/vm0-ai/vm0/compare/web-v12.444.5...web-v12.444.6) (2026-06-29)
+
+
+### Refactoring
+
+* remove workflow permission grants ([#19271](https://github.com/vm0-ai/vm0/issues/19271)) ([07e590a](https://github.com/vm0-ai/vm0/commit/07e590af6b59fd53a565a7be9341d685f0321299))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.5
+
 ## [12.444.5](https://github.com/vm0-ai/vm0/compare/web-v12.444.4...web-v12.444.5) (2026-06-29)
 
 
