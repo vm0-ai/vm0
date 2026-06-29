@@ -6,6 +6,7 @@ import {
   zeroWorkflowVisibilityContract,
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
+  type GithubLabelAppliedEventConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowSummary,
@@ -49,12 +50,15 @@ type WorkflowTriggerCreateDialog =
   | "once"
   | "gmail"
   | "gmail-label"
+  | "github-label"
   | "webhook"
   | null;
 type WorkflowWebhookTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { readonly kind: "event"; readonly eventType: "webhook-received" }
 >;
+type WorkflowGithubLabelActor =
+  GithubLabelAppliedEventConfig["filters"]["actor"]["type"];
 export type WorkflowTriggerAutomationEntry = ZeroWorkflowTriggerAutomationEntry;
 export const WORKFLOW_DETAIL_TAB_PARAM = "tab";
 export const WORKFLOW_DETAIL_FILE_PARAM = "file";
@@ -144,6 +148,10 @@ const internalWorkflowTriggerCreateDialog$ =
   state<WorkflowTriggerCreateDialog>(null);
 const internalCreatedWorkflowWebhookTrigger$ =
   state<WorkflowWebhookTriggerSummary | null>(null);
+const internalCreateGithubLabelActor$ = state<WorkflowGithubLabelActor>("me");
+const internalEditingGithubLabelActors$ = state<
+  Record<string, WorkflowGithubLabelActor>
+>({});
 const internalCreateScheduleCronFields$ = state<WorkflowCronFields>(
   defaultWorkflowCronFields(),
 );
@@ -219,6 +227,8 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
   set(internalWorkflowMetadataPatch$, null);
   set(internalWorkflowTriggerCreateDialog$, null);
   set(internalCreatedWorkflowWebhookTrigger$, null);
+  set(internalCreateGithubLabelActor$, "me");
+  set(internalEditingGithubLabelActors$, {});
   set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
   set(internalEditingScheduleCronFields$, defaultWorkflowCronFields());
 });
@@ -246,6 +256,9 @@ export const editingWorkflowTriggerId$ = computed((get) => {
 export const setEditingWorkflowTriggerId$ = command(
   ({ set }, triggerId: string | null) => {
     set(internalEditingWorkflowTriggerId$, triggerId);
+    if (!triggerId) {
+      set(internalEditingGithubLabelActors$, {});
+    }
   },
 );
 
@@ -272,6 +285,37 @@ export const setWorkflowTriggerCreateDialog$ = command(
     if (dialog === "scheduled") {
       set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
     }
+    if (dialog === "github-label") {
+      set(internalCreateGithubLabelActor$, "me");
+    }
+  },
+);
+
+export const createGithubLabelActor$ = computed((get) => {
+  return get(internalCreateGithubLabelActor$);
+});
+
+export const setCreateGithubLabelActor$ = command(
+  ({ set }, actor: WorkflowGithubLabelActor) => {
+    set(internalCreateGithubLabelActor$, actor);
+  },
+);
+
+export const editingGithubLabelActors$ = computed((get) => {
+  return get(internalEditingGithubLabelActors$);
+});
+
+export const setEditingGithubLabelActor$ = command(
+  (
+    { set },
+    input: {
+      readonly triggerId: string;
+      readonly actor: WorkflowGithubLabelActor;
+    },
+  ) => {
+    set(internalEditingGithubLabelActors$, (actors) => {
+      return { ...actors, [input.triggerId]: input.actor };
+    });
   },
 );
 
@@ -627,6 +671,33 @@ export const createWorkflowGmailLabelAppliedTrigger$ = command(
   },
 );
 
+export const createWorkflowGithubLabelAppliedTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: GithubLabelAppliedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "github-label-applied",
+          eventConfig: input.eventConfig,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
 export const createWorkflowWebhookTrigger$ = command(
   async (
     { get },
@@ -690,6 +761,29 @@ export const updateWorkflowGmailLabelAppliedTrigger$ = command(
     input: {
       readonly triggerId: string;
       readonly eventConfig: GmailLabelAppliedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.update({
+        params: { id: input.triggerId },
+        body: { eventConfig: input.eventConfig },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const updateWorkflowGithubLabelAppliedTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly triggerId: string;
+      readonly eventConfig: GithubLabelAppliedEventConfig;
     },
     signal: AbortSignal,
   ) => {

@@ -101,6 +101,7 @@ export type ZeroWorkflowTriggerKind = z.infer<
 export const zeroWorkflowEventTypeSchema = z.enum([
   "gmail-new-message",
   "gmail-label-applied",
+  "github-label-applied",
   "webhook-received",
 ]);
 export type ZeroWorkflowEventType = z.infer<typeof zeroWorkflowEventTypeSchema>;
@@ -180,6 +181,44 @@ export type WebhookReceivedEventConfig = z.infer<
   typeof webhookReceivedEventConfigSchema
 >;
 
+export const githubLabelAppliedSubjectFilterSchema = z.enum([
+  "both",
+  "issues",
+  "pull_requests",
+]);
+export type GithubLabelAppliedSubjectFilter = z.infer<
+  typeof githubLabelAppliedSubjectFilterSchema
+>;
+
+export const githubLabelAppliedActorFilterSchema = z
+  .object({
+    type: z.enum(["me", "anyone"]),
+  })
+  .strict();
+export type GithubLabelAppliedActorFilter = z.infer<
+  typeof githubLabelAppliedActorFilterSchema
+>;
+
+export const githubLabelAppliedEventConfigSchema = z
+  .object({
+    provider: z.literal("github"),
+    event: z.literal("label_applied"),
+    labelName: z.string().trim().min(1).max(255),
+    filters: z
+      .object({
+        subject: githubLabelAppliedSubjectFilterSchema.default("both"),
+        actor: githubLabelAppliedActorFilterSchema.default({ type: "me" }),
+      })
+      .strict()
+      .default({ subject: "both", actor: { type: "me" } }),
+  })
+  .strict();
+export type GithubLabelAppliedEventConfig = z.infer<
+  typeof githubLabelAppliedEventConfigSchema
+>;
+
+export type GithubWorkflowEventConfig = GithubLabelAppliedEventConfig;
+
 /**
  * Schedule configuration, discriminated by `type`. Aligned with Automation's
  * time-trigger model:
@@ -244,6 +283,15 @@ export const zeroWorkflowGmailLabelAppliedTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
+export const zeroWorkflowGithubLabelAppliedTriggerSummarySchema =
+  zeroWorkflowTriggerSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("github-label-applied"),
+    eventConfig: githubLabelAppliedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const zeroWorkflowWebhookReceivedTriggerSummarySchema =
   zeroWorkflowTriggerSummaryBaseSchema.extend({
     kind: z.literal("event"),
@@ -262,6 +310,7 @@ export const zeroWorkflowEventTriggerSummarySchema = z.discriminatedUnion(
   [
     zeroWorkflowGmailNewMessageTriggerSummarySchema,
     zeroWorkflowGmailLabelAppliedTriggerSummarySchema,
+    zeroWorkflowGithubLabelAppliedTriggerSummarySchema,
     zeroWorkflowWebhookReceivedTriggerSummarySchema,
   ],
 );
@@ -314,10 +363,20 @@ export const chatThreadWorkflowGmailLabelAppliedTriggerSchema =
     scheduleSummary: z.null(),
   });
 
+export const chatThreadWorkflowGithubLabelAppliedTriggerSchema =
+  chatThreadWorkflowTriggerBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("github-label-applied"),
+    eventConfig: githubLabelAppliedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
 export const chatThreadWorkflowTriggerSchema = z.union([
   chatThreadWorkflowScheduleTriggerSchema,
   chatThreadWorkflowGmailNewMessageTriggerSchema,
   chatThreadWorkflowGmailLabelAppliedTriggerSchema,
+  chatThreadWorkflowGithubLabelAppliedTriggerSchema,
 ]);
 export type ChatThreadWorkflowTrigger = z.infer<
   typeof chatThreadWorkflowTriggerSchema
@@ -345,6 +404,14 @@ export const zeroWorkflowGmailLabelAppliedTriggerCreateRequestSchema = z.object(
   },
 );
 
+export const zeroWorkflowGithubLabelAppliedTriggerCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("github-label-applied"),
+    eventConfig: githubLabelAppliedEventConfigSchema,
+    enabled: z.boolean().optional(),
+  });
+
 export const zeroWorkflowWebhookReceivedTriggerCreateRequestSchema = z.object({
   kind: z.literal("event"),
   eventType: z.literal("webhook-received"),
@@ -356,6 +423,7 @@ export const zeroWorkflowTriggerCreateRequestSchema = z.union([
   zeroWorkflowScheduleTriggerCreateRequestSchema,
   zeroWorkflowGmailNewMessageTriggerCreateRequestSchema,
   zeroWorkflowGmailLabelAppliedTriggerCreateRequestSchema,
+  zeroWorkflowGithubLabelAppliedTriggerCreateRequestSchema,
   zeroWorkflowWebhookReceivedTriggerCreateRequestSchema,
 ]);
 export type ZeroWorkflowTriggerCreateRequest = z.infer<
@@ -370,9 +438,14 @@ export const zeroWorkflowGmailEventTriggerUpdateRequestSchema = z.object({
   eventConfig: gmailWorkflowEventConfigSchema,
 });
 
+export const zeroWorkflowGithubEventTriggerUpdateRequestSchema = z.object({
+  eventConfig: githubLabelAppliedEventConfigSchema,
+});
+
 export const zeroWorkflowTriggerUpdateRequestSchema = z.union([
   zeroWorkflowScheduleTriggerUpdateRequestSchema,
   zeroWorkflowGmailEventTriggerUpdateRequestSchema,
+  zeroWorkflowGithubEventTriggerUpdateRequestSchema,
 ]);
 export type ZeroWorkflowTriggerUpdateRequest = z.infer<
   typeof zeroWorkflowTriggerUpdateRequestSchema
