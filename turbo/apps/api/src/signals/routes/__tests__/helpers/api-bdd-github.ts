@@ -40,7 +40,6 @@ import {
   type TestContext,
 } from "../../../../__tests__/test-helpers";
 import { signSandboxJwtForTests } from "../../../auth/tokens";
-import { signGithubConnectParams } from "../../../services/github-oauth.service";
 import type { ApiTestUser } from "./api-bdd";
 import { mockClerkMembership } from "./api-bdd-clerk";
 import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
@@ -126,6 +125,31 @@ interface ClerkUserProfile {
   readonly primaryEmailAddressId: string;
   readonly firstName: string;
   readonly lastName: string;
+}
+
+function normalizeGithubUsername(
+  githubUsername: string | null | undefined,
+): string {
+  return githubUsername?.trim().replace(/^@+/, "") || "";
+}
+
+function signGithubConnectParamsForTests(args: {
+  readonly installationId: string;
+  readonly githubUserId: string;
+  readonly timestamp: number;
+  readonly secretsEncryptionKey: string;
+  readonly githubUsername?: string | null;
+}): string {
+  return createHmac("sha256", args.secretsEncryptionKey)
+    .update(
+      [
+        args.installationId,
+        args.githubUserId,
+        String(args.timestamp),
+        normalizeGithubUsername(args.githubUsername),
+      ].join(":"),
+    )
+    .digest("hex");
 }
 
 const issueCommentRequestSchema = z.object({ body: z.string() });
@@ -500,7 +524,7 @@ export function signedConnectLink(args: {
     githubUserId: args.githubUserId,
     githubUsername,
     timestamp,
-    signature: signGithubConnectParams({
+    signature: signGithubConnectParamsForTests({
       installationId: args.installationId,
       githubUserId: args.githubUserId,
       githubUsername,
