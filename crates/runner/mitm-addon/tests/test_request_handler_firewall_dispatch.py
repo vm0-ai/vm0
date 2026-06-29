@@ -593,6 +593,52 @@ async def test_firewall_permission_denied_block_reports_reason(
     assert proxy_log_entry["reason"] == "permission_denied"
 
 
+async def test_firewall_block_response_url_preserves_raw_encoded_path_without_query(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            api_entry={
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.GITHUB_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "read-repos",
+                        "rules": ["GET /repos/{owner}/{repo}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": [],
+                "deny": ["read-repos"],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos/%2e%2e/repo?token=secret#fragment",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    raw_body = flow.response.content.decode()
+    body = json.loads(raw_body)
+    assert body["path"] == "/repos/%2e%2e/repo"
+    assert body["url"] == "https://api.github.com/repos/%2e%2e/repo"
+    assert "token=secret" not in raw_body
+    assert "fragment" not in raw_body
+
+
 async def test_firewall_block_response_url_joins_base_path_without_double_slash(
     tmp_path, real_flow, mitm_ctx, headers
 ):
