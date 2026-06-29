@@ -413,28 +413,32 @@ def test_gmail_firewall_uses_resource_permissions():
     assert not [name for name in permissions if name.startswith("gmail.")]
 
 
-def test_youtube_builtin_allows_resumable_video_media_put_as_create():
+def test_youtube_builtin_allows_video_media_put_as_create():
     firewall = builtin_firewalls.BUILTIN_FIREWALLS["youtube"]
     compiled = matching.compile_firewalls([firewall])
     assert compiled is not None
 
-    result = matching.match_compiled_firewall_request(
+    for url in (
         "https://youtube.googleapis.com/upload/youtube/v3/videos",
-        "PUT",
-        compiled,
-        {
-            "youtube": {
-                "allow": ["videos.create"],
-                "deny": ["videos.write"],
-                "unknownPolicy": "deny",
-            }
-        },
-    )
+        "https://youtube.googleapis.com/resumable/upload/youtube/v3/videos",
+    ):
+        result = matching.match_compiled_firewall_request(
+            url,
+            "PUT",
+            compiled,
+            {
+                "youtube": {
+                    "allow": ["videos.create"],
+                    "deny": ["videos.write"],
+                    "unknownPolicy": "deny",
+                }
+            },
+        )
 
-    assert isinstance(result, matching.FirewallAllow)
-    assert result.permission == "videos.create"
-    assert result.rule == "PUT /v3/videos"
-    assert result.rel_path == "/v3/videos"
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "videos.create"
+        assert result.rule == "PUT /v3/videos"
+        assert result.rel_path == "/v3/videos"
 
 
 def test_figma_firewall_uses_granular_permissions():
