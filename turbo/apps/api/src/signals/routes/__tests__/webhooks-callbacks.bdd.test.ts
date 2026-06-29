@@ -3,6 +3,7 @@ import { createHash, randomInt, randomUUID } from "node:crypto";
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
 import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
 import { orgCache } from "@vm0/db/schema/org-cache";
@@ -1675,6 +1676,85 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
 });
 
 describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
+  it("grants Atom invoice-backed Team entitlements and cron-downgrades them at expiry", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const grantExpiresAtUnix = epochSeconds(7);
+    const suffix = randomUUID().slice(0, 8);
+    api.configureStripeBillingEnv();
+    await bdd.setupOnboarding(actor, { displayName: "BDD Atom Grant" });
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_atom_grant_${suffix}`,
+          customer: `cus_bdd_atom_${suffix}`,
+          metadata: {
+            type: "atom_grant",
+            purpose: "atom_grant",
+            source: "atom_entitlement",
+            orgId,
+            tier: "team",
+            duration: "7d",
+            atomGrantExpiresAt: isoOf(grantExpiresAtUnix),
+          },
+          parent: null,
+          lines: {
+            data: [
+              {
+                id: `il_bdd_atom_grant_${suffix}`,
+                quantity: 1,
+                price: { id: "price_bdd_atom_grant" },
+                period: {
+                  start: epochSeconds(0),
+                  end: grantExpiresAtUnix,
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    const granted = await billing.readBillingStatus(actor);
+    expect(granted.tier).toBe("team");
+    expect(granted.credits).toBe(120_000);
+    expect(granted.hasSubscription).toBeFalsy();
+    expect(granted.currentPeriodEnd).toBe(isoOf(grantExpiresAtUnix));
+    expect(granted.creditGrants).toStrictEqual([
+      expect.objectContaining({
+        amount: 120_000,
+        expiresAt: isoOf(grantExpiresAtUnix),
+        source: "subscription_renewal",
+      }),
+    ]);
+
+    const db = store.set(writeDb$);
+    const expiredAt = new Date(now() - 1000);
+    await db
+      .update(orgMetadata)
+      .set({ currentPeriodEnd: expiredAt, updatedAt: expiredAt })
+      .where(eq(orgMetadata.orgId, orgId));
+    await db
+      .update(creditExpiresRecord)
+      .set({ expiresAt: expiredAt })
+      .where(eq(creditExpiresRecord.orgId, orgId));
+
+    await runs.reconcileBillingCron(true);
+
+    const downgraded = await billing.readBillingStatus(actor);
+    expect(downgraded.tier).toBe("pro-suspend");
+    expect(downgraded.credits).toBe(0);
+    expect(downgraded.hasSubscription).toBeFalsy();
+    expect(downgraded.creditGrants).toHaveLength(0);
+  });
+
   it("expires Atom day-grant subscription credits at the Atom grant end", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsAutomationsApi(context);
