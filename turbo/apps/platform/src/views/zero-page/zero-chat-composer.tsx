@@ -80,6 +80,12 @@ import {
   navigateToNewChat$,
   toggleSidebarOff$,
 } from "../../signals/zero-page/zero-nav.ts";
+import {
+  activeGoalDialogGoal$,
+  activeGoalDialogThreadId$,
+  closeChatThreadGoalDialog$,
+  openChatThreadGoalDialog$,
+} from "../../signals/chat-page/chat-goal.ts";
 import type { DraftSignals } from "../../signals/chat-page/create-chat-thread.ts";
 import { isVisualAttachment } from "../../signals/chat-page/resolve-draft-attachments.ts";
 import type { Command, Computed } from "ccstate";
@@ -210,6 +216,7 @@ import {
 import { setOrgManageDialogOpen$ } from "../../signals/zero-page/settings/org-manage-dialog.ts";
 import { readChatMessageFromClipboard } from "../../signals/zero-page/clipboard.ts";
 import type { FeedbackItem } from "../../signals/zero-page/chat-feedback.ts";
+import { Markdown } from "../components/markdown.tsx";
 
 const MAX_FILE_SIZE = 1024 * 1024 * 1024; // 1 GB — keep in sync with web constants
 
@@ -277,6 +284,8 @@ interface ZeroChatComposerProps {
   >;
   /** Register the textarea element for external focus control. */
   setInputRef?: (el: HTMLElement | null) => void;
+  /** Current chat thread id. Used by thread-scoped goal controls. */
+  chatThreadId?: string;
   /** Called after attachment upload/remove mutations so the caller can trigger side-effects (e.g. draft sync). */
   onDraftChange?: () => void;
   /**
@@ -361,7 +370,7 @@ export interface QueuedComposerItem {
 }
 
 interface ActiveGoalComposerItem {
-  /** The goal's objective — the human-readable text shown in the row. */
+  /** The goal's brief objective — the human-readable text shown in the row. */
   objective: string;
 }
 
@@ -525,17 +534,19 @@ function ComposerQueueGlyph() {
 
 // A single strip row — a queued message or the active goal. Both share one
 // layout so they read as the same kind of pending item; only the leading icon
-// distinguishes them. The icon is a popover trigger that names the row's kind
-// and shows its full prompt, since the inline text is truncated.
+// distinguishes them. Queued messages keep the inline popover; goals open a
+// modal because their full objective is fetched lazily by thread.
 function ComposerStripRow({
   kind,
   text,
   onRemove,
+  onOpenDetail,
   removeAriaLabel,
 }: {
   kind: "queued" | "goal";
   text: string;
   onRemove?: () => void;
+  onOpenDetail?: () => void;
   removeAriaLabel: string;
 }) {
   const isGoal = kind === "goal";
@@ -545,41 +556,60 @@ function ComposerStripRow({
       aria-label={isGoal ? "Active goal" : "Queued message"}
       className="group flex items-center gap-2 rounded-md pl-2 pr-1 py-1.5 text-sm text-muted-foreground transition-colors hover:bg-sidebar-accent"
     >
-      <Popover>
-        <PopoverTrigger asChild>
-          <button
-            type="button"
-            className="shrink-0 rounded-md p-1 text-emerald-800 transition-colors hover:bg-[hsl(var(--gray-200))] focus-visible:bg-[hsl(var(--gray-200))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-            aria-label={
-              isGoal ? "About this goal" : "About this queued message"
-            }
-          >
-            {isGoal ? (
-              <IconTarget size={16} stroke={1.5} aria-hidden="true" />
-            ) : (
-              <ComposerQueueGlyph />
-            )}
-          </button>
-        </PopoverTrigger>
-        <PopoverContent
-          side="top"
-          align="start"
-          className="w-80 rounded-lg p-3"
+      {isGoal && onOpenDetail ? (
+        <button
+          type="button"
+          className="-ml-1 flex min-w-0 flex-1 items-center gap-2 rounded-md p-1 text-left transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          onClick={onOpenDetail}
+          aria-label="Open goal details"
         >
-          <p className="text-xs font-semibold text-foreground">
-            {isGoal ? "Goal" : "Queued message"}
-          </p>
-          <p className="mt-1 text-xs text-muted-foreground">
-            {isGoal
-              ? "Runs after the queue drains and keeps running until you cancel it."
-              : "Waits in line and sends once the current run finishes."}
-          </p>
-          <div className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 px-2.5 py-2 text-sm text-foreground">
-            {text}
-          </div>
-        </PopoverContent>
-      </Popover>
-      <span className="min-w-0 flex-1 truncate">{text}</span>
+          <IconTarget
+            size={16}
+            stroke={1.5}
+            className="shrink-0 text-emerald-800"
+            aria-hidden="true"
+          />
+          <span className="min-w-0 flex-1 truncate">{text}</span>
+        </button>
+      ) : (
+        <>
+          <Popover>
+            <PopoverTrigger asChild>
+              <button
+                type="button"
+                className="shrink-0 rounded-md p-1 text-emerald-800 transition-colors hover:bg-[hsl(var(--gray-200))] focus-visible:bg-[hsl(var(--gray-200))] focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                aria-label={
+                  isGoal ? "About this goal" : "About this queued message"
+                }
+              >
+                {isGoal ? (
+                  <IconTarget size={16} stroke={1.5} aria-hidden="true" />
+                ) : (
+                  <ComposerQueueGlyph />
+                )}
+              </button>
+            </PopoverTrigger>
+            <PopoverContent
+              side="top"
+              align="start"
+              className="w-80 rounded-lg p-3"
+            >
+              <p className="text-xs font-semibold text-foreground">
+                {isGoal ? "Goal" : "Queued message"}
+              </p>
+              <p className="mt-1 text-xs text-muted-foreground">
+                {isGoal
+                  ? "Runs after the queue drains and keeps running until you cancel it."
+                  : "Waits in line and sends once the current run finishes."}
+              </p>
+              <div className="mt-2 max-h-48 overflow-y-auto whitespace-pre-wrap break-words rounded-md bg-muted/50 px-2.5 py-2 text-sm text-foreground">
+                {text}
+              </div>
+            </PopoverContent>
+          </Popover>
+          <span className="min-w-0 flex-1 truncate">{text}</span>
+        </>
+      )}
       <button
         type="button"
         className="shrink-0 rounded-lg p-1.5 text-muted-foreground/45 transition-colors hover:bg-[hsl(var(--gray-200))] hover:text-sidebar-foreground focus-visible:bg-[hsl(var(--gray-200))] focus-visible:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
@@ -594,16 +624,82 @@ function ComposerStripRow({
   );
 }
 
+function ActiveGoalObjectiveDialog({ threadId }: { threadId?: string }) {
+  const dialogThreadId = useGet(activeGoalDialogThreadId$);
+  const goalLoadable = useLoadable(activeGoalDialogGoal$);
+  const closeDialog = useSet(closeChatThreadGoalDialog$);
+  const open = threadId !== undefined && dialogThreadId === threadId;
+  const goal = goalLoadable.state === "hasData" ? goalLoadable.data : undefined;
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(nextOpen) => {
+        if (!nextOpen) {
+          closeDialog();
+        }
+      }}
+    >
+      <DialogContent
+        className="w-[calc(100vw-2rem)] max-w-2xl gap-5 p-5 sm:p-6"
+        aria-describedby={undefined}
+      >
+        <DialogHeader>
+          <DialogTitle className="text-base">Goal</DialogTitle>
+          <DialogDescription className="leading-6">
+            Runs after the queue drains and keeps running until you cancel it.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="max-h-[min(60vh,520px)] overflow-y-auto rounded-lg bg-muted/40 px-3 py-3 text-sm text-foreground sm:px-4">
+          {goalLoadable.state === "loading" ? (
+            <div className="flex min-h-28 items-center justify-center gap-2 text-muted-foreground">
+              <IconLoader2
+                size={16}
+                stroke={1.7}
+                className="animate-spin"
+                aria-hidden="true"
+              />
+              <span>Loading goal...</span>
+            </div>
+          ) : goalLoadable.state === "hasError" ? (
+            <div className="flex min-h-28 flex-col justify-center gap-1 text-muted-foreground">
+              <p className="font-medium text-foreground">
+                Couldn&apos;t load this goal
+              </p>
+              <p className="text-xs">
+                Close the dialog and open it again to retry.
+              </p>
+            </div>
+          ) : goal ? (
+            <Markdown
+              source={goal.objective}
+              escapeHtml
+              mathEnabled
+              style={{ fontSize: "inherit", lineHeight: "inherit" }}
+            />
+          ) : (
+            <div className="flex min-h-28 items-center text-muted-foreground">
+              This goal is no longer available.
+            </div>
+          )}
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 function QueuedMessagesStrip({
   items,
   onRemove,
   activeGoal,
   onCancelGoal,
+  onOpenGoal,
 }: {
   items: QueuedComposerItem[] | undefined;
   onRemove?: (id: string) => void;
   activeGoal?: ActiveGoalComposerItem;
   onCancelGoal?: () => void;
+  onOpenGoal?: () => void;
 }) {
   const queued = items ?? [];
   if (queued.length === 0 && !activeGoal) {
@@ -646,6 +742,7 @@ function QueuedMessagesStrip({
           <ComposerStripRow
             kind="goal"
             text={activeGoal.objective}
+            onOpenDetail={onOpenGoal}
             onRemove={() => {
               onCancelGoal?.();
             }}
@@ -6020,6 +6117,7 @@ export function ZeroChatComposer({
   composerFileInput$: composerFileInputProp$,
   setComposerFileInput$: setComposerFileInputProp$,
   setInputRef,
+  chatThreadId,
   onDraftChange,
   actionsLoading = false,
   modelPicker,
@@ -6037,6 +6135,7 @@ export function ZeroChatComposer({
   const setShowAddDialog = useSet(setShowAddDialog$);
   const modelPickerOpen = useGet(modelPickerOpen$);
   const setModelPickerOpen = useSet(setModelPickerOpen$);
+  const openGoalDialog = useSet(openChatThreadGoalDialog$);
 
   const resolved = useResolvedComposerSignals(
     input,
@@ -6404,6 +6503,13 @@ export function ZeroChatComposer({
           onRemove={onRemoveQueuedItem}
           activeGoal={activeGoal}
           onCancelGoal={onCancelActiveGoal}
+          onOpenGoal={
+            chatThreadId
+              ? () => {
+                  openGoalDialog(chatThreadId);
+                }
+              : undefined
+          }
         />
         <Card
           className={cn(
@@ -6516,6 +6622,7 @@ export function ZeroChatComposer({
             </div>
           </CardContent>
         </Card>
+        <ActiveGoalObjectiveDialog threadId={chatThreadId} />
       </div>
       {selectedConnType && (
         <ConnectModal

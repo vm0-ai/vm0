@@ -380,6 +380,22 @@ export async function getCurrentGoal(
   return { kind: "ok", goal: goalResponse(goal) };
 }
 
+export async function getGoalForChatThread(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly threadId: string;
+  },
+): Promise<GoalResult> {
+  const goal = await loadOwnedGoalForThread(db, args);
+  if (!goal) {
+    return { kind: "not-found" };
+  }
+
+  return { kind: "ok", goal: goalResponse(goal) };
+}
+
 export async function completeCurrentGoal(
   db: Db,
   args: GoalAuth,
