@@ -146,26 +146,6 @@ export function sandboxComposeToken(args: {
   });
 }
 
-/**
- * Zero-scope token carrying `agent:delete`, proving compose deletion is
- * refused even for capability-bearing zero tokens (web-compatible 403).
- */
-export function zeroComposeDeleteToken(args: {
-  readonly userId: string;
-  readonly orgId: string;
-}): string {
-  const seconds = Math.floor(now() / 1000);
-  return signSandboxJwtForTests({
-    scope: "zero",
-    userId: args.userId,
-    orgId: args.orgId,
-    runId: `run_${randomUUID()}`,
-    capabilities: ["agent:delete"],
-    iat: seconds,
-    exp: seconds + 3600,
-  });
-}
-
 const TAR_BLOCK_SIZE = 512;
 
 function octal(value: number, length: number): string {
@@ -558,20 +538,6 @@ export function createComposesBddApi(context: TestContext) {
           headers: authenticate(auth),
           params: { id: composeId },
           body,
-        }),
-        statuses,
-      );
-    },
-
-    async requestDeleteCompose<TStatus extends DeleteStatus>(
-      auth: ComposeAuth,
-      composeId: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        byIdClient().delete({
-          headers: authenticate(auth),
-          params: { id: composeId },
         }),
         statuses,
       );

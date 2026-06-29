@@ -1695,19 +1695,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    async deleteCompose(actor: ApiTestUser, composeId: string): Promise<void> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        composesByIdContract,
-      );
-      await accept(
-        client.delete({
-          headers: authenticate(actor),
-          params: { id: composeId },
-        }),
-        [204],
-      );
-    },
-
     async readZeroComposeById(
       actor: ApiTestUser,
       composeId: string,
