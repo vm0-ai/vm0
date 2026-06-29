@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.0](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.3.2...guest-mock-codex-v0.4.0) (2026-06-29)
+
+
+### Features
+
+* add disabled codex app-server backend ([#19207](https://github.com/vm0-ai/vm0/issues/19207)) ([6a3a6e2](https://github.com/vm0-ai/vm0/commit/6a3a6e2aeb8820029b7388869600d849f629fcbb))
+
 ## [0.3.2](https://github.com/vm0-ai/vm0/compare/guest-mock-codex-v0.3.1...guest-mock-codex-v0.3.2) (2026-06-29)
 
 
