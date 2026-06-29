@@ -203,7 +203,11 @@ async fn run_codex_app_server(
     }
     .await;
 
-    let shutdown_result = client.shutdown().await;
+    let shutdown_result = if run_result.is_ok() {
+        client.shutdown().await
+    } else {
+        client.terminate().await
+    };
     let stderr_lines = masker.mask_diagnostic_lines(client.stderr_tail().to_vec());
 
     match (run_result, shutdown_result) {

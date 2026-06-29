@@ -38,7 +38,7 @@ async fn codex_app_server_backend_heartbeat_interrupts_hung_turn_start()
 
     let masker = SecretMasker::from_raw("");
     let result = tokio::time::timeout(
-        Duration::from_secs(5),
+        Duration::from_millis(1500),
         guest_agent::cli::execute_cli(&masker, heartbeat, HttpClient::for_current_env()?),
     )
     .await

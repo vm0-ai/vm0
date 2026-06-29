@@ -403,6 +403,29 @@ impl CodexAppServerClient {
         Ok(())
     }
 
+    pub async fn terminate(&mut self) -> Result<(), CodexAppServerError> {
+        if self.closed {
+            return Ok(());
+        }
+
+        self.close_io_handles();
+        let child_exited = self.try_finish_child_wait()?.is_some();
+        if self.wait_rx.is_some() && !child_exited {
+            self.sigterm_process_group();
+            if !self.wait_for_child(SHUTDOWN_SIGKILL_GRACE).await? {
+                self.sigkill_process_group();
+                if !self.wait_for_child(SHUTDOWN_SIGKILL_GRACE).await? {
+                    return Err(CodexAppServerError::ShutdownTimeout);
+                }
+            }
+        }
+
+        self.drain_stderr().await;
+        self.clear_child_process_handles();
+        self.closed = true;
+        Ok(())
+    }
+
     async fn wait_for_child(&mut self, timeout: Duration) -> Result<bool, CodexAppServerError> {
         let Some(wait_rx) = self.wait_rx.as_mut() else {
             return Ok(true);
