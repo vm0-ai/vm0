@@ -61,13 +61,13 @@ fn restored_session_framework(framework: EffectiveCliFramework) -> RestoredSessi
     }
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 pub(super) struct MaterializedResumeSession<'a> {
     cli_agent_session_id: Cow<'a, str>,
     history: MaterializedResumeHistory<'a>,
 }
 
-#[derive(Clone, Debug, Eq, PartialEq)]
+#[derive(Debug)]
 enum MaterializedResumeHistory<'a> {
     InlineText(&'a str),
     Bytes(Vec<u8>),
