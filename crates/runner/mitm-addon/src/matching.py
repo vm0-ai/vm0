@@ -12,7 +12,8 @@ import re
 from collections.abc import Mapping
 from dataclasses import dataclass, field
 from types import MappingProxyType
-from typing import Literal, NamedTuple, TypeAlias
+from typing import Literal, NamedTuple
+from typing import TypeAlias as _TypeAlias
 from urllib.parse import urlsplit
 
 from firewall_auth_config import auth_config_injects_ordinary_upstream_credentials
@@ -44,8 +45,9 @@ from url_syntax import (
 firewall_base_config_is_valid = _firewall_base_url.firewall_base_config_is_valid
 match_base_url = _firewall_base_url.match_base_url
 
-CompiledPathPattern: TypeAlias = _firewall_patterns.CompiledPathPattern
-SegmentParam: TypeAlias = _firewall_patterns.SegmentParam
+CompiledPathPattern: _TypeAlias = _firewall_patterns.CompiledPathPattern
+SegmentParam: _TypeAlias = _firewall_patterns.SegmentParam
+ParsedSegment: _TypeAlias = _firewall_patterns.ParsedSegment
 _compiled_rule_path_is_valid = _firewall_patterns._compiled_rule_path_is_valid
 compile_path_pattern = _firewall_patterns.compile_path_pattern
 match_compiled_path = _firewall_patterns.match_compiled_path
