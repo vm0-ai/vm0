@@ -118,7 +118,9 @@ export const YOUTUBE_PERMISSION_MANIFEST: readonly YouTubeManifestPermission[] =
       routeKeys: [
         "base:POST /v3/channelBanners/insert",
         "upload:POST /v3/channelBanners/insert",
+        "upload:PUT /v3/channelBanners/insert",
         "resumable-upload:POST /v3/channelBanners/insert",
+        "resumable-upload:PUT /v3/channelBanners/insert",
       ],
     },
     {
@@ -167,7 +169,9 @@ export const YOUTUBE_PERMISSION_MANIFEST: readonly YouTubeManifestPermission[] =
       routeKeys: [
         "base:POST /v3/thumbnails/set",
         "upload:POST /v3/thumbnails/set",
+        "upload:PUT /v3/thumbnails/set",
         "resumable-upload:POST /v3/thumbnails/set",
+        "resumable-upload:PUT /v3/thumbnails/set",
       ],
     },
     {
@@ -195,7 +199,9 @@ export const YOUTUBE_PERMISSION_MANIFEST: readonly YouTubeManifestPermission[] =
       routeKeys: [
         "base:POST /v3/videos",
         "upload:POST /v3/videos",
+        "upload:PUT /v3/videos",
         "resumable-upload:POST /v3/videos",
+        "resumable-upload:PUT /v3/videos",
       ],
     },
     {
@@ -247,7 +253,9 @@ export const YOUTUBE_PERMISSION_MANIFEST: readonly YouTubeManifestPermission[] =
       routeKeys: [
         "base:POST /v3/watermarks/set",
         "upload:POST /v3/watermarks/set",
+        "upload:PUT /v3/watermarks/set",
         "resumable-upload:POST /v3/watermarks/set",
+        "resumable-upload:PUT /v3/watermarks/set",
       ],
     },
     {
@@ -641,6 +649,16 @@ function uploadRuleForMethod(
   )}`;
 }
 
+function mediaUploadPutRuleForProtocol(
+  protocol: DiscoveryMediaUploadProtocol | undefined,
+  uploadPrefix: "upload" | "resumable-upload",
+): string | null {
+  const protocolPath = protocol?.path;
+  if (!protocolPath) return null;
+
+  return `PUT /${normalizeYouTubeUploadPath(protocolPath, uploadPrefix)}`;
+}
+
 export function buildYouTubeOfficialRouteKeys(
   discovery: YouTubeDiscoveryDocument,
 ): Set<string> {
@@ -666,6 +684,25 @@ export function buildYouTubeOfficialRouteKeys(
       );
       if (resumableRule) {
         routeKeys.add(`resumable-upload:${resumableRule}`);
+      }
+
+      // Discovery lists upload initiation routes; resumable sessions send bytes with PUT.
+      if (method.mediaUpload?.protocols?.resumable) {
+        const simpleMediaRule = mediaUploadPutRuleForProtocol(
+          method.mediaUpload.protocols.simple,
+          "upload",
+        );
+        if (simpleMediaRule) {
+          routeKeys.add(`upload:${simpleMediaRule}`);
+        }
+
+        const resumableMediaRule = mediaUploadPutRuleForProtocol(
+          method.mediaUpload.protocols.resumable,
+          "resumable-upload",
+        );
+        if (resumableMediaRule) {
+          routeKeys.add(`resumable-upload:${resumableMediaRule}`);
+        }
       }
 
       if (!simpleRule && !resumableRule) {
