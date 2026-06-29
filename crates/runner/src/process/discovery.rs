@@ -260,7 +260,7 @@ pub async fn discover_all() -> DiscoveredProcesses {
 ///
 /// Destructive cleanup code should use this variant so it can fail closed when
 /// `/proc` could not be scanned reliably.
-pub async fn discover_all_with_status() -> ProcessDiscovery {
+pub(crate) async fn discover_all_with_status() -> ProcessDiscovery {
     let proc_scan = scan_proc_cmdlines().await;
 
     let mut firecrackers = Vec::new();

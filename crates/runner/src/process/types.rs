@@ -71,7 +71,7 @@ pub struct DiscoveredProcesses {
 }
 
 /// Process discovery plus whether the top-level `/proc` scan completed.
-pub struct ProcessDiscovery {
-    pub processes: DiscoveredProcesses,
-    pub proc_scan_complete: bool,
+pub(crate) struct ProcessDiscovery {
+    pub(crate) processes: DiscoveredProcesses,
+    pub(crate) proc_scan_complete: bool,
 }

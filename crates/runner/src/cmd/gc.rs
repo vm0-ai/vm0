@@ -1509,7 +1509,7 @@ struct WorkspaceGcSummary {
 }
 
 struct DeadRunnerBaseDirLease {
-    base_dir: PathBuf,
+    base_dir: Option<PathBuf>,
     lock_path: PathBuf,
     lock_name: String,
     lock_guard: Flock<std::fs::File>,
@@ -1525,8 +1525,29 @@ fn is_base_dir_lock_name(name: &str) -> bool {
     name.starts_with("base-dir-") && name.ends_with(".lock")
 }
 
-/// Read base_dir paths from lock files written by `runner start`, returning
-/// only those whose runner is dead (lock not held), while keeping the lock held.
+fn parse_base_dir_lock_content(content: &str, lock_path: &Path) -> Option<PathBuf> {
+    let path = content.trim();
+    if path.is_empty() {
+        return None;
+    }
+    let base_dir = PathBuf::from(path);
+    if !base_dir.is_absolute() {
+        warn!(
+            "workspace gc: {} contains non-absolute base_dir {}, treating lock as unusable",
+            lock_path.display(),
+            base_dir.display()
+        );
+        return None;
+    }
+    Some(base_dir)
+}
+
+/// Read base-dir lock files written by `runner start`, returning only those
+/// whose runner is dead (lock not held), while keeping the lock held.
+///
+/// Some old or corrupted lock files do not contain a usable absolute base_dir.
+/// They are still returned as leases so workspace GC can safely remove the
+/// free lock file instead of leaving retry metadata behind forever.
 ///
 /// Live runners manage their own workspaces via the factory — GC must not
 /// touch them because CowPool pre-warmed slots would be indistinguishable
@@ -1555,10 +1576,11 @@ fn discover_dead_runner_base_dirs(locks_dir: &Path) -> Vec<DeadRunnerBaseDirLeas
             continue;
         }
         let lock_path = entry.path();
-        // Only include base_dirs from dead runners (lock not held).
+        // Only include locks from dead runners (lock not held).
         // Hold the lock while reading the file to prevent a new runner from
         // starting and overwriting the content between the probe and the read,
-        // and keep it held while workspace GC deletes under the base_dir.
+        // and keep it held while workspace GC deletes under the base_dir or
+        // removes an unusable free lock file.
         let LockProbe::Free(lock_guard) = probe_lock(&lock_path) else {
             continue;
         };
@@ -1569,12 +1591,8 @@ fn discover_dead_runner_base_dirs(locks_dir: &Path) -> Vec<DeadRunnerBaseDirLeas
                 continue;
             }
         };
-        let path = content.trim();
-        if path.is_empty() {
-            continue; // pre-upgrade lock file without base_dir
-        }
         base_dirs.push(DeadRunnerBaseDirLease {
-            base_dir: PathBuf::from(path),
+            base_dir: parse_base_dir_lock_content(&content, &lock_path),
             lock_path,
             lock_name: name.to_string(),
             lock_guard,
@@ -1696,25 +1714,39 @@ async fn gc_workspace_orphans_with_leases(
     let now = SystemTime::now();
     let mut summary = WorkspaceGcSummary::default();
 
-    for base_dir in &base_dirs {
-        if live_runner_base_dirs.contains(&base_dir.base_dir) {
+    for lease in &base_dirs {
+        let Some(base_dir) = lease.base_dir.as_deref() else {
+            if remove_unused_lock_after_probe(
+                &lease.lock_path,
+                &lease.lock_guard,
+                &lease.lock_name,
+                dry_run,
+            )
+            .await
+            {
+                summary.base_dir_locks_removed += 1;
+            }
+            continue;
+        };
+
+        if live_runner_base_dirs.contains(base_dir) {
             warn!(
                 "workspace gc: {} is listed as a live runner base directory, skipping",
-                base_dir.base_dir.display()
+                base_dir.display()
             );
             continue;
         }
 
         let (cleaned, freed, lock_decision) =
-            gc_workspace_orphans_in_base_dir(&base_dir.base_dir, &active, now, dry_run).await;
+            gc_workspace_orphans_in_base_dir(base_dir, &active, now, dry_run).await;
         summary.workspaces_cleaned += cleaned;
         summary.bytes_freed += freed;
 
         if lock_decision == BaseDirLockDecision::RemoveIfStillFree
             && remove_unused_lock_after_probe(
-                &base_dir.lock_path,
-                &base_dir.lock_guard,
-                &base_dir.lock_name,
+                &lease.lock_path,
+                &lease.lock_guard,
+                &lease.lock_name,
                 dry_run,
             )
             .await
@@ -2682,7 +2714,10 @@ mod tests {
     }
 
     fn discovered_base_dirs(leases: &[DeadRunnerBaseDirLease]) -> Vec<PathBuf> {
-        leases.iter().map(|lease| lease.base_dir.clone()).collect()
+        leases
+            .iter()
+            .filter_map(|lease| lease.base_dir.clone())
+            .collect()
     }
 
     fn firecracker_with_base_dir(
@@ -4748,7 +4783,7 @@ mod tests {
     }
 
     #[test]
-    fn discover_dead_runner_base_dirs_skips_empty_and_non_matching() {
+    fn discover_dead_runner_base_dirs_keeps_empty_locks_for_cleanup() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
         let locks_dir = home.locks_dir();
@@ -4760,7 +4795,8 @@ mod tests {
         std::fs::write(locks_dir.join("rootfs-abc.lock"), "/some/path").unwrap();
 
         let dirs = discover_dead_runner_base_dirs(&home.locks_dir());
-        assert!(dirs.is_empty());
+        assert_eq!(dirs.len(), 1);
+        assert_eq!(dirs[0].base_dir, None);
     }
 
     #[test]
@@ -4794,7 +4830,7 @@ mod tests {
 
         let dirs = discover_dead_runner_base_dirs(&home.locks_dir());
         assert_eq!(dirs.len(), 1);
-        assert_eq!(dirs[0].base_dir, PathBuf::from("/data/dead-runner"));
+        assert_eq!(dirs[0].base_dir, Some(PathBuf::from("/data/dead-runner")));
     }
 
     #[test]
@@ -5093,13 +5129,19 @@ mod tests {
         let empty_lock = locks_dir.join("base-dir-empty-workspaces.lock");
         std::fs::write(&empty_lock, empty_base_dir.to_str().unwrap()).unwrap();
 
+        let empty_content_lock = locks_dir.join("base-dir-empty-content.lock");
+        std::fs::write(&empty_content_lock, "").unwrap();
+
+        let relative_content_lock = locks_dir.join("base-dir-relative-content.lock");
+        std::fs::write(&relative_content_lock, "relative-runner-data").unwrap();
+
         let leases = discover_dead_runner_base_dirs(&home.locks_dir());
         let summary = gc_workspace_orphans_with_leases(leases, &[], &HashSet::new(), false, false)
             .await
             .unwrap();
 
         assert_eq!(summary.workspaces_cleaned, 0);
-        assert_eq!(summary.base_dir_locks_removed, 2);
+        assert_eq!(summary.base_dir_locks_removed, 4);
         assert!(
             !missing_lock.exists(),
             "missing base-dir lock should be removed"
@@ -5107,6 +5149,14 @@ mod tests {
         assert!(
             !empty_lock.exists(),
             "empty base-dir lock should be removed"
+        );
+        assert!(
+            !empty_content_lock.exists(),
+            "empty-content base-dir lock should be removed"
+        );
+        assert!(
+            !relative_content_lock.exists(),
+            "relative-content base-dir lock should be removed"
         );
     }
 
@@ -5365,7 +5415,7 @@ mod tests {
 
         let dirs = discover_dead_runner_base_dirs(&home.locks_dir());
         assert_eq!(dirs.len(), 1);
-        assert_eq!(dirs[0].base_dir, PathBuf::from("/data/runner-01"));
+        assert_eq!(dirs[0].base_dir, Some(PathBuf::from("/data/runner-01")));
     }
 
     // -----------------------------------------------------------------------
@@ -6244,7 +6294,7 @@ mod tests {
     }
 
     #[test]
-    fn discover_dead_runner_base_dirs_skips_whitespace_only() {
+    fn discover_dead_runner_base_dirs_keeps_whitespace_only_locks_for_cleanup() {
         let dir = tempfile::tempdir().unwrap();
         let home = test_home(dir.path());
         let locks_dir = home.locks_dir();
@@ -6254,7 +6304,8 @@ mod tests {
         std::fs::write(locks_dir.join("base-dir-ws-only.lock"), "  \n\t\n").unwrap();
 
         let dirs = discover_dead_runner_base_dirs(&home.locks_dir());
-        assert!(dirs.is_empty());
+        assert_eq!(dirs.len(), 1);
+        assert_eq!(dirs[0].base_dir, None);
     }
 
     #[tokio::test]
