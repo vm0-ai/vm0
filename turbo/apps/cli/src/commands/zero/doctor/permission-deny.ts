@@ -167,16 +167,22 @@ function connectorRefHostToken(connectorRef: string): string {
   return connectorRef.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
 }
 
+function hostLabelToken(label: string): string {
+  return label.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
+}
+
 function hostnameMatchesConnectorRef(url: URL, connectorRef: string): boolean {
   const token = connectorRefHostToken(connectorRef);
   if (token.length < 3) return false;
   const labels = (url.hostname || "")
     .toLowerCase()
-    .split(/[^a-z0-9]+/)
+    .replace(/\.$/, "")
+    .split(".")
     .filter((part) => {
       return part !== "";
     });
-  return labels.length >= 2 && labels[labels.length - 2] === token;
+  if (labels.length < 2) return false;
+  return hostLabelToken(labels[labels.length - 2]!) === token;
 }
 
 function stripUrlQueryAndFragment(url: string): string {

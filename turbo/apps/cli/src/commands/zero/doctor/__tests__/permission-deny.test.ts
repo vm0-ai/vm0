@@ -412,6 +412,28 @@ describe("zero doctor permission-deny command", () => {
       expect(mockConsoleLog).not.toHaveBeenCalled();
     });
 
+    it("should not use opaque base fallback for connector tokens inside hyphenated host labels", async () => {
+      await expect(async () => {
+        await permissionDenyCommand.parseAsync([
+          "node",
+          "cli",
+          "reap",
+          "--method",
+          "GET",
+          "--url",
+          "https://foo-reap.com/v1/accounts",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "No registered Reap base URL matches the provided URL.",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleLog).not.toHaveBeenCalled();
+    });
+
     it("should not use opaque base fallback for connector labels outside the registered domain position", async () => {
       await expect(async () => {
         await permissionDenyCommand.parseAsync([
