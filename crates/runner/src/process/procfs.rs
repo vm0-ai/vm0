@@ -1,6 +1,6 @@
 use std::path::PathBuf;
 
-use super::types::ProcessStat;
+use super::types::{ProcessStat, process_stat_is_live};
 
 #[derive(Debug, Eq, PartialEq)]
 enum CmdlineRead {
@@ -55,10 +55,14 @@ async fn cmdline_problem_for_scan(pid: u32, problem: &str) -> CmdlineRead {
 
 fn cmdline_problem_for_comm(comm_read: ProcessCommRead, problem: &str) -> CmdlineRead {
     match comm_read {
-        ProcessCommRead::Name(comm) if comm == b"firecracker" => {
-            CmdlineRead::Unreadable(problem.to_string())
+        ProcessCommRead::Name {
+            comm,
+            live: Some(true),
+        } if comm == b"firecracker" => CmdlineRead::Unreadable(problem.to_string()),
+        ProcessCommRead::Name { comm, live: None } if comm == b"firecracker" => {
+            CmdlineRead::Unreadable(format!("{problem}; stat parse failed"))
         }
-        ProcessCommRead::Name(_) => CmdlineRead::Ignored,
+        ProcessCommRead::Name { .. } => CmdlineRead::Ignored,
         ProcessCommRead::Missing => CmdlineRead::Missing,
         ProcessCommRead::Unreadable(stat_error) => {
             CmdlineRead::Unreadable(format!("{problem}; stat read failed: {stat_error}"))
@@ -101,7 +105,7 @@ fn process_comm(content: &[u8]) -> Option<&[u8]> {
 }
 
 enum ProcessCommRead {
-    Name(Vec<u8>),
+    Name { comm: Vec<u8>, live: Option<bool> },
     Missing,
     Unreadable(std::io::Error),
     Invalid,
@@ -110,9 +114,15 @@ enum ProcessCommRead {
 async fn read_process_comm_for_scan(pid: u32) -> ProcessCommRead {
     let path = format!("/proc/{pid}/stat");
     match tokio::fs::read(&path).await {
-        Ok(content) => process_comm(&content)
-            .map(|comm| ProcessCommRead::Name(comm.to_vec()))
-            .unwrap_or(ProcessCommRead::Invalid),
+        Ok(content) => {
+            let Some(comm) = process_comm(&content) else {
+                return ProcessCommRead::Invalid;
+            };
+            ProcessCommRead::Name {
+                comm: comm.to_vec(),
+                live: parse_process_stat(&content).map(|stat| process_stat_is_live(&stat)),
+            }
+        }
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => ProcessCommRead::Missing,
         Err(e) => ProcessCommRead::Unreadable(e),
     }
@@ -289,7 +299,10 @@ mod tests {
     fn cmdline_problem_for_firecracker_comm_is_unreadable() {
         assert_eq!(
             cmdline_problem_for_comm(
-                ProcessCommRead::Name(b"firecracker".to_vec()),
+                ProcessCommRead::Name {
+                    comm: b"firecracker".to_vec(),
+                    live: Some(true),
+                },
                 "cmdline is empty or NUL-free",
             ),
             CmdlineRead::Unreadable("cmdline is empty or NUL-free".to_string())
@@ -297,10 +310,41 @@ mod tests {
     }
 
     #[test]
+    fn cmdline_problem_for_zombie_firecracker_comm_is_ignored() {
+        assert_eq!(
+            cmdline_problem_for_comm(
+                ProcessCommRead::Name {
+                    comm: b"firecracker".to_vec(),
+                    live: Some(false),
+                },
+                "cmdline is empty or NUL-free",
+            ),
+            CmdlineRead::Ignored
+        );
+    }
+
+    #[test]
+    fn cmdline_problem_for_firecracker_comm_with_invalid_stat_is_unreadable() {
+        assert_eq!(
+            cmdline_problem_for_comm(
+                ProcessCommRead::Name {
+                    comm: b"firecracker".to_vec(),
+                    live: None,
+                },
+                "cmdline is empty or NUL-free",
+            ),
+            CmdlineRead::Unreadable("cmdline is empty or NUL-free; stat parse failed".to_string())
+        );
+    }
+
+    #[test]
     fn cmdline_problem_for_non_firecracker_comm_is_ignored() {
         assert_eq!(
             cmdline_problem_for_comm(
-                ProcessCommRead::Name(b"postgres".to_vec()),
+                ProcessCommRead::Name {
+                    comm: b"postgres".to_vec(),
+                    live: Some(true),
+                },
                 "cmdline is empty or NUL-free",
             ),
             CmdlineRead::Ignored
