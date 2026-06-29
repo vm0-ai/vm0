@@ -346,6 +346,29 @@ describe("zero goals", () => {
     });
   });
 
+  it("reads a chat thread goal with session auth", async () => {
+    const fixture = await seedGoalApiFixture({ featureEnabled: true });
+    const objective =
+      "# Ship goals\n\nKeep the release moving with **daily** checks.";
+    await createGoal(fixture, objective);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const response = await accept(
+      goalsClient().getForChatThread({
+        headers: { authorization: "Bearer clerk-session" },
+        params: { threadId: fixture.threadId },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({
+      objective,
+      objectiveBrief:
+        "# Ship goals\n\nKeep the release moving with **daily** checks.",
+      status: "active",
+    });
+  });
+
   it("clears the current goal and writes a cleared marker", async () => {
     const fixture = await seedGoalApiFixture({ featureEnabled: true });
     await createGoal(fixture, "ship thread goals");

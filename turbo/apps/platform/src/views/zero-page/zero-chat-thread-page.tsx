@@ -4854,6 +4854,7 @@ function ChatThreadComposer({
             composerFileInput$={thread.composerFileInput$}
             setComposerFileInput$={thread.setComposerFileInput$}
             setInputRef={setInputRef}
+            chatThreadId={thread.threadId}
             actionsLoading={skeletonVisible}
             modelPicker={modelPicker}
             templatePicker={templatePicker}
