@@ -80,8 +80,18 @@ if [ "$scan_budget" -eq 0 ]; then
   echo "invalid codex session cleanup scan budget" >&2
   exit 1
 fi
-id_lc=$(printf '%s' "$id" | tr '[:upper:]' '[:lower:]')
-id_no_dashes_lc=$(printf '%s' "$id_no_dashes" | tr '[:upper:]' '[:lower:]')
+id_lc=$(printf '%s' "$id" | tr '[:upper:]' '[:lower:]') || {
+  echo "failed to normalize codex restore session id" >&2
+  exit 1
+}
+id_no_dashes_lc=$(printf '%s' "$id_no_dashes" | tr '[:upper:]' '[:lower:]') || {
+  echo "failed to normalize codex restore session id" >&2
+  exit 1
+}
+if [ "${#id_lc}" -ne 36 ] || [ "${#id_no_dashes_lc}" -ne 32 ]; then
+  echo "failed to normalize codex restore session id" >&2
+  exit 1
+fi
 # Codex resume can see matching session files anywhere below sessions; the
 # explicit entry budget keeps that required duplicate cleanup bounded.
 scan_error_file=""

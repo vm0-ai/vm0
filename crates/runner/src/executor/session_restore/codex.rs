@@ -192,7 +192,7 @@ mod tests {
     use super::*;
 
     use std::fs;
-    use std::os::unix::fs::symlink;
+    use std::os::unix::fs::{PermissionsExt, symlink};
     use std::path::{Path, PathBuf};
     use std::process::{Command, Output};
 
@@ -406,6 +406,34 @@ mod tests {
 
         assert_success(&output);
         assert!(!matching_jsonl.exists());
+    }
+
+    #[test]
+    fn cleanup_script_rejects_failed_session_id_normalization_without_deleting_sessions() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let restore_path = restore_path(&codex_home);
+        let restore_dir = restore_path.parent().unwrap();
+        fs::create_dir_all(restore_dir).unwrap();
+        let matching_jsonl = restore_dir.join(format!("rollout-a-{SESSION_ID}.jsonl"));
+        create_file(&matching_jsonl);
+
+        let fake_bin = temp.path().join("fake-bin");
+        fs::create_dir(&fake_bin).unwrap();
+        symlink("/bin/sh", fake_bin.join("sh")).unwrap();
+        let fake_tr = fake_bin.join("tr");
+        fs::write(&fake_tr, "#!/bin/sh\nexit 1\n").unwrap();
+        let mut permissions = fs::metadata(&fake_tr).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&fake_tr, permissions).unwrap();
+
+        let output = cleanup_command(&codex_home, &restore_path, SESSION_ID, SESSION_ID_NO_DASHES)
+            .env("PATH", &fake_bin)
+            .output()
+            .unwrap();
+
+        assert_failure_contains(&output, "failed to normalize codex restore session id");
+        assert!(matching_jsonl.exists());
     }
 
     #[test]
