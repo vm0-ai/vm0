@@ -300,9 +300,11 @@ mod tests {
         assert!(command.contains("codex_home='/home/user/.codex'"));
         assert!(command.contains("root=\"$codex_home/sessions\""));
         assert!(command.contains("scan_budget="));
-        assert!(command.contains("count_session_entries"));
-        assert!(command.contains("find \"$root\" -mindepth 1 -print"));
+        assert!(command.contains("collect_matching_session_entries"));
+        assert!(command.contains("find \"$root\" -mindepth 1 -print0"));
         assert!(command.contains("delete_matching_session_entries"));
+        assert!(command.contains("xargs -0"));
+        assert!(!command.contains("-delete"));
         assert!(!command.contains("for path in \"$dir\"/*"));
     }
 
@@ -320,6 +322,7 @@ mod tests {
         let matching_no_dash = codex_home.join("sessions/2026/06/05").join(format!(
             "rollout-b-{SESSION_ID_NO_DASHES}.jsonl.zst.vm0tmp-456"
         ));
+        let matching_newline = restore_dir.join(format!("rollout-line\nbreak-{SESSION_ID}.jsonl"));
         let matching_non_layout = codex_home
             .join("sessions/not-layout/deep")
             .join(format!("rollout-c-{SESSION_ID}.jsonl"));
@@ -331,6 +334,7 @@ mod tests {
         create_file(&matching_zst);
         create_file(&matching_tmp);
         create_file(&matching_no_dash);
+        create_file(&matching_newline);
         create_file(&matching_non_layout);
         create_file(&unrelated);
         fs::create_dir(&matching_directory).unwrap();
@@ -343,6 +347,7 @@ mod tests {
         assert!(!matching_zst.exists());
         assert!(!matching_tmp.exists());
         assert!(!matching_no_dash.exists());
+        assert!(!matching_newline.exists());
         assert!(!matching_non_layout.exists());
         assert!(!matching_symlink.exists());
         assert!(matching_directory.exists());

@@ -85,9 +85,13 @@ id_no_dashes_lc=$(printf '%s' "$id_no_dashes" | tr '[:upper:]' '[:lower:]')
 # Codex resume can see matching session files anywhere below sessions; the
 # explicit entry budget keeps that required duplicate cleanup bounded.
 scan_error_file=""
+matching_entries_file=""
 cleanup_scan_error_file() {
   if [ -n "$scan_error_file" ]; then
     rm -f -- "$scan_error_file"
+  fi
+  if [ -n "$matching_entries_file" ]; then
+    rm -f -- "$matching_entries_file"
   fi
 }
 cleanup_scan_error_file_and_exit() {
@@ -96,27 +100,51 @@ cleanup_scan_error_file_and_exit() {
 }
 trap cleanup_scan_error_file EXIT
 trap cleanup_scan_error_file_and_exit HUP INT TERM
-count_session_entries() {
+collect_matching_session_entries() {
   : > "$scan_error_file" || {
     echo "failed to reset codex session cleanup temp file" >&2
     exit 1
   }
-  entry_count=$(
-    find "$root" -mindepth 1 -print 2>"$scan_error_file" |
-      awk -v budget="$scan_budget" '
-        NR > budget {
-          print NR
-          exit
+  : > "$matching_entries_file" || {
+    echo "failed to reset codex session cleanup temp file" >&2
+    exit 1
+  }
+  find "$root" -mindepth 1 -print0 2>"$scan_error_file" |
+    awk -v RS='\0' \
+      -v budget="$scan_budget" \
+      -v id="$id_lc" \
+      -v id_no_dashes="$id_no_dashes_lc" \
+      -v matches_file="$matching_entries_file" '
+        function id_pattern_matches(name, key) {
+          return name ~ key ".*\\.jsonl$" ||
+            name ~ key ".*\\.jsonl\\.zst$" ||
+            name ~ key ".*\\.jsonl\\.vm0tmp-" ||
+            name ~ key ".*\\.jsonl\\.zst\\.vm0tmp-"
         }
-        END {
-          if (NR <= budget) {
-            print NR
+        function filename_matches(path, name) {
+          name = path
+          sub(/^.*\//, "", name)
+          name = tolower(name)
+          return id_pattern_matches(name, id) ||
+            id_pattern_matches(name, id_no_dashes)
+        }
+        NR > budget {
+          exit 42
+        }
+        filename_matches($0) {
+          printf "%s%c", $0, 0 >> matches_file
+          if (ERRNO != "") {
+            exit 1
           }
         }
       '
-  )
-  if [ "$entry_count" -gt "$scan_budget" ]; then
+  scan_status=$?
+  if [ "$scan_status" -eq 42 ]; then
     echo "codex session cleanup exceeded scan budget" >&2
+    exit 1
+  fi
+  if [ "$scan_status" -ne 0 ]; then
+    echo "cannot scan codex session directory" >&2
     exit 1
   fi
   if [ -s "$scan_error_file" ]; then
@@ -125,33 +153,29 @@ count_session_entries() {
   fi
 }
 delete_matching_session_entries() {
-  : > "$scan_error_file" || {
-    echo "failed to reset codex session cleanup temp file" >&2
+  if [ ! -s "$matching_entries_file" ]; then
+    return
+  fi
+  xargs -0 sh -c '
+    for path do
+      if [ -f "$path" ] || [ -L "$path" ]; then
+        rm -f -- "$path" || exit 1
+      fi
+    done
+  ' sh < "$matching_entries_file" || {
+    echo "failed to delete codex session files" >&2
     exit 1
   }
-  if ! find "$root" \( -type f -o -type l \) \( \
-    -iname "*${id_lc}*.jsonl" -o \
-    -iname "*${id_lc}*.jsonl.zst" -o \
-    -iname "*${id_lc}*.jsonl.vm0tmp-*" -o \
-    -iname "*${id_lc}*.jsonl.zst.vm0tmp-*" -o \
-    -iname "*${id_no_dashes_lc}*.jsonl" -o \
-    -iname "*${id_no_dashes_lc}*.jsonl.zst" -o \
-    -iname "*${id_no_dashes_lc}*.jsonl.vm0tmp-*" -o \
-    -iname "*${id_no_dashes_lc}*.jsonl.zst.vm0tmp-*" \
-  \) -delete 2>"$scan_error_file"; then
-    echo "failed to delete codex session files" >&2
-    exit 1
-  fi
-  if [ -s "$scan_error_file" ]; then
-    echo "failed to delete codex session files" >&2
-    exit 1
-  fi
 }
 if [ -d "$root" ]; then
   scan_error_file=$(mktemp "${TMPDIR:-/tmp}/codex-session-cleanup.XXXXXX") || {
     echo "failed to create codex session cleanup temp file" >&2
     exit 1
   }
-  count_session_entries
+  matching_entries_file=$(mktemp "${TMPDIR:-/tmp}/codex-session-cleanup.XXXXXX") || {
+    echo "failed to create codex session cleanup temp file" >&2
+    exit 1
+  }
+  collect_matching_session_entries
   delete_matching_session_entries
 fi

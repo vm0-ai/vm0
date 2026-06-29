@@ -928,24 +928,24 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
             .contains("codex restore directory is a symlink")
     );
     assert!(exec_calls[0].cmd.contains("scan_budget="));
-    assert!(exec_calls[0].cmd.contains("count_session_entries"));
     assert!(
         exec_calls[0]
             .cmd
-            .contains("find \"$root\" -mindepth 1 -print")
+            .contains("collect_matching_session_entries")
+    );
+    assert!(
+        exec_calls[0]
+            .cmd
+            .contains("find \"$root\" -mindepth 1 -print0")
     );
     assert!(
         exec_calls[0]
             .cmd
             .contains("delete_matching_session_entries")
     );
-    assert!(
-        exec_calls[0]
-            .cmd
-            .contains("find \"$root\" \\( -type f -o -type l \\)")
-    );
-    assert!(exec_calls[0].cmd.contains(".jsonl.zst"));
-    assert!(exec_calls[0].cmd.contains(".jsonl.vm0tmp-*"));
+    assert!(exec_calls[0].cmd.contains("xargs -0"));
+    assert!(exec_calls[0].cmd.contains("\\\\.jsonl\\\\.zst"));
+    assert!(exec_calls[0].cmd.contains("\\\\.jsonl\\\\.vm0tmp-"));
     assert!(exec_calls[0].cmd.contains("id_no_dashes"));
     assert!(
         exec_calls[0]
@@ -953,7 +953,7 @@ fn assert_codex_cleanup_call(sandbox: &MockSandbox) {
             .contains("VM0_CODEX_RESTORE_SESSION_FILENAME_KEY")
     );
     assert!(!exec_calls[0].cmd.contains("tr -d"));
-    assert!(exec_calls[0].cmd.contains("-delete"));
+    assert!(!exec_calls[0].cmd.contains("-delete"));
     assert!(!exec_calls[0].cmd.contains("for path in \"$dir\"/*"));
 }
 
