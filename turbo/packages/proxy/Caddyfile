@@ -14,13 +14,13 @@ vm7.ai:8443 {
 	redir https://www.vm7.ai:8443{uri} permanent
 }
 
-# Marketing/onboarding surface proxied to the shared staging SO deployment.
+# Marketing/onboarding surface proxied to the shared staging web deployment.
 www.vm7.ai:8443 {
 	tls {
 		dns cloudflare {env.CF_DNS_AND_TUNNEL_API_TOKEN}
 	}
-	reverse_proxy https://staging-so.vm6.ai {
-		header_up Host staging-so.vm6.ai
+	reverse_proxy https://staging-www.vm6.ai {
+		header_up Host staging-www.vm6.ai
 	}
 }
 

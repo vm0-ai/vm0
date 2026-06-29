@@ -147,7 +147,7 @@ runs:
         if [[ "$INPUT_ENVIRONMENT" == "production" ]]; then
           web_url="${INPUT_WEB_URL:-https://www.vm0.ai}"
           app_url="${INPUT_APP_URL:-https://app.vm0.ai}"
-          paid_onboarding_url="$(first_non_empty "$(repo_var PAID_ONBOARDING_URL)" "https://so.vm0.ai")"
+          paid_onboarding_url="$(first_non_empty "$(repo_var PAID_ONBOARDING_URL)" "https://www.vm0.ai")"
           api_url="${INPUT_API_URL:-$(repo_var VM0_API_URL)}"
           api_backend_url="$(first_non_empty "$INPUT_API_BACKEND_URL" "$(repo_var VM0_API_BACKEND_URL)")"
           axiom_dataset_suffix="prod"
@@ -167,7 +167,7 @@ runs:
         else
           web_url="$INPUT_WEB_URL"
           app_url="$INPUT_APP_URL"
-          paid_onboarding_url="$(first_non_empty "$(repo_var PAID_ONBOARDING_URL_STAGING)" "https://staging-so.vm6.ai")"
+          paid_onboarding_url="$(first_non_empty "$(repo_var PAID_ONBOARDING_URL_STAGING)" "https://staging-www.vm6.ai")"
           api_url="$INPUT_API_URL"
           api_backend_url="$INPUT_API_BACKEND_URL"
           axiom_dataset_suffix="dev"

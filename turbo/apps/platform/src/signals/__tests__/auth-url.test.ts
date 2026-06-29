@@ -6,7 +6,7 @@ import { resolveWebAuthUrl, resolveWebOrigin } from "../auth.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
-const AUTH_ORIGIN = "https://so.vm7.ai:8443";
+const AUTH_ORIGIN = "https://www.vm7.ai:8443";
 const AUTH_DOMAIN = "api.vm7.ai:8443";
 
 function setBrowserUrl(url: string): void {

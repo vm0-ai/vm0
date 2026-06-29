@@ -161,7 +161,7 @@ assert_env_value "$success_env_file" FINICITY_PARTNER_ID "github-finicity-partne
 assert_env_value "$success_env_file" ATOM_URL "https://tunnel-yuma-atom-api.vm7.ai"
 assert_env_value "$success_env_file" VM0_MACHINE_SECRET_KEY "github-atom-machine-secret"
 assert_env_value "$success_env_file" VM0_PREVIEW_JOB_REF "pr-123"
-assert_env_value "$success_env_file" PAID_ONBOARDING_URL "https://staging-so.vm6.ai"
+assert_env_value "$success_env_file" PAID_ONBOARDING_URL "https://staging-www.vm6.ai"
 assert_env_value "$success_env_file" ZERO_PRICE_PRO "price_test_pro"
 assert_env_value "$success_env_file" ZERO_PRICE_TEAM "price_test_team"
 assert_env_value "$success_env_file" ATOM_GRANT_PRICE "price_test_atom_grant"
@@ -191,6 +191,7 @@ production_api_env_file="$(awk -F= '$1 == "file" { sub(/^[^=]*=/, ""); print }' 
 assert_contains "$production_api_output" "Rendered"
 assert_env_value "$production_api_env_file" ATOM_URL "https://atom.github.test"
 assert_env_value "$production_api_env_file" VM0_MACHINE_SECRET_KEY "github-atom-machine-secret"
+assert_env_value "$production_api_env_file" PAID_ONBOARDING_URL "https://www.vm0.ai"
 
 missing_dir="$(mktemp -d)"
 TEMP_DIRS+=("$missing_dir")
