@@ -171,6 +171,19 @@ function hostLabelToken(label: string): string {
   return label.toLowerCase().replaceAll(/[^a-z0-9]/g, "");
 }
 
+function hostLabelMatchesConnectorRef(
+  label: string,
+  connectorRef: string,
+): boolean {
+  const normalizedConnectorRef = connectorRef.toLowerCase();
+  const token = connectorRefHostToken(connectorRef);
+  const normalizedLabel = label.toLowerCase();
+  if (normalizedConnectorRef === token) {
+    return normalizedLabel === token;
+  }
+  return hostLabelToken(normalizedLabel) === token;
+}
+
 function hostnameMatchesConnectorRef(url: URL, connectorRef: string): boolean {
   const token = connectorRefHostToken(connectorRef);
   if (token.length < 3) return false;
@@ -182,7 +195,7 @@ function hostnameMatchesConnectorRef(url: URL, connectorRef: string): boolean {
       return part !== "";
     });
   if (labels.length < 2) return false;
-  return hostLabelToken(labels[labels.length - 2]!) === token;
+  return hostLabelMatchesConnectorRef(labels[labels.length - 2]!, connectorRef);
 }
 
 function stripUrlQueryAndFragment(url: string): string {
