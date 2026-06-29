@@ -3,7 +3,17 @@
 # Regenerate with: cd turbo && pnpm -F @vm0/firewalls-generator generate
 # ruff: noqa
 
-JSON_PART = r"""            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/kfpArtifacts:create"
+JSON_PART = r"""            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files:upload",
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/genericArtifacts:create",
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/goModules:create",
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/googetArtifacts:create"
+          ]
+        },
+        {
+          "name": "artifactregistry.kfpartifacts.create",
+          "rules": [
+            "POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/kfpArtifacts:create",
+            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/kfpArtifacts:create"
           ]
         },
         {

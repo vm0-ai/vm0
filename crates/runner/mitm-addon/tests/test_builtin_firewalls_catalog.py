@@ -413,6 +413,82 @@ def test_gmail_firewall_uses_resource_permissions():
     assert not [name for name in permissions if name.startswith("gmail.")]
 
 
+def test_gmail_builtin_allows_message_send_media_put_as_send():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["gmail"]
+    compiled = matching.compile_firewalls([firewall])
+    assert compiled is not None
+
+    for url in (
+        "https://gmail.googleapis.com/upload/gmail/v1/users/me/messages/send",
+        "https://gmail.googleapis.com/resumable/upload/gmail/v1/users/me/messages/send",
+    ):
+        result = matching.match_compiled_firewall_request(
+            url,
+            "PUT",
+            compiled,
+            {
+                "gmail": {
+                    "allow": ["messages.send"],
+                    "deny": ["messages.write"],
+                    "unknownPolicy": "deny",
+                }
+            },
+        )
+
+        assert isinstance(result, matching.FirewallAllow)
+        assert result.permission == "messages.send"
+        assert result.rule == "PUT /v1/users/{userId}/messages/send"
+        assert result.rel_path == "/v1/users/me/messages/send"
+
+
+def test_google_drive_builtin_allows_file_update_media_put_as_write():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["google-drive"]
+    compiled = matching.compile_firewalls([firewall])
+    assert compiled is not None
+
+    result = matching.match_compiled_firewall_request(
+        "https://www.googleapis.com/resumable/upload/drive/v3/files/file-123",
+        "PUT",
+        compiled,
+        {
+            "google-drive": {
+                "allow": ["files.write"],
+                "deny": ["files.read"],
+                "unknownPolicy": "deny",
+            }
+        },
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.permission == "files.write"
+    assert result.rule == "PUT /v3/files/{fileId}"
+    assert result.rel_path == "/v3/files/file-123"
+
+
+def test_google_cloud_builtin_allows_storage_resumable_media_put_as_create():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["google-cloud"]
+    compiled = matching.compile_firewalls([firewall])
+    assert compiled is not None
+
+    result = matching.match_compiled_firewall_request(
+        "https://storage.googleapis.com/resumable/upload/storage/v1/b/bucket-1/o?upload_id=abc",
+        "PUT",
+        compiled,
+        {
+            "google-cloud": {
+                "allow": ["storage.objects.create"],
+                "deny": ["storage.objects.get"],
+                "unknownPolicy": "deny",
+            }
+        },
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.permission == "storage.objects.create"
+    assert result.rule == "PUT /resumable/upload/storage/v1/b/{bucket}/o"
+    assert result.rel_path == "/resumable/upload/storage/v1/b/bucket-1/o"
+
+
 def test_youtube_builtin_allows_video_media_put_as_create():
     firewall = builtin_firewalls.BUILTIN_FIREWALLS["youtube"]
     compiled = matching.compile_firewalls([firewall])

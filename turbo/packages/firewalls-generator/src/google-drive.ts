@@ -27,6 +27,12 @@ interface DiscoveryMethod {
   path?: string;
   flatPath?: string;
   supportsMediaUpload?: boolean;
+  mediaUpload?: {
+    protocols?: {
+      simple?: { path?: string };
+      resumable?: { path?: string };
+    };
+  };
 }
 
 interface DiscoveryResource {
@@ -271,14 +277,20 @@ export const GOOGLE_DRIVE_PERMISSION_MANIFEST: readonly GoogleDriveManifestPermi
         "base:POST /v3/files/{fileId}/modifyLabels",
         "base:PUT /v2/files/{fileId}",
         "base:PUT /v2/files/{fileId}/properties/{propertyKey}",
+        "resumable-upload:PUT /v2/files",
         "resumable-upload:PATCH /v3/files/{fileId}",
         "resumable-upload:POST /v2/files",
         "resumable-upload:POST /v3/files",
         "resumable-upload:PUT /v2/files/{fileId}",
+        "resumable-upload:PUT /v3/files",
+        "resumable-upload:PUT /v3/files/{fileId}",
+        "upload:PUT /v2/files",
         "upload:PATCH /v3/files/{fileId}",
         "upload:POST /v2/files",
         "upload:POST /v3/files",
         "upload:PUT /v2/files/{fileId}",
+        "upload:PUT /v3/files",
+        "upload:PUT /v3/files/{fileId}",
       ],
     },
     {
@@ -392,6 +404,55 @@ function baseRuleForMethod(
   return `${httpMethod.toUpperCase()} /${versionPrefix(discovery)}${methodPath}`;
 }
 
+function uploadRuleForMethod(
+  method: DiscoveryMethod,
+  kind: Exclude<GoogleDriveRouteKeyKind, "base">,
+): string | null {
+  const httpMethod = method.httpMethod;
+  if (!httpMethod) {
+    throw new Error(
+      `Google Drive upload method missing httpMethod: ${method.id}`,
+    );
+  }
+
+  const protocol =
+    kind === "upload"
+      ? method.mediaUpload?.protocols?.simple
+      : method.mediaUpload?.protocols?.resumable;
+  if (!protocol?.path) return null;
+
+  const prefix =
+    kind === "upload" ? "/upload/drive/" : "/resumable/upload/drive/";
+  if (!protocol.path.startsWith(prefix)) {
+    throw new Error(
+      `Unexpected Google Drive ${kind} media upload path for ${method.id ?? "unknown"}: ${protocol.path}`,
+    );
+  }
+
+  return `${httpMethod.toUpperCase()} /${protocol.path.slice(prefix.length)}`;
+}
+
+function mediaUploadPutRuleForMethod(
+  method: DiscoveryMethod,
+  kind: Exclude<GoogleDriveRouteKeyKind, "base">,
+): string | null {
+  const protocol =
+    kind === "upload"
+      ? method.mediaUpload?.protocols?.simple
+      : method.mediaUpload?.protocols?.resumable;
+  if (!protocol?.path) return null;
+
+  const prefix =
+    kind === "upload" ? "/upload/drive/" : "/resumable/upload/drive/";
+  if (!protocol.path.startsWith(prefix)) {
+    throw new Error(
+      `Unexpected Google Drive ${kind} media upload path for ${method.id ?? "unknown"}: ${protocol.path}`,
+    );
+  }
+
+  return `PUT /${protocol.path.slice(prefix.length)}`;
+}
+
 export function buildGoogleDriveOfficialRouteKeys(
   discoveries: readonly GoogleDriveDiscoveryDocument[],
 ): Set<string> {
@@ -404,8 +465,36 @@ export function buildGoogleDriveOfficialRouteKeys(
       routeKeys.add(`base:${rule}`);
       if (method.supportsMediaUpload) {
         hasUploadMethods = true;
-        routeKeys.add(`upload:${rule}`);
-        routeKeys.add(`resumable-upload:${rule}`);
+        const uploadRule = uploadRuleForMethod(method, "upload");
+        const resumableUploadRule = uploadRuleForMethod(
+          method,
+          "resumable-upload",
+        );
+        if (!uploadRule && !resumableUploadRule) {
+          throw new Error(
+            `Google Drive Discovery reports media upload support without upload protocol paths: ${method.id ?? rule}`,
+          );
+        }
+        if (uploadRule) {
+          routeKeys.add(`upload:${uploadRule}`);
+        }
+        if (resumableUploadRule) {
+          routeKeys.add(`resumable-upload:${resumableUploadRule}`);
+        }
+        if (method.mediaUpload?.protocols?.resumable) {
+          const uploadMediaRule = mediaUploadPutRuleForMethod(method, "upload");
+          if (uploadMediaRule) {
+            routeKeys.add(`upload:${uploadMediaRule}`);
+          }
+
+          const resumableUploadMediaRule = mediaUploadPutRuleForMethod(
+            method,
+            "resumable-upload",
+          );
+          if (resumableUploadMediaRule) {
+            routeKeys.add(`resumable-upload:${resumableUploadMediaRule}`);
+          }
+        }
       }
     }
   }
