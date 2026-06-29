@@ -549,6 +549,8 @@ const startWorkflowWebhookRun$ = command(
           args.row.chatThreadId,
           args.row.agentId,
         ),
+        activePreviousRunPolicy: "allow",
+        recordLastRunId: false,
         recordLastRunAt: true,
         dispatchFailedCallbacks: dispatchFailedRunCallbacks,
       },
