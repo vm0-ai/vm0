@@ -17,6 +17,7 @@ class AuthEndpointRequest:
     body: bytes
 
     def json_body(self) -> dict[str, object]:
+        """Decode the raw body and assert it is a JSON object."""
         body = json.loads(self.body)
         assert isinstance(body, dict)
         return body
