@@ -74,7 +74,10 @@ class FakeAuthEndpoint:
         status: int = 200,
         release_event: threading.Event | None = None,
     ) -> None:
-        """Queue a JSON response with FIFO and ``release_event`` semantics."""
+        """Queue a JSON response with FIFO and ``release_event`` semantics.
+
+        The body is JSON-encoded and served with ``Content-Type: application/json``.
+        """
         self.queue_response(
             status,
             body=json.dumps(body).encode(),
