@@ -9,7 +9,6 @@ import {
 } from "@vm0/api-contracts/contracts/api-keys";
 import {
   composesByIdContract,
-  composesListContract,
   composesMainContract,
   type ComposeListItem,
   type ComposeResponse,
@@ -1655,19 +1654,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         [200],
       );
       return response.body;
-    },
-
-    async listComposes(
-      actor: ApiTestUser,
-    ): Promise<readonly ComposeListItem[]> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        composesListContract,
-      );
-      const response = await accept(
-        client.list({ headers: authenticate(actor), query: {} }),
-        [200],
-      );
-      return response.body.composes;
     },
 
     async readZeroComposeById(

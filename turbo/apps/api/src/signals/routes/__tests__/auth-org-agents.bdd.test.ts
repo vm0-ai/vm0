@@ -993,12 +993,6 @@ describe("COMPOSE-01", () => {
     const zeroByName = await api.readZeroComposeByName(admin, composeName);
     expect(zeroByName.id).toBe(created.composeId);
 
-    const listed = await api.listComposes(admin);
-    expect(
-      listed.some((compose) => {
-        return compose.id === created.composeId;
-      }),
-    ).toBeTruthy();
     const zeroListed = await api.listZeroComposes(admin);
     expect(
       zeroListed.some((compose) => {

@@ -10,6 +10,10 @@ import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { connectors } from "@vm0/db/schema/connector";
 import { gmailWatchStates } from "@vm0/db/schema/gmail-event";
+import {
+  googleCalendarEventSnapshots,
+  googleCalendarWatchStates,
+} from "@vm0/db/schema/google-calendar-event";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { secrets } from "@vm0/db/schema/secret";
@@ -80,6 +84,7 @@ function sandboxOperationEventsForRun(
 const WORKFLOW_NAME = "trigger-workflow";
 const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
 const GMAIL_EMAIL = "workflow-user@example.com";
+const GOOGLE_CALENDAR_EMAIL = "calendar-user@example.com";
 
 function futureIso(offsetMs: number): string {
   return new Date(now() + offsetMs).toISOString();
@@ -142,6 +147,21 @@ async function enableGmailWorkflowTriggers(
       orgId: fixture.orgId,
       userId: fixture.userId,
       switches: { [FeatureSwitchKey.WorkflowGmailEventTriggers]: true },
+    });
+}
+
+async function enableGoogleCalendarWorkflowTriggers(
+  fixture: WorkflowsFixture,
+): Promise<void> {
+  await store
+    .set(writeDb$)
+    .insert(userFeatureSwitches)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      switches: {
+        [FeatureSwitchKey.WorkflowGoogleCalendarEventTriggers]: true,
+      },
     });
 }
 
@@ -240,6 +260,36 @@ async function seedGmailConnector(fixture: WorkflowsFixture): Promise<string> {
   return connector.id;
 }
 
+async function seedGoogleCalendarConnector(
+  fixture: WorkflowsFixture,
+): Promise<string> {
+  const db = store.set(writeDb$);
+  const [connector] = await db
+    .insert(connectors)
+    .values({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      type: "google-calendar",
+      authMethod: "oauth",
+      externalEmail: GOOGLE_CALENDAR_EMAIL,
+      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
+      oauthScopes: JSON.stringify(["https://www.googleapis.com/auth/calendar"]),
+    })
+    .returning({ id: connectors.id });
+  if (!connector) {
+    throw new Error("Expected Google Calendar connector to be created");
+  }
+
+  await db.insert(secrets).values({
+    orgId: fixture.orgId,
+    userId: fixture.userId,
+    name: "GOOGLE_CALENDAR_ACCESS_TOKEN",
+    encryptedValue: await encryptStoredSecretValue("calendar-access-token"),
+    type: "connector",
+  });
+  return connector.id;
+}
+
 function configureGmailWatchMock(historyId = "100"): void {
   mockOptionalEnv("GMAIL_PUBSUB_TOPIC_NAME", GMAIL_TOPIC_NAME);
   server.use(
@@ -255,6 +305,62 @@ function configureGmailWatchMock(historyId = "100"): void {
         return HttpResponse.json({
           historyId,
           expiration: String(now() + 7 * 24 * 60 * 60 * 1000),
+        });
+      },
+    ),
+  );
+}
+
+function configureGoogleCalendarWatchMock(args?: {
+  readonly calendarId?: string;
+  readonly baselineItems?: readonly Record<string, unknown>[];
+}): void {
+  const calendarId = args?.calendarId ?? "primary";
+  mockOptionalEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
+  server.use(
+    http.post(
+      "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events/watch",
+      async ({ request, params }) => {
+        expect(params.calendarId).toBe(calendarId);
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer calendar-access-token",
+        );
+        const body = (await request.json()) as {
+          readonly id?: string;
+          readonly type?: string;
+          readonly address?: string;
+          readonly token?: string;
+          readonly params?: { readonly ttl?: string };
+        };
+        expect(body).toMatchObject({
+          type: "web_hook",
+          address: "https://api.vm0.ai/api/webhooks/google-calendar",
+          params: { ttl: "604800" },
+        });
+        expect(body.id).toBeTruthy();
+        expect(body.token).toBeTruthy();
+        return HttpResponse.json({
+          id: body.id,
+          resourceId: "calendar-resource-1",
+          resourceUri: `https://www.googleapis.com/calendar/v3/calendars/${calendarId}/events`,
+          expiration: String(now() + 7 * 24 * 60 * 60 * 1000),
+        });
+      },
+    ),
+    http.get(
+      "https://www.googleapis.com/calendar/v3/calendars/:calendarId/events",
+      ({ request, params }) => {
+        expect(params.calendarId).toBe(calendarId);
+        expect(request.headers.get("authorization")).toBe(
+          "Bearer calendar-access-token",
+        );
+        const url = new URL(request.url);
+        expect(url.searchParams.get("showDeleted")).toBe("true");
+        expect(url.searchParams.get("maxResults")).toBe("2500");
+        expect(url.searchParams.get("syncToken")).toBeNull();
+        return HttpResponse.json({
+          items: args?.baselineItems ?? [],
+          nextSyncToken: "calendar-sync-baseline",
         });
       },
     ),
@@ -605,6 +711,26 @@ describe("zero workflow triggers", () => {
     );
   });
 
+  it("rejects Google Calendar event triggers before the feature is enabled", async () => {
+    const { workflowId } = await setupFixture();
+
+    const rejected = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "Google Calendar workflow event triggers are not enabled",
+    );
+  });
+
   it("rejects webhook event triggers before the feature is enabled", async () => {
     const { workflowId } = await setupFixture();
 
@@ -792,6 +918,27 @@ describe("zero workflow triggers", () => {
     );
   });
 
+  it("requires a connected Google Calendar account for Google Calendar event triggers", async () => {
+    const { fixture, workflowId } = await setupFixture();
+    await enableGoogleCalendarWorkflowTriggers(fixture);
+
+    const rejected = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [400],
+    );
+
+    expect(rejected.body.error.message).toBe(
+      "Connect Google Calendar before adding a Google Calendar event trigger",
+    );
+  });
+
   it("rejects removed Gmail event trigger match fields", async () => {
     const { workflowId } = await setupFixture();
 
@@ -896,6 +1043,82 @@ describe("zero workflow triggers", () => {
     expect(updated.body.eventConfig.match).toStrictEqual({
       from: { contains: "billing@example.com" },
     });
+  });
+
+  it("creates Google Calendar event-created triggers with a watch and baseline", async () => {
+    const { fixture, workflowId } = await setupFixture();
+    await enableGoogleCalendarWorkflowTriggers(fixture);
+    const connectorId = await seedGoogleCalendarConnector(fixture);
+    configureGoogleCalendarWatchMock({
+      baselineItems: [
+        {
+          id: "existing-event",
+          etag: '"existing-etag"',
+          status: "confirmed",
+          summary: "Already on calendar",
+          created: "2026-06-01T00:00:00.000Z",
+          updated: "2026-06-01T00:00:00.000Z",
+          start: { dateTime: "2026-06-30T09:00:00-07:00" },
+          end: { dateTime: "2026-06-30T09:30:00-07:00" },
+        },
+      ],
+    });
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+        },
+      }),
+      [201],
+    );
+
+    expect(created.body).toMatchObject({
+      kind: "event",
+      eventType: "google-calendar-event-created",
+      eventConfig: {
+        provider: "google-calendar",
+        event: "event_created",
+        calendarId: "primary",
+      },
+      schedule: null,
+      scheduleSummary: null,
+      enabled: true,
+      nextRunAt: null,
+    });
+    expect(created.body.chatThreadId).toBeTruthy();
+
+    const db = store.set(writeDb$);
+    const watches = await db
+      .select()
+      .from(googleCalendarWatchStates)
+      .where(eq(googleCalendarWatchStates.connectorId, connectorId));
+    expect(watches).toHaveLength(1);
+    expect(watches[0]).toMatchObject({
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      calendarId: "primary",
+      resourceId: "calendar-resource-1",
+      syncToken: "calendar-sync-baseline",
+      needsRewatch: false,
+    });
+
+    const snapshots = await db
+      .select({
+        calendarEventId: googleCalendarEventSnapshots.calendarEventId,
+        summary: googleCalendarEventSnapshots.summary,
+      })
+      .from(googleCalendarEventSnapshots)
+      .where(eq(googleCalendarEventSnapshots.watchStateId, watches[0]!.id));
+    expect(snapshots).toStrictEqual([
+      {
+        calendarEventId: "existing-event",
+        summary: "Already on calendar",
+      },
+    ]);
   });
 
   it("creates and updates Gmail label applied triggers by label name", async () => {

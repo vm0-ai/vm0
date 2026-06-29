@@ -1,6 +1,5 @@
 import { computed } from "ccstate";
 import {
-  composesListContract,
   composesMainContract,
   composesVersionsContract,
 } from "@vm0/api-contracts/contracts/composes";
@@ -8,10 +7,9 @@ import {
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import { badRequestMessage, notFound } from "../../lib/error";
+import { notFound } from "../../lib/error";
 import {
   agentComposeByName,
-  agentComposeList,
   agentComposeVersionResolution,
 } from "../services/agent-composes-read.service";
 import type { RouteEntry } from "../route-entry";
@@ -31,16 +29,6 @@ const getComposeByNameInner$ = computed(async (get) => {
   }
 
   return { status: 200 as const, body: compose };
-});
-
-const listComposesInner$ = computed(async (get) => {
-  const auth = get(authContext$);
-  if (!auth.orgId) {
-    return badRequestMessage("Invalid request");
-  }
-
-  const result = await get(agentComposeList(auth.orgId));
-  return { status: 200 as const, body: { composes: [...result.composes] } };
 });
 
 const resolveComposeVersionInner$ = computed(async (get) => {
@@ -69,10 +57,6 @@ export const agentComposesReadRoutes: readonly RouteEntry[] = [
   {
     route: composesMainContract.getByName,
     handler: authRoute(anySandboxAuth, getComposeByNameInner$),
-  },
-  {
-    route: composesListContract.list,
-    handler: authRoute(anySandboxAuth, listComposesInner$),
   },
   {
     route: composesVersionsContract.resolveVersion,

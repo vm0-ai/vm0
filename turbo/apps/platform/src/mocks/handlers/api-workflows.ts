@@ -95,6 +95,24 @@ function triggerSummary(
       scheduleSummary: null,
     };
   }
+  if (
+    trigger.kind === "event" &&
+    trigger.eventType === "google-calendar-event-created"
+  ) {
+    return {
+      id: trigger.id,
+      ownerUserId: trigger.ownerUserId,
+      enabled: trigger.enabled,
+      chatThreadId: trigger.chatThreadId,
+      nextRunAt: trigger.nextRunAt,
+      lastRunAt: trigger.lastRunAt,
+      kind: "event",
+      eventType: "google-calendar-event-created",
+      eventConfig: trigger.eventConfig,
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
   return {
     id: trigger.id,
     ownerUserId: trigger.ownerUserId,
@@ -534,11 +552,20 @@ function workflowTriggerCreateHandlers() {
             schedule: null,
             scheduleSummary: null,
           };
-        } else {
+        } else if (body.eventType === "github-label-applied") {
           trigger = {
             ...base,
             kind: "event",
             eventType: "github-label-applied",
+            eventConfig: body.eventConfig,
+            schedule: null,
+            scheduleSummary: null,
+          };
+        } else {
+          trigger = {
+            ...base,
+            kind: "event",
+            eventType: "google-calendar-event-created",
             eventConfig: body.eventConfig,
             schedule: null,
             scheduleSummary: null,

@@ -97,7 +97,6 @@ export const zeroComposesMetadataContract = c.router({
 
 /**
  * Zero composes list contract (GET /api/zero/composes/list)
- * Proxies to composesListContract
  */
 export const zeroComposesListContract = c.router({
   list: {
