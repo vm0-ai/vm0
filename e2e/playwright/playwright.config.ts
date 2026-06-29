@@ -4,17 +4,25 @@ import path from "node:path";
 
 dotenv.config({ path: path.join(__dirname, "../.env.local") });
 
-if (!process.env.VM0_API_URL) {
+const apiUrl = process.env.VM0_API_URL;
+if (!apiUrl) {
   throw new Error("VM0_API_URL environment variable is required");
 }
 
-export function deriveAppUrl(webUrl: string): string {
-  // Handle preview URLs like https://pr-8510-www.vm6.ai -> https://pr-8510-app.vm6.ai
-  // and production URLs like https://www.vm7.ai -> https://app.vm7.ai
-  return webUrl.replace(/-www\./, "-app.").replace(/\/\/www\./, "//app.");
+export function deriveAppUrl(sourceUrl: string): string {
+  if (process.env.VM0_APP_URL) {
+    return process.env.VM0_APP_URL;
+  }
+
+  // Handle preview API/web URLs like pr-8510-api/www.vm6.ai and production
+  // URLs like api/www.vm7.ai.
+  return sourceUrl
+    .replace(/-(api|www)\./, "-app.")
+    .replace(/\/\/(api|www)\./, "//app.");
 }
 
 export const STORAGE_STATE = path.join(__dirname, ".auth/storage-state.json");
+const appUrl = deriveAppUrl(apiUrl);
 
 export default defineConfig({
   testDir: "./tests",
@@ -22,7 +30,7 @@ export default defineConfig({
   globalTeardown: "./global-teardown",
   timeout: 120_000,
   use: {
-    baseURL: process.env.VM0_API_URL,
+    baseURL: appUrl,
     ignoreHTTPSErrors: true,
     trace: "on-first-retry",
     ...devices["Desktop Chrome"],
