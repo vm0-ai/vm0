@@ -9,7 +9,6 @@ import {
   zeroIntegrationsTelegramContract,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
@@ -154,16 +153,6 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
     return { composeId, name };
   }
 
-  async function defaultComposeId(botId: string): Promise<string | null> {
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ defaultComposeId: telegramInstallations.defaultComposeId })
-      .from(telegramInstallations)
-      .where(eq(telegramInstallations.telegramBotId, botId))
-      .limit(1);
-    return row?.defaultComposeId ?? null;
-  }
-
   async function selectedPreference(args: {
     readonly orgId: string;
     readonly userId: string;
@@ -182,6 +171,23 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
       )
       .limit(1);
     return row?.selectedComposeId;
+  }
+
+  async function expectBotAgent(args: {
+    readonly botId: string;
+    readonly agentId: string;
+    readonly agentName: string;
+  }): Promise<void> {
+    const response = await accept(
+      client().list({ headers: AUTH_HEADERS }),
+      [200],
+    );
+    expect(response.body.bots).toContainEqual(
+      expect.objectContaining({
+        id: args.botId,
+        agent: { id: args.agentId, name: args.agentName },
+      }),
+    );
   }
 
   it("returns 401 when unauthenticated", async () => {
@@ -264,9 +270,11 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
     });
     expect(response.body.id).toBe(bot.botId);
     expect(response.body.isOwner).toBeFalsy();
-    await expect(defaultComposeId(bot.botId)).resolves.toBe(
-      nextAgent.composeId,
-    );
+    await expectBotAgent({
+      botId: bot.botId,
+      agentId: nextAgent.composeId,
+      agentName: nextAgent.name,
+    });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "telegram:changed",
       null,
@@ -296,9 +304,11 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
       name: nextAgent.name,
     });
     expect(response.body.isOwner).toBeTruthy();
-    await expect(defaultComposeId(bot.botId)).resolves.toBe(
-      nextAgent.composeId,
-    );
+    await expectBotAgent({
+      botId: bot.botId,
+      agentId: nextAgent.composeId,
+      agentName: nextAgent.name,
+    });
   });
 
   it("returns 403 when defaultAgentId belongs to another org", async () => {
@@ -346,7 +356,12 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
     );
 
     expect(response.body.error.code).toBe("NOT_FOUND");
-    await expect(defaultComposeId(bot.botId)).resolves.toBe(bot.composeId);
+    mocks.clerk.session(bot.ownerUserId, bot.orgId, "org:member");
+    await expectBotAgent({
+      botId: bot.botId,
+      agentId: bot.composeId,
+      agentName: `agent-${bot.composeId.slice(0, 8)}`,
+    });
   });
 
   it("returns 404 when the custom bot default agent is missing", async () => {

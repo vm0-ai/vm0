@@ -4,11 +4,9 @@ import { integrationsTelegramBotListContract } from "@vm0/api-contracts/contract
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
   zeroIntegrationsTelegramContract,
+  type TelegramListResponse,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 import { afterEach, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
 
@@ -16,7 +14,6 @@ import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../external/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -154,55 +151,44 @@ function signConnectParams(args: {
     .digest("hex");
 }
 
-async function telegramUserLinksForUser(userId: string): Promise<
-  {
-    readonly installationId: string;
-    readonly telegramUserId: string;
-    readonly telegramUsername: string | null;
-    readonly telegramDisplayName: string | null;
-  }[]
-> {
-  const writeDb = store.set(writeDb$);
-  const rows = await writeDb
-    .select({
-      installationId: telegramUserLinks.installationId,
-      telegramUserId: telegramUserLinks.telegramUserId,
-      telegramUsername: telegramUserLinks.telegramUsername,
-      telegramDisplayName: telegramUserLinks.telegramDisplayName,
-    })
-    .from(telegramUserLinks)
-    .where(eq(telegramUserLinks.vm0UserId, userId));
-
-  return rows.sort((a, b) => {
-    return a.installationId.localeCompare(b.installationId);
-  });
+async function listTelegramBots(
+  token: string,
+): Promise<TelegramListResponse["bots"]> {
+  const client = setupApp({ context })(zeroIntegrationsTelegramContract);
+  const response = await accept(
+    client.list({ headers: { authorization: `Bearer ${token}` } }),
+    [200],
+  );
+  return response.body.bots;
 }
 
-async function officialTelegramUserLink(args: {
-  readonly orgId: string;
+async function expectTelegramBotConnection(args: {
+  readonly token: string;
+  readonly botId: string;
   readonly telegramUserId: string;
-}): Promise<{
-  readonly vm0UserId: string;
   readonly telegramUsername: string | null;
   readonly telegramDisplayName: string | null;
-} | null> {
-  const writeDb = store.set(writeDb$);
-  const [row] = await writeDb
-    .select({
-      vm0UserId: telegramOfficialUserLinks.vm0UserId,
-      telegramUsername: telegramOfficialUserLinks.telegramUsername,
-      telegramDisplayName: telegramOfficialUserLinks.telegramDisplayName,
-    })
-    .from(telegramOfficialUserLinks)
-    .where(
-      and(
-        eq(telegramOfficialUserLinks.orgId, args.orgId),
-        eq(telegramOfficialUserLinks.telegramUserId, args.telegramUserId),
-      ),
-    )
-    .limit(1);
-
-  return row ?? null;
+}): Promise<void> {
+  if (args.botId !== OFFICIAL_TELEGRAM_BOT_ID) {
+    context.mocks.telegram.getMe.mockResolvedValue({
+      id: Number(args.botId),
+      is_bot: true,
+      first_name: "Bot",
+      username: `bot_${args.botId}`,
+    });
+  }
+  const bots = await listTelegramBots(args.token);
+  expect(bots).toContainEqual(
+    expect.objectContaining({
+      id: args.botId,
+      isConnected: true,
+      connectedUser: {
+        telegramUserId: args.telegramUserId,
+        telegramUsername: args.telegramUsername,
+        telegramDisplayName: args.telegramDisplayName,
+      },
+    }),
+  );
 }
 
 describe("GET /api/zero/integrations/telegram/bots", () => {
@@ -1444,14 +1430,13 @@ describe("POST /api/integrations/telegram/link", () => {
       telegramUserId: "99002",
       botUsername: `bot_${telegramBotId}`,
     });
-    await expect(telegramUserLinksForUser(userId)).resolves.toStrictEqual([
-      {
-        installationId: telegramBotId,
-        telegramUserId: "99002",
-        telegramUsername: "custom_tg",
-        telegramDisplayName: "Test",
-      },
-    ]);
+    await expectTelegramBotConnection({
+      token,
+      botId: telegramBotId,
+      telegramUserId: "99002",
+      telegramUsername: "custom_tg",
+      telegramDisplayName: "Test",
+    });
   });
 
   it("returns 409 when connecting the official bot before onboarding creates a default agent", async () => {
@@ -1515,13 +1500,10 @@ describe("POST /api/integrations/telegram/link", () => {
       botUsername: OFFICIAL_BOT_USERNAME,
       telegramUserId: String(telegramUserId),
     });
-    await expect(
-      officialTelegramUserLink({
-        orgId,
-        telegramUserId: String(telegramUserId),
-      }),
-    ).resolves.toStrictEqual({
-      vm0UserId: userId,
+    await expectTelegramBotConnection({
+      token,
+      botId: OFFICIAL_TELEGRAM_BOT_ID,
+      telegramUserId: String(telegramUserId),
       telegramUsername: "official_tg",
       telegramDisplayName: "Test",
     });
@@ -1645,14 +1627,13 @@ describe("POST /api/integrations/telegram/link", () => {
     expect(response.body.error.message).toContain(
       "already connected to another Telegram account",
     );
-    await expect(telegramUserLinksForUser(userId)).resolves.toStrictEqual([
-      {
-        installationId: telegramBotId,
-        telegramUserId: "99009",
-        telegramUsername: null,
-        telegramDisplayName: null,
-      },
-    ]);
+    await expectTelegramBotConnection({
+      token,
+      botId: telegramBotId,
+      telegramUserId: "99009",
+      telegramUsername: null,
+      telegramDisplayName: null,
+    });
   });
 
   it("allows the same Telegram user to connect through a different custom bot", async () => {
@@ -1694,14 +1675,13 @@ describe("POST /api/integrations/telegram/link", () => {
     );
 
     expect(response.body.telegramUserId).toBe("99011");
-    await expect(telegramUserLinksForUser(userId)).resolves.toStrictEqual([
-      {
-        installationId: secondBotId,
-        telegramUserId: "99011",
-        telegramUsername: "shared_tg",
-        telegramDisplayName: "Test",
-      },
-    ]);
+    await expectTelegramBotConnection({
+      token,
+      botId: secondBotId,
+      telegramUserId: "99011",
+      telegramUsername: "shared_tg",
+      telegramDisplayName: "Test",
+    });
   });
 
   it("treats reconnecting the same Telegram user to the same VM0 user as idempotent", async () => {
@@ -1739,14 +1719,13 @@ describe("POST /api/integrations/telegram/link", () => {
     );
 
     expect(response.body.telegramUserId).toBe("99012");
-    await expect(telegramUserLinksForUser(userId)).resolves.toStrictEqual([
-      {
-        installationId: telegramBotId,
-        telegramUserId: "99012",
-        telegramUsername: "same_tg",
-        telegramDisplayName: "Test",
-      },
-    ]);
+    await expectTelegramBotConnection({
+      token,
+      botId: telegramBotId,
+      telegramUserId: "99012",
+      telegramUsername: "same_tg",
+      telegramDisplayName: "Test",
+    });
   });
 
   it("links a custom bot account via a valid connectSignature and sends confirmation", async () => {
@@ -1815,14 +1794,13 @@ describe("POST /api/integrations/telegram/link", () => {
         text: "✅ Account linked.\nSend me a message to start chatting with your agent.",
       },
     ]);
-    await expect(telegramUserLinksForUser(userId)).resolves.toStrictEqual([
-      {
-        installationId: telegramBotId,
-        telegramUserId,
-        telegramUsername: "connect_tg",
-        telegramDisplayName: "Connect User",
-      },
-    ]);
+    await expectTelegramBotConnection({
+      token,
+      botId: telegramBotId,
+      telegramUserId,
+      telegramUsername: "connect_tg",
+      telegramDisplayName: "Connect User",
+    });
   });
 
   it("returns 403 when connecting a custom bot from another org", async () => {

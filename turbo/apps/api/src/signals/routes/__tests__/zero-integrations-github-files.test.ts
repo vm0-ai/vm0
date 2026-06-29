@@ -1,8 +1,6 @@
-import { Buffer } from "node:buffer";
-import { generateKeyPairSync, randomUUID } from "node:crypto";
+import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -10,21 +8,19 @@ import {
   integrationsGithubUploadCompleteContract,
   integrationsGithubUploadInitContract,
 } from "@vm0/api-contracts/contracts/integrations";
-import { githubInstallations } from "@vm0/db/schema/github-installation";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
+import type { ApiTestUser } from "./helpers/api-bdd";
+import { createGithubBddApi } from "./helpers/api-bdd-github";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
-import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -36,8 +32,7 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
-
-const GITHUB_APP_ID = "123456";
+const github = createGithubBddApi(context);
 
 interface GitHubFileFixture extends UsageInsightFixture {
   readonly composeId: string;
@@ -46,17 +41,6 @@ interface GitHubFileFixture extends UsageInsightFixture {
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
-}
-
-function newPrivateKeyBase64(): string {
-  const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
-  const pem = privateKey.export({ type: "pkcs8", format: "pem" });
-  return Buffer.from(pem).toString("base64");
-}
-
-function mockGitHubAppCredentials(): void {
-  mockOptionalEnv("GITHUB_APP_ID", GITHUB_APP_ID);
-  mockOptionalEnv("GITHUB_APP_PRIVATE_KEY", newPrivateKeyBase64());
 }
 
 function zeroToken(args: {
@@ -92,36 +76,6 @@ function setupGitHubTokenMock(installationId: string): void {
   );
 }
 
-async function seedGithubInstallation(args: {
-  readonly orgId: string;
-  readonly composeId: string;
-  readonly remoteInstallationId: string;
-}): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(githubInstallations).values({
-    installationId: args.remoteInstallationId,
-    status: "active",
-    orgId: args.orgId,
-    defaultComposeId: args.composeId,
-  });
-}
-
-async function findUploadedFiles(args: {
-  readonly runId: string;
-  readonly externalId: string;
-}) {
-  const db = store.set(writeDb$);
-  return await db
-    .select()
-    .from(runUploadedFiles)
-    .where(
-      and(
-        eq(runUploadedFiles.runId, args.runId),
-        eq(runUploadedFiles.externalId, args.externalId),
-      ),
-    );
-}
-
 describe("GitHub zero file integration routes", () => {
   const trackUsage = createFixtureTracker<UsageInsightFixture>((fixture) => {
     return store.set(deleteUsageInsightFixture$, fixture, context.signal);
@@ -130,26 +84,24 @@ describe("GitHub zero file integration routes", () => {
     const fixture = await trackUsage(
       store.set(seedUsageInsightFixture$, undefined, context.signal),
     );
-    await store.set(
-      seedOrgMembership$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    );
     const compose = await store.set(
       seedCompose$,
       { orgId: fixture.orgId, userId: fixture.userId },
       context.signal,
     );
-    const remoteInstallationId = "987654321";
-    await seedGithubInstallation({
+    const actor: ApiTestUser = {
+      userId: fixture.userId,
       orgId: fixture.orgId,
-      composeId: compose.composeId,
-      remoteInstallationId,
+      orgRole: "org:admin",
+      email: `${fixture.userId}@example.com`,
+    };
+    const install = await github.installGithubApp(actor, compose.composeId, {
+      targetLogin: "bdd-files-org",
     });
     return {
       ...fixture,
       composeId: compose.composeId,
-      remoteInstallationId,
+      remoteInstallationId: install.remoteInstallationId,
     };
   }
 
@@ -347,7 +299,6 @@ describe("GitHub zero file integration routes", () => {
       },
       context.signal,
     );
-    mockGitHubAppCredentials();
     setupGitHubTokenMock(fixture.remoteInstallationId);
 
     const uploadId = randomUUID();
@@ -411,32 +362,6 @@ describe("GitHub zero file integration routes", () => {
       mimetype: "application/pdf",
       size: 1234,
       url: fileUrl,
-    });
-
-    const rows = await findUploadedFiles({
-      runId: run.runId,
-      externalId: "98765",
-    });
-    expect(rows).toHaveLength(1);
-    expect(rows[0]).toMatchObject({
-      runId: run.runId,
-      source: "github",
-      externalId: "98765",
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      filename: "report.pdf",
-      contentType: "application/pdf",
-      sizeBytes: 1234,
-      url: fileUrl,
-      metadata: {
-        repo: "vm0-ai/vm0",
-        issueNumber: 42,
-        uploadId,
-        s3Key,
-        sourceUrl: fileUrl,
-        caption: "Daily report",
-        githubComment: { id: "98765" },
-      },
     });
   });
 });

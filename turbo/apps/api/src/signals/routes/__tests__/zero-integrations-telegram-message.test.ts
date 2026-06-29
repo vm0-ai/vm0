@@ -1,23 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { afterEach, describe, expect, it } from "vitest";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 
 import { integrationsTelegramMessageContract } from "@vm0/api-contracts/contracts/integrations";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import { writeDb$ } from "../../external/db";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteTelegramFixture$,
   seedTelegramInstallation$,
+  seedTelegramUserLink$,
   type TelegramFixture,
 } from "./helpers/zero-telegram";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -49,32 +45,14 @@ function zeroToken(args: {
   });
 }
 
-async function setRunSelectedModel(
-  runId: string,
-  selectedModel: string,
-): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .update(zeroRuns)
-    .set({ selectedModel })
-    .where(eq(zeroRuns.id, runId));
-}
-
-async function insertTelegramUserLink(values: {
+async function linkTelegramUser(values: {
   readonly installationId: string;
   readonly vm0UserId: string;
   readonly telegramUserId: string;
   readonly telegramUsername?: string | null;
   readonly telegramDisplayName?: string | null;
 }): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(telegramUserLinks).values({
-    installationId: values.installationId,
-    vm0UserId: values.vm0UserId,
-    telegramUserId: values.telegramUserId,
-    telegramUsername: values.telegramUsername ?? null,
-    telegramDisplayName: values.telegramDisplayName ?? null,
-  });
+  await store.set(seedTelegramUserLink$, values, context.signal);
 }
 
 interface TelegramMessageFixture extends TelegramFixture {
@@ -85,7 +63,8 @@ interface TelegramMessageFixture extends TelegramFixture {
 }
 
 async function seedSendableContext(args: {
-  readonly displayName?: string;
+  readonly agentName?: string;
+  readonly selectedModel?: string;
 }): Promise<TelegramMessageFixture> {
   const orgId = `org_${randomUUID().slice(0, 8)}`;
   const userId = `user_${randomUUID().slice(0, 8)}`;
@@ -105,23 +84,19 @@ async function seedSendableContext(args: {
       orgId,
       ownerUserId: userId,
       telegramBotId,
+      agentName: args.agentName,
     },
     context.signal,
   );
 
-  // Override the seed helper's default zero_agents.displayName (null) so the
-  // footer asserts a known label.
-  if (args.displayName) {
-    const writeDb = store.set(writeDb$);
-    await writeDb
-      .update(zeroAgents)
-      .set({ displayName: args.displayName })
-      .where(eq(zeroAgents.id, installation.composeId));
-  }
-
   const { runId } = await store.set(
     seedRun$,
-    { orgId, userId, composeId: installation.composeId },
+    {
+      orgId,
+      userId,
+      composeId: installation.composeId,
+      selectedModel: args.selectedModel,
+    },
     context.signal,
   );
 
@@ -222,11 +197,11 @@ describe("POST /api/zero/integrations/telegram/message", () => {
 
   it("sends a Telegram message and appends the audit footer", async () => {
     const fixture = await seedSendableContext({
-      displayName: "My Assistant",
+      agentName: "my-assistant",
+      selectedModel: "claude-opus-4-7",
     });
     trackFixture(fixture);
-    await setRunSelectedModel(fixture.runId, "claude-opus-4-7");
-    await insertTelegramUserLink({
+    await linkTelegramUser({
       installationId: fixture.telegramBotId,
       vm0UserId: fixture.userId,
       telegramUserId: "777000",
@@ -288,14 +263,14 @@ describe("POST /api/zero/integrations/telegram/message", () => {
     const sentText = String(telegramBody?.text);
     expect(sentText).toContain("Hello <b>world</b>");
     expect(sentText).toContain(
-      '<i>Sent via My Assistant · Triggered by <a href="tg://user?id=777000">@ada_telegram</a> · Claude Opus 4.7</i>',
+      '<i>Sent via my-assistant · Triggered by <a href="tg://user?id=777000">@ada_telegram</a> · Claude Opus 4.7</i>',
     );
   });
 
   it("falls back to Telegram display name in the footer when username is absent", async () => {
     const fixture = await seedSendableContext({});
     trackFixture(fixture);
-    await insertTelegramUserLink({
+    await linkTelegramUser({
       installationId: fixture.telegramBotId,
       vm0UserId: fixture.userId,
       telegramUserId: "777001",
