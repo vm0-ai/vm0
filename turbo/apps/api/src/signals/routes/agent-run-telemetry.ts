@@ -5,7 +5,6 @@ import {
   runMetricsContract,
   runNetworkLogsContract,
   runSystemLogContract,
-  runTelemetryContract,
 } from "@vm0/api-contracts/contracts/runs";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -18,7 +17,6 @@ import {
   agentRunMetrics,
   agentRunNetworkLogs,
   agentRunSystemLog,
-  agentRunTelemetry,
 } from "../services/agent-run-telemetry.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -40,22 +38,6 @@ const getEventsInner$ = computed(async (get) => {
       orgId: auth.orgId,
       since: query.since,
       limit: query.limit,
-    }),
-  );
-  if (!result) {
-    return agentRunNotFound;
-  }
-  return { status: 200 as const, body: result };
-});
-
-const getTelemetryInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const params = get(pathParamsOf(runTelemetryContract.getTelemetry));
-  const result = await get(
-    agentRunTelemetry({
-      runId: params.id,
-      userId: auth.userId,
-      orgId: auth.orgId,
     }),
   );
   if (!result) {
@@ -172,9 +154,5 @@ export const agentRunTelemetryRoutes: readonly RouteEntry[] = [
   {
     route: runNetworkLogsContract.getNetworkLogs,
     handler: authRoute(anySandboxOrgAuth, getNetworkLogsInner$),
-  },
-  {
-    route: runTelemetryContract.getTelemetry,
-    handler: authRoute(anySandboxOrgAuth, getTelemetryInner$),
   },
 ];

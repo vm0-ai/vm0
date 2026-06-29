@@ -9,12 +9,9 @@ import type {
   RunState,
   RunStatus,
   SystemLogResponse,
-  TelemetryMetric,
-  TelemetryResponse,
 } from "@vm0/api-contracts/contracts/runs";
 import { agentComposeVersions } from "@vm0/db/schema/agent-compose";
 import { agentRuns } from "@vm0/db/schema/agent-run";
-import { sandboxTelemetry } from "@vm0/db/schema/sandbox-telemetry";
 import { and, eq } from "drizzle-orm";
 
 import { db$ } from "../external/db";
@@ -67,11 +64,6 @@ interface AxiomMetricEvent {
   readonly mem_total: number;
   readonly disk_used: number;
   readonly disk_total: number;
-}
-
-interface TelemetryData {
-  readonly systemLog?: string;
-  readonly metrics?: readonly TelemetryMetric[];
 }
 
 interface OwnedRunParams {
@@ -255,39 +247,6 @@ export function agentRunEvents(
       run: buildRunState(runWithCompose),
       framework: extractFramework(runWithCompose.composeContent),
     };
-  });
-}
-
-export function agentRunTelemetry(
-  params: OwnedRunParams,
-): Computed<Promise<TelemetryResponse | null>> {
-  return computed(async (get): Promise<TelemetryResponse | null> => {
-    const db = get(db$);
-    const owned = await get(verifyRunOwnership(params));
-    if (!owned) {
-      return null;
-    }
-
-    const telemetryRecords = await db
-      .select({ data: sandboxTelemetry.data })
-      .from(sandboxTelemetry)
-      .where(eq(sandboxTelemetry.runId, params.runId))
-      .orderBy(sandboxTelemetry.createdAt);
-
-    let systemLog = "";
-    const metrics: TelemetryMetric[] = [];
-
-    for (const record of telemetryRecords) {
-      const data = record.data as TelemetryData;
-      if (data.systemLog) {
-        systemLog += data.systemLog;
-      }
-      if (data.metrics) {
-        metrics.push(...data.metrics);
-      }
-    }
-
-    return { systemLog, metrics };
   });
 }
 

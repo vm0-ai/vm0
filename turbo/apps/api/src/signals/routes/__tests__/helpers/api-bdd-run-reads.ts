@@ -9,7 +9,6 @@ import {
   runsMainContract,
   runsQueueContract,
   runSystemLogContract,
-  runTelemetryContract,
 } from "@vm0/api-contracts/contracts/runs";
 import {
   checkpointsByIdContract,
@@ -251,20 +250,6 @@ export function createRunReadsApi(context: TestContext) {
           headers: { authorization },
           params: { id: runId },
           query,
-        }),
-        statuses,
-      );
-    },
-
-    async requestRunTelemetry<TStatus extends 200 | 401 | 404>(
-      actor: ApiTestUser | null,
-      runId: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        setupApp({ context })(runTelemetryContract).getTelemetry({
-          headers: authenticate(context, actor),
-          params: { id: runId },
         }),
         statuses,
       );

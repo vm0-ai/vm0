@@ -798,39 +798,6 @@ const networkLogsResponseSchema = z.object({
 });
 
 /**
- * Telemetry response schema (legacy - combined format)
- */
-const telemetryResponseSchema = z.object({
-  systemLog: z.string(),
-  metrics: z.array(telemetryMetricSchema),
-});
-
-/**
- * Run telemetry route contract (/api/agent/runs/[id]/telemetry)
- * Legacy combined format
- */
-export const runTelemetryContract = c.router({
-  /**
-   * GET /api/agent/runs/:id/telemetry
-   * Get aggregated telemetry data for a run (legacy combined format)
-   */
-  getTelemetry: {
-    method: "GET",
-    path: "/api/agent/runs/:id/telemetry",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.uuid("Run ID must be a valid UUID"),
-    }),
-    responses: {
-      200: telemetryResponseSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get run telemetry data",
-  },
-});
-
-/**
  * System log route contract (/api/agent/runs/[id]/telemetry/system-log)
  */
 export const runSystemLogContract = c.router({
@@ -938,7 +905,6 @@ export type RunsMainContract = typeof runsMainContract;
 export type RunsByIdContract = typeof runsByIdContract;
 export type RunsCancelContract = typeof runsCancelContract;
 export type RunEventsContract = typeof runEventsContract;
-export type RunTelemetryContract = typeof runTelemetryContract;
 export type RunSystemLogContract = typeof runSystemLogContract;
 export type RunMetricsContract = typeof runMetricsContract;
 export type RunAgentEventsContract = typeof runAgentEventsContract;
@@ -1087,7 +1053,6 @@ export {
   runStateSchema,
   eventsResponseSchema,
   telemetryMetricSchema,
-  telemetryResponseSchema,
   systemLogResponseSchema,
   metricsResponseSchema,
   agentEventsResponseSchema,
@@ -1115,7 +1080,6 @@ export type RunsListResponse = z.infer<typeof runsListResponseSchema>;
 export type CancelRunResponse = z.infer<typeof cancelRunResponseSchema>;
 export type EventsResponse = z.infer<typeof eventsResponseSchema>;
 export type TelemetryMetric = z.infer<typeof telemetryMetricSchema>;
-export type TelemetryResponse = z.infer<typeof telemetryResponseSchema>;
 export type SystemLogResponse = z.infer<typeof systemLogResponseSchema>;
 export type MetricsResponse = z.infer<typeof metricsResponseSchema>;
 export type AgentEventsResponse = z.infer<typeof agentEventsResponseSchema>;
