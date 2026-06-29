@@ -245,6 +245,47 @@ async fn codex_app_server_next_notification_reads_after_response() -> Result<(),
 }
 
 #[tokio::test]
+async fn codex_app_server_preserves_partial_notification_after_cancelled_read() -> Result<(), String>
+{
+    let mut client = spawn_client(Some("split-notification-after-thread-start"))?;
+    wait_result(client.initialize(), "initialize").await?;
+
+    let started = wait_result(
+        client.request_value("thread/start", json!({})),
+        "thread/start",
+    )
+    .await?;
+    assert!(started["thread"]["id"].as_str().is_some());
+
+    cancel_after_first_pending(
+        client.next_notification("split notification"),
+        "split notification",
+    )
+    .await?;
+
+    let completed = wait_result(
+        client.request_value("mock/complete-split-notification", json!({})),
+        "mock/complete-split-notification",
+    )
+    .await?;
+    assert_eq!(completed["completed"], true);
+
+    let notification = client
+        .pop_notification()
+        .ok_or_else(|| "expected restored split notification".to_string())?;
+    assert_eq!(notification.method, "experimental/server-notification");
+    assert_eq!(
+        notification
+            .params
+            .as_ref()
+            .and_then(|params| params.get("message")),
+        Some(&json!("guest-mock-codex notification"))
+    );
+
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
 async fn codex_app_server_rejects_notification_queue_overflow() -> Result<(), String> {
     let mut client = spawn_client(Some("notification-overflow"))?;
     wait_result(client.initialize(), "initialize").await?;
