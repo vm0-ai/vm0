@@ -1,5 +1,6 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import {
   workflowUserTriggerThreads,
   zeroWorkflowTriggers,
@@ -20,6 +21,7 @@ import {
   type RunFailure,
   type TriggerRow,
 } from "./zero-workflow-trigger-run.service";
+import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
 import { ensureWorkflowUserTriggerThread } from "./zero-workflow-user-trigger-thread.service";
 
 const log = logger("api:zero-workflow-trigger-poller");
@@ -38,6 +40,7 @@ interface DueWorkflowTriggerRow {
   readonly workflowName: string;
   readonly workflowDisplayName: string | null;
   readonly chatThreadId: string | null;
+  readonly userTimezone: string | null;
 }
 
 function isRunFailure(error: unknown): error is RunFailure {
@@ -216,6 +219,55 @@ async function ensureDueWorkflowTriggerChatThread(
   });
 }
 
+async function dueWorkflowTriggerRows(
+  db: Db,
+  currentTime: Date,
+  signal: AbortSignal,
+): Promise<DueWorkflowTriggerRow[]> {
+  const rows = await db
+    .select({
+      trigger: zeroWorkflowTriggers,
+      agentId: zeroWorkflows.agentId,
+      workflowName: zeroWorkflows.name,
+      workflowDisplayName: zeroWorkflows.displayName,
+      chatThreadId: workflowUserTriggerThreads.chatThreadId,
+      userTimezone: orgMembersMetadata.timezone,
+    })
+    .from(zeroWorkflowTriggers)
+    .innerJoin(
+      zeroWorkflows,
+      eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
+    )
+    .leftJoin(
+      workflowUserTriggerThreads,
+      and(
+        eq(workflowUserTriggerThreads.orgId, zeroWorkflowTriggers.orgId),
+        eq(workflowUserTriggerThreads.userId, zeroWorkflowTriggers.ownerUserId),
+        eq(
+          workflowUserTriggerThreads.workflowId,
+          zeroWorkflowTriggers.workflowId,
+        ),
+      ),
+    )
+    .leftJoin(
+      orgMembersMetadata,
+      and(
+        eq(orgMembersMetadata.orgId, zeroWorkflowTriggers.orgId),
+        eq(orgMembersMetadata.userId, zeroWorkflowTriggers.ownerUserId),
+      ),
+    )
+    .where(
+      and(
+        eq(zeroWorkflowTriggers.enabled, true),
+        eq(zeroWorkflowTriggers.kind, "schedule"),
+        lte(zeroWorkflowTriggers.nextRunAt, currentTime),
+      ),
+    )
+    .limit(DUE_BATCH_LIMIT);
+  signal.throwIfAborted();
+  return rows;
+}
+
 /**
  * Time poller over `zero_workflow_triggers`, run from the
  * execute-workflow-triggers cron route. Mirrors the automation poller: scan
@@ -229,43 +281,7 @@ export const executeDueWorkflowTriggers$ = command(
     const db = set(writeDb$);
     const currentTime = nowDate();
 
-    const rows = await db
-      .select({
-        trigger: zeroWorkflowTriggers,
-        agentId: zeroWorkflows.agentId,
-        workflowName: zeroWorkflows.name,
-        workflowDisplayName: zeroWorkflows.displayName,
-        chatThreadId: workflowUserTriggerThreads.chatThreadId,
-      })
-      .from(zeroWorkflowTriggers)
-      .innerJoin(
-        zeroWorkflows,
-        eq(zeroWorkflowTriggers.workflowId, zeroWorkflows.id),
-      )
-      .leftJoin(
-        workflowUserTriggerThreads,
-        and(
-          eq(workflowUserTriggerThreads.orgId, zeroWorkflowTriggers.orgId),
-          eq(
-            workflowUserTriggerThreads.userId,
-            zeroWorkflowTriggers.ownerUserId,
-          ),
-          eq(
-            workflowUserTriggerThreads.workflowId,
-            zeroWorkflowTriggers.workflowId,
-          ),
-        ),
-      )
-      .where(
-        and(
-          eq(zeroWorkflowTriggers.enabled, true),
-          eq(zeroWorkflowTriggers.kind, "schedule"),
-          lte(zeroWorkflowTriggers.nextRunAt, currentTime),
-        ),
-      )
-      .limit(DUE_BATCH_LIMIT);
-    signal.throwIfAborted();
-
+    const rows = await dueWorkflowTriggerRows(db, currentTime, signal);
     let executed = 0;
     let skipped = 0;
 
@@ -333,6 +349,16 @@ export const executeDueWorkflowTriggers$ = command(
           {
             due,
             apiStartTime: now(),
+            triggerBrief:
+              buildWorkflowScheduleTriggerBrief({
+                createdAt: currentTime,
+                scheduleType: claimed.scheduleType,
+                cronExpression: claimed.cronExpression,
+                intervalSeconds: claimed.intervalSeconds,
+                atTime: claimed.atTime,
+                triggerTimezone: claimed.timezone,
+                userTimezone: row.userTimezone,
+              }) ?? undefined,
             dispatchFailedCallbacks: dispatchFailedRunCallbacks,
           },
           signal,

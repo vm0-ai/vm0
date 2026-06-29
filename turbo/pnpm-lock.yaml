@@ -531,7 +531,7 @@ importers:
         version: 4.9.1(encoding@0.1.13)
       '@tabler/icons-react':
         specifier: ^3.36.1
-        version: 3.41.0(react@19.2.6)
+        version: 3.44.0(react@19.2.6)
       '@tiptap/core':
         specifier: 3.21.0
         version: 3.21.0(@tiptap/pm@3.21.0)
@@ -4067,8 +4067,16 @@ packages:
     peerDependencies:
       react: '>= 16'
 
+  '@tabler/icons-react@3.44.0':
+    resolution: {integrity: sha512-8+rvzBbVm/1Z3sG3x7GUNAaxIKxwgz8xaMhRs23nrCnMTKRFAhEC+82zAIFeAA0seXdrAGX5HFCkaLpGK2rVHg==}
+    peerDependencies:
+      react: '>= 16'
+
   '@tabler/icons@3.41.0':
     resolution: {integrity: sha512-arlig0nkaC9UGqTZuT1MMZepX29t3Ysx5HSy2UvmR+CZrhlNxZrCM6Z4qYBoaIO+2ICZykttjBCSpf+p/t0H3w==}
+
+  '@tabler/icons@3.44.0':
+    resolution: {integrity: sha512-Wn0AOZG9sg0L+bjfMqq4eNhC6pQjIrk94LvvWYNYkY8KH8wC3YILRzQlrnVJc4FUeMxH/AK97QsYCX35H3LndA==}
 
   '@tailwindcss/node@4.2.2':
     resolution: {integrity: sha512-pXS+wJ2gZpVXqFaUEjojq7jzMpTGf8rU6ipJz5ovJV6PUGmlJ+jvIwGrzdHdQ80Sg+wmQxUFuoW1UAAwHNEdFA==}
@@ -12834,7 +12842,14 @@ snapshots:
       '@tabler/icons': 3.41.0
       react: 19.2.6
 
+  '@tabler/icons-react@3.44.0(react@19.2.6)':
+    dependencies:
+      '@tabler/icons': 3.44.0
+      react: 19.2.6
+
   '@tabler/icons@3.41.0': {}
+
+  '@tabler/icons@3.44.0': {}
 
   '@tailwindcss/node@4.2.2':
     dependencies:

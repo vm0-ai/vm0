@@ -3807,7 +3807,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("renders workflow trigger user messages with an inline marker", async () => {
+  it("renders workflow trigger user messages with the workflow title and brief", async () => {
     const threadId = "thread-workflow-user-message-marker";
     const workflowPrompt = "/daily-workflow";
 
@@ -3849,10 +3849,13 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Workflow trigger")).toBeInTheDocument();
       expect(
-        screen.getByText("Daily workflow · Gmail label applied"),
+        screen.getByLabelText("Workflow Daily workflow"),
       ).toBeInTheDocument();
+      expect(screen.getByText("Gmail label applied")).toBeInTheDocument();
+      expect(
+        screen.queryByText("Daily workflow · Gmail label applied"),
+      ).not.toBeInTheDocument();
       expect(screen.queryByText(workflowPrompt)).not.toBeInTheDocument();
     });
   });

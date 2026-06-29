@@ -67,7 +67,7 @@ describe("zero model command", () => {
     ).toEqual(["list", "switch"]);
   });
 
-  it("should list allowed models, providers, and built-in price coefficients", async () => {
+  it("should list allowed models, providers, and built-in price tiers", async () => {
     server.use(
       http.get("http://localhost:3000/api/zero/model-policies", () => {
         return HttpResponse.json(MODEL_POLICIES_RESPONSE);
@@ -80,10 +80,10 @@ describe("zero model command", () => {
     expect(logCalls).toContain("Allowed Models:");
     expect(logCalls).toContain("Claude Sonnet 4.6");
     expect(logCalls).toContain("provider: built-in");
-    expect(logCalls).toContain("price coefficient: x1");
+    expect(logCalls).toContain("price tier: $$");
     expect(logCalls).toContain("GPT-5.5");
     expect(logCalls).toContain("provider: api key");
-    expect(logCalls).not.toContain("price coefficient: x2");
+    expect(logCalls).not.toContain("price tier: $$$");
     expect(logCalls).toContain("zero model-provider set --help");
   });
 

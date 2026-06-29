@@ -3834,6 +3834,9 @@ function runGroupFoldSourceLabel(fold: RunGroupFold): string {
 
 function runGroupFoldWorkflowLabel(fold: RunGroupFold): string | null {
   for (const message of runGroupFoldMessages(fold)) {
+    if (isWorkflowUserMessage(message)) {
+      return normalizedInlineLabel(workflowMessageBody(message));
+    }
     const workflowSnapshot = message.workflowSnapshot;
     const label =
       workflowSnapshot?.triggerBrief?.trim() ||
@@ -6473,16 +6476,17 @@ function workflowMessageBrief(
   return brief.length > 0 ? brief : null;
 }
 
-function workflowMessageLabel(
+function workflowMessageBody(
   message: EnrichedChatMessage & { role: "user" },
 ): string {
   const workflowSnapshot = message.workflowSnapshot;
   if (!workflowSnapshot) {
-    return "Workflow";
+    return message.content?.trim() || "Workflow";
   }
-  const title = workflowSnapshotTitle(workflowSnapshot);
-  const brief = workflowMessageBrief(workflowSnapshot);
-  return brief ? `${title} · ${brief}` : title;
+  return (
+    workflowMessageBrief(workflowSnapshot) ??
+    workflowSnapshotTitle(workflowSnapshot)
+  );
 }
 
 function resolveAttachments(
@@ -6813,12 +6817,13 @@ function WorkflowUserMessage({
   if (!workflowSnapshot) {
     return null;
   }
-  const workflowLabel = workflowMessageLabel(message);
+  const workflowTitle = workflowSnapshotTitle(workflowSnapshot);
+  const workflowBody = workflowMessageBody(message);
   const bubbleClassName =
-    "zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden transition-colors duration-150";
+    "zero-chat-bubble-user rounded-xl max-w-[85%] text-[0.9375rem] leading-[1.7] [overflow-wrap:anywhere] overflow-hidden whitespace-pre-wrap transition-colors duration-150";
   const body = (
     <div className={bubbleClassName}>
-      <div className="px-4 py-3">{workflowLabel}</div>
+      <div className="px-4 py-3">{workflowBody}</div>
     </div>
   );
   const workflowAgentId = workflowSnapshot.agentId;
@@ -6831,11 +6836,12 @@ function WorkflowUserMessage({
         <div className="hidden @[900px]:block @[900px]:w-9 @[900px]:h-9 @[900px]:shrink-0" />
         <div className="flex w-full flex-col items-end">
           <div
-            aria-label="Workflow trigger"
+            aria-label={`Workflow ${workflowTitle}`}
             className="mb-1.5 flex max-w-[85%] items-center gap-1.5 self-end text-xs font-medium text-muted-foreground"
+            title={workflowTitle}
           >
             <IconRoute size={15} stroke={1.8} className="shrink-0" />
-            <span>Workflow trigger</span>
+            <span className="min-w-0 truncate">{workflowTitle}</span>
           </div>
           {linked ? (
             <Link

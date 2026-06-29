@@ -69,9 +69,13 @@ function isActivePreviousRunStatus(status: string): boolean {
   return status === "pending" || status === "running";
 }
 
-function workflowTriggerRunMetadata(trigger: TriggerRow) {
+function workflowTriggerRunMetadata(
+  trigger: TriggerRow,
+  triggerBrief: string | undefined,
+) {
   return {
     workflowTriggerId: trigger.id,
+    triggerBrief,
     // The trigger id is the run group id: all runs fired by the same trigger
     // share a group for chat folding, and `zero_runs.workflow_trigger_id`
     // already carries the same value as a row-level reference.
@@ -199,6 +203,8 @@ export const runWorkflowTriggerNow$ = command(
       readonly sessionId?: string;
       // Overrides the default `/<workflowName>` slash-command prompt.
       readonly prompt?: string;
+      // Display-only source context surfaced through workflowSnapshot.triggerBrief.
+      readonly triggerBrief?: string;
       readonly triggerSource?: TriggerSource;
       readonly appendSystemPrompt?: string;
       readonly callbacks?: readonly InternalRunCallbackInput[];
@@ -266,7 +272,7 @@ export const runWorkflowTriggerNow$ = command(
         callbacks:
           args.callbacks ??
           buildWorkflowTriggerCallbacks(trigger, agentId, chatThreadId),
-        zeroRunMetadata: workflowTriggerRunMetadata(trigger),
+        zeroRunMetadata: workflowTriggerRunMetadata(trigger, args.triggerBrief),
         dispatchFailedCallbacks: args.dispatchFailedCallbacks,
       },
       signal,

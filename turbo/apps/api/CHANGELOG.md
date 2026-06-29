@@ -1,5 +1,33 @@
 # Changelog
 
+## [1.188.0](https://github.com/vm0-ai/vm0/compare/api-v1.187.3...api-v1.188.0) (2026-06-29)
+
+
+### Features
+
+* add GitHub label workflow triggers ([#19322](https://github.com/vm0-ai/vm0/issues/19322)) ([245be48](https://github.com/vm0-ai/vm0/commit/245be48e4eab3b4644e00fe9480213c327dda1b9))
+
+
+### Bug Fixes
+
+* default new workspaces to sonnet ([#19293](https://github.com/vm0-ai/vm0/issues/19293)) ([fcfed7d](https://github.com/vm0-ai/vm0/commit/fcfed7d9522172c0a0b1210a554b45da166e57f8))
+
+
+### Refactoring
+
+* remove legacy agent compose delete route ([#19329](https://github.com/vm0-ai/vm0/issues/19329)) ([c2e1453](https://github.com/vm0-ai/vm0/commit/c2e14538da699adacfa1187347e27f1a42921c42))
+* remove legacy agent compose instructions route ([#19338](https://github.com/vm0-ai/vm0/issues/19338)) ([9835703](https://github.com/vm0-ai/vm0/commit/9835703457fb0cedb8aeb4516c61299e843577b2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.125.0
+    * @vm0/connectors bumped to 1.113.0
+    * @vm0/core bumped to 8.375.0
+    * @vm0/db bumped to 1.77.0
+
 ## [1.187.3](https://github.com/vm0-ai/vm0/compare/api-v1.187.2...api-v1.187.3) (2026-06-29)
 
 

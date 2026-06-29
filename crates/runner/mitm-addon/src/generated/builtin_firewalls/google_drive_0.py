@@ -275,8 +275,11 @@ JSON_PART = r"""{
           "name": "files.write",
           "rules": [
             "POST /v2/files",
+            "PUT /v2/files",
             "PUT /v2/files/{fileId}",
             "POST /v3/files",
+            "PUT /v3/files",
+            "PUT /v3/files/{fileId}",
             "PATCH /v3/files/{fileId}"
           ]
         }
@@ -295,8 +298,11 @@ JSON_PART = r"""{
           "name": "files.write",
           "rules": [
             "POST /v2/files",
+            "PUT /v2/files",
             "PUT /v2/files/{fileId}",
             "POST /v3/files",
+            "PUT /v3/files",
+            "PUT /v3/files/{fileId}",
             "PATCH /v3/files/{fileId}"
           ]
         }

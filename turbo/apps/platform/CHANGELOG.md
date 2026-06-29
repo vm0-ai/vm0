@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.506.0](https://github.com/vm0-ai/vm0/compare/app-v0.505.0...app-v0.506.0) (2026-06-29)
+
+
+### Features
+
+* add GitHub label workflow triggers ([#19322](https://github.com/vm0-ai/vm0/issues/19322)) ([245be48](https://github.com/vm0-ai/vm0/commit/245be48e4eab3b4644e00fe9480213c327dda1b9))
+* replace model coefficients with price tiers ([#19298](https://github.com/vm0-ai/vm0/issues/19298)) ([bde94cd](https://github.com/vm0-ai/vm0/commit/bde94cdfc2ee5c8bf0e4bf4da048be72ff3f3411))
+
+
+### Bug Fixes
+
+* route browser auth through staging so ([#19327](https://github.com/vm0-ai/vm0/issues/19327)) ([c1395e3](https://github.com/vm0-ai/vm0/commit/c1395e3859e8b7e63915cd2165161cd6ecd8a8bc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.125.0
+    * @vm0/connectors bumped to 1.113.0
+    * @vm0/core bumped to 8.375.0
+
 ## [0.505.0](https://github.com/vm0-ai/vm0/compare/app-v0.504.8...app-v0.505.0) (2026-06-29)
 
 
