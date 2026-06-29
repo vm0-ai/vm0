@@ -13,7 +13,7 @@ use std::time::Duration;
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
 use serde_json::{Map, Value, json};
-use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+use tokio::io::{AsyncBufRead, AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout};
 use tokio::runtime::Handle;
 use tokio::sync::oneshot;
@@ -151,6 +151,7 @@ impl From<CodexAppServerError> for AgentError {
 pub struct CodexAppServerClient {
     stdin: Option<ChildStdin>,
     stdout_reader: Option<BufReader<ChildStdout>>,
+    stdout_partial_line: Vec<u8>,
     process_id: Option<u32>,
     process_group: Option<ChildProcessGroup>,
     wait_rx: Option<oneshot::Receiver<std::io::Result<ExitStatus>>>,
@@ -214,6 +215,7 @@ impl CodexAppServerClient {
         Ok(Self {
             stdin: Some(stdin),
             stdout_reader: Some(BufReader::new(stdout)),
+            stdout_partial_line: Vec::new(),
             process_id,
             process_group,
             wait_rx: Some(wait_rx),
@@ -519,7 +521,7 @@ impl CodexAppServerClient {
                     let Some(stdout_reader) = self.stdout_reader.as_mut() else {
                         return Err(self.poison_stream("app-server stdout is closed"));
                     };
-                    read_stdout_line(stdout_reader)
+                    read_stdout_line(stdout_reader, &mut self.stdout_partial_line)
                 } => {
                     let line = match line {
                         Ok(Some(line)) => line,
@@ -841,23 +843,26 @@ fn outgoing_notification(method: &str, params: Value) -> Value {
     }
 }
 
-async fn read_stdout_line(
-    stdout_reader: &mut BufReader<ChildStdout>,
-) -> Result<Option<String>, CodexAppServerError> {
-    let mut line = Vec::new();
-
+async fn read_stdout_line<R>(
+    stdout_reader: &mut R,
+    partial_line: &mut Vec<u8>,
+) -> Result<Option<String>, CodexAppServerError>
+where
+    R: AsyncBufRead + Unpin,
+{
     loop {
         let (consumed, reached_line_end) = {
             let available = stdout_reader.fill_buf().await?;
             if available.is_empty() {
-                if line.is_empty() {
+                if partial_line.is_empty() {
                     return Ok(None);
                 }
-                break;
+                let line = std::mem::take(partial_line);
+                return decode_stdout_line(line).map(Some);
             }
 
             if let Some(newline_index) = available.iter().position(|byte| *byte == b'\n') {
-                if line.len() + newline_index > STDOUT_MAX_LINE_BYTES {
+                if partial_line.len() + newline_index > STDOUT_MAX_LINE_BYTES {
                     return Err(stdout_line_too_large_error());
                 }
                 let line_chunk = available.get(..newline_index).ok_or_else(|| {
@@ -865,27 +870,30 @@ async fn read_stdout_line(
                         "app-server stdout reader returned an invalid newline offset".to_string(),
                     )
                 })?;
-                line.extend_from_slice(line_chunk);
+                partial_line.extend_from_slice(line_chunk);
                 (newline_index + 1, true)
             } else {
-                if line.len() + available.len() > STDOUT_MAX_LINE_BYTES {
+                if partial_line.len() + available.len() > STDOUT_MAX_LINE_BYTES {
                     return Err(stdout_line_too_large_error());
                 }
-                line.extend_from_slice(available);
+                partial_line.extend_from_slice(available);
                 (available.len(), false)
             }
         };
 
         stdout_reader.consume(consumed);
         if reached_line_end {
-            if line.last() == Some(&b'\r') {
-                line.pop();
+            if partial_line.last() == Some(&b'\r') {
+                partial_line.pop();
             }
-            break;
+            let line = std::mem::take(partial_line);
+            return decode_stdout_line(line).map(Some);
         }
     }
+}
 
-    String::from_utf8(line).map(Some).map_err(|error| {
+fn decode_stdout_line(line: Vec<u8>) -> Result<String, CodexAppServerError> {
+    String::from_utf8(line).map_err(|error| {
         CodexAppServerError::Protocol(format!(
             "app-server stdout line is not UTF-8: {}; line_bytes={}",
             error.utf8_error(),
@@ -1019,5 +1027,53 @@ fn bounded_error_message(message: &str) -> String {
         format!("{bounded}...")
     } else {
         bounded
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use std::future::poll_fn;
+    use std::task::Poll;
+
+    use tokio::io::{AsyncWriteExt, BufReader};
+
+    use super::read_stdout_line;
+
+    #[tokio::test]
+    async fn read_stdout_line_preserves_partial_line_after_cancelled_read() {
+        let (mut writer, reader) = tokio::io::duplex(128);
+        let mut reader = BufReader::new(reader);
+        let mut partial_line = Vec::new();
+
+        writer
+            .write_all(br#"{"method":"turn"#)
+            .await
+            .expect("partial stdout write should succeed");
+
+        let mut read = Box::pin(read_stdout_line(&mut reader, &mut partial_line));
+        poll_fn(|cx| match read.as_mut().poll(cx) {
+            Poll::Pending => Poll::Ready(()),
+            Poll::Ready(result) => {
+                panic!("partial line read completed before cancellation: {result:?}")
+            }
+        })
+        .await;
+        drop(read);
+
+        writer
+            .write_all(br#"/started"}"#)
+            .await
+            .expect("remaining stdout write should succeed");
+        writer
+            .write_all(b"\n")
+            .await
+            .expect("newline write should succeed");
+
+        let line = read_stdout_line(&mut reader, &mut partial_line)
+            .await
+            .expect("complete stdout line should read")
+            .expect("stdout should contain a line");
+        assert_eq!(line, r#"{"method":"turn/started"}"#);
+        assert!(partial_line.is_empty());
     }
 }
