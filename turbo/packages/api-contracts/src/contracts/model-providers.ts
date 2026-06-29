@@ -84,7 +84,7 @@ export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
 ] as const satisfies readonly SupportedRunModel[];
 
 export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
-  "kimi-k2.7-code" as const satisfies SupportedRunModel;
+  "claude-sonnet-4-6" as const satisfies SupportedRunModel;
 
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
 
