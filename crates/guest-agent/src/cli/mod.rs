@@ -633,7 +633,7 @@ async fn execute_cli_inner(
                 }
             }, if claude_stdin_write_handle.is_some() => {
                 claude_stdin_write_handle = None;
-                if try_observe_cli_exit(
+                match try_observe_cli_exit(
                     &mut child,
                     &mut cli_status,
                     &mut cli_exit_at,
@@ -642,7 +642,9 @@ async fn execute_cli_inner(
                     stdout_eof,
                     drain_deadline.as_mut(),
                 )? {
-                    break Ok(());
+                    CliExitObservation::NoNewExit => {}
+                    CliExitObservation::ExitedDrainingStdout => continue,
+                    CliExitObservation::ExitedAndStdoutEof => break Ok(()),
                 }
                 let can_terminate_for_stdin_error = termination_runtime
                     .can_begin_initial_prompt_stdin_control_failure(cli_status.is_some());
@@ -741,8 +743,8 @@ async fn execute_cli_inner(
                                 ParsedEventAction::Skip => continue,
                             }
                             let is_result_event = behavior.handles_claude_result_event(&event);
-                            if (post_result_cleanup_was_armed || is_result_event)
-                                && try_observe_cli_exit(
+                            if post_result_cleanup_was_armed || is_result_event {
+                                match try_observe_cli_exit(
                                     &mut child,
                                     &mut cli_status,
                                     &mut cli_exit_at,
@@ -750,9 +752,11 @@ async fn execute_cli_inner(
                                     &mut termination_runtime,
                                     stdout_eof,
                                     drain_deadline.as_mut(),
-                                )?
-                            {
-                                break Ok(());
+                                )? {
+                                    CliExitObservation::NoNewExit
+                                    | CliExitObservation::ExitedDrainingStdout => {}
+                                    CliExitObservation::ExitedAndStdoutEof => break Ok(()),
+                                }
                             }
                             // Print Claude Code final result to stdout if applicable.
                             if is_result_event {
@@ -822,14 +826,17 @@ async fn execute_cli_inner(
             status = child.wait(), if cli_status.is_none() => {
                 match status {
                     Ok(s) => {
-                        if record_cli_exit(
-                            s,
-                            &mut cli_status,
-                            &mut cli_exit_at,
-                            &active_input_controller,
-                            &mut termination_runtime,
-                            stdout_eof,
-                            drain_deadline.as_mut(),
+                        if matches!(
+                            record_cli_exit(
+                                s,
+                                &mut cli_status,
+                                &mut cli_exit_at,
+                                &active_input_controller,
+                                &mut termination_runtime,
+                                stdout_eof,
+                                drain_deadline.as_mut(),
+                            ),
+                            CliExitObservation::ExitedAndStdoutEof
                         ) {
                             break Ok(());
                         }
@@ -838,7 +845,7 @@ async fn execute_cli_inner(
                 }
             }
             () = &mut termination_deadline, if termination_runtime.has_pending_deadline() && cli_status.is_none() => {
-                if try_observe_cli_exit(
+                match try_observe_cli_exit(
                     &mut child,
                     &mut cli_status,
                     &mut cli_exit_at,
@@ -847,7 +854,9 @@ async fn execute_cli_inner(
                     stdout_eof,
                     drain_deadline.as_mut(),
                 )? {
-                    break Ok(());
+                    CliExitObservation::NoNewExit => {}
+                    CliExitObservation::ExitedDrainingStdout => continue,
+                    CliExitObservation::ExitedAndStdoutEof => break Ok(()),
                 }
                 termination_runtime.handle_deadline(termination_deadline.as_mut());
             }
@@ -872,7 +881,7 @@ async fn execute_cli_inner(
                     .map(|(name, started)| (name.clone(), started.elapsed().as_secs()));
                 if let Some((name, elapsed)) = stuck
                 {
-                    if try_observe_cli_exit(
+                    match try_observe_cli_exit(
                         &mut child,
                         &mut cli_status,
                         &mut cli_exit_at,
@@ -881,7 +890,9 @@ async fn execute_cli_inner(
                         stdout_eof,
                         drain_deadline.as_mut(),
                     )? {
-                        break Ok(());
+                        CliExitObservation::NoNewExit => {}
+                        CliExitObservation::ExitedDrainingStdout => continue,
+                        CliExitObservation::ExitedAndStdoutEof => break Ok(()),
                     }
                     let timeout_error = AgentError::Execution(format!(
                         "Tool timeout: {name} exceeded {timeout_secs}s without returning a result"
@@ -904,7 +915,7 @@ async fn execute_cli_inner(
                 }
             }, if !heartbeat_done && cli_status.is_none() => {
                 heartbeat_done = true;
-                if try_observe_cli_exit(
+                match try_observe_cli_exit(
                     &mut child,
                     &mut cli_status,
                     &mut cli_exit_at,
@@ -913,7 +924,9 @@ async fn execute_cli_inner(
                     stdout_eof,
                     drain_deadline.as_mut(),
                 )? {
-                    break Ok(());
+                    CliExitObservation::NoNewExit => {}
+                    CliExitObservation::ExitedDrainingStdout => continue,
+                    CliExitObservation::ExitedAndStdoutEof => break Ok(()),
                 }
                 match heartbeat_result {
                     Ok(HeartbeatStatus::Failed(e)) => {
@@ -1084,6 +1097,13 @@ async fn execute_cli_inner(
     })
 }
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum CliExitObservation {
+    NoNewExit,
+    ExitedDrainingStdout,
+    ExitedAndStdoutEof,
+}
+
 fn try_observe_cli_exit(
     child: &mut tokio::process::Child,
     cli_status: &mut Option<ExitStatus>,
@@ -1092,13 +1112,13 @@ fn try_observe_cli_exit(
     termination_runtime: &mut CliTerminationRuntime,
     stdout_eof: bool,
     drain_deadline: Pin<&mut Sleep>,
-) -> Result<bool, AgentError> {
+) -> Result<CliExitObservation, AgentError> {
     if cli_status.is_some() {
-        return Ok(false);
+        return Ok(CliExitObservation::NoNewExit);
     }
 
     let Some(status) = child.try_wait().map_err(AgentError::Io)? else {
-        return Ok(false);
+        return Ok(CliExitObservation::NoNewExit);
     };
 
     Ok(record_cli_exit(
@@ -1120,7 +1140,7 @@ fn record_cli_exit(
     termination_runtime: &mut CliTerminationRuntime,
     stdout_eof: bool,
     mut drain_deadline: Pin<&mut Sleep>,
-) -> bool {
+) -> CliExitObservation {
     debug_assert!(cli_status.is_none(), "CLI exit recorded more than once");
     *cli_exit_at = Some(Instant::now());
     log_info!(
@@ -1134,13 +1154,13 @@ fn record_cli_exit(
     // stdout is draining.
     termination_runtime.mark_child_exited();
     if stdout_eof {
-        return true;
+        return CliExitObservation::ExitedAndStdoutEof;
     }
 
     drain_deadline.as_mut().reset(
         tokio::time::Instant::now() + Duration::from_secs(constants::STDOUT_DRAIN_DEADLINE_SECS),
     );
-    false
+    CliExitObservation::ExitedDrainingStdout
 }
 
 fn set_cli_current_dir(cmd: &mut tokio::process::Command, path: &str) -> Result<(), AgentError> {
@@ -1210,11 +1230,16 @@ fn with_carried_failure_reason(
 
 #[cfg(test)]
 mod tests {
+    use super::termination::CliTerminationRuntime;
     use super::{
-        CliFailureDiagnostic, claude_initial_prompt_frame, select_failure_diagnostic,
-        set_cli_current_dir, with_carried_failure_reason,
+        CliExitObservation, CliFailureDiagnostic, claude_initial_prompt_frame, record_cli_exit,
+        select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
     };
+    use crate::active_input::ActiveInputRuntime;
     use guest_contracts::diagnostics::{FailureDetailSource, FailureReason};
+    #[cfg(unix)]
+    use std::os::unix::process::ExitStatusExt;
+    use std::time::Duration;
 
     #[test]
     fn claude_initial_prompt_frame_matches_stream_json_user_shape() {
@@ -1264,6 +1289,38 @@ mod tests {
             String::from_utf8_lossy(&output.stdout).trim(),
             dir.path().to_string_lossy()
         );
+    }
+
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn cli_exit_observation_distinguishes_stdout_drain_from_loop_completion() {
+        let active_input = ActiveInputRuntime::new_disabled("run-exit-observation");
+        let controller = active_input.controller();
+        let termination_deadline = tokio::time::sleep(Duration::MAX);
+        tokio::pin!(termination_deadline);
+        let drain_deadline = tokio::time::sleep(Duration::MAX);
+        tokio::pin!(drain_deadline);
+        let mut runtime = CliTerminationRuntime::new(None);
+        assert!(runtime.arm_post_result_cleanup(false, termination_deadline.as_mut()));
+
+        let mut cli_status = None;
+        let mut cli_exit_at = None;
+        let observation = record_cli_exit(
+            std::process::ExitStatus::from_raw(0),
+            &mut cli_status,
+            &mut cli_exit_at,
+            &controller,
+            &mut runtime,
+            false,
+            drain_deadline.as_mut(),
+        );
+
+        assert_eq!(observation, CliExitObservation::ExitedDrainingStdout);
+        assert!(cli_status.is_some());
+        assert!(cli_exit_at.is_some());
+        assert!(!runtime.has_pending_deadline());
+        assert!(!runtime.has_post_result_cleanup());
+        assert!(!runtime.arm_post_result_cleanup(false, termination_deadline.as_mut()));
     }
 
     #[test]
