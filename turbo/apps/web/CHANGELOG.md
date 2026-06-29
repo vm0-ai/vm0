@@ -1,5 +1,12 @@
 # Changelog
 
+## [12.444.7](https://github.com/vm0-ai/vm0/compare/web-v12.444.6...web-v12.444.7) (2026-06-29)
+
+
+### Bug Fixes
+
+* add marketing rewrites for new locales ([#19282](https://github.com/vm0-ai/vm0/issues/19282)) ([148928b](https://github.com/vm0-ai/vm0/commit/148928b44b133d941f24bff3a5a895f2ae909555))
+
 ## [12.444.6](https://github.com/vm0-ai/vm0/compare/web-v12.444.5...web-v12.444.6) (2026-06-29)
 
 

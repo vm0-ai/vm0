@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.187.1](https://github.com/vm0-ai/vm0/compare/api-v1.187.0...api-v1.187.1) (2026-06-29)
+
+
+### Performance Improvements
+
+* lazy materialize firewall auth secrets ([#19277](https://github.com/vm0-ai/vm0/issues/19277)) ([2aaa344](https://github.com/vm0-ai/vm0/commit/2aaa3441e8c8c70aa6bad4d887808e9484ff0946))
+
 ## [1.187.0](https://github.com/vm0-ai/vm0/compare/api-v1.186.5...api-v1.187.0) (2026-06-29)
 
 
