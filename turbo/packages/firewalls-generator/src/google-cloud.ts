@@ -166,7 +166,7 @@ interface DiscoveryMediaUploadProtocol {
   path?: string;
 }
 
-interface DiscoveryMethod {
+interface GoogleCloudDiscoveryMethod {
   id?: string;
   httpMethod?: string;
   path?: string;
@@ -181,11 +181,11 @@ interface DiscoveryMethod {
 }
 
 interface DiscoveryResource {
-  methods?: Record<string, DiscoveryMethod>;
+  methods?: Record<string, GoogleCloudDiscoveryMethod>;
   resources?: Record<string, DiscoveryResource>;
 }
 
-interface DiscoveryDocument {
+export interface GoogleCloudDiscoveryDocument {
   title?: string;
   version?: string;
   baseUrl?: string;
@@ -945,8 +945,8 @@ function permissionForMethod(
 
 function extractMethods(
   resources: Record<string, DiscoveryResource>,
-): DiscoveryMethod[] {
-  const methods: DiscoveryMethod[] = [];
+): GoogleCloudDiscoveryMethod[] {
+  const methods: GoogleCloudDiscoveryMethod[] = [];
   for (const resource of Object.values(resources)) {
     if (resource.methods) {
       methods.push(...Object.values(resource.methods));
@@ -966,7 +966,7 @@ function normalizeTemplatePath(path: string): string {
 }
 
 function methodPathWithServicePath(
-  discovery: DiscoveryDocument,
+  discovery: GoogleCloudDiscoveryDocument,
   methodPath: string,
 ): string {
   const normalized = normalizeTemplatePath(methodPath);
@@ -980,8 +980,8 @@ function methodPathWithServicePath(
 }
 
 function mediaUploadPathForMethod(
-  discovery: DiscoveryDocument,
-  method: DiscoveryMethod,
+  discovery: GoogleCloudDiscoveryDocument,
+  method: GoogleCloudDiscoveryMethod,
   protocolPath: string,
 ): string {
   const normalized = normalizeTemplatePath(protocolPath);
@@ -998,8 +998,8 @@ function mediaUploadPathForMethod(
 }
 
 function rulePathsForMethod(
-  discovery: DiscoveryDocument,
-  method: DiscoveryMethod,
+  discovery: GoogleCloudDiscoveryDocument,
+  method: GoogleCloudDiscoveryMethod,
 ): string[] {
   if (!method.id) {
     throw new Error("Discovery method is missing id");
@@ -1020,6 +1020,43 @@ function rulePathsForMethod(
   return [...paths].sort();
 }
 
+function mediaUploadPutRulePathsForMethod(
+  discovery: GoogleCloudDiscoveryDocument,
+  method: GoogleCloudDiscoveryMethod,
+): string[] {
+  const protocols = method.mediaUpload?.protocols;
+  if (!protocols?.resumable?.path) return [];
+
+  const paths = new Set<string>();
+  for (const protocol of [protocols.simple, protocols.resumable]) {
+    if (protocol?.path) {
+      paths.add(mediaUploadPathForMethod(discovery, method, protocol.path));
+    }
+  }
+
+  return [...paths].sort();
+}
+
+export function googleCloudRulesForDiscoveryMethod(
+  discovery: GoogleCloudDiscoveryDocument,
+  method: GoogleCloudDiscoveryMethod,
+): string[] {
+  if (!method.id || !method.httpMethod) {
+    throw new Error("Discovery method is missing id or httpMethod");
+  }
+
+  const rules = new Set<string>();
+  const methodVerb = method.httpMethod.toUpperCase();
+  for (const path of rulePathsForMethod(discovery, method)) {
+    rules.add(`${methodVerb} /${path}`);
+  }
+  for (const path of mediaUploadPutRulePathsForMethod(discovery, method)) {
+    rules.add(`PUT /${path}`);
+  }
+
+  return sanitizeAndSortRules([...rules]);
+}
+
 function addRule(
   groups: Map<string, Set<string>>,
   permission: string,
@@ -1031,7 +1068,7 @@ function addRule(
 }
 
 function buildPermissionGroups(
-  discovery: DiscoveryDocument,
+  discovery: GoogleCloudDiscoveryDocument,
   api: ApiConfig,
   officialPermissions: ReadonlySet<string>,
   unexpectedUnmappedMethods: Set<string>,
@@ -1060,12 +1097,8 @@ function buildPermissionGroups(
       }
       continue;
     }
-    for (const path of rulePathsForMethod(discovery, method)) {
-      addRule(
-        groups,
-        permission,
-        `${method.httpMethod.toUpperCase()} /${path}`,
-      );
+    for (const rule of googleCloudRulesForDiscoveryMethod(discovery, method)) {
+      addRule(groups, permission, rule);
     }
     stats.mappedOperations += 1;
   }
@@ -1316,7 +1349,7 @@ export async function generate(): Promise<void> {
   for (const api of API_CONFIGS) {
     const discoveryUrl = GOOGLE_CLOUD_DISCOVERY_URLS[api.key];
     const res = await fetchSpec(discoveryUrl, `${api.key} discovery document`);
-    const discovery = (await res.json()) as DiscoveryDocument;
+    const discovery = (await res.json()) as GoogleCloudDiscoveryDocument;
     console.error(
       `  ${api.description}: ${discovery.version ?? "unknown version"}`,
     );

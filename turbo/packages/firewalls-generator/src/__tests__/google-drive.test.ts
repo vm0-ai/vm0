@@ -50,7 +50,7 @@ describe("Google Drive permission manifest", () => {
   });
 
   it("matches the official Discovery route set exactly", () => {
-    expect(officialRouteKeys.size).toBe(141);
+    expect(officialRouteKeys.size).toBe(147);
 
     expect(() => {
       validateGoogleDrivePermissionManifest(
@@ -115,10 +115,16 @@ describe("Google Drive permission manifest", () => {
 
     expect(filesWrite.routeKeys).toContain("base:POST /v2/files");
     expect(filesWrite.routeKeys).toContain("upload:POST /v2/files");
+    expect(filesWrite.routeKeys).toContain("upload:PUT /v2/files");
     expect(filesWrite.routeKeys).toContain("resumable-upload:POST /v2/files");
+    expect(filesWrite.routeKeys).toContain("resumable-upload:PUT /v2/files");
     expect(filesWrite.routeKeys).toContain("upload:PATCH /v3/files/{fileId}");
+    expect(filesWrite.routeKeys).toContain("upload:PUT /v3/files/{fileId}");
     expect(filesWrite.routeKeys).toContain(
       "resumable-upload:PATCH /v3/files/{fileId}",
+    );
+    expect(filesWrite.routeKeys).toContain(
+      "resumable-upload:PUT /v3/files/{fileId}",
     );
   });
 

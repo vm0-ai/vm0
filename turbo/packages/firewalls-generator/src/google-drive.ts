@@ -27,6 +27,12 @@ interface DiscoveryMethod {
   path?: string;
   flatPath?: string;
   supportsMediaUpload?: boolean;
+  mediaUpload?: {
+    protocols?: {
+      simple?: { path?: string };
+      resumable?: { path?: string };
+    };
+  };
 }
 
 interface DiscoveryResource {
@@ -271,14 +277,20 @@ export const GOOGLE_DRIVE_PERMISSION_MANIFEST: readonly GoogleDriveManifestPermi
         "base:POST /v3/files/{fileId}/modifyLabels",
         "base:PUT /v2/files/{fileId}",
         "base:PUT /v2/files/{fileId}/properties/{propertyKey}",
+        "resumable-upload:PUT /v2/files",
         "resumable-upload:PATCH /v3/files/{fileId}",
         "resumable-upload:POST /v2/files",
         "resumable-upload:POST /v3/files",
         "resumable-upload:PUT /v2/files/{fileId}",
+        "resumable-upload:PUT /v3/files",
+        "resumable-upload:PUT /v3/files/{fileId}",
+        "upload:PUT /v2/files",
         "upload:PATCH /v3/files/{fileId}",
         "upload:POST /v2/files",
         "upload:POST /v3/files",
         "upload:PUT /v2/files/{fileId}",
+        "upload:PUT /v3/files",
+        "upload:PUT /v3/files/{fileId}",
       ],
     },
     {
@@ -406,6 +418,11 @@ export function buildGoogleDriveOfficialRouteKeys(
         hasUploadMethods = true;
         routeKeys.add(`upload:${rule}`);
         routeKeys.add(`resumable-upload:${rule}`);
+        if (method.mediaUpload?.protocols?.resumable) {
+          const mediaRule = rule.replace(/^[A-Z]+ /, "PUT ");
+          routeKeys.add(`upload:${mediaRule}`);
+          routeKeys.add(`resumable-upload:${mediaRule}`);
+        }
       }
     }
   }
