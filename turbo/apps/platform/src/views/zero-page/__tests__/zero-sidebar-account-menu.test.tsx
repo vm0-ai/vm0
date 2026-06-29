@@ -342,7 +342,7 @@ describe("zero sidebar account menu", () => {
       expect(mockedClerk.signOut).toHaveBeenCalledWith(
         expect.objectContaining({
           sessionId: "test-session-id",
-          redirectUrl: expect.stringContaining("/sign-in?redirect_url="),
+          redirectUrl: expect.stringMatching(/\/sign-in\?.*redirect_url=/),
         }),
       );
     });
