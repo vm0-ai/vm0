@@ -2349,7 +2349,11 @@ def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallB
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
     flow.metadata[metadata_keys.FIREWALL_BASE] = result.base
     flow.metadata[metadata_keys.FIREWALL_NAME] = result.name
-    diagnostic_url = f"{result.base.rstrip('/')}{result.path}"
+    original_url = flow.metadata[metadata_keys.ORIGINAL_URL]
+    diagnostic_parts = urllib.parse.urlsplit(original_url)
+    diagnostic_url = urllib.parse.urlunsplit(
+        (diagnostic_parts.scheme, diagnostic_parts.netloc, diagnostic_parts.path, "", "")
+    )
     error_body = json.dumps(
         {
             "error": "permission_denied",

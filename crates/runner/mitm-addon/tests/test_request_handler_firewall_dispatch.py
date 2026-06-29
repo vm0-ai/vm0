@@ -638,6 +638,51 @@ async def test_firewall_block_response_url_joins_base_path_without_double_slash(
     assert body["url"] == "https://api.example.com/v1/items/123"
 
 
+async def test_firewall_block_response_url_uses_runtime_url_for_parameterized_base(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="example",
+            api_entry={
+                "base": "https://api-{region}.example.com/v1/{org}",
+                "auth": {"headers": {"Authorization": "Bearer ${{ secrets.EXAMPLE_TOKEN }}"}},
+                "permissions": [
+                    {
+                        "name": "read-items",
+                        "rules": ["GET /items/{id}"],
+                    },
+                ],
+            },
+            network_policy={
+                "allow": [],
+                "deny": ["read-items"],
+                "ask": [],
+                "unknownPolicy": "allow",
+            },
+        ),
+    )
+
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api-us.example.com",
+        path="/v1/acme/items/123?token=secret#fragment",
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["base"] == "https://api-{region}.example.com/v1/{org}"
+    assert body["path"] == "/items/123"
+    assert body["url"] == "https://api-us.example.com/v1/acme/items/123"
+
+
 async def test_firewall_permission_allows_matched(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
