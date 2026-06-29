@@ -355,7 +355,7 @@ describe("COMPOSE-01 create and metadata validation", () => {
     expect(Object.keys(storedAgent)).toStrictEqual(["framework"]);
   });
 
-  it("returns visible read errors for missing names, org-less lists, and invalid queries", async () => {
+  it("returns visible read errors for missing names and invalid queries", async () => {
     const admin = api.user();
     const missingName = slug("bdd-missing");
 
@@ -368,12 +368,6 @@ describe("COMPOSE-01 create and metadata validation", () => {
     expect(notFoundByName.body.error.message).toBe(
       `Agent compose not found: ${missingName}`,
     );
-
-    const noOrg = api.user({ orgId: null });
-    const noOrgList = await composes.requestListComposes(noOrg, [400]);
-    expect(noOrgList.body).toStrictEqual({
-      error: { message: "Invalid request", code: "BAD_REQUEST" },
-    });
 
     const missingQuery = await composes.rawRequest(admin, {
       method: "GET",
@@ -415,13 +409,6 @@ describe("COMPOSE-01 token access", () => {
       [200],
     );
     expect(byName.body.id).toBe(composeId);
-
-    const listed = await composes.requestListComposes(sandbox, [200]);
-    expect(
-      listed.body.composes.some((compose) => {
-        return compose.id === composeId;
-      }),
-    ).toBeTruthy();
 
     const resolved = await composes.requestResolveComposeVersion(
       sandbox,
@@ -481,9 +468,6 @@ describe("COMPOSE-01 token access", () => {
 
     const byId = await api.requestReadComposeById(null, missingId, [401]);
     expect(byId.body).toStrictEqual(unauthenticatedBody);
-
-    const list = await composes.requestListComposes(null, [401]);
-    expect(list.body).toStrictEqual(unauthenticatedBody);
 
     const versions = await composes.requestResolveComposeVersion(
       null,
@@ -782,7 +766,7 @@ describe("COMPOSE-01 delete protection and volume sweep", () => {
     expectApiError(memberDelete.body);
     expect(memberDelete.body.error.message).toBe("Agent not found");
 
-    const listed = await api.listComposes(owner);
+    const listed = await api.listZeroComposes(owner);
     expect(
       listed.some((compose) => {
         return compose.id === kept.composeId;
