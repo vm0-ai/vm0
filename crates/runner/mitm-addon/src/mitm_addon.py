@@ -610,6 +610,13 @@ def _store_trusted_authority_metadata(
 
 
 def _public_destination_runtime_host(flow: http.HTTPFlow) -> object:
+    if flow.server_conn.connected:
+        connected_endpoint = _connected_ip_destination_endpoint(
+            flow.server_conn,
+            port=flow.request.port,
+        )
+        return connected_endpoint[0] if connected_endpoint is not None else None
+
     original_address = upstream_destination_binding.server_binding_original_address(
         flow.server_conn
     )
