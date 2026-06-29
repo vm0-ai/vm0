@@ -2,15 +2,14 @@ use std::path::PathBuf;
 
 use super::types::ProcessStat;
 
-/// Read `/proc/{pid}/cmdline` as the NUL-separated argv.
-///
-/// Returns `None` for kernel threads (empty cmdline) and for processes whose
-/// cmdline has been rewritten (via `prctl(PR_SET_NAME)` or similar) into a
-/// single NUL-free blob — those aren't the exec-spawned processes we care
-/// about identifying here.
-pub(crate) async fn read_cmdline(pid: u32) -> Option<Vec<String>> {
-    let path = format!("/proc/{pid}/cmdline");
-    let bytes = tokio::fs::read(&path).await.ok()?;
+enum CmdlineRead {
+    Args(Vec<String>),
+    Ignored,
+    Missing,
+    Unreadable(std::io::Error),
+}
+
+fn parse_cmdline_bytes(bytes: &[u8]) -> Option<Vec<String>> {
     if bytes.is_empty() || !bytes.contains(&0) {
         return None;
     }
@@ -20,6 +19,29 @@ pub(crate) async fn read_cmdline(pid: u32) -> Option<Vec<String>> {
         .map(|s| String::from_utf8_lossy(s).into_owned())
         .collect();
     if argv.is_empty() { None } else { Some(argv) }
+}
+
+/// Read `/proc/{pid}/cmdline` as the NUL-separated argv.
+///
+/// Returns `None` for kernel threads (empty cmdline) and for processes whose
+/// cmdline has been rewritten (via `prctl(PR_SET_NAME)` or similar) into a
+/// single NUL-free blob — those aren't the exec-spawned processes we care
+/// about identifying here.
+pub(crate) async fn read_cmdline(pid: u32) -> Option<Vec<String>> {
+    let path = format!("/proc/{pid}/cmdline");
+    let bytes = tokio::fs::read(&path).await.ok()?;
+    parse_cmdline_bytes(&bytes)
+}
+
+async fn read_cmdline_for_scan(pid: u32) -> CmdlineRead {
+    let path = format!("/proc/{pid}/cmdline");
+    match tokio::fs::read(&path).await {
+        Ok(bytes) => parse_cmdline_bytes(&bytes)
+            .map(CmdlineRead::Args)
+            .unwrap_or(CmdlineRead::Ignored),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => CmdlineRead::Missing,
+        Err(e) => CmdlineRead::Unreadable(e),
+    }
 }
 
 /// Read `/proc/{pid}/stat` and extract the PPid field.
@@ -153,8 +175,13 @@ pub(super) async fn scan_proc_cmdlines() -> ProcCmdlineScan {
         let Ok(pid) = name_str.parse::<u32>() else {
             continue;
         };
-        if let Some(argv) = read_cmdline(pid).await {
-            result.push((pid, argv));
+        match read_cmdline_for_scan(pid).await {
+            CmdlineRead::Args(argv) => result.push((pid, argv)),
+            CmdlineRead::Ignored | CmdlineRead::Missing => {}
+            CmdlineRead::Unreadable(e) => {
+                tracing::warn!("scan_proc_cmdlines: cannot read /proc/{pid}/cmdline: {e}");
+                complete = false;
+            }
         }
     }
     ProcCmdlineScan {
@@ -185,6 +212,25 @@ mod tests {
         stat.extend_from_slice(b") ");
         stat.extend_from_slice(fields.join(" ").as_bytes());
         stat
+    }
+
+    #[test]
+    fn parse_cmdline_bytes_accepts_nul_separated_argv() {
+        assert_eq!(
+            parse_cmdline_bytes(b"firecracker\0--no-api\0"),
+            Some(vec!["firecracker".to_string(), "--no-api".to_string()])
+        );
+    }
+
+    #[test]
+    fn parse_cmdline_bytes_rejects_empty_or_nul_free_content() {
+        assert_eq!(parse_cmdline_bytes(b""), None);
+        assert_eq!(parse_cmdline_bytes(b"firecracker"), None);
+    }
+
+    #[test]
+    fn parse_cmdline_bytes_rejects_all_empty_segments() {
+        assert_eq!(parse_cmdline_bytes(b"\0\0"), None);
     }
 
     #[test]
