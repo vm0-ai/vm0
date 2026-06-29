@@ -42,11 +42,7 @@ const GMAIL_LABEL_TRIGGER_ID = "workflow-trigger-gmail-label-applied";
 const WORKFLOW_CHAT_THREAD_ID = "00000000-0000-4000-a000-000000000300";
 const TRIGGER_RUN_THREAD_ID = "00000000-0000-4000-a000-000000000301";
 
-type WorkflowDetailTestTab =
-  | "authorization"
-  | "triggers"
-  | "instructions"
-  | "info";
+type WorkflowDetailTestTab = "triggers" | "instructions" | "info";
 
 function workflowDetailPath(tab: WorkflowDetailTestTab): string {
   return `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}?tab=${tab}`;

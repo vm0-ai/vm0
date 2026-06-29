@@ -21,7 +21,6 @@ import { pathParams$, searchParams$ } from "../route.ts";
 import { accept } from "../../lib/accept.ts";
 import { agentById, reloadAgentById$ } from "../agent.ts";
 import { retryTransientLoad } from "../utils.ts";
-import { workflowDetail } from "../workflows-page/workflows-signals.ts";
 import { parseUserPermissionGrantExpiresIn } from "./permission-grant-expiration.ts";
 
 // ---------------------------------------------------------------------------
@@ -32,12 +31,6 @@ export const permissionAllowAgentId$ = computed((get) => {
   const params = get(pathParams$);
   const agentId = params?.agentId;
   return typeof agentId === "string" ? agentId : null;
-});
-
-export const permissionAllowWorkflowId$ = computed((get) => {
-  const params = get(pathParams$);
-  const workflowId = params?.workflowId;
-  return typeof workflowId === "string" ? workflowId : null;
 });
 
 export const permissionAllowRef$ = computed((get) => {
@@ -74,14 +67,6 @@ export const permissionAllowAgent$ = computed((get) => {
     return null;
   }
   return get(agentById(agentId));
-});
-
-export const permissionAllowWorkflow$ = computed((get) => {
-  const workflowId = get(permissionAllowWorkflowId$);
-  if (!workflowId) {
-    return null;
-  }
-  return get(workflowDetail(workflowId));
 });
 
 // ---------------------------------------------------------------------------
@@ -134,16 +119,8 @@ interface UserPermissionGrantsByAgentParams {
   agentId: string;
 }
 
-interface UserPermissionGrantsByWorkflowParams {
-  workflowId: string;
-}
-
-type UserPermissionGrantsParams =
-  | UserPermissionGrantsByAgentParams
-  | UserPermissionGrantsByWorkflowParams;
-
 function createUserPermissionGrantsFactory(): (
-  params: UserPermissionGrantsParams,
+  params: UserPermissionGrantsByAgentParams,
 ) => Computed<Promise<readonly UserPermissionGrantResponse[]>> {
   const cache = new Map<
     string,
@@ -170,14 +147,7 @@ function createUserPermissionGrantsFactory(): (
 
 export const userPermissionGrantsByAgent = createUserPermissionGrantsFactory();
 
-export const userPermissionGrantsByWorkflow =
-  createUserPermissionGrantsFactory();
-
 export const permissionAllowUserPermissionGrants$ = computed(async (get) => {
-  const workflowId = get(permissionAllowWorkflowId$);
-  if (workflowId) {
-    return await get(userPermissionGrantsByWorkflow({ workflowId }));
-  }
   const agentId = get(permissionAllowAgentId$);
   if (!agentId) {
     return [];
@@ -190,27 +160,20 @@ export const applyUserPermissionGrants$ = command(
     { get, set },
     params: {
       agentId?: string;
-      workflowId?: string;
       connectorRef: string;
       mode: UserPermissionGrantApplyMode;
       grants: readonly ApplyUserPermissionGrant[];
     },
     signal: AbortSignal,
   ): Promise<readonly UserPermissionGrantResponse[]> => {
-    const scope =
-      params.workflowId !== undefined
-        ? { workflowId: params.workflowId }
-        : params.agentId !== undefined
-          ? { agentId: params.agentId }
-          : null;
-    if (!scope) {
+    if (!params.agentId) {
       throw new Error("Permission grant scope is required");
     }
     const client = get(zeroClient$)(zeroUserPermissionGrantsContract);
     const result = await accept(
       client.apply({
         body: {
-          ...scope,
+          agentId: params.agentId,
           connectorRef: params.connectorRef,
           mode: params.mode,
           grants: [...params.grants],
@@ -236,7 +199,6 @@ export const applyUserPermissionGrant$ = command(
     { set },
     params: {
       agentId?: string;
-      workflowId?: string;
       connectorRef: string;
       permission: string;
       action: UserPermissionGrantAction;
@@ -247,9 +209,7 @@ export const applyUserPermissionGrant$ = command(
     const grants = await set(
       applyUserPermissionGrants$,
       {
-        ...(params.workflowId !== undefined
-          ? { workflowId: params.workflowId }
-          : { agentId: params.agentId }),
+        agentId: params.agentId,
         connectorRef: params.connectorRef,
         mode: "patch",
         grants: [

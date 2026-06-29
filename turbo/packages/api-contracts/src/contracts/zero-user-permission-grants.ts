@@ -5,7 +5,6 @@ import { apiErrorSchema } from "./errors";
 const c = initContract();
 
 const agentIdSchema = z.string().uuid();
-const workflowIdSchema = z.string().uuid();
 const connectorRefSchema = z.string().min(1).max(64);
 const permissionSchema = z.string().min(1).max(128);
 
@@ -20,18 +19,9 @@ export const userPermissionGrantExpiresInSchema = z.enum([
 
 const agentPermissionGrantScopeSchema = z.object({
   agentId: agentIdSchema,
-  workflowId: z.never().optional(),
 });
 
-const workflowPermissionGrantScopeSchema = z.object({
-  workflowId: workflowIdSchema,
-  agentId: z.never().optional(),
-});
-
-export const userPermissionGrantScopeSchema = z.union([
-  agentPermissionGrantScopeSchema,
-  workflowPermissionGrantScopeSchema,
-]);
+export const userPermissionGrantScopeSchema = agentPermissionGrantScopeSchema;
 
 const userPermissionGrantResponseBaseSchema = z.object({
   connectorRef: connectorRefSchema,
@@ -43,27 +33,9 @@ const userPermissionGrantResponseBaseSchema = z.object({
 });
 
 export const userPermissionGrantResponseSchema =
-  userPermissionGrantResponseBaseSchema
-    .extend({
-      agentId: agentIdSchema.optional(),
-      workflowId: workflowIdSchema.optional(),
-    })
-    .refine(
-      (grant) => {
-        return grant.agentId !== undefined || grant.workflowId !== undefined;
-      },
-      {
-        message: "Either agentId or workflowId is required",
-      },
-    )
-    .refine(
-      (grant) => {
-        return grant.agentId === undefined || grant.workflowId === undefined;
-      },
-      {
-        message: "Only one of agentId or workflowId can be provided",
-      },
-    );
+  userPermissionGrantResponseBaseSchema.extend({
+    agentId: agentIdSchema,
+  });
 
 const listUserPermissionGrantsQuerySchema = userPermissionGrantScopeSchema;
 
@@ -104,8 +76,7 @@ export const zeroUserPermissionGrantsContract = c.router({
       403: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary:
-      "List current user's active permission grants for an agent or workflow",
+    summary: "List current user's active permission grants for an agent",
   },
   apply: {
     method: "PUT",

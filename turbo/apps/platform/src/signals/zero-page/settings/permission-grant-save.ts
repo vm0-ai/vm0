@@ -22,10 +22,8 @@ import {
 } from "./permission-draft-intent.ts";
 
 export type ApplyUserPermissionGrants = (
-  params: (
-    | { agentId: string; workflowId?: never }
-    | { workflowId: string; agentId?: never }
-  ) & {
+  params: {
+    agentId: string;
     connectorRef: string;
     mode: "patch" | "replace";
     grants: readonly ApplyUserPermissionGrant[];
@@ -332,9 +330,7 @@ async function saveUserGrantPolicies({
   pageSignal,
   applyGrantPolicies,
 }: {
-  scope:
-    | { agentId: string; workflowId?: never }
-    | { workflowId: string; agentId?: never };
+  scope: { agentId: string };
   connectorType: ConnectorType;
   metadata: FirewallPermissionDetailMetadata;
   initialPolicies: FirewallPolicies;
@@ -374,9 +370,7 @@ export async function savePermissionDraftPolicies({
   pageSignal,
   applyGrantPolicies,
 }: {
-  scope:
-    | { agentId: string; workflowId?: never }
-    | { workflowId: string; agentId?: never };
+  scope: { agentId: string };
   connectorType: ConnectorType;
   metadata: FirewallPermissionDetailMetadata;
   initialPolicies: FirewallPolicies;

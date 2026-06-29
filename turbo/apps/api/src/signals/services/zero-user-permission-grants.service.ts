@@ -2,9 +2,7 @@ import { command } from "ccstate";
 import { loadFirewallPermissionIndex } from "@vm0/connectors/firewall-metadata/server";
 import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
-import { workflowUserPermissionGrants } from "@vm0/db/schema/workflow-user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
 import { and, asc, eq, gt, isNull, or } from "drizzle-orm";
 import type {
   ApplyUserPermissionGrantsRequest,
@@ -17,11 +15,7 @@ import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 
 type UserPermissionGrantRow = typeof userPermissionGrants.$inferSelect;
-type WorkflowUserPermissionGrantRow =
-  typeof workflowUserPermissionGrants.$inferSelect;
-type StoredPermissionGrantRow =
-  | UserPermissionGrantRow
-  | WorkflowUserPermissionGrantRow;
+type StoredPermissionGrantRow = UserPermissionGrantRow;
 type UserPermissionGrantAction = UserPermissionGrantResponse["action"];
 
 interface UserPermissionGrantBaseScope {
@@ -30,27 +24,13 @@ interface UserPermissionGrantBaseScope {
   readonly role?: string;
 }
 
-type UserPermissionGrantScope = UserPermissionGrantBaseScope &
-  (
-    | { readonly agentId: string; readonly workflowId?: never }
-    | { readonly workflowId: string; readonly agentId?: never }
-  );
-
-type UserPermissionGrantWorkflowScope = UserPermissionGrantBaseScope & {
-  readonly workflowId: string;
-  readonly agentId?: never;
+type UserPermissionGrantScope = UserPermissionGrantBaseScope & {
+  readonly agentId: string;
 };
 
 type ApplyUserPermissionGrantsAgentRequest =
   ApplyUserPermissionGrantsRequest & {
     readonly agentId: string;
-    readonly workflowId?: never;
-  };
-
-type ApplyUserPermissionGrantsWorkflowRequest =
-  ApplyUserPermissionGrantsRequest & {
-    readonly workflowId: string;
-    readonly agentId?: never;
   };
 
 interface ApplyUserPermissionGrantsArgs {
@@ -106,18 +86,6 @@ function visibleZeroAgentCondition(userId: string) {
   return or(eq(zeroAgents.visibility, "public"), eq(zeroAgents.owner, userId));
 }
 
-function isWorkflowGrantScope(
-  scope: UserPermissionGrantScope,
-): scope is UserPermissionGrantWorkflowScope {
-  return scope.workflowId !== undefined;
-}
-
-function isWorkflowGrantApply(
-  apply: ApplyUserPermissionGrantsRequest,
-): apply is ApplyUserPermissionGrantsWorkflowRequest {
-  return apply.workflowId !== undefined;
-}
-
 function requireAgentGrantApply(
   apply: ApplyUserPermissionGrantsRequest,
 ): ApplyUserPermissionGrantsAgentRequest {
@@ -145,40 +113,6 @@ async function findVisibleAgent(
   return agent ?? null;
 }
 
-async function findVisibleWorkflow(
-  db: ReadonlyDb,
-  scope: UserPermissionGrantBaseScope & { readonly workflowId: string },
-): Promise<{ readonly id: string } | null> {
-  const [workflow] = await db
-    .select({ id: zeroWorkflows.id })
-    .from(zeroWorkflows)
-    .innerJoin(zeroAgents, eq(zeroWorkflows.agentId, zeroAgents.id))
-    .where(
-      and(
-        eq(zeroWorkflows.orgId, scope.orgId),
-        eq(zeroWorkflows.id, scope.workflowId),
-        or(
-          and(
-            eq(zeroWorkflows.visibility, "public"),
-            visibleZeroAgentCondition(scope.userId),
-          ),
-          eq(zeroWorkflows.ownerUserId, scope.userId),
-          scope.role === "admin"
-            ? and(
-                eq(zeroWorkflows.requestToPublish, true),
-                eq(zeroAgents.visibility, "public"),
-              )
-            : and(
-                eq(zeroWorkflows.requestToPublish, true),
-                eq(zeroAgents.owner, scope.userId),
-              ),
-        ),
-      ),
-    )
-    .limit(1);
-  return workflow ?? null;
-}
-
 function validateGrantExpiration(grant: {
   readonly action: UserPermissionGrantAction;
   readonly expiresIn?: UserPermissionGrantExpiresIn;
@@ -198,13 +132,6 @@ function activeGrantCondition(checkedAt: Date) {
   return or(
     isNull(userPermissionGrants.expiresAt),
     gt(userPermissionGrants.expiresAt, checkedAt),
-  );
-}
-
-function activeWorkflowGrantCondition(checkedAt: Date) {
-  return or(
-    isNull(workflowUserPermissionGrants.expiresAt),
-    gt(workflowUserPermissionGrants.expiresAt, checkedAt),
   );
 }
 
@@ -272,9 +199,7 @@ function formatUserPermissionGrant(
     | "createdAt"
     | "updatedAt"
   >,
-  scope:
-    | { readonly agentId: string; readonly workflowId?: never }
-    | { readonly workflowId: string; readonly agentId?: never },
+  scope: { readonly agentId: string },
 ): UserPermissionGrantResponse {
   return {
     ...scope,
@@ -292,24 +217,6 @@ export async function loadActiveUserPermissionGrants(
   scope: UserPermissionGrantScope,
   checkedAt: Date = nowDate(),
 ): Promise<readonly StoredPermissionGrantRow[]> {
-  if (isWorkflowGrantScope(scope)) {
-    return await db
-      .select()
-      .from(workflowUserPermissionGrants)
-      .where(
-        and(
-          eq(workflowUserPermissionGrants.orgId, scope.orgId),
-          eq(workflowUserPermissionGrants.userId, scope.userId),
-          eq(workflowUserPermissionGrants.workflowId, scope.workflowId),
-          activeWorkflowGrantCondition(checkedAt),
-        ),
-      )
-      .orderBy(
-        asc(workflowUserPermissionGrants.connectorRef),
-        asc(workflowUserPermissionGrants.permission),
-      );
-  }
-
   return await db
     .select()
     .from(userPermissionGrants)
@@ -336,15 +243,6 @@ async function visibleAgentOrNotFound(
     : notFound(`Agent not found: ${scope.agentId}`);
 }
 
-async function visibleWorkflowOrNotFound(
-  db: ReadonlyDb,
-  scope: UserPermissionGrantBaseScope & { readonly workflowId: string },
-): Promise<NotFoundResponse | null> {
-  return (await findVisibleWorkflow(db, scope))
-    ? null
-    : notFound(`Workflow not found: ${scope.workflowId}`);
-}
-
 async function lockVisibleAgentForUpdate(
   db: Pick<Db, "select">,
   scope: UserPermissionGrantBaseScope & { readonly agentId: string },
@@ -362,41 +260,6 @@ async function lockVisibleAgentForUpdate(
     .for("update")
     .limit(1);
   return agent ?? null;
-}
-
-async function lockVisibleWorkflowForUpdate(
-  db: Pick<Db, "select">,
-  scope: UserPermissionGrantBaseScope & { readonly workflowId: string },
-): Promise<{ readonly id: string } | null> {
-  const [workflow] = await db
-    .select({ id: zeroWorkflows.id })
-    .from(zeroWorkflows)
-    .innerJoin(zeroAgents, eq(zeroWorkflows.agentId, zeroAgents.id))
-    .where(
-      and(
-        eq(zeroWorkflows.orgId, scope.orgId),
-        eq(zeroWorkflows.id, scope.workflowId),
-        or(
-          and(
-            eq(zeroWorkflows.visibility, "public"),
-            visibleZeroAgentCondition(scope.userId),
-          ),
-          eq(zeroWorkflows.ownerUserId, scope.userId),
-          scope.role === "admin"
-            ? and(
-                eq(zeroWorkflows.requestToPublish, true),
-                eq(zeroAgents.visibility, "public"),
-              )
-            : and(
-                eq(zeroWorkflows.requestToPublish, true),
-                eq(zeroAgents.owner, scope.userId),
-              ),
-        ),
-      ),
-    )
-    .for("update")
-    .limit(1);
-  return workflow ?? null;
 }
 
 async function validateApplyUserPermissionGrants(
@@ -435,9 +298,6 @@ async function applyVisibleGrantRows(
   db: Db,
   args: ApplyUserPermissionGrantsArgs,
 ): Promise<readonly StoredPermissionGrantRow[] | NotFoundResponse> {
-  if (isWorkflowGrantApply(args.apply)) {
-    return await applyVisibleWorkflowGrantRows(db, args, args.apply.workflowId);
-  }
   return await applyVisibleAgentGrantRows(
     db,
     args,
@@ -540,126 +400,16 @@ async function applyVisibleAgentGrantRows(
   });
 }
 
-async function applyVisibleWorkflowGrantRows(
-  db: Db,
-  args: ApplyUserPermissionGrantsArgs,
-  workflowId: string,
-): Promise<readonly WorkflowUserPermissionGrantRow[] | NotFoundResponse> {
-  return await db.transaction(async (tx) => {
-    const visibleWorkflow = await lockVisibleWorkflowForUpdate(tx, {
-      orgId: args.orgId,
-      userId: args.userId,
-      role: args.role,
-      workflowId,
-    });
-    if (!visibleWorkflow) {
-      return notFound(`Workflow not found: ${workflowId}`);
-    }
-
-    const timestamp = nowDate();
-    const connectorScopeCondition = and(
-      eq(workflowUserPermissionGrants.orgId, args.orgId),
-      eq(workflowUserPermissionGrants.userId, args.userId),
-      eq(workflowUserPermissionGrants.workflowId, workflowId),
-      eq(workflowUserPermissionGrants.connectorRef, args.apply.connectorRef),
-    );
-
-    if (args.apply.mode === "replace") {
-      await tx
-        .delete(workflowUserPermissionGrants)
-        .where(connectorScopeCondition);
-    }
-
-    if (args.apply.grants.length === 0) {
-      return [];
-    }
-
-    const existingRows =
-      args.apply.mode === "replace"
-        ? []
-        : await tx
-            .select()
-            .from(workflowUserPermissionGrants)
-            .where(connectorScopeCondition)
-            .for("update");
-    const existingRowsByPermission = new Map(
-      existingRows.map((row) => {
-        return [row.permission, row] as const;
-      }),
-    );
-    const rows: WorkflowUserPermissionGrantRow[] = [];
-    for (const grant of args.apply.grants) {
-      const existing = existingRowsByPermission.get(grant.permission);
-      const expiresAt = resolvedExpiresAt({
-        action: grant.action,
-        expiresIn: grant.expiresIn,
-        existing,
-        timestamp,
-      });
-      const [row] = existing
-        ? await tx
-            .update(workflowUserPermissionGrants)
-            .set({
-              action: grant.action,
-              expiresAt,
-              updatedAt: timestamp,
-            })
-            .where(
-              and(
-                eq(workflowUserPermissionGrants.orgId, args.orgId),
-                eq(workflowUserPermissionGrants.userId, args.userId),
-                eq(workflowUserPermissionGrants.workflowId, workflowId),
-                eq(
-                  workflowUserPermissionGrants.connectorRef,
-                  args.apply.connectorRef,
-                ),
-                eq(workflowUserPermissionGrants.permission, grant.permission),
-              ),
-            )
-            .returning()
-        : await tx
-            .insert(workflowUserPermissionGrants)
-            .values({
-              orgId: args.orgId,
-              userId: args.userId,
-              workflowId,
-              connectorRef: args.apply.connectorRef,
-              permission: grant.permission,
-              action: grant.action,
-              expiresAt,
-              createdAt: timestamp,
-              updatedAt: timestamp,
-            })
-            .returning();
-      if (!row) {
-        throw new Error(
-          "Workflow user permission grant apply did not return a row",
-        );
-      }
-      rows.push(row);
-    }
-    return rows;
-  });
-}
-
-function permissionGrantResponseScope(
-  scope: UserPermissionGrantScope,
-):
-  | { readonly agentId: string; readonly workflowId?: never }
-  | { readonly workflowId: string; readonly agentId?: never } {
-  return isWorkflowGrantScope(scope)
-    ? { workflowId: scope.workflowId }
-    : { agentId: scope.agentId };
+function permissionGrantResponseScope(scope: UserPermissionGrantScope): {
+  readonly agentId: string;
+} {
+  return { agentId: scope.agentId };
 }
 
 function applyPermissionGrantResponseScope(
   args: ApplyUserPermissionGrantsArgs,
-):
-  | { readonly agentId: string; readonly workflowId?: never }
-  | { readonly workflowId: string; readonly agentId?: never } {
-  return isWorkflowGrantApply(args.apply)
-    ? { workflowId: args.apply.workflowId }
-    : { agentId: requireAgentGrantApply(args.apply).agentId };
+): { readonly agentId: string } {
+  return { agentId: requireAgentGrantApply(args.apply).agentId };
 }
 
 export const listUserPermissionGrants$ = command(
@@ -669,19 +419,12 @@ export const listUserPermissionGrants$ = command(
     signal: AbortSignal,
   ): Promise<ListUserPermissionGrantsResult> => {
     const db = get(db$);
-    const visibleError = isWorkflowGrantScope(scope)
-      ? await visibleWorkflowOrNotFound(db, {
-          orgId: scope.orgId,
-          userId: scope.userId,
-          role: scope.role,
-          workflowId: scope.workflowId,
-        })
-      : await visibleAgentOrNotFound(db, {
-          orgId: scope.orgId,
-          userId: scope.userId,
-          role: scope.role,
-          agentId: scope.agentId,
-        });
+    const visibleError = await visibleAgentOrNotFound(db, {
+      orgId: scope.orgId,
+      userId: scope.userId,
+      role: scope.role,
+      agentId: scope.agentId,
+    });
     signal.throwIfAborted();
     if (visibleError) {
       return visibleError;

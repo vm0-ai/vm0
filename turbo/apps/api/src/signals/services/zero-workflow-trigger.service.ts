@@ -12,7 +12,6 @@ import {
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { parseScheduledAtTime } from "@vm0/core/timezone";
-import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import {
   workflowUserTriggerThreads,
@@ -748,32 +747,6 @@ function triggerCreateInputIsSchedule(
   return "schedule" in args;
 }
 
-async function ensureWorkflowGmailConnector(
-  db: Db,
-  args: {
-    readonly orgId: string;
-    readonly userId: string;
-    readonly workflowId: string;
-  },
-): Promise<void> {
-  await db
-    .insert(workflowUserConnectors)
-    .values({
-      orgId: args.orgId,
-      userId: args.userId,
-      workflowId: args.workflowId,
-      connectorType: "gmail",
-    })
-    .onConflictDoNothing({
-      target: [
-        workflowUserConnectors.orgId,
-        workflowUserConnectors.userId,
-        workflowUserConnectors.workflowId,
-        workflowUserConnectors.connectorType,
-      ],
-    });
-}
-
 async function insertGmailEventTrigger(
   db: Db,
   args: {
@@ -785,12 +758,6 @@ async function insertGmailEventTrigger(
   },
 ): Promise<ZeroWorkflowTriggerSummary> {
   return await db.transaction(async (tx) => {
-    await ensureWorkflowGmailConnector(tx, {
-      orgId: args.input.orgId,
-      userId: args.input.member.userId,
-      workflowId: args.workflowId,
-    });
-
     const chatThreadId = await ensureWorkflowUserTriggerThread(tx, {
       orgId: args.input.orgId,
       userId: args.input.member.userId,
@@ -1308,7 +1275,7 @@ function manualWorkflowTriggerSystemPrompt(workflowName: string): string {
     `You are running a manual Trigger now run for the "${workflowName}" workflow.`,
     "The workflow's procedure is available as a skill - execute it now.",
     "This run is linked to a web chat thread; everything you output is shown to the user there.",
-    "You are running unattended: connector permissions come from this user's workflow authorization settings, not interactive grants, so blocked requests cannot be approved mid-run. If a request is denied by a permission, do not retry blindly - run `zero doctor permission-deny` to identify the permission, then tell the user which permission this automation needs and that it must be enabled in the workflow authorization settings (the `zero doctor permission-change` link points there).",
+    "Connector permissions use the same agent-run permission settings as chat runs. If a request is denied by a permission, do not retry blindly - run `zero doctor permission-deny` to identify the permission, then tell the user which permission this automation needs.",
   ].join("\n");
 }
 
@@ -1504,12 +1471,6 @@ export const enableWorkflowTrigger$ = command(
       if (watchResult.kind !== "ok") {
         return { kind: "bad-request", message: watchResult.message };
       }
-      await ensureWorkflowGmailConnector(writeDb, {
-        orgId: args.orgId,
-        userId: args.member.userId,
-        workflowId: trigger.workflowId,
-      });
-      signal.throwIfAborted();
     }
     if (trigger.kind === "event" && trigger.eventType === "webhook-received") {
       const featureEnabled = await get(

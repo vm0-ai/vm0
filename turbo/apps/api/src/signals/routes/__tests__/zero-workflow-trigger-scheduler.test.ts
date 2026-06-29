@@ -14,8 +14,6 @@ import { secrets } from "@vm0/db/schema/secret";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
-import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
-import { workflowUserPermissionGrants } from "@vm0/db/schema/workflow-user-permission-grant";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   workflowUserTriggerThreads,
@@ -254,7 +252,7 @@ async function runIdForTrigger(db: Db, triggerId: string): Promise<string> {
 }
 
 describe("zero workflow trigger scheduler", () => {
-  it("isolates trigger-run permissions: uses workflow user grants, never agent grants", async () => {
+  it("uses agent connector authorization and permission grants for trigger runs", async () => {
     const scenario = await setup();
     const db = store.set(writeDb$);
 
@@ -277,14 +275,12 @@ describe("zero workflow trigger scheduler", () => {
       encryptedValue: await encryptStoredSecretValue("gmail-access-token"),
       type: "connector",
     });
-    // Enable Gmail for the agent; trigger runs still use workflow connector refs.
     await db.insert(userConnectors).values({
       orgId: scenario.fixture.orgId,
       userId: scenario.fixture.userId,
       agentId: scenario.agentId,
       connectorType: "gmail",
     });
-    // An agent/user grant that an isolated trigger run must NOT inherit.
     await db.insert(userPermissionGrants).values({
       orgId: scenario.fixture.orgId,
       userId: scenario.fixture.userId,
@@ -293,20 +289,6 @@ describe("zero workflow trigger scheduler", () => {
       permission: "messages.write",
       action: "allow",
     });
-    await db.insert(workflowUserConnectors).values({
-      orgId: scenario.fixture.orgId,
-      userId: scenario.fixture.userId,
-      workflowId: scenario.workflowId,
-      connectorType: "gmail",
-    });
-    await db.insert(workflowUserPermissionGrants).values({
-      orgId: scenario.fixture.orgId,
-      userId: scenario.fixture.userId,
-      workflowId: scenario.workflowId,
-      connectorRef: "gmail",
-      permission: "labels.write",
-      action: "allow",
-    });
 
     const trigger = await seedTrigger(scenario, {
       scheduleType: "loop",
@@ -321,69 +303,10 @@ describe("zero workflow trigger scheduler", () => {
       db,
       await runIdForTrigger(db, trigger.triggerId),
     );
-    // The workflow-scoped policy is honored.
-    expect(policies?.gmail?.allow ?? []).toContain("labels.write");
-    // The agent grant is NOT inherited by the unattended run.
-    expect(policies?.gmail?.allow ?? []).not.toContain("messages.write");
-    // It resolves to deny, and no permission is left as ask in an unattended run.
-    expect(policies?.gmail?.deny ?? []).toContain("messages.write");
-    expect(policies?.gmail?.ask ?? []).toHaveLength(0);
+    expect(policies?.gmail?.allow ?? []).toContain("messages.write");
   });
 
-  it("does not grant connector access from workflow grants when the workflow connector is disabled", async () => {
-    const scenario = await setup();
-    const db = store.set(writeDb$);
-
-    await db.insert(connectors).values({
-      orgId: scenario.fixture.orgId,
-      userId: scenario.fixture.userId,
-      type: "gmail",
-      authMethod: "oauth",
-      externalEmail: "trigger-user@example.com",
-      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
-      oauthScopes: JSON.stringify([
-        "https://www.googleapis.com/auth/gmail.modify",
-      ]),
-    });
-    await db.insert(secrets).values({
-      orgId: scenario.fixture.orgId,
-      userId: scenario.fixture.userId,
-      name: "GMAIL_ACCESS_TOKEN",
-      encryptedValue: await encryptStoredSecretValue("gmail-access-token"),
-      type: "connector",
-    });
-    await db.insert(userConnectors).values({
-      orgId: scenario.fixture.orgId,
-      userId: scenario.fixture.userId,
-      agentId: scenario.agentId,
-      connectorType: "gmail",
-    });
-    await db.insert(workflowUserPermissionGrants).values({
-      orgId: scenario.fixture.orgId,
-      userId: scenario.fixture.userId,
-      workflowId: scenario.workflowId,
-      connectorRef: "gmail",
-      permission: "labels.write",
-      action: "allow",
-    });
-
-    const trigger = await seedTrigger(scenario, {
-      scheduleType: "loop",
-      intervalSeconds: 60,
-      nextRunAt: pastDate(),
-    });
-
-    const result = await store.set(executeDueWorkflowTriggers$, context.signal);
-    expect(result.executed).toBe(1);
-
-    const policies = await runNetworkPolicies(
-      db,
-      await runIdForTrigger(db, trigger.triggerId),
-    );
-    expect(policies?.gmail).toBeUndefined();
-  });
-
-  it("exposes the trigger and workflow ids to the run environment", async () => {
+  it("does not expose workflow permission deep-link ids to the run environment", async () => {
     const scenario = await setup();
     const trigger = await seedTrigger(scenario, {
       scheduleType: "loop",
@@ -399,8 +322,8 @@ describe("zero workflow trigger scheduler", () => {
       db,
       await runIdForTrigger(db, trigger.triggerId),
     );
-    expect(environment.ZERO_WORKFLOW_TRIGGER_ID).toBe(trigger.triggerId);
-    expect(environment.ZERO_WORKFLOW_ID).toBe(scenario.workflowId);
+    expect(environment.ZERO_WORKFLOW_TRIGGER_ID).toBeUndefined();
+    expect(environment.ZERO_WORKFLOW_ID).toBeUndefined();
   });
 
   it("fires a due cron trigger: creates a run, posts to the thread, sets last_run_id", async () => {

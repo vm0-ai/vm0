@@ -13,8 +13,6 @@ import {
   zeroWorkflowWebhookTriggers,
   zeroWorkflows,
 } from "@vm0/db/schema/zero-workflow";
-import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
-import { workflowUserPermissionGrants } from "@vm0/db/schema/workflow-user-permission-grant";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
@@ -826,7 +824,7 @@ describe("zero workflows", () => {
     );
   });
 
-  it("copies caller-owned workflow triggers, connector access, and permission grants", async () => {
+  it("copies caller-owned workflow triggers", async () => {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),
     );
@@ -869,41 +867,7 @@ describe("zero workflows", () => {
     const workflowId = created.body.id;
 
     const otherUserId = `user_${randomUUID()}`;
-    const grantExpiresAt = new Date("2099-01-01T00:00:00.000Z");
     const nextRunAt = new Date("2099-01-01T09:00:00.000Z");
-    await db.insert(workflowUserConnectors).values([
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        workflowId,
-        connectorType: "gmail",
-      },
-      {
-        orgId: fixture.orgId,
-        userId: otherUserId,
-        workflowId,
-        connectorType: "slack",
-      },
-    ]);
-    await db.insert(workflowUserPermissionGrants).values([
-      {
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        workflowId,
-        connectorRef: "gmail",
-        permission: "messages.read",
-        action: "allow",
-        expiresAt: grantExpiresAt,
-      },
-      {
-        orgId: fixture.orgId,
-        userId: otherUserId,
-        workflowId,
-        connectorRef: "slack",
-        permission: "chat.write",
-        action: "allow",
-      },
-    ]);
 
     const [sourceScheduleTrigger] = await db
       .insert(zeroWorkflowTriggers)
@@ -984,42 +948,6 @@ describe("zero workflows", () => {
       [201],
     );
 
-    const copiedConnectors = await db
-      .select({ connectorType: workflowUserConnectors.connectorType })
-      .from(workflowUserConnectors)
-      .where(
-        and(
-          eq(workflowUserConnectors.orgId, fixture.orgId),
-          eq(workflowUserConnectors.userId, fixture.userId),
-          eq(workflowUserConnectors.workflowId, copied.body.id),
-        ),
-      );
-    expect(
-      copiedConnectors.map((row) => {
-        return row.connectorType;
-      }),
-    ).toStrictEqual(["gmail"]);
-
-    const copiedGrants = await db
-      .select()
-      .from(workflowUserPermissionGrants)
-      .where(
-        and(
-          eq(workflowUserPermissionGrants.orgId, fixture.orgId),
-          eq(workflowUserPermissionGrants.userId, fixture.userId),
-          eq(workflowUserPermissionGrants.workflowId, copied.body.id),
-        ),
-      );
-    expect(copiedGrants).toHaveLength(1);
-    expect(copiedGrants[0]).toMatchObject({
-      connectorRef: "gmail",
-      permission: "messages.read",
-      action: "allow",
-    });
-    expect(copiedGrants[0]?.expiresAt?.toISOString()).toBe(
-      grantExpiresAt.toISOString(),
-    );
-
     const copiedTriggers = await db
       .select()
       .from(zeroWorkflowTriggers)
@@ -1089,17 +1017,6 @@ describe("zero workflows", () => {
         ),
       );
     expect(leakedTriggers).toHaveLength(0);
-    const leakedGrants = await db
-      .select()
-      .from(workflowUserPermissionGrants)
-      .where(
-        and(
-          eq(workflowUserPermissionGrants.orgId, fixture.orgId),
-          eq(workflowUserPermissionGrants.userId, otherUserId),
-          eq(workflowUserPermissionGrants.workflowId, copied.body.id),
-        ),
-      );
-    expect(leakedGrants).toHaveLength(0);
   });
 
   it("gets or creates the shared workflow chat thread with a slash prompt", async () => {

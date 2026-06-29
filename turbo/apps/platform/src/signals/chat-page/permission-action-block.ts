@@ -9,10 +9,8 @@ type PermissionAction = "allow" | "deny";
 type PlatformHostTarget = "api" | "www" | "app" | "platform";
 
 export interface PermissionActionDescriptor {
-  scope: "agent" | "workflow";
+  scope: "agent";
   agentId: string;
-  workflowId: string | null;
-  triggerId: string | null;
   connectorRef: FirewallMetadataConnectorType;
   permission: string;
   action: PermissionAction;
@@ -31,10 +29,7 @@ export type PermissionActionBlock = PermissionActionDescriptor & {
 };
 
 function permissionActionHref(descriptor: PermissionActionDescriptor): string {
-  const path =
-    descriptor.scope === "workflow" && descriptor.workflowId
-      ? `/agents/${encodeURIComponent(descriptor.agentId)}/workflows/${encodeURIComponent(descriptor.workflowId)}/permissions`
-      : `/agents/${encodeURIComponent(descriptor.agentId)}/permissions`;
+  const path = `/agents/${encodeURIComponent(descriptor.agentId)}/permissions`;
   return descriptor.search ? `${path}?${descriptor.search}` : path;
 }
 
@@ -147,27 +142,13 @@ function isPermissionAction(value: string): value is PermissionAction {
 }
 
 type ParsedPermissionActionPath = {
-  scope: "agent" | "workflow";
+  scope: "agent";
   agentId: string;
-  workflowId: string | null;
-  triggerId: string | null;
 };
 
 function parsePermissionActionPath(
   pathname: string,
 ): ParsedPermissionActionPath | null {
-  const workflowMatch = pathname.match(
-    /^\/agents\/([^/]+)\/workflows\/([^/]+)(?:\/triggers\/([^/]+))?\/permissions$/,
-  );
-  if (workflowMatch) {
-    return {
-      scope: "workflow",
-      agentId: workflowMatch[1] ?? "",
-      workflowId: workflowMatch[2] ?? "",
-      triggerId: workflowMatch[3] ?? null,
-    };
-  }
-
   const agentMatch = pathname.match(/^\/agents\/([^/]+)\/permissions$/);
   if (!agentMatch) {
     return null;
@@ -176,20 +157,7 @@ function parsePermissionActionPath(
   return {
     scope: "agent",
     agentId: agentMatch[1] ?? "",
-    workflowId: null,
-    triggerId: null,
   };
-}
-
-function normalizedPermissionActionSearch(
-  url: URL,
-  triggerId: string | null,
-): string {
-  const normalizedSearchParams = new URLSearchParams(url.searchParams);
-  if (triggerId && !normalizedSearchParams.has("triggerId")) {
-    normalizedSearchParams.set("triggerId", triggerId);
-  }
-  return normalizedSearchParams.toString();
 }
 
 export function parsePermissionActionUrl(
@@ -208,7 +176,6 @@ export function parsePermissionActionUrl(
   if (!path) {
     return null;
   }
-  const triggerId = path.triggerId ?? url.searchParams.get("triggerId");
   const connectorRef = url.searchParams.get("ref");
   const permission = url.searchParams.get("permission");
   const action = url.searchParams.get("action") ?? "allow";
@@ -233,8 +200,6 @@ export function parsePermissionActionUrl(
   return {
     scope: path.scope,
     agentId: path.agentId,
-    workflowId: path.workflowId,
-    triggerId,
     connectorRef,
     permission,
     action,
@@ -242,7 +207,7 @@ export function parsePermissionActionUrl(
     path: requestPath,
     reason,
     expiresIn,
-    search: normalizedPermissionActionSearch(url, triggerId),
+    search: url.searchParams.toString(),
     originalUrl: value,
   };
 }

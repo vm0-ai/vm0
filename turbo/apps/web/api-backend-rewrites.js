@@ -177,10 +177,6 @@ const ZERO_AGENT_USER_CONNECTORS_REWRITE_SOURCE =
   "/api/zero/agents/:id/user-connectors";
 const ZERO_AGENT_USER_CONNECTORS_PATH_RE =
   /^\/api\/zero\/agents\/[^/]+\/user-connectors$/;
-const ZERO_WORKFLOW_USER_CONNECTORS_REWRITE_SOURCE = `/api/zero/workflows/:id(${UUID_PATH_SEGMENT_PATTERN})/user-connectors`;
-const ZERO_WORKFLOW_USER_CONNECTORS_PATH_RE = new RegExp(
-  `^/api/zero/workflows/${UUID_PATH_SEGMENT_PATTERN}/user-connectors$`,
-);
 const ZERO_CUSTOM_CONNECTORS_REWRITE_SOURCE = "/api/zero/custom-connectors";
 const ZERO_CUSTOM_CONNECTORS_PATH_RE = /^\/api\/zero\/custom-connectors$/;
 const ZERO_CUSTOM_CONNECTOR_BY_ID_REWRITE_SOURCE =
@@ -1000,11 +996,6 @@ export const API_BACKEND_REWRITES = [
     ZERO_AGENT_USER_CONNECTORS_REWRITE_SOURCE,
     "/api/zero/agents/:id/user-connectors",
     ZERO_AGENT_USER_CONNECTORS_PATH_RE,
-  ],
-  [
-    ZERO_WORKFLOW_USER_CONNECTORS_REWRITE_SOURCE,
-    "/api/zero/workflows/:id/user-connectors",
-    ZERO_WORKFLOW_USER_CONNECTORS_PATH_RE,
   ],
   [
     ZERO_AGENT_DRAFT_REWRITE_SOURCE,

@@ -235,10 +235,7 @@ import { openRenameChatThreadDialog$ } from "../../signals/zero-page/zero-sideba
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
-import {
-  WORKFLOW_DETAIL_TAB_PARAM,
-  workflowDetail,
-} from "../../signals/workflows-page/workflows-signals.ts";
+import { WORKFLOW_DETAIL_TAB_PARAM } from "../../signals/workflows-page/workflows-signals.ts";
 import {
   atTimeInTimezone,
   cronWallTimeInTimezone,
@@ -310,7 +307,6 @@ import {
   findPermissionInMetadata,
   resolveUserPermissionGrantPolicy,
   userPermissionGrantsByAgent,
-  userPermissionGrantsByWorkflow,
 } from "../../signals/permission-allow/permission-allow-signals.ts";
 import type { FirewallPermissionDetailMetadata } from "@vm0/connectors/firewall-metadata";
 import { firewallPermissionMetadataByConnector } from "../../signals/firewall-permission-metadata.ts";
@@ -5792,9 +5788,7 @@ function createPermissionActionHandler(params: {
         detach(
           params.applyGrant(
             {
-              ...(params.block.scope === "workflow" && params.block.workflowId
-                ? { workflowId: params.block.workflowId }
-                : { agentId: params.block.agentId }),
+              agentId: params.block.agentId,
               connectorRef: params.block.connectorRef,
               permission: permissionName,
               action: params.block.action,
@@ -5814,7 +5808,6 @@ function createPermissionActionHandler(params: {
 function PermissionActionCardContent({
   block,
   connectorLabel,
-  targetLabel,
   actionLabel,
   permissionName,
   buttonState,
@@ -5826,7 +5819,6 @@ function PermissionActionCardContent({
 }: {
   block: PermissionActionBlock;
   connectorLabel: string;
-  targetLabel: string | null;
   actionLabel: string;
   permissionName: string;
   buttonState: PermissionActionButtonState;
@@ -5856,7 +5848,6 @@ function PermissionActionCardContent({
           </div>
           <div className="mt-0.5 line-clamp-2 text-sm leading-5 text-muted-foreground">
             {actionLabel} {permissionName}
-            {targetLabel ? ` for ${targetLabel}` : ""}
           </div>
           {expiryText && (
             <div className="mt-0.5 text-xs font-medium text-amber-700 dark:text-amber-400">
@@ -5887,13 +5878,11 @@ function PermissionActionCardContent({
 function PermissionActionCardForTarget({
   block,
   hasTarget,
-  targetLabel,
   targetLoadableState,
   userGrantsLoadable,
 }: {
   block: PermissionActionBlock;
   hasTarget: boolean;
-  targetLabel: string | null;
   targetLoadableState: string;
   userGrantsLoadable: LoadableLike<readonly PermissionActionUserGrant[]>;
 }) {
@@ -5933,7 +5922,6 @@ function PermissionActionCardForTarget({
     <PermissionActionCardContent
       block={block}
       connectorLabel={config.label}
-      targetLabel={block.scope === "workflow" ? targetLabel : null}
       actionLabel={actionState.actionLabel}
       permissionName={actionState.focusedPermission?.name ?? block.permission}
       buttonState={actionState.buttonState}
@@ -5970,55 +5958,17 @@ function AgentPermissionActionCard({
     }),
   );
   const agent = agentLoadable.state === "hasData" ? agentLoadable.data : null;
-  const targetLabel = agent?.displayName ?? block.agentId;
   return (
     <PermissionActionCardForTarget
       block={block}
       hasTarget={Boolean(agent)}
-      targetLabel={targetLabel}
       targetLoadableState={agentLoadable.state}
       userGrantsLoadable={userGrantsLoadable}
     />
   );
 }
 
-function WorkflowPermissionActionCard({
-  block,
-  workflowId,
-}: {
-  block: PermissionActionBlock;
-  workflowId: string;
-}) {
-  const workflowLoadable = useLastLoadable(workflowDetail(workflowId));
-  const userGrantsLoadable = useLoadable(
-    userPermissionGrantsByWorkflow({
-      workflowId,
-    }),
-  );
-  const workflow =
-    workflowLoadable.state === "hasData" ? workflowLoadable.data : null;
-  const targetLabel =
-    workflow?.displayName ?? workflow?.name ?? "this workflow";
-  return (
-    <PermissionActionCardForTarget
-      block={block}
-      hasTarget={Boolean(workflow)}
-      targetLabel={targetLabel}
-      targetLoadableState={workflowLoadable.state}
-      userGrantsLoadable={userGrantsLoadable}
-    />
-  );
-}
-
 function PermissionActionCard({ block }: { block: PermissionActionBlock }) {
-  if (block.scope === "workflow" && block.workflowId) {
-    return (
-      <WorkflowPermissionActionCard
-        block={block}
-        workflowId={block.workflowId}
-      />
-    );
-  }
   return <AgentPermissionActionCard block={block} />;
 }
 

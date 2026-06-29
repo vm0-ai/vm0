@@ -11,7 +11,6 @@ import {
   type ZeroWorkflowTriggerSummary,
   type ZeroWorkflowTriggerUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
-import { zeroWorkflowUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { getClientConfig, handleError } from "../core/client-factory";
 
 export async function listWorkflows(query: {
@@ -97,19 +96,6 @@ export async function runWorkflow(
   const result = await client.run({ params: { workflowId } });
   if (result.status === 200) return result.body;
   handleError(result, `Failed to run workflow "${workflowId}"`);
-}
-
-export async function getZeroWorkflowUserConnectors(
-  workflowId: string,
-): Promise<string[]> {
-  const config = await getClientConfig();
-  const client = initClient(zeroWorkflowUserConnectorsContract, config);
-  const result = await client.get({ params: { id: workflowId } });
-  if (result.status === 200) return result.body.enabledTypes;
-  handleError(
-    result,
-    `Failed to get connector permissions for zero workflow "${workflowId}"`,
-  );
 }
 
 export async function listWorkflowTriggers(

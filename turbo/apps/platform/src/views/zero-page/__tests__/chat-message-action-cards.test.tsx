@@ -1,10 +1,6 @@
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import {
-  zeroWorkflowsDetailContract,
-  type ZeroWorkflowDetailResponse,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import {
   zeroUserPermissionGrantsContract,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -24,7 +20,6 @@ import { mockChatLifecycle } from "./chat-test-helpers.ts";
 const context = testContext();
 
 const AGENT_ID = "c0000000-0000-4000-a000-000000000001";
-const WORKFLOW_ID = "f0000001-0000-4000-a000-000000000901";
 const THREAD_ID = "thread-action-cards";
 
 function connectedConnector(
@@ -55,33 +50,6 @@ function mockAgentConnectorAuthorizations(initialTypes: string[]): void {
     enabledTypes = body.enabledTypes;
     return respond(200, { enabledTypes });
   });
-}
-
-function workflowDetailResponse(
-  overrides: Partial<ZeroWorkflowDetailResponse> = {},
-): ZeroWorkflowDetailResponse {
-  return {
-    id: WORKFLOW_ID,
-    agentId: AGENT_ID,
-    agentName: null,
-    agentDisplayName: null,
-    name: "daily-inbox-triage",
-    displayName: "Daily inbox triage",
-    description: null,
-    visibility: "private",
-    requestToPublish: false,
-    ownerUserId: "test-user-123",
-    canManage: true,
-    createdByUserId: "test-user-123",
-    updatedByUserId: "test-user-123",
-    createdAt: "2026-06-09T10:00:00Z",
-    updatedAt: "2026-06-09T10:00:00Z",
-    instruction: null,
-    files: null,
-    fileContents: null,
-    triggers: [],
-    ...overrides,
-  };
 }
 
 function encodeBase64UrlJson(value: unknown): string {
@@ -186,115 +154,6 @@ describe("chat message action cards", () => {
       expect(
         within(permissionCard).getByText("Permissions updated"),
       ).toBeInTheDocument();
-    });
-  });
-
-  it("lets users confirm workflow permission requests from assistant messages", async () => {
-    const user = userEvent.setup({ delay: null });
-    const triggerId = "f0000001-0000-4000-a000-000000000902";
-    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/workflows/${WORKFLOW_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=24h&triggerId=${triggerId}`;
-    let capturedBody: unknown = null;
-
-    context.mocks.api(
-      zeroWorkflowsDetailContract.get,
-      ({ params, respond }) => {
-        if (params.workflowId !== WORKFLOW_ID) {
-          return respond(404, {
-            error: {
-              code: "NOT_FOUND",
-              message: "Workflow not found",
-            },
-          });
-        }
-        return respond(200, workflowDetailResponse());
-      },
-    );
-    context.mocks.api(
-      zeroUserPermissionGrantsContract.list,
-      ({ query, respond }) => {
-        expect(query).toMatchObject({ workflowId: WORKFLOW_ID });
-        expect(query).not.toHaveProperty("agentId");
-        return respond(200, []);
-      },
-    );
-    context.mocks.api(
-      zeroUserPermissionGrantsContract.apply,
-      ({ body, respond }) => {
-        const grant = body.grants[0];
-        if (!grant) {
-          throw new Error("Expected a permission grant");
-        }
-        capturedBody = body;
-        expect(body).not.toHaveProperty("agentId");
-        return respond(200, [
-          {
-            workflowId: body.workflowId,
-            connectorRef: body.connectorRef,
-            permission: grant.permission,
-            action: grant.action,
-            expiresAt: "2026-06-10T11:00:00.000Z",
-            createdAt: "2026-06-09T11:00:00Z",
-            updatedAt: "2026-06-09T11:01:00Z",
-          },
-        ]);
-      },
-    );
-
-    mockChatLifecycle(context, {
-      threadId: `${THREAD_ID}-workflow-permission`,
-      threadTitle: "Workflow permission card",
-      chatMessages: [
-        {
-          id: "msg-user-workflow-permission-request",
-          role: "user",
-          content: "Workflow needs Gmail access",
-          runId: "run-workflow-permission",
-          createdAt: "2026-06-09T11:00:00Z",
-        },
-        {
-          id: "msg-assistant-workflow-permission-card",
-          role: "assistant",
-          content: permissionAuthorizeUrl,
-          runId: "run-workflow-permission",
-          createdAt: "2026-06-09T11:01:00Z",
-        },
-      ],
-    });
-
-    detachedSetupPage({
-      context,
-      path: `/chats/${THREAD_ID}-workflow-permission`,
-    });
-
-    const permissionCard = await screen.findByTestId("permission-action-card");
-    expect(
-      within(permissionCard).getByText("Gmail permissions"),
-    ).toBeInTheDocument();
-    expect(
-      within(permissionCard).getByText(
-        "Allow messages.write for Daily inbox triage",
-      ),
-    ).toBeInTheDocument();
-    expect(within(permissionCard).getByText("24 hours")).toBeInTheDocument();
-
-    await confirmPermissionAction(user, permissionCard);
-
-    await waitFor(() => {
-      expect(
-        within(permissionCard).getByText("Permissions updated"),
-      ).toBeInTheDocument();
-      expect(capturedBody).toMatchObject({
-        workflowId: WORKFLOW_ID,
-        connectorRef: "gmail",
-        mode: "patch",
-        grants: [
-          {
-            permission: "messages.write",
-            action: "allow",
-            expiresIn: "24h",
-          },
-        ],
-      });
     });
   });
 

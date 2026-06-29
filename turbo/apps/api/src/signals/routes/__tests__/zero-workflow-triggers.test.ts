@@ -12,7 +12,6 @@ import { connectors } from "@vm0/db/schema/connector";
 import { gmailWatchStates } from "@vm0/db/schema/gmail-event";
 import { secrets } from "@vm0/db/schema/secret";
 import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { workflowUserConnectors } from "@vm0/db/schema/workflow-user-connector";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
   workflowUserTriggerThreads,
@@ -815,18 +814,6 @@ describe("zero workflow triggers", () => {
       lastHistoryId: "100",
       needsRewatch: false,
     });
-
-    const grants = await db
-      .select({ connectorType: workflowUserConnectors.connectorType })
-      .from(workflowUserConnectors)
-      .where(
-        and(
-          eq(workflowUserConnectors.orgId, fixture.orgId),
-          eq(workflowUserConnectors.userId, fixture.userId),
-          eq(workflowUserConnectors.workflowId, workflowId),
-        ),
-      );
-    expect(grants).toStrictEqual([{ connectorType: "gmail" }]);
 
     const updated = await accept(
       triggersClient().update({

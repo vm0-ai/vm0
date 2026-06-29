@@ -82,8 +82,7 @@ export const currentAgentId$ = computed((get) => {
     route !== "agentIdeas" &&
     route !== "agentPermissions" &&
     route !== "agentWorkflows" &&
-    route !== "agentWorkflowDetail" &&
-    route !== "agentWorkflowTriggerPermissions"
+    route !== "agentWorkflowDetail"
   ) {
     return null;
   }
