@@ -34,6 +34,7 @@ import {
   setSecretKmsClientForTests,
 } from "../../services/crypto.utils";
 import { writeDb$, type Db } from "../../external/db";
+import { zeroChatThreadMessagesPage } from "../../services/zero-chat-thread.service";
 import { executeDueWorkflowTriggers$ } from "../../services/zero-workflow-trigger-poller.service";
 import { handleWorkflowTriggerInternalCallback } from "../../services/zero-workflow-trigger-run-callback.service";
 import {
@@ -239,6 +240,53 @@ async function runEnvironment(db: Db, runId: string) {
     .parse(job.ctx).environment;
 }
 
+async function setOwnerTimezone(
+  scenario: Scenario,
+  timezone: string,
+): Promise<void> {
+  await store
+    .set(writeDb$)
+    .update(orgMembersMetadata)
+    .set({ timezone })
+    .where(
+      and(
+        eq(orgMembersMetadata.orgId, scenario.fixture.orgId),
+        eq(orgMembersMetadata.userId, scenario.fixture.userId),
+      ),
+    );
+}
+
+async function workflowUserMessageBrief(args: {
+  readonly threadId: string;
+  readonly userId: string;
+  readonly runId: string;
+}): Promise<string | undefined> {
+  const page = await store.get(
+    zeroChatThreadMessagesPage({
+      threadId: args.threadId,
+      userId: args.userId,
+      sinceId: undefined,
+      beforeId: undefined,
+      limit: 20,
+    }),
+  );
+  const message = page?.messages.find((candidate) => {
+    return candidate.role === "user" && candidate.runId === args.runId;
+  });
+  expect(message).toMatchObject({
+    role: "user",
+    content: `/${WORKFLOW_NAME}`,
+  });
+  return message?.workflowSnapshot?.triggerBrief ?? undefined;
+}
+
+function friendlyTriggeredAtPattern(timezone: string): string {
+  return String.raw`Triggered at \d{1,2}:\d{2} [AP]M, [A-Z][a-z]{2} \d{1,2}, \d{4} \(${timezone.replace(
+    /\//gu,
+    String.raw`\/`,
+  )}\)`;
+}
+
 async function runIdForTrigger(db: Db, triggerId: string): Promise<string> {
   const [run] = await db
     .select({ id: zeroRuns.id })
@@ -328,6 +376,7 @@ describe("zero workflow trigger scheduler", () => {
 
   it("fires a due cron trigger: creates a run, posts to the thread, sets last_run_id", async () => {
     const scenario = await setup();
+    await setOwnerTimezone(scenario, "Asia/Shanghai");
     const { triggerId, threadId } = await seedTrigger(scenario, {
       scheduleType: "cron",
       cronExpression: "0 9 * * *",
@@ -339,11 +388,23 @@ describe("zero workflow trigger scheduler", () => {
 
     const db = store.set(writeDb$);
     const runs = await db
-      .select({ id: zeroRuns.id, triggerSource: zeroRuns.triggerSource })
+      .select({
+        id: zeroRuns.id,
+        triggerSource: zeroRuns.triggerSource,
+        triggerBrief: zeroRuns.triggerBrief,
+      })
       .from(zeroRuns)
       .where(eq(zeroRuns.workflowTriggerId, triggerId));
     expect(runs).toHaveLength(1);
     expect(runs[0]?.triggerSource).toBe("workflow-schedule");
+    expect(runs[0]?.triggerBrief).toMatch(
+      new RegExp(
+        `^${friendlyTriggeredAtPattern(
+          "Asia/Shanghai",
+        )}\\nSchedule: Every day at 5:00 PM$`,
+        "u",
+      ),
+    );
 
     const trigger = await loadTrigger(db, triggerId);
     expect(trigger?.nextRunAt).toBeNull();
@@ -358,6 +419,13 @@ describe("zero workflow trigger scheduler", () => {
         return m.role === "user" && m.content === `/${WORKFLOW_NAME}`;
       }),
     ).toBeTruthy();
+    await expect(
+      workflowUserMessageBrief({
+        threadId,
+        userId: scenario.fixture.userId,
+        runId: runs[0]!.id,
+      }),
+    ).resolves.toBe(runs[0]?.triggerBrief);
 
     const callbacks = await db
       .select({ internalKind: agentRunCallbacks.internalKind })
@@ -410,7 +478,8 @@ describe("zero workflow trigger scheduler", () => {
 
   it("disables a one-time trigger when it fires", async () => {
     const scenario = await setup();
-    const { triggerId } = await seedTrigger(scenario, {
+    await setOwnerTimezone(scenario, "Asia/Shanghai");
+    const { triggerId, threadId } = await seedTrigger(scenario, {
       scheduleType: "once",
       nextRunAt: pastDate(),
     });
@@ -421,6 +490,56 @@ describe("zero workflow trigger scheduler", () => {
     const trigger = await loadTrigger(store.set(writeDb$), triggerId);
     expect(trigger?.enabled).toBeFalsy();
     expect(trigger?.nextRunAt).toBeNull();
+    const [run] = await store
+      .set(writeDb$)
+      .select({ id: zeroRuns.id, triggerBrief: zeroRuns.triggerBrief })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.workflowTriggerId, triggerId));
+    expect(run?.triggerBrief).toMatch(
+      new RegExp(
+        `^Once at \\d{1,2}:\\d{2} [AP]M, [A-Z][a-z]{2} \\d{1,2}, \\d{4} \\(Asia\\/Shanghai\\)$`,
+        "u",
+      ),
+    );
+    await expect(
+      workflowUserMessageBrief({
+        threadId,
+        userId: scenario.fixture.userId,
+        runId: run!.id,
+      }),
+    ).resolves.toBe(run?.triggerBrief);
+  });
+
+  it("fires a due loop trigger with a persisted friendly trigger brief", async () => {
+    const scenario = await setup();
+    await setOwnerTimezone(scenario, "Asia/Shanghai");
+    const { triggerId, threadId } = await seedTrigger(scenario, {
+      scheduleType: "loop",
+      intervalSeconds: 3600,
+      nextRunAt: pastDate(),
+    });
+
+    const result = await store.set(executeDueWorkflowTriggers$, context.signal);
+    expect(result.executed).toBe(1);
+
+    const [run] = await store
+      .set(writeDb$)
+      .select({ id: zeroRuns.id, triggerBrief: zeroRuns.triggerBrief })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.workflowTriggerId, triggerId));
+    expect(run?.triggerBrief).toMatch(
+      new RegExp(
+        `^${friendlyTriggeredAtPattern("Asia/Shanghai")}\\nEvery 1 hour$`,
+        "u",
+      ),
+    );
+    await expect(
+      workflowUserMessageBrief({
+        threadId,
+        userId: scenario.fixture.userId,
+        runId: run!.id,
+      }),
+    ).resolves.toBe(run?.triggerBrief);
   });
 
   it("skips a trigger whose previous run is still active", async () => {

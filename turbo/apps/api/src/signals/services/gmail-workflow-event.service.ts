@@ -1360,7 +1360,7 @@ function buildGmailWorkflowEventSystemPrompt(args: {
   ].join("\n");
 }
 
-export function buildGmailWorkflowTriggerBrief(args: {
+function buildGmailWorkflowTriggerBrief(args: {
   readonly triggerConfig: GmailWorkflowEventConfig;
   readonly message: {
     readonly messageId: string;

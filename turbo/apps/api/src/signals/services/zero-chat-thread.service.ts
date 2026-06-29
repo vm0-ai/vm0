@@ -50,7 +50,7 @@ import {
 import { z } from "zod";
 
 import { type Db, db$, writeDb$ } from "../external/db";
-import { isValidTimeZone, safeJsonParse } from "../utils";
+import { safeJsonParse } from "../utils";
 import {
   inferMimetype,
   insertAssistantEventMessages$,
@@ -60,6 +60,7 @@ import {
 } from "./zero-chat-message-shared.service";
 import { excludeGoalMarkerCondition } from "./zero-chat-goal-marker.service";
 import { cancelRun$, type CancelRunResult } from "./zero-run-cancel.service";
+import { buildWorkflowScheduleTriggerBrief } from "./zero-workflow-trigger-brief.service";
 
 export { insertAssistantEventMessages$ };
 
@@ -565,144 +566,6 @@ function normalizeUsagePayload(
   };
 }
 
-function datePart(
-  parts: Intl.DateTimeFormatPart[],
-  type: Intl.DateTimeFormatPartTypes,
-): string {
-  return (
-    parts.find((part) => {
-      return part.type === type;
-    })?.value ?? ""
-  );
-}
-
-function displayTimezone(args: {
-  readonly userTimezone: string | null;
-  readonly triggerTimezone: string | null;
-}): string {
-  const candidates = [args.userTimezone, args.triggerTimezone, "UTC"];
-  return (
-    candidates.find((candidate) => {
-      return candidate !== null && isValidTimeZone(candidate);
-    }) ?? "UTC"
-  );
-}
-
-function formatWorkflowTriggerDateTime(date: Date, timezone: string): string {
-  const parts = new Intl.DateTimeFormat("en-US", {
-    timeZone: timezone,
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-    hour12: true,
-  }).formatToParts(date);
-  const time = `${datePart(parts, "hour")}:${datePart(
-    parts,
-    "minute",
-  )} ${datePart(parts, "dayPeriod")}`;
-  return `${time}, ${datePart(parts, "month")} ${datePart(
-    parts,
-    "day",
-  )}, ${datePart(parts, "year")} (${timezone})`;
-}
-
-function formatWorkflowIntervalSeconds(seconds: number): string {
-  if (seconds % 3600 === 0) {
-    const hours = seconds / 3600;
-    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
-  }
-  if (seconds % 60 === 0) {
-    const minutes = seconds / 60;
-    return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
-  }
-  return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
-}
-
-function formatCronRule(
-  cronExpression: string,
-  timezone: string,
-  triggeredAt: Date,
-): string {
-  const [minutePart, hourPart, dayOfMonth = "*", , dayOfWeek = "*"] =
-    cronExpression.split(" ");
-  const minute = Number(minutePart);
-  const hour = Number(hourPart);
-  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
-    return `${cronExpression} (${timezone})`;
-  }
-  const time = formatWorkflowTriggerDateTime(triggeredAt, timezone).split(
-    ", ",
-  )[0];
-  if (dayOfMonth !== "*") {
-    return `Every month on day ${dayOfMonth} at ${time}`;
-  }
-  if (dayOfWeek === "1-5") {
-    return `Every weekday at ${time}`;
-  }
-  if (dayOfWeek !== "*") {
-    const dayNames: Readonly<Record<string, string>> = {
-      "0": "Sunday",
-      "1": "Monday",
-      "2": "Tuesday",
-      "3": "Wednesday",
-      "4": "Thursday",
-      "5": "Friday",
-      "6": "Saturday",
-    };
-    const days = dayOfWeek
-      .split(",")
-      .map((day) => {
-        return dayNames[day];
-      })
-      .filter(Boolean)
-      .join(", ");
-    return days ? `Every week on ${days} at ${time}` : `Every week at ${time}`;
-  }
-  return `Every day at ${time}`;
-}
-
-export function buildWorkflowScheduleTriggerBrief(args: {
-  readonly createdAt: Date;
-  readonly scheduleType: string | null;
-  readonly cronExpression: string | null;
-  readonly intervalSeconds: number | null;
-  readonly atTime: Date | null;
-  readonly triggerTimezone: string | null;
-  readonly userTimezone: string | null;
-}): string | null {
-  if (args.scheduleType === null) {
-    return null;
-  }
-  const timezone = displayTimezone(args);
-  const triggeredAt = formatWorkflowTriggerDateTime(args.createdAt, timezone);
-  if (args.scheduleType === "cron") {
-    const cronExpression = args.cronExpression?.trim();
-    if (!cronExpression) {
-      return `Triggered at ${triggeredAt}`;
-    }
-    return [
-      `Triggered at ${triggeredAt}`,
-      `Schedule: ${formatCronRule(cronExpression, timezone, args.createdAt)}`,
-    ].join("\n");
-  }
-  if (args.scheduleType === "loop") {
-    if (!args.intervalSeconds) {
-      return `Triggered at ${triggeredAt}`;
-    }
-    return [
-      `Triggered at ${triggeredAt}`,
-      `Every ${formatWorkflowIntervalSeconds(args.intervalSeconds)}`,
-    ].join("\n");
-  }
-  const onceAt = formatWorkflowTriggerDateTime(
-    args.atTime ?? args.createdAt,
-    timezone,
-  );
-  return `Once at ${onceAt}`;
-}
-
 function workflowScheduleTriggerBrief(row: ChatMessageRow): string | null {
   if (row.workflowTriggerKind !== "schedule") {
     return null;
@@ -731,7 +594,7 @@ function workflowSnapshotFromRow(
     displayName: row.workflowDisplayName,
     description: row.workflowDescription,
     triggerId: row.workflowTriggerId ?? undefined,
-    triggerBrief: workflowScheduleTriggerBrief(row) ?? row.workflowTriggerBrief,
+    triggerBrief: row.workflowTriggerBrief ?? workflowScheduleTriggerBrief(row),
   };
 }
 
