@@ -2059,6 +2059,73 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     await api.requestCancelRun(actor, run.runId, [200]);
   });
 
+  it("does not decrypt stored connector secrets overridden by compose environment", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const connectors = createConnectorBddApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await connectors.connectManualGrant(actor, "agora", "api-token", {
+      AGORA_CUSTOMER_ID: "agora-customer-id",
+      AGORA_CUSTOMER_SECRET: "agora-customer-secret",
+      AGORA_APP_ID: "agora-app-id",
+      AGORA_APP_CERTIFICATE: "agora-stored-certificate",
+    });
+    const composeName = `bdd-compose-overrides-connector-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: {
+            ANTHROPIC_API_KEY: "bdd-inline-key",
+            AGORA_APP_CERTIFICATE: "inline-agora-certificate",
+          },
+        },
+      },
+    });
+
+    const kms = fakeKmsClient();
+    setSecretKmsClientForTests(kms.client);
+    onTestFinished(() => {
+      resetSecretKmsClientForTests();
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "use compose-overridden agora certificate",
+    });
+    expect(
+      kms.calls.filter((call) => {
+        return call instanceof DecryptCommand;
+      }),
+    ).toHaveLength(0);
+    const timingEvents = apiDispatchTimingEventsForRun(run.runId);
+    expectNoApiDispatchActions(timingEvents, [
+      "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
+    ]);
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    expect(claim.environment?.AGORA_CUSTOMER_ID).toBe(
+      connectorPlaceholder("agora", "AGORA_CUSTOMER_ID"),
+    );
+    expect(claim.environment?.AGORA_CUSTOMER_SECRET).toBe(
+      connectorPlaceholder("agora", "AGORA_CUSTOMER_SECRET"),
+    );
+    expect(claim.environment?.AGORA_APP_ID).toBe("agora-app-id");
+    expect(claim.environment?.AGORA_APP_CERTIFICATE).toBe(
+      "inline-agora-certificate",
+    );
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
   it("maps stored connector variable sources to runtime aliases for permission manifests", async () => {
     const bdd = createBddApi(context);
     const api = createRunsAutomationsApi(context);

@@ -2405,6 +2405,19 @@ function overriddenRuntimeSecretAliases(
   return aliases;
 }
 
+function referencedEnvironmentSecretAliases(
+  environment: Record<string, string> | undefined,
+): ReadonlySet<string> {
+  if (!environment) {
+    return new Set();
+  }
+  return new Set(
+    extractAndGroupVariables(environment).secrets.map((ref) => {
+      return ref.name;
+    }),
+  );
+}
+
 async function materializeStoredConnectorContext(
   snapshot: StoredConnectorMaterializationSnapshot | null,
   args: {
@@ -2458,21 +2471,23 @@ async function materializeStoredConnectorContext(
 function eagerStoredConnectorSecretNames(args: {
   readonly snapshot: StoredConnectorMaterializationSnapshot;
   readonly storedEnvironment: Record<string, string> | undefined;
+  readonly referencedEnvironmentSecretAliases: ReadonlySet<string>;
   readonly environmentSecretPlaceholders:
     | Readonly<Record<string, string>>
     | undefined;
   readonly overriddenSecretAliases: ReadonlySet<string>;
 }): ReadonlySet<string> {
   const names = new Set<string>();
-  if (!args.storedEnvironment) {
-    return names;
-  }
 
   for (const { runtimeBindings } of args.snapshot.bindingSets) {
     for (const { envName, source } of runtimeBindings) {
+      const isNeededByStoredEnvironment =
+        args.storedEnvironment?.[envName] !== undefined;
+      const isNeededByExplicitEnvironment =
+        args.referencedEnvironmentSecretAliases.has(envName);
       if (
         source.kind !== "connector-secret" ||
-        args.storedEnvironment[envName] === undefined ||
+        (!isNeededByStoredEnvironment && !isNeededByExplicitEnvironment) ||
         args.environmentSecretPlaceholders?.[envName] !== undefined ||
         args.overriddenSecretAliases.has(envName)
       ) {
@@ -2492,6 +2507,8 @@ async function materializeEagerStoredConnectorSecrets(
     readonly orgId: string;
     readonly userId: string;
     readonly featureSwitchContext: FeatureSwitchContext;
+    readonly eagerStoredEnvironment: Record<string, string> | undefined;
+    readonly referencedEnvironmentSecretAliases: ReadonlySet<string>;
     readonly environmentSecretPlaceholders:
       | Readonly<Record<string, string>>
       | undefined;
@@ -2506,7 +2523,8 @@ async function materializeEagerStoredConnectorSecrets(
 
   const eagerNames = eagerStoredConnectorSecretNames({
     snapshot,
-    storedEnvironment: context.storedEnvironment,
+    storedEnvironment: args.eagerStoredEnvironment,
+    referencedEnvironmentSecretAliases: args.referencedEnvironmentSecretAliases,
     environmentSecretPlaceholders: args.environmentSecretPlaceholders,
     overriddenSecretAliases: args.overriddenSecretAliases,
   });
@@ -2537,6 +2555,30 @@ async function materializeEagerStoredConnectorSecrets(
   return {
     ...context,
     secrets: mergeRecords(context.secrets, resolved.secrets),
+  };
+}
+
+function eagerStoredConnectorSecretInputs(args: {
+  readonly content: AgentComposeContent;
+  readonly modelProvider: ResolvedModelProviderEnvironment | null;
+  readonly connectorContext: ConnectorRuntimeContext;
+}): {
+  readonly eagerStoredEnvironment: Record<string, string> | undefined;
+  readonly referencedEnvironmentSecretAliases: ReadonlySet<string>;
+} {
+  const additionalEnvironment = args.modelProvider?.environment;
+  return {
+    eagerStoredEnvironment: effectiveStoredConnectorEnvironment({
+      content: args.content,
+      additionalEnvironment,
+      storedConnectorEnvironment: args.connectorContext.storedEnvironment,
+    }),
+    referencedEnvironmentSecretAliases: referencedEnvironmentSecretAliases(
+      environmentTemplates({
+        content: args.content,
+        additionalEnvironment,
+      }),
+    ),
   };
 }
 
@@ -5544,6 +5586,11 @@ async function prepareRunRuntimeContext(args: {
       orgId: args.createArgs.orgId,
       userId: args.createArgs.userId,
       featureSwitchContext,
+      ...eagerStoredConnectorSecretInputs({
+        content: resolved.content,
+        modelProvider,
+        connectorContext,
+      }),
       environmentSecretPlaceholders:
         permissionManifest?.environmentSecretPlaceholders,
       overriddenSecretAliases: overriddenConnectorSecretAliases,
