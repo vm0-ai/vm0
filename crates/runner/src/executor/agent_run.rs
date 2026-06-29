@@ -1160,22 +1160,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     };
 
     if failure.is_none() {
-        let verified_restored_session_identity =
-            verify_restored_session_identity_for_reuse(sandbox, context, restored_session_identity)
-                .await;
-        if produced_restored_session_identity && verified_restored_session_identity.is_some() {
-            telemetry.record(
-                "session_history_identity_restored",
-                Duration::ZERO,
-                true,
-                None,
-            );
-        }
-        restored_session_identity = verified_restored_session_identity;
-        if restored_session_identity.is_none()
-            && let Some(final_identity) =
-                read_final_session_history_identity(sandbox, context).await
-        {
+        if let Some(final_identity) = read_final_session_history_identity(sandbox, context).await {
             telemetry.record(
                 "session_history_identity_finalized",
                 Duration::ZERO,
@@ -1183,6 +1168,22 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 None,
             );
             restored_session_identity = Some(final_identity);
+        } else {
+            let verified_restored_session_identity = verify_restored_session_identity_for_reuse(
+                sandbox,
+                context,
+                restored_session_identity,
+            )
+            .await;
+            if produced_restored_session_identity && verified_restored_session_identity.is_some() {
+                telemetry.record(
+                    "session_history_identity_restored",
+                    Duration::ZERO,
+                    true,
+                    None,
+                );
+            }
+            restored_session_identity = verified_restored_session_identity;
         }
     }
 

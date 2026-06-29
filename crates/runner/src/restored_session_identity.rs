@@ -63,16 +63,18 @@ pub(crate) enum RestoredSessionHistoryVerification<'a> {
 impl RestoredSessionIdentity {
     pub(crate) fn new(
         framework: RestoredSessionFramework,
-        cli_agent_session_id: &str,
+        identity_session_id: &str,
         history_ref_kind: ResumeSessionHistoryRefKind,
         history_hash: impl Into<String>,
         history_size_bytes: Option<u64>,
         guest_history_path: Option<String>,
     ) -> Self {
+        // Callers pass the framework-normalized identity id. Claude Code uses
+        // the raw session id; Codex uses the canonical thread id.
         Self {
             framework,
             restore_format_version: framework.restore_format_version(),
-            session_id_hash: hex::encode(Sha256::digest(cli_agent_session_id.as_bytes())),
+            session_id_hash: hex::encode(Sha256::digest(identity_session_id.as_bytes())),
             history_ref_kind,
             history_hash: history_hash.into(),
             history_size_bytes,
@@ -87,6 +89,7 @@ impl RestoredSessionIdentity {
         metadata_path: impl Into<String>,
         runtime_dir: impl Into<String>,
     ) -> Option<Self> {
+        metadata.validate().ok()?;
         let framework = restored_session_framework_from_final(metadata.framework);
         let history_ref_kind = resume_history_ref_kind_from_final(metadata.history_ref_kind);
         let identity = Self {

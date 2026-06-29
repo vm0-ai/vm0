@@ -476,6 +476,7 @@ async fn run_in_sandbox_skips_verified_session_history_restore() {
             "/home/user/.claude/projects/-home-user-workspace/sess-skip-123.jsonl",
         );
     sandbox.push_read_file_result(Ok(Some(history.to_vec())));
+    sandbox.push_read_file_result(Ok(None));
     sandbox.push_read_file_result(Ok(Some(history.to_vec())));
     let mut telemetry = test_telemetry(&config, &ctx);
 
@@ -499,7 +500,7 @@ async fn run_in_sandbox_skips_verified_session_history_restore() {
 
     assert!(result.failure.is_none());
     assert_eq!(result.restored_session_identity, Some(identity));
-    assert_eq!(sandbox.read_file_calls().len(), 2);
+    assert_eq!(sandbox.read_file_calls().len(), 3);
     assert!(sandbox.write_file_calls().is_empty());
     history_mock.assert_calls_async(0).await;
     let ops = telemetry.pending_ops_snapshot();
@@ -552,6 +553,9 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
         },
     });
     let (metadata_path, runtime_dir) = final_identity_runtime_paths(&ctx);
+    let previous_metadata_path =
+        "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json";
+    let previous_runtime_dir = "/home/user/.vm0/guest-agent/runs/previous";
     let metadata = FinalSessionHistoryIdentity::new(
         FinalSessionHistoryFramework::ClaudeCode,
         hex::encode(Sha256::digest(session_id.as_bytes())),
@@ -561,11 +565,20 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
         claude_history_path(session_id),
     )
     .unwrap();
-    let identity =
-        RestoredSessionIdentity::from_final_metadata(metadata, metadata_path, runtime_dir)
-            .expect("checkpointed identity");
+    let idle_identity = RestoredSessionIdentity::from_final_metadata(
+        metadata.clone(),
+        previous_metadata_path,
+        previous_runtime_dir,
+    )
+    .expect("checkpointed identity");
+    let final_identity = RestoredSessionIdentity::from_final_metadata(
+        metadata.clone(),
+        metadata_path.clone(),
+        runtime_dir,
+    )
+    .expect("final identity");
     sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
-    sandbox.push_exec_result(Ok(ExecResult::new(0, Vec::new(), Vec::new())));
+    sandbox.push_read_file_result(Ok(Some(metadata.to_json_vec().unwrap())));
     let mut telemetry = test_telemetry(&config, &ctx);
 
     let result = run_in_sandbox(
@@ -580,17 +593,30 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
         &mut telemetry,
         RunControls::new(tokio_util::sync::CancellationToken::new(), None)
             .with_session_history_restore_plan(SessionHistoryRestorePlan::SkipVerified(
-                identity.clone(),
+                idle_identity,
             )),
     )
     .await
     .unwrap();
 
     assert!(result.failure.is_none());
-    assert_eq!(result.restored_session_identity, Some(identity));
-    assert!(sandbox.read_file_calls().is_empty());
+    assert_eq!(result.restored_session_identity, Some(final_identity));
+    assert_eq!(
+        result
+            .restored_session_identity
+            .as_ref()
+            .and_then(RestoredSessionIdentity::final_metadata_path),
+        Some(metadata_path.as_str())
+    );
+    let read_calls = sandbox.read_file_calls();
+    assert_eq!(read_calls.len(), 1);
+    assert_eq!(read_calls[0].path, metadata_path);
+    assert_eq!(
+        read_calls[0].max_bytes,
+        FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES + 1
+    );
     let exec_calls = sandbox.exec_calls();
-    assert_eq!(exec_calls.len(), 2);
+    assert_eq!(exec_calls.len(), 1);
     for call in exec_calls {
         assert!(call.cmd.contains("verify-session-history-identity"));
         assert_eq!(
@@ -654,6 +680,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_fails()
         RestoredSessionIdentity::from_final_metadata(metadata, metadata_path, runtime_dir)
             .expect("checkpointed identity");
     sandbox.push_exec_result(Ok(ExecResult::new(1, Vec::new(), Vec::new())));
+    sandbox.push_read_file_result(Ok(None));
     sandbox.push_read_file_result(Ok(Some(history.to_vec())));
     let mut telemetry = test_telemetry(&config, &ctx);
 
@@ -749,6 +776,7 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
             history.len() as u64,
             "/home/user/.claude/projects/-home-user-workspace/sess-mismatch-skip-123.jsonl",
         );
+    sandbox.push_read_file_result(Ok(None));
     sandbox.push_read_file_result(Ok(Some(history.to_vec())));
     let mut telemetry = test_telemetry(&config, &ctx);
 
@@ -779,7 +807,7 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
         "/home/user/.claude/projects/-home-user-workspace/sess-mismatch-skip-123.jsonl"
     );
     assert_eq!(writes[0].content, history);
-    assert_eq!(sandbox.read_file_calls().len(), 1);
+    assert_eq!(sandbox.read_file_calls().len(), 2);
     let ops = telemetry.pending_ops_snapshot();
     assert!(
         ops.iter()
@@ -823,6 +851,7 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_is_stale_before_sta
             history.len() as u64,
             "/home/user/.claude/projects/-home-user-workspace/sess-stale-skip-123.jsonl",
         );
+    sandbox.push_read_file_result(Ok(None));
     sandbox.push_read_file_result(Ok(None));
     sandbox.push_read_file_result(Ok(Some(history.to_vec())));
     let mut telemetry = test_telemetry(&config, &ctx);
@@ -906,6 +935,7 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_has_invalid_path() 
     let idle_identity = RestoredSessionIdentity::from_context(&ctx)
         .expect("identity")
         .with_guest_history(history.len() as u64, "relative/session.jsonl");
+    sandbox.push_read_file_result(Ok(None));
     sandbox.push_read_file_result(Ok(Some(history.to_vec())));
     let mut telemetry = test_telemetry(&config, &ctx);
 
@@ -937,9 +967,9 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_has_invalid_path() 
     );
     assert_eq!(writes[0].content, history);
     let read_calls = sandbox.read_file_calls();
-    assert_eq!(read_calls.len(), 1);
+    assert_eq!(read_calls.len(), 2);
     assert_eq!(
-        read_calls[0].path,
+        read_calls[1].path,
         "/home/user/.claude/projects/-home-user-workspace/sess-invalid-path-123.jsonl"
     );
     let ops = telemetry.pending_ops_snapshot();
@@ -985,6 +1015,7 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_is_too_large_to_ver
             SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES,
             "/home/user/.claude/projects/-home-user-workspace/sess-large-skip-123.jsonl",
         );
+    sandbox.push_read_file_result(Ok(None));
     sandbox.push_read_file_result(Ok(Some(history.to_vec())));
     let mut telemetry = test_telemetry(&config, &ctx);
 
@@ -1016,12 +1047,12 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_is_too_large_to_ver
     );
     assert_eq!(writes[0].content, history);
     let read_calls = sandbox.read_file_calls();
-    assert_eq!(read_calls.len(), 1);
+    assert_eq!(read_calls.len(), 2);
     assert_eq!(
-        read_calls[0].path,
+        read_calls[1].path,
         "/home/user/.claude/projects/-home-user-workspace/sess-large-skip-123.jsonl"
     );
-    assert_eq!(read_calls[0].max_bytes, history.len() as u64 + 1);
+    assert_eq!(read_calls[1].max_bytes, history.len() as u64 + 1);
     let ops = telemetry.pending_ops_snapshot();
     assert!(
         ops.iter()
@@ -1060,6 +1091,7 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
         },
     });
     let expected_identity = RestoredSessionIdentity::from_context(&ctx).expect("identity");
+    sandbox.push_read_file_result(Ok(None));
     sandbox.push_read_file_result(Ok(Some(history.to_vec())));
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
@@ -1144,6 +1176,7 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
             },
         },
     });
+    sandbox.push_read_file_result(Ok(None));
     sandbox.push_read_file_result(Ok(Some(history.to_vec())));
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
@@ -1226,6 +1259,7 @@ async fn run_in_sandbox_clears_restored_identity_when_history_changes_before_par
     });
     let mut changed_history = history.to_vec();
     changed_history[0] = b'[';
+    sandbox.push_read_file_result(Ok(None));
     sandbox.push_read_file_result(Ok(Some(changed_history)));
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
@@ -1285,7 +1319,6 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
         },
     });
     let (metadata_path, _) = final_identity_runtime_paths(&ctx);
-    sandbox.push_read_file_result(Ok(Some(final_history.to_vec())));
     sandbox.push_read_file_result(Ok(Some(final_identity_metadata_bytes(
         session_id,
         final_history,
@@ -1333,12 +1366,10 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
     assert_eq!(identity.guest_history_path(), None);
     assert_eq!(identity.final_metadata_path(), Some(metadata_path.as_str()));
     let read_calls = sandbox.read_file_calls();
-    assert_eq!(read_calls.len(), 2);
-    assert_eq!(read_calls[0].path, claude_history_path(session_id));
-    assert_eq!(read_calls[0].max_bytes, history.len() as u64 + 1);
-    assert_eq!(read_calls[1].path, metadata_path);
+    assert_eq!(read_calls.len(), 1);
+    assert_eq!(read_calls[0].path, metadata_path);
     assert_eq!(
-        read_calls[1].max_bytes,
+        read_calls[0].max_bytes,
         FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES + 1
     );
     let ops = telemetry.pending_ops_snapshot();
