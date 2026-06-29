@@ -297,11 +297,12 @@ Notes:
         }
         const method = parseDeniedMethod(opts.method);
         const deniedUrl = parseDeniedUrl(opts.url);
+        const deniedPath = rawPathFromDeniedUrl(opts.url);
 
         if (
           isComputerUsePermissionTarget({
             connectorRef,
-            path: deniedUrl.pathname,
+            path: deniedPath,
           })
         ) {
           printComputerUsePermissionGuidance();
