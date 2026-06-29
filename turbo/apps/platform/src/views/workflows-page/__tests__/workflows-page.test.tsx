@@ -24,6 +24,10 @@ import {
 import { pathname, search } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
+  patchWorkflowMetadataForm$,
+  setWorkflowFileDraft$,
+} from "../../../signals/workflows-page/workflows-signals.ts";
+import {
   mockChatLifecycle,
   PLACEHOLDER,
 } from "../../zero-page/__tests__/chat-test-helpers.ts";
@@ -725,6 +729,37 @@ describe("workflow detail page", () => {
     expect(search()).toBe("?tab=instructions&file=config%2Fsettings.json");
   });
 
+  it("ignores stale workflow instruction drafts without edit permission", async () => {
+    const workflow = {
+      ...salesResearch(),
+      canManage: false,
+    };
+    context.store.set(setWorkflowFileDraft$, {
+      workflowId: SALES_WORKFLOW_ID,
+      filePath: null,
+      sourceContent: "Gather CRM context before outreach.",
+      content: "Unsaved local workflow draft.",
+    });
+    mockWorkflowApis([workflow]);
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("instructions"),
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Gather CRM context before outreach."),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.queryByText("Unsaved local workflow draft."),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("You have unsaved changes"),
+    ).not.toBeInTheDocument();
+  });
+
   it("opens the shared workflow chat thread with the workflow slash command", async () => {
     const openedWorkflowIds: string[] = [];
     mockChatLifecycle(context, { threadId: WORKFLOW_CHAT_THREAD_ID });
@@ -836,6 +871,31 @@ describe("workflow detail page", () => {
         description: "Use when an account needs a fresh research brief.",
       });
     });
+  });
+
+  it("ignores stale workflow metadata edits without edit permission", async () => {
+    const workflow = {
+      ...salesResearch(),
+      canManage: false,
+    };
+    context.store.set(patchWorkflowMetadataForm$, {
+      workflowId: SALES_WORKFLOW_ID,
+      patch: { displayName: "Unsaved Account Brief" },
+    });
+    mockWorkflowApis([workflow]);
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("info"),
+    });
+
+    const form = await screen.findByRole("form", {
+      name: "Workflow metadata",
+    });
+    expect(within(form).getByLabelText("Name")).toHaveValue("Sales Research");
+    expect(
+      screen.queryByText("You have unsaved changes"),
+    ).not.toBeInTheDocument();
   });
 
   it("derives the active tab from workflow detail search params", async () => {

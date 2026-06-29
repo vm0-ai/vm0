@@ -728,12 +728,17 @@ function WorkflowMetadataForm({
   const disabled = !detail.canManage || saving;
   const defaults = workflowMetadataDefaults(detail);
   const values =
-    patch?.workflowId === detail.id ? { ...defaults, ...patch } : defaults;
+    detail.canManage && patch?.workflowId === detail.id
+      ? { ...defaults, ...patch }
+      : defaults;
   const dirty =
     values.displayName !== defaults.displayName ||
     values.name !== defaults.name ||
     values.description !== defaults.description;
   const patchValues = (patch: Partial<WorkflowMetadataValues>) => {
+    if (!detail.canManage || saving) {
+      return;
+    }
     patchForm({ workflowId: detail.id, patch });
   };
   const save = () => {
@@ -785,7 +790,7 @@ function WorkflowMetadataForm({
           values={values}
         />
       </form>
-      {dirty ? (
+      {detail.canManage && dirty ? (
         <ZeroUnsavedBar onDiscard={resetForm} onSave={save} saving={saving} />
       ) : null}
     </>
@@ -1429,12 +1434,15 @@ function WorkflowSelectedFileEditor({
     draftState?.workflowId === detail.id &&
     draftState.filePath === selectedFilePath &&
     draftState.sourceContent === sourceContent;
-  const draft = draftMatches ? draftState.content : null;
+  const draft = detail.canManage && draftMatches ? draftState.content : null;
   const content = draft ?? sourceContent;
   const dirty = draft !== null && draft !== sourceContent;
   const markdown =
     selectedFilePath === null || isMarkdownPath(selectedFilePath);
   const setDraft = (nextContent: string) => {
+    if (!detail.canManage || saving) {
+      return;
+    }
     setDraftState({
       workflowId: detail.id,
       filePath: selectedFilePath,
@@ -1494,7 +1502,7 @@ function WorkflowSelectedFileEditor({
           }}
         />
       )}
-      {dirty ? (
+      {detail.canManage && dirty ? (
         <ZeroUnsavedBar
           saving={saving}
           onDiscard={() => {
