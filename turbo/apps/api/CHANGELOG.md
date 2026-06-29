@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.189.1](https://github.com/vm0-ai/vm0/compare/api-v1.189.0...api-v1.189.1) (2026-06-29)
+
+
+### Refactoring
+
+* remove legacy agent run telemetry route ([#19358](https://github.com/vm0-ai/vm0/issues/19358)) ([be6301c](https://github.com/vm0-ai/vm0/commit/be6301cd6a9dc5f81f87c37d511e845f9c512f20))
+
+
+### Performance Improvements
+
+* split zero web chat pre-create timing ([#19356](https://github.com/vm0-ai/vm0/issues/19356)) ([f765730](https://github.com/vm0-ai/vm0/commit/f7657309d326e84c10b05321d12829be21f9185e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.126.1
+    * @vm0/core bumped to 8.376.1
+    * @vm0/db bumped to 1.78.1
+
 ## [1.189.0](https://github.com/vm0-ai/vm0/compare/api-v1.188.0...api-v1.189.0) (2026-06-29)
 
 
