@@ -55,14 +55,13 @@ On first start, Caddy will automatically obtain a Let's Encrypt certificate (~30
 
 ### 3. Access Applications
 
-- Web: https://www.vm7.ai:8443
+- Marketing: https://www.vm7.ai:8443
 - App: https://app.vm7.ai:8443
 - API: https://api.vm7.ai:8443
 - SO: https://so.vm7.ai:8443
 
 Direct access (HTTP only):
 
-- Web: http://localhost:3000
 - App: http://localhost:3002
 - API: http://localhost:3001
 
@@ -79,13 +78,13 @@ The `Caddyfile` defines:
 
 ### Domain Mapping
 
-| Domain          | Port | Backend                      |
-| --------------- | ---- | ---------------------------- |
-| www.vm7.ai:8443 | 8443 | localhost:3000 (Next.js web) |
-| app.vm7.ai:8443 | 8443 | localhost:3002 (Vite app)    |
-| api.vm7.ai:8443 | 8443 | localhost:3001 (Hono API)    |
-| so.vm7.ai:8443  | 8443 | staging-so.vm6.ai            |
-| vm7.ai:8443     | 8443 | Redirect to www.vm7.ai:8443  |
+| Domain          | Port | Backend                     |
+| --------------- | ---- | --------------------------- |
+| www.vm7.ai:8443 | 8443 | staging-so.vm6.ai           |
+| app.vm7.ai:8443 | 8443 | localhost:3002 (Vite app)   |
+| api.vm7.ai:8443 | 8443 | localhost:3001 (Hono API)   |
+| so.vm7.ai:8443  | 8443 | staging-so.vm6.ai           |
+| vm7.ai:8443     | 8443 | Redirect to www.vm7.ai:8443 |
 
 ## Scripts
 

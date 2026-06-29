@@ -30,8 +30,7 @@ db_import_pattern="from ['\"]@vm0/db(/|['\"])|require\\(['\"]@vm0/db(/|['\"])|im
 if matches=$(git grep -n -E "$db_import_pattern" -- \
   turbo \
   ':!turbo/apps/api' \
-  ':!turbo/packages/db' \
-  ':!turbo/apps/web/custom-eslint'); then
+  ':!turbo/packages/db'); then
   echo "::error::Only turbo/apps/api and turbo/packages/db may import @vm0/db."
   echo "$matches"
   failed=1
