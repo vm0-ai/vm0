@@ -21,6 +21,7 @@ import {
   IconMessageCircle,
   IconWand,
   IconListCheck,
+  IconPlus,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorType } from "@vm0/connectors/connectors";
@@ -72,6 +73,7 @@ import {
 } from "../../signals/zero-page/zero-job-detail.ts";
 import { runAutomationNow$ } from "../../signals/zero-page/zero-automations.ts";
 import { zeroOnboardingStatus$ } from "../../signals/zero-page/zero-onboarding.ts";
+import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { Link } from "../router/link.tsx";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
 import {
@@ -120,8 +122,16 @@ import {
   type FirewallPermissionDetailMetadata,
 } from "@vm0/connectors/firewall-metadata";
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
-import { agentVisibleWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
+import { openWorkflowAutomationDialogForAgent$ } from "../../signals/automation-page/workflow-trigger-automation-dialog.ts";
+import {
+  agentVisibleWorkflows$,
+  allWorkflowTriggerEntries$,
+} from "../../signals/workflows-page/workflows-signals.ts";
 import { WorkflowListPanel } from "../workflows-page/workflows-page.tsx";
+import {
+  CreateWorkflowAutomationDialog,
+  WorkflowTriggerAutomationList,
+} from "../zero-page/workflow-trigger-automations-page.tsx";
 import {
   DetailPageBreadcrumbBar,
   DetailPageHeader,
@@ -812,7 +822,82 @@ function JobPermissionsTab({
   );
 }
 
-function JobAutomationsTab({ displayName }: { displayName: string }) {
+function JobWorkflowAutomationsTab({
+  agentId,
+  displayName,
+}: {
+  agentId: string;
+  displayName: string;
+}) {
+  const entriesLoadable = useLastLoadable(allWorkflowTriggerEntries$);
+  const prefsLoadable = useLastLoadable(userPreferences$);
+  const openForAgent = useSet(openWorkflowAutomationDialogForAgent$);
+  const entries =
+    entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
+  const displayTimezone =
+    prefsLoadable.state === "hasData" && prefsLoadable.data?.timezone
+      ? prefsLoadable.data.timezone
+      : new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const loading = entriesLoadable.state === "loading";
+  const agentEntries = entries.filter((entry) => {
+    return entry.workflow.agentId === agentId;
+  });
+  const openAddAutomation = () => {
+    openForAgent(agentId);
+  };
+
+  return (
+    <div className="mx-auto flex max-w-[900px] flex-col gap-4">
+      <div className="flex flex-wrap items-end justify-between gap-4">
+        <div className="hidden min-w-0 md:block">
+          <h2 className="text-lg font-semibold tracking-tight text-foreground">
+            Automations
+          </h2>
+          <p className="mt-0.5 text-sm text-muted-foreground">
+            Workflow triggers attached to {displayName}.
+          </p>
+        </div>
+        <Button
+          type="button"
+          variant="outline"
+          size="sm"
+          className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border"
+          onClick={openAddAutomation}
+        >
+          <IconPlus size={14} stroke={2} />
+          Add automation
+        </Button>
+      </div>
+
+      <WorkflowTriggerAutomationList
+        entries={agentEntries}
+        displayTimezone={displayTimezone}
+        loading={loading}
+        onAdd={openAddAutomation}
+      />
+      <CreateWorkflowAutomationDialog />
+    </div>
+  );
+}
+
+function JobAutomationsTab({
+  agentId,
+  displayName,
+}: {
+  agentId: string;
+  displayName: string;
+}) {
+  const features = useLastResolved(featureSwitch$);
+  if (features?.[FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]) {
+    return (
+      <JobWorkflowAutomationsTab agentId={agentId} displayName={displayName} />
+    );
+  }
+
+  return <JobLegacyAutomationsTab displayName={displayName} />;
+}
+
+function JobLegacyAutomationsTab({ displayName }: { displayName: string }) {
   const automationLoadable = useLoadable(agentAutomationEntries$);
   const entries = useLastResolved(agentAutomationEntries$) ?? [];
   const loading = automationLoadable.state === "loading";
@@ -1042,7 +1127,7 @@ function AgentTabContent({
       return <JobPermissionsTab agentId={agentId} displayName={displayName} />;
     }
     case "automations": {
-      return <JobAutomationsTab displayName={displayName} />;
+      return <JobAutomationsTab agentId={agentId} displayName={displayName} />;
     }
     case "workflows": {
       return <JobWorkflowsTab agentId={agentId} />;

@@ -37,6 +37,7 @@ import {
   setWorkflowAutomationAgentQuery$,
   setWorkflowAutomationDialogOpen$,
   setWorkflowAutomationDialogStep$,
+  workflowAutomationAgentSelectionLocked$,
   workflowAutomationAgentQuery$,
   workflowAutomationDialogOpen$,
   workflowAutomationDialogStep$,
@@ -590,17 +591,17 @@ function TriggerSelectionStep({
 }
 
 function WorkflowAutomationDialogFooter({
-  step,
+  showBack,
   onBack,
   onCancel,
 }: {
-  readonly step: 1 | 2;
+  readonly showBack: boolean;
   readonly onBack: () => void;
   readonly onCancel: () => void;
 }) {
   return (
     <DialogFooter className="shrink-0 border-t border-border/60 bg-card px-5 py-4">
-      {step === 2 ? (
+      {showBack ? (
         <Button
           type="button"
           variant="outline"
@@ -618,13 +619,14 @@ function WorkflowAutomationDialogFooter({
   );
 }
 
-function CreateWorkflowAutomationDialog() {
+export function CreateWorkflowAutomationDialog() {
   const agentsLoadable = useLastLoadable(agents$);
   const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
   const open = useGet(workflowAutomationDialogOpen$);
   const setOpen = useSet(setWorkflowAutomationDialogOpen$);
   const step = useGet(workflowAutomationDialogStep$);
   const setStep = useSet(setWorkflowAutomationDialogStep$);
+  const agentSelectionLocked = useGet(workflowAutomationAgentSelectionLocked$);
   const selectedAgentIdState = useGet(selectedWorkflowAutomationAgentId$);
   const setSelectedAgentId = useSet(setSelectedWorkflowAutomationAgentId$);
   const navigate = useSet(detachedNavigateTo$);
@@ -658,7 +660,9 @@ function CreateWorkflowAutomationDialog() {
             Add automation
           </DialogTitle>
           <DialogDescription className="mt-1 text-sm text-muted-foreground">
-            Choose the agent and trigger type for this workflow.
+            {step === 1
+              ? "Choose the agent and trigger type for this workflow."
+              : "Choose the trigger type for this workflow."}
           </DialogDescription>
         </DialogHeader>
 
@@ -674,7 +678,7 @@ function CreateWorkflowAutomationDialog() {
         )}
 
         <WorkflowAutomationDialogFooter
-          step={step}
+          showBack={step === 2 && !agentSelectionLocked}
           onBack={() => {
             setStep(1);
           }}
@@ -684,6 +688,40 @@ function CreateWorkflowAutomationDialog() {
         />
       </DialogContent>
     </Dialog>
+  );
+}
+
+export function WorkflowTriggerAutomationList({
+  entries,
+  displayTimezone,
+  loading,
+  onAdd,
+}: {
+  readonly entries: readonly WorkflowTriggerAutomationEntry[];
+  readonly displayTimezone: string;
+  readonly loading: boolean;
+  readonly onAdd: () => void;
+}) {
+  if (loading) {
+    return <TriggerGridSkeleton />;
+  }
+
+  if (entries.length === 0) {
+    return <EmptyTriggers onAdd={onAdd} />;
+  }
+
+  return (
+    <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
+      {entries.map((entry) => {
+        return (
+          <WorkflowAutomationTriggerCard
+            key={entry.trigger.id}
+            entry={entry}
+            displayTimezone={displayTimezone}
+          />
+        );
+      })}
+    </div>
   );
 }
 
@@ -728,27 +766,14 @@ export function WorkflowTriggerAutomationsPage() {
 
       <main className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6">
         <div className="mx-auto max-w-[1120px]">
-          {loading ? (
-            <TriggerGridSkeleton />
-          ) : entries.length === 0 ? (
-            <EmptyTriggers
-              onAdd={() => {
-                setCreateOpen(true);
-              }}
-            />
-          ) : (
-            <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-3">
-              {entries.map((entry) => {
-                return (
-                  <WorkflowAutomationTriggerCard
-                    key={entry.trigger.id}
-                    entry={entry}
-                    displayTimezone={displayTimezone}
-                  />
-                );
-              })}
-            </div>
-          )}
+          <WorkflowTriggerAutomationList
+            entries={entries}
+            displayTimezone={displayTimezone}
+            loading={loading}
+            onAdd={() => {
+              setCreateOpen(true);
+            }}
+          />
         </div>
       </main>
 
