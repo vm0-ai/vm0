@@ -609,25 +609,40 @@ def _store_trusted_authority_metadata(
     )
 
 
-def _public_destination_runtime_host(flow: http.HTTPFlow) -> object:
+def _public_destination_runtime_hosts(flow: http.HTTPFlow) -> tuple[object, ...]:
+    original_address = upstream_destination_binding.server_binding_original_address(
+        flow.server_conn
+    )
+
     if flow.server_conn.connected:
         connected_endpoint = _connected_ip_destination_endpoint(
             flow.server_conn,
             port=flow.request.port,
         )
-        return connected_endpoint[0] if connected_endpoint is not None else None
+        hosts: list[object] = []
+        if original_address is not None:
+            hosts.append(original_address[0])
+        hosts.append(connected_endpoint[0] if connected_endpoint is not None else None)
+        return tuple(hosts)
 
-    original_address = upstream_destination_binding.server_binding_original_address(
-        flow.server_conn
-    )
     if original_address is not None:
-        return original_address[0]
+        return (original_address[0],)
 
     server_address = _server_address(flow.server_conn)
     if server_address is not None:
-        return server_address[0]
+        return (server_address[0],)
 
-    return flow.request.host
+    return (flow.request.host,)
+
+
+def _public_destination_runtime_denial(
+    flow: http.HTTPFlow,
+) -> public_destination.RuntimeDestinationCheck | None:
+    for runtime_host in _public_destination_runtime_hosts(flow):
+        validation = public_destination.validate_runtime_destination_host(runtime_host)
+        if not validation.allowed:
+            return validation
+    return None
 
 
 def _public_destination_denial(
@@ -640,10 +655,8 @@ def _public_destination_denial(
     if not isinstance(host_policy, dict) or host_policy.get("kind") != "publicDestination":
         return None
 
-    validation = public_destination.validate_runtime_destination_host(
-        _public_destination_runtime_host(flow)
-    )
-    if validation.allowed:
+    validation = _public_destination_runtime_denial(flow)
+    if validation is None:
         return None
 
     raw_base = allow.api_entry.get("base", "")
