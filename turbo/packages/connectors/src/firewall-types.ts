@@ -1621,11 +1621,14 @@ function providerOwnedHostMatches(
     FirewallBaseHostPolicy,
     { readonly kind: "providerOwned" }
   >,
+  options: { readonly allowExactHosts?: boolean } = {},
 ): boolean {
-  const exactHosts = hostPolicy.exactHosts ?? [];
-  for (const exactHost of exactHosts) {
-    if (hostname === normalizeHostPolicyHostname(exactHost)) {
-      return true;
+  if (options.allowExactHosts !== false) {
+    const exactHosts = hostPolicy.exactHosts ?? [];
+    for (const exactHost of exactHosts) {
+      if (hostname === normalizeHostPolicyHostname(exactHost)) {
+        return true;
+      }
     }
   }
 
@@ -1643,6 +1646,31 @@ function providerOwnedHostMatches(
   return false;
 }
 
+function baseUrlAuthorityHasParams(base: string): boolean {
+  const authority = rawAuthorityFromBaseUrl(base);
+  return authority !== null && hasBaseUrlParams(authority);
+}
+
+function urlForHostPolicyValidation(base: string, serviceName: string): URL {
+  if (!baseUrlAuthorityHasParams(base)) return new URL(base);
+  const schemeEnd = base.indexOf("://");
+  const authority = rawAuthorityFromBaseUrl(base);
+  if (schemeEnd === -1 || authority === null) return new URL(base);
+  const authorityParts = splitParameterizedAuthority(
+    authority,
+    base,
+    serviceName,
+  );
+  const host = splitAuthorityHostSegments(authorityParts.normalizedHost)
+    .map((segment) => {
+      return hostSegmentForSyntaxValidation(segment, base, serviceName);
+    })
+    .join(".");
+  return new URL(
+    `${base.slice(0, schemeEnd)}://${host}${authorityParts.portSuffix}`,
+  );
+}
+
 export function validateBaseUrlHostPolicy({
   base,
   diagnosticBase = base,
@@ -1658,10 +1686,15 @@ export function validateBaseUrlHostPolicy({
     return;
   }
 
-  const url = new URL(base);
+  const authorityHasParams = baseUrlAuthorityHasParams(base);
+  const url = urlForHostPolicyValidation(base, serviceName);
   const hostname = normalizeHostPolicyHostname(url.hostname);
   if (hostPolicy.kind === "providerOwned") {
-    if (!providerOwnedHostMatches(hostname, hostPolicy)) {
+    if (
+      !providerOwnedHostMatches(hostname, hostPolicy, {
+        allowExactHosts: !authorityHasParams,
+      })
+    ) {
       throw new Error(
         errMsg(
           diagnosticBase,

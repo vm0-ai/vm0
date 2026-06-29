@@ -91,6 +91,13 @@ describe("firewall expander helpers", () => {
     }).toThrow("host policy does not allow non-public IP literal");
     expect(() => {
       return collectAndValidatePermissions(
+        config("https://127.0.0.1/v1/{path}", {
+          kind: "publicDestination",
+        }),
+      );
+    }).toThrow("host policy does not allow non-public IP literal");
+    expect(() => {
+      return collectAndValidatePermissions(
         config("https://api.evil.test", {
           kind: "providerOwned",
           suffixes: ["example.com"],
@@ -119,6 +126,58 @@ describe("firewall expander helpers", () => {
         }),
       );
     }).not.toThrow();
+  });
+
+  it("collectAndValidatePermissions validates parameterized host policies", () => {
+    const config = (
+      base: string,
+      hostPolicy: FirewallConfig["apis"][number]["hostPolicy"],
+    ): FirewallConfig => {
+      return {
+        name: "parameterized-host-policy",
+        apis: [
+          {
+            base,
+            hostPolicy,
+            auth: { headers: { Authorization: "Bearer token" } },
+            permissions: [],
+          },
+        ],
+      };
+    };
+
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://{sub}.example.com", {
+          kind: "providerOwned",
+          suffixes: ["example.com"],
+        }),
+      );
+    }).not.toThrow();
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://{sub}.evil.test", {
+          kind: "providerOwned",
+          suffixes: ["example.com"],
+        }),
+      );
+    }).toThrow('host policy does not allow resolved host "x.evil.test"');
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://{sub}.example.com", {
+          kind: "providerOwned",
+          exactHosts: ["x.example.com"],
+        }),
+      );
+    }).toThrow('host policy does not allow resolved host "x.example.com"');
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://{sub}.example.com:8443", {
+          kind: "providerOwned",
+          suffixes: ["example.com"],
+        }),
+      );
+    }).toThrow("host policy does not allow non-default ports");
   });
 
   it("collectAndValidatePermissions rejects malformed static auth.base URLs", () => {
