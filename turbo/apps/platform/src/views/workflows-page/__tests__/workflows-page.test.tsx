@@ -1085,18 +1085,20 @@ describe("workflow detail page", () => {
         },
       });
     });
-    await waitFor(() => {
-      expect(
-        screen.getByDisplayValue(webhookWorkflowTrigger().webhookUrl),
-      ).toBeInTheDocument();
-    });
-    expect(
-      screen.getByDisplayValue(webhookWorkflowTrigger().webhookUrl),
-    ).toHaveValue(webhookWorkflowTrigger().webhookUrl);
+    const webhookUrlField = await screen.findByDisplayValue(
+      webhookWorkflowTrigger().webhookUrl,
+    );
+    expect(webhookUrlField).toBeInTheDocument();
+    expect(webhookUrlField).toHaveValue(webhookWorkflowTrigger().webhookUrl);
+    expect(webhookUrlField).toHaveClass("min-w-0");
     expect(screen.getByDisplayValue("webhook-secret")).toHaveValue(
       "webhook-secret",
     );
-    expect(screen.getByText(/X-VM0-Signature/)).toBeInTheDocument();
+    const signedCurlExample = screen
+      .getByText(/X-VM0-Signature/)
+      .closest("pre");
+    expect(signedCurlExample).toBeInTheDocument();
+    expect(signedCurlExample).toHaveClass("whitespace-pre-wrap", "break-all");
   });
 
   it("creates a cron schedule trigger from the preferred time zone", async () => {
