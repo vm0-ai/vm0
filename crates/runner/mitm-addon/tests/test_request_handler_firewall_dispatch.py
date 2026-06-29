@@ -199,6 +199,7 @@ async def test_firewall_match_calls_handler(
         ("169.254.169.254", "non_public_destination"),
         ("::1", "non_public_destination"),
         ("fe80::1", "non_public_destination"),
+        ("3fff::1", "non_public_destination"),
         ("service.example.com", "invalid_destination"),
     ],
 )
@@ -234,7 +235,13 @@ async def test_public_destination_blocks_unsafe_runtime_destination_before_auth(
 
 @pytest.mark.parametrize(
     "destination_host",
-    ["93.184.216.34", "192.0.0.9", "192.0.0.10", "2001:4860:4860::8888"],
+    [
+        "93.184.216.34",
+        "192.0.0.9",
+        "192.0.0.10",
+        "2001:4860:4860::8888",
+        "3fff:1000::1",
+    ],
 )
 async def test_public_destination_allows_public_runtime_destination(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, destination_host

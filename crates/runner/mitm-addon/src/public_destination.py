@@ -46,6 +46,8 @@ _IPV6_ORCHID_SECOND_MIN = 0x0020
 _IPV6_ORCHID_SECOND_MAX = 0x002F
 _IPV6_DRONE_REMOTE_ID_SECOND_MIN = 0x0030
 _IPV6_DRONE_REMOTE_ID_SECOND_MAX = 0x003F
+_IPV6_EXPANDED_DOCUMENTATION_FIRST = 0x3FFF
+_IPV6_EXPANDED_DOCUMENTATION_SECOND_MAX = 0x0FFF
 
 DestinationDenialReason = Literal[
     "missing_destination",
@@ -228,5 +230,10 @@ def _ipv6_literal_is_public_unicast(ip: ipaddress.IPv6Address) -> bool:
     ):
         return _ipv6_special_registry_exception(ip)
     if first == _IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST and second == _IPV6_DOCUMENTATION_SECOND:
+        return False
+    if (
+        first == _IPV6_EXPANDED_DOCUMENTATION_FIRST
+        and second <= _IPV6_EXPANDED_DOCUMENTATION_SECOND_MAX
+    ):
         return False
     return first != _IPV6_6TO4_FIRST

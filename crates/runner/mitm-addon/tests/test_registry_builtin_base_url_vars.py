@@ -403,7 +403,7 @@ class TestRegistryBuiltinBaseUrlVars:
             "https://192.0.0.9",
             "https://192.0.0.10",
             "https://192.0.1.1",
-            "https://[3fff::1]",
+            "https://[3fff:1000::1]",
         ]:
             path = tmp_path / f"registry-{abs(hash(value))}.json"
             write_builtin_firewall_registry(
@@ -441,6 +441,8 @@ class TestRegistryBuiltinBaseUrlVars:
             "https://[2001:1ff::1]",
             "https://[2001:db8::1]",
             "https://[2002:808:808::1]",
+            "https://[3fff::1]",
+            "https://[3fff:0fff::1]",
             "https://[4000::1]",
             "https://[ff0e::1]",
         ]:
