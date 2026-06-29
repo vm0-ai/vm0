@@ -58,6 +58,11 @@ pub(crate) enum RestoredSessionHistoryVerification<'a> {
     FinalIdentityMetadata {
         metadata_path: &'a str,
         runtime_dir: &'a str,
+        framework: FinalSessionHistoryFramework,
+        session_id_hash: &'a str,
+        history_ref_kind: FinalSessionHistoryRefKind,
+        history_hash: &'a str,
+        history_size_bytes: u64,
     },
 }
 
@@ -195,6 +200,11 @@ impl RestoredSessionIdentity {
                 Some(RestoredSessionHistoryVerification::FinalIdentityMetadata {
                     metadata_path,
                     runtime_dir,
+                    framework: final_session_history_framework(self.framework),
+                    session_id_hash: &self.session_id_hash,
+                    history_ref_kind: final_session_history_ref_kind(self.history_ref_kind),
+                    history_hash: &self.history_hash,
+                    history_size_bytes: expected_size,
                 })
             }
         }
@@ -259,10 +269,25 @@ fn restored_session_framework_from_final(
     }
 }
 
+fn final_session_history_framework(
+    framework: RestoredSessionFramework,
+) -> FinalSessionHistoryFramework {
+    match framework {
+        RestoredSessionFramework::ClaudeCode => FinalSessionHistoryFramework::ClaudeCode,
+        RestoredSessionFramework::Codex => FinalSessionHistoryFramework::Codex,
+    }
+}
+
 fn resume_history_ref_kind_from_final(
     kind: FinalSessionHistoryRefKind,
 ) -> ResumeSessionHistoryRefKind {
     match kind {
         FinalSessionHistoryRefKind::Blob => ResumeSessionHistoryRefKind::Blob,
+    }
+}
+
+fn final_session_history_ref_kind(kind: ResumeSessionHistoryRefKind) -> FinalSessionHistoryRefKind {
+    match kind {
+        ResumeSessionHistoryRefKind::Blob => FinalSessionHistoryRefKind::Blob,
     }
 }

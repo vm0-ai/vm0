@@ -620,6 +620,11 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
     for call in exec_calls {
         assert!(call.cmd.contains("verify-session-history-identity"));
         assert!(call.cmd.contains(previous_metadata_path));
+        assert!(call.cmd.contains(metadata.framework.as_str()));
+        assert!(call.cmd.contains(&metadata.session_id_hash));
+        assert!(call.cmd.contains(metadata.history_ref_kind.as_str()));
+        assert!(call.cmd.contains(&metadata.history_hash));
+        assert!(call.cmd.contains(&metadata.history_size_bytes.to_string()));
         assert_eq!(
             call.env_keys,
             vec![guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV]

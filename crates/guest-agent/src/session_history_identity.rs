@@ -6,7 +6,8 @@ use crate::session_history;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use guest_contracts::session_history_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
-    FinalSessionHistoryIdentity, FinalSessionHistoryIdentityError, FinalSessionHistoryRefKind,
+    FinalSessionHistoryIdentity, FinalSessionHistoryIdentityError,
+    FinalSessionHistoryIdentityExpectation, FinalSessionHistoryRefKind,
     SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES,
 };
 use sha2::{Digest, Sha256};
@@ -54,8 +55,14 @@ fn final_framework(framework: env::Framework) -> FinalSessionHistoryFramework {
 /// Verify the current guest session history matches final identity metadata.
 pub fn verify_final_session_history_identity_file(
     metadata_path: impl AsRef<Path>,
+    expected: Option<&FinalSessionHistoryIdentityExpectation>,
 ) -> Result<(), FinalSessionHistoryIdentityVerifyError> {
     let identity = read_final_session_history_identity(metadata_path)?;
+    if let Some(expected) = expected
+        && !expected.matches_identity(&identity)
+    {
+        return Err(FinalSessionHistoryIdentityVerifyError::ExpectedIdentityMismatch);
+    }
     verify_final_session_history_identity(&identity)
 }
 
@@ -140,6 +147,8 @@ pub enum FinalSessionHistoryIdentityVerifyError {
     InvalidMetadata(FinalSessionHistoryIdentityError),
     /// Metadata framework does not match the marker shape.
     FrameworkMismatch,
+    /// Metadata does not match the identity runner expected to verify.
+    ExpectedIdentityMismatch,
     /// Session history bytes could not be read.
     HistoryRead(AgentError),
     /// Session history size or hash does not match metadata.
@@ -153,6 +162,9 @@ impl fmt::Display for FinalSessionHistoryIdentityVerifyError {
             Self::InvalidMetadata(error) => write!(f, "{error}"),
             Self::FrameworkMismatch => {
                 f.write_str("final session history identity framework mismatch")
+            }
+            Self::ExpectedIdentityMismatch => {
+                f.write_str("final session history identity did not match expected identity")
             }
             Self::HistoryRead(_) => f.write_str("final session history could not be read"),
             Self::HistoryMismatch => f.write_str("final session history did not match identity"),
@@ -193,7 +205,7 @@ mod tests {
         .unwrap();
         let metadata_path = write_metadata(&dir, &identity);
 
-        verify_final_session_history_identity_file(metadata_path).unwrap();
+        verify_final_session_history_identity_file(metadata_path, None).unwrap();
     }
 
     #[test]
@@ -221,7 +233,7 @@ mod tests {
         .unwrap();
         let metadata_path = write_metadata(&dir, &identity);
 
-        verify_final_session_history_identity_file(metadata_path).unwrap();
+        verify_final_session_history_identity_file(metadata_path, None).unwrap();
     }
 
     #[test]
@@ -240,7 +252,7 @@ mod tests {
         .unwrap();
         let metadata_path = write_metadata(&dir, &identity);
 
-        let err = verify_final_session_history_identity_file(metadata_path).unwrap_err();
+        let err = verify_final_session_history_identity_file(metadata_path, None).unwrap_err();
         assert!(matches!(
             err,
             FinalSessionHistoryIdentityVerifyError::HistoryMismatch
@@ -258,7 +270,7 @@ mod tests {
         ])
         .unwrap();
 
-        let err = verify_final_session_history_identity_file(metadata_path).unwrap_err();
+        let err = verify_final_session_history_identity_file(metadata_path, None).unwrap_err();
         assert!(matches!(
             err,
             FinalSessionHistoryIdentityVerifyError::InvalidMetadata(
@@ -299,10 +311,43 @@ mod tests {
         .unwrap();
         let metadata_path = write_metadata(&dir, &identity);
 
-        let err = verify_final_session_history_identity_file(metadata_path).unwrap_err();
+        let err = verify_final_session_history_identity_file(metadata_path, None).unwrap_err();
         assert!(matches!(
             err,
             FinalSessionHistoryIdentityVerifyError::HistoryMismatch
+        ));
+    }
+
+    #[test]
+    fn rejects_expected_identity_mismatch() {
+        let dir = tempfile::tempdir().unwrap();
+        let history = br#"{"type":"system"}"#;
+        let history_path = dir.path().join("history.jsonl");
+        std::fs::write(&history_path, history).unwrap();
+        let identity = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            "a".repeat(64),
+            FinalSessionHistoryRefKind::Blob,
+            hex::encode(Sha256::digest(history)),
+            history.len() as u64,
+            history_path.to_string_lossy(),
+        )
+        .unwrap();
+        let expected = FinalSessionHistoryIdentityExpectation::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            "a".repeat(64),
+            FinalSessionHistoryRefKind::Blob,
+            "b".repeat(64),
+            history.len() as u64,
+        )
+        .unwrap();
+        let metadata_path = write_metadata(&dir, &identity);
+
+        let err =
+            verify_final_session_history_identity_file(metadata_path, Some(&expected)).unwrap_err();
+        assert!(matches!(
+            err,
+            FinalSessionHistoryIdentityVerifyError::ExpectedIdentityMismatch
         ));
     }
 }
