@@ -1,5 +1,27 @@
 # Changelog
 
+## [8.376.0](https://github.com/vm0-ai/vm0/compare/core-v8.375.0...core-v8.376.0) (2026-06-29)
+
+
+### Features
+
+* add Google Calendar event-created workflow trigger ([#19345](https://github.com/vm0-ai/vm0/issues/19345)) ([8219bad](https://github.com/vm0-ai/vm0/commit/8219bad3a8ebd3cc0ae373e0546e99118b866466))
+* add presentation template runbook generation switch ([#19341](https://github.com/vm0-ai/vm0/issues/19341)) ([a933ab7](https://github.com/vm0-ai/vm0/commit/a933ab7626d0e5f5f73868f23b21622911afb5b1))
+
+
+### Refactoring
+
+* remove legacy agent compose list route ([#19353](https://github.com/vm0-ai/vm0/issues/19353)) ([8dd78cc](https://github.com/vm0-ai/vm0/commit/8dd78ccabb8ab41a63a7fd0839447a50a3140f20))
+* remove legacy agent compose metadata route ([#19347](https://github.com/vm0-ai/vm0/issues/19347)) ([d60898a](https://github.com/vm0-ai/vm0/commit/d60898aa67a07d672182d015549c48955614ba52))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.126.0
+    * @vm0/connectors bumped to 1.114.0
+
 ## [8.375.0](https://github.com/vm0-ai/vm0/compare/core-v8.374.6...core-v8.375.0) (2026-06-29)
 
 
