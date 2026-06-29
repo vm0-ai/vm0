@@ -19,6 +19,7 @@ import {
   HTML_DOM_EDIT_SELECTED_ATTR,
   HTML_DOM_NODE_ID_ATTR,
   instrumentHtmlDomEditDocument,
+  stripHtmlDomEditInstrumentation,
   stripHtmlDomEditOverlaysFromDocument,
 } from "../../views/zero-page/html-dom-edit-protocol.ts";
 import type {
@@ -46,6 +47,24 @@ interface CommentPopoverAnchor {
   readonly top: number;
 }
 
+export type HtmlDomStyleEditProperty =
+  | "backgroundColor"
+  | "borderColor"
+  | "color";
+
+export interface HtmlDomStyleEdit {
+  readonly backgroundColor?: string;
+  readonly borderColor?: string;
+  readonly color?: string;
+}
+
+export interface HtmlDomSelectedStyle {
+  readonly backgroundColor: string;
+  readonly borderColor: string;
+  readonly color: string;
+  readonly nodeId: string;
+}
+
 interface FrameCleanup {
   readonly run: () => void;
 }
@@ -62,6 +81,7 @@ export interface HtmlDomCommentEditorModel {
   readonly loadState: EditorLoadState;
   readonly popoverTextAreaKey: string;
   readonly prepared: boolean;
+  readonly selectedStyle: HtmlDomSelectedStyle | null;
   readonly submitting: boolean;
 }
 
@@ -141,6 +161,9 @@ const internalHoveredNodeId$ = state<string | null>(null);
 const internalCommentText$ = state("");
 const internalComments$ = state<readonly HtmlDomEditComment[]>([]);
 const internalCommentsOpen$ = state(false);
+const internalStyleEdits$ = state<Readonly<Record<string, HtmlDomStyleEdit>>>(
+  {},
+);
 const internalSubmitting$ = state(false);
 const internalPreparedPayload$ = state<HtmlDomEditPayload | null>(null);
 const internalFrameCleanup$ = state<FrameCleanup | null>(null);
@@ -319,6 +342,124 @@ function syncFrameEditState(
   }
 }
 
+function normalizeHexColor(value: string): string | null {
+  const trimmed = value.trim();
+  const match = /^#?([0-9a-f]{3}|[0-9a-f]{6})$/iu.exec(trimmed);
+  const raw = match?.[1];
+  if (!raw) {
+    return null;
+  }
+  if (raw.length === 3) {
+    return `#${raw
+      .split("")
+      .map((part) => {
+        return `${part}${part}`;
+      })
+      .join("")}`.toLowerCase();
+  }
+  return `#${raw}`.toLowerCase();
+}
+
+function componentToHex(value: number): string {
+  return Math.max(0, Math.min(255, Math.round(value)))
+    .toString(16)
+    .padStart(2, "0");
+}
+
+function cssColorToHex(value: string, fallback: string): string {
+  const hex = normalizeHexColor(value);
+  if (hex) {
+    return hex;
+  }
+
+  const rgbMatch =
+    /^rgba?\(\s*([.\d]+)\s*,\s*([.\d]+)\s*,\s*([.\d]+)(?:\s*,\s*([.\d]+))?\s*\)$/iu.exec(
+      value.trim(),
+    );
+  if (!rgbMatch) {
+    return fallback;
+  }
+
+  const alpha = rgbMatch[4] === undefined ? 1 : Number(rgbMatch[4]);
+  if (alpha === 0) {
+    return fallback;
+  }
+
+  return `#${componentToHex(Number(rgbMatch[1]))}${componentToHex(
+    Number(rgbMatch[2]),
+  )}${componentToHex(Number(rgbMatch[3]))}`;
+}
+
+function selectedElementForNodeId(
+  doc: Document | null | undefined,
+  nodeId: string,
+): HTMLElement | null {
+  const element = doc?.querySelector(nodeSelector(nodeId));
+  return element instanceof HTMLElement ? element : null;
+}
+
+function computedStyleForElement(element: HTMLElement): CSSStyleDeclaration {
+  const view = element.ownerDocument.defaultView ?? window;
+  return view.getComputedStyle(element);
+}
+
+function selectedStyleForNode(params: {
+  readonly doc: Document | null | undefined;
+  readonly nodeId: string;
+  readonly styleEdits: Readonly<Record<string, HtmlDomStyleEdit>>;
+}): HtmlDomSelectedStyle | null {
+  const element = selectedElementForNodeId(params.doc, params.nodeId);
+  if (!element) {
+    return null;
+  }
+
+  const computedStyle = computedStyleForElement(element);
+  const edit = params.styleEdits[params.nodeId];
+  return {
+    nodeId: params.nodeId,
+    color:
+      edit?.color ??
+      cssColorToHex(computedStyle.color, cssColorToHex("black", "#000000")),
+    backgroundColor:
+      edit?.backgroundColor ??
+      cssColorToHex(computedStyle.backgroundColor, "#ffffff"),
+    borderColor:
+      edit?.borderColor ??
+      cssColorToHex(computedStyle.borderTopColor, "#000000"),
+  };
+}
+
+function applyStyleEditToElement(
+  element: HTMLElement,
+  edit: HtmlDomStyleEdit,
+): void {
+  if (edit.color) {
+    element.style.color = edit.color;
+  }
+  if (edit.backgroundColor) {
+    element.style.backgroundColor = edit.backgroundColor;
+  }
+  if (edit.borderColor) {
+    element.style.borderColor = edit.borderColor;
+  }
+}
+
+function syncFrameStyleEdits(
+  doc: Document | null | undefined,
+  styleEdits: Readonly<Record<string, HtmlDomStyleEdit>>,
+): void {
+  if (!doc) {
+    return;
+  }
+
+  for (const [nodeId, edit] of Object.entries(styleEdits)) {
+    const element = selectedElementForNodeId(doc, nodeId);
+    if (element) {
+      applyStyleEditToElement(element, edit);
+    }
+  }
+}
+
 function installFrameStyles(doc: Document): void {
   if (doc.head.querySelector(`style[${HTML_DOM_EDIT_OVERLAY_ATTR}]`)) {
     return;
@@ -391,6 +532,13 @@ function htmlWithEditOverlaysRemoved(params: {
     return params.fallbackHtml;
   }
   return stripHtmlDomEditOverlaysFromDocument(params.frameDocument);
+}
+
+function htmlWithEditInstrumentationRemoved(params: {
+  readonly fallbackHtml: string;
+  readonly frameDocument: Document | null | undefined;
+}): string {
+  return stripHtmlDomEditInstrumentation(htmlWithEditOverlaysRemoved(params));
 }
 
 function restoreFrameDocumentHtml(params: {
@@ -1232,6 +1380,7 @@ const resetHtmlDomCommentEditor$ = command(({ set }) => {
   set(internalCommentText$, "");
   set(internalComments$, []);
   set(internalCommentsOpen$, false);
+  set(internalStyleEdits$, {});
   set(internalSubmitting$, false);
   set(internalPreparedPayload$, null);
 });
@@ -1583,6 +1732,7 @@ export const bindHtmlDomCommentFrame$ = command(
         view?.removeEventListener("resize", syncMarkers);
       },
     });
+    syncFrameStyleEdits(doc, get(internalStyleEdits$));
     syncMarkers();
   },
 );
@@ -1603,6 +1753,36 @@ export const setHtmlDomCommentText$ = command(({ set }, value: string) => {
   set(internalCommentText$, value);
   set(internalPreparedPayload$, null);
 });
+
+export const setHtmlDomStyleEditProperty$ = command(
+  (
+    { get, set },
+    params: { property: HtmlDomStyleEditProperty; value: string },
+  ) => {
+    const normalized = normalizeHexColor(params.value);
+    if (!normalized) {
+      return;
+    }
+
+    const nodeId = get(internalSelectedNodeIds$)[0];
+    const doc = currentFrameDocument(get(internalIframeElement$));
+    const element = nodeId ? selectedElementForNodeId(doc, nodeId) : null;
+    if (!nodeId || !element) {
+      return;
+    }
+
+    const nextEdit = {
+      ...get(internalStyleEdits$)[nodeId],
+      [params.property]: normalized,
+    };
+    set(internalStyleEdits$, {
+      ...get(internalStyleEdits$),
+      [nodeId]: nextEdit,
+    });
+    applyStyleEditToElement(element, nextEdit);
+    set(internalPreparedPayload$, null);
+  },
+);
 
 export const beginEditingCurrentHtmlDomComment$ = command(({ get, set }) => {
   const currentComment = commentForSelectedNodes({
@@ -1637,6 +1817,10 @@ const resetHtmlDomCommentDraft$ = command(({ get, set }) => {
     currentFrameDocument(get(internalIframeElement$)),
     get(internalComments$),
   );
+});
+
+export const closeHtmlDomCommentPopover$ = command(({ set }) => {
+  set(resetHtmlDomCommentDraft$);
 });
 
 export const addHtmlDomComment$ = command(({ get, set }) => {
@@ -1691,6 +1875,7 @@ export const discardHtmlDomComments$ = command(({ get, set }) => {
   const doc = currentFrameDocument(get(internalIframeElement$));
 
   set(internalComments$, []);
+  set(internalStyleEdits$, {});
   set(internalCommentsOpen$, false);
   if (readyLoadState.status === "ready" && doc) {
     restoreFrameDocumentHtml({
@@ -1711,9 +1896,10 @@ export const sendHtmlDomEditRequest$ = command(
   ) => {
     const readyLoadState = get(internalLoadState$);
     const comments = get(internalComments$);
+    const styleEdits = get(internalStyleEdits$);
     if (
       readyLoadState.status !== "ready" ||
-      comments.length === 0 ||
+      (comments.length === 0 && Object.keys(styleEdits).length === 0) ||
       get(internalSubmitting$)
     ) {
       return;
@@ -1729,6 +1915,20 @@ export const sendHtmlDomEditRequest$ = command(
         frameDocument: currentFrameDocument(get(internalIframeElement$)),
       });
       params.onStarted?.();
+      if (comments.length === 0 && params.onGenerated) {
+        await params.onGenerated({
+          comments,
+          editRequestId: crypto.randomUUID(),
+          html: htmlWithEditInstrumentationRemoved({
+            fallbackHtml: readyLoadState.html,
+            frameDocument: currentFrameDocument(get(internalIframeElement$)),
+          }),
+        });
+        signal.throwIfAborted();
+        toast.success("Edit draft applied");
+        return;
+      }
+
       if (params.onGenerated) {
         const editRequestId = crypto.randomUUID();
         const draftHtml = await tapError(
@@ -1805,6 +2005,7 @@ export const htmlDomCommentEditorModel$ = computed(
     const editingCommentId = get(internalEditingCommentId$);
     const selectedNodeIds = get(internalSelectedNodeIds$);
     const loadState = get(internalLoadState$);
+    const styleEdits = get(internalStyleEdits$);
     const submitting = get(internalSubmitting$);
     const currentComment = commentForSelectedNodes({
       comments,
@@ -1818,7 +2019,9 @@ export const htmlDomCommentEditorModel$ = computed(
           commentText.trim() !== "" &&
           !hasCommentForSelectedNodes({ comments, selectedNodeIds }),
       canSend:
-        loadState.status === "ready" && comments.length > 0 && !submitting,
+        loadState.status === "ready" &&
+        (comments.length > 0 || Object.keys(styleEdits).length > 0) &&
+        !submitting,
       commentsOpen: get(internalCommentsOpen$),
       commentText,
       commentPopoverAnchor: get(internalCommentPopoverAnchor$),
@@ -1832,6 +2035,14 @@ export const htmlDomCommentEditorModel$ = computed(
         currentComment?.id ?? "draft",
       ].join("|"),
       prepared: get(internalPreparedPayload$) !== null,
+      selectedStyle:
+        selectedNodeIds[0] && loadState.status === "ready"
+          ? selectedStyleForNode({
+              doc: currentFrameDocument(get(internalIframeElement$)),
+              nodeId: selectedNodeIds[0],
+              styleEdits,
+            })
+          : null,
       submitting,
     };
   },

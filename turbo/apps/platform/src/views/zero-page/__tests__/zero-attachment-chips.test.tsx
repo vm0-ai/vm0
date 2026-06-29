@@ -1446,7 +1446,10 @@ describe("zero attachment chips", () => {
         screen.queryByLabelText("Close comment popover"),
       ).not.toBeInTheDocument();
       expect(popover.querySelectorAll("textarea")).toHaveLength(1);
-      expect(popover.querySelectorAll("button")).toHaveLength(1);
+      expect(popover.querySelectorAll("button")).toHaveLength(2);
+      expect(
+        within(popover).getByLabelText("Close editor"),
+      ).toBeInTheDocument();
       expect(popover).toHaveClass("flex");
     });
     fireEvent.click(screen.getByTestId("html-dom-comment-textarea"));
@@ -1743,6 +1746,118 @@ describe("zero attachment chips", () => {
       expect(restoredEditFrame.contentDocument?.body.textContent).not.toContain(
         "Launch sooner",
       );
+    });
+  });
+
+  it("applies hosted-site color edits directly before publishing", async () => {
+    const htmlUrl = "https://style-edit-launch-site.sites.vm7.io";
+    let createDraftCalled = false;
+    let publishCalled = false;
+
+    setupHostedSiteArtifactPreview({
+      filename: "style-edit-launch-site.html",
+      htmlUrl,
+      label: "Style edit launch site",
+      runId: "run-hosted-site-style-edit",
+    });
+    context.mocks.api(zeroHostContract.createHtmlEditDraft, () => {
+      createDraftCalled = true;
+      throw new Error("Color-only edits should not create an AI draft");
+    });
+    context.mocks.api(zeroHostContract.redeployHtml, ({ body, respond }) => {
+      publishCalled = true;
+      expect(body.url).toBe(htmlUrl);
+      expect(body.html).not.toContain(HTML_DOM_NODE_ID_ATTR);
+      const doc = new DOMParser().parseFromString(body.html, "text/html");
+      const title = doc.querySelector("h1");
+      expect(title).not.toBeNull();
+      expect(title).toHaveStyle({
+        color: "#faf7f2",
+        backgroundColor: "#123456",
+        borderColor: "#abcdef",
+      });
+      return respond(200, {
+        siteId: "7c82da29-6280-4d65-b078-e233c8ad14bf",
+        deploymentId: "dc8b4d42-5dc1-4769-ad8b-17bdf1ad035a",
+        publicSlug: "style-edit-launch-site",
+        url: htmlUrl,
+        status: "ready",
+      });
+    });
+
+    click(
+      await screen.findByLabelText(
+        "Open html preview for Style edit launch site",
+      ),
+    );
+    click(await screen.findByLabelText("Edit page"));
+
+    const frame = (await screen.findByTestId(
+      "html-dom-comment-frame",
+    )) as HTMLIFrameElement;
+    await waitFor(() => {
+      expect(
+        frame.contentDocument
+          ?.querySelector("h1")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+    });
+    const title = frame.contentDocument?.querySelector("h1");
+    expect(title).not.toBeNull();
+    fireEvent.click(title!);
+
+    await waitFor(() => {
+      expect(screen.getByText("Style")).toBeInTheDocument();
+      expect(screen.getByText("Colors")).toBeInTheDocument();
+      expect(screen.getByText("Border")).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByTestId("html-dom-style-text-color"), {
+      target: { value: "#faf7f2" },
+    });
+    fireEvent.change(screen.getByTestId("html-dom-style-background-color"), {
+      target: { value: "#123456" },
+    });
+    fireEvent.change(screen.getByTestId("html-dom-style-border-color"), {
+      target: { value: "#abcdef" },
+    });
+
+    await waitFor(() => {
+      expect(title).toHaveStyle({
+        color: "#faf7f2",
+        backgroundColor: "#123456",
+        borderColor: "#abcdef",
+      });
+      expect(screen.getByTestId("html-dom-toolbar-send")).toBeEnabled();
+    });
+
+    click(screen.getByTestId("html-dom-toolbar-send"));
+
+    await waitFor(() => {
+      const previewFrame = screen.getByTestId("artifact-sidebar-body-html");
+      expect(previewFrame).toHaveAttribute(
+        "srcdoc",
+        expect.stringContaining("style="),
+      );
+      expect(previewFrame).not.toHaveAttribute(
+        "srcdoc",
+        expect.stringContaining(HTML_DOM_NODE_ID_ATTR),
+      );
+      expect(screen.getByTestId("html-dom-draft-toolbar")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("artifact-sidebar-html-edit-status"),
+      ).toHaveTextContent("Preview draft");
+    });
+    expect(createDraftCalled).toBeFalsy();
+
+    click(screen.getByTestId("html-dom-draft-publish"));
+
+    await waitFor(() => {
+      expect(publishCalled).toBeTruthy();
+      expect(
+        screen.queryByTestId("artifact-sidebar-html-edit-status"),
+      ).toBeNull();
+      expect(screen.queryByTestId("html-dom-draft-toolbar")).toBeNull();
     });
   });
 

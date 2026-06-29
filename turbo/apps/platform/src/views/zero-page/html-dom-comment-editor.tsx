@@ -1,17 +1,22 @@
-import type { KeyboardEvent } from "react";
+import type { KeyboardEvent, ReactNode } from "react";
 import {
   IconArrowUp,
+  IconChevronDown,
+  IconChevronUp,
   IconLoader2,
   IconMessageCircle,
   IconSend,
   IconTrash,
+  IconX,
 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
+import { Input } from "@vm0/ui";
 import { detach, Reason } from "../../signals/utils.ts";
 import {
   addHtmlDomComment$,
   beginEditingCurrentHtmlDomComment$,
   bindHtmlDomCommentFrame$,
+  closeHtmlDomCommentPopover$,
   deleteHtmlDomComment$,
   discardHtmlDomComments$,
   focusHtmlDomComment$,
@@ -21,8 +26,11 @@ import {
   setHtmlDomCommentStageRef$,
   setHtmlDomCommentTextareaRef$,
   setHtmlDomCommentText$,
+  setHtmlDomStyleEditProperty$,
   toggleHtmlDomCommentsOpen$,
   type HtmlDomCommentEditorModel,
+  type HtmlDomSelectedStyle,
+  type HtmlDomStyleEditProperty,
 } from "../../signals/zero-page/html-dom-comment-editor.ts";
 import type {
   HtmlDomEditComment,
@@ -285,6 +293,7 @@ function HtmlDomCommentPopover({
 }) {
   const addComment = useSet(addHtmlDomComment$);
   const beginEditingCurrentComment = useSet(beginEditingCurrentHtmlDomComment$);
+  const closePopover = useSet(closeHtmlDomCommentPopover$);
   const setCommentText = useSet(setHtmlDomCommentText$);
   const setTextAreaRef = useSet(setHtmlDomCommentTextareaRef$);
   const isEditingCurrentComment =
@@ -292,6 +301,8 @@ function HtmlDomCommentPopover({
     model.currentComment?.id === model.editingCommentId;
   const isShowingExistingComment =
     model.currentComment !== null && !isEditingCurrentComment;
+  const showStyleControls =
+    model.selectedStyle !== null && !isShowingExistingComment;
   const visibleCommentText = isEditingCurrentComment
     ? model.commentText
     : (model.currentComment?.comment ?? model.commentText);
@@ -316,51 +327,213 @@ function HtmlDomCommentPopover({
 
   return (
     <div
-      className="absolute z-30 flex w-[min(380px,calc(100%-24px))] -translate-x-1/2 items-end gap-2 rounded-[28px] border border-border/60 bg-background px-3 py-2 shadow-lg"
+      className="absolute z-30 flex w-[min(430px,calc(100%-24px))] -translate-x-1/2 flex-col overflow-hidden rounded-[20px] border border-border/60 bg-background shadow-lg"
       style={{
         left: model.commentPopoverAnchor.left,
         top: model.commentPopoverAnchor.top,
       }}
       data-testid="html-dom-comment-popover"
     >
-      <textarea
-        key={model.popoverTextAreaKey}
-        ref={setTextAreaRef}
-        rows={1}
-        value={visibleCommentText}
-        readOnly={isShowingExistingComment}
-        onClick={() => {
-          if (isShowingExistingComment) {
-            beginEditingCurrentComment();
-          }
-        }}
-        onFocus={() => {
-          if (isShowingExistingComment) {
-            beginEditingCurrentComment();
-          }
-        }}
-        onChange={(event) => {
-          if (isShowingExistingComment) {
-            return;
-          }
-          setCommentText(event.currentTarget.value);
-        }}
-        onKeyDown={handleTextAreaKeyDown}
-        placeholder="Describe the change you want"
-        className="max-h-32 min-h-9 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-1 py-2 text-sm leading-5 outline-none [field-sizing:content] placeholder:text-muted-foreground"
-        data-testid="html-dom-comment-textarea"
-      />
+      <div className="flex items-start gap-2 p-3">
+        <textarea
+          key={model.popoverTextAreaKey}
+          ref={setTextAreaRef}
+          rows={1}
+          value={visibleCommentText}
+          readOnly={isShowingExistingComment}
+          onClick={() => {
+            if (isShowingExistingComment) {
+              beginEditingCurrentComment();
+            }
+          }}
+          onFocus={() => {
+            if (isShowingExistingComment) {
+              beginEditingCurrentComment();
+            }
+          }}
+          onChange={(event) => {
+            if (isShowingExistingComment) {
+              return;
+            }
+            setCommentText(event.currentTarget.value);
+          }}
+          onKeyDown={handleTextAreaKeyDown}
+          placeholder="Describe the change you want"
+          className="max-h-32 min-h-20 min-w-0 flex-1 resize-none rounded-lg border-[0.7px] border-[hsl(var(--gray-400))] bg-input px-3 py-2 text-sm leading-5 text-foreground outline-none transition-colors [field-sizing:content] placeholder:text-muted-foreground focus:border-primary focus:ring-[3px] focus:ring-primary/10"
+          data-testid="html-dom-comment-textarea"
+        />
+        <div className="flex shrink-0 flex-col gap-1">
+          <button
+            type="button"
+            disabled={!model.canAddComment}
+            onClick={addComment}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-blue-600 text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-45"
+            data-testid="html-dom-comment-add"
+            aria-label="Add comment"
+          >
+            <IconArrowUp size={19} stroke={2.2} />
+          </button>
+          <button
+            type="button"
+            onClick={closePopover}
+            className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
+            aria-label="Close editor"
+            data-testid="html-dom-comment-close"
+          >
+            <IconX size={17} stroke={1.8} />
+          </button>
+        </div>
+      </div>
+      {showStyleControls && (
+        <HtmlDomStyleInspector selectedStyle={model.selectedStyle} />
+      )}
+    </div>
+  );
+}
+
+function HtmlDomStyleInspector({
+  selectedStyle,
+}: {
+  readonly selectedStyle: HtmlDomSelectedStyle;
+}) {
+  return (
+    <div className="border-t border-border/60">
+      <div className="flex h-11 items-end gap-6 px-4" role="tablist">
+        <span
+          role="tab"
+          aria-selected="true"
+          className="h-11 border-b-2 border-foreground px-0 text-sm font-medium text-foreground"
+        >
+          Style
+        </span>
+        <span
+          role="tab"
+          aria-selected="false"
+          aria-disabled="true"
+          className="h-11 px-0 text-sm font-medium text-muted-foreground opacity-70"
+        >
+          Layout
+        </span>
+      </div>
+      <StyleSection title="Colors" open>
+        <div className="grid gap-3 sm:grid-cols-2">
+          <ColorField
+            label="Text color"
+            property="color"
+            value={selectedStyle.color}
+            testId="html-dom-style-text-color"
+          />
+          <ColorField
+            label="Background"
+            property="backgroundColor"
+            value={selectedStyle.backgroundColor}
+            testId="html-dom-style-background-color"
+          />
+        </div>
+      </StyleSection>
+      <StyleSection title="Typography" />
+      <StyleSection title="Border" open>
+        <ColorField
+          label="Border color"
+          property="borderColor"
+          value={selectedStyle.borderColor}
+          testId="html-dom-style-border-color"
+        />
+      </StyleSection>
+      <StyleSection title="Display" />
+    </div>
+  );
+}
+
+function StyleSection({
+  children,
+  open = false,
+  title,
+}: {
+  readonly children?: ReactNode;
+  readonly open?: boolean;
+  readonly title: string;
+}) {
+  return (
+    <section className="border-t border-border/60 first:border-t-0">
       <button
         type="button"
-        disabled={!model.canAddComment}
-        onClick={addComment}
-        className="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-45"
-        data-testid="html-dom-comment-add"
-        aria-label="Add comment"
+        className="flex h-11 w-full items-center justify-between px-4 text-left text-sm font-medium text-foreground transition-colors hover:bg-gray-50"
+        aria-expanded={open}
+        disabled={!open}
       >
-        <IconArrowUp size={19} stroke={2.2} />
+        {title}
+        {open ? (
+          <IconChevronUp
+            size={17}
+            stroke={1.8}
+            className="text-muted-foreground"
+          />
+        ) : (
+          <IconChevronDown
+            size={17}
+            stroke={1.8}
+            className="text-muted-foreground"
+          />
+        )}
       </button>
-    </div>
+      {open && children && <div className="px-4 pb-4">{children}</div>}
+    </section>
+  );
+}
+
+function ColorField({
+  label,
+  property,
+  testId,
+  value,
+}: {
+  readonly label: string;
+  readonly property: HtmlDomStyleEditProperty;
+  readonly testId: string;
+  readonly value: string;
+}) {
+  const setStyleEditProperty = useSet(setHtmlDomStyleEditProperty$);
+
+  const commitColor = (nextValue: string) => {
+    setStyleEditProperty({ property, value: nextValue });
+  };
+
+  return (
+    <label className="block min-w-0">
+      <span className="mb-1.5 block text-xs font-medium text-muted-foreground">
+        {label}
+      </span>
+      <div className="relative">
+        <span
+          className="pointer-events-none absolute left-2 top-1/2 h-5 w-5 -translate-y-1/2 rounded-md border border-border/70"
+          style={{ backgroundColor: value }}
+          aria-hidden="true"
+        />
+        <input
+          type="color"
+          value={value}
+          aria-label={`${label} picker`}
+          onChange={(event) => {
+            commitColor(event.currentTarget.value);
+          }}
+          className="absolute left-2 top-1/2 h-5 w-5 -translate-y-1/2 cursor-pointer opacity-0"
+        />
+        <Input
+          value={value}
+          onFocus={(event) => {
+            event.currentTarget.select();
+          }}
+          onChange={(event) => {
+            commitColor(event.currentTarget.value);
+          }}
+          className="h-9 pl-10 font-mono lowercase"
+          maxLength={7}
+          spellCheck={false}
+          data-testid={testId}
+        />
+      </div>
+    </label>
   );
 }
 
