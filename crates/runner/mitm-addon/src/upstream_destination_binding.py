@@ -212,6 +212,14 @@ def has_server_binding(server: object) -> bool:
     return server_id is not None and server_id in _bindings_by_server_id
 
 
+def server_binding_original_address(server: object) -> tuple[str, int] | None:
+    server_id = _connection_id(server)
+    if server_id is None:
+        return None
+    binding = _bindings_by_server_id.get(server_id)
+    return binding.original_address if binding is not None else None
+
+
 def _address_matches(host: str, port: int, address: object) -> bool:
     address_pair = _address_pair(address)
     if address_pair is None:

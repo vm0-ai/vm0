@@ -609,6 +609,20 @@ def _store_trusted_authority_metadata(
     )
 
 
+def _public_destination_runtime_host(flow: http.HTTPFlow) -> object:
+    original_address = upstream_destination_binding.server_binding_original_address(
+        flow.server_conn
+    )
+    if original_address is not None:
+        return original_address[0]
+
+    server_address = _server_address(flow.server_conn)
+    if server_address is not None:
+        return server_address[0]
+
+    return flow.request.host
+
+
 def _public_destination_denial(
     flow: http.HTTPFlow,
     allow: matching.FirewallAllow,
@@ -619,7 +633,9 @@ def _public_destination_denial(
     if not isinstance(host_policy, dict) or host_policy.get("kind") != "publicDestination":
         return None
 
-    validation = public_destination.validate_runtime_destination_host(flow.request.host)
+    validation = public_destination.validate_runtime_destination_host(
+        _public_destination_runtime_host(flow)
+    )
     if validation.allowed:
         return None
 
