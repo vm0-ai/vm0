@@ -36,6 +36,8 @@ const DEFAULT_AGENT_NAME = "e2e-slack-agent";
 const STARTER_GRANT_AMOUNT = 10_000;
 const STARTER_GRANT_SOURCE = "starter_grant";
 const SLACK_BOT_SCOPES = "chat:write,im:write,users:read";
+const ZERO_AGENT_ID_TEMPLATE = ["$", "{{ vars.ZERO_AGENT_ID }}"].join("");
+const ZERO_TOKEN_TEMPLATE = ["$", "{{ secrets.ZERO_TOKEN }}"].join("");
 const SLACK_E2E_FIXTURES = {
   botUserId: "U_E2E_BOT",
   botToken: "xoxb-e2e-test-bot-token",
@@ -376,6 +378,8 @@ function defaultAgentContent(name: string) {
         framework: "claude-code",
         environment: {
           ANTHROPIC_API_KEY: "",
+          ZERO_AGENT_ID: ZERO_AGENT_ID_TEMPLATE,
+          ZERO_TOKEN: ZERO_TOKEN_TEMPLATE,
         },
       },
     },

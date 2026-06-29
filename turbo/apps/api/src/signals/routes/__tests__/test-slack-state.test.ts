@@ -660,6 +660,8 @@ describe("POST /api/test/slack-state", () => {
           framework: "claude-code",
           environment: {
             ANTHROPIC_API_KEY: "",
+            ZERO_AGENT_ID: "${{ vars.ZERO_AGENT_ID }}",
+            ZERO_TOKEN: "${{ secrets.ZERO_TOKEN }}",
           },
         },
       },
