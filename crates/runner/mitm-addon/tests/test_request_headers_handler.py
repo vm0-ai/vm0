@@ -556,7 +556,7 @@ def test_api_allow_bounded_prebind_ignores_unregistered_client(
 
 
 async def test_test_connector_bounded_requestheaders_uses_connector_binding(
-    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
 ):
     reg_path = _write_registry(
         tmp_path,
@@ -583,8 +583,12 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
         host="203.0.113.10",
         sni="api.vm0.ai",
         path="/api/test/oauth-provider/echo",
-        request_headers=headers(("Host", "api.vm0.ai")),
+        request_headers=headers(
+            ("Host", "api.vm0.ai"),
+            ("x-vm0-test-endpoint-bypass", "preview-secret"),
+        ),
     )
+    monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
 
     with (
         mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
@@ -603,6 +607,59 @@ async def test_test_connector_bounded_requestheaders_uses_connector_binding(
     assert binding.host == "api.vm0.ai"
     assert binding.kinds == frozenset(("connector_auth",))
     assert binding.original_address == ("203.0.113.10", 443)
+
+
+async def test_test_connector_bounded_requestheaders_without_bypass_blocks(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, monkeypatch
+):
+    reg_path = _write_registry(
+        tmp_path,
+        client_ip="10.200.0.5",
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="test-oauth",
+            api_entry={
+                "base": "https://api.vm0.ai/api/test/oauth-provider",
+                "auth": {"headers": {"Authorization": "Bearer x"}},
+                "permissions": [{"name": "echo", "rules": ["GET /echo"]}],
+            },
+            network_policy={
+                "allow": ["echo"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="api.vm0.ai",
+        path="/api/test/oauth-provider/echo",
+        request_headers=headers(
+            ("Host", "api.vm0.ai"),
+            ("x-vm0-test-endpoint-bypass", "wrong-secret"),
+        ),
+    )
+    monkeypatch.setenv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret")
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        _assert_no_request_stream(flow)
+        assert flow.server_conn.address == ("203.0.113.10", 443)
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
+    assert "Authorization" not in flow.request.headers
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
 def test_capture_enabled_browser_allow_installs_request_stream(

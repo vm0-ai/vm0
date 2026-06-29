@@ -111,6 +111,30 @@ def test_server_connect_retargets_api_allow_host(registry_file, mitm_ctx):
     assert binding.kinds == frozenset(("api_allow",))
 
 
+def test_server_connect_does_not_prebind_platform_connector_auth(tmp_path, mitm_ctx):
+    reg_path = _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="test-oauth",
+            api_entry={
+                "base": "https://api.vm0.ai/api/test/oauth-provider",
+                "auth": {"headers": {"Authorization": "Bearer x"}},
+                "permissions": [{"name": "echo", "rules": ["GET /echo"]}],
+            },
+            network_policy={"allow": ["echo"], "deny": [], "ask": [], "unknownPolicy": "deny"},
+        ),
+    )
+    data = _data(sni="api.vm0.ai")
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        mitm_addon.server_connect(data)
+
+    assert data.server.address == ("api.vm0.ai", 443)
+    binding = upstream_destination_binding.binding_snapshot_for_tests()[data.server.id]
+    assert binding.kinds == frozenset(("api_allow",))
+
+
 def test_server_connect_does_not_bind_connected_api_edge_from_sni_only(registry_file, mitm_ctx):
     data = _data(
         client_ip="10.200.0.1",

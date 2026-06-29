@@ -819,15 +819,10 @@ def _bind_flow_upstream_destination(
 
     original_address = _server_address(flow.server_conn)
     has_server_binding = upstream_destination_binding.has_server_binding(flow.server_conn)
-    requires_connected_platform_connector_auth_fallback = (
-        kind == "connector_auth"
-        and _api_hostname_matches(normalized_host)
-        and (has_server_binding or bool(getattr(flow.server_conn, "connected", False)))
-    )
-    if (
-        requires_connected_platform_connector_auth_fallback
-        and not _request_allows_connected_platform_connector_auth_fallback(flow)
-    ):
+    if _requires_platform_connector_auth_bypass(
+        kind=kind,
+        normalized_host=normalized_host,
+    ) and not _request_allows_platform_connector_auth(flow):
         return False
 
     if has_server_binding:
@@ -889,6 +884,12 @@ def _ensure_bound_upstream_destination(
     *,
     kind: upstream_destination_binding.BindingKind,
 ) -> bool:
+    if _flow_requires_platform_connector_auth_bypass(
+        flow,
+        kind=kind,
+    ) and not _request_allows_platform_connector_auth(flow):
+        return False
+
     allowed_kinds = frozenset((kind,))
     has_bound_destination = _has_bound_upstream_destination(flow, allowed_kinds=allowed_kinds)
     if has_bound_destination and upstream_destination_binding.has_server_binding(flow.server_conn):
@@ -1776,12 +1777,40 @@ def _request_has_platform_test_endpoint_bypass(flow: http.HTTPFlow) -> bool:
     return flow.request.headers.get(_TEST_ENDPOINT_BYPASS_HEADER) == expected_bypass
 
 
-def _request_allows_connected_platform_connector_auth_fallback(flow: http.HTTPFlow) -> bool:
+def _request_allows_platform_connector_auth(flow: http.HTTPFlow) -> bool:
     # Synthetic test providers live on the platform API preview host but
     # intentionally exercise connector auth injection instead of API auto-allow.
-    # Keep this fallback limited to test endpoints gated by the same internal
+    # Keep this path limited to test endpoints gated by the same internal
     # bypass secret that the API route validates.
     return _request_has_platform_test_endpoint_bypass(flow)
+
+
+def _requires_platform_connector_auth_bypass(
+    *,
+    kind: upstream_destination_binding.BindingKind,
+    normalized_host: str,
+) -> bool:
+    return kind == "connector_auth" and _api_hostname_matches(normalized_host)
+
+
+def _flow_requires_platform_connector_auth_bypass(
+    flow: http.HTTPFlow,
+    *,
+    kind: upstream_destination_binding.BindingKind,
+) -> bool:
+    if kind != "connector_auth":
+        return False
+    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
+    if not isinstance(trusted_host, str) or not trusted_host:
+        return False
+    try:
+        normalized_host = normalize_trusted_hostname(trusted_host)
+    except (UnicodeError, ValueError):
+        return False
+    return _requires_platform_connector_auth_bypass(
+        kind=kind,
+        normalized_host=normalized_host,
+    )
 
 
 def reset_upstream_destination_resolution_cache_for_tests() -> None:
@@ -1883,10 +1912,16 @@ def _server_connect_binding_kinds(
     compiled_firewalls: matching.CompiledFirewallSet | None,
 ) -> frozenset[upstream_destination_binding.BindingKind]:
     kinds: set[upstream_destination_binding.BindingKind] = set()
-    if _api_hostname_matches(hostname):
+    is_api_host = _api_hostname_matches(hostname)
+    if is_api_host:
         kinds.add("api_allow")
-    if compiled_firewalls is not None and compiled_firewalls.matches_ordinary_credential_authority(
-        hostname, port
+    if (
+        not is_api_host
+        and compiled_firewalls is not None
+        and compiled_firewalls.matches_ordinary_credential_authority(
+            hostname,
+            port,
+        )
     ):
         kinds.add("connector_auth")
     return frozenset(kinds)
