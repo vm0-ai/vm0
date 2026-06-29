@@ -3385,6 +3385,67 @@ describe("chat lifecycle", () => {
     });
   });
 
+  it("opens an active goal objective dialog from the goal row", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "thread-goal-dialog";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-goal-dialog-user",
+          role: "user",
+          content: "Start the active run",
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-goal-dialog-assistant",
+          role: "assistant",
+          content: null,
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-goal-dialog-active",
+          runId: undefined,
+          role: "assistant",
+          content: null,
+          goalEvent: {
+            type: "state",
+            status: "active",
+            objectiveBrief: "Release brief",
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+    let requestedThreadId: string | null = null;
+    context.mocks.api(
+      zeroGoalsContract.getForChatThread,
+      ({ params, respond }) => {
+        requestedThreadId = params.threadId;
+        return respond(200, {
+          objective: "# Full goal\n\n- Keep **shipping**\n- Review `objective`",
+          objectiveBrief: "Release brief",
+          status: "active",
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const goalRow = await screen.findByLabelText("Active goal");
+    await user.click(within(goalRow).getByLabelText("Open goal details"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Goal" });
+    expect(requestedThreadId).toBe(threadId);
+    expect(
+      within(dialog).getByRole("heading", { name: "Full goal" }),
+    ).toBeInTheDocument();
+    expect(dialog.querySelector(".wmde-markdown")).not.toBeNull();
+  });
+
   it("hides the goal row once a completion marker folds in", async () => {
     const threadId = "thread-goal-complete";
     mockChatLifecycle(context, {

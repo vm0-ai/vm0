@@ -90,6 +90,20 @@ export const zeroGoalsContract = c.router({
     },
     summary: "Get the current thread goal",
   },
+  getForChatThread: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/goal",
+    headers: authHeadersSchema,
+    pathParams: chatThreadGoalParamsSchema,
+    responses: {
+      200: zeroGoalResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+      409: apiErrorSchema,
+    },
+    summary: "Get a chat thread goal",
+  },
   complete: {
     method: "POST",
     path: "/api/zero/goal/complete",

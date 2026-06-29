@@ -20,6 +20,7 @@ import {
   createGoalForCurrentThread,
   editCurrentGoal,
   getCurrentGoal,
+  getGoalForChatThread,
   pauseCurrentGoal,
   pauseGoalForChatThread,
   resumeCurrentGoal,
@@ -56,6 +57,13 @@ const sessionGoalUserControlWriteAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "goal:user-control:write",
+  accept: ["session"],
+} as const;
+
+const sessionGoalReadAuth = {
+  requireOrganization: true,
+  missingOrganizationStatus: 401,
+  requiredCapability: "goal:read",
   accept: ["session"],
 } as const;
 
@@ -224,6 +232,29 @@ const getGoalInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   return goalErrorResponse(result);
 });
 
+const getChatThreadGoalInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = sessionGoalAuth(get(organizationAuthContext$));
+    const params = get(pathParamsOf(zeroGoalsContract.getForChatThread));
+    const db = set(writeDb$);
+    if (!(await goalFeatureEnabled(db, auth))) {
+      return forbidden("Goal workflows are not enabled");
+    }
+    signal.throwIfAborted();
+
+    const result = await getGoalForChatThread(db, {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      threadId: params.threadId,
+    });
+    signal.throwIfAborted();
+    if (result.kind === "ok") {
+      return { status: 200 as const, body: result.goal };
+    }
+    return goalErrorResponse(result);
+  },
+);
+
 const completeGoalInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = goalAuth(get(organizationAuthContext$));
@@ -341,6 +372,10 @@ export const zeroGoalsRoutes: readonly RouteEntry[] = [
   {
     route: zeroGoalsContract.get,
     handler: authRoute(goalReadAuth, getGoalInner$),
+  },
+  {
+    route: zeroGoalsContract.getForChatThread,
+    handler: authRoute(sessionGoalReadAuth, getChatThreadGoalInner$),
   },
   {
     route: zeroGoalsContract.complete,
