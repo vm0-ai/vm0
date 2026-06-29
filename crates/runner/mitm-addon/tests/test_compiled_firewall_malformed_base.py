@@ -36,6 +36,18 @@ def test_bracketed_non_ipv6_base_authority_is_invalid():
     assert not matching.firewall_base_config_is_valid("https://[v1.invalid]")
 
 
+@pytest.mark.parametrize(
+    "base",
+    [
+        "https://\u0668.\u0668.\u0668.\u0668",
+        "https://\u0967\u0968\u096d.\u0966.\u0966.\u0967",
+        "https://\uff11\uff12\uff17.\uff10.\uff10.\uff11",
+    ],
+)
+def test_unicode_decimal_ipv4_like_base_authority_is_invalid(base):
+    assert not matching.firewall_base_config_is_valid(base)
+
+
 def test_malformed_firewall_config_fails_closed_only_after_base_match():
     compiled_firewalls = compile_firewalls_or_fail(
         _github_firewalls(GITHUB_BASE, rule="GET /repos/{a}literal{b}")
