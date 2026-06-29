@@ -564,15 +564,11 @@ exit 1
     #[test]
     fn verify_script_documents_optional_diagnostic_commands() {
         assert!(
-            VERIFY_SCRIPT.contains("Intentionally unchecked: best-effort diagnostics"),
-            "verify-rootfs.sh should document intentionally unchecked diagnostic commands"
+            VERIFY_SCRIPT.contains(
+                "Intentionally unchecked optional diagnostic commands: file sha256sum free timeout ps"
+            ),
+            "verify-rootfs.sh should document intentionally unchecked optional diagnostics"
         );
-        for optional_command in ["file", "sha256sum", "free", "timeout", "ps"] {
-            assert!(
-                VERIFY_SCRIPT.contains(optional_command),
-                "verify-rootfs.sh should document {optional_command} as optional diagnostics"
-            );
-        }
     }
 
     #[test]

@@ -202,10 +202,9 @@ fi
 # commands run inside the guest via shell wrappers and included helper scripts,
 # so missing commands should fail image verification before a user session.
 #
-# Intentionally unchecked: best-effort diagnostics from
-# agent-abnormal-exit-diagnostics.sh such as file, sha256sum, free, timeout,
-# and ps. That script runs with `set +e` and has command/fallback guards where
-# absence should reduce diagnostic detail, not block image verification.
+# Intentionally unchecked optional diagnostic commands: file sha256sum free timeout ps.
+# agent-abnormal-exit-diagnostics.sh runs with `set +e` and has command/fallback
+# guards where absence should reduce diagnostic detail, not block image verification.
 
 # Shell wrappers used by vsock-guest before the runner command body executes.
 check_required_executable "/bin/sh" "sh"
