@@ -274,10 +274,11 @@ Don't render components directly—use `setupPage()` which mirrors `main.ts` sta
 
 ### Deep Dives
 
-| Topic         | Guide                                                                                                               |
-| ------------- | ------------------------------------------------------------------------------------------------------------------- |
-| Anti-patterns | [anti-patterns.md](./testing/anti-patterns.md) — Detailed catalog of testing mistakes to avoid (AP-1 through AP-10) |
-| Patterns      | [patterns.md](./testing/patterns.md) — Standard patterns, file structure, migration workflow                        |
+| Topic             | Guide                                                                                                                                                     |
+| ----------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Anti-patterns     | [anti-patterns.md](./testing/anti-patterns.md) — Detailed catalog of testing mistakes to avoid (AP-1 through AP-10)                                       |
+| Patterns          | [patterns.md](./testing/patterns.md) — Standard patterns, file structure, migration workflow                                                              |
+| External behavior | [testing-external-behavior.md](./testing/testing-external-behavior.md) — Why tests should use external user interfaces instead of internal implementation |
 
 ### App-Specific Guides
 

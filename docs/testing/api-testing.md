@@ -124,8 +124,9 @@ Key points:
 3. Put `testContext()` and `createStore()` at module scope.
 4. Mock auth and external services through `context.mocks` or focused helper
    wrappers such as `createZeroRouteMocks(context)`.
-5. Use fixture helpers and `createFixtureTracker()` for setup and cleanup when
-   the state is not reachable through an existing route.
+5. Use API calls for setup and verification. If the state is not reachable
+   through an existing endpoint, treat that as an explicit exception and document
+   why the production API surface cannot construct it.
 
 ## What To Test
 
@@ -160,22 +161,23 @@ Avoid `vi.mock()` for internal modules such as services, route files, database
 helpers, or ccstate signals. That bypasses the behavior the route integration
 test is supposed to cover.
 
-## Fixtures And Database State
+## External Behavior Boundary
 
-Prefer creating state through routes when a route exists. When a route needs
-database state that is not reachable through public HTTP behavior, use focused
-ccstate fixture helpers under `__tests__/helpers/`.
+API route tests should construct cases through API endpoints and verify results
+through API endpoints. The endpoint is the external contract. The database and
+service layer are internal implementation.
 
-Fixture helpers should:
+Do not import DB schemas, write database rows, read database rows for assertions,
+or call services from API tests. Those tests couple to table shape, service
+boundaries, and internal state transitions instead of the behavior external
+callers rely on.
 
-- create unique `orgId` and `userId` values
-- insert the minimum state needed for the route behavior
-- expose a cleanup command used through `createFixtureTracker()`
-- keep raw database operations out of the test body when possible
+If a case is truly impossible to construct through the production API surface,
+document the exception in the test and keep it narrow. Setup that is merely
+verbose, slow, or already available as a DB helper is not an exception.
 
-Direct database reads in a test body are acceptable when they verify a persisted
-side effect that is not visible in the HTTP response. Direct writes should live
-in fixture helpers unless the setup is truly one-off and smaller than a helper.
+For the full reasoning, see
+[Testing External Behavior](./testing-external-behavior.md).
 
 ## Service-Level Exceptions
 
