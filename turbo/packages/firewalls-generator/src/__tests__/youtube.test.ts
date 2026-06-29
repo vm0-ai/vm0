@@ -44,7 +44,7 @@ describe("YouTube permission manifest", () => {
   });
 
   it("matches the official Discovery route set exactly", () => {
-    expect(officialRouteKeys.size).toBe(99);
+    expect(officialRouteKeys.size).toBe(107);
 
     expect(() => {
       validateYouTubePermissionManifest(
@@ -95,7 +95,9 @@ describe("YouTube permission manifest", () => {
     expect(manifestPermission("videos.create").routeKeys).toEqual([
       "base:POST /v3/videos",
       "upload:POST /v3/videos",
+      "upload:PUT /v3/videos",
       "resumable-upload:POST /v3/videos",
+      "resumable-upload:PUT /v3/videos",
     ]);
     expect(manifestPermission("videos.write").routeKeys).toEqual([
       "base:PUT /v3/videos",

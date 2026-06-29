@@ -526,7 +526,8 @@ JSON_PART = r"""{
           "description": "Upload YouTube channel banners.",
           "name": "channel-banners.upload",
           "rules": [
-            "POST /v3/channelBanners/insert"
+            "POST /v3/channelBanners/insert",
+            "PUT /v3/channelBanners/insert"
           ]
         },
         {
@@ -541,21 +542,24 @@ JSON_PART = r"""{
           "description": "Set YouTube video thumbnails.",
           "name": "thumbnails.set",
           "rules": [
-            "POST /v3/thumbnails/set"
+            "POST /v3/thumbnails/set",
+            "PUT /v3/thumbnails/set"
           ]
         },
         {
           "description": "Upload YouTube videos.",
           "name": "videos.create",
           "rules": [
-            "POST /v3/videos"
+            "POST /v3/videos",
+            "PUT /v3/videos"
           ]
         },
         {
           "description": "Set YouTube channel watermarks.",
           "name": "watermarks.set",
           "rules": [
-            "POST /v3/watermarks/set"
+            "POST /v3/watermarks/set",
+            "PUT /v3/watermarks/set"
           ]
         }
       ]
@@ -580,7 +584,8 @@ JSON_PART = r"""{
           "description": "Upload YouTube channel banners.",
           "name": "channel-banners.upload",
           "rules": [
-            "POST /v3/channelBanners/insert"
+            "POST /v3/channelBanners/insert",
+            "PUT /v3/channelBanners/insert"
           ]
         },
         {
@@ -595,21 +600,24 @@ JSON_PART = r"""{
           "description": "Set YouTube video thumbnails.",
           "name": "thumbnails.set",
           "rules": [
-            "POST /v3/thumbnails/set"
+            "POST /v3/thumbnails/set",
+            "PUT /v3/thumbnails/set"
           ]
         },
         {
           "description": "Upload YouTube videos.",
           "name": "videos.create",
           "rules": [
-            "POST /v3/videos"
+            "POST /v3/videos",
+            "PUT /v3/videos"
           ]
         },
         {
           "description": "Set YouTube channel watermarks.",
           "name": "watermarks.set",
           "rules": [
-            "POST /v3/watermarks/set"
+            "POST /v3/watermarks/set",
+            "PUT /v3/watermarks/set"
           ]
         }
       ]

@@ -503,11 +503,16 @@ describe("known endpoint-scoped firewall bases", () => {
 
     expect([...rulesByPermission.get("videos.create")!].sort()).toEqual([
       "https://youtube.googleapis.com/resumable/upload/youtube POST /v3/videos",
+      "https://youtube.googleapis.com/resumable/upload/youtube PUT /v3/videos",
       "https://youtube.googleapis.com/upload/youtube POST /v3/videos",
+      "https://youtube.googleapis.com/upload/youtube PUT /v3/videos",
       "https://youtube.googleapis.com/youtube POST /v3/videos",
     ]);
     expect(rulesByPermission.get("videos.write")).not.toContain(
       "https://youtube.googleapis.com/upload/youtube POST /v3/videos",
+    );
+    expect(rulesByPermission.get("videos.write")).not.toContain(
+      "https://youtube.googleapis.com/upload/youtube PUT /v3/videos",
     );
     expect(rulesByPermission.get("videos.read")).not.toContain(
       "https://youtube.googleapis.com/youtube POST /v3/videos",
