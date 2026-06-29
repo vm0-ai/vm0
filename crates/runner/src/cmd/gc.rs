@@ -1515,6 +1515,11 @@ struct DeadRunnerBaseDirLease {
     lock_guard: Flock<std::fs::File>,
 }
 
+struct DeadRunnerBaseDirLockCandidate {
+    lock_path: PathBuf,
+    lock_name: String,
+}
+
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 enum BaseDirLockDecision {
     RemoveIfStillFree,
@@ -1542,17 +1547,10 @@ fn parse_base_dir_lock_content(content: &str, lock_path: &Path) -> Option<PathBu
     Some(base_dir)
 }
 
-/// Read base-dir lock files written by `runner start`, returning only those
-/// whose runner is dead (lock not held), while keeping the lock held.
-///
-/// Some old or corrupted lock files do not contain a usable absolute base_dir.
-/// They are still returned as leases so workspace GC can safely remove the
-/// free lock file instead of leaving retry metadata behind forever.
-///
-/// Live runners manage their own workspaces via the factory — GC must not
-/// touch them because CowPool pre-warmed slots would be indistinguishable
-/// from orphaned workspaces.
-fn discover_dead_runner_base_dirs(locks_dir: &Path) -> Vec<DeadRunnerBaseDirLease> {
+/// Find base-dir lock paths written by `runner start`.
+fn discover_dead_runner_base_dir_lock_candidates(
+    locks_dir: &Path,
+) -> Vec<DeadRunnerBaseDirLockCandidate> {
     let entries = match std::fs::read_dir(locks_dir) {
         Ok(rd) => rd,
         Err(e) => {
@@ -1561,7 +1559,7 @@ fn discover_dead_runner_base_dirs(locks_dir: &Path) -> Vec<DeadRunnerBaseDirLeas
         }
     };
 
-    let mut base_dirs = Vec::new();
+    let mut candidates = Vec::new();
     for result in entries {
         let entry = match result {
             Ok(entry) => entry,
@@ -1575,30 +1573,50 @@ fn discover_dead_runner_base_dirs(locks_dir: &Path) -> Vec<DeadRunnerBaseDirLeas
         if !is_base_dir_lock_name(name) {
             continue;
         }
-        let lock_path = entry.path();
-        // Only include locks from dead runners (lock not held).
-        // Hold the lock while reading the file to prevent a new runner from
-        // starting and overwriting the content between the probe and the read,
-        // and keep it held while workspace GC deletes under the base_dir or
-        // removes an unusable free lock file.
-        let LockProbe::Free(lock_guard) = probe_lock(&lock_path) else {
-            continue;
-        };
-        let content = match std::fs::read_to_string(&lock_path) {
-            Ok(c) => c,
-            Err(e) => {
-                warn!("workspace gc: cannot read {}: {e}", lock_path.display());
-                continue;
-            }
-        };
-        base_dirs.push(DeadRunnerBaseDirLease {
-            base_dir: parse_base_dir_lock_content(&content, &lock_path),
-            lock_path,
+        candidates.push(DeadRunnerBaseDirLockCandidate {
+            lock_path: entry.path(),
             lock_name: name.to_string(),
-            lock_guard,
         });
     }
-    base_dirs
+    candidates
+}
+
+/// Acquire a base-dir lock candidate whose runner is dead, while keeping the
+/// lock held for the caller.
+///
+/// Some old or corrupted lock files do not contain a usable absolute base_dir.
+/// They are still returned as leases so workspace GC can safely remove the
+/// free lock file instead of leaving retry metadata behind forever.
+///
+/// Live runners manage their own workspaces via the factory — GC must not
+/// touch them because CowPool pre-warmed slots would be indistinguishable
+/// from orphaned workspaces.
+fn acquire_dead_runner_base_dir_lease(
+    candidate: DeadRunnerBaseDirLockCandidate,
+) -> Option<DeadRunnerBaseDirLease> {
+    // Only include locks from dead runners (lock not held). Hold the lock while
+    // reading the file to prevent a new runner from starting and overwriting the
+    // content between the probe and the read, and keep it held while workspace
+    // GC deletes under the base_dir or removes an unusable free lock file.
+    let LockProbe::Free(lock_guard) = probe_lock(&candidate.lock_path) else {
+        return None;
+    };
+    let content = match std::fs::read_to_string(&candidate.lock_path) {
+        Ok(c) => c,
+        Err(e) => {
+            warn!(
+                "workspace gc: cannot read {}: {e}",
+                candidate.lock_path.display()
+            );
+            return None;
+        }
+    };
+    Some(DeadRunnerBaseDirLease {
+        base_dir: parse_base_dir_lock_content(&content, &candidate.lock_path),
+        lock_path: candidate.lock_path,
+        lock_name: candidate.lock_name,
+        lock_guard,
+    })
 }
 
 fn active_workspace_paths(
@@ -1674,21 +1692,23 @@ async fn gc_workspace_orphans(home: &HomePaths, dry_run: bool) -> RunnerResult<W
         return Ok(WorkspaceGcSummary::default());
     }
 
-    // 2. Only scan base_dirs from dead runners (lock not held).
-    //    Runs on a blocking thread because probe_lock uses flock(2) and
-    //    std::fs::read_to_string — both synchronous.
+    // 2. Enumerate base-dir lock candidates without holding their fds. Each
+    //    candidate is leased separately while it is processed, so a large
+    //    backlog of old lock files cannot exhaust the process fd limit.
     let locks_dir = home.locks_dir();
-    let base_dirs = tokio::task::spawn_blocking(move || discover_dead_runner_base_dirs(&locks_dir))
-        .await
-        .map_err(|e| RunnerError::Internal(format!("discover base_dirs task failed: {e}")))?;
+    let candidates = tokio::task::spawn_blocking(move || {
+        discover_dead_runner_base_dir_lock_candidates(&locks_dir)
+    })
+    .await
+    .map_err(|e| RunnerError::Internal(format!("discover base-dir locks task failed: {e}")))?;
 
-    if base_dirs.is_empty() {
+    if candidates.is_empty() {
         tracing::debug!("workspace gc: no dead-runner base_dirs discovered");
         return Ok(WorkspaceGcSummary::default());
     }
 
-    gc_workspace_orphans_with_leases(
-        base_dirs,
+    gc_workspace_orphans_with_candidates(
+        candidates,
         &discovered.firecrackers,
         &live_runner_base_dirs,
         false,
@@ -1697,8 +1717,8 @@ async fn gc_workspace_orphans(home: &HomePaths, dry_run: bool) -> RunnerResult<W
     .await
 }
 
-async fn gc_workspace_orphans_with_leases(
-    base_dirs: Vec<DeadRunnerBaseDirLease>,
+async fn gc_workspace_orphans_with_candidates(
+    candidates: Vec<DeadRunnerBaseDirLockCandidate>,
     firecrackers: &[crate::process::FirecrackerProcessInfo],
     live_runner_base_dirs: &HashSet<PathBuf>,
     process_discovery_uncertain: bool,
@@ -1713,8 +1733,19 @@ async fn gc_workspace_orphans_with_leases(
     // 3. Scan each base_dir/workspaces/ for orphans.
     let now = SystemTime::now();
     let mut summary = WorkspaceGcSummary::default();
+    let candidate_count = candidates.len();
 
-    for lease in &base_dirs {
+    for candidate in candidates {
+        let lease =
+            tokio::task::spawn_blocking(move || acquire_dead_runner_base_dir_lease(candidate))
+                .await
+                .map_err(|e| {
+                    RunnerError::Internal(format!("acquire base-dir lease task failed: {e}"))
+                })?;
+        let Some(lease) = lease else {
+            continue;
+        };
+
         let Some(base_dir) = lease.base_dir.as_deref() else {
             if remove_unused_lock_after_probe(
                 &lease.lock_path,
@@ -1763,8 +1794,8 @@ async fn gc_workspace_orphans_with_leases(
         );
     } else {
         tracing::debug!(
-            "workspace gc: no orphans found across {} base_dirs",
-            base_dirs.len()
+            "workspace gc: no orphans found across {} base-dir lock candidates",
+            candidate_count
         );
     }
 
@@ -2718,6 +2749,17 @@ mod tests {
             .iter()
             .filter_map(|lease| lease.base_dir.clone())
             .collect()
+    }
+
+    fn discover_dead_runner_base_dirs(locks_dir: &Path) -> Vec<DeadRunnerBaseDirLease> {
+        discover_dead_runner_base_dir_lock_candidates(locks_dir)
+            .into_iter()
+            .filter_map(acquire_dead_runner_base_dir_lease)
+            .collect()
+    }
+
+    fn discover_base_dir_lock_candidates(home: &HomePaths) -> Vec<DeadRunnerBaseDirLockCandidate> {
+        discover_dead_runner_base_dir_lock_candidates(&home.locks_dir())
     }
 
     fn firecracker_with_base_dir(
@@ -4857,6 +4899,24 @@ mod tests {
         }
     }
 
+    #[test]
+    fn discover_base_dir_lock_candidates_does_not_hold_locks() {
+        let dir = tempfile::tempdir().unwrap();
+        let home = test_home(dir.path());
+        let locks_dir = home.locks_dir();
+        std::fs::create_dir_all(&locks_dir).unwrap();
+
+        let lock_path = locks_dir.join("base-dir-dead.lock");
+        std::fs::write(&lock_path, "/data/dead-runner").unwrap();
+
+        let candidates = discover_base_dir_lock_candidates(&home);
+        assert_eq!(candidates.len(), 1);
+        match probe_existing_lock(&lock_path) {
+            ExistingLockProbe::Free(_) => {}
+            _ => panic!("candidate discovery must not hold base-dir locks"),
+        }
+    }
+
     #[tokio::test]
     async fn gc_workspace_orphans_deletes_old_orphan() {
         use std::fs::FileTimes;
@@ -4965,12 +5025,17 @@ mod tests {
         let lock_path = locks_dir.join("base-dir-test.lock");
         std::fs::write(&lock_path, base_dir.to_str().unwrap()).unwrap();
 
-        let leases = discover_dead_runner_base_dirs(&home.locks_dir());
+        let candidates = discover_base_dir_lock_candidates(&home);
         let firecrackers = [incomplete_firecracker(1234)];
-        let summary =
-            gc_workspace_orphans_with_leases(leases, &firecrackers, &HashSet::new(), true, false)
-                .await
-                .unwrap();
+        let summary = gc_workspace_orphans_with_candidates(
+            candidates,
+            &firecrackers,
+            &HashSet::new(),
+            true,
+            false,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(summary.workspaces_cleaned, 0);
         assert_eq!(summary.base_dir_locks_removed, 0);
@@ -4996,10 +5061,11 @@ mod tests {
         let lock_path = locks_dir.join("base-dir-test.lock");
         std::fs::write(&lock_path, base_dir.to_str().unwrap()).unwrap();
 
-        let leases = discover_dead_runner_base_dirs(&home.locks_dir());
-        let summary = gc_workspace_orphans_with_leases(leases, &[], &HashSet::new(), true, false)
-            .await
-            .unwrap();
+        let candidates = discover_base_dir_lock_candidates(&home);
+        let summary =
+            gc_workspace_orphans_with_candidates(candidates, &[], &HashSet::new(), true, false)
+                .await
+                .unwrap();
 
         assert_eq!(summary.workspaces_cleaned, 0);
         assert_eq!(summary.base_dir_locks_removed, 0);
@@ -5025,12 +5091,17 @@ mod tests {
         let lock_path = locks_dir.join("base-dir-test.lock");
         std::fs::write(&lock_path, base_dir.to_str().unwrap()).unwrap();
 
-        let leases = discover_dead_runner_base_dirs(&home.locks_dir());
+        let candidates = discover_base_dir_lock_candidates(&home);
         let firecrackers = [incomplete_firecracker(1234)];
-        let summary =
-            gc_workspace_orphans_with_leases(leases, &firecrackers, &HashSet::new(), false, false)
-                .await
-                .unwrap();
+        let summary = gc_workspace_orphans_with_candidates(
+            candidates,
+            &firecrackers,
+            &HashSet::new(),
+            false,
+            false,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(summary.workspaces_cleaned, 1);
         assert_eq!(summary.base_dir_locks_removed, 1);
@@ -5060,12 +5131,17 @@ mod tests {
         let lock_path = locks_dir.join("base-dir-test.lock");
         std::fs::write(&lock_path, base_dir.to_str().unwrap()).unwrap();
 
-        let leases = discover_dead_runner_base_dirs(&home.locks_dir());
+        let candidates = discover_base_dir_lock_candidates(&home);
         let firecrackers = [firecracker_with_base_dir(1234, sandbox_id, &base_dir)];
-        let summary =
-            gc_workspace_orphans_with_leases(leases, &firecrackers, &HashSet::new(), false, false)
-                .await
-                .unwrap();
+        let summary = gc_workspace_orphans_with_candidates(
+            candidates,
+            &firecrackers,
+            &HashSet::new(),
+            false,
+            false,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(summary.workspaces_cleaned, 0);
         assert_eq!(summary.base_dir_locks_removed, 0);
@@ -5094,12 +5170,17 @@ mod tests {
         let lock_path = locks_dir.join("base-dir-test.lock");
         std::fs::write(&lock_path, base_dir.to_str().unwrap()).unwrap();
 
-        let leases = discover_dead_runner_base_dirs(&home.locks_dir());
+        let candidates = discover_base_dir_lock_candidates(&home);
         let live_runner_base_dirs = HashSet::from([base_dir.clone()]);
-        let summary =
-            gc_workspace_orphans_with_leases(leases, &[], &live_runner_base_dirs, false, false)
-                .await
-                .unwrap();
+        let summary = gc_workspace_orphans_with_candidates(
+            candidates,
+            &[],
+            &live_runner_base_dirs,
+            false,
+            false,
+        )
+        .await
+        .unwrap();
 
         assert_eq!(summary.workspaces_cleaned, 0);
         assert_eq!(summary.base_dir_locks_removed, 0);
@@ -5135,10 +5216,11 @@ mod tests {
         let relative_content_lock = locks_dir.join("base-dir-relative-content.lock");
         std::fs::write(&relative_content_lock, "relative-runner-data").unwrap();
 
-        let leases = discover_dead_runner_base_dirs(&home.locks_dir());
-        let summary = gc_workspace_orphans_with_leases(leases, &[], &HashSet::new(), false, false)
-            .await
-            .unwrap();
+        let candidates = discover_base_dir_lock_candidates(&home);
+        let summary =
+            gc_workspace_orphans_with_candidates(candidates, &[], &HashSet::new(), false, false)
+                .await
+                .unwrap();
 
         assert_eq!(summary.workspaces_cleaned, 0);
         assert_eq!(summary.base_dir_locks_removed, 4);
@@ -5174,10 +5256,11 @@ mod tests {
         let lock_path = locks_dir.join("base-dir-test.lock");
         std::fs::write(&lock_path, base_dir.to_str().unwrap()).unwrap();
 
-        let leases = discover_dead_runner_base_dirs(&home.locks_dir());
-        let summary = gc_workspace_orphans_with_leases(leases, &[], &HashSet::new(), false, false)
-            .await
-            .unwrap();
+        let candidates = discover_base_dir_lock_candidates(&home);
+        let summary =
+            gc_workspace_orphans_with_candidates(candidates, &[], &HashSet::new(), false, false)
+                .await
+                .unwrap();
 
         assert_eq!(summary.workspaces_cleaned, 0);
         assert_eq!(summary.base_dir_locks_removed, 0);
