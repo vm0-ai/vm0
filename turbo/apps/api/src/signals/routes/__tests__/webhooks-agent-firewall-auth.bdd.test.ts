@@ -9,6 +9,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
+// eslint-disable-next-line no-restricted-imports -- This test only compresses the production refresh timeout; no endpoint exposes timeout control. See docs/testing/testing-external-behavior.md.
 import { setFirewallAuthRefreshTimeoutMsForTests } from "../../services/agent-webhook-firewall-auth.service";
 import {
   basicTemplate,

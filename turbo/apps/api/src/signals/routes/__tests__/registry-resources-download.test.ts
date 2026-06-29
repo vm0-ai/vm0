@@ -9,6 +9,7 @@ import {
   findTool,
 } from "@vm0/core/resource-registry";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
+// eslint-disable-next-line no-restricted-imports -- Private registry archives are pre-provisioned storage versions; no production endpoint creates this fixture state. See docs/testing/testing-external-behavior.md.
 import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
