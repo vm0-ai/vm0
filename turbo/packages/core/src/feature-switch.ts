@@ -326,6 +326,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.PresentationTemplateRunbook]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Generate presentations from a selected template via its self-contained runbook package: the agent pulls one R2 archive, follows AGENT_RUNBOOK.md, and selects a color system at runtime. When off, presentation generation uses the legacy multi-resource selection flow.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {

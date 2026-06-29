@@ -61,6 +61,7 @@ export async function resolveThreadGenerationTemplatePrompt(args: {
   readonly db: Db;
   readonly threadId: string;
   readonly explicit: GenerationTemplateRequest | null | undefined;
+  readonly presentationRunbookEnabled?: boolean;
 }): Promise<string> {
   const stored = await getStoredThreadGenerationTemplates(
     args.db,
@@ -77,7 +78,9 @@ export async function resolveThreadGenerationTemplatePrompt(args: {
     if (!template) {
       return "";
     }
-    const built = buildGenerationTemplatePrompt(template);
+    const built = buildGenerationTemplatePrompt(template, {
+      presentationRunbookEnabled: args.presentationRunbookEnabled,
+    });
     return built.status === "resolved" ? built.prompt : "";
   })
     .filter((prompt) => {
