@@ -492,18 +492,85 @@ exit 1
 
     #[test]
     fn verify_script_checks_sandbox_helper_runtime_commands() {
-        for command_path in [
-            "/bin/sh",
-            "/usr/bin/find",
-            "/usr/bin/awk",
-            "/usr/bin/xargs",
-            "/usr/bin/mktemp",
-            "/usr/bin/tr",
-            "/usr/bin/rm",
+        for (group, command_paths) in [
+            (
+                "shell wrapper runtime",
+                &["/bin/sh", "/bin/bash", "/usr/bin/su"][..],
+            ),
+            (
+                "guest state runtime",
+                &["/usr/bin/date", "/usr/bin/ln", "/usr/bin/sed"][..],
+            ),
+            (
+                "storage and Codex cleanup runtime",
+                &[
+                    "/usr/bin/rm",
+                    "/usr/bin/find",
+                    "/usr/bin/awk",
+                    "/usr/bin/xargs",
+                    "/usr/bin/mktemp",
+                    "/usr/bin/tr",
+                ][..],
+            ),
+            (
+                "workspace mount runtime",
+                &[
+                    "/usr/bin/mountpoint",
+                    "/usr/bin/mount",
+                    "/usr/bin/umount",
+                    "/usr/bin/sync",
+                    "/usr/bin/chown",
+                    "/usr/bin/mkdir",
+                    "/usr/bin/stat",
+                    "/usr/bin/cat",
+                    "/usr/bin/readlink",
+                    "/usr/bin/cut",
+                    "/usr/bin/sort",
+                    "/usr/bin/wc",
+                    "/usr/bin/kill",
+                    "/usr/bin/sleep",
+                ][..],
+            ),
+        ] {
+            for command_path in command_paths {
+                let verifier_check = format!(r#"check_required_executable "{command_path}""#);
+                assert!(
+                    VERIFY_SCRIPT.contains(&verifier_check),
+                    "verify-rootfs.sh should verify {command_path} is present for {group}"
+                );
+            }
+        }
+
+        assert!(
+            VERIFY_SCRIPT.contains(r#"check_required_executable "$dest" "$dest""#),
+            "verify-rootfs.sh should verify rootfs-only guest binaries are executable"
+        );
+        for guest_binary_path in [
+            "/usr/local/bin/guest-agent",
+            "/usr/local/bin/guest-download",
+            "/sbin/guest-init",
+            "/usr/local/bin/guest-mock-claude",
+            "/usr/local/bin/guest-mock-codex",
+            "/sbin/guest-reseed",
+            "/sbin/guest-write-file",
         ] {
             assert!(
-                VERIFY_SCRIPT.contains(command_path),
-                "verify-rootfs.sh should verify {command_path} is present for sandbox helper exec scripts"
+                VERIFY_SCRIPT.contains(guest_binary_path),
+                "verify-rootfs.sh should verify {guest_binary_path} in rootfs mode"
+            );
+        }
+    }
+
+    #[test]
+    fn verify_script_documents_optional_diagnostic_commands() {
+        assert!(
+            VERIFY_SCRIPT.contains("Intentionally unchecked: best-effort diagnostics"),
+            "verify-rootfs.sh should document intentionally unchecked diagnostic commands"
+        );
+        for optional_command in ["file", "sha256sum", "free", "timeout", "ps"] {
+            assert!(
+                VERIFY_SCRIPT.contains(optional_command),
+                "verify-rootfs.sh should document {optional_command} as optional diagnostics"
             );
         }
     }

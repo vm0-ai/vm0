@@ -136,6 +136,26 @@ sudo mount -o loop,ro "$ROOTFS" "$MOUNT_DIR"
 
 errors=()
 
+check_required_executable() {
+  local path="$1" name="${2:-$1}"
+  local check_path="${MOUNT_DIR}${path}"
+  if [[ -x "$check_path" ]]; then
+    echo "  ${name}: found"
+  else
+    errors+=("${name} not found or not executable at ${path}")
+  fi
+}
+
+check_bin() {
+  local pattern="$1" name="$2"
+  # shellcheck disable=SC2086
+  if ls ${MOUNT_DIR}${pattern} &>/dev/null; then
+    echo "  ${name}: found"
+  else
+    errors+=("${name} not found (pattern: ${pattern})")
+  fi
+}
+
 # Check root directory permissions (must be 0755 for non-root users to access files)
 root_perms=$(stat -c%a "$MOUNT_DIR")
 if [[ "$root_perms" == "755" ]]; then
@@ -163,12 +183,7 @@ guest_dests=(
 if [[ "$MODE" == "rootfs" ]]; then
   # Check guest binaries
   for dest in "${guest_dests[@]}"; do
-    check_path="${MOUNT_DIR}${dest}"
-    if [[ -f "$check_path" ]]; then
-      echo "  ${dest}: found"
-    else
-      errors+=("${dest} not found")
-    fi
+    check_required_executable "$dest" "$dest"
   done
 else
   guest_contamination=0
@@ -183,26 +198,49 @@ else
   fi
 fi
 
-# Check required sandbox runtime commands. Runner helper exec scripts run inside
-# the sandbox via `sh -c`, so missing POSIX utilities should fail image
-# verification instead of surfacing during a user session restore.
-check_bin() {
-  local pattern="$1" name="$2"
-  # shellcheck disable=SC2086
-  if ls ${MOUNT_DIR}${pattern} &>/dev/null; then
-    echo "  ${name}: found"
-  else
-    errors+=("${name} not found (pattern: ${pattern})")
-  fi
-}
+# Check required sandbox runtime commands. Runner-owned exec/start-process
+# commands run inside the guest via shell wrappers and included helper scripts,
+# so missing commands should fail image verification before a user session.
+#
+# Intentionally unchecked: best-effort diagnostics from
+# agent-abnormal-exit-diagnostics.sh such as file, sha256sum, free, timeout,
+# and ps. That script runs with `set +e` and has command/fallback guards where
+# absence should reduce diagnostic detail, not block image verification.
 
-check_bin "/bin/sh"        "sh"
-check_bin "/usr/bin/find"  "find"
-check_bin "/usr/bin/awk"   "awk"
-check_bin "/usr/bin/xargs" "xargs"
-check_bin "/usr/bin/mktemp" "mktemp"
-check_bin "/usr/bin/tr"    "tr"
-check_bin "/usr/bin/rm"    "rm"
+# Shell wrappers used by vsock-guest before the runner command body executes.
+check_required_executable "/bin/sh" "sh"
+check_required_executable "/bin/bash" "bash"
+check_required_executable "/usr/bin/su" "su"
+
+# Guest state and timezone repair. /sbin/guest-reseed is rootfs-only and is
+# checked with the guest binaries above when verifying a rootfs image.
+check_required_executable "/usr/bin/date" "date"
+check_required_executable "/usr/bin/ln" "ln"
+check_required_executable "/usr/bin/sed" "sed"
+
+# Storage manifest cleanup and Codex session cleanup helpers.
+check_required_executable "/usr/bin/rm" "rm"
+check_required_executable "/usr/bin/find" "find"
+check_required_executable "/usr/bin/awk" "awk"
+check_required_executable "/usr/bin/xargs" "xargs"
+check_required_executable "/usr/bin/mktemp" "mktemp"
+check_required_executable "/usr/bin/tr" "tr"
+
+# Workspace mount/unmount helpers.
+check_required_executable "/usr/bin/mountpoint" "mountpoint"
+check_required_executable "/usr/bin/mount" "mount"
+check_required_executable "/usr/bin/umount" "umount"
+check_required_executable "/usr/bin/sync" "sync"
+check_required_executable "/usr/bin/chown" "chown"
+check_required_executable "/usr/bin/mkdir" "mkdir"
+check_required_executable "/usr/bin/stat" "stat"
+check_required_executable "/usr/bin/cat" "cat"
+check_required_executable "/usr/bin/readlink" "readlink"
+check_required_executable "/usr/bin/cut" "cut"
+check_required_executable "/usr/bin/sort" "sort"
+check_required_executable "/usr/bin/wc" "wc"
+check_required_executable "/usr/bin/kill" "kill"
+check_required_executable "/usr/bin/sleep" "sleep"
 
 # Check CLIs
 if [[ -f "${MOUNT_DIR}/usr/bin/gh" ]]; then
