@@ -49,7 +49,10 @@ import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
 import type { AuthContext } from "../../types/auth";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
-import { ApiDispatchTimingCollector } from "../services/api-dispatch-timing.service";
+import {
+  ApiDispatchTimingCollector,
+  measureApiDispatchTiming,
+} from "../services/api-dispatch-timing.service";
 import {
   cancelRun$,
   dispatchCancelSideEffects$,
@@ -177,7 +180,7 @@ interface NormalSendArgs {
   readonly userId: string;
   readonly orgId: string;
   readonly apiStartTime: number;
-  readonly timing: ApiDispatchTimingCollector;
+  readonly timing?: ApiDispatchTimingCollector;
 }
 
 interface PreparedNormalSend {
@@ -2340,7 +2343,8 @@ async function resolveTimedRunModelPin(
   args: NormalSendArgs,
   prepared: PreparedNormalSend,
 ): ReturnType<typeof resolveRunModelPin> {
-  return await args.timing.measure(
+  return await measureApiDispatchTiming(
+    args.timing,
     "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
     "nested",
     async () => {
@@ -2367,7 +2371,8 @@ async function resolveTimedProviderAdmission(params: {
   readonly modelPin: ThreadModelPin;
   readonly requestedModelProvider: string | undefined;
 }): ReturnType<typeof resolveModelFirstProviderAdmission> {
-  return await params.args.timing.measure(
+  return await measureApiDispatchTiming(
+    params.args.timing,
     "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
     "nested",
     async () => {
@@ -2429,7 +2434,7 @@ function buildCreateZeroRunArgs(params: {
       prepared.generationTemplatePrompt,
       prepared.computerUseHostGrant?.displayName ?? null,
     ),
-    timing: args.timing,
+    ...(args.timing ? { timing: args.timing } : {}),
   };
 }
 
@@ -2439,7 +2444,8 @@ async function buildTimedCreateZeroRunArgs(params: {
   readonly modelPin: ThreadModelPin;
   readonly providerAdmission: ModelFirstProviderAdmission;
 }): Promise<ReturnType<typeof buildCreateZeroRunArgs>> {
-  return await params.args.timing.measure(
+  return await measureApiDispatchTiming(
+    params.args.timing,
     "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
     "nested",
     () => {
@@ -2489,11 +2495,13 @@ const createNormalChatRun$ = command(
     });
     signal.throwIfAborted();
 
-    args.timing.recordElapsed(
-      "api_dispatch_pre_create_zero_web_chat_create_normal_run",
-      "nested",
-      createNormalRunStartedAt,
-    );
+    if (args.timing) {
+      args.timing.recordElapsed(
+        "api_dispatch_pre_create_zero_web_chat_create_normal_run",
+        "nested",
+        createNormalRunStartedAt,
+      );
+    }
     const runResult = await set(createZeroRun$, createRunArgs, signal);
     signal.throwIfAborted();
     if (runResult.status !== 201) {
@@ -2544,7 +2552,8 @@ const createNormalChatRun$ = command(
 
 export const sendNormalMessage$ = command(
   async ({ set }, args: NormalSendArgs, signal: AbortSignal) => {
-    const prepared = await args.timing.measure(
+    const prepared = await measureApiDispatchTiming(
+      args.timing,
       "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
       "nested",
       async () => {
@@ -2556,7 +2565,8 @@ export const sendNormalMessage$ = command(
       return prepared;
     }
 
-    const clientMessageResolution = await args.timing.measure(
+    const clientMessageResolution = await measureApiDispatchTiming(
+      args.timing,
       "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
       "nested",
       async () => {
@@ -2573,7 +2583,8 @@ export const sendNormalMessage$ = command(
       return clientMessageResolution;
     }
 
-    const revocationError = await args.timing.measure(
+    const revocationError = await measureApiDispatchTiming(
+      args.timing,
       "api_dispatch_pre_create_zero_web_chat_validate_revocation",
       "nested",
       async () => {
@@ -2601,7 +2612,8 @@ export const sendNormalMessage$ = command(
       return badRequestMessage("Client thread id is already in use");
     }
 
-    const hasActiveRun = await args.timing.measure(
+    const hasActiveRun = await measureApiDispatchTiming(
+      args.timing,
       "api_dispatch_pre_create_zero_web_chat_check_active_run",
       "nested",
       async () => {
