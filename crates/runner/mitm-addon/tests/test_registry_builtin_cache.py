@@ -6,6 +6,7 @@ from unittest.mock import MagicMock, patch
 
 import matching
 import registry
+import registry_firewalls
 from tests.registry_helpers import (
     builtin_vm,
     inline_vm,
@@ -90,7 +91,7 @@ class TestRegistryBuiltinCache:
         auth = {"headers": {"Authorization": "Bearer ${{ secrets.API_TOKEN }}"}}
         permissions = [{"name": "read-items", "rules": ["GET /items"]}]
         monkeypatch.setattr(
-            registry,
+            registry_firewalls,
             "BUILTIN_FIREWALLS",
             {
                 "large": {
@@ -263,7 +264,7 @@ class TestRegistryBuiltinCache:
         self, tmp_path, monkeypatch
     ):
         monkeypatch.setattr(
-            registry,
+            registry_firewalls,
             "BUILTIN_FIREWALLS",
             {
                 "cache-a": {

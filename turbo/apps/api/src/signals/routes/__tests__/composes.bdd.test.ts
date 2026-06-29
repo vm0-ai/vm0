@@ -20,9 +20,7 @@ import {
   createComposesBddApi,
   mockComposeInstructionsDownloads,
   sandboxComposeToken,
-  zeroComposeDeleteToken,
 } from "./helpers/api-bdd-composes";
-import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 
@@ -668,18 +666,6 @@ describe("COMPOSE-01 token access", () => {
       filename: "CLAUDE.md",
     });
 
-    const sandboxDelete = await composes.requestDeleteCompose(
-      sandbox,
-      composeId,
-      [403],
-    );
-    expect(sandboxDelete.body).toStrictEqual({
-      error: {
-        message: "Agent deletion is not available from sandbox",
-        code: "FORBIDDEN",
-      },
-    });
-
     const foreignSandbox = {
       bearer: sandboxComposeToken({
         userId: `user_${randomUUID()}`,
@@ -692,25 +678,6 @@ describe("COMPOSE-01 token access", () => {
       [200],
     );
     expect(foreignRead.body.id).toBe(composeId);
-
-    mockClerkMembership(context, admin, "org:admin");
-    const zeroToken = {
-      bearer: zeroComposeDeleteToken({
-        userId: admin.userId,
-        orgId: adminOrgId,
-      }),
-    };
-    const zeroDelete = await composes.requestDeleteCompose(
-      zeroToken,
-      composeId,
-      [403],
-    );
-    expect(zeroDelete.body).toStrictEqual({
-      error: {
-        message: "Agent deletion is not available from sandbox",
-        code: "FORBIDDEN",
-      },
-    });
 
     const freshSandbox = {
       bearer: sandboxComposeToken({
@@ -772,13 +739,6 @@ describe("COMPOSE-01 token access", () => {
       [401],
     );
     expect(metadata.body).toStrictEqual(unauthenticatedBody);
-
-    const composeDelete = await composes.requestDeleteCompose(
-      null,
-      missingId,
-      [401],
-    );
-    expect(composeDelete.body).toStrictEqual(unauthenticatedBody);
 
     const zeroByName = await composes.requestReadZeroComposeByName(
       null,
@@ -978,13 +938,6 @@ describe("COMPOSE-01 delete protection and volume sweep", () => {
         code: "CONFLICT",
       },
     };
-    const agentConflict = await composes.requestDeleteCompose(
-      actor,
-      compose.composeId,
-      [409],
-    );
-    expect(agentConflict.body).toStrictEqual(conflictBody);
-
     const zeroConflict = await composes.requestDeleteZeroCompose(
       actor,
       compose.composeId,
@@ -1013,7 +966,7 @@ describe("COMPOSE-01 delete protection and volume sweep", () => {
       },
     ]);
 
-    await composes.requestDeleteCompose(actor, compose.composeId, [204]);
+    await composes.requestDeleteZeroCompose(actor, compose.composeId, [204]);
 
     const deleted = await api.requestReadComposeById(
       actor,
@@ -1047,7 +1000,7 @@ describe("COMPOSE-01 delete protection and volume sweep", () => {
       owner,
       composeWith(slug("bdd-plain-delete")),
     );
-    await composes.requestDeleteCompose(owner, created.composeId, [204]);
+    await composes.requestDeleteZeroCompose(owner, created.composeId, [204]);
     const gone = await api.requestReadComposeById(
       owner,
       created.composeId,
@@ -1056,7 +1009,7 @@ describe("COMPOSE-01 delete protection and volume sweep", () => {
     expectApiError(gone.body);
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
 
-    const unknown = await composes.requestDeleteCompose(
+    const unknown = await composes.requestDeleteZeroCompose(
       owner,
       randomUUID(),
       [404],
@@ -1069,7 +1022,7 @@ describe("COMPOSE-01 delete protection and volume sweep", () => {
       orgId: orgIdOf(owner),
       orgRole: "org:member",
     });
-    const memberDelete = await composes.requestDeleteCompose(
+    const memberDelete = await composes.requestDeleteZeroCompose(
       member,
       kept.composeId,
       [404],

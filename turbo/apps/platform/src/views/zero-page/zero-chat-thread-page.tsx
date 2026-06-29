@@ -2331,15 +2331,20 @@ function HeaderWorkflowTriggerCard({
         dimmed={!trigger.enabled}
         actions={
           <>
-            <button
-              type="button"
-              className="rounded-md px-1 py-1 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
-              onClick={() => {
-                setEditingTriggerId(trigger.id);
-              }}
-            >
-              Edit
-            </button>
+            {trigger.trigger.kind === "schedule" ||
+            (trigger.trigger.kind === "event" &&
+              (trigger.trigger.eventType === "gmail-new-message" ||
+                trigger.trigger.eventType === "gmail-label-applied")) ? (
+              <button
+                type="button"
+                className="rounded-md px-1 py-1 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
+                onClick={() => {
+                  setEditingTriggerId(trigger.id);
+                }}
+              >
+                Edit
+              </button>
+            ) : null}
             <Button
               type="button"
               variant="outline"

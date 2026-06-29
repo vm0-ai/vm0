@@ -10,10 +10,12 @@
 # by the Playwright suite and have been removed from this file.
 #
 # Required env vars:
-#   VM0_API_URL   — Target web app URL (e.g., https://www.vm7.ai:8443)
+#   VM0_AUTH_URL   - Target auth URL (e.g., https://staging-so.vm6.ai)
 #
 # Optional env vars:
-#   E2E_ACCOUNT   — Test email (auto-generated if empty)
+#   VM0_API_URL     - API URL, used as a local fallback for auth URL
+#   VM0_AUTH_DOMAIN - API domain override for auth callbacks
+#   E2E_ACCOUNT     - Test email (auto-generated if empty)
 
 load '../../helpers/setup'
 load '../../helpers/browser'
@@ -26,7 +28,8 @@ setup_file() {
   export SIGNUP_PASSWORD
 
   echo "# Clerk UI E2E (sign-up and sign-in)" >&3
-  echo "#   Web URL: $VM0_API_URL" >&3
+  echo "#   Auth URL: ${VM0_AUTH_URL:-${VM0_API_URL:-}}" >&3
+  echo "#   Auth domain: ${VM0_AUTH_DOMAIN:-<default>}" >&3
   echo "#   Email: $E2E_ACCOUNT" >&3
 }
 
@@ -34,13 +37,31 @@ teardown_file() {
   browser_teardown
 }
 
+auth_url() {
+  local path="$1"
+  local base="${VM0_AUTH_URL:-${VM0_API_URL:-}}"
+  local url="${base%/}${path}"
+
+  if [[ -n "${VM0_AUTH_DOMAIN:-}" ]]; then
+    local separator="?"
+    if [[ "$url" == *\?* ]]; then
+      separator="&"
+    fi
+    url="${url}${separator}domain=${VM0_AUTH_DOMAIN}"
+  fi
+
+  printf '%s' "$url"
+}
+
 # ===========================================================================
 # Phase 1: Sign up
 # ===========================================================================
 
 @test "sign up a new test account" {
-  echo "# Navigating to $VM0_API_URL/sign-up" >&3
-  agent-browser open "$VM0_API_URL/sign-up" --ignore-https-errors
+  local sign_up_url
+  sign_up_url="$(auth_url "/sign-up")"
+  echo "# Navigating to $sign_up_url" >&3
+  agent-browser open "$sign_up_url" --ignore-https-errors
   agent-browser wait 3000
   step_screenshot "sign-up-page"
 
@@ -106,8 +127,10 @@ teardown_file() {
   sleep 1
 
   # Re-open sign-in page
-  echo "# Navigating to $VM0_API_URL/sign-in" >&3
-  agent-browser open "$VM0_API_URL/sign-in" --ignore-https-errors
+  local sign_in_url
+  sign_in_url="$(auth_url "/sign-in")"
+  echo "# Navigating to $sign_in_url" >&3
+  agent-browser open "$sign_in_url" --ignore-https-errors
   agent-browser wait 3000
   step_screenshot "sign-in-page"
 

@@ -8,7 +8,10 @@ let mockWorkflowTriggers: ChatThreadWorkflowTrigger[] = [];
 type MockWorkflowTriggerOverrides = Partial<
   Omit<ChatThreadWorkflowTrigger, "workflow">
 > & {
-  readonly eventType?: "gmail-new-message" | "gmail-label-applied";
+  readonly eventType?:
+    | "gmail-new-message"
+    | "gmail-label-applied"
+    | "github-label-applied";
   readonly eventConfig?: Extract<
     ChatThreadWorkflowTrigger,
     { kind: "event" }
@@ -70,6 +73,26 @@ export function createMockWorkflowTrigger(
           provider: "gmail",
           event: "label_applied",
           labelName: "Support",
+        },
+        schedule: null,
+        scheduleSummary: null,
+        ...overrides,
+        workflow,
+      } as ChatThreadWorkflowTrigger;
+    }
+    if (overrides.eventType === "github-label-applied") {
+      return {
+        ...base,
+        kind: "event",
+        eventType: "github-label-applied",
+        eventConfig: {
+          provider: "github",
+          event: "label_applied",
+          labelName: "triage",
+          filters: {
+            subject: "both",
+            actor: { type: "me" },
+          },
         },
         schedule: null,
         scheduleSummary: null,

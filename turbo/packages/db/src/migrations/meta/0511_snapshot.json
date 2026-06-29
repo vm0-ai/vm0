@@ -1,6 +1,6 @@
 {
-  "id": "5470ceed-c242-4226-92aa-d27b1b149bdc",
-  "prevId": "06e624c2-5afa-4d5a-b6b9-630e25705859",
+  "id": "992f3a37-b902-400b-a22d-2ac4b02100a3",
+  "prevId": "5470ceed-c242-4226-92aa-d27b1b149bdc",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -14261,6 +14261,12 @@
         },
         "summary": {
           "name": "summary",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "trigger_brief": {
+          "name": "trigger_brief",
           "type": "text",
           "primaryKey": false,
           "notNull": false

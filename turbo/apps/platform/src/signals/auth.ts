@@ -7,11 +7,21 @@ const reload$ = state(0);
 const clerkVersion$ = state(0);
 
 /**
- * Resolve the web app origin from the current app origin.
- * Replaces "platform" or "app" with "www" in the hostname so sign-in/sign-out
- * redirects land on the web app where auth pages live.
+ * Resolve the hosted auth/onboarding origin.
+ * Preview and staging deployments can use the shared SO surface from
+ * VITE_PAID_ONBOARDING_URL; production keeps the historical web origin so this
+ * auth bridge does not change live sign-in behavior.
  */
 export function resolveWebOrigin(): string {
+  if (import.meta.env.VITE_VERCEL_ENV !== "production") {
+    const configuredUrl = import.meta.env.VITE_PAID_ONBOARDING_URL as
+      | string
+      | undefined;
+    if (configuredUrl) {
+      return new URL(configuredUrl).origin;
+    }
+  }
+
   const origin = location.origin;
   if (!origin || origin === "null") {
     return "";
@@ -22,6 +32,15 @@ export function resolveWebOrigin(): string {
 }
 
 function resolveDomainOverride(): string | null {
+  if (import.meta.env.VITE_VERCEL_ENV !== "production") {
+    const configuredDomain = import.meta.env.VITE_PAID_ONBOARDING_DOMAIN as
+      | string
+      | undefined;
+    if (configuredDomain) {
+      return configuredDomain;
+    }
+  }
+
   const origin = location.origin;
   if (!origin || origin === "null") {
     return null;
