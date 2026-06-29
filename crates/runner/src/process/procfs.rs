@@ -6,7 +6,7 @@ enum CmdlineRead {
     Args(Vec<String>),
     Ignored,
     Missing,
-    Unreadable(std::io::Error),
+    Unreadable(String),
 }
 
 fn parse_cmdline_bytes(bytes: &[u8]) -> Option<Vec<String>> {
@@ -40,7 +40,23 @@ async fn read_cmdline_for_scan(pid: u32) -> CmdlineRead {
             .map(CmdlineRead::Args)
             .unwrap_or(CmdlineRead::Ignored),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => CmdlineRead::Missing,
-        Err(e) => CmdlineRead::Unreadable(e),
+        Err(e) => cmdline_error_for_scan(pid, e).await,
+    }
+}
+
+async fn cmdline_error_for_scan(pid: u32, cmdline_error: std::io::Error) -> CmdlineRead {
+    match read_process_comm_for_scan(pid).await {
+        ProcessCommRead::Name(comm) if comm == b"firecracker" => {
+            CmdlineRead::Unreadable(cmdline_error.to_string())
+        }
+        ProcessCommRead::Name(_) => CmdlineRead::Ignored,
+        ProcessCommRead::Missing => CmdlineRead::Missing,
+        ProcessCommRead::Unreadable(stat_error) => CmdlineRead::Unreadable(format!(
+            "cmdline read failed: {cmdline_error}; stat read failed: {stat_error}"
+        )),
+        ProcessCommRead::Invalid => CmdlineRead::Unreadable(format!(
+            "cmdline read failed: {cmdline_error}; stat parse failed"
+        )),
     }
 }
 
@@ -64,6 +80,33 @@ fn stat_fields_after_comm(content: &[u8]) -> Option<impl Iterator<Item = &[u8]> 
             .split(|byte| byte.is_ascii_whitespace())
             .filter(|field| !field.is_empty()),
     )
+}
+
+fn process_comm(content: &[u8]) -> Option<&[u8]> {
+    let open_paren = content.iter().position(|byte| *byte == b'(')?;
+    let close_paren = content.iter().rposition(|byte| *byte == b')')?;
+    if close_paren <= open_paren {
+        return None;
+    }
+    content.get(open_paren + 1..close_paren)
+}
+
+enum ProcessCommRead {
+    Name(Vec<u8>),
+    Missing,
+    Unreadable(std::io::Error),
+    Invalid,
+}
+
+async fn read_process_comm_for_scan(pid: u32) -> ProcessCommRead {
+    let path = format!("/proc/{pid}/stat");
+    match tokio::fs::read(&path).await {
+        Ok(content) => process_comm(&content)
+            .map(|comm| ProcessCommRead::Name(comm.to_vec()))
+            .unwrap_or(ProcessCommRead::Invalid),
+        Err(e) if e.kind() == std::io::ErrorKind::NotFound => ProcessCommRead::Missing,
+        Err(e) => ProcessCommRead::Unreadable(e),
+    }
 }
 
 fn parse_char_field(field: &[u8]) -> Option<char> {
@@ -231,6 +274,29 @@ mod tests {
     #[test]
     fn parse_cmdline_bytes_rejects_all_empty_segments() {
         assert_eq!(parse_cmdline_bytes(b"\0\0"), None);
+    }
+
+    #[test]
+    fn process_comm_extracts_comm_with_spaces_and_parens() {
+        let stat = stat_with_comm("firecracker (worker)", "S", "1100", "123456");
+
+        assert_eq!(
+            process_comm(stat.as_bytes()),
+            Some(&b"firecracker (worker)"[..])
+        );
+    }
+
+    #[test]
+    fn process_comm_accepts_non_utf8_comm() {
+        let stat = stat_bytes_with_comm(b"firecracker\xff", "S", "1100", "123456");
+
+        assert_eq!(process_comm(&stat), Some(&b"firecracker\xff"[..]));
+    }
+
+    #[test]
+    fn process_comm_rejects_missing_delimiters() {
+        assert_eq!(process_comm(b"1234 firecracker) S 1 1"), None);
+        assert_eq!(process_comm(b"1234 (firecracker S 1 1"), None);
     }
 
     #[test]
