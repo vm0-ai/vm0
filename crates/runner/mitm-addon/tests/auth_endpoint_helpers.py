@@ -31,6 +31,18 @@ class AuthEndpointResponse:
 
 
 class FakeAuthEndpoint:
+    """Threaded local auth endpoint for mitm-addon auth-related tests.
+
+    The endpoint is live only inside ``run()``. It handles POST requests,
+    records method, path, raw body, and lower-cased headers, and serves queued
+    responses in FIFO order. Requests without a queued response receive a
+    synthetic HTTP 500 response so accidental extra auth calls fail visibly.
+
+    Queued responses may include a ``release_event`` to block sending the
+    response. Context teardown releases pending events so blocked handler
+    threads can exit.
+    """
+
     def __init__(self) -> None:
         self._condition = threading.Condition()
         self._requests: list[AuthEndpointRequest] = []
@@ -62,6 +74,7 @@ class FakeAuthEndpoint:
         status: int = 200,
         release_event: threading.Event | None = None,
     ) -> None:
+        """Queue a JSON response with FIFO and ``release_event`` semantics."""
         self.queue_response(
             status,
             body=json.dumps(body).encode(),
@@ -77,6 +90,14 @@ class FakeAuthEndpoint:
         headers: Sequence[tuple[str, str]] = (),
         release_event: threading.Event | None = None,
     ) -> None:
+        """Queue a response for the next auth request.
+
+        Responses are served FIFO. If ``release_event`` is provided, the
+        handler records the request immediately and waits to send this response
+        until the event is set. Context teardown sets pending release events.
+        When no queued response remains, the helper returns its synthetic
+        unexpected-request HTTP 500 response.
+        """
         with self._condition:
             if release_event is not None:
                 self._release_events.append(release_event)
@@ -90,6 +111,11 @@ class FakeAuthEndpoint:
             )
 
     def wait_for_request_count(self, count: int, *, timeout: float = 2.0) -> bool:
+        """Wait until at least ``count`` auth requests have been recorded.
+
+        Use this instead of sleeps when concurrent tests coordinate with a
+        blocked queued response or auth-cache request coalescing.
+        """
         with self._condition:
             return self._condition.wait_for(lambda: len(self._requests) >= count, timeout)
 
