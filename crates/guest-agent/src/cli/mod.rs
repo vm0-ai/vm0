@@ -740,8 +740,22 @@ async fn execute_cli_inner(
                                 ParsedEventAction::Forward => {}
                                 ParsedEventAction::Skip => continue,
                             }
+                            let is_result_event = behavior.handles_claude_result_event(&event);
+                            if (post_result_cleanup_was_armed || is_result_event)
+                                && try_observe_cli_exit(
+                                    &mut child,
+                                    &mut cli_status,
+                                    &mut cli_exit_at,
+                                    &active_input_controller,
+                                    &mut termination_runtime,
+                                    stdout_eof,
+                                    drain_deadline.as_mut(),
+                                )?
+                            {
+                                break Ok(());
+                            }
                             // Print Claude Code final result to stdout if applicable.
-                            if behavior.handles_claude_result_event(&event) {
+                            if is_result_event {
                                 let result_summary = ClaudeResultSummary::from_event(&event);
                                 claude_result = Some(result_summary);
                                 if let Some(diagnostic) =
