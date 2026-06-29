@@ -1,5 +1,22 @@
 # Changelog
 
+## [9.214.0](https://github.com/vm0-ai/vm0/compare/cli-v9.213.7...cli-v9.214.0) (2026-06-29)
+
+
+### Features
+
+* add GitHub label workflow triggers ([#19322](https://github.com/vm0-ai/vm0/issues/19322)) ([245be48](https://github.com/vm0-ai/vm0/commit/245be48e4eab3b4644e00fe9480213c327dda1b9))
+* replace model coefficients with price tiers ([#19298](https://github.com/vm0-ai/vm0/issues/19298)) ([bde94cd](https://github.com/vm0-ai/vm0/commit/bde94cdfc2ee5c8bf0e4bf4da048be72ff3f3411))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.125.0
+    * @vm0/connectors bumped to 1.113.0
+    * @vm0/core bumped to 8.375.0
+
 ## [9.213.7](https://github.com/vm0-ai/vm0/compare/cli-v9.213.6...cli-v9.213.7) (2026-06-29)
 
 

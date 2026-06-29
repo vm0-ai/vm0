@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.375.0](https://github.com/vm0-ai/vm0/compare/core-v8.374.6...core-v8.375.0) (2026-06-29)
+
+
+### Features
+
+* add GitHub label workflow triggers ([#19322](https://github.com/vm0-ai/vm0/issues/19322)) ([245be48](https://github.com/vm0-ai/vm0/commit/245be48e4eab3b4644e00fe9480213c327dda1b9))
+
+
+### Refactoring
+
+* remove legacy agent compose instructions route ([#19338](https://github.com/vm0-ai/vm0/issues/19338)) ([9835703](https://github.com/vm0-ai/vm0/commit/9835703457fb0cedb8aeb4516c61299e843577b2))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.125.0
+    * @vm0/connectors bumped to 1.113.0
+
 ## [8.374.6](https://github.com/vm0-ai/vm0/compare/core-v8.374.5...core-v8.374.6) (2026-06-29)
 
 
