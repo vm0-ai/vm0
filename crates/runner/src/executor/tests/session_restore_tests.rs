@@ -598,7 +598,7 @@ async fn restore_session_fails_when_codex_cleanup_exceeds_scan_budget() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
     let session =
-        ResumeSession::inline("019e9154-c304-70f0-adde-36efb1be1701".into(), "{}\n".into());
+        materialized_text_session("019e9154-c304-70f0-adde-36efb1be1701".into(), "{}\n".into());
     sandbox.push_exec_result(Ok(ExecResult::new(
         1,
         Vec::new(),
