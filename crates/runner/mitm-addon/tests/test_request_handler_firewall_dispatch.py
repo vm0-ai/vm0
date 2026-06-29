@@ -428,6 +428,60 @@ async def test_public_destination_blocks_private_peer_before_public_transparent_
     )
 
 
+async def test_public_destination_blocks_private_transparent_host_despite_public_peer(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="10.0.0.1")
+    flow.server_conn.address = ("service.example.com", 443)
+    flow.server_conn.peername = ("93.184.216.35", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.sni = "service.example.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+
+
+async def test_public_destination_blocks_private_server_address_despite_public_peer(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+    flow.server_conn.address = ("10.0.0.1", 443)
+    flow.server_conn.peername = ("93.184.216.35", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.sni = "service.example.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+
+
 async def test_public_destination_blocks_loopback_peer_before_public_transparent_sockname(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
