@@ -1,8 +1,10 @@
 import {
   MODEL_PROVIDER_TYPES,
-  getVm0ModelMultiplier,
+  getVm0ModelPriceTier,
+  getVm0ModelPriceTierLabel,
   type ModelProviderType,
   type SupportedRunModel,
+  type Vm0ModelPriceTier,
 } from "@vm0/api-contracts/contracts/model-providers";
 
 /**
@@ -67,4 +69,8 @@ export function getModelBrandIconType(
 ): ModelProviderType {
   return MODEL_BRAND_ICON[model];
 }
-export { getVm0ModelMultiplier };
+export {
+  getVm0ModelPriceTier,
+  getVm0ModelPriceTierLabel,
+  type Vm0ModelPriceTier,
+};

@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import chalk from "chalk";
-import { getVm0ModelMultiplier } from "@vm0/api-contracts/contracts/model-providers";
+import { getVm0ModelPriceTier } from "@vm0/api-contracts/contracts/model-providers";
 import { listZeroModelPolicies } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import {
@@ -9,8 +9,8 @@ import {
   getModelProviderRouteKind,
 } from "../../../lib/domain/model-policy-display";
 
-function formatCreditMultiplier(multiplier: number | undefined): string {
-  return multiplier === undefined ? "unknown" : `x${multiplier}`;
+function formatPriceTier(tier: string | undefined): string {
+  return tier ?? "unknown";
 }
 
 function getCurrentIntegration(): string | null {
@@ -62,7 +62,7 @@ const listCommand = new Command()
 
         if (getModelProviderRouteKind(policy) === "built-in") {
           console.log(
-            `    price coefficient: ${formatCreditMultiplier(getVm0ModelMultiplier(policy.model))}`,
+            `    price tier: ${formatPriceTier(getVm0ModelPriceTier(policy.model))}`,
           );
         }
 
