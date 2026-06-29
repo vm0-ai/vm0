@@ -2,6 +2,8 @@
 
 mod codex;
 
+use std::borrow::Cow;
+
 use sandbox::{Sandbox, SandboxError};
 use tracing::{info, warn};
 
@@ -60,29 +62,39 @@ fn restored_session_framework(framework: EffectiveCliFramework) -> RestoredSessi
 }
 
 #[derive(Clone, Debug, Eq, PartialEq)]
-pub(super) struct MaterializedResumeSession {
-    cli_agent_session_id: String,
-    history_bytes: Vec<u8>,
+pub(super) struct MaterializedResumeSession<'a> {
+    cli_agent_session_id: Cow<'a, str>,
+    history: MaterializedResumeHistory<'a>,
 }
 
-impl MaterializedResumeSession {
+#[derive(Clone, Debug, Eq, PartialEq)]
+enum MaterializedResumeHistory<'a> {
+    InlineText(&'a str),
+    Bytes(Vec<u8>),
+}
+
+impl MaterializedResumeSession<'static> {
     pub(super) fn new(cli_agent_session_id: String, history_bytes: Vec<u8>) -> Self {
         Self {
-            cli_agent_session_id,
-            history_bytes,
+            cli_agent_session_id: Cow::Owned(cli_agent_session_id),
+            history: MaterializedResumeHistory::Bytes(history_bytes),
         }
     }
+}
 
-    pub(super) fn from_inline_resume_session(session: &ResumeSession) -> RunnerResult<Self> {
+impl<'a> MaterializedResumeSession<'a> {
+    pub(super) fn from_inline_resume_session(
+        session: &'a ResumeSession,
+    ) -> RunnerResult<MaterializedResumeSession<'a>> {
         let Some(session_history) = session.session_history() else {
             return Err(RunnerError::Internal(
                 "resume session history was not materialized".into(),
             ));
         };
-        Ok(Self::new(
-            session.cli_agent_session_id.clone(),
-            session_history.as_bytes().to_vec(),
-        ))
+        Ok(Self {
+            cli_agent_session_id: Cow::Borrowed(&session.cli_agent_session_id),
+            history: MaterializedResumeHistory::InlineText(session_history),
+        })
     }
 
     pub(super) fn cli_agent_session_id(&self) -> &str {
@@ -90,11 +102,19 @@ impl MaterializedResumeSession {
     }
 
     pub(super) fn history_bytes(&self) -> &[u8] {
-        &self.history_bytes
+        match &self.history {
+            MaterializedResumeHistory::InlineText(session_history) => session_history.as_bytes(),
+            MaterializedResumeHistory::Bytes(history_bytes) => history_bytes,
+        }
     }
 
     pub(super) fn history_text(&self) -> Option<&str> {
-        std::str::from_utf8(&self.history_bytes).ok()
+        match &self.history {
+            MaterializedResumeHistory::InlineText(session_history) => Some(session_history),
+            MaterializedResumeHistory::Bytes(history_bytes) => {
+                std::str::from_utf8(history_bytes).ok()
+            }
+        }
     }
 }
 
@@ -109,7 +129,7 @@ pub(super) struct SessionRestoreDiagnostics {
 pub(super) async fn restore_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    session: &MaterializedResumeSession,
+    session: &MaterializedResumeSession<'_>,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
     // Validate the CLI agent session id to prevent path traversal.
     // Only allow alnum, dash, and underscore.
@@ -140,7 +160,7 @@ pub(super) async fn restore_session(
 pub(super) async fn restore_claude_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    session: &MaterializedResumeSession,
+    session: &MaterializedResumeSession<'_>,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
     let session_history = session.history_bytes();
     let project_name = CANONICAL_WORKING_DIR

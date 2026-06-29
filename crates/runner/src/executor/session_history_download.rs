@@ -30,7 +30,7 @@ pub(super) enum SessionHistoryMaterialization {
     Missing,
     Ready,
     Downloaded {
-        session: MaterializedResumeSession,
+        session: MaterializedResumeSession<'static>,
         elapsed: Duration,
     },
     Failed {
@@ -41,7 +41,7 @@ pub(super) enum SessionHistoryMaterialization {
 
 struct SessionHistoryDownloadTaskResult {
     elapsed: Duration,
-    result: RunnerResult<MaterializedResumeSession>,
+    result: RunnerResult<MaterializedResumeSession<'static>>,
 }
 
 impl SessionHistoryMaterializer {
@@ -190,7 +190,7 @@ async fn download_resume_session_history_timed(
 async fn download_resume_session_history(
     http: HttpClient,
     session: ResumeSession,
-) -> RunnerResult<MaterializedResumeSession> {
+) -> RunnerResult<MaterializedResumeSession<'static>> {
     let history_ref = session
         .history_ref()
         .ok_or_else(|| RunnerError::Internal("resume session history ref is missing".into()))?

@@ -94,7 +94,7 @@ fn parse_codex_rollout_timestamp(raw: &str) -> Option<chrono::DateTime<chrono::U
 pub(super) async fn restore_codex_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    session: &MaterializedResumeSession,
+    session: &MaterializedResumeSession<'_>,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
     let session_history = session.history_bytes();
     let original_session_id = session.cli_agent_session_id();

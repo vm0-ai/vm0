@@ -19,11 +19,17 @@ use crate::types::{
 
 static RESTORE_SESSION_LOG_CALLSITE_LOCK: Mutex<()> = Mutex::new(());
 
-fn materialized_text_session(session_id: String, history: String) -> MaterializedResumeSession {
+fn materialized_text_session(
+    session_id: String,
+    history: String,
+) -> MaterializedResumeSession<'static> {
     MaterializedResumeSession::new(session_id, history.into_bytes())
 }
 
-fn materialized_bytes_session(session_id: String, history: &[u8]) -> MaterializedResumeSession {
+fn materialized_bytes_session(
+    session_id: String,
+    history: &[u8],
+) -> MaterializedResumeSession<'static> {
     MaterializedResumeSession::new(session_id, history.to_vec())
 }
 
