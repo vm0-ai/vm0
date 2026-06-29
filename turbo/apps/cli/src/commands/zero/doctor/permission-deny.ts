@@ -87,14 +87,14 @@ function rawAuthorityFromDeniedUrl(url: string): string | null {
     const index = url.indexOf(delimiter, authorityStart);
     if (index !== -1) authorityEnd = Math.min(authorityEnd, index);
   }
-  const authority = url.slice(authorityStart, authorityEnd);
-  return authority === "" ? null : authority;
+  return url.slice(authorityStart, authorityEnd);
 }
 
 function rawAuthorityHasUnsafeSyntax(url: string): boolean {
   const authority = rawAuthorityFromDeniedUrl(url);
   if (authority === null) return false;
   return (
+    authority === "" ||
     authority.includes("\\") ||
     authority.includes("%") ||
     [...authority].some((char) => {

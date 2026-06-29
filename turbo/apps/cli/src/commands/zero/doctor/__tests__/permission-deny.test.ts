@@ -530,6 +530,32 @@ describe("zero doctor permission-deny command", () => {
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
+    it("should reject empty authority normalization before opaque base fallback", async () => {
+      await expect(async () => {
+        await permissionDenyCommand.parseAsync([
+          "node",
+          "cli",
+          "reap",
+          "--method",
+          "GET",
+          "--url",
+          "https:///sandbox.api.reap.global/v1/accounts?token=secret",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      const output = [
+        ...mockConsoleLog.mock.calls.flat(),
+        ...mockConsoleError.mock.calls.flat(),
+      ].join("\n");
+      expect(output).toContain(
+        "permission-deny requires --url to be a valid absolute http or https URL.",
+      );
+      expect(output).not.toContain('covered by the "read"');
+      expect(output).not.toContain("secret");
+      expect(output).not.toContain("token=");
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
     it("should preserve raw encoded paths for opaque base fallback", async () => {
       await permissionDenyCommand.parseAsync([
         "node",
