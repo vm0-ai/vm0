@@ -2653,6 +2653,8 @@ async function getModelProviderRuntimeSecretValue(args: {
           eq(modelProviders.orgId, args.orgId),
           eq(modelProviders.userId, args.userId),
           eq(modelProviders.type, args.providerType),
+          eq(secretsTable.orgId, args.orgId),
+          eq(secretsTable.userId, args.userId),
           eq(secretsTable.name, args.secretName),
           eq(secretsTable.type, "model-provider"),
         ),
