@@ -133,9 +133,6 @@ collect_matching_session_entries() {
         }
         filename_matches($0) {
           printf "%s%c", $0, 0 >> matches_file
-          if (ERRNO != "") {
-            exit 1
-          }
         }
       '
   scan_status=$?
