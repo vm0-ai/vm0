@@ -386,6 +386,29 @@ describe("zero doctor permission-deny command", () => {
       expect(mockConsoleLog).not.toHaveBeenCalled();
     });
 
+    it("should preserve raw encoded paths for opaque base fallback", async () => {
+      await permissionDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "reap",
+        "--method",
+        "GET",
+        "--url",
+        "https://sandbox.api.reap.global/v1/%2e%2e/accounts?token=secret",
+      ]);
+
+      const output = [
+        ...mockConsoleLog.mock.calls.flat(),
+        ...mockConsoleError.mock.calls.flat(),
+      ].join("\n");
+      expect(output).toContain(
+        "Reap permission filtered GET /v1/%2e%2e/accounts relative to base URL ${{ vars.REAP_API_BASE_URL }}",
+      );
+      expect(output).toContain('covered by the "read"');
+      expect(output).not.toContain("secret");
+      expect(output).not.toContain("token=");
+    });
+
     it("should not ignore configured env base URL variable mismatches", async () => {
       vi.stubEnv("QUICKBOOKS_REALM_ID", "999");
 

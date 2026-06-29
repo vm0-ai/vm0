@@ -139,6 +139,23 @@ function hostnameMatchesConnectorRef(url: URL, connectorRef: string): boolean {
     });
 }
 
+function stripUrlQueryAndFragment(url: string): string {
+  const queryIndex = url.indexOf("?");
+  const fragmentIndex = url.indexOf("#");
+  let end = url.length;
+  if (queryIndex !== -1) end = Math.min(end, queryIndex);
+  if (fragmentIndex !== -1) end = Math.min(end, fragmentIndex);
+  return url.slice(0, end);
+}
+
+function rawPathFromDeniedUrl(url: string): string {
+  const urlWithoutQuery = stripUrlQueryAndFragment(url);
+  const schemeEnd = urlWithoutQuery.indexOf("://");
+  const authorityStart = schemeEnd === -1 ? 0 : schemeEnd + 3;
+  const pathStart = urlWithoutQuery.indexOf("/", authorityStart);
+  return pathStart === -1 ? "/" : urlWithoutQuery.slice(pathStart);
+}
+
 function matchApiBaseUrl(
   url: string,
   apiBase: string,
@@ -205,7 +222,7 @@ function findBestBaseMatch(
   return {
     apiBase: api.base,
     displayBase: api.base,
-    relativePath: deniedUrl.pathname || "/",
+    relativePath: rawPathFromDeniedUrl(url),
     score: 0,
   };
 }
