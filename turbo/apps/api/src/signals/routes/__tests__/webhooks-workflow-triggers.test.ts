@@ -9,7 +9,6 @@ import {
 } from "@vm0/db/schema/zero-workflow";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
-import { onTestFinished } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
@@ -17,11 +16,6 @@ import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { writeDb$ } from "../../external/db";
-import {
-  setWorkflowWebhookRunStarterForTests,
-  sha256Hex,
-  type WorkflowWebhookRunStartTestInput,
-} from "../../services/workflow-webhook-trigger.service";
 import {
   deleteWorkflowsForFixture$,
   seedAgentForInstructions$,
@@ -42,7 +36,6 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const WORKFLOW_NAME = "webhook-trigger-workflow";
-const RUN_ID = "00000000-0000-4000-a000-000000000123";
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -57,6 +50,7 @@ async function setupFixture(): Promise<{
   readonly agentId: string;
   readonly workflowId: string;
 }> {
+  mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   const fixture = await store.set(
     seedWorkflowsFixture$,
     undefined,
@@ -202,15 +196,6 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
       throw new Error("Expected webhook URL token");
     }
 
-    const runCalls: WorkflowWebhookRunStartTestInput[] = [];
-    const restoreRunStarter = setWorkflowWebhookRunStarterForTests((input) => {
-      runCalls.push(input);
-      return Promise.resolve({ kind: "ok", runId: RUN_ID });
-    });
-    onTestFinished(() => {
-      restoreRunStarter();
-    });
-
     const rawBody = JSON.stringify({ event: "ping", value: 42 });
     const timestamp = Math.floor(now() / 1000);
     const first = await postWorkflowWebhook({
@@ -224,16 +209,24 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
     expect(first.body).toStrictEqual({
       success: true,
       duplicate: false,
-      runId: RUN_ID,
+      runId: expect.any(String),
     });
-    expect(runCalls).toStrictEqual([
-      {
-        triggerId: created.body.id,
-        workflowName: WORKFLOW_NAME,
-        deliveryKey: expect.any(String),
-        bodySha256: sha256Hex(rawBody),
-        contentType: "application/json",
-      },
+    if (
+      typeof first.body !== "object" ||
+      first.body === null ||
+      !("runId" in first.body) ||
+      typeof first.body.runId !== "string"
+    ) {
+      throw new Error("Expected webhook dispatch response to include runId");
+    }
+
+    const db = store.set(writeDb$);
+    const runsAfterFirst = await db
+      .select({ id: zeroRuns.id, triggerSource: zeroRuns.triggerSource })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.workflowTriggerId, created.body.id));
+    expect(runsAfterFirst).toStrictEqual([
+      { id: first.body.runId, triggerSource: "workflow-event" },
     ]);
 
     const second = await postWorkflowWebhook({
@@ -248,7 +241,11 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
       success: true,
       duplicate: true,
     });
-    expect(runCalls).toHaveLength(1);
+    const runsAfterDuplicate = await db
+      .select({ id: zeroRuns.id })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.workflowTriggerId, created.body.id));
+    expect(runsAfterDuplicate).toHaveLength(1);
   });
 
   it("rejects invalid signatures", async () => {
@@ -293,7 +290,6 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
   });
 
   it("starts an event run when the trigger's previous run is still active", async () => {
-    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
     const { fixture, agentId, workflowId } = await setupFixture();
     await track(Promise.resolve(fixture));
     await enableWebhookWorkflowTriggers(fixture);

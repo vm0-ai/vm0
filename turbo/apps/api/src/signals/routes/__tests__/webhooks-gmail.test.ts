@@ -28,11 +28,7 @@ import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { writeDb$ } from "../../external/db";
 import { encryptStoredSecretValue } from "../../services/crypto.utils";
-import {
-  setGmailPubSubOidcVerifierForTests,
-  setGmailWorkflowRunStarterForTests,
-  type GmailWorkflowRunStartTestInput,
-} from "../../services/gmail-workflow-event.service";
+import { setGmailPubSubOidcVerifierForTests } from "../../services/gmail-workflow-event.service";
 import {
   deleteWorkflowsForFixture$,
   seedAgentForInstructions$,
@@ -401,13 +397,7 @@ describe("POST /api/webhooks/gmail", () => {
       },
     );
 
-    const runCalls: GmailWorkflowRunStartTestInput[] = [];
-    const restoreRunStarter = setGmailWorkflowRunStarterForTests((input) => {
-      runCalls.push(input);
-      return Promise.resolve("ok");
-    });
     onTestFinished(() => {
-      restoreRunStarter();
       restoreOidcVerifier();
     });
 
@@ -442,23 +432,27 @@ describe("POST /api/webhooks/gmail", () => {
       dispatched: 1,
       duplicates: 0,
     });
-    expect(runCalls).toStrictEqual([
+    const expectedTriggerBrief = [
+      "Gmail new message",
+      "From: Customer Example <customer@example.com>",
+      "Subject: Invoice needs a reply",
+    ].join("\n");
+
+    const db = store.set(writeDb$);
+    const runsAfterFirst = await db
+      .select({
+        triggerSource: zeroRuns.triggerSource,
+        triggerBrief: zeroRuns.triggerBrief,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.workflowTriggerId, created.body.id));
+    expect(runsAfterFirst).toStrictEqual([
       {
-        triggerId: created.body.id,
-        workflowName: WORKFLOW_NAME,
-        emailAddress: GMAIL_EMAIL,
-        messageId: "msg-1",
-        threadId: "gmail-thread-1",
-        subject: "Invoice needs a reply",
-        triggerBrief: [
-          "Gmail new message",
-          "From: Customer Example <customer@example.com>",
-          "Subject: Invoice needs a reply",
-        ].join("\n"),
+        triggerSource: "workflow-event",
+        triggerBrief: expectedTriggerBrief,
       },
     ]);
 
-    const db = store.set(writeDb$);
     const processed = await db
       .select({
         historyId: gmailProcessedEvents.historyId,
@@ -483,7 +477,11 @@ describe("POST /api/webhooks/gmail", () => {
       dispatched: 0,
       duplicates: 1,
     });
-    expect(runCalls).toHaveLength(1);
+    const runsAfterDuplicate = await db
+      .select({ id: zeroRuns.id })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.workflowTriggerId, created.body.id));
+    expect(runsAfterDuplicate).toHaveLength(1);
   });
 
   it("dispatches label applied events after refreshing a recreated label id", async () => {
@@ -507,13 +505,7 @@ describe("POST /api/webhooks/gmail", () => {
       });
     });
 
-    const runCalls: GmailWorkflowRunStartTestInput[] = [];
-    const restoreRunStarter = setGmailWorkflowRunStarterForTests((input) => {
-      runCalls.push(input);
-      return Promise.resolve("ok");
-    });
     onTestFinished(() => {
-      restoreRunStarter();
       restoreOidcVerifier();
     });
 
@@ -557,14 +549,17 @@ describe("POST /api/webhooks/gmail", () => {
       dispatched: 1,
       duplicates: 0,
     });
-    expect(runCalls).toStrictEqual([
+    const labelRuns = await store
+      .set(writeDb$)
+      .select({
+        triggerSource: zeroRuns.triggerSource,
+        triggerBrief: zeroRuns.triggerBrief,
+      })
+      .from(zeroRuns)
+      .where(eq(zeroRuns.workflowTriggerId, created.body.id));
+    expect(labelRuns).toStrictEqual([
       {
-        triggerId: created.body.id,
-        workflowName: WORKFLOW_NAME,
-        emailAddress: GMAIL_EMAIL,
-        messageId: "msg-labeled",
-        threadId: "gmail-thread-labeled",
-        subject: "Support request",
+        triggerSource: "workflow-event",
         triggerBrief: [
           "Gmail label applied: Support",
           "From: Support Team <support@example.com>",

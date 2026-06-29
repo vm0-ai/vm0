@@ -5,11 +5,15 @@ import {
   type GenerateDataKeyCommandOutput,
 } from "@aws-sdk/client-kms";
 
-import type { SecretKmsClient } from "../../../services/crypto.utils";
 import { onRejection } from "../../../utils";
 
 type MockKmsCommand = GenerateDataKeyCommand | DecryptCommand;
 type MockKmsResponse = GenerateDataKeyCommandOutput | DecryptCommandOutput;
+
+interface SecretKmsClient {
+  send(command: GenerateDataKeyCommand): Promise<GenerateDataKeyCommandOutput>;
+  send(command: DecryptCommand): Promise<DecryptCommandOutput>;
+}
 
 const dataKey = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
