@@ -1,5 +1,5 @@
 import { createStore } from "ccstate";
-import { beforeEach, describe, expect, it, onTestFinished } from "vitest";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -16,10 +16,7 @@ import {
   type SlackConnectFixture,
 } from "./helpers/zero-slack-connect";
 import { createFixtureTracker } from "./helpers/zero-route-test";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 
 const context = testContext();
 const store = createStore();
@@ -93,14 +90,11 @@ async function seedMembership(
   userId: string,
   role: "admin" | "member" = "admin",
 ): Promise<void> {
-  const fixture = await store.set(
+  await store.set(
     seedOrgMembership$,
     { orgId, userId, role, seedOrgCache: false },
     context.signal,
   );
-  onTestFinished(async () => {
-    await store.set(deleteOrgMembership$, fixture, context.signal);
-  });
 }
 
 describe("Slack OAuth API routes", () => {

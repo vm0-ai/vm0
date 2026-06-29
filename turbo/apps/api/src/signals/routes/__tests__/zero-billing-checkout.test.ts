@@ -12,17 +12,13 @@ import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entit
 import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { eq } from "drizzle-orm";
-import { onTestFinished } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { writeDb$ } from "../../external/db";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
@@ -103,14 +99,11 @@ async function seedMemberRole(args: {
   readonly userId: string;
   readonly role: "admin" | "member";
 }): Promise<void> {
-  const fixture = await store.set(
+  await store.set(
     seedOrgMembership$,
     { ...args, seedOrgCache: false },
     context.signal,
   );
-  onTestFinished(async () => {
-    await store.set(deleteOrgMembership$, fixture, context.signal);
-  });
 }
 
 describe("POST /api/zero/billing/checkout", () => {
