@@ -268,9 +268,11 @@ fi
 # guards where absence should reduce diagnostic detail, not block image verification.
 
 # Shell wrappers used by vsock-guest before the runner command body executes.
+# Env-backed wrappers clean up their transient script directory before exec.
 check_required_executable "/bin/sh" "sh"
 check_required_executable "/bin/bash" "bash"
 check_required_executable "/usr/bin/su" "su"
+check_required_executable "/usr/bin/rmdir" "rmdir"
 
 # Guest state and timezone repair. /sbin/guest-reseed is rootfs-only and is
 # checked with the guest binaries above when verifying a rootfs image.

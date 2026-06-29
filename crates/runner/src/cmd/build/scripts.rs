@@ -510,7 +510,7 @@ exit 1
         for (group, command_paths) in [
             (
                 "shell wrapper runtime",
-                &["/bin/sh", "/bin/bash", "/usr/bin/su"][..],
+                &["/bin/sh", "/bin/bash", "/usr/bin/su", "/usr/bin/rmdir"][..],
             ),
             (
                 "guest state runtime",
