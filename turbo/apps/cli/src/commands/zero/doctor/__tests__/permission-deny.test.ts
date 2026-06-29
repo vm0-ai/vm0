@@ -141,6 +141,29 @@ describe("zero doctor permission-deny command", () => {
       );
       expect(mockConsoleError).not.toHaveBeenCalled();
     });
+
+    it("should not treat similar path prefixes as computer-use", async () => {
+      await expect(async () => {
+        await permissionDenyCommand.parseAsync([
+          "node",
+          "cli",
+          "agent",
+          "--method",
+          "POST",
+          "--url",
+          "https://zero.local/computer-useful/list-apps",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("Unknown connector type: agent"),
+      );
+      expect(mockConsoleLog).not.toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Computer Use access is not managed as a connector permission.",
+        ),
+      );
+    });
   });
 
   describe("slack matching", () => {
