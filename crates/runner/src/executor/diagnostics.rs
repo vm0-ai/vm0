@@ -26,7 +26,7 @@ use std::io::{self, SeekFrom};
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 
-use agent_diagnostics::{FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureDiagnostic};
+use guest_contracts::diagnostics::{FAILURE_DIAGNOSTIC_SCHEMA_VERSION, FailureDiagnostic};
 use sandbox::{
     CopyFileOptions, EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, ProcessOutputReceiver,
     Sandbox,

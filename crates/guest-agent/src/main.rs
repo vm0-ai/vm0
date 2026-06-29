@@ -16,12 +16,12 @@ use guest_agent::session_history_identity;
 use guest_agent::session_metadata;
 use guest_agent::telemetry::{Telemetry, UploadMode};
 
-use agent_diagnostics::{
-    AgentFramework, CliTerminationDiagnostic, FailureClass, FailureDetailSource, FailureDiagnostic,
-    FailureReason, PromptMetadata, SessionHistoryStatus,
-};
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
+use guest_contracts::diagnostics::{
+    AgentFramework, CliTerminationDiagnostic, CliTerminationReason, FailureClass,
+    FailureDetailSource, FailureDiagnostic, FailureReason, PromptMetadata, SessionHistoryStatus,
+};
 use guest_contracts::session_history_identity::FinalSessionHistoryIdentityExpectation;
 use serde_json::Value;
 use std::io::ErrorKind;
@@ -426,7 +426,7 @@ fn preserves_successful_post_result_cleanup(
             .cli_termination
             .as_ref()
             .is_some_and(|termination| {
-                termination.reason == agent_diagnostics::CliTerminationReason::PostResultReap
+                termination.reason == CliTerminationReason::PostResultReap
                     && termination.observed_exit_code == Some(cli_result.exit_code)
             })
 }
@@ -1128,6 +1128,7 @@ async fn final_telemetry(telemetry: Telemetry) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use guest_contracts::diagnostics::CliTerminationSignal;
     use httpmock::prelude::*;
     use serde_json::json;
     use std::sync::LazyLock;
@@ -2290,14 +2291,9 @@ mod tests {
         )
         .with_cli_exit_code(143)
         .with_failure_reason(FailureReason::ProviderOverloaded);
-        let termination =
-            CliTerminationDiagnostic::new(agent_diagnostics::CliTerminationReason::PostResultReap)
-                .record_signal(
-                    agent_diagnostics::CliTerminationSignal::Sigterm,
-                    Some(1401),
-                    Some(10_000),
-                )
-                .with_observed_exit_code(143);
+        let termination = CliTerminationDiagnostic::new(CliTerminationReason::PostResultReap)
+            .record_signal(CliTerminationSignal::Sigterm, Some(1401), Some(10_000))
+            .with_observed_exit_code(143);
 
         let with_termination = with_cli_termination(diagnostic.clone(), Some(termination));
         let unchanged = with_cli_termination(diagnostic.clone(), None);
@@ -2394,32 +2390,27 @@ mod tests {
             num_turns: Some(1),
             status: cli::ClaudeResultStatus::Success,
         };
-        let make_result =
-            |claude_result: cli::ClaudeResultSummary,
-             cleanup_result: cli::ClaudeResultSummary,
-             termination_reason: agent_diagnostics::CliTerminationReason| {
-                let termination = CliTerminationDiagnostic::new(termination_reason)
-                    .record_signal(
-                        agent_diagnostics::CliTerminationSignal::Sigterm,
-                        Some(42),
-                        Some(1_000),
-                    )
-                    .with_observed_exit_code(143);
-                cli::CliExecutionResult {
-                    exit_code: 143,
-                    stderr_lines: Vec::new(),
-                    last_event_sequence: None,
-                    claude_result: Some(claude_result),
-                    post_result_cleanup_result: Some(cleanup_result),
-                    failure_diagnostic: None,
-                    control_error: None,
-                    cli_termination: Some(termination),
-                }
-            };
+        let make_result = |claude_result: cli::ClaudeResultSummary,
+                           cleanup_result: cli::ClaudeResultSummary,
+                           termination_reason: CliTerminationReason| {
+            let termination = CliTerminationDiagnostic::new(termination_reason)
+                .record_signal(CliTerminationSignal::Sigterm, Some(42), Some(1_000))
+                .with_observed_exit_code(143);
+            cli::CliExecutionResult {
+                exit_code: 143,
+                stderr_lines: Vec::new(),
+                last_event_sequence: None,
+                claude_result: Some(claude_result),
+                post_result_cleanup_result: Some(cleanup_result),
+                failure_diagnostic: None,
+                control_error: None,
+                cli_termination: Some(termination),
+            }
+        };
         let successful_cleanup = make_result(
             success_result,
             success_result,
-            agent_diagnostics::CliTerminationReason::PostResultReap,
+            CliTerminationReason::PostResultReap,
         );
 
         assert!(preserves_successful_post_result_cleanup(
@@ -2437,7 +2428,7 @@ mod tests {
                 status: cli::ClaudeResultStatus::Error,
             },
             success_result,
-            agent_diagnostics::CliTerminationReason::PostResultReap,
+            CliTerminationReason::PostResultReap,
         );
         assert!(preserves_successful_post_result_cleanup(
             env::Framework::ClaudeCode,
@@ -2450,7 +2441,7 @@ mod tests {
                 num_turns: Some(1),
                 status: cli::ClaudeResultStatus::Error,
             },
-            agent_diagnostics::CliTerminationReason::PostResultReap,
+            CliTerminationReason::PostResultReap,
         );
         assert!(!preserves_successful_post_result_cleanup(
             env::Framework::ClaudeCode,
@@ -2460,7 +2451,7 @@ mod tests {
         let stronger_termination = make_result(
             success_result,
             success_result,
-            agent_diagnostics::CliTerminationReason::StuckToolWatchdog,
+            CliTerminationReason::StuckToolWatchdog,
         );
         assert!(!preserves_successful_post_result_cleanup(
             env::Framework::ClaudeCode,
