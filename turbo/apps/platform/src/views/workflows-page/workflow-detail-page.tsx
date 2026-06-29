@@ -3034,8 +3034,8 @@ function CreatedWebhookTriggerView({
 }) {
   const curlExample = signedWebhookCurlExample(trigger);
   return (
-    <div className="flex flex-col gap-3">
-      <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+    <div className="flex min-w-0 flex-col gap-3">
+      <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
         Webhook URL
         <WebhookReadonlyField
           value={trigger.webhookUrl}
@@ -3045,7 +3045,7 @@ function CreatedWebhookTriggerView({
         />
       </label>
       {trigger.webhookSecret ? (
-        <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+        <label className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
           Signing secret
           <WebhookReadonlyField
             value={trigger.webhookSecret}
@@ -3055,10 +3055,10 @@ function CreatedWebhookTriggerView({
           />
         </label>
       ) : null}
-      <div className="flex flex-col gap-1 text-xs text-muted-foreground">
+      <div className="flex min-w-0 flex-col gap-1 text-xs text-muted-foreground">
         Signed curl
-        <div className="relative">
-          <pre className="max-h-56 overflow-auto rounded-md border border-border/60 bg-muted/40 p-3 text-xs leading-5 text-foreground">
+        <div className="relative min-w-0">
+          <pre className="max-h-56 overflow-y-auto whitespace-pre-wrap break-all rounded-md border border-border/60 bg-muted/40 p-3 pr-20 font-mono text-xs leading-5 text-foreground">
             {curlExample}
           </pre>
           <Button
@@ -3092,7 +3092,7 @@ function WebhookReadonlyField({
 }) {
   return (
     <div className="flex min-w-0 gap-2">
-      <input readOnly value={value} className={FIELD_CLASS} />
+      <input readOnly value={value} className={cn(FIELD_CLASS, "min-w-0")} />
       <Button type="button" variant="outline" onClick={onCopy}>
         <IconCopy size={14} />
         Copy

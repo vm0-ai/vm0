@@ -413,6 +413,19 @@ impl ExecWaitCore {
             }
         }
     }
+
+    async fn wait_for_terminal_after_cancel_sent(
+        &mut self,
+        seq: u32,
+        remaining: Duration,
+        lifecycle: ExecWaitLifecycle,
+    ) -> io::Result<ExecCancelWaitResult> {
+        let result = self.wait_with_timeout(remaining, true, lifecycle).await?;
+        Ok(ExecCancelWaitResult {
+            result,
+            cancel_seq: Some(seq),
+        })
+    }
 }
 
 impl ExecOperationHandle {
@@ -483,14 +496,9 @@ impl ExecOperationHandle {
             ExecCancelWriteOutcome::CancelSent { seq, remaining } => (seq, remaining),
         };
 
-        let result = self
-            .wait_core
-            .wait_with_timeout(remaining, true, ExecWaitLifecycle::OneShot)
-            .await?;
-        Ok(ExecCancelWaitResult {
-            result,
-            cancel_seq: Some(seq),
-        })
+        self.wait_core
+            .wait_for_terminal_after_cancel_sent(seq, remaining, ExecWaitLifecycle::OneShot)
+            .await
     }
 }
 
@@ -676,14 +684,9 @@ impl SupervisedExecHandle {
         };
 
         self.clear_unclaimed_stream_sender();
-        let result = self
-            .wait_core
-            .wait_with_timeout(remaining, true, ExecWaitLifecycle::Supervised)
-            .await?;
-        Ok(ExecCancelWaitResult {
-            result,
-            cancel_seq: Some(seq),
-        })
+        self.wait_core
+            .wait_for_terminal_after_cancel_sent(seq, remaining, ExecWaitLifecycle::Supervised)
+            .await
     }
 }
 
