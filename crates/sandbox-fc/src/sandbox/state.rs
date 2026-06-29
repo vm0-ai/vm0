@@ -14,7 +14,7 @@ pub(crate) enum SandboxState {
 }
 
 impl SandboxState {
-    pub(crate) fn from_u8(v: u8) -> Self {
+    pub(super) fn from_u8(v: u8) -> Self {
         debug_assert!(v <= 4, "invalid SandboxState: {v}");
         match v {
             0 => Self::Created,
