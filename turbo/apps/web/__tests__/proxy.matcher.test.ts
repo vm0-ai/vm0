@@ -22,6 +22,8 @@ describe("proxy matcher", () => {
     expectProxyMatch("/de/docs/schedules.md", true);
     expectProxyMatch("/ja/docs/what-zero-delivers/examples.md", true);
     expectProxyMatch("/es/docs/a.b/c.md", true);
+    expectProxyMatch("/fr/docs/quickstart.md", true);
+    expectProxyMatch("/pt-BR/docs/quickstart.md", true);
   });
 
   it("keeps canonical docs routes matched", () => {

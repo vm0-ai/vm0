@@ -53,6 +53,14 @@ describe("so frontend rewrites", () => {
       destination: "https://pr-123-so.vm6.ai/en/models/:path*",
     });
     expect(rewrites).toContainEqual({
+      source: "/fr/blog/:path*",
+      destination: "https://pr-123-so.vm6.ai/fr/blog/:path*",
+    });
+    expect(rewrites).toContainEqual({
+      source: "/pt-BR/security",
+      destination: "https://pr-123-so.vm6.ai/pt-BR/security",
+    });
+    expect(rewrites).toContainEqual({
       source: "/sign-in",
       destination: "https://pr-123-so.vm6.ai/sign-in",
     });
@@ -110,6 +118,9 @@ describe("so frontend rewrites", () => {
   it("matches configured so frontend rewrite paths", () => {
     expect(matchesSoFrontendRewritePath("/pricing")).toBe(true);
     expect(matchesSoFrontendRewritePath("/en/pricing")).toBe(true);
+    expect(matchesSoFrontendRewritePath("/fr")).toBe(true);
+    expect(matchesSoFrontendRewritePath("/fr/blog/posts/example")).toBe(true);
+    expect(matchesSoFrontendRewritePath("/pt-BR/security")).toBe(true);
     expect(matchesSoFrontendRewritePath("/video")).toBe(true);
     expect(matchesSoFrontendRewritePath("/en/video")).toBe(true);
     expect(matchesSoFrontendRewritePath("/en/blog/posts/example")).toBe(true);
@@ -144,6 +155,10 @@ describe("so frontend rewrites", () => {
     );
     expect(resolveSoFrontendRewritePath("/en/docs/reference/api")).toBe(
       "/en/docs/reference/api",
+    );
+    expect(resolveSoFrontendRewritePath("/fr/blog")).toBe("/fr/blog");
+    expect(resolveSoFrontendRewritePath("/pt-BR/security")).toBe(
+      "/pt-BR/security",
     );
     expect(resolveSoFrontendRewritePath("/sign-in/factor-one")).toBe(
       "/sign-in/factor-one",

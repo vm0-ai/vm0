@@ -1,4 +1,4 @@
-const LOCALES = ["en", "de", "ja", "es"];
+const LOCALES = ["en", "de", "ja", "es", "fr", "it", "pt-BR", "ko", "hi", "id"];
 
 const SO_FRONTEND_EXACT_PATHS = [
   "/",
