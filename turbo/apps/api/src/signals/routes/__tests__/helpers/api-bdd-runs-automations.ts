@@ -90,6 +90,7 @@ import { createZeroRouteMocks } from "./zero-route-test";
 type AuthHeaders = { readonly authorization?: string };
 type ZeroRunRequest = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 type DirectRunRequest = z.infer<(typeof runsMainContract.create)["body"]>;
+type RunsListQuery = z.input<(typeof runsMainContract.list)["query"]>;
 type RunnerJobClaimRequest = z.infer<
   (typeof runnersJobClaimContract.claim)["body"]
 >;
@@ -688,6 +689,17 @@ export function createRunsAutomationsApi(context: TestContext) {
         }),
         statuses,
       );
+    },
+
+    async listAgentRuns(actor: ApiTestUser, query: RunsListQuery) {
+      const response = await accept(
+        runsAutomationApp(context)(runsMainContract).list({
+          headers: authenticate(context, actor),
+          query,
+        }),
+        [200],
+      );
+      return response.body;
     },
 
     async applyUserPermissionGrant(

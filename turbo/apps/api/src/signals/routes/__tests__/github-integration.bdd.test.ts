@@ -1,15 +1,11 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { createStore } from "ccstate";
-import { desc, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { githubInstallations } from "@vm0/db/schema/github-installation";
 
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { writeDb$ } from "../../external/db";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -47,7 +43,6 @@ import {
  */
 
 const context = testContext();
-const store = createStore();
 
 const WEB_ORIGIN = "http://localhost:3001";
 const APP_ORIGIN = "http://localhost:3002";
@@ -1286,68 +1281,6 @@ async function waitForArrayLength<T>(
     .toBe(length);
 }
 
-async function readGithubInstallationDbId(
-  remoteInstallationId: string,
-): Promise<string> {
-  const db = store.set(writeDb$);
-  const [installation] = await db
-    .select({ id: githubInstallations.id })
-    .from(githubInstallations)
-    .where(eq(githubInstallations.installationId, remoteInstallationId))
-    .limit(1);
-  if (!installation) {
-    throw new Error(
-      `Expected GitHub installation ${remoteInstallationId} to exist`,
-    );
-  }
-  return installation.id;
-}
-
-async function readRunCallbacks(runId: string) {
-  const db = store.set(writeDb$);
-  return await db
-    .select({
-      runId: agentRunCallbacks.runId,
-      url: agentRunCallbacks.url,
-      internalKind: agentRunCallbacks.internalKind,
-      status: agentRunCallbacks.status,
-      lastError: agentRunCallbacks.lastError,
-      payload: agentRunCallbacks.payload,
-    })
-    .from(agentRunCallbacks)
-    .where(eq(agentRunCallbacks.runId, runId))
-    .orderBy(desc(agentRunCallbacks.createdAt));
-}
-
-function payloadInstallationId(payload: unknown): string | undefined {
-  return typeof payload === "object" &&
-    payload !== null &&
-    "installationId" in payload &&
-    typeof payload.installationId === "string"
-    ? payload.installationId
-    : undefined;
-}
-
-async function readLatestGithubCallbackForInstallation(installationId: string) {
-  const db = store.set(writeDb$);
-  const callbacks = await db
-    .select({
-      runId: agentRunCallbacks.runId,
-      url: agentRunCallbacks.url,
-      internalKind: agentRunCallbacks.internalKind,
-      status: agentRunCallbacks.status,
-      lastError: agentRunCallbacks.lastError,
-      payload: agentRunCallbacks.payload,
-    })
-    .from(agentRunCallbacks)
-    .where(eq(agentRunCallbacks.internalKind, "github:issues"))
-    .orderBy(desc(agentRunCallbacks.createdAt))
-    .limit(20);
-  return callbacks.find((callback) => {
-    return payloadInstallationId(callback.payload) === installationId;
-  });
-}
-
 async function waitForRunnerJob(
   api: ReturnType<typeof createRunsAutomationsApi>,
   runnerGroup: string,
@@ -1515,8 +1448,8 @@ async function completeGithubRun(args: {
   context.mocks.axiom.query.mockResolvedValue([]);
 }
 
-describe("HOOK-01/INT-03 G6: issue-label runs and typed internal callbacks", () => {
-  it("dispatches label-listener runs and replays signed callback deliveries", async () => {
+describe("HOOK-01/INT-03 G6: issue-label runs and GitHub-visible delivery", () => {
+  it("dispatches label-listener runs and posts GitHub delivery comments", async () => {
     const senderGithubUserId = newGithubUserId();
     const harness = await githubRunActor(senderGithubUserId);
     const { api, webhooks, gh, actor, runnerGroup, issueApi } = harness;
@@ -1558,24 +1491,6 @@ describe("HOOK-01/INT-03 G6: issue-label runs and typed internal callbacks", () 
     const runId = runIdFromAuditComment(startedComment.body);
     const pending = await api.readRun(actor, runId);
     expect(pending.status).toBe("pending");
-    const installationDbId = await readGithubInstallationDbId(
-      harness.remoteInstallationId,
-    );
-    await expect(readRunCallbacks(runId)).resolves.toStrictEqual([
-      expect.objectContaining({
-        runId,
-        url: null,
-        internalKind: "github:issues",
-        status: "pending",
-        lastError: null,
-        payload: expect.objectContaining({
-          installationId: installationDbId,
-          repo,
-          issueNumber: 42,
-          agentId: harness.secondAgentId,
-        }),
-      }),
-    ]);
 
     // Progress callbacks deliver without posting comments or reading output.
     const job = await waitForRunnerJob(api, runnerGroup);
@@ -1596,7 +1511,7 @@ describe("HOOK-01/INT-03 G6: issue-label runs and typed internal callbacks", () 
     await webhooks.requestAgentHeartbeat({ runId }, sandboxHeaders, [200]);
     await waitForCommentCount(issueApi, 1);
 
-    // Completion posts the audited comment through typed internal dispatch.
+    // Completion posts the audited comment through the GitHub delivery path.
     await gh.enableAuditLink(actor);
     await checkpointGithubRun({
       webhooks,
@@ -1632,17 +1547,6 @@ describe("HOOK-01/INT-03 G6: issue-label runs and typed internal callbacks", () 
     expect(completionComment.body).toContain(`/activities/${runId}`);
     expect(completionComment.body).toContain("Responded by GitHub Agent");
     expect(completionComment.body).toContain("Claude");
-    await expect(readRunCallbacks(runId)).resolves.toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          runId,
-          url: null,
-          internalKind: "github:issues",
-          status: "delivered",
-          lastError: null,
-        }),
-      ]),
-    );
 
     // Cancelling a second labeled run posts the formatted failure comment.
     await postGithubWebhook(
@@ -2057,7 +1961,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     await flushWaitUntilForTest();
   });
 
-  it("reports rejected and failed label dispatches through comments and callbacks", async () => {
+  it("reports rejected and failed label dispatches through comments and run APIs", async () => {
     const bdd = createBddApi(context);
     const api = createRunsAutomationsApi(context);
     const webhooks = createWebhookCallbackApi(context);
@@ -2155,8 +2059,8 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     expect(latestComment(issueApi).body).not.toContain("Add credits:");
     expect((await api.readRunQueue(actor)).body.concurrency.active).toBe(0);
 
-    // An entitled org without a configured runner records the failed run and
-    // reports it through the signed callback instead of a started comment.
+    // An entitled org without a configured runner records the failed run
+    // without posting a started comment.
     const entitled = bdd.user();
     await api.grantProEntitlement(entitled);
     await api.ensureOrgModelProvider(entitled);
@@ -2174,9 +2078,6 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
           githubUserId: entitledSenderId,
         },
       },
-    );
-    const entitledInstallationDbId = await readGithubInstallationDbId(
-      entitledInstall.remoteInstallationId,
     );
     webhooks.configureGithubWebhookSecret();
     const entitledIssueApi = captureGithubIssueApi(
@@ -2198,6 +2099,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     mockOptionalEnv("GITHUB_APP_ID", undefined);
     mockOptionalEnv("GITHUB_APP_PRIVATE_KEY", undefined);
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", undefined);
+    const failedRunsSince = new Date(now() - 1_000).toISOString();
 
     await postGithubWebhook(
       webhooks,
@@ -2213,30 +2115,31 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
       "issues",
     );
 
-    let failedCallback:
-      | Awaited<ReturnType<typeof readLatestGithubCallbackForInstallation>>
-      | undefined;
+    let failedRunId: string | undefined;
     await expect
       .poll(async () => {
-        failedCallback = await readLatestGithubCallbackForInstallation(
-          entitledInstallationDbId,
-        );
-        return failedCallback?.status ?? null;
+        const list = await api.listAgentRuns(entitled, {
+          status: "failed",
+          since: failedRunsSince,
+          limit: 10,
+        });
+        const run = list.runs.find((item) => {
+          return item.prompt === "Run without a runner group";
+        });
+        failedRunId = run?.id;
+        return run?.status ?? null;
       })
       .toBe("failed");
-    expect(failedCallback).toMatchObject({
-      url: null,
-      internalKind: "github:issues",
-      lastError: "GitHub App not configured",
-    });
-    const failedRunId = failedCallback?.runId ?? "";
+    if (!failedRunId) {
+      throw new Error("Expected the failed GitHub-triggered run to be listed");
+    }
     const failedRun = await api.readRun(entitled, failedRunId);
     expect(failedRun.status).toBe("failed");
     expect(failedRun.error).toBe(
       "No executor configured: set RUNNER_DEFAULT_GROUP",
     );
     // Without GitHub App credentials neither a started-work comment nor a
-    // callback-driven failure comment can be posted.
+    // failure comment can be posted.
     await waitForCommentCount(entitledIssueApi, 0);
   });
 });
