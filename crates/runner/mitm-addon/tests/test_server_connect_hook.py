@@ -412,7 +412,8 @@ async def test_server_connect_coalesces_concurrent_dns_resolution(registry_file,
     def getaddrinfo(host: str, port: int, *args, **kwargs):
         calls.append((host, port))
         lookup_started.set()
-        release_lookup.wait()
+        if not release_lookup.wait(timeout=5):
+            raise AssertionError("timed out waiting to release DNS lookup")
         return _API_ADDRINFO
 
     with (
@@ -443,7 +444,8 @@ async def test_server_connect_cancelled_waiter_does_not_cancel_shared_dns_lookup
     def getaddrinfo(host: str, port: int, *args, **kwargs):
         calls.append((host, port))
         lookup_started.set()
-        release_lookup.wait()
+        if not release_lookup.wait(timeout=5):
+            raise AssertionError("timed out waiting to release DNS lookup")
         return _API_ADDRINFO
 
     with (
