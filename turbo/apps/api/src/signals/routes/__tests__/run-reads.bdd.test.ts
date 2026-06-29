@@ -4,15 +4,12 @@ import {
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   RESUME_SESSION_HISTORY_MAX_BYTES,
 } from "@vm0/api-contracts/contracts/runners";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import { delay } from "signal-timers";
 import { describe, expect, it } from "vitest";
 
 import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
-import { writeDb$ } from "../../external/db";
 import {
   createBddApi,
   expectApiError,
@@ -48,7 +45,6 @@ import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 const UTF8_ENCODING = ["utf", "8"].join("-");
 
 const context = testContext();
-const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsAutomationsApi(context);
 const webhooks = createWebhookCallbackApi(context);
@@ -89,16 +85,12 @@ async function createClaudeCompose(
   });
 }
 
-async function setRunCreatedAt(runId: string, createdAt: Date): Promise<void> {
-  await store
-    .set(writeDb$)
-    .update(agentRuns)
-    .set({ createdAt })
-    .where(eq(agentRuns.id, runId));
-}
-
 function sandboxHeaders(token: string): { readonly authorization: string } {
   return { authorization: `Bearer ${token}` };
+}
+
+async function waitForTimestampBoundary(): Promise<void> {
+  await delay(30, { signal: context.signal });
 }
 
 function s3CommandKey(command: unknown): string | undefined {
@@ -3736,34 +3728,32 @@ describe("RUN-04/OPS-01: zero run logs", () => {
 
     await api.requestCancelRun(actor, tokenRun.runId, [200]);
 
+    const beforeBoundaryRun = await api.createRun(actor, {
+      agentId: agentOne.agentId,
+      prompt: "since boundary hidden run",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, beforeBoundaryRun.runId, [200]);
+    const sinceBoundary = now();
+    await waitForTimestampBoundary();
     const sinceBoundaryRun = await api.createRun(actor, {
       agentId: agentOne.agentId,
       prompt: "since boundary visible run",
       modelProvider: "anthropic-api-key",
     });
     await api.requestCancelRun(actor, sinceBoundaryRun.runId, [200]);
-    const beforeEpochRun = await api.createRun(actor, {
-      agentId: agentOne.agentId,
-      prompt: "since boundary hidden run",
-      modelProvider: "anthropic-api-key",
-    });
-    await api.requestCancelRun(actor, beforeEpochRun.runId, [200]);
-    await setRunCreatedAt(
-      beforeEpochRun.runId,
-      new Date("1969-12-31T23:59:59.000Z"),
-    );
 
-    const sinceEpoch = await reads.requestListLogs(
+    const sinceFiltered = await reads.requestListLogs(
       actor,
-      { since: 0, limit: 100 },
+      { since: sinceBoundary, limit: 100 },
       [200],
     );
-    mustOk(sinceEpoch, "the epoch-boundary log list");
-    const sinceEpochIds = sinceEpoch.body.data.map((entry) => {
+    mustOk(sinceFiltered, "the since-boundary log list");
+    const sinceFilteredIds = sinceFiltered.body.data.map((entry) => {
       return entry.id;
     });
-    expect(sinceEpochIds).toContain(sinceBoundaryRun.runId);
-    expect(sinceEpochIds).not.toContain(beforeEpochRun.runId);
+    expect(sinceFilteredIds).toContain(sinceBoundaryRun.runId);
+    expect(sinceFilteredIds).not.toContain(beforeBoundaryRun.runId);
   });
 
   it("splits multi-run log searches into a bounded run-id filter", async () => {
