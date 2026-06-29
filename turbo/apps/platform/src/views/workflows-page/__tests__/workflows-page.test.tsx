@@ -927,6 +927,48 @@ describe("workflow detail page", () => {
     });
   });
 
+  it("shows copy failure in the source and target progress state", async () => {
+    mockAgentPageApis();
+    mockWorkflowApis([salesResearch()]);
+    context.mocks.api(zeroWorkflowsDetailContract.copy, ({ respond }) => {
+      return respond(400, {
+        error: {
+          code: "BAD_REQUEST",
+          message: "Failed to copy workflow",
+        },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("info"),
+    });
+
+    await waitFor(() => {
+      expect(buttonByText(/^Copy workflow$/)).toBeInTheDocument();
+    });
+    click(buttonByText(/^Copy workflow$/));
+    await waitFor(() => {
+      expect(buttonByText(/Support Bot/)).toBeInTheDocument();
+    });
+    click(buttonByText(/Support Bot/));
+
+    expect(
+      screen.getByText(
+        "Copying Sales Research from Research Bot to Support Bot.",
+      ),
+    ).toBeInTheDocument();
+    await waitFor(() => {
+      expect(screen.getByText("Copy failed")).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("Close this dialog and try again."),
+    ).toBeInTheDocument();
+    expect(screen.getByText("Source")).toBeInTheDocument();
+    expect(screen.getByText("Target")).toBeInTheDocument();
+    expect(screen.queryByText(/Workflow copied to/)).not.toBeInTheDocument();
+  });
+
   it("deletes the source workflow from copied workflow actions", async () => {
     const workflows = [salesResearch()];
     const copiedWorkflow: ZeroWorkflowDetailResponse = {

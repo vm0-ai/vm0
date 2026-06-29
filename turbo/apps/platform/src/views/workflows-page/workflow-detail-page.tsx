@@ -1009,6 +1009,9 @@ function WorkflowCopyDialog({
   readonly onOpenChange: (open: boolean) => void;
 }) {
   const copyState = useGet(workflowCopyDialogState$);
+  const pageSignal = useGet(pageSignal$);
+  const setCopyState = useSet(setWorkflowCopyDialogState$);
+  const [copyLoadable, copyWorkflow] = useLoadableSet(copyWorkflow$);
   const agentsLoadable = useLoadable(agents$);
   const agents =
     agentsLoadable.state === "hasData"
@@ -1041,6 +1044,7 @@ function WorkflowCopyDialog({
         </DialogHeader>
         {copyState.kind === "copying" ? (
           <WorkflowCopyProgressState
+            copyFailed={copyLoadable.state === "hasError"}
             copyState={copyState}
             sourceAgentName={sourceAgentName}
             sourceWorkflowName={sourceWorkflowName}
@@ -1059,46 +1063,7 @@ function WorkflowCopyDialog({
           <WorkflowCopySelectState
             agents={agents}
             agentsLoaded={agentsLoadable.state === "hasData"}
-            detail={detail}
-          />
-        )}
-      </DialogContent>
-    </Dialog>
-  );
-}
-
-function WorkflowCopySelectState({
-  agents,
-  agentsLoaded,
-  detail,
-}: {
-  readonly agents: readonly WorkflowCopyDialogAgent[];
-  readonly agentsLoaded: boolean;
-  readonly detail: ZeroWorkflowDetailResponse;
-}) {
-  const pageSignal = useGet(pageSignal$);
-  const setCopyState = useSet(setWorkflowCopyDialogState$);
-  const [, copyWorkflow] = useLoadableSet(copyWorkflow$);
-
-  if (agents.length === 0) {
-    return agentsLoaded ? (
-      <p className="text-sm text-muted-foreground">
-        No other agents are available.
-      </p>
-    ) : (
-      <div className="h-24 rounded-md bg-muted/50" aria-hidden="true" />
-    );
-  }
-
-  return (
-    <div className="max-h-[360px] overflow-auto rounded-md border border-border/60">
-      {agents.map((agent) => {
-        return (
-          <button
-            key={agent.id}
-            type="button"
-            className="flex w-full items-center justify-between gap-3 border-b border-border/60 px-3 py-2 text-left last:border-b-0 transition-colors hover:bg-muted disabled:opacity-60"
-            onClick={() => {
+            onCopyToAgent={(agent) => {
               setCopyState({ kind: "copying", agent });
               detach(
                 (async () => {
@@ -1119,6 +1084,43 @@ function WorkflowCopySelectState({
                 Reason.DomCallback,
               );
             }}
+          />
+        )}
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function WorkflowCopySelectState({
+  agents,
+  agentsLoaded,
+  onCopyToAgent,
+}: {
+  readonly agents: readonly WorkflowCopyDialogAgent[];
+  readonly agentsLoaded: boolean;
+  readonly onCopyToAgent: (agent: WorkflowCopyDialogAgent) => void;
+}) {
+  if (agents.length === 0) {
+    return agentsLoaded ? (
+      <p className="text-sm text-muted-foreground">
+        No other agents are available.
+      </p>
+    ) : (
+      <div className="h-24 rounded-md bg-muted/50" aria-hidden="true" />
+    );
+  }
+
+  return (
+    <div className="max-h-[360px] overflow-auto rounded-md border border-border/60">
+      {agents.map((agent) => {
+        return (
+          <button
+            key={agent.id}
+            type="button"
+            className="flex w-full items-center justify-between gap-3 border-b border-border/60 px-3 py-2 text-left last:border-b-0 transition-colors hover:bg-muted disabled:opacity-60"
+            onClick={() => {
+              onCopyToAgent(agent);
+            }}
           >
             <span className="min-w-0">
               <span className="block truncate text-sm font-medium text-foreground">
@@ -1138,17 +1140,16 @@ function WorkflowCopySelectState({
 }
 
 function WorkflowCopyProgressState({
+  copyFailed,
   copyState,
   sourceAgentName,
   sourceWorkflowName,
 }: {
+  readonly copyFailed: boolean;
   readonly copyState: Extract<WorkflowCopyDialogState, { kind: "copying" }>;
   readonly sourceAgentName: string;
   readonly sourceWorkflowName: string;
 }) {
-  const [copyLoadable] = useLoadableSet(copyWorkflow$);
-  const copyFailed = copyLoadable.state === "hasError";
-
   return (
     <div className="space-y-3">
       <WorkflowCopyAgentPanels
