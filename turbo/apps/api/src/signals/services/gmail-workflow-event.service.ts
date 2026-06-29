@@ -1836,6 +1836,8 @@ export const dispatchGmailPubSubPush$ = command(
                 trigger.chatThreadId,
                 trigger.agentId,
               ),
+              activePreviousRunPolicy: "allow",
+              recordLastRunId: false,
               recordLastRunAt: true,
               dispatchFailedCallbacks: dispatchFailedRunCallbacks,
             },
