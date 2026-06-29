@@ -1,5 +1,25 @@
 # Changelog
 
+## [0.504.7](https://github.com/vm0-ai/vm0/compare/app-v0.504.6...app-v0.504.7) (2026-06-29)
+
+
+### Bug Fixes
+
+* show agent workflow trigger automations ([#19269](https://github.com/vm0-ai/vm0/issues/19269)) ([25bec10](https://github.com/vm0-ai/vm0/commit/25bec10f7209b14151f78e453b6f27df18dacf9d))
+
+
+### Refactoring
+
+* remove workflow permission grants ([#19271](https://github.com/vm0-ai/vm0/issues/19271)) ([07e590a](https://github.com/vm0-ai/vm0/commit/07e590af6b59fd53a565a7be9341d685f0321299))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.124.5
+    * @vm0/core bumped to 8.374.5
+
 ## [0.504.6](https://github.com/vm0-ai/vm0/compare/app-v0.504.5...app-v0.504.6) (2026-06-29)
 
 
