@@ -2,30 +2,27 @@ import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
-import { and, eq } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
+  type TelegramBot,
   zeroIntegrationsTelegramContract,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { writeDb$ } from "../../external/db";
 import {
   deleteTelegramFixture$,
   seedTelegramInstallation$,
-  seedUserAgentPreference$,
   type TelegramFixture,
 } from "./helpers/zero-telegram";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { server } from "../../../mocks/server";
 
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const bdd = createBddApi(context);
 const AUTH_HEADERS = { authorization: "Bearer clerk-session" } as const;
 
 interface MutableTelegramFixture {
@@ -119,58 +116,58 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
   async function seedCompose(args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly name?: string;
     readonly trackWith?: MutableTelegramFixture;
-  }): Promise<{ readonly composeId: string; readonly name: string }> {
-    const composeId = randomUUID();
-    const name = args.name ?? newId("agent");
-    const writeDb = store.set(writeDb$);
-
-    await writeDb.insert(agentComposes).values({
-      id: composeId,
+  }): Promise<{ readonly composeId: string }> {
+    const actor: ApiTestUser = {
       userId: args.userId,
       orgId: args.orgId,
-      name,
-    });
-    await writeDb.insert(zeroAgents).values({
-      id: composeId,
-      orgId: args.orgId,
-      owner: args.userId,
-      name,
+      orgRole: "org:admin",
+      email: `${args.userId}@example.test`,
+    };
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(actor, {
+      displayName: newId("agent"),
+      visibility: "private",
     });
 
     if (args.trackWith) {
-      args.trackWith.composeIds.push(composeId);
+      args.trackWith.composeIds.push(agent.agentId);
     } else {
       fixtures.push({
         orgId: args.orgId,
-        composeIds: [composeId],
+        composeIds: [agent.agentId],
         telegramBotIds: [],
         userIds: [args.userId],
       });
     }
 
-    return { composeId, name };
+    return { composeId: agent.agentId };
   }
 
-  async function selectedPreference(args: {
-    readonly orgId: string;
-    readonly userId: string;
-  }): Promise<string | null | undefined> {
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        selectedComposeId: telegramUserAgentPreferences.selectedComposeId,
-      })
-      .from(telegramUserAgentPreferences)
-      .where(
-        and(
-          eq(telegramUserAgentPreferences.orgId, args.orgId),
-          eq(telegramUserAgentPreferences.vm0UserId, args.userId),
-        ),
-      )
-      .limit(1);
-    return row?.selectedComposeId;
+  function expectAgentSummary(
+    agent: TelegramBot["agent"],
+    agentId: string,
+  ): NonNullable<TelegramBot["agent"]> {
+    expect(agent).toStrictEqual({ id: agentId, name: expect.any(String) });
+    if (!agent) {
+      throw new Error(`Expected Telegram bot agent ${agentId}`);
+    }
+    return agent;
+  }
+
+  async function readBot(botId: string): Promise<TelegramBot> {
+    const response = await accept(
+      client().list({ headers: AUTH_HEADERS }),
+      [200],
+    );
+    const bot = response.body.bots.find((item) => {
+      return item.id === botId;
+    });
+    expect(bot).toBeDefined();
+    if (!bot) {
+      throw new Error(`Expected Telegram bot ${botId}`);
+    }
+    return bot;
   }
 
   async function expectBotAgent(args: {
@@ -178,16 +175,11 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
     readonly agentId: string;
     readonly agentName: string;
   }): Promise<void> {
-    const response = await accept(
-      client().list({ headers: AUTH_HEADERS }),
-      [200],
-    );
-    expect(response.body.bots).toContainEqual(
-      expect.objectContaining({
-        id: args.botId,
-        agent: { id: args.agentId, name: args.agentName },
-      }),
-    );
+    const bot = await readBot(args.botId);
+    expect(bot.agent).toStrictEqual({
+      id: args.agentId,
+      name: args.agentName,
+    });
   }
 
   it("returns 401 when unauthenticated", async () => {
@@ -264,16 +256,13 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
       [200],
     );
 
-    expect(response.body.agent).toStrictEqual({
-      id: nextAgent.composeId,
-      name: nextAgent.name,
-    });
+    const agent = expectAgentSummary(response.body.agent, nextAgent.composeId);
     expect(response.body.id).toBe(bot.botId);
     expect(response.body.isOwner).toBeFalsy();
     await expectBotAgent({
       botId: bot.botId,
       agentId: nextAgent.composeId,
-      agentName: nextAgent.name,
+      agentName: agent.name,
     });
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "telegram:changed",
@@ -299,15 +288,12 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
       [200],
     );
 
-    expect(response.body.agent).toStrictEqual({
-      id: nextAgent.composeId,
-      name: nextAgent.name,
-    });
+    const agent = expectAgentSummary(response.body.agent, nextAgent.composeId);
     expect(response.body.isOwner).toBeTruthy();
     await expectBotAgent({
       botId: bot.botId,
       agentId: nextAgent.composeId,
-      agentName: nextAgent.name,
+      agentName: agent.name,
     });
   });
 
@@ -397,14 +383,14 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
       [200],
     );
 
-    expect(response.body.agent).toStrictEqual({
-      id: selectedAgent.composeId,
-      name: selectedAgent.name,
-    });
-    expect(response.body.official?.usesDefaultAgent).toBeFalsy();
-    await expect(selectedPreference({ orgId, userId })).resolves.toBe(
+    const agent = expectAgentSummary(
+      response.body.agent,
       selectedAgent.composeId,
     );
+    expect(response.body.official?.usesDefaultAgent).toBeFalsy();
+    const bot = await readBot(OFFICIAL_TELEGRAM_BOT_ID);
+    expect(bot.agent).toStrictEqual(agent);
+    expect(bot.official?.usesDefaultAgent).toBeFalsy();
     expect(context.mocks.ably.publish).toHaveBeenCalledWith(
       "telegram:changed",
       null,
@@ -415,12 +401,16 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
     const orgId = newId("org");
     const userId = newId("user");
     const selectedAgent = await seedCompose({ orgId, userId });
-    await store.set(
-      seedUserAgentPreference$,
-      { orgId, userId, composeId: selectedAgent.composeId },
-      context.signal,
-    );
     mocks.clerk.session(userId, orgId, "org:member");
+
+    await accept(
+      client().updateBot({
+        params: { botId: OFFICIAL_TELEGRAM_BOT_ID },
+        headers: AUTH_HEADERS,
+        body: { selectedAgentId: selectedAgent.composeId },
+      }),
+      [200],
+    );
 
     const response = await accept(
       client().updateBot({
@@ -432,7 +422,10 @@ describe("PATCH /api/integrations/telegram/:botId", () => {
     );
 
     expect(response.body.official?.usesDefaultAgent).toBeTruthy();
-    await expect(selectedPreference({ orgId, userId })).resolves.toBeNull();
+    expect(response.body.agent).toBeNull();
+    const bot = await readBot(OFFICIAL_TELEGRAM_BOT_ID);
+    expect(bot.agent).toBeNull();
+    expect(bot.official?.usesDefaultAgent).toBeTruthy();
   });
 
   it("returns 400 when selectedAgentId is missing for the official bot", async () => {
