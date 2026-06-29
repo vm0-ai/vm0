@@ -4,6 +4,7 @@ use sha2::{Digest, Sha256};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
 
+use super::session_restore::MaterializedResumeSession;
 use crate::error::{RunnerError, RunnerResult};
 use crate::http::HttpClient;
 use crate::types::{ResumeSession, ResumeSessionHistoryRefKind};
@@ -29,7 +30,7 @@ pub(super) enum SessionHistoryMaterialization {
     Missing,
     Ready,
     Downloaded {
-        session: ResumeSession,
+        session: MaterializedResumeSession<'static>,
         elapsed: Duration,
     },
     Failed {
@@ -40,7 +41,7 @@ pub(super) enum SessionHistoryMaterialization {
 
 struct SessionHistoryDownloadTaskResult {
     elapsed: Duration,
-    result: RunnerResult<ResumeSession>,
+    result: RunnerResult<MaterializedResumeSession<'static>>,
 }
 
 impl SessionHistoryMaterializer {
@@ -189,7 +190,7 @@ async fn download_resume_session_history_timed(
 async fn download_resume_session_history(
     http: HttpClient,
     session: ResumeSession,
-) -> RunnerResult<ResumeSession> {
+) -> RunnerResult<MaterializedResumeSession<'static>> {
     let history_ref = session
         .history_ref()
         .ok_or_else(|| RunnerError::Internal("resume session history ref is missing".into()))?
@@ -222,11 +223,9 @@ async fn download_resume_session_history(
         ));
     }
 
-    let session_history = String::from_utf8(bytes)
-        .map_err(|error| RunnerError::Internal(format!("session history is not utf-8: {error}")))?;
-    Ok(ResumeSession::inline(
+    Ok(MaterializedResumeSession::new(
         session.cli_agent_session_id,
-        session_history,
+        bytes,
     ))
 }
 
@@ -377,7 +376,7 @@ mod tests {
 
     #[tokio::test]
     async fn materializer_downloads_and_verifies_hash() {
-        let body = br#"{"type":"init"}"#;
+        let body = b"{\"type\":\"init\"}\n\xff\n";
         let hash = hex::encode(Sha256::digest(body));
         let session = ref_session(
             serve_once("200 OK", body, Some(body.len() as u64)).await,
@@ -390,8 +389,8 @@ mod tests {
 
         match result {
             SessionHistoryMaterialization::Downloaded { session, .. } => {
-                assert_eq!(session.cli_agent_session_id, "sess-123");
-                assert_eq!(session.session_history(), Some(r#"{"type":"init"}"#));
+                assert_eq!(session.cli_agent_session_id(), "sess-123");
+                assert_eq!(session.history_bytes(), body);
             }
             _ => panic!("expected downloaded session"),
         }
@@ -626,9 +625,9 @@ mod tests {
         let task = tokio::spawn(async {
             SessionHistoryDownloadTaskResult {
                 elapsed: Duration::from_millis(1),
-                result: Ok(ResumeSession::inline(
+                result: Ok(MaterializedResumeSession::new(
                     "sess-123".to_string(),
-                    r#"{"type":"init"}"#.to_string(),
+                    br#"{"type":"init"}"#.to_vec(),
                 )),
             }
         });
@@ -661,9 +660,9 @@ mod tests {
             cancel_for_task.cancel();
             SessionHistoryDownloadTaskResult {
                 elapsed: Duration::from_millis(1),
-                result: Ok(ResumeSession::inline(
+                result: Ok(MaterializedResumeSession::new(
                     "sess-123".to_string(),
-                    r#"{"type":"init"}"#.to_string(),
+                    br#"{"type":"init"}"#.to_vec(),
                 )),
             }
         });
