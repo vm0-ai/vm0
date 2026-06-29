@@ -223,6 +223,67 @@ describe("chat message action cards", () => {
     expect(applyRequests).toBe(0);
   });
 
+  it("shows already denied permission action cards as read-only after refresh", async () => {
+    const permissionDenyUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=deny`;
+    let applyRequests = 0;
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          agentId: AGENT_ID,
+          connectorRef: "slack",
+          permission: "admin.analytics:read",
+          action: "deny",
+          expiresAt: null,
+          createdAt: "2026-06-09T11:00:00Z",
+          updatedAt: "2026-06-09T11:01:00Z",
+        },
+      ]);
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.apply, ({ respond }) => {
+      applyRequests += 1;
+      return respond(200, []);
+    });
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-already-denied-permission`,
+      threadTitle: "Permission already denied",
+      chatMessages: [
+        {
+          id: "msg-user-already-denied-permission",
+          role: "user",
+          content: "Block the Slack analytics request",
+          runId: "run-already-denied-permission",
+          createdAt: "2026-06-09T11:00:00Z",
+        },
+        {
+          id: "msg-assistant-already-denied-permission-card",
+          role: "assistant",
+          content: permissionDenyUrl,
+          runId: "run-already-denied-permission",
+          createdAt: "2026-06-09T11:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-already-denied-permission`,
+    });
+
+    const permissionCard = await screen.findByTestId("permission-action-card");
+    await waitFor(() => {
+      expect(
+        within(permissionCard).getByText("Already denied"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      within(permissionCard).queryByText("Confirm"),
+    ).not.toBeInTheDocument();
+    expect(
+      within(permissionCard).queryByLabelText("Permission duration"),
+    ).not.toBeInTheDocument();
+    expect(applyRequests).toBe(0);
+  });
+
   it("renders custom connector proposal links as configure cards", async () => {
     const proposalUrl = `https://app.vm0.ai/connectors/custom/proposal?p=${encodeBase64UrlJson(
       {

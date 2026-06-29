@@ -229,6 +229,57 @@ describe("permission allow page", () => {
     expect(screen.queryByText("Duration")).not.toBeInTheDocument();
   });
 
+  it("shows already denied when the permission is already denied", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000006";
+
+    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        agentId,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: "Review Bot",
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          agentId,
+          connectorRef: "slack",
+          permission: "admin.analytics:read",
+          action: "deny",
+          expiresAt: null,
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:01:00Z",
+        },
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=deny`,
+      user: {
+        id: "test-user-123",
+        fullName: "Jordan Reviewer",
+        firstName: "Jordan",
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Already denied")).toBeInTheDocument();
+      expect(
+        screen.queryByText(/Hey Jordan, you're updating your permissions/u),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
+    });
+    expect(screen.queryByText(/Expires in/u)).not.toBeInTheDocument();
+    expect(screen.queryByText("Duration")).not.toBeInTheDocument();
+  });
+
   it("lets a user grant unknown endpoints to an agent", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000004";
     let grants: UserPermissionGrantResponse[] = [];
