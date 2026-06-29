@@ -48,6 +48,11 @@ pub(crate) fn short_digest(s: &str) -> String {
     hex::encode(prefix)
 }
 
+pub(crate) fn base_dir_lock_name(base_dir: &Path) -> String {
+    let hash = hex::encode(Sha256::digest(base_dir.as_os_str().as_encoded_bytes()));
+    format!("base-dir-{hash}.lock")
+}
+
 /// Stable non-reversible label for diagnostics that need to correlate one CLI
 /// session across logs without exposing the resumable session ID.
 ///
@@ -277,8 +282,7 @@ impl HomePaths {
     }
 
     pub fn base_dir_lock(&self, base_dir: &Path) -> PathBuf {
-        let hash = hex::encode(Sha256::digest(base_dir.as_os_str().as_encoded_bytes()));
-        self.locks_dir().join(format!("base-dir-{hash}.lock"))
+        self.locks_dir().join(base_dir_lock_name(base_dir))
     }
 
     /// Lock file for a rootfs hash.
