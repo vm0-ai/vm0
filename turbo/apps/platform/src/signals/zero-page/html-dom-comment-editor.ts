@@ -1,5 +1,8 @@
 import { createElement } from "react";
-import { IconMessageCircleFilled } from "@tabler/icons-react";
+import {
+  IconMessageCircleFilled,
+  IconPointer2,
+} from "@tabler/icons-react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { command, computed, state } from "ccstate";
 import {
@@ -93,6 +96,16 @@ const FRAME_COMMENT_MARKER_ICON_SVG = renderToStaticMarkup(
     size: 20,
   }),
 );
+const FRAME_NAVIGATION_CURSOR_SVG = renderToStaticMarkup(
+  createElement(IconPointer2, {
+    "aria-hidden": "true",
+    color: "#2563eb",
+    size: 20,
+  }),
+);
+const FRAME_NAVIGATION_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
+  FRAME_NAVIGATION_CURSOR_SVG,
+)}") 10 10, pointer`;
 
 const internalLoadState$ = state<EditorLoadState>({ status: "loading" });
 const internalStageElement$ = state<HTMLDivElement | null>(null);
@@ -280,7 +293,7 @@ function installFrameStyles(doc: Document): void {
   style.setAttribute(HTML_DOM_EDIT_OVERLAY_ATTR, "");
   style.textContent = `
     [${HTML_DOM_NODE_ID_ATTR}] {
-      cursor: crosshair !important;
+      cursor: ${FRAME_NAVIGATION_CURSOR} !important;
     }
     [${HTML_DOM_EDIT_HOVER_ATTR}="true"] {
       outline: 2px solid rgba(37, 99, 235, 0.75) !important;
