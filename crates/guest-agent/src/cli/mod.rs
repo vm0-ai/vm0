@@ -33,7 +33,9 @@ pub use codex_setup::setup_codex;
 pub use command::build_cli_command;
 pub use framework::{ClaudeResultStatus, ClaudeResultSummary};
 
-use crate::active_input::{ActiveInputRuntime, ActiveInputWriter, ReplayUserEventAction};
+use crate::active_input::{
+    ActiveInputController, ActiveInputRuntime, ActiveInputWriter, ReplayUserEventAction,
+};
 use crate::constants;
 use crate::env;
 use crate::error::AgentError;
@@ -50,11 +52,13 @@ use guest_contracts::diagnostics::{CliTerminationDiagnostic, FailureDetailSource
 use process_group::ChildProcessGroup;
 use std::collections::HashMap;
 use std::path::Path;
-use std::process::Stdio;
+use std::pin::Pin;
+use std::process::{ExitStatus, Stdio};
 use std::time::{Duration, Instant};
 use termination::{CliTerminationRuntime, ControlTerminationLog, TerminationReason};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt};
 use tokio::sync::oneshot;
+use tokio::time::Sleep;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
@@ -629,6 +633,17 @@ async fn execute_cli_inner(
                 }
             }, if claude_stdin_write_handle.is_some() => {
                 claude_stdin_write_handle = None;
+                if try_observe_cli_exit(
+                    &mut child,
+                    &mut cli_status,
+                    &mut cli_exit_at,
+                    &active_input_controller,
+                    &mut termination_runtime,
+                    stdout_eof,
+                    drain_deadline.as_mut(),
+                )? {
+                    break Ok(());
+                }
                 let can_terminate_for_stdin_error = termination_runtime
                     .can_begin_initial_prompt_stdin_control_failure(cli_status.is_some());
                 match stdin_write_result {
@@ -793,26 +808,33 @@ async fn execute_cli_inner(
             status = child.wait(), if cli_status.is_none() => {
                 match status {
                     Ok(s) => {
-                        cli_exit_at = Some(Instant::now());
-                        log_info!(LOG_TAG, "CLI process exited (status: {s}), draining stdout");
-                        cli_status = Some(s);
-                        active_input_controller.close_terminal();
-                        // CLI exited on its own (possibly in response to our
-                        // SIGTERM). Park the termination FSM so it can't
-                        // re-arm on any late `type=result` event.
-                        termination_runtime.mark_child_exited();
-                        if stdout_eof {
+                        if record_cli_exit(
+                            s,
+                            &mut cli_status,
+                            &mut cli_exit_at,
+                            &active_input_controller,
+                            &mut termination_runtime,
+                            stdout_eof,
+                            drain_deadline.as_mut(),
+                        ) {
                             break Ok(());
                         }
-                        drain_deadline.as_mut().reset(
-                            tokio::time::Instant::now()
-                                + Duration::from_secs(constants::STDOUT_DRAIN_DEADLINE_SECS),
-                        );
                     }
                     Err(e) => break Err(AgentError::Io(e)),
                 }
             }
             () = &mut termination_deadline, if termination_runtime.has_pending_deadline() && cli_status.is_none() => {
+                if try_observe_cli_exit(
+                    &mut child,
+                    &mut cli_status,
+                    &mut cli_exit_at,
+                    &active_input_controller,
+                    &mut termination_runtime,
+                    stdout_eof,
+                    drain_deadline.as_mut(),
+                )? {
+                    break Ok(());
+                }
                 termination_runtime.handle_deadline(termination_deadline.as_mut());
             }
             () = &mut drain_deadline, if cli_status.is_some() => {
@@ -836,6 +858,17 @@ async fn execute_cli_inner(
                     .map(|(name, started)| (name.clone(), started.elapsed().as_secs()));
                 if let Some((name, elapsed)) = stuck
                 {
+                    if try_observe_cli_exit(
+                        &mut child,
+                        &mut cli_status,
+                        &mut cli_exit_at,
+                        &active_input_controller,
+                        &mut termination_runtime,
+                        stdout_eof,
+                        drain_deadline.as_mut(),
+                    )? {
+                        break Ok(());
+                    }
                     let timeout_error = AgentError::Execution(format!(
                         "Tool timeout: {name} exceeded {timeout_secs}s without returning a result"
                     ));
@@ -857,6 +890,17 @@ async fn execute_cli_inner(
                 }
             }, if !heartbeat_done && cli_status.is_none() => {
                 heartbeat_done = true;
+                if try_observe_cli_exit(
+                    &mut child,
+                    &mut cli_status,
+                    &mut cli_exit_at,
+                    &active_input_controller,
+                    &mut termination_runtime,
+                    stdout_eof,
+                    drain_deadline.as_mut(),
+                )? {
+                    break Ok(());
+                }
                 match heartbeat_result {
                     Ok(HeartbeatStatus::Failed(e)) => {
                         // Heartbeat failed — kill process group
@@ -1024,6 +1068,65 @@ async fn execute_cli_inner(
         control_error,
         cli_termination,
     })
+}
+
+fn try_observe_cli_exit(
+    child: &mut tokio::process::Child,
+    cli_status: &mut Option<ExitStatus>,
+    cli_exit_at: &mut Option<Instant>,
+    active_input_controller: &ActiveInputController,
+    termination_runtime: &mut CliTerminationRuntime,
+    stdout_eof: bool,
+    drain_deadline: Pin<&mut Sleep>,
+) -> Result<bool, AgentError> {
+    if cli_status.is_some() {
+        return Ok(false);
+    }
+
+    let Some(status) = child.try_wait().map_err(AgentError::Io)? else {
+        return Ok(false);
+    };
+
+    Ok(record_cli_exit(
+        status,
+        cli_status,
+        cli_exit_at,
+        active_input_controller,
+        termination_runtime,
+        stdout_eof,
+        drain_deadline,
+    ))
+}
+
+fn record_cli_exit(
+    status: ExitStatus,
+    cli_status: &mut Option<ExitStatus>,
+    cli_exit_at: &mut Option<Instant>,
+    active_input_controller: &ActiveInputController,
+    termination_runtime: &mut CliTerminationRuntime,
+    stdout_eof: bool,
+    mut drain_deadline: Pin<&mut Sleep>,
+) -> bool {
+    debug_assert!(cli_status.is_none(), "CLI exit recorded more than once");
+    *cli_exit_at = Some(Instant::now());
+    log_info!(
+        LOG_TAG,
+        "CLI process exited (status: {status}), draining stdout"
+    );
+    *cli_status = Some(status);
+    active_input_controller.close_terminal();
+    // CLI exited on its own (possibly in response to our SIGTERM). Park the
+    // termination FSM so it can't re-arm on late result/control events while
+    // stdout is draining.
+    termination_runtime.mark_child_exited();
+    if stdout_eof {
+        return true;
+    }
+
+    drain_deadline.as_mut().reset(
+        tokio::time::Instant::now() + Duration::from_secs(constants::STDOUT_DRAIN_DEADLINE_SECS),
+    );
+    false
 }
 
 fn set_cli_current_dir(cmd: &mut tokio::process::Command, path: &str) -> Result<(), AgentError> {
