@@ -1,68 +1,103 @@
 # Testing External Behavior
 
-这篇 practice 说的是测试边界。
+This practice is about the test boundary.
 
-测试不应该去控制内部实现。测试应该给系统一个外部用户能给的 context，然后从外部用户能看到的地方观察结果。
+Tests should not control internal implementation. Tests should give the system
+the same context an external user can provide, then observe the result from the
+same surface an external user can see.
 
-这个区别有点像 context / control。control 风格会倾向于说：为了测一个 case，我直接把内部状态改成我想要的样子。context 风格会倾向于说：真实用户能怎么把系统带到这个状态，我就在测试里怎么做。
+This is the same context / control distinction we use elsewhere. A control-style
+test says: to exercise this case, directly set the internal state to the shape I
+want. A context-style test says: if a real user can bring the system into this
+state, the test should do it the same way.
 
-context 风格更 solid，因为外部接口是稳定的。内部实现不是稳定的。表结构会变，service 会拆分，缓存会迁移，状态机也会换一种表达方式。只要外部行为没有变，这些变化都不应该让测试失败。
+The context-style test is more solid because external interfaces are stable.
+Internal implementation is not stable. Tables change, services split, caches
+move, and state machines get represented differently. As long as external
+behavior is unchanged, those implementation changes should not break tests.
 
 ## Platform
 
-在 platform 里面，外部用户的接口是页面。
+In `turbo/apps/platform`, the external user interface is the page.
 
-所以测试应该通过页面交互来构造 case，也应该通过页面来验证结果。
+So tests should construct cases through page interactions and verify results
+through the page.
 
-比如：
+For example:
 
-1. 用户会点按钮，那么测试也点按钮。
-2. 用户会在输入框里输入，那么测试也输入。
-3. 用户能看到 toast、列表、URL、dialog，那么测试就断言这些东西。
+1. If a user clicks a button, the test clicks the button.
+2. If a user types into an input, the test types into the input.
+3. If a user can see a toast, list, URL, or dialog, the test asserts on that
+   surface.
 
-不应该为了方便去 render 一个内部组件，不应该直接改 store，不应该直接调用 hook，也不应该断言 query cache、组件 state、CSS class、内部 callback 有没有被调用。
+Do not render an internal component just because it is convenient. Do not mutate
+the store directly. Do not call hooks directly. Do not assert on query cache,
+component state, CSS classes, or whether an internal callback was called.
 
-这些东西可能正好是今天的实现，但它们不是用户的接口。测试这些东西会把实现冻结住，最后 refactor 的时候测试失败，产品却没有坏。
+Those things may be today's implementation, but they are not the user's
+interface. Testing them freezes the implementation. Later, a refactor fails the
+test even though the product still works.
 
 ## API
 
-在 API 项目里面，外部用户的接口是 API endpoint。
+In `turbo/apps/api`, the external user interface is the API endpoint.
 
-所以 API 测试应该通过调用 API 来构造 case，也应该通过调用 API 来验证结果。
+So API tests should construct cases by calling APIs and verify results by
+calling APIs.
 
-这意味着：
+That means:
 
-1. 构造数据时，优先调用生产环境里真实存在的 API。
-2. 验证结果时，优先调用外部用户也能调用的 API。
-3. auth、validation、serialization、idempotency、permission、no-existence-leak 都应该通过 endpoint 一起被测到。
+1. When setting up state, call the real API that exists in production.
+2. When verifying results, call an API that an external user can call.
+3. Auth, validation, serialization, idempotency, permissions, and
+   no-existence-leak behavior should all be exercised through the endpoint.
 
-对 API 来说，数据库不是外部接口。DB schema 是内部实现。
+For API tests, the database is not the external interface. DB schema is internal
+implementation.
 
-直接 insert / update / delete DB，是在告诉测试一个内部实现细节，而不是在描述用户行为。直接 select DB 做断言，也是在验证内部写法，而不是验证外部用户能看到的结果。
+Directly inserting, updating, or deleting DB rows tells the test about an
+internal implementation detail instead of describing user behavior. Directly
+selecting DB rows for assertions verifies the internal write path instead of the
+result an external user can observe.
 
-service 也不是外部接口。直接调用 service 构造 case，或者直接断言 service 返回值，绕过了 route、middleware、contract、auth 和 request parsing。这样的测试可能通过，但真实 API 仍然是坏的。
+Services are not the external interface either. Calling a service to construct a
+case, or asserting on a service return value, bypasses the route, middleware,
+contract, auth, and request parsing. That test can pass while the real API is
+still broken.
 
-所以对于 API 项目来说，测试 DB 也好，操作 DB 也好，断言 DB 也好，操作 service 或断言 service 也好，都是在测内部实现。唯一可信的边界应该是 API endpoint。
+For the API project, testing the DB, mutating the DB, asserting on the DB,
+calling services, or asserting on services all test internal implementation. The
+only trusted boundary is the API endpoint.
 
 ## Exceptions
 
-例外应该非常少。
+Exceptions should be rare.
 
-只有当一个 case 在生产环境的外部接口里完全无法构造出来时，才可以离开外部行为边界。比如某些历史坏状态、某些只能由基础设施触发的状态，或者一个没有任何用户入口的内部 cron 状态。
+Leave the external behavior boundary only when a case is completely impossible
+to construct through the production external interface. Examples might include
+some historical bad states, states that only infrastructure can trigger, or an
+internal cron state with no user-facing entry point.
 
-下面这些不是例外：
+These are not exceptions:
 
-1. 通过 API 构造比较麻烦。
-2. 通过页面操作步骤比较多。
-3. 现有 helper 已经能直接写 DB。
-4. service 调起来更快。
+1. API setup is verbose.
+2. Page setup takes several interactions.
+3. An existing helper can write the DB directly.
+4. Calling the service is faster.
 
-如果一个状态可以通过真实 endpoint 或页面操作构造出来，就应该走那个路径。
+If a state can be constructed through a real endpoint or page interaction, use
+that path.
 
-当确实需要例外时，测试应该把例外写清楚：为什么生产外部接口无法构造这个状态，为什么这个 case 仍然值得测。不要把例外藏在通用 fixture 里，让后面的测试默认继承内部实现耦合。
+When an exception is truly needed, the test should state why the production
+external interface cannot construct the state and why the case is still worth
+testing. Do not hide exceptions inside generic fixtures where future tests
+inherit internal coupling by default.
 
 ## Lint
 
-API 测试文件不应该 import DB schema，也不应该 import API service 文件。
+API test files should not import DB schema or API service files.
 
-这个 lint 不是为了让代码更整齐。它是在提醒测试作者：你正在跨过外部行为边界，开始控制内部实现。先回到 endpoint，看看能不能用真实 API 把 case 构造出来。
+This lint rule is not about making code look tidy. It is a reminder that the
+test is crossing the external behavior boundary and starting to control internal
+implementation. Go back to the endpoint first and see whether the case can be
+constructed with the real API.
