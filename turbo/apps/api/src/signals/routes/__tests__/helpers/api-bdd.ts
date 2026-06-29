@@ -6,6 +6,7 @@ import {
   onboardingStatusContract,
   type OnboardingStatusResponse,
 } from "@vm0/api-contracts/contracts/onboarding";
+import { orgDefaultAgentContract } from "@vm0/api-contracts/contracts/orgs";
 import type { ApiErrorResponse } from "@vm0/api-contracts/contracts/errors";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import {
@@ -21,6 +22,7 @@ import { setupAppWithRoutes } from "../../../../__tests__/test-app";
 import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { authMeRoutes } from "../../auth-me";
 import { zeroAgentsRoutes } from "../../zero-agents";
+import { zeroDefaultAgentRoutes } from "../../zero-default-agent";
 import { zeroOnboardingSetupRoutes } from "../../zero-onboarding-setup";
 import { zeroOnboardingStatusRoutes } from "../../zero-onboarding-status";
 import { zeroOrgReadRoutes } from "../../zero-org-read";
@@ -133,6 +135,13 @@ export function createBddApi(context: TestContext) {
       context,
       routes: zeroAgentsRoutes,
     })(zeroAgentsByIdContract);
+  }
+
+  function defaultAgentClient() {
+    return setupAppWithRoutes({
+      context,
+      routes: zeroDefaultAgentRoutes,
+    })(orgDefaultAgentContract);
   }
 
   function user(options: ApiTestUserOptions = {}): ApiTestUser {
@@ -319,6 +328,21 @@ export function createBddApi(context: TestContext) {
           params: { id: agentId },
           headers: authenticate(nextUser),
           body,
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async setDefaultAgent(
+      nextUser: ApiTestUser,
+      agentId: string | null,
+    ): Promise<{ readonly agentId: string | null }> {
+      const response = await accept(
+        defaultAgentClient().setDefaultAgent({
+          query: {},
+          headers: authenticate(nextUser),
+          body: { agentId },
         }),
         [200],
       );
