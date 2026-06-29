@@ -239,6 +239,7 @@ async def test_public_destination_blocks_unsafe_runtime_destination_before_auth(
         "93.184.216.34",
         "192.0.0.9",
         "192.0.0.10",
+        "2001:1::3",
         "2001:4860:4860::8888",
         "3fff:1000::1",
     ],

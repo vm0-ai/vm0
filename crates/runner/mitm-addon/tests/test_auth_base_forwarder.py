@@ -57,6 +57,7 @@ class TestAuthBaseForwarderSecurity:
             pytest.param("https://[fe80::1]/", "fe80::1", id="ipv6-link-local"),
             pytest.param("https://[fc00::1]/", "fc00::1", id="ipv6-ula"),
             pytest.param("https://[2001:db8::1]/", "2001:db8::1", id="ipv6-documentation"),
+            pytest.param("https://[3fff::1]/", "3fff::1", id="ipv6-expanded-documentation"),
             pytest.param(
                 "https://[::ffff:100.64.0.1]/",
                 "::ffff:100.64.0.1",
@@ -124,7 +125,7 @@ class TestAuthBaseForwarderSecurity:
 
     async def test_allows_public_dns_destination_and_forwards_with_original_host(self):
         with fake_forwarder_upstream(
-            addresses=("93.184.216.34", "2001:4860:4860::8888")
+            addresses=("93.184.216.34", "2001:1::3", "2001:4860:4860::8888")
         ) as upstream:
             status, body, headers = await forwarder.forward_request(
                 "https://hooks.example.com/path",

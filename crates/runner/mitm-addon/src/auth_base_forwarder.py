@@ -21,6 +21,7 @@ from typing import NamedTuple
 from mitmproxy import http
 
 import flow_metadata_keys as metadata_keys
+import public_destination
 from http_header_syntax import has_forbidden_header_value_control, is_http_header_name
 
 HOP_BY_HOP: frozenset[str] = frozenset(
@@ -96,8 +97,6 @@ MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
 MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
 MAX_ADMITTED_AUTH_BASE_FORWARDS = 16
 MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES = 128 * 1024 * 1024
-NAT64_WELL_KNOWN_PREFIX = ipaddress.IPv6Network("64:ff9b::/96")
-
 _forward_request_executor_state: tuple[int, ThreadPoolExecutor] | None = None
 _forward_request_admission_state: (
     tuple[asyncio.AbstractEventLoop, int, asyncio.Semaphore] | None
@@ -557,14 +556,7 @@ def forward_request_admission_state_for_tests() -> tuple[int, int]:
 
 
 def _is_public_unicast_address(address: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
-    if isinstance(address, ipaddress.IPv6Address) and (
-        address.ipv4_mapped is not None
-        or address.sixtofour is not None
-        or address.teredo is not None
-        or address in NAT64_WELL_KNOWN_PREFIX
-    ):
-        return False
-    return address.is_global and not address.is_multicast and not address.is_reserved
+    return public_destination.ip_address_is_public(address)
 
 
 def _raise_unsafe_destination() -> None:

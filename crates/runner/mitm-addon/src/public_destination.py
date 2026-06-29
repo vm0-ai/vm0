@@ -39,6 +39,8 @@ _IPV6_IETF_PROTOCOL_ASSIGNMENTS_SECOND_MAX = 0x01FF
 _IPV6_DOCUMENTATION_SECOND = 0x0DB8
 _IPV6_6TO4_FIRST = 0x2002
 _IPV6_SPECIAL_EXACT_SECOND = 0x0001
+_IPV6_SPECIAL_EXACT_LAST_MIN = 0x0001
+_IPV6_SPECIAL_EXACT_LAST_MAX = 0x0003
 _IPV6_AMT_SECOND = 0x0003
 _IPV6_AS112_SECOND = 0x0004
 _IPV6_AS112_THIRD = 0x0112
@@ -156,6 +158,10 @@ def validate_runtime_destination_host(destination_host: object) -> RuntimeDestin
     return RuntimeDestinationCheck(allowed=True, destination_host=normalized_destination)
 
 
+def ip_address_is_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
+    return _ip_address_is_public(ip)
+
+
 def _ip_address_is_public(ip: ipaddress.IPv4Address | ipaddress.IPv6Address) -> bool:
     if isinstance(ip, ipaddress.IPv6Address):
         if (
@@ -207,7 +213,7 @@ def _ipv6_special_registry_exception(ip: ipaddress.IPv6Address) -> bool:
         and _ipv6_word(ip, 4) == 0
         and _ipv6_word(ip, 5) == 0
         and _ipv6_word(ip, 6) == 0
-        and _ipv6_word(ip, 7) in (1, 2)
+        and _IPV6_SPECIAL_EXACT_LAST_MIN <= _ipv6_word(ip, 7) <= _IPV6_SPECIAL_EXACT_LAST_MAX
     ):
         return True
     if second == _IPV6_AMT_SECOND:
