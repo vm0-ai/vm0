@@ -1111,6 +1111,7 @@ export interface GmailWorkflowRunStartTestInput {
   readonly messageId: string;
   readonly threadId: string | null;
   readonly subject: string | null;
+  readonly triggerBrief: string;
 }
 
 type GmailRunStarterTestOverride = (
@@ -1356,6 +1357,26 @@ function buildGmailWorkflowEventSystemPrompt(args: {
       null,
       2,
     ),
+  ].join("\n");
+}
+
+export function buildGmailWorkflowTriggerBrief(args: {
+  readonly triggerConfig: GmailWorkflowEventConfig;
+  readonly message: {
+    readonly messageId: string;
+    readonly threadId: string | null;
+    readonly from: string | null;
+    readonly subject: string | null;
+  };
+}): string {
+  const title =
+    args.triggerConfig.event === "label_applied"
+      ? `Gmail label applied: ${args.triggerConfig.labelName}`
+      : "Gmail new message";
+  return [
+    title,
+    `From: ${args.message.from?.trim() || "Unknown sender"}`,
+    `Subject: ${args.message.subject?.trim() || "(no subject)"}`,
   ].join("\n");
 }
 
@@ -1812,6 +1833,10 @@ export const dispatchGmailPubSubPush$ = command(
             messageId: message.messageId,
             threadId: message.threadId,
             subject: message.subject,
+            triggerBrief: buildGmailWorkflowTriggerBrief({
+              triggerConfig: trigger.config,
+              message,
+            }),
           });
         }
       : async ({ trigger, decoded, message }) => {
@@ -1830,6 +1855,10 @@ export const dispatchGmailPubSubPush$ = command(
                 triggerId: trigger.trigger.id,
                 triggerConfig: trigger.config,
                 emailAddress: decoded.emailAddress,
+                message,
+              }),
+              triggerBrief: buildGmailWorkflowTriggerBrief({
+                triggerConfig: trigger.config,
                 message,
               }),
               callbacks: buildChatOnlyWorkflowTriggerCallbacks(

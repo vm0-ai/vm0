@@ -4,6 +4,7 @@ import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { connectors } from "@vm0/db/schema/connector";
 import {
   gmailProcessedEvents,
@@ -132,7 +133,10 @@ function configureGmailMessageMocks(): void {
           payload: {
             mimeType: "multipart/alternative",
             headers: [
-              { name: "From", value: "customer@example.com" },
+              {
+                name: "From",
+                value: "Customer Example <customer@example.com>",
+              },
               { name: "To", value: GMAIL_EMAIL },
               { name: "Subject", value: "Invoice needs a reply" },
             ],
@@ -198,7 +202,7 @@ function configureGmailLabelAppliedMocks(labelId: string): void {
           labelIds: ["INBOX", labelId],
           payload: {
             headers: [
-              { name: "From", value: "customer@example.com" },
+              { name: "From", value: "Support Team <support@example.com>" },
               { name: "To", value: GMAIL_EMAIL },
               { name: "Subject", value: "Support request" },
             ],
@@ -447,6 +451,11 @@ describe("POST /api/webhooks/gmail", () => {
         messageId: "msg-1",
         threadId: "gmail-thread-1",
         subject: "Invoice needs a reply",
+        triggerBrief: [
+          "Gmail new message",
+          "From: Customer Example <customer@example.com>",
+          "Subject: Invoice needs a reply",
+        ].join("\n"),
       },
     ]);
 
@@ -557,6 +566,11 @@ describe("POST /api/webhooks/gmail", () => {
         messageId: "msg-labeled",
         threadId: "gmail-thread-labeled",
         subject: "Support request",
+        triggerBrief: [
+          "Gmail label applied: Support",
+          "From: Support Team <support@example.com>",
+          "Subject: Support request",
+        ].join("\n"),
       },
     ]);
 
@@ -626,11 +640,30 @@ describe("POST /api/webhooks/gmail", () => {
 
     const db = store.set(writeDb$);
     const runs = await db
-      .select({ id: zeroRuns.id, triggerSource: zeroRuns.triggerSource })
+      .select({
+        id: zeroRuns.id,
+        triggerSource: zeroRuns.triggerSource,
+        triggerBrief: zeroRuns.triggerBrief,
+      })
       .from(zeroRuns)
       .where(eq(zeroRuns.workflowTriggerId, created.body.id));
     expect(runs).toHaveLength(1);
     expect(runs[0]?.triggerSource).toBe("workflow-event");
+    expect(runs[0]?.triggerBrief).toBe(
+      [
+        "Gmail new message",
+        "From: Customer Example <customer@example.com>",
+        "Subject: Invoice needs a reply",
+      ].join("\n"),
+    );
+
+    const userMessages = await db
+      .select({ content: chatMessages.content })
+      .from(chatMessages)
+      .where(
+        and(eq(chatMessages.runId, runs[0]!.id), eq(chatMessages.role, "user")),
+      );
+    expect(userMessages).toStrictEqual([{ content: `/${WORKFLOW_NAME}` }]);
 
     const [trigger] = await db
       .select({

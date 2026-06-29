@@ -50,7 +50,7 @@ import {
 import { z } from "zod";
 
 import { type Db, db$, writeDb$ } from "../external/db";
-import { safeJsonParse } from "../utils";
+import { isValidTimeZone, safeJsonParse } from "../utils";
 import {
   inferMimetype,
   insertAssistantEventMessages$,
@@ -96,6 +96,13 @@ type ChatMessageRow = {
   readonly workflowAgentId: string | null;
   readonly workflowTriggerId: string | null;
   readonly workflowTriggerBrief: string | null;
+  readonly workflowTriggerKind: string | null;
+  readonly workflowTriggerScheduleType: string | null;
+  readonly workflowTriggerCronExpression: string | null;
+  readonly workflowTriggerIntervalSeconds: number | null;
+  readonly workflowTriggerAtTime: Date | null;
+  readonly workflowTriggerTimezone: string | null;
+  readonly workflowTriggerUserTimezone: string | null;
 };
 
 type ChatSearchMessageRow = {
@@ -232,30 +239,83 @@ const messageColumns = {
     LIMIT 1
   )`,
   workflowTriggerBrief: sql<string | null>`(
-    SELECT CASE
-      WHEN "zero_workflow_triggers"."kind" = 'schedule'
-        AND "zero_workflow_triggers"."schedule_type" = 'cron'
-        THEN "zero_workflow_triggers"."cron_expression" || ' (' || "zero_workflow_triggers"."timezone" || ')'
-      WHEN "zero_workflow_triggers"."kind" = 'schedule'
-        AND "zero_workflow_triggers"."schedule_type" = 'loop'
-        THEN 'Every ' || "zero_workflow_triggers"."interval_seconds" || 's'
-      WHEN "zero_workflow_triggers"."kind" = 'schedule'
-        AND "zero_workflow_triggers"."schedule_type" = 'once'
-        THEN 'Once at ' || "zero_workflow_triggers"."at_time"
-      WHEN "zero_workflow_triggers"."kind" = 'event'
-        AND "zero_workflow_triggers"."event_type" = 'gmail-label-applied'
-        THEN 'Gmail label applied'
-      WHEN "zero_workflow_triggers"."kind" = 'event'
-        AND "zero_workflow_triggers"."event_type" = 'gmail-new-message'
-        THEN 'Gmail new message'
-      WHEN "zero_workflow_triggers"."kind" = 'event'
-        AND "zero_workflow_triggers"."event_type" = 'webhook-received'
-        THEN 'Webhook trigger'
-      ELSE NULL
-    END
+    SELECT COALESCE(
+      "zero_runs"."trigger_brief",
+      CASE
+        WHEN "zero_workflow_triggers"."kind" = 'event'
+          AND "zero_workflow_triggers"."event_type" = 'gmail-label-applied'
+          THEN 'Gmail label applied'
+        WHEN "zero_workflow_triggers"."kind" = 'event'
+          AND "zero_workflow_triggers"."event_type" = 'gmail-new-message'
+          THEN 'Gmail new message'
+        WHEN "zero_workflow_triggers"."kind" = 'event'
+          AND "zero_workflow_triggers"."event_type" = 'webhook-received'
+          THEN 'Webhook trigger'
+        ELSE NULL
+      END
+    )
     FROM "zero_runs"
     INNER JOIN "zero_workflow_triggers"
       ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    WHERE "zero_runs"."id" = "chat_messages"."run_id"
+    LIMIT 1
+  )`,
+  workflowTriggerKind: sql<string | null>`(
+    SELECT "zero_workflow_triggers"."kind"
+    FROM "zero_runs"
+    INNER JOIN "zero_workflow_triggers"
+      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    WHERE "zero_runs"."id" = "chat_messages"."run_id"
+    LIMIT 1
+  )`,
+  workflowTriggerScheduleType: sql<string | null>`(
+    SELECT "zero_workflow_triggers"."schedule_type"
+    FROM "zero_runs"
+    INNER JOIN "zero_workflow_triggers"
+      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    WHERE "zero_runs"."id" = "chat_messages"."run_id"
+    LIMIT 1
+  )`,
+  workflowTriggerCronExpression: sql<string | null>`(
+    SELECT "zero_workflow_triggers"."cron_expression"
+    FROM "zero_runs"
+    INNER JOIN "zero_workflow_triggers"
+      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    WHERE "zero_runs"."id" = "chat_messages"."run_id"
+    LIMIT 1
+  )`,
+  workflowTriggerIntervalSeconds: sql<number | null>`(
+    SELECT "zero_workflow_triggers"."interval_seconds"
+    FROM "zero_runs"
+    INNER JOIN "zero_workflow_triggers"
+      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    WHERE "zero_runs"."id" = "chat_messages"."run_id"
+    LIMIT 1
+  )`,
+  workflowTriggerAtTime: sql<Date | null>`(
+    SELECT "zero_workflow_triggers"."at_time"
+    FROM "zero_runs"
+    INNER JOIN "zero_workflow_triggers"
+      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    WHERE "zero_runs"."id" = "chat_messages"."run_id"
+    LIMIT 1
+  )`,
+  workflowTriggerTimezone: sql<string | null>`(
+    SELECT "zero_workflow_triggers"."timezone"
+    FROM "zero_runs"
+    INNER JOIN "zero_workflow_triggers"
+      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    WHERE "zero_runs"."id" = "chat_messages"."run_id"
+    LIMIT 1
+  )`,
+  workflowTriggerUserTimezone: sql<string | null>`(
+    SELECT "org_members_metadata"."timezone"
+    FROM "zero_runs"
+    INNER JOIN "zero_workflow_triggers"
+      ON "zero_workflow_triggers"."id" = "zero_runs"."workflow_trigger_id"
+    LEFT JOIN "org_members_metadata"
+      ON "org_members_metadata"."org_id" = "zero_workflow_triggers"."org_id"
+      AND "org_members_metadata"."user_id" = "zero_workflow_triggers"."owner_user_id"
     WHERE "zero_runs"."id" = "chat_messages"."run_id"
     LIMIT 1
   )`,
@@ -505,24 +565,183 @@ function normalizeUsagePayload(
   };
 }
 
+function datePart(
+  parts: Intl.DateTimeFormatPart[],
+  type: Intl.DateTimeFormatPartTypes,
+): string {
+  return (
+    parts.find((part) => {
+      return part.type === type;
+    })?.value ?? ""
+  );
+}
+
+function displayTimezone(args: {
+  readonly userTimezone: string | null;
+  readonly triggerTimezone: string | null;
+}): string {
+  const candidates = [args.userTimezone, args.triggerTimezone, "UTC"];
+  return (
+    candidates.find((candidate) => {
+      return candidate !== null && isValidTimeZone(candidate);
+    }) ?? "UTC"
+  );
+}
+
+function formatWorkflowTriggerDateTime(date: Date, timezone: string): string {
+  const parts = new Intl.DateTimeFormat("en-US", {
+    timeZone: timezone,
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+    hour12: true,
+  }).formatToParts(date);
+  const time = `${datePart(parts, "hour")}:${datePart(
+    parts,
+    "minute",
+  )} ${datePart(parts, "dayPeriod")}`;
+  return `${time}, ${datePart(parts, "month")} ${datePart(
+    parts,
+    "day",
+  )}, ${datePart(parts, "year")} (${timezone})`;
+}
+
+function formatWorkflowIntervalSeconds(seconds: number): string {
+  if (seconds % 3600 === 0) {
+    const hours = seconds / 3600;
+    return `${hours} ${hours === 1 ? "hour" : "hours"}`;
+  }
+  if (seconds % 60 === 0) {
+    const minutes = seconds / 60;
+    return `${minutes} ${minutes === 1 ? "minute" : "minutes"}`;
+  }
+  return `${seconds} ${seconds === 1 ? "second" : "seconds"}`;
+}
+
+function formatCronRule(
+  cronExpression: string,
+  timezone: string,
+  triggeredAt: Date,
+): string {
+  const [minutePart, hourPart, dayOfMonth = "*", , dayOfWeek = "*"] =
+    cronExpression.split(" ");
+  const minute = Number(minutePart);
+  const hour = Number(hourPart);
+  if (!Number.isFinite(hour) || !Number.isFinite(minute)) {
+    return `${cronExpression} (${timezone})`;
+  }
+  const time = formatWorkflowTriggerDateTime(triggeredAt, timezone).split(
+    ", ",
+  )[0];
+  if (dayOfMonth !== "*") {
+    return `Every month on day ${dayOfMonth} at ${time}`;
+  }
+  if (dayOfWeek === "1-5") {
+    return `Every weekday at ${time}`;
+  }
+  if (dayOfWeek !== "*") {
+    const dayNames: Readonly<Record<string, string>> = {
+      "0": "Sunday",
+      "1": "Monday",
+      "2": "Tuesday",
+      "3": "Wednesday",
+      "4": "Thursday",
+      "5": "Friday",
+      "6": "Saturday",
+    };
+    const days = dayOfWeek
+      .split(",")
+      .map((day) => {
+        return dayNames[day];
+      })
+      .filter(Boolean)
+      .join(", ");
+    return days ? `Every week on ${days} at ${time}` : `Every week at ${time}`;
+  }
+  return `Every day at ${time}`;
+}
+
+export function buildWorkflowScheduleTriggerBrief(args: {
+  readonly createdAt: Date;
+  readonly scheduleType: string | null;
+  readonly cronExpression: string | null;
+  readonly intervalSeconds: number | null;
+  readonly atTime: Date | null;
+  readonly triggerTimezone: string | null;
+  readonly userTimezone: string | null;
+}): string | null {
+  if (args.scheduleType === null) {
+    return null;
+  }
+  const timezone = displayTimezone(args);
+  const triggeredAt = formatWorkflowTriggerDateTime(args.createdAt, timezone);
+  if (args.scheduleType === "cron") {
+    const cronExpression = args.cronExpression?.trim();
+    if (!cronExpression) {
+      return `Triggered at ${triggeredAt}`;
+    }
+    return [
+      `Triggered at ${triggeredAt}`,
+      `Schedule: ${formatCronRule(cronExpression, timezone, args.createdAt)}`,
+    ].join("\n");
+  }
+  if (args.scheduleType === "loop") {
+    if (!args.intervalSeconds) {
+      return `Triggered at ${triggeredAt}`;
+    }
+    return [
+      `Triggered at ${triggeredAt}`,
+      `Every ${formatWorkflowIntervalSeconds(args.intervalSeconds)}`,
+    ].join("\n");
+  }
+  const onceAt = formatWorkflowTriggerDateTime(
+    args.atTime ?? args.createdAt,
+    timezone,
+  );
+  return `Once at ${onceAt}`;
+}
+
+function workflowScheduleTriggerBrief(row: ChatMessageRow): string | null {
+  if (row.workflowTriggerKind !== "schedule") {
+    return null;
+  }
+  return buildWorkflowScheduleTriggerBrief({
+    createdAt: row.createdAt,
+    scheduleType: row.workflowTriggerScheduleType,
+    cronExpression: row.workflowTriggerCronExpression,
+    intervalSeconds: row.workflowTriggerIntervalSeconds,
+    atTime: row.workflowTriggerAtTime,
+    triggerTimezone: row.workflowTriggerTimezone,
+    userTimezone: row.workflowTriggerUserTimezone,
+  });
+}
+
+function workflowSnapshotFromRow(
+  row: ChatMessageRow,
+): NonNullable<PagedChatMessage["workflowSnapshot"]> | undefined {
+  if (row.workflowName === null) {
+    return undefined;
+  }
+  return {
+    id: row.workflowId ?? undefined,
+    agentId: row.workflowAgentId ?? undefined,
+    name: row.workflowName,
+    displayName: row.workflowDisplayName,
+    description: row.workflowDescription,
+    triggerId: row.workflowTriggerId ?? undefined,
+    triggerBrief: workflowScheduleTriggerBrief(row) ?? row.workflowTriggerBrief,
+  };
+}
+
 function toPagedMessage(
   userId: string,
   row: ChatMessageRow,
 ): Computed<Promise<PagedChatMessage>> {
   return computed(async (get): Promise<PagedChatMessage> => {
     const attachFiles = await get(chatMessageAttachFiles(userId, row));
-    const workflowSnapshot =
-      row.workflowName === null
-        ? undefined
-        : {
-            id: row.workflowId ?? undefined,
-            agentId: row.workflowAgentId ?? undefined,
-            name: row.workflowName,
-            displayName: row.workflowDisplayName,
-            description: row.workflowDescription,
-            triggerId: row.workflowTriggerId ?? undefined,
-            triggerBrief: row.workflowTriggerBrief,
-          };
+    const workflowSnapshot = workflowSnapshotFromRow(row);
 
     const role = messageRoleSchema.parse(row.role);
     const message = {
