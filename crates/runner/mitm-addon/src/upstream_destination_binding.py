@@ -217,7 +217,9 @@ def server_binding_original_address(server: object) -> tuple[str, int] | None:
     if server_id is None:
         return None
     binding = _bindings_by_server_id.get(server_id)
-    return binding.original_address if binding is not None else None
+    if binding is None or not _server_binding_matches_current_destination(server, binding):
+        return None
+    return binding.original_address
 
 
 def _address_matches(host: str, port: int, address: object) -> bool:
