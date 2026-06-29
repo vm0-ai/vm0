@@ -3210,7 +3210,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero generate -h",
       "zero doctor credit",
       "zero credit <credits>",
-      "zero doctor permission-deny --help",
+      "zero doctor permission-deny <connector-ref> --method <METHOD> --url <FULL_DENIED_URL>",
       "zero doctor permission-change --help",
       "--duration 1h|24h|7d|always",
       "zero workflow --help",
