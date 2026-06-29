@@ -2,6 +2,7 @@ use std::path::PathBuf;
 
 use super::types::ProcessStat;
 
+#[derive(Debug, Eq, PartialEq)]
 enum CmdlineRead {
     Args(Vec<String>),
     Ignored,
@@ -36,27 +37,35 @@ pub(crate) async fn read_cmdline(pid: u32) -> Option<Vec<String>> {
 async fn read_cmdline_for_scan(pid: u32) -> CmdlineRead {
     let path = format!("/proc/{pid}/cmdline");
     match tokio::fs::read(&path).await {
-        Ok(bytes) => parse_cmdline_bytes(&bytes)
-            .map(CmdlineRead::Args)
-            .unwrap_or(CmdlineRead::Ignored),
+        Ok(bytes) => match parse_cmdline_bytes(&bytes) {
+            Some(argv) => CmdlineRead::Args(argv),
+            None => cmdline_problem_for_scan(pid, "cmdline is empty or NUL-free").await,
+        },
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => CmdlineRead::Missing,
-        Err(e) => cmdline_error_for_scan(pid, e).await,
+        Err(e) => {
+            let problem = format!("cmdline read failed: {e}");
+            cmdline_problem_for_scan(pid, &problem).await
+        }
     }
 }
 
-async fn cmdline_error_for_scan(pid: u32, cmdline_error: std::io::Error) -> CmdlineRead {
-    match read_process_comm_for_scan(pid).await {
+async fn cmdline_problem_for_scan(pid: u32, problem: &str) -> CmdlineRead {
+    cmdline_problem_for_comm(read_process_comm_for_scan(pid).await, problem)
+}
+
+fn cmdline_problem_for_comm(comm_read: ProcessCommRead, problem: &str) -> CmdlineRead {
+    match comm_read {
         ProcessCommRead::Name(comm) if comm == b"firecracker" => {
-            CmdlineRead::Unreadable(cmdline_error.to_string())
+            CmdlineRead::Unreadable(problem.to_string())
         }
         ProcessCommRead::Name(_) => CmdlineRead::Ignored,
         ProcessCommRead::Missing => CmdlineRead::Missing,
-        ProcessCommRead::Unreadable(stat_error) => CmdlineRead::Unreadable(format!(
-            "cmdline read failed: {cmdline_error}; stat read failed: {stat_error}"
-        )),
-        ProcessCommRead::Invalid => CmdlineRead::Unreadable(format!(
-            "cmdline read failed: {cmdline_error}; stat parse failed"
-        )),
+        ProcessCommRead::Unreadable(stat_error) => {
+            CmdlineRead::Unreadable(format!("{problem}; stat read failed: {stat_error}"))
+        }
+        ProcessCommRead::Invalid => {
+            CmdlineRead::Unreadable(format!("{problem}; stat parse failed"))
+        }
     }
 }
 
@@ -274,6 +283,28 @@ mod tests {
     #[test]
     fn parse_cmdline_bytes_rejects_all_empty_segments() {
         assert_eq!(parse_cmdline_bytes(b"\0\0"), None);
+    }
+
+    #[test]
+    fn cmdline_problem_for_firecracker_comm_is_unreadable() {
+        assert_eq!(
+            cmdline_problem_for_comm(
+                ProcessCommRead::Name(b"firecracker".to_vec()),
+                "cmdline is empty or NUL-free",
+            ),
+            CmdlineRead::Unreadable("cmdline is empty or NUL-free".to_string())
+        );
+    }
+
+    #[test]
+    fn cmdline_problem_for_non_firecracker_comm_is_ignored() {
+        assert_eq!(
+            cmdline_problem_for_comm(
+                ProcessCommRead::Name(b"postgres".to_vec()),
+                "cmdline is empty or NUL-free",
+            ),
+            CmdlineRead::Ignored
+        );
     }
 
     #[test]
