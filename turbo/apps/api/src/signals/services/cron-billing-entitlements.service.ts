@@ -1,8 +1,19 @@
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { command } from "ccstate";
-import { and, eq, inArray, isNotNull, isNull, lte, or } from "drizzle-orm";
+import {
+  and,
+  eq,
+  gt,
+  inArray,
+  isNotNull,
+  isNull,
+  lte,
+  or,
+  sql,
+} from "drizzle-orm";
 
 import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -21,6 +32,7 @@ type SubscriptionPriceTier = (typeof STRIPE_SUBSCRIPTION_PRICE_TIERS)[number];
 const ENTITLEMENT_PERIOD_REFRESH_STATUSES = ["active", "trialing"] as const;
 const PAYMENT_FAILED_SUBSCRIPTION_STATUSES = ["past_due", "unpaid"] as const;
 const PAYMENT_FAILURE_DOWNGRADE_GRACE_MS = 24 * 60 * 60 * 1000;
+const ATOM_GRANT_SUBSCRIPTION_STATUS = "atom_grant";
 
 interface SubscriptionInput {
   readonly id: string;
@@ -39,6 +51,10 @@ interface SubscriptionInput {
 interface BillingCandidate {
   readonly orgId: string;
   readonly stripeSubscriptionId: string | null;
+}
+
+interface AtomGrantCandidate {
+  readonly orgId: string;
 }
 
 interface ConcurrencyCandidate {
@@ -272,6 +288,92 @@ async function reconcileBillingCandidate(
   return rows;
 }
 
+async function expireOrgCredits(
+  db: Db,
+  orgId: string,
+  now: Date,
+): Promise<number> {
+  return await db.transaction(async (tx) => {
+    const expired = await tx
+      .select({
+        id: creditExpiresRecord.id,
+        remaining: creditExpiresRecord.remaining,
+      })
+      .from(creditExpiresRecord)
+      .where(
+        and(
+          eq(creditExpiresRecord.orgId, orgId),
+          lte(creditExpiresRecord.expiresAt, now),
+          gt(creditExpiresRecord.remaining, 0),
+        ),
+      )
+      .for("update");
+
+    const totalExpired = expired.reduce((sum, record) => {
+      return sum + record.remaining;
+    }, 0);
+    if (totalExpired <= 0) {
+      return 0;
+    }
+
+    for (const record of expired) {
+      await tx
+        .update(creditExpiresRecord)
+        .set({ remaining: 0 })
+        .where(eq(creditExpiresRecord.id, record.id));
+    }
+
+    await tx
+      .update(orgMetadata)
+      .set({
+        credits: sql`GREATEST(${orgMetadata.credits} - ${totalExpired}, 0)`,
+        updatedAt: now,
+      })
+      .where(eq(orgMetadata.orgId, orgId));
+
+    return totalExpired;
+  });
+}
+
+async function reconcileAtomGrantCandidate(
+  context: ReconcileBillingContext,
+  candidate: AtomGrantCandidate,
+): Promise<DowngradedSubscription[]> {
+  const { db, now, signal } = context;
+  await expireOrgCredits(db, candidate.orgId, now);
+  signal.throwIfAborted();
+
+  const rows = await db
+    .update(orgMetadata)
+    .set({
+      tier: "pro-suspend",
+      subscriptionStatus: "expired",
+      cancelAtPeriodEnd: false,
+      currentPeriodEnd: null,
+      pendingSubscriptionScheduleId: null,
+      pendingSubscriptionTargetTier: null,
+      pendingSubscriptionChangeAt: null,
+      updatedAt: now,
+    })
+    .where(
+      and(
+        eq(orgMetadata.orgId, candidate.orgId),
+        inArray(orgMetadata.tier, ["pro", "team"]),
+        isNull(orgMetadata.stripeSubscriptionId),
+        eq(orgMetadata.subscriptionStatus, ATOM_GRANT_SUBSCRIPTION_STATUS),
+        isNotNull(orgMetadata.currentPeriodEnd),
+        lte(orgMetadata.currentPeriodEnd, now),
+      ),
+    )
+    .returning({
+      orgId: orgMetadata.orgId,
+      subscriptionId: orgMetadata.stripeSubscriptionId,
+      status: orgMetadata.subscriptionStatus,
+    });
+  signal.throwIfAborted();
+  return rows;
+}
+
 async function reconcileConcurrencyCandidate(
   context: ReconcileBillingContext,
   candidate: ConcurrencyCandidate,
@@ -390,51 +492,69 @@ export const reconcileBillingEntitlements$ = command(
       now.getTime() - PAYMENT_FAILURE_DOWNGRADE_GRACE_MS,
     );
 
-    const [candidates, concurrencyCandidates] = await Promise.all([
-      db
-        .select({
-          orgId: orgMetadata.orgId,
-          stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-        })
-        .from(orgMetadata)
-        .where(
-          and(
-            inArray(orgMetadata.tier, ["pro", "team"]),
-            isNotNull(orgMetadata.stripeSubscriptionId),
-            inArray(orgMetadata.subscriptionStatus, [
-              ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
-            ]),
-            or(
-              and(
-                isNull(orgMetadata.currentPeriodEnd),
-                lte(orgMetadata.updatedAt, staleBefore),
+    const [candidates, atomGrantCandidates, concurrencyCandidates] =
+      await Promise.all([
+        db
+          .select({
+            orgId: orgMetadata.orgId,
+            stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
+          })
+          .from(orgMetadata)
+          .where(
+            and(
+              inArray(orgMetadata.tier, ["pro", "team"]),
+              isNotNull(orgMetadata.stripeSubscriptionId),
+              inArray(orgMetadata.subscriptionStatus, [
+                ...PAYMENT_FAILED_SUBSCRIPTION_STATUSES,
+              ]),
+              or(
+                and(
+                  isNull(orgMetadata.currentPeriodEnd),
+                  lte(orgMetadata.updatedAt, staleBefore),
+                ),
+                lte(orgMetadata.currentPeriodEnd, staleBefore),
               ),
-              lte(orgMetadata.currentPeriodEnd, staleBefore),
             ),
           ),
-        ),
-      db
-        .select({
-          orgId: orgConcurrencySubscriptions.orgId,
-          stripeSubscriptionId:
-            orgConcurrencySubscriptions.stripeSubscriptionId,
-        })
-        .from(orgConcurrencySubscriptions)
-        .where(
-          and(
-            inArray(orgConcurrencySubscriptions.subscriptionStatus, [
-              ...CONCURRENCY_SUBSCRIPTION_PAYMENT_FAILED_STATUSES,
-            ]),
-            or(
-              and(
-                isNull(orgConcurrencySubscriptions.currentPeriodEnd),
-                lte(orgConcurrencySubscriptions.updatedAt, staleBefore),
+        db
+          .select({
+            orgId: orgMetadata.orgId,
+          })
+          .from(orgMetadata)
+          .where(
+            and(
+              inArray(orgMetadata.tier, ["pro", "team"]),
+              isNull(orgMetadata.stripeSubscriptionId),
+              eq(
+                orgMetadata.subscriptionStatus,
+                ATOM_GRANT_SUBSCRIPTION_STATUS,
               ),
-              lte(orgConcurrencySubscriptions.currentPeriodEnd, staleBefore),
+              isNotNull(orgMetadata.currentPeriodEnd),
+              lte(orgMetadata.currentPeriodEnd, now),
             ),
           ),
-        ),
-    ]);
+        db
+          .select({
+            orgId: orgConcurrencySubscriptions.orgId,
+            stripeSubscriptionId:
+              orgConcurrencySubscriptions.stripeSubscriptionId,
+          })
+          .from(orgConcurrencySubscriptions)
+          .where(
+            and(
+              inArray(orgConcurrencySubscriptions.subscriptionStatus, [
+                ...CONCURRENCY_SUBSCRIPTION_PAYMENT_FAILED_STATUSES,
+              ]),
+              or(
+                and(
+                  isNull(orgConcurrencySubscriptions.currentPeriodEnd),
+                  lte(orgConcurrencySubscriptions.updatedAt, staleBefore),
+                ),
+                lte(orgConcurrencySubscriptions.currentPeriodEnd, staleBefore),
+              ),
+            ),
+          ),
+      ]);
     signal.throwIfAborted();
 
     const downgraded: DowngradedSubscription[] = [];
@@ -443,6 +563,14 @@ export const reconcileBillingEntitlements$ = command(
     for (const candidate of candidates) {
       downgraded.push(
         ...(await reconcileBillingCandidate(
+          { db, stripe, now, staleBefore, signal },
+          candidate,
+        )),
+      );
+    }
+    for (const candidate of atomGrantCandidates) {
+      downgraded.push(
+        ...(await reconcileAtomGrantCandidate(
           { db, stripe, now, staleBefore, signal },
           candidate,
         )),

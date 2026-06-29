@@ -7,6 +7,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { command } from "ccstate";
 import { and, eq, gt, isNull, lte, sql } from "drizzle-orm";
 
+import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../../lib/time";
 import { clerk$ } from "../external/clerk";
@@ -165,6 +166,15 @@ interface PaidWebhookOutcome {
   readonly drainOrgId: string | null;
 }
 
+interface AtomGrantInvoiceDetails {
+  readonly orgId: string;
+  readonly tier: "pro" | "team";
+  readonly grantExpiresAt: Date | null;
+  readonly creditExpiresAt: Date;
+  readonly customerId: string | null;
+  readonly credits: number;
+}
+
 function subscriptionPeriodEnd(subscription: SubscriptionInput): Date | null {
   const periodEndUnix = subscription.items.data[0]?.current_period_end;
   return typeof periodEndUnix === "number"
@@ -308,6 +318,8 @@ function subscriptionCreditExpiresAt(
 const CREDITS_PER_DOLLAR = 1000;
 const CREDIT_PURCHASE_EXPIRES_AT_METADATA_KEY = "creditsExpiresAt";
 const ATOM_GRANT_EXPIRES_AT_METADATA_KEY = "atomGrantExpiresAt";
+const ATOM_GRANT_PURPOSE = "atom_grant";
+const ATOM_GRANT_SUBSCRIPTION_STATUS = "atom_grant";
 
 function isAtomDayGrantSource(source: string | undefined): boolean {
   return source === "atom_entitlement" || source === "atom_redeem_code";
@@ -408,6 +420,141 @@ function creditPurchaseExpiresAt(
   }
 
   return expiresAt;
+}
+
+function atomGrantPriceId(): string | null {
+  return env("ATOM_GRANT_PRICE") ?? null;
+}
+
+function invoiceAtomGrantLine(invoice: InvoiceInput): InvoiceLineInput | null {
+  const priceId = atomGrantPriceId();
+  if (!priceId) {
+    return null;
+  }
+  return (
+    invoice.lines.data.find((line) => {
+      return invoiceLinePriceId(line) === priceId;
+    }) ?? null
+  );
+}
+
+function isAtomGrantInvoice(invoice: InvoiceInput): boolean {
+  return (
+    invoice.metadata?.purpose === ATOM_GRANT_PURPOSE ||
+    invoice.metadata?.type === ATOM_GRANT_PURPOSE ||
+    invoiceAtomGrantLine(invoice) !== null
+  );
+}
+
+function atomGrantTier(value: string | undefined): "pro" | "team" | null {
+  return value === "pro" || value === "team" ? value : null;
+}
+
+function atomGrantExpiresAt(
+  metadata: Readonly<Record<string, string>>,
+  line: InvoiceLineInput | null,
+): Date | null {
+  const metadataExpiresAt = metadata[ATOM_GRANT_EXPIRES_AT_METADATA_KEY];
+  if (metadataExpiresAt) {
+    const expiresAt = parseMetadataDate(metadataExpiresAt);
+    if (expiresAt && expiresAt.getTime() > now()) {
+      return expiresAt;
+    }
+    return null;
+  }
+
+  if (metadata.duration === "forever") {
+    return null;
+  }
+
+  const periodEnd = line?.period.end;
+  if (!periodEnd) {
+    return null;
+  }
+
+  const expiresAt = new Date(periodEnd * 1000);
+  return expiresAt.getTime() > now() ? expiresAt : null;
+}
+
+function atomGrantCreditExpiresAt(grantExpiresAt: Date | null): Date {
+  if (grantExpiresAt) {
+    return grantExpiresAt;
+  }
+
+  return autoRechargeNeverExpiresAt();
+}
+
+function atomGrantInvoiceDetails(
+  invoice: InvoiceInput,
+): AtomGrantInvoiceDetails | null {
+  const metadata = invoice.metadata ?? {};
+  const line = invoiceAtomGrantLine(invoice);
+  const configuredPriceId = atomGrantPriceId();
+  if (!configuredPriceId) {
+    L.warn(
+      "atom grant invoice received but ATOM_GRANT_PRICE is not configured",
+      {
+        invoiceId: invoice.id,
+      },
+    );
+    return null;
+  }
+  if (!line) {
+    L.warn("atom grant invoice missing configured grant price", {
+      invoiceId: invoice.id,
+      configuredPriceId,
+    });
+    return null;
+  }
+
+  const orgId = metadata.orgId;
+  const tier = atomGrantTier(metadata.tier ?? metadata.planId);
+  const grantExpiresAt = atomGrantExpiresAt(metadata, line);
+  if (!orgId || !tier) {
+    L.warn("atom grant invoice has invalid metadata", {
+      invoiceId: invoice.id,
+      hasOrgId: Boolean(orgId),
+      tier: metadata.tier ?? metadata.planId ?? null,
+      metadata,
+    });
+    return null;
+  }
+  if (metadata.duration !== "forever" && !grantExpiresAt) {
+    L.warn("atom grant invoice has invalid grant expiration", {
+      invoiceId: invoice.id,
+      orgId,
+      duration: metadata.duration ?? null,
+      atomGrantExpiresAt: metadata[ATOM_GRANT_EXPIRES_AT_METADATA_KEY] ?? null,
+    });
+    return null;
+  }
+
+  return {
+    orgId,
+    tier,
+    grantExpiresAt,
+    creditExpiresAt: atomGrantCreditExpiresAt(grantExpiresAt),
+    customerId: customerIdFromInvoice(invoice),
+    credits: monthlyCreditsForTier(tier),
+  };
+}
+
+function atomGrantWouldReplaceWithSameOrLowerTier(args: {
+  readonly lockedOrg: LockedInvoicePaidOrg;
+  readonly targetTier: "pro" | "team";
+}): boolean {
+  if (
+    args.lockedOrg.subscriptionStatus === ATOM_GRANT_SUBSCRIPTION_STATUS &&
+    args.lockedOrg.stripeSubscriptionId === null &&
+    args.lockedOrg.tier === args.targetTier
+  ) {
+    return false;
+  }
+
+  return checkoutWouldReplaceWithSameOrLowerTier({
+    currentTier: args.lockedOrg.tier,
+    targetTier: args.targetTier,
+  });
 }
 
 function stripePreviewMetadataForEvent(
@@ -704,6 +851,117 @@ async function handleCreditPurchaseInvoicePaid(
   });
 
   return { handled: true, drainOrgId: orgId };
+}
+
+async function processAtomGrantInvoicePaid(
+  db: Db,
+  invoice: InvoiceInput,
+  details: AtomGrantInvoiceDetails,
+): Promise<boolean> {
+  return await db.transaction(async (tx) => {
+    await tx
+      .insert(orgMetadata)
+      .values({
+        orgId: details.orgId,
+        ...(details.customerId ? { stripeCustomerId: details.customerId } : {}),
+      })
+      .onConflictDoNothing({ target: orgMetadata.orgId });
+
+    const lockedOrg = await lockInvoicePaidOrg(tx, details.orgId);
+    if (!lockedOrg) {
+      return false;
+    }
+    if (lockedOrg.lastProcessedInvoiceId === invoice.id) {
+      L.debug("atom grant invoice already processed", {
+        invoiceId: invoice.id,
+        orgId: details.orgId,
+      });
+      return true;
+    }
+    if (
+      atomGrantWouldReplaceWithSameOrLowerTier({
+        lockedOrg,
+        targetTier: details.tier,
+      })
+    ) {
+      L.warn("atom grant invoice rejected tier replacement", {
+        invoiceId: invoice.id,
+        orgId: details.orgId,
+        currentTier: lockedOrg.tier,
+        targetTier: details.tier,
+        reason: checkoutTierConflictMessage({
+          currentTier: lockedOrg.tier,
+          targetTier: details.tier,
+        }),
+      });
+      return false;
+    }
+
+    await expireCredits(tx, details.orgId);
+    const inserted = await createExpiresRecord(tx, details.orgId, {
+      source: "subscription_renewal",
+      stripeInvoiceId: invoice.id,
+      amount: details.credits,
+      expiresAt: details.creditExpiresAt,
+    });
+    if (!inserted) {
+      L.debug("atom grant invoice credits already processed", {
+        invoiceId: invoice.id,
+        orgId: details.orgId,
+      });
+      return true;
+    }
+
+    await grantOrgCredits(tx, details.orgId, details.credits);
+    await tx
+      .update(orgMetadata)
+      .set({
+        tier: details.tier,
+        ...(details.customerId ? { stripeCustomerId: details.customerId } : {}),
+        stripeSubscriptionId: null,
+        subscriptionStatus: ATOM_GRANT_SUBSCRIPTION_STATUS,
+        cancelAtPeriodEnd: details.grantExpiresAt !== null,
+        onboardingPaymentPending: false,
+        lastProcessedInvoiceId: invoice.id,
+        currentPeriodEnd: details.grantExpiresAt,
+        pendingSubscriptionScheduleId: null,
+        pendingSubscriptionTargetTier: details.grantExpiresAt
+          ? "pro-suspend"
+          : null,
+        pendingSubscriptionChangeAt: details.grantExpiresAt,
+        updatedAt: nowDate(),
+      })
+      .where(eq(orgMetadata.orgId, details.orgId));
+    return true;
+  });
+}
+
+async function handleAtomGrantInvoicePaid(
+  db: Db,
+  invoice: InvoiceInput,
+): Promise<PaidWebhookOutcome> {
+  if (!isAtomGrantInvoice(invoice)) {
+    return { handled: false, drainOrgId: null };
+  }
+
+  const details = atomGrantInvoiceDetails(invoice);
+  if (!details) {
+    return { handled: true, drainOrgId: null };
+  }
+
+  const processed = await processAtomGrantInvoicePaid(db, invoice, details);
+  if (!processed) {
+    return { handled: true, drainOrgId: null };
+  }
+
+  L.debug("atom grant invoice processed", {
+    invoiceId: invoice.id,
+    orgId: details.orgId,
+    tier: details.tier,
+    grantExpiresAt: details.grantExpiresAt?.toISOString() ?? null,
+    creditExpiresAt: details.creditExpiresAt.toISOString(),
+  });
+  return { handled: true, drainOrgId: details.orgId };
 }
 
 async function handleOneTimePurchaseCompleted(
@@ -2168,6 +2426,11 @@ async function handleInvoicePaid(
   );
   if (creditPurchaseResult.handled) {
     return creditPurchaseResult.drainOrgId;
+  }
+
+  const atomGrantResult = await handleAtomGrantInvoicePaid(db, invoice);
+  if (atomGrantResult.handled) {
+    return atomGrantResult.drainOrgId;
   }
 
   const concurrencyResult = await handleConcurrencyInvoicePaid(
