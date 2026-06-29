@@ -46,6 +46,7 @@ export type WorkflowCopyDialogState =
 type WorkflowTriggerCreateDialog =
   | "interval"
   | "scheduled"
+  | "once"
   | "gmail"
   | "gmail-label"
   | "webhook"

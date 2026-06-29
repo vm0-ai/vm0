@@ -1477,6 +1477,43 @@ describe("workflow detail page", () => {
     });
   });
 
+  it("creates a one-time trigger from the trigger menu", async () => {
+    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowTrigger((body) => {
+      createBodies.push(body);
+    });
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("triggers"),
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add trigger")).toBeInTheDocument();
+    });
+    click(buttonByText("Add trigger"));
+    click(menuItemByText(/One-time run/u));
+
+    const createTriggerForm = await screen.findByRole("form", {
+      name: "Add one-time trigger",
+    });
+    fireEvent.change(within(createTriggerForm).getByLabelText("Run at"), {
+      target: { value: "2026-07-01T10:30" },
+    });
+    click(buttonByText("Add one-time run", createTriggerForm));
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        schedule: {
+          type: "once",
+          atTime: new Date("2026-07-01T10:30").toISOString(),
+          timezone: "UTC",
+        },
+      });
+    });
+  });
+
   it("updates a cron schedule trigger from the preferred time zone", async () => {
     const updateBodies: {
       readonly triggerId: string;
