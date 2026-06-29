@@ -13,7 +13,8 @@ _IPV4_NON_PUBLIC_RANGES = (
     (0x7F000000, 0x7FFFFFFF),
     (0xA9FE0000, 0xA9FEFFFF),
     (0xAC100000, 0xAC1FFFFF),
-    (0xC0000000, 0xC00000FF),
+    (0xC0000000, 0xC0000008),
+    (0xC000000B, 0xC00000FF),
     (0xC0000200, 0xC00002FF),
     (0xC0586300, 0xC05863FF),
     (0xC0A80000, 0xC0A8FFFF),
@@ -111,9 +112,32 @@ def validate_runtime_destination_host(destination_host: object) -> RuntimeDestin
             reason="invalid_destination",
         )
 
+    ip_text = normalized_destination
+    bracketed = ip_text.startswith("[") or ip_text.endswith("]")
+    if bracketed:
+        if not (ip_text.startswith("[") and ip_text.endswith("]")):
+            return RuntimeDestinationCheck(
+                allowed=False,
+                destination_host=normalized_destination,
+                reason="invalid_destination",
+            )
+        ip_text = ip_text[1:-1]
+        if not ip_text:
+            return RuntimeDestinationCheck(
+                allowed=False,
+                destination_host=normalized_destination,
+                reason="invalid_destination",
+            )
+
     try:
-        ip = ipaddress.ip_address(normalized_destination)
+        ip = ipaddress.ip_address(ip_text)
     except ValueError:
+        return RuntimeDestinationCheck(
+            allowed=False,
+            destination_host=normalized_destination,
+            reason="invalid_destination",
+        )
+    if bracketed and not isinstance(ip, ipaddress.IPv6Address):
         return RuntimeDestinationCheck(
             allowed=False,
             destination_host=normalized_destination,

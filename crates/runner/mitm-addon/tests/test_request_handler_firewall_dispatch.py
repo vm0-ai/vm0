@@ -232,7 +232,10 @@ async def test_public_destination_blocks_unsafe_runtime_destination_before_auth(
     assert proxy_log_entry["reason"] == reason
 
 
-@pytest.mark.parametrize("destination_host", ["93.184.216.34", "2001:4860:4860::8888"])
+@pytest.mark.parametrize(
+    "destination_host",
+    ["93.184.216.34", "192.0.0.9", "192.0.0.10", "2001:4860:4860::8888"],
+)
 async def test_public_destination_allows_public_runtime_destination(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, destination_host
 ):
@@ -367,8 +370,39 @@ async def test_public_destination_blocks_bracketed_private_host_despite_public_o
     _assert_public_destination_denied(
         flow,
         destination_host="[::1]",
-        reason="invalid_destination",
+        reason="non_public_destination",
     )
+
+
+async def test_public_destination_allows_bracketed_public_ipv6_host_with_public_original(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="[2001:4860:4860::8888]",
+    )
+    flow.server_conn.address = ("service.example.com", 443)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("2001:4860:4860::8888", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.request.headers["Authorization"] == "Bearer x"
 
 
 @pytest.mark.parametrize(
