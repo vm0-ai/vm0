@@ -2,6 +2,7 @@ import {
   type FirewallConfig,
   UNKNOWN_PERMISSION_GRANT,
   validateAuthBaseUrl,
+  validateBaseUrlHostPolicy,
   validateBaseUrl,
 } from "./firewall-types";
 import { hasRawWhitespace, hasUnsafeUrlCodepoint } from "./firewall-url-utils";
@@ -120,6 +121,11 @@ export function collectAndValidatePermissions(
   const available = new Set<string>();
   for (const api of serviceConfig.apis) {
     validateBaseUrl(api.base, serviceConfig.name);
+    validateBaseUrlHostPolicy({
+      base: api.base,
+      serviceName: serviceConfig.name,
+      hostPolicy: api.hostPolicy,
+    });
     if (api.auth.base !== undefined) {
       validateAuthBaseUrl(api.auth.base, serviceConfig.name);
     }

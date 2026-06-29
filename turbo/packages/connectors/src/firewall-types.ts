@@ -1643,28 +1643,28 @@ function providerOwnedHostMatches(
   return false;
 }
 
-function validateResolvedBaseUrlHostPolicy({
-  templateBase,
-  resolvedBase,
+export function validateBaseUrlHostPolicy({
+  base,
+  diagnosticBase = base,
   serviceName,
   hostPolicy,
 }: {
-  readonly templateBase: string;
-  readonly resolvedBase: string;
+  readonly base: string;
+  readonly diagnosticBase?: string;
   readonly serviceName: string;
   readonly hostPolicy: FirewallBaseHostPolicy | undefined;
 }): void {
-  if (!hostPolicy) {
+  if (!hostPolicy || hasBaseUrlVars(base)) {
     return;
   }
 
-  const url = new URL(resolvedBase);
+  const url = new URL(base);
   const hostname = normalizeHostPolicyHostname(url.hostname);
   if (hostPolicy.kind === "providerOwned") {
     if (!providerOwnedHostMatches(hostname, hostPolicy)) {
       throw new Error(
         errMsg(
-          templateBase,
+          diagnosticBase,
           serviceName,
           `host policy does not allow resolved host "${hostname}"`,
         ),
@@ -1673,7 +1673,7 @@ function validateResolvedBaseUrlHostPolicy({
     if (!hostPolicy.allowNonDefaultPort && url.port !== "") {
       throw new Error(
         errMsg(
-          templateBase,
+          diagnosticBase,
           serviceName,
           "host policy does not allow non-default ports",
         ),
@@ -1686,7 +1686,7 @@ function validateResolvedBaseUrlHostPolicy({
   if (publicIpLiteral === false) {
     throw new Error(
       errMsg(
-        templateBase,
+        diagnosticBase,
         serviceName,
         `host policy does not allow non-public IP literal "${hostname}"`,
       ),
@@ -1743,9 +1743,9 @@ export function resolveFirewallBaseUrlTemplate({
       serviceName,
       credentialed,
     );
-    validateResolvedBaseUrlHostPolicy({
-      templateBase: base,
-      resolvedBase: resolved,
+    validateBaseUrlHostPolicy({
+      base: resolved,
+      diagnosticBase: base,
       serviceName,
       hostPolicy,
     });

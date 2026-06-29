@@ -66,6 +66,61 @@ describe("firewall expander helpers", () => {
     expect([...names].sort()).toEqual(["read", "upload"]);
   });
 
+  it("collectAndValidatePermissions validates static base URL host policies", () => {
+    const config = (
+      base: string,
+      hostPolicy: FirewallConfig["apis"][number]["hostPolicy"],
+    ): FirewallConfig => {
+      return {
+        name: "static-host-policy",
+        apis: [
+          {
+            base,
+            hostPolicy,
+            auth: { headers: { Authorization: "Bearer token" } },
+            permissions: [],
+          },
+        ],
+      };
+    };
+
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://127.0.0.1", { kind: "publicDestination" }),
+      );
+    }).toThrow("host policy does not allow non-public IP literal");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://api.evil.test", {
+          kind: "providerOwned",
+          suffixes: ["example.com"],
+        }),
+      );
+    }).toThrow('host policy does not allow resolved host "api.evil.test"');
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://api.example.com:8443", {
+          kind: "providerOwned",
+          suffixes: ["example.com"],
+        }),
+      );
+    }).toThrow("host policy does not allow non-default ports");
+
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://8.8.8.8", { kind: "publicDestination" }),
+      );
+    }).not.toThrow();
+    expect(() => {
+      return collectAndValidatePermissions(
+        config("https://api.example.com", {
+          kind: "providerOwned",
+          suffixes: ["example.com"],
+        }),
+      );
+    }).not.toThrow();
+  });
+
   it("collectAndValidatePermissions rejects malformed static auth.base URLs", () => {
     const config = (authBase: string): FirewallConfig => {
       return {
