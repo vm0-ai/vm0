@@ -659,6 +659,12 @@ fi
         std::fs::create_dir_all(rootfs.path().join("usr/bin")).unwrap();
         symlink("/bin/bash", rootfs.path().join("bin/awk")).unwrap();
         symlink("../../../../bin/bash", rootfs.path().join("bin/sh")).unwrap();
+        symlink("/usr/bin/missing-target", rootfs.path().join("bin/broken")).unwrap();
+        std::fs::write(
+            rootfs.path().join("usr/bin/file-parent"),
+            b"not a directory",
+        )
+        .unwrap();
         let non_executable = rootfs.path().join("usr/bin/not-executable");
         std::fs::write(&non_executable, b"#!/bin/sh\n").unwrap();
         let mut perms = std::fs::metadata(&non_executable).unwrap().permissions();
@@ -679,6 +685,11 @@ assert_check_error() {{
 }}
 assert_check_error /bin/awk awk "awk not found or not executable at /bin/awk"
 assert_check_error /bin/sh sh "sh not found or not executable at /bin/sh"
+assert_check_error /bin/broken broken "broken not found or not executable at /bin/broken"
+assert_check_error \
+  /usr/bin/file-parent/tool \
+  file-parent-tool \
+  "file-parent-tool not found or not executable at /usr/bin/file-parent/tool"
 assert_check_error \
   /usr/bin/not-executable \
   not-executable \
