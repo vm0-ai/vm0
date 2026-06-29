@@ -4,6 +4,8 @@ import ipaddress
 from dataclasses import dataclass
 from typing import Literal
 
+from authority_utils import percent_decode_host
+
 _IPV4_NON_PUBLIC_RANGES = (
     (0x00000000, 0x00FFFFFF),
     (0x0A000000, 0x0AFFFFFF),
@@ -29,6 +31,7 @@ _HOST_DOT_EQUIVALENT_TRANSLATION = str.maketrans(
 )
 _IPV4_HEX_PREFIX = "0x"
 _IPV4_LITERAL_MAX_COMPONENTS = 4
+_PERCENT_DECODED_IP_LITERAL_SYNTAX_CHARS = frozenset((".", "[", "]", ":"))
 _IPV6_GLOBAL_UNICAST_FIRST_MIN = 0x2000
 _IPV6_GLOBAL_UNICAST_FIRST_MAX = 0x3FFF
 _IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST = 0x2001
@@ -59,10 +62,17 @@ class RuntimeDestinationCheck:
 
 
 def public_ip_literal_is_public(hostname: str) -> bool | None:
-    """Return public-IP status for an IP literal, or None when input is a hostname."""
+    """Return public-IP status for IP-like input, or None for ordinary hostnames."""
     ip_text = hostname.strip()
     if ip_text.startswith("[") and ip_text.endswith("]"):
         ip_text = ip_text[1:-1]
+    decoded_ip_text = percent_decode_host(
+        ip_text,
+        syntax_chars=_PERCENT_DECODED_IP_LITERAL_SYNTAX_CHARS,
+    )
+    if decoded_ip_text.invalid_encoding or decoded_ip_text.decoded_syntax:
+        return False
+    ip_text = decoded_ip_text.value
     try:
         ip = ipaddress.ip_address(ip_text)
     except ValueError:
