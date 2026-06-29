@@ -12,7 +12,7 @@ use std::time::Duration;
 
 use serde::de::DeserializeOwned;
 use serde::{Deserialize, Serialize};
-use serde_json::{Value, json};
+use serde_json::{Map, Value, json};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::process::{ChildStdin, ChildStdout};
 use tokio::runtime::Handle;
@@ -21,10 +21,7 @@ use tokio::task::JoinHandle;
 
 use crate::error::AgentError;
 
-use super::{
-    child_env, codex_app_server_events::IGNORED_NOTIFICATION_METHODS, diagnostics,
-    process_group::ChildProcessGroup,
-};
+use super::{child_env, diagnostics, process_group::ChildProcessGroup};
 
 const METHOD_NOT_FOUND: i64 = -32601;
 const NOTIFICATION_QUEUE_CAPACITY: usize = 128;
@@ -39,6 +36,7 @@ pub struct CodexAppServerConfig {
     codex_home: PathBuf,
     extra_env: Vec<(String, String)>,
     current_dir: Option<PathBuf>,
+    opt_out_notification_methods: Vec<String>,
 }
 
 impl CodexAppServerConfig {
@@ -48,6 +46,7 @@ impl CodexAppServerConfig {
             codex_home: codex_home.into(),
             extra_env: Vec::new(),
             current_dir: None,
+            opt_out_notification_methods: Vec::new(),
         }
     }
 
@@ -58,6 +57,15 @@ impl CodexAppServerConfig {
 
     pub fn with_current_dir(mut self, current_dir: impl Into<PathBuf>) -> Self {
         self.current_dir = Some(current_dir.into());
+        self
+    }
+
+    pub fn with_opt_out_notification_methods<I, S>(mut self, methods: I) -> Self
+    where
+        I: IntoIterator<Item = S>,
+        S: Into<String>,
+    {
+        self.opt_out_notification_methods = methods.into_iter().map(Into::into).collect();
         self
     }
 }
@@ -154,6 +162,7 @@ pub struct CodexAppServerClient {
     stream_unusable_reason: Option<String>,
     notifications: VecDeque<QueuedNotification>,
     notification_queue_bytes: usize,
+    opt_out_notification_methods: Vec<String>,
     closed: bool,
 }
 
@@ -216,6 +225,7 @@ impl CodexAppServerClient {
             stream_unusable_reason: None,
             notifications: VecDeque::with_capacity(NOTIFICATION_QUEUE_CAPACITY),
             notification_queue_bytes: 0,
+            opt_out_notification_methods: config.opt_out_notification_methods,
             closed: false,
         })
     }
@@ -235,6 +245,22 @@ impl CodexAppServerClient {
     }
 
     pub async fn initialize(&mut self) -> Result<InitializeResponse, CodexAppServerError> {
+        let mut capabilities = Map::new();
+        capabilities.insert("experimentalApi".to_string(), Value::Bool(true));
+        capabilities.insert("requestAttestation".to_string(), Value::Bool(false));
+        if !self.opt_out_notification_methods.is_empty() {
+            capabilities.insert(
+                "optOutNotificationMethods".to_string(),
+                Value::Array(
+                    self.opt_out_notification_methods
+                        .iter()
+                        .cloned()
+                        .map(Value::String)
+                        .collect(),
+                ),
+            );
+        }
+
         let response = self
             .request(
                 "initialize",
@@ -244,11 +270,7 @@ impl CodexAppServerClient {
                         "title": null,
                         "version": env!("CARGO_PKG_VERSION")
                     },
-                    "capabilities": {
-                        "experimentalApi": true,
-                        "requestAttestation": false,
-                        "optOutNotificationMethods": IGNORED_NOTIFICATION_METHODS
-                    }
+                    "capabilities": capabilities
                 }),
             )
             .await?;

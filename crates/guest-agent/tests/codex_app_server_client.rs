@@ -50,6 +50,27 @@ async fn codex_app_server_initializes_and_sends_initialized_notification() -> Re
 
     let state = wait_result(client.request_value("mock/state", json!({})), "mock/state").await?;
     assert_eq!(state["initializedNotificationReceived"], true);
+    assert_eq!(state["optOutNotificationMethods"], json!([]));
+    assert_eq!(state["hasPendingResponse"], false);
+
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
+async fn codex_app_server_initialize_sends_configured_opt_out_notifications() -> Result<(), String>
+{
+    let codex_home = TempDir::new().map_err(|error| format!("create codex home: {error}"))?;
+    let config = CodexAppServerConfig::new(mock_codex_path()?, codex_home.path())
+        .with_opt_out_notification_methods([
+            "process/outputDelta",
+            "item/agentMessage/delta",
+            "item/reasoning/textDelta",
+        ]);
+    let mut client = CodexAppServerClient::spawn(config).map_err(|error| format!("{error:?}"))?;
+
+    wait_result(client.initialize(), "initialize").await?;
+
+    let state = wait_result(client.request_value("mock/state", json!({})), "mock/state").await?;
     let opt_out_methods = state["optOutNotificationMethods"]
         .as_array()
         .ok_or_else(|| "missing opt-out notification methods".to_string())?;

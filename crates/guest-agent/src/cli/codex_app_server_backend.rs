@@ -23,7 +23,8 @@ use super::codex_app_server::{
 use super::event_delivery::{AckedEventPrefix, PreparedEvent};
 use super::{
     CliEventIngestor, CliExecutionResult, HeartbeatMonitor, HeartbeatStatus, LOG_TAG,
-    ParsedEventAction, command, notification_to_codex_event,
+    ParsedEventAction, codex_app_server_events::IGNORED_NOTIFICATION_METHODS, command,
+    notification_to_codex_event,
 };
 use guest_common::{log_info, log_warn};
 
@@ -267,7 +268,8 @@ fn codex_app_server_config() -> CodexAppServerConfig {
     };
     let codex_home = PathBuf::from(format!("{}/.codex", env::home_dir()));
     let mut config = CodexAppServerConfig::new(binary, codex_home)
-        .with_current_dir(paths::CANONICAL_WORKING_DIR);
+        .with_current_dir(paths::CANONICAL_WORKING_DIR)
+        .with_opt_out_notification_methods(IGNORED_NOTIFICATION_METHODS.iter().copied());
     if env::use_mock_codex()
         && let Ok(scenario) = std::env::var("MOCK_CODEX_APP_SERVER_SCENARIO")
     {
