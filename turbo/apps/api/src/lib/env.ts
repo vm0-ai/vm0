@@ -94,7 +94,7 @@ const SCHEMA = {
       return z
         .record(
           z.string(),
-          z.object({ priceId: z.string(), couponId: z.string() }),
+          z.object({ priceId: z.string(), couponId: z.string().optional() }),
         )
         .parse(JSON.parse(val));
     }),
