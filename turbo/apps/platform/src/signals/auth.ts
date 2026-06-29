@@ -8,18 +8,15 @@ const clerkVersion$ = state(0);
 
 /**
  * Resolve the hosted auth/onboarding origin.
- * Preview and staging deployments can use the shared SO surface from
- * VITE_PAID_ONBOARDING_URL; production keeps the historical web origin so this
- * auth bridge does not change live sign-in behavior.
+ * Prefer the configured onboarding origin; the app/platform -> www derivation
+ * remains a fallback for older environments.
  */
 export function resolveWebOrigin(): string {
-  if (import.meta.env.VITE_VERCEL_ENV !== "production") {
-    const configuredUrl = import.meta.env.VITE_PAID_ONBOARDING_URL as
-      | string
-      | undefined;
-    if (configuredUrl) {
-      return new URL(configuredUrl).origin;
-    }
+  const configuredUrl = import.meta.env.VITE_ONBOARDING_URL as
+    | string
+    | undefined;
+  if (configuredUrl) {
+    return new URL(configuredUrl).origin;
   }
 
   const origin = location.origin;
@@ -33,7 +30,7 @@ export function resolveWebOrigin(): string {
 
 function resolveDomainOverride(): string | null {
   if (import.meta.env.VITE_VERCEL_ENV !== "production") {
-    const configuredDomain = import.meta.env.VITE_PAID_ONBOARDING_DOMAIN as
+    const configuredDomain = import.meta.env.VITE_ONBOARDING_DOMAIN as
       | string
       | undefined;
     if (configuredDomain) {

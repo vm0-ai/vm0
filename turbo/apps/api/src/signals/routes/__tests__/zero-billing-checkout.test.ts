@@ -644,8 +644,8 @@ describe("POST /api/zero/billing/checkout", () => {
     });
   });
 
-  it("accepts successUrl on the configured paid-onboarding origin", async () => {
-    mockEnv("PAID_ONBOARDING_URL", "https://www.vm7.ai:8443");
+  it("accepts successUrl on the configured onboarding origin", async () => {
+    mockEnv("ONBOARDING_URL", "https://www.vm7.ai:8443");
 
     const fixture = await trackedPendingSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");

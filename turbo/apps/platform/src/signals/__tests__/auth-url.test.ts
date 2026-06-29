@@ -16,13 +16,13 @@ function setBrowserUrl(url: string): void {
 async function withoutConfiguredOnboarding<T>(
   callback: () => T | Promise<T>,
 ): Promise<T> {
-  vi.stubEnv("VITE_PAID_ONBOARDING_URL", "");
-  vi.stubEnv("VITE_PAID_ONBOARDING_DOMAIN", "");
+  vi.stubEnv("VITE_ONBOARDING_URL", "");
+  vi.stubEnv("VITE_ONBOARDING_DOMAIN", "");
   try {
     return await callback();
   } finally {
-    vi.stubEnv("VITE_PAID_ONBOARDING_URL", AUTH_ORIGIN);
-    vi.stubEnv("VITE_PAID_ONBOARDING_DOMAIN", AUTH_DOMAIN);
+    vi.stubEnv("VITE_ONBOARDING_URL", AUTH_ORIGIN);
+    vi.stubEnv("VITE_ONBOARDING_DOMAIN", AUTH_DOMAIN);
   }
 }
 
@@ -90,12 +90,12 @@ describe("platform auth URLs", () => {
     });
   });
 
-  it("keeps production auth on the derived web origin", async () => {
+  it("uses the configured onboarding origin in production without domain override", async () => {
     await withProductionDeployment(() => {
       setBrowserUrl("https://app.vm0.ai/agents");
 
       const url = new URL(resolveWebAuthUrl("/sign-in"));
-      expect(url.origin).toBe("https://www.vm0.ai");
+      expect(url.origin).toBe(AUTH_ORIGIN);
       expect(url.pathname).toBe("/sign-in");
       expect(url.searchParams.has("domain")).toBeFalsy();
     });

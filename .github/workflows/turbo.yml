@@ -744,7 +744,7 @@ jobs:
           app: api
           environment: preview
           job-ref: ${{ needs.prepare.outputs.job-ref }}
-          web-url: ${{ vars.PAID_ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
+          web-url: ${{ vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-url: ${{ needs.prepare.outputs.api-preview-url }}
         env:
@@ -808,7 +808,7 @@ jobs:
             DATABASE_URL=$(neonctl connection-string "$BRANCH_NAME" --project-id "$NEON_PROJECT_ID" --database-name neondb --role-name neondb_owner)
           fi
 
-          API_SEED_WEB_URL="${VM0_WEB_URL:-${{ vars.PAID_ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}}"
+          API_SEED_WEB_URL="${VM0_WEB_URL:-${{ vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}}"
           if [ -z "$API_SEED_WEB_URL" ]; then
             API_SEED_WEB_URL="https://www.vm0.ai"
           fi
@@ -827,7 +827,7 @@ jobs:
           environment: preview
           database-url: ${{ steps.neon.outputs.database-url }}
           job-ref: ${{ needs.prepare.outputs.job-ref }}
-          web-url: ${{ vars.PAID_ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
+          web-url: ${{ vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
           app-url: ${{ needs.prepare.outputs.app-preview-url }}
           api-url: ${{ needs.prepare.outputs.api-preview-url }}
         env:
@@ -1046,8 +1046,8 @@ jobs:
             VITE_CLERK_PUBLISHABLE_KEY=${{ vars.CLERK_PUBLISHABLE_KEY }}
             VITE_VERCEL_ENV=preview
             VITE_API_URL=${{ needs.prepare.outputs.api-preview-url }}
-            VITE_PAID_ONBOARDING_URL=${{ vars.PAID_ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
-            VITE_PAID_ONBOARDING_DOMAIN=${{ startsWith(needs.prepare.outputs.job-ref, 'pr-') && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
+            VITE_ONBOARDING_URL=${{ vars.ONBOARDING_URL_STAGING || 'https://staging-www.vm6.ai' }}
+            VITE_ONBOARDING_DOMAIN=${{ startsWith(needs.prepare.outputs.job-ref, 'pr-') && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
             PUBLIC_ARTIFACTS_BASE_URL=${{ vars.PUBLIC_ARTIFACTS_BASE_URL_DEV || vars.PUBLIC_ARTIFACTS_BASE_URL }}
             VITE_STATIC_ASSETS_BASE_URL=${{ vars.STATIC_ASSETS_BASE_URL_DEV || vars.STATIC_ASSETS_BASE_URL || 'https://static.vm7.io' }}
             VITE_ZERO_HOST_DOMAIN=${{ vars.ZERO_HOST_DOMAIN }}

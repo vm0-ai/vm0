@@ -86,6 +86,11 @@ export function getOAuthWebOrigin(_request: Request): string {
 }
 
 export function getOAuthApiOrigin(_request: Request): string {
+  const configuredApiOrigin = new URL(env("VM0_API_URL")).origin;
+  if (isTrustedApiOrigin(configuredApiOrigin)) {
+    return configuredApiOrigin;
+  }
+
   const canonicalApiOrigin = canonicalSiblingOriginForHost(
     new URL(env("VM0_WEB_URL")),
     "www",
@@ -95,7 +100,7 @@ export function getOAuthApiOrigin(_request: Request): string {
     return canonicalApiOrigin;
   }
 
-  return new URL(env("VM0_API_URL")).origin;
+  return configuredApiOrigin;
 }
 
 export function getOAuthCanonicalRedirectUrl(request: Request): string | null {
