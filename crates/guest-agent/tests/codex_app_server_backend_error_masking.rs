@@ -15,7 +15,8 @@ async fn codex_app_server_backend_masks_resume_id_in_rpc_errors()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = build_and_locate_mock_codex()?;
     let tmp = tempfile::tempdir()?;
-    let resume_thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    let resume_thread_id = "0193ABCDEF01723489ABCDEF01234567";
+    let canonical_resume_thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
 
     unsafe {
         setup_codex_app_server_env(&mock, tmp.path(), resume_thread_id)?;
@@ -42,7 +43,11 @@ async fn codex_app_server_backend_masks_resume_id_in_rpc_errors()
     );
     assert!(
         !message.contains(resume_thread_id),
-        "resume id leaked in app-server RPC error: {message}"
+        "raw resume id leaked in app-server RPC error: {message}"
+    );
+    assert!(
+        !message.contains(canonical_resume_thread_id),
+        "canonical resume id leaked in app-server RPC error: {message}"
     );
 
     Ok(())

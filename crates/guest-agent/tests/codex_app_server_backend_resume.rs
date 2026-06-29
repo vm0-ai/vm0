@@ -16,7 +16,8 @@ async fn codex_app_server_backend_resumes_existing_thread_id()
 -> Result<(), Box<dyn std::error::Error>> {
     let mock = build_and_locate_mock_codex()?;
     let tmp = tempfile::tempdir()?;
-    let resume_thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
+    let resume_thread_id = "0193ABCDEF01723489ABCDEF01234567";
+    let canonical_resume_thread_id = "0193abcd-ef01-7234-89ab-cdef01234567";
 
     unsafe {
         setup_codex_app_server_env(
@@ -51,13 +52,13 @@ async fn codex_app_server_backend_resumes_existing_thread_id()
     );
     assert_eq!(
         events[0].get("thread_id").and_then(Value::as_str),
-        Some(resume_thread_id)
+        Some(canonical_resume_thread_id)
     );
 
     let stored_id = std::fs::read_to_string(guest_agent::paths::session_id_file())?;
-    assert_eq!(stored_id, resume_thread_id);
+    assert_eq!(stored_id, canonical_resume_thread_id);
     let marker = std::fs::read_to_string(guest_agent::paths::session_history_path_file())?;
-    assert!(marker.ends_with(&format!(":{resume_thread_id}")));
+    assert!(marker.ends_with(&format!(":{canonical_resume_thread_id}")));
 
     Ok(())
 }

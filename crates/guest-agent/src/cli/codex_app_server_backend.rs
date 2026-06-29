@@ -118,6 +118,9 @@ async fn run_codex_app_server(
     let mut log_file = tokio::fs::File::from_std(log_file);
     let mut ingestor = CliEventIngestor::new();
     let resume_thread_id = resume_thread_id_from_env()?;
+    if let Some(resume_thread_id) = &resume_thread_id {
+        masker.add_sensitive_value(resume_thread_id);
+    }
     let mut client = CodexAppServerClient::spawn(codex_app_server_config())
         .map_err(|error| app_server_error(masker, error))?;
     let mut heartbeat_done = false;
