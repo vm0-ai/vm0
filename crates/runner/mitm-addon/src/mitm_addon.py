@@ -2374,6 +2374,20 @@ def requestheaders(flow: http.HTTPFlow) -> Awaitable[None] | None:
     allow = classification.firewall_allow
     vm_info = classification.vm_info
     auth_base = _firewall_allow_auth_base(allow) if allow is not None else None
+    if classification.kind == "public_destination_denied":
+        public_destination_denial = classification.public_destination_denial
+        if public_destination_denial is not None:
+            _start_request_timing(flow)
+            _block_public_destination_denied(
+                flow,
+                public_destination_denial,
+                send_response=False,
+            )
+            flow.metadata[_REQUEST_HEADERS_TERMINATED] = True
+            upstream_destination_binding.forget_server_binding(flow.server_conn)
+            flow.kill()
+        return None
+
     _prebind_requestheaders_upstream_destination(flow, classification)
     if (
         classification.kind == "firewall_allow"
@@ -2558,8 +2572,11 @@ def _set_firewall_block_response(flow: http.HTTPFlow, result: matching.FirewallB
 def _block_public_destination_denied(
     flow: http.HTTPFlow,
     denial: _PublicDestinationDenial,
+    *,
+    send_response: bool = True,
 ) -> None:
     proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    flow.request.stream = False
     flow.metadata[metadata_keys.FIREWALL_ACTION] = "DENY"
     flow.metadata[metadata_keys.FIREWALL_ERROR] = "unsafe_public_destination"
     flow.metadata[metadata_keys.FIREWALL_BASE] = denial.base
@@ -2588,11 +2605,12 @@ def _block_public_destination_denied(
             "reason": denial.reason,
         }
     )
-    flow.response = http.Response.make(
-        403,
-        error_body.encode(),
-        {"Content-Type": "application/json"},
-    )
+    if send_response:
+        flow.response = http.Response.make(
+            403,
+            error_body.encode(),
+            {"Content-Type": "application/json"},
+        )
 
 
 async def request(flow: http.HTTPFlow) -> None:

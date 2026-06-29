@@ -124,6 +124,7 @@ def _public_destination_flow(
     *,
     destination_host: str,
     method: str = "GET",
+    extra_headers: tuple[tuple[str, str], ...] = (),
 ):
     return real_flow(
         with_response=False,
@@ -132,7 +133,7 @@ def _public_destination_flow(
         sni="service.example.com",
         path="/v1/items",
         method=method,
-        request_headers=headers(("Host", "service.example.com")),
+        request_headers=headers(("Host", "service.example.com"), *extra_headers),
     )
 
 
@@ -251,6 +252,7 @@ async def test_public_destination_requestheaders_blocks_before_early_auth(
         headers,
         destination_host="10.0.0.1",
         method="POST",
+        extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
     )
 
     with (
@@ -259,16 +261,18 @@ async def test_public_destination_requestheaders_blocks_before_early_auth(
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
         assert requestheaders_result is None
+        _assert_public_destination_denied(
+            flow,
+            destination_host="10.0.0.1",
+            reason="non_public_destination",
+        )
         await mitm_addon.request(flow)
 
     auth_fetch.assert_not_called()
     assert flow.request.stream is False
     assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
-    _assert_public_destination_denied(
-        flow,
-        destination_host="10.0.0.1",
-        reason="non_public_destination",
-    )
+    [proxy_log_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert proxy_log_entry["type"] == "public_destination"
 
 
 async def test_inactive_builtin_connector_url_without_auth_gets_local_diagnostic(
