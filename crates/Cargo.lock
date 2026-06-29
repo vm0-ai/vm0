@@ -1298,6 +1298,8 @@ name = "guest-contracts"
 version = "0.2.7"
 dependencies = [
  "libc",
+ "serde",
+ "serde_json",
  "tempfile",
  "uuid",
 ]
