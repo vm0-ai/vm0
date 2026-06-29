@@ -25,6 +25,7 @@ import public_destination
         ("3fff:0fff::1", False),
         ("3fff:1000::1", True),
         ("[2001:4860:4860::8888]", True),
+        ("[93.184.216.34]", False),
         ("[::1]", False),
         ("2002::1", False),
         ("::ffff:93.184.216.34", False),

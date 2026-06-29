@@ -91,6 +91,8 @@ def public_ip_literal_is_public(hostname: str) -> bool | None:
         except (UnicodeError, ValueError):
             return False
         return None
+    if bracketed and not isinstance(ip, ipaddress.IPv6Address):
+        return False
     return _ip_address_is_public(ip)
 
 
