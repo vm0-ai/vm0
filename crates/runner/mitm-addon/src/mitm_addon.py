@@ -615,15 +615,11 @@ def _public_destination_runtime_hosts(flow: http.HTTPFlow) -> tuple[object, ...]
     )
 
     if flow.server_conn.connected:
-        connected_endpoint = _connected_ip_destination_endpoint(
-            flow.server_conn,
-            port=flow.request.port,
-            extra_endpoints=(_connection_sockname(flow.client_conn),),
-        )
+        connected_host = _public_destination_connected_runtime_host(flow)
         hosts: list[object] = []
         if original_address is not None:
             hosts.append(original_address[0])
-        hosts.append(connected_endpoint[0] if connected_endpoint is not None else None)
+        hosts.append(connected_host)
         return tuple(hosts)
 
     if original_address is not None:
@@ -634,6 +630,28 @@ def _public_destination_runtime_hosts(flow: http.HTTPFlow) -> tuple[object, ...]
         return (server_address[0],)
 
     return (flow.request.host,)
+
+
+def _public_destination_connected_runtime_host(flow: http.HTTPFlow) -> str | None:
+    for endpoint in (_server_peername(flow.server_conn), _server_address(flow.server_conn)):
+        if endpoint is None:
+            continue
+
+        endpoint_host, endpoint_port = endpoint
+        if public_destination.public_ip_literal_is_public(endpoint_host) is None:
+            continue
+
+        if endpoint_port != flow.request.port:
+            return None
+
+        return endpoint_host
+
+    connected_endpoint = _connected_ip_destination_endpoint(
+        flow.server_conn,
+        port=flow.request.port,
+        extra_endpoints=(_connection_sockname(flow.client_conn),),
+    )
+    return connected_endpoint[0] if connected_endpoint is not None else None
 
 
 def _public_destination_runtime_denial(
