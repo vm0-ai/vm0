@@ -87,7 +87,12 @@ export const permissionDenyCommand = new Command()
       "The denied HTTP method",
     ).makeOptionMandatory(),
   )
-  .addOption(new Option("--url <url>", "The denied full URL (required)"))
+  .addOption(
+    new Option(
+      "--url <url>",
+      "The denied request URL; query strings are ignored (required)",
+    ),
+  )
   .addOption(new Option("--path <path>", "Deprecated: use --url").hideHelp())
   .addHelpText(
     "after",
@@ -99,7 +104,8 @@ Examples:
 
 Notes:
   - Identifies which named permission covers a denied request
-  - Requires the full denied URL because method/path alone can match the wrong API base
+  - Requires the denied URL origin and path because method/path alone can match the wrong API base
+  - Query strings and fragments are ignored for matching; omit them when they may contain secrets
   - Use permission-change to request or enable the permission
   - Permission-change enable requests default to --duration 1h; pick 24h, 7d, or always only when appropriate`,
   )
