@@ -221,6 +221,15 @@ class _TlsAdmission:
 
 
 @dataclass(frozen=True)
+class _PublicDestinationDenial:
+    name: str
+    base: str
+    trusted_authority_host: str
+    destination_host: str
+    reason: public_destination.DestinationDenialReason
+
+
+@dataclass(frozen=True)
 class _RequestClassification:
     kind: _RequestClassificationKind
     vm_info: dict | None = None
@@ -229,17 +238,8 @@ class _RequestClassification:
     authority_error: AuthorityValidationError | None = None
     firewall_block: matching.FirewallBlock | None = None
     firewall_allow: matching.FirewallAllow | None = None
-    public_destination_denial: "_PublicDestinationDenial | None" = None
+    public_destination_denial: _PublicDestinationDenial | None = None
     stale_tls_reason: str = ""
-
-
-@dataclass(frozen=True)
-class _PublicDestinationDenial:
-    name: str
-    base: str
-    trusted_authority_host: str
-    destination_host: str
-    reason: public_destination.DestinationDenialReason
 
 
 @dataclass(frozen=True)
