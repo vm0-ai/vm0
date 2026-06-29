@@ -298,6 +298,17 @@ export {
   type TestOAuthProviderUserinfoResponse,
 } from "./test-oauth-provider-userinfo";
 export {
+  testComputerUseStateContract,
+  testComputerUseStateDeleteResponseSchema,
+  testComputerUseStateGetResponseSchema,
+  testComputerUseStatePostBodySchema,
+  testComputerUseStatePostResponseSchema,
+  type TestComputerUseStateContract,
+  type TestComputerUseStateDeleteResponse,
+  type TestComputerUseStateGetResponse,
+  type TestComputerUseStatePostResponse,
+} from "./test-computer-use-state";
+export {
   testSlackDispatchProbeBodySchema,
   testSlackDispatchProbeContract,
   testSlackDispatchProbeErrorSchema,
