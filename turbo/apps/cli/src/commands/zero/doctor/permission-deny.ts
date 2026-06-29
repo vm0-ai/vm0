@@ -30,6 +30,8 @@ interface PermissionDenyBaseMatch {
 }
 
 const BASE_URL_VAR_PATTERN = /\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}/g;
+const WHOLE_BASE_URL_VAR_PATTERN =
+  /^\$\{\{\s*vars\.([a-zA-Z_][a-zA-Z0-9_]*)\s*\}\}$/;
 const VALID_DENIED_METHODS = new Set([
   "GET",
   "POST",
@@ -86,6 +88,10 @@ function baseUrlTemplateVarNames(base: string): string[] {
   return [...base.matchAll(BASE_URL_VAR_PATTERN)].map((match) => {
     return match[1]!;
   });
+}
+
+function wholeBaseUrlTemplateVarName(base: string): string | null {
+  return WHOLE_BASE_URL_VAR_PATTERN.exec(base)?.[1] ?? null;
 }
 
 function resolveBaseUrlTemplateFromEnv(base: string): string | null {
@@ -166,7 +172,22 @@ function findBestBaseMatch(
       bestMatch = match;
     }
   }
-  return bestMatch;
+  if (bestMatch !== null) return bestMatch;
+
+  const unresolvedWholeBaseApis = apis.filter((api) => {
+    const name = wholeBaseUrlTemplateVarName(api.base);
+    return name !== null && !process.env[name];
+  });
+  if (unresolvedWholeBaseApis.length !== 1) return null;
+
+  const parsed = new URL(url);
+  const api = unresolvedWholeBaseApis[0]!;
+  return {
+    apiBase: api.base,
+    displayBase: api.base,
+    relativePath: parsed.pathname || "/",
+    score: 0,
+  };
 }
 
 function printPermissionChangeGuidance(

@@ -297,6 +297,51 @@ describe("zero doctor permission-deny command", () => {
       );
     });
 
+    it("should diagnose single opaque base URL variable connectors without env", async () => {
+      await permissionDenyCommand.parseAsync([
+        "node",
+        "cli",
+        "reap",
+        "--method",
+        "GET",
+        "--url",
+        "https://sandbox.api.reap.global/v1/accounts",
+      ]);
+
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain(
+        "Reap permission filtered GET /v1/accounts relative to base URL ${{ vars.REAP_API_BASE_URL }}",
+      );
+      expect(logCalls).toContain('covered by the "read"');
+      expect(logCalls).toContain(
+        "zero doctor permission-change reap --permission read --enable --duration 1h",
+      );
+    });
+
+    it("should not use opaque base fallback when configured env mismatches", async () => {
+      vi.stubEnv("REAP_API_BASE_URL", "https://api.reap.global/v1");
+
+      await expect(async () => {
+        await permissionDenyCommand.parseAsync([
+          "node",
+          "cli",
+          "reap",
+          "--method",
+          "GET",
+          "--url",
+          "https://sandbox.api.reap.global/v1/accounts",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "No registered Reap base URL matches the provided URL.",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+      expect(mockConsoleLog).not.toHaveBeenCalled();
+    });
+
     it("should not ignore configured env base URL variable mismatches", async () => {
       vi.stubEnv("QUICKBOOKS_REALM_ID", "999");
 
