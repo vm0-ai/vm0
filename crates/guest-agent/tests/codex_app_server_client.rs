@@ -50,6 +50,13 @@ async fn codex_app_server_initializes_and_sends_initialized_notification() -> Re
 
     let state = wait_result(client.request_value("mock/state", json!({})), "mock/state").await?;
     assert_eq!(state["initializedNotificationReceived"], true);
+    let opt_out_methods = state["optOutNotificationMethods"]
+        .as_array()
+        .ok_or_else(|| "missing opt-out notification methods".to_string())?;
+    assert!(opt_out_methods.contains(&json!("process/outputDelta")));
+    assert!(opt_out_methods.contains(&json!("item/agentMessage/delta")));
+    assert!(opt_out_methods.contains(&json!("item/reasoning/textDelta")));
+    assert!(!opt_out_methods.contains(&json!("thread/started")));
     assert_eq!(state["hasPendingResponse"], false);
 
     wait_result(client.shutdown(), "shutdown").await

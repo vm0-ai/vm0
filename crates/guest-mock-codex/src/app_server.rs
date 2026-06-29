@@ -117,6 +117,7 @@ struct AppServerState {
     initial_inputs: Vec<String>,
     steered_inputs: Vec<String>,
     initialized_notification_received: bool,
+    opt_out_notification_methods: Vec<String>,
     pending_response: Option<PendingResponse>,
     server_request_responses: Vec<Value>,
     scenario: Scenario,
@@ -145,6 +146,7 @@ impl AppServerState {
             initial_inputs: Vec::new(),
             steered_inputs: Vec::new(),
             initialized_notification_received: false,
+            opt_out_notification_methods: Vec::new(),
             pending_response: None,
             server_request_responses: Vec::new(),
             scenario,
@@ -217,6 +219,7 @@ impl AppServerState {
                     write_error(output, id, INVALID_REQUEST, message)?;
                     return Ok(ServerAction::Continue);
                 }
+                self.opt_out_notification_methods = initialize_opt_out_notification_methods(params);
                 if self.scenario == Scenario::MalformedStdout {
                     writeln!(output, "{{not-valid-json")?;
                     output.flush()?;
@@ -509,6 +512,7 @@ impl AppServerState {
                     id,
                     json!({
                         "initializedNotificationReceived": self.initialized_notification_received,
+                        "optOutNotificationMethods": &self.opt_out_notification_methods,
                         "serverRequestResponses": &self.server_request_responses,
                         "hasPendingResponse": self.pending_response.is_some(),
                     }),
@@ -628,6 +632,21 @@ fn validate_initialize_params(params: &Value) -> Result<(), &'static str> {
         return Err("missing capabilities.experimentalApi");
     }
     Ok(())
+}
+
+fn initialize_opt_out_notification_methods(params: &Value) -> Vec<String> {
+    params
+        .get("capabilities")
+        .and_then(|capabilities| capabilities.get("optOutNotificationMethods"))
+        .and_then(Value::as_array)
+        .map(|methods| {
+            methods
+                .iter()
+                .filter_map(Value::as_str)
+                .map(str::to_string)
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn thread_response(thread_id: &str, resume: bool) -> Value {

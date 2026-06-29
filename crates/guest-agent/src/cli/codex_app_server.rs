@@ -21,7 +21,10 @@ use tokio::task::JoinHandle;
 
 use crate::error::AgentError;
 
-use super::{child_env, diagnostics, process_group::ChildProcessGroup};
+use super::{
+    child_env, codex_app_server_events::IGNORED_NOTIFICATION_METHODS, diagnostics,
+    process_group::ChildProcessGroup,
+};
 
 const METHOD_NOT_FOUND: i64 = -32601;
 const NOTIFICATION_QUEUE_CAPACITY: usize = 128;
@@ -243,7 +246,8 @@ impl CodexAppServerClient {
                     },
                     "capabilities": {
                         "experimentalApi": true,
-                        "requestAttestation": false
+                        "requestAttestation": false,
+                        "optOutNotificationMethods": IGNORED_NOTIFICATION_METHODS
                     }
                 }),
             )
