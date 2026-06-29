@@ -6,23 +6,16 @@ import {
   type ConnectorAuthMethodId,
 } from "@vm0/connectors/connectors";
 import { getConnectorAuthMethodAuthCodeGrantConfig } from "@vm0/connectors/connector-utils";
-import { connectors } from "@vm0/db/schema/connector";
-import { connectorOauthStates } from "@vm0/db/schema/connector-oauth-state";
-import { secrets } from "@vm0/db/schema/secret";
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
+import { createApp } from "../../../app-factory";
 import { createAppWithRoutes } from "../../../app-factory-core";
+import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { now } from "../../../lib/time";
-import { writeDb$ } from "../../external/db";
 import { zeroConnectorsRoutes } from "../zero-connectors";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
-import { testContext } from "../../../__tests__/test-context";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const BASE_URL = "https://app.vm0.test";
@@ -41,6 +34,17 @@ const YOUTUBE_OAUTH_SCOPES = [
 
 function oauthStartUrl(type: string, origin = BASE_URL): string {
   return new URL(`/api/zero/connectors/${type}/oauth/start`, origin).toString();
+}
+
+function authHeaders(): HeadersInit {
+  return { authorization: "Bearer clerk-session" };
+}
+
+function mockAuthenticatedSession(): void {
+  mocks.clerk.session(
+    `${AUTH_REQUEST_USER_ID_PREFIX}${randomUUID()}`,
+    `org_${randomUUID()}`,
+  );
 }
 
 function mockOAuthEnv(): void {
@@ -102,8 +106,7 @@ async function requestOauthStart(
   } = {},
 ): Promise<Response> {
   if (options.authenticated) {
-    const orgId = `org_${randomUUID()}`;
-    mocks.clerk.session(`${AUTH_REQUEST_USER_ID_PREFIX}${randomUUID()}`, orgId);
+    mockAuthenticatedSession();
   }
   const headers = new Headers(options.headers);
   if (options.authenticated) {
@@ -121,9 +124,36 @@ async function requestOauthStart(
   });
 }
 
+async function authorizationUrlFromResponse(response: Response): Promise<URL> {
+  const body = (await response.json()) as {
+    readonly authorizationUrl: string;
+  };
+  return new URL(body.authorizationUrl);
+}
+
+function expectOauthState(authorizationUrl: URL): string {
+  const state = authorizationUrl.searchParams.get("state");
+  expect(state).toMatch(/^[0-9a-f]{64}$/);
+  return state!;
+}
+
+async function rejectProviderAuthorization(
+  authorizationUrl: URL,
+): Promise<void> {
+  const redirectUri = authorizationUrl.searchParams.get("redirect_uri");
+  const state = authorizationUrl.searchParams.get("state");
+  expect(redirectUri).toBeTruthy();
+  expect(state).toBeTruthy();
+
+  const callbackUrl = new URL(redirectUri!);
+  callbackUrl.searchParams.set("error", "access_denied");
+  callbackUrl.searchParams.set("state", state!);
+
+  const app = createApp({ signal: context.signal });
+  await app.request(callbackUrl.toString());
+}
+
 describe("POST /api/zero/connectors/:type/oauth/start", () => {
-  const orgIds: string[] = [];
-  const stateIds: string[] = [];
   const restoreConnectorRegistry: (() => void)[] = [];
 
   beforeEach(() => {
@@ -132,25 +162,9 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     mockOAuthEnv();
   });
 
-  afterEach(async () => {
+  afterEach(() => {
     while (restoreConnectorRegistry.length > 0) {
       restoreConnectorRegistry.pop()?.();
-    }
-    const db = store.set(writeDb$);
-    while (stateIds.length > 0) {
-      const stateId = stateIds.pop();
-      if (stateId) {
-        await db
-          .delete(connectorOauthStates)
-          .where(eq(connectorOauthStates.id, stateId));
-      }
-    }
-    while (orgIds.length > 0) {
-      const orgId = orgIds.pop();
-      if (orgId) {
-        await db.delete(connectors).where(eq(connectors.orgId, orgId));
-        await db.delete(secrets).where(eq(secrets.orgId, orgId));
-      }
     }
   });
 
@@ -169,10 +183,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
   });
 
   it("rejects OAuth start when the auth method is statically hidden", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    orgIds.push(orgId);
-    mocks.clerk.session(userId, orgId);
+    mockAuthenticatedSession();
 
     const authMethods = CONNECTOR_TYPES["google-cloud"].authMethods;
     const originalOauth = authMethods.oauth;
@@ -193,7 +204,7 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     });
 
     const response = await requestOauthStart("google-cloud", {
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
     });
 
     expect(response.status).toBe(403);
@@ -206,22 +217,15 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
   });
 
   it("starts Google Cloud OAuth without a feature switch", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    orgIds.push(orgId);
-    mocks.clerk.session(userId, orgId);
-    const db = store.set(writeDb$);
+    mockAuthenticatedSession();
 
     const response = await requestOauthStart("google-cloud", {
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       origin: API_ORIGIN,
     });
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      readonly authorizationUrl: string;
-    };
-    const authorizationUrl = new URL(body.authorizationUrl);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
     const scopes = new Set(
       authorizationUrl.searchParams.get("scope")?.split(" ") ?? [],
     );
@@ -249,44 +253,20 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     ).toBeTruthy();
     expect(scopes.has("https://www.googleapis.com/auth/compute")).toBeTruthy();
     expect(scopes.size).toBe(6);
-    const state = authorizationUrl.searchParams.get("state");
-    expect(state).toMatch(/^[0-9a-f]{64}$/);
-
-    const [storedState] = await db
-      .select()
-      .from(connectorOauthStates)
-      .where(eq(connectorOauthStates.state, state!));
-    expect(storedState).toBeDefined();
-    stateIds.push(storedState!.id);
-    expect(storedState).toMatchObject({
-      state,
-      type: "google-cloud",
-      authMethod: "oauth",
-      userId,
-      orgId,
-      redirectUri: `${WEB_ORIGIN}/api/connectors/google-cloud/callback`,
-      consumedAt: null,
-    });
-    expect(storedState!.expiresAt.getTime()).toBeGreaterThan(now());
+    expectOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
   });
 
   it("starts YouTube OAuth without a feature switch", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    orgIds.push(orgId);
-    mocks.clerk.session(userId, orgId);
-    const db = store.set(writeDb$);
+    mockAuthenticatedSession();
 
     const response = await requestOauthStart("youtube", {
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       origin: API_ORIGIN,
     });
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      readonly authorizationUrl: string;
-    };
-    const authorizationUrl = new URL(body.authorizationUrl);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
     expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
       "https://accounts.google.com/o/oauth2/v2/auth",
     );
@@ -301,43 +281,20 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     ).toStrictEqual([...YOUTUBE_OAUTH_SCOPES]);
     expect(authorizationUrl.searchParams.get("access_type")).toBe("offline");
     expect(authorizationUrl.searchParams.get("prompt")).toBe("consent");
-    const state = authorizationUrl.searchParams.get("state");
-    expect(state).toMatch(/^[0-9a-f]{64}$/);
-
-    const [storedState] = await db
-      .select()
-      .from(connectorOauthStates)
-      .where(eq(connectorOauthStates.state, state!));
-    expect(storedState).toBeDefined();
-    stateIds.push(storedState!.id);
-    expect(storedState).toMatchObject({
-      state,
-      type: "youtube",
-      authMethod: "oauth",
-      userId,
-      orgId,
-      redirectUri: `${WEB_ORIGIN}/api/connectors/youtube/callback`,
-      consumedAt: null,
-    });
-    expect(storedState!.expiresAt.getTime()).toBeGreaterThan(now());
+    expectOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
   });
 
   it("creates a server-side OAuth handoff and returns the provider authorization URL", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    orgIds.push(orgId);
-    mocks.clerk.session(userId, orgId);
+    mockAuthenticatedSession();
 
     const response = await requestOauthStart("github", {
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       origin: API_ORIGIN,
     });
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      readonly authorizationUrl: string;
-    };
-    const authorizationUrl = new URL(body.authorizationUrl);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
     expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
       "https://github.com/login/oauth/authorize",
     );
@@ -347,79 +304,38 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
       `${WEB_ORIGIN}/api/connectors/github/callback`,
     );
-    const state = authorizationUrl.searchParams.get("state");
-    expect(state).toMatch(/^[0-9a-f]{64}$/);
-
-    const db = store.set(writeDb$);
-    const [storedState] = await db
-      .select()
-      .from(connectorOauthStates)
-      .where(eq(connectorOauthStates.state, state!));
-    expect(storedState).toBeDefined();
-    stateIds.push(storedState!.id);
-    expect(storedState).toMatchObject({
-      state,
-      type: "github",
-      authMethod: "oauth",
-      userId,
-      orgId,
-      redirectUri: `${WEB_ORIGIN}/api/connectors/github/callback`,
-      consumedAt: null,
-    });
-    expect(storedState!.expiresAt.getTime()).toBeGreaterThan(now());
+    expectOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
   });
 
   it("uses the configured web origin for local OAuth callback URLs", async () => {
     mockEnv("VM0_WEB_URL", LOCAL_WEB_ORIGIN);
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    orgIds.push(orgId);
-    mocks.clerk.session(userId, orgId);
+    mockAuthenticatedSession();
 
     const response = await requestOauthStart("github", {
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       origin: LOCAL_ORIGIN,
     });
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      readonly authorizationUrl: string;
-    };
-    const authorizationUrl = new URL(body.authorizationUrl);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
       `${LOCAL_WEB_ORIGIN}/api/connectors/github/callback`,
     );
-    const state = authorizationUrl.searchParams.get("state");
-    expect(state).toMatch(/^[0-9a-f]{64}$/);
-
-    const db = store.set(writeDb$);
-    const [storedState] = await db
-      .select()
-      .from(connectorOauthStates)
-      .where(eq(connectorOauthStates.state, state!));
-    expect(storedState).toBeDefined();
-    stateIds.push(storedState!.id);
-    expect(storedState!.redirectUri).toBe(
-      `${LOCAL_WEB_ORIGIN}/api/connectors/github/callback`,
-    );
+    expectOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
   });
 
   it("stores provider PKCE context for server-side OAuth handoff", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    orgIds.push(orgId);
-    mocks.clerk.session(userId, orgId);
+    mockAuthenticatedSession();
 
     const response = await requestOauthStart("airtable", {
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       origin: API_ORIGIN,
     });
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      readonly authorizationUrl: string;
-    };
-    const authorizationUrl = new URL(body.authorizationUrl);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
     expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
       "https://airtable.com/oauth2/v1/authorize",
     );
@@ -435,45 +351,20 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
     expect(authorizationUrl.searchParams.get("code_challenge_method")).toBe(
       "S256",
     );
-    const state = authorizationUrl.searchParams.get("state");
-    expect(state).toMatch(/^[0-9a-f]{64}$/);
-
-    const db = store.set(writeDb$);
-    const [storedState] = await db
-      .select()
-      .from(connectorOauthStates)
-      .where(eq(connectorOauthStates.state, state!));
-    expect(storedState).toBeDefined();
-    stateIds.push(storedState!.id);
-    expect(storedState).toMatchObject({
-      state,
-      type: "airtable",
-      authMethod: "oauth",
-      userId,
-      orgId,
-      redirectUri: `${WEB_ORIGIN}/api/connectors/airtable/callback`,
-      consumedAt: null,
-    });
-    expect(storedState!.codeVerifier).toMatch(/^[A-Za-z0-9_-]+$/);
-    expect(storedState!.expiresAt.getTime()).toBeGreaterThan(now());
+    expectOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
   });
 
   it("uses the configured API origin for Cloudflare OAuth callback URLs", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    orgIds.push(orgId);
-    mocks.clerk.session(userId, orgId);
+    mockAuthenticatedSession();
 
     const response = await requestOauthStart("cloudflare", {
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       origin: WEB_ORIGIN,
     });
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      readonly authorizationUrl: string;
-    };
-    const authorizationUrl = new URL(body.authorizationUrl);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
     expect(`${authorizationUrl.origin}${authorizationUrl.pathname}`).toBe(
       "https://dash.cloudflare.com/oauth2/auth",
     );
@@ -484,140 +375,68 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
       `${API_ORIGIN}/api/connectors/cloudflare/callback`,
     );
     expectCloudflareAuthorizationScopes(authorizationUrl);
-    const state = authorizationUrl.searchParams.get("state");
-    expect(state).toMatch(/^[0-9a-f]{64}$/);
-
-    const db = store.set(writeDb$);
-    const [storedState] = await db
-      .select()
-      .from(connectorOauthStates)
-      .where(eq(connectorOauthStates.state, state!));
-    expect(storedState).toBeDefined();
-    stateIds.push(storedState!.id);
-    expect(storedState).toMatchObject({
-      state,
-      type: "cloudflare",
-      authMethod: "oauth",
-      userId,
-      orgId,
-      redirectUri: `${API_ORIGIN}/api/connectors/cloudflare/callback`,
-      consumedAt: null,
-    });
+    expectOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
   });
 
   it("keeps API-origin OAuth callbacks on the PR API when onboarding uses staging web", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    orgIds.push(orgId);
-    mocks.clerk.session(userId, orgId);
+    mockAuthenticatedSession();
     mockEnv("VM0_API_URL", "https://pr-19337-api.vm6.ai");
     mockEnv("VM0_WEB_URL", "https://staging-www.vm6.ai");
 
     const response = await requestOauthStart("cloudflare", {
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       origin: "https://pr-19337-api.vm6.ai",
     });
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      readonly authorizationUrl: string;
-    };
-    const authorizationUrl = new URL(body.authorizationUrl);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
       "https://pr-19337-api.vm6.ai/api/connectors/cloudflare/callback",
     );
     expectCloudflareAuthorizationScopes(authorizationUrl);
-
-    const state = authorizationUrl.searchParams.get("state");
-    const db = store.set(writeDb$);
-    const [storedState] = await db
-      .select()
-      .from(connectorOauthStates)
-      .where(eq(connectorOauthStates.state, state!));
-    expect(storedState).toBeDefined();
-    stateIds.push(storedState!.id);
-    expect(storedState).toMatchObject({
-      state,
-      type: "cloudflare",
-      authMethod: "oauth",
-      userId,
-      orgId,
-      redirectUri:
-        "https://pr-19337-api.vm6.ai/api/connectors/cloudflare/callback",
-      consumedAt: null,
-    });
+    expectOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
   });
 
   it("uses the canonical API origin when VM0_API_URL is localhost", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    orgIds.push(orgId);
-    mocks.clerk.session(userId, orgId);
+    mockAuthenticatedSession();
     mockEnv("VM0_API_URL", LOCAL_ORIGIN);
     mockEnv("VM0_WEB_URL", WEB_ORIGIN);
 
     const response = await requestOauthStart("cloudflare", {
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       origin: LOCAL_ORIGIN,
     });
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      readonly authorizationUrl: string;
-    };
-    const authorizationUrl = new URL(body.authorizationUrl);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
       `${API_ORIGIN}/api/connectors/cloudflare/callback`,
     );
     expectCloudflareAuthorizationScopes(authorizationUrl);
-
-    const state = authorizationUrl.searchParams.get("state");
-    const db = store.set(writeDb$);
-    const [storedState] = await db
-      .select()
-      .from(connectorOauthStates)
-      .where(eq(connectorOauthStates.state, state!));
-    expect(storedState).toBeDefined();
-    stateIds.push(storedState!.id);
-    expect(storedState?.redirectUri).toBe(
-      `${API_ORIGIN}/api/connectors/cloudflare/callback`,
-    );
+    expectOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
   });
 
   it("keeps Cloudflare OAuth callbacks on the canonical API origin when VM0_API_URL is a tunnel", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    orgIds.push(orgId);
-    mocks.clerk.session(userId, orgId);
+    mockAuthenticatedSession();
     mockEnv("VM0_API_URL", "https://tunnel-liangyou-vm2-www.vm7.ai");
     mockEnv("VM0_WEB_URL", "https://www.vm7.ai:8443");
 
     const response = await requestOauthStart("cloudflare", {
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       origin: "https://www.vm7.ai:8443",
     });
 
     expect(response.status).toBe(200);
-    const body = (await response.json()) as {
-      readonly authorizationUrl: string;
-    };
-    const authorizationUrl = new URL(body.authorizationUrl);
+    const authorizationUrl = await authorizationUrlFromResponse(response);
     expect(authorizationUrl.searchParams.get("redirect_uri")).toBe(
       "https://api.vm7.ai:8443/api/connectors/cloudflare/callback",
     );
     expectCloudflareAuthorizationScopes(authorizationUrl);
-
-    const state = authorizationUrl.searchParams.get("state");
-    const db = store.set(writeDb$);
-    const [storedState] = await db
-      .select()
-      .from(connectorOauthStates)
-      .where(eq(connectorOauthStates.state, state!));
-    expect(storedState).toBeDefined();
-    stateIds.push(storedState!.id);
-    expect(storedState?.redirectUri).toBe(
-      "https://api.vm7.ai:8443/api/connectors/cloudflare/callback",
-    );
+    expectOauthState(authorizationUrl);
+    await rejectProviderAuthorization(authorizationUrl);
   });
 
   it("returns 401 instead of relying on browser cookies when unauthenticated", async () => {
@@ -647,13 +466,10 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
   });
 
   it("returns 400 when starting browser OAuth for a device authorization connector", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    orgIds.push(orgId);
-    mocks.clerk.session(userId, orgId);
+    mockAuthenticatedSession();
 
     const response = await requestOauthStart("test-oauth-device", {
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
     });
 
     expect(response.status).toBe(400);
@@ -663,24 +479,14 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
         code: "BAD_REQUEST",
       },
     });
-
-    const db = store.set(writeDb$);
-    const states = await db
-      .select()
-      .from(connectorOauthStates)
-      .where(eq(connectorOauthStates.userId, userId));
-    expect(states).toHaveLength(0);
   });
 
   it("returns 400 when starting OAuth with a missing selected auth method", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    orgIds.push(orgId);
-    mocks.clerk.session(userId, orgId);
+    mockAuthenticatedSession();
 
     const response = await requestOauthStart("github", {
       authMethod: "api-token",
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
     });
 
     expect(response.status).toBe(400);
@@ -690,24 +496,14 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
         code: "BAD_REQUEST",
       },
     });
-
-    const db = store.set(writeDb$);
-    const states = await db
-      .select()
-      .from(connectorOauthStates)
-      .where(eq(connectorOauthStates.userId, userId));
-    expect(states).toHaveLength(0);
   });
 
-  it("does not create server-side handoff state when auth client is not configured", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    orgIds.push(orgId);
+  it("returns 500 when auth client is not configured", async () => {
     mockOptionalEnv("GH_OAUTH_CLIENT_ID", undefined);
-    mocks.clerk.session(userId, orgId);
+    mockAuthenticatedSession();
 
     const response = await requestOauthStart("github", {
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
     });
 
     expect(response.status).toBe(500);
@@ -717,12 +513,5 @@ describe("POST /api/zero/connectors/:type/oauth/start", () => {
         code: "INTERNAL_SERVER_ERROR",
       },
     });
-
-    const db = store.set(writeDb$);
-    const states = await db
-      .select()
-      .from(connectorOauthStates)
-      .where(eq(connectorOauthStates.userId, userId));
-    expect(states).toHaveLength(0);
   });
 });

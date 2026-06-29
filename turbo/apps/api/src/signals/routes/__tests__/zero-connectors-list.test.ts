@@ -1,76 +1,84 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroConnectorsMainContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { connectors } from "@vm0/db/schema/connector";
-import { secrets } from "@vm0/db/schema/secret";
-import { variables } from "@vm0/db/schema/variable";
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import {
+  zeroConnectorManualGrantContract,
+  zeroConnectorsByTypeContract,
+  zeroConnectorsMainContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { writeDb$ } from "../../external/db";
-import {
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
-async function seedConnector(args: {
+interface AuthenticatedFixture {
   readonly orgId: string;
   readonly userId: string;
-  readonly type: string;
-  readonly authMethod?: string;
-  readonly needsReconnect?: boolean;
-  readonly reconnectReason?: string | null;
-}): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(connectors).values({
-    userId: args.userId,
-    orgId: args.orgId,
-    type: args.type,
-    authMethod: args.authMethod ?? "oauth",
-    needsReconnect: args.needsReconnect ?? false,
-    reconnectReason: args.reconnectReason ?? null,
-  });
 }
 
-async function deleteConnectorsByOrg(orgId: string): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await Promise.all([
-    writeDb.delete(connectors).where(eq(connectors.orgId, orgId)),
-    writeDb.delete(secrets).where(eq(secrets.orgId, orgId)),
-    writeDb.delete(variables).where(eq(variables.orgId, orgId)),
-  ]);
+function authHeaders() {
+  return { authorization: "Bearer clerk-session" };
+}
+
+function seedAuthenticatedFixture(): AuthenticatedFixture {
+  const fixture = {
+    orgId: `org_${randomUUID()}`,
+    userId: `user_${randomUUID()}`,
+  };
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  return fixture;
+}
+
+async function connectGitlab(fixture: AuthenticatedFixture): Promise<void> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  await accept(
+    setupApp({ context })(zeroConnectorManualGrantContract).connect({
+      params: { type: "gitlab" },
+      body: {
+        authMethod: "api-token",
+        values: {
+          GITLAB_TOKEN: "gl-test-token",
+          GITLAB_HOST: "gitlab.example.com",
+        },
+      },
+      headers: authHeaders(),
+    }),
+    [200],
+  );
+}
+
+async function deleteGitlab(fixture: AuthenticatedFixture): Promise<void> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  await accept(
+    setupApp({ context })(zeroConnectorsByTypeContract).delete({
+      params: { type: "gitlab" },
+      headers: authHeaders(),
+    }),
+    [204, 404],
+  );
 }
 
 describe("GET /api/zero/connectors", () => {
-  const seededFixtures: OrgMembershipFixture[] = [];
+  const seededFixtures: AuthenticatedFixture[] = [];
 
   afterEach(async () => {
     while (seededFixtures.length > 0) {
       const fixture = seededFixtures.pop();
       if (fixture) {
-        await deleteConnectorsByOrg(fixture.orgId);
+        await deleteGitlab(fixture);
       }
     }
   });
 
   it("returns an empty connectors list", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(
-      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
-    mocks.clerk.session(userId, orgId);
+    const fixture = seedAuthenticatedFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroConnectorsMainContract);
     const response = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      client.list({ headers: authHeaders() }),
       [200],
     );
 
@@ -79,63 +87,32 @@ describe("GET /api/zero/connectors", () => {
     expect(Array.isArray(response.body.connectorProvidedBindings)).toBeTruthy();
   });
 
-  it("returns connectors when present", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(
-      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
-    await seedConnector({
-      orgId,
-      userId,
-      type: "github",
-      needsReconnect: true,
-      reconnectReason: "provider_session_expired",
-    });
-    mocks.clerk.session(userId, orgId);
+  it("returns connectors created through the connector API", async () => {
+    const fixture = seedAuthenticatedFixture();
+    seededFixtures.push(fixture);
+    await connectGitlab(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroConnectorsMainContract);
     const response = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      client.list({ headers: authHeaders() }),
       [200],
     );
 
-    expect(response.body.connectors.length).toBeGreaterThanOrEqual(1);
     expect(response.body.connectors).toContainEqual(
       expect.objectContaining({
-        type: "github",
-        connectionStatus: "reconnect-required",
-        reconnectReason: "provider_session_expired",
+        type: "gitlab",
+        authMethod: "api-token",
+        connectionStatus: "connected",
       }),
     );
-  });
-
-  it("does not infer connectors from legacy user-owned credential secrets", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(
-      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
+    expect(response.body.connectorProvidedBindings).toContainEqual(
+      expect.objectContaining({
+        connectorType: "gitlab",
+        namespace: "secrets",
+        name: "GITLAB_TOKEN",
+      }),
     );
-    const writeDb = store.set(writeDb$);
-    await writeDb.insert(secrets).values({
-      orgId,
-      userId,
-      name: "OPENAI_TOKEN",
-      encryptedValue: "encrypted_openai_token",
-      type: "user",
-    });
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroConnectorsMainContract);
-    const response = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-
-    const openai = response.body.connectors.find((connector) => {
-      return connector.type === "openai";
-    });
-    expect(openai).toBeUndefined();
   });
 
   it("returns 401 when not authenticated", async () => {
@@ -145,37 +122,12 @@ describe("GET /api/zero/connectors", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("skips oauth rows whose type no longer exists in the contract", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(
-      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
-    await seedConnector({
-      orgId,
-      userId,
-      type: "__removed_connector__",
-    });
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroConnectorsMainContract);
-    const response = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
-      [200],
-    );
-
-    const orphan = response.body.connectors.find((c) => {
-      return (c.type as string) === "__removed_connector__";
-    });
-    expect(orphan).toBeUndefined();
-  });
-
   it("returns 401 when the authenticated session has no organization", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, null);
 
     const client = setupApp({ context })(zeroConnectorsMainContract);
     const response = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      client.list({ headers: authHeaders() }),
       [401],
     );
 
