@@ -2283,10 +2283,10 @@ async def request(flow: http.HTTPFlow) -> None:
         flow.metadata.pop(_REQUEST_CLASSIFICATION, None)
         return
 
-    if request_streaming.streamed_request_size(flow) is not None:
-        flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
-
     try:
+        if request_streaming.streamed_request_size(flow) is not None:
+            flow.metadata[metadata_keys.REQUEST_STREAM_COMPLETE] = True
+
         classification = _request_classification(flow)
 
         if _classification_needs_request_timing(classification):

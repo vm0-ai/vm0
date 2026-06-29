@@ -1473,6 +1473,33 @@ async def test_firewall_auth_cancellation_clears_upstream_binding(
     assert upstream_destination_binding.binding_snapshot_for_tests() == {}
 
 
+async def test_request_stream_metadata_error_clears_upstream_binding(tmp_path, real_flow, mitm_ctx):
+    reg_path = _write_github_firewall_registry(tmp_path)
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="api.github.com",
+        path="/repos/octocat/hello",
+    )
+    flow.metadata[metadata_keys.REQUEST_STREAM_BUFFER_STATE] = {}
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="api.github.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("api.github.com", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        pytest.raises(KeyError, match="total_bytes"),
+    ):
+        await mitm_addon.request(flow)
+
+    assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
+
 @pytest.mark.parametrize(
     "request_header_pairs",
     [
