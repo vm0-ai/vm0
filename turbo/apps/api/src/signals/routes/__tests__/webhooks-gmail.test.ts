@@ -1,34 +1,25 @@
 import { Buffer } from "node:buffer";
+import { createSign, generateKeyPairSync } from "node:crypto";
 
-import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { chatThreadMessagesContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  zeroWorkflowTriggersContract,
+  zeroWorkflowsCollectionContract,
+} from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatMessages } from "@vm0/db/schema/chat-message";
-import { connectors } from "@vm0/db/schema/connector";
-import {
-  gmailProcessedEvents,
-  gmailWatchStates,
-} from "@vm0/db/schema/gmail-event";
-import { secrets } from "@vm0/db/schema/secret";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import {
-  zeroWorkflowTriggers,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
-import { onTestFinished } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { writeDb$ } from "../../external/db";
-import { encryptStoredSecretValue } from "../../services/crypto.utils";
-import { setGmailPubSubOidcVerifierForTests } from "../../services/gmail-workflow-event.service";
+import type { ApiTestUser } from "./helpers/api-bdd";
+import {
+  createConnectorBddApi,
+  mockGmailConnectorOAuth,
+} from "./helpers/api-bdd-connectors";
 import {
   deleteWorkflowsForFixture$,
   seedAgentForInstructions$,
@@ -47,6 +38,7 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const connectorsApi = createConnectorBddApi(context);
 
 const WORKFLOW_NAME = "gmail-webhook-workflow";
 const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
@@ -54,6 +46,56 @@ const GMAIL_EMAIL = "webhook-user@example.com";
 const GMAIL_AUDIENCE = "https://api.vm0.ai/api/webhooks/gmail";
 const GMAIL_PUSH_SERVICE_ACCOUNT =
   "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
+const GOOGLE_OIDC_CERTS_URL = "https://www.googleapis.com/oauth2/v1/certs";
+const GOOGLE_OIDC_KID = "gmail-pubsub-test-key";
+const googleOidcKeyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
+
+function base64Url(value: Buffer | string): string {
+  return Buffer.from(value)
+    .toString("base64")
+    .replaceAll("+", "-")
+    .replaceAll("/", "_")
+    .replace(/=+$/, "");
+}
+
+function signGooglePubSubOidcToken(): string {
+  const seconds = Math.floor(now() / 1000);
+  const header = base64Url(
+    JSON.stringify({ alg: "RS256", typ: "JWT", kid: GOOGLE_OIDC_KID }),
+  );
+  const payload = base64Url(
+    JSON.stringify({
+      iss: "https://accounts.google.com",
+      sub: "gmail-pubsub-test-subject",
+      aud: GMAIL_AUDIENCE,
+      email: GMAIL_PUSH_SERVICE_ACCOUNT,
+      email_verified: true,
+      iat: seconds,
+      exp: seconds + 60 * 60,
+    }),
+  );
+  const signed = `${header}.${payload}`;
+  const signature = createSign("RSA-SHA256")
+    .update(signed)
+    .sign(googleOidcKeyPair.privateKey);
+  return `${signed}.${base64Url(signature)}`;
+}
+
+function configureGoogleOidcCertMock(): void {
+  server.use(
+    http.get(GOOGLE_OIDC_CERTS_URL, () => {
+      return HttpResponse.json(
+        {
+          [GOOGLE_OIDC_KID]: googleOidcKeyPair.publicKey.export({
+            type: "spki",
+            format: "pem",
+          }),
+        },
+        { headers: { "cache-control": "no-cache" } },
+      );
+    }),
+  );
+}
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -61,6 +103,23 @@ function authHeaders() {
 
 function triggersClient() {
   return setupApp({ context })(zeroWorkflowTriggersContract);
+}
+
+function workflowsClient() {
+  return setupApp({ context })(zeroWorkflowsCollectionContract);
+}
+
+function chatThreadMessagesClient() {
+  return setupApp({ context })(chatThreadMessagesContract);
+}
+
+function actorForFixture(fixture: WorkflowsFixture): ApiTestUser {
+  return {
+    userId: fixture.userId,
+    orgId: fixture.orgId,
+    orgRole: "org:admin",
+    email: GMAIL_EMAIL,
+  };
 }
 
 function configureGmailEnv(): void {
@@ -71,6 +130,7 @@ function configureGmailEnv(): void {
     "GMAIL_PUBSUB_PUSH_SERVICE_ACCOUNT_EMAIL",
     GMAIL_PUSH_SERVICE_ACCOUNT,
   );
+  configureGoogleOidcCertMock();
 }
 
 function configureGmailWatchMock(historyId = "100"): void {
@@ -239,7 +299,7 @@ async function postGmailWebhook(
     {
       method: "POST",
       headers: {
-        authorization: "Bearer oidc-token",
+        authorization: `Bearer ${signGooglePubSubOidcToken()}`,
         "Content-Type": "application/json",
       },
       body: rawBody,
@@ -259,36 +319,66 @@ async function enableGmailWorkflowTriggers(
   });
 }
 
-async function seedGmailConnector(fixture: WorkflowsFixture): Promise<string> {
-  const db = store.set(writeDb$);
-  const [connector] = await db
-    .insert(connectors)
-    .values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      type: "gmail",
-      authMethod: "oauth",
-      externalEmail: GMAIL_EMAIL,
-      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
-    })
-    .returning({ id: connectors.id });
-  if (!connector) {
-    throw new Error("Expected Gmail connector to be created");
+function stateFromAuthorizationUrl(authorizationUrl: string): string {
+  const state = new URL(authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected connector authorization URL to include state");
   }
+  return state;
+}
 
-  await db.insert(secrets).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    name: "GMAIL_ACCESS_TOKEN",
-    encryptedValue: await encryptStoredSecretValue("gmail-access-token"),
-    type: "connector",
+async function connectGmailConnector(fixture: WorkflowsFixture): Promise<void> {
+  mockGmailConnectorOAuth({ email: GMAIL_EMAIL });
+  const actor = actorForFixture(fixture);
+  const start = await connectorsApi.startOauth(actor, "gmail", "oauth");
+  await connectorsApi.completeOauthCallback("gmail", {
+    code: "gmail-webhook-code",
+    state: stateFromAuthorizationUrl(start.authorizationUrl),
   });
-  return connector.id;
+  const connector = await connectorsApi.readConnectorByType(actor, "gmail");
+  expect(connector).toMatchObject({
+    type: "gmail",
+    authMethod: "oauth",
+    externalEmail: GMAIL_EMAIL,
+    connectionStatus: "connected",
+  });
+}
+
+async function readTrigger(triggerId: string) {
+  const response = await accept(
+    triggersClient().get({
+      headers: authHeaders(),
+      params: { id: triggerId },
+    }),
+    [200],
+  );
+  return response.body;
+}
+
+async function workflowMessagesForTrigger(triggerId: string) {
+  const trigger = await readTrigger(triggerId);
+  const threadId = trigger.chatThreadId;
+  if (!threadId) {
+    return [];
+  }
+  const response = await accept(
+    chatThreadMessagesClient().list({
+      headers: authHeaders(),
+      params: { threadId },
+      query: { limit: 50 },
+    }),
+    [200],
+  );
+  return response.body.messages.filter((message) => {
+    return (
+      message.role === "user" &&
+      message.workflowSnapshot?.triggerId === triggerId
+    );
+  });
 }
 
 async function setupFixture(): Promise<{
   readonly fixture: WorkflowsFixture;
-  readonly agentId: string;
   readonly workflowId: string;
 }> {
   const fixture = await store.set(
@@ -316,63 +406,31 @@ async function setupFixture(): Promise<{
     },
     context.signal,
   );
-  const [workflow] = await store
-    .set(writeDb$)
-    .select({ id: zeroWorkflows.id })
-    .from(zeroWorkflows)
-    .where(
-      and(
-        eq(zeroWorkflows.orgId, fixture.orgId),
-        eq(zeroWorkflows.agentId, agentId),
-        eq(zeroWorkflows.name, WORKFLOW_NAME),
-      ),
-    );
+  mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+  const workflows = await accept(
+    workflowsClient().list({
+      headers: authHeaders(),
+      query: { agentId },
+    }),
+    [200],
+  );
+  const workflow = workflows.body.find((item) => {
+    return item.name === WORKFLOW_NAME;
+  });
   if (!workflow) {
     throw new Error("Expected the agent to own the seeded workflow");
   }
-  mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-  return { fixture, agentId, workflowId: workflow.id };
-}
-
-async function markTriggerWithActiveRun(args: {
-  readonly fixture: WorkflowsFixture;
-  readonly agentId: string;
-  readonly triggerId: string;
-}): Promise<string> {
-  const db = store.set(writeDb$);
-  const [session] = await db
-    .insert(agentSessions)
-    .values({
-      userId: args.fixture.userId,
-      orgId: args.fixture.orgId,
-      agentComposeId: args.agentId,
-    })
-    .returning({ id: agentSessions.id });
-  const [run] = await db
-    .insert(agentRuns)
-    .values({
-      userId: args.fixture.userId,
-      orgId: args.fixture.orgId,
-      sessionId: session!.id,
-      status: "running",
-      prompt: "active event run",
-    })
-    .returning({ id: agentRuns.id });
-
-  await db
-    .update(zeroWorkflowTriggers)
-    .set({ lastRunId: run!.id })
-    .where(eq(zeroWorkflowTriggers.id, args.triggerId));
-
-  return run!.id;
+  return { fixture, workflowId: workflow.id };
 }
 
 describe("POST /api/webhooks/gmail", () => {
   const track = createFixtureTracker<WorkflowsFixture>(async (fixture) => {
-    const db = store.set(writeDb$);
     await deleteFeatureSwitchesForUser(context, fixture);
-    await db.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
-    await db.delete(connectors).where(eq(connectors.orgId, fixture.orgId));
+    await connectorsApi.deleteConnectorByType(
+      actorForFixture(fixture),
+      "gmail",
+      [204, 404],
+    );
     await store.set(deleteWorkflowsForFixture$, fixture, context.signal);
   });
 
@@ -384,22 +442,7 @@ describe("POST /api/webhooks/gmail", () => {
     const { fixture, workflowId } = await setupFixture();
     await track(Promise.resolve(fixture));
     await enableGmailWorkflowTriggers(fixture);
-    const connectorId = await seedGmailConnector(fixture);
-
-    const restoreOidcVerifier = setGmailPubSubOidcVerifierForTests(
-      (token, audience) => {
-        expect(token).toBe("oidc-token");
-        expect(audience).toBe(GMAIL_AUDIENCE);
-        return Promise.resolve({
-          email: GMAIL_PUSH_SERVICE_ACCOUNT,
-          emailVerified: true,
-        });
-      },
-    );
-
-    onTestFinished(() => {
-      restoreOidcVerifier();
-    });
+    await connectGmailConnector(fixture);
 
     const created = await accept(
       triggersClient().create({
@@ -438,35 +481,19 @@ describe("POST /api/webhooks/gmail", () => {
       "Subject: Invoice needs a reply",
     ].join("\n");
 
-    const db = store.set(writeDb$);
-    const runsAfterFirst = await db
-      .select({
-        triggerSource: zeroRuns.triggerSource,
-        triggerBrief: zeroRuns.triggerBrief,
-      })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.workflowTriggerId, created.body.id));
-    expect(runsAfterFirst).toStrictEqual([
-      {
-        triggerSource: "workflow-event",
+    const messagesAfterFirst = await workflowMessagesForTrigger(
+      created.body.id,
+    );
+    expect(messagesAfterFirst).toHaveLength(1);
+    expect(messagesAfterFirst[0]).toMatchObject({
+      role: "user",
+      content: `/${WORKFLOW_NAME}`,
+      triggerSource: "workflow-event",
+      workflowSnapshot: {
+        triggerId: created.body.id,
         triggerBrief: expectedTriggerBrief,
       },
-    ]);
-
-    const processed = await db
-      .select({
-        historyId: gmailProcessedEvents.historyId,
-        messageId: gmailProcessedEvents.messageId,
-      })
-      .from(gmailProcessedEvents)
-      .where(eq(gmailProcessedEvents.triggerId, created.body.id));
-    expect(processed).toStrictEqual([{ historyId: "101", messageId: "msg-1" }]);
-
-    const [watch] = await db
-      .select({ lastHistoryId: gmailWatchStates.lastHistoryId })
-      .from(gmailWatchStates)
-      .where(eq(gmailWatchStates.connectorId, connectorId));
-    expect(watch?.lastHistoryId).toBe("101");
+    });
 
     const second = await postGmailWebhook(body);
 
@@ -477,11 +504,9 @@ describe("POST /api/webhooks/gmail", () => {
       dispatched: 0,
       duplicates: 1,
     });
-    const runsAfterDuplicate = await db
-      .select({ id: zeroRuns.id })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.workflowTriggerId, created.body.id));
-    expect(runsAfterDuplicate).toHaveLength(1);
+    await expect(
+      workflowMessagesForTrigger(created.body.id),
+    ).resolves.toHaveLength(1);
   });
 
   it("dispatches label applied events after refreshing a recreated label id", async () => {
@@ -496,18 +521,7 @@ describe("POST /api/webhooks/gmail", () => {
     const { fixture, workflowId } = await setupFixture();
     await track(Promise.resolve(fixture));
     await enableGmailWorkflowTriggers(fixture);
-    await seedGmailConnector(fixture);
-
-    const restoreOidcVerifier = setGmailPubSubOidcVerifierForTests(() => {
-      return Promise.resolve({
-        email: GMAIL_PUSH_SERVICE_ACCOUNT,
-        emailVerified: true,
-      });
-    });
-
-    onTestFinished(() => {
-      restoreOidcVerifier();
-    });
+    await connectGmailConnector(fixture);
 
     const created = await accept(
       triggersClient().create({
@@ -549,31 +563,31 @@ describe("POST /api/webhooks/gmail", () => {
       dispatched: 1,
       duplicates: 0,
     });
-    const labelRuns = await store
-      .set(writeDb$)
-      .select({
-        triggerSource: zeroRuns.triggerSource,
-        triggerBrief: zeroRuns.triggerBrief,
-      })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.workflowTriggerId, created.body.id));
-    expect(labelRuns).toStrictEqual([
-      {
-        triggerSource: "workflow-event",
-        triggerBrief: [
-          "Gmail label applied: Support",
-          "From: Support Team <support@example.com>",
-          "Subject: Support request",
-        ].join("\n"),
+    const expectedTriggerBrief = [
+      "Gmail label applied: Support",
+      "From: Support Team <support@example.com>",
+      "Subject: Support request",
+    ].join("\n");
+    const labelMessages = await workflowMessagesForTrigger(created.body.id);
+    expect(labelMessages).toHaveLength(1);
+    expect(labelMessages[0]).toMatchObject({
+      role: "user",
+      content: `/${WORKFLOW_NAME}`,
+      triggerSource: "workflow-event",
+      workflowSnapshot: {
+        triggerId: created.body.id,
+        triggerBrief: expectedTriggerBrief,
       },
-    ]);
+    });
 
-    const [triggerRow] = await store
-      .set(writeDb$)
-      .select({ eventConfig: zeroWorkflowTriggers.eventConfig })
-      .from(zeroWorkflowTriggers)
-      .where(eq(zeroWorkflowTriggers.id, created.body.id));
-    expect(triggerRow?.eventConfig).toMatchObject({
+    const updatedTrigger = await readTrigger(created.body.id);
+    if (
+      !("eventType" in updatedTrigger) ||
+      updatedTrigger.eventType !== "gmail-label-applied"
+    ) {
+      throw new Error("Expected a Gmail label trigger");
+    }
+    expect(updatedTrigger.eventConfig).toMatchObject({
       labelName: "Support",
       resolvedLabelId: "Label_support_new",
     });
@@ -584,20 +598,10 @@ describe("POST /api/webhooks/gmail", () => {
     configureGmailWatchMock();
     configureGmailMessageMocks();
 
-    const { fixture, agentId, workflowId } = await setupFixture();
+    const { fixture, workflowId } = await setupFixture();
     await track(Promise.resolve(fixture));
     await enableGmailWorkflowTriggers(fixture);
-    await seedGmailConnector(fixture);
-
-    const restoreOidcVerifier = setGmailPubSubOidcVerifierForTests(() => {
-      return Promise.resolve({
-        email: GMAIL_PUSH_SERVICE_ACCOUNT,
-        emailVerified: true,
-      });
-    });
-    onTestFinished(() => {
-      restoreOidcVerifier();
-    });
+    await connectGmailConnector(fixture);
 
     const created = await accept(
       triggersClient().create({
@@ -615,11 +619,14 @@ describe("POST /api/webhooks/gmail", () => {
       }),
       [201],
     );
-    const activeRunId = await markTriggerWithActiveRun({
-      fixture,
-      agentId,
-      triggerId: created.body.id,
-    });
+    const initialRun = await accept(
+      triggersClient().run({
+        headers: authHeaders(),
+        params: { id: created.body.id },
+      }),
+      [201],
+    );
+    expect(initialRun.body.chatThreadId).toBe(created.body.chatThreadId);
 
     const response = await postGmailWebhook(
       gmailPushBody({
@@ -632,41 +639,24 @@ describe("POST /api/webhooks/gmail", () => {
     expect(response.status).toBe(200);
     expect(response.body).toMatchObject({ dispatched: 1, duplicates: 0 });
 
-    const db = store.set(writeDb$);
-    const runs = await db
-      .select({
-        id: zeroRuns.id,
-        triggerSource: zeroRuns.triggerSource,
-        triggerBrief: zeroRuns.triggerBrief,
-      })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.workflowTriggerId, created.body.id));
-    expect(runs).toHaveLength(1);
-    expect(runs[0]?.triggerSource).toBe("workflow-event");
-    expect(runs[0]?.triggerBrief).toBe(
-      [
-        "Gmail new message",
-        "From: Customer Example <customer@example.com>",
-        "Subject: Invoice needs a reply",
-      ].join("\n"),
-    );
+    const messages = await workflowMessagesForTrigger(created.body.id);
+    expect(messages).toHaveLength(2);
+    expect(messages[0]?.runId).toBe(initialRun.body.runId);
+    expect(messages[1]).toMatchObject({
+      role: "user",
+      content: `/${WORKFLOW_NAME}`,
+      triggerSource: "workflow-event",
+      workflowSnapshot: {
+        triggerId: created.body.id,
+        triggerBrief: [
+          "Gmail new message",
+          "From: Customer Example <customer@example.com>",
+          "Subject: Invoice needs a reply",
+        ].join("\n"),
+      },
+    });
 
-    const userMessages = await db
-      .select({ content: chatMessages.content })
-      .from(chatMessages)
-      .where(
-        and(eq(chatMessages.runId, runs[0]!.id), eq(chatMessages.role, "user")),
-      );
-    expect(userMessages).toStrictEqual([{ content: `/${WORKFLOW_NAME}` }]);
-
-    const [trigger] = await db
-      .select({
-        lastRunId: zeroWorkflowTriggers.lastRunId,
-        lastRunAt: zeroWorkflowTriggers.lastRunAt,
-      })
-      .from(zeroWorkflowTriggers)
-      .where(eq(zeroWorkflowTriggers.id, created.body.id));
-    expect(trigger?.lastRunId).toBe(activeRunId);
-    expect(trigger?.lastRunAt).toBeInstanceOf(Date);
+    const trigger = await readTrigger(created.body.id);
+    expect(trigger.lastRunAt).not.toBeNull();
   });
 });
