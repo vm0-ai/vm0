@@ -179,8 +179,11 @@ describe("zero doctor permission-deny command", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("Unknown connector type: agent"),
+        expect.stringContaining(
+          "permission-deny cannot diagnose unsafe URL paths because they are blocked before permission policy evaluation.",
+        ),
       );
+      expect(mockExit).toHaveBeenCalledWith(1);
       expect(mockConsoleLog).not.toHaveBeenCalledWith(
         expect.stringContaining(
           "Computer Use access is not managed as a connector permission.",
@@ -439,7 +442,7 @@ describe("zero doctor permission-deny command", () => {
         "--method",
         "GET",
         "--url",
-        "https://sandbox.api.reap.global/v1/%2e%2e/accounts?token=secret",
+        "https://sandbox.api.reap.global/v1/%7Eraw/accounts?token=secret",
       ]);
 
       const output = [
@@ -447,11 +450,37 @@ describe("zero doctor permission-deny command", () => {
         ...mockConsoleError.mock.calls.flat(),
       ].join("\n");
       expect(output).toContain(
-        "Reap permission filtered GET /v1/%2e%2e/accounts relative to base URL ${{ vars.REAP_API_BASE_URL }}",
+        "Reap permission filtered GET /v1/%7Eraw/accounts relative to base URL ${{ vars.REAP_API_BASE_URL }}",
       );
       expect(output).toContain('covered by the "read"');
       expect(output).not.toContain("secret");
       expect(output).not.toContain("token=");
+    });
+
+    it("should reject unsafe encoded dot segments before permission guidance", async () => {
+      await expect(async () => {
+        await permissionDenyCommand.parseAsync([
+          "node",
+          "cli",
+          "reap",
+          "--method",
+          "GET",
+          "--url",
+          "https://sandbox.api.reap.global/v1/%2e%2e/accounts?token=secret",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      const output = [
+        ...mockConsoleLog.mock.calls.flat(),
+        ...mockConsoleError.mock.calls.flat(),
+      ].join("\n");
+      expect(output).toContain(
+        "permission-deny cannot diagnose unsafe URL paths because they are blocked before permission policy evaluation.",
+      );
+      expect(output).not.toContain('covered by the "read"');
+      expect(output).not.toContain("secret");
+      expect(output).not.toContain("token=");
+      expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should not ignore configured env base URL variable mismatches", async () => {
@@ -617,12 +646,12 @@ describe("zero doctor permission-deny command", () => {
         "--method",
         "GET",
         "--url",
-        "https://slack.com/api/%2e%2e/conversations.list",
+        "https://slack.com/api/%7Eraw/conversations.list",
       ]);
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain(
-        "Slack permission filtered GET /%2e%2e/conversations.list relative to base URL https://slack.com/api",
+        "Slack permission filtered GET /%7Eraw/conversations.list relative to base URL https://slack.com/api",
       );
       expect(logCalls).toContain("No named permission was found");
       expect(mockConsoleError).not.toHaveBeenCalled();

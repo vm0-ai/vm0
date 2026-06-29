@@ -5,7 +5,10 @@ import {
 } from "@vm0/connectors/firewall-rule-matcher";
 import { getFirewallPermissionSummary } from "@vm0/connectors/firewall-metadata";
 import { loadFirewallRoutingMetadata } from "@vm0/connectors/firewall-metadata/routing";
-import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
+import {
+  hasUnsafeFirewallPath,
+  UNKNOWN_PERMISSION_GRANT,
+} from "@vm0/connectors/firewall-types";
 import { withErrorHandler } from "../../../lib/command";
 import {
   isComputerUsePermissionTarget,
@@ -57,6 +60,12 @@ function invalidUrlError(): Error {
 function invalidMethodError(): Error {
   return new Error(
     "permission-deny requires --method to be one of GET, POST, PUT, PATCH, DELETE, HEAD, or OPTIONS.",
+  );
+}
+
+function unsafePathError(): Error {
+  return new Error(
+    "permission-deny cannot diagnose unsafe URL paths because they are blocked before permission policy evaluation.",
   );
 }
 
@@ -299,6 +308,9 @@ Notes:
         const method = parseDeniedMethod(opts.method);
         const deniedUrl = parseDeniedUrl(opts.url);
         const deniedPath = rawPathFromDeniedUrl(opts.url);
+        if (hasUnsafeFirewallPath(deniedPath)) {
+          throw unsafePathError();
+        }
 
         if (
           isComputerUsePermissionTarget({
