@@ -34,6 +34,11 @@ struct NotificationIngestResult {
     terminal_exit_code: Option<i32>,
 }
 
+struct ThreadIdentity {
+    wire_id: String,
+    canonical_id: String,
+}
+
 struct EventIngestSink<'a> {
     ingestor: &'a mut CliEventIngestor,
     log_file: &'a mut tokio::fs::File,
@@ -131,8 +136,8 @@ async fn run_codex_app_server(
             masker,
         )
         .await?;
-        let thread_id = thread_id_from_response(&thread_response)?;
-        validate_resumed_thread_id(&thread_id)?;
+        let thread_identity = thread_identity_from_response(&thread_response)?;
+        validate_resumed_thread_id(&thread_identity.canonical_id)?;
         let mut thread_started_emitted = false;
 
         while let Some(notification) = client.pop_notification() {
@@ -147,7 +152,7 @@ async fn run_codex_app_server(
                 notification,
                 &mut sink,
                 thread_started_emitted,
-                &thread_id,
+                &thread_identity.canonical_id,
                 "",
             )
             .await?;
@@ -162,12 +167,16 @@ async fn run_codex_app_server(
                 should_send_events,
                 event_tx,
             };
-            ingest_event(synthesize_thread_started_event(&thread_id), &mut sink).await?;
+            ingest_event(
+                synthesize_thread_started_event(&thread_identity.canonical_id),
+                &mut sink,
+            )
+            .await?;
             thread_started_emitted = true;
         }
 
         let turn_response = race_with_heartbeat(
-            client.request_value("turn/start", turn_start_params(&thread_id)),
+            client.request_value("turn/start", turn_start_params(&thread_identity.wire_id)),
             heartbeat_monitor,
             &mut heartbeat_done,
             masker,
@@ -194,7 +203,7 @@ async fn run_codex_app_server(
                 notification,
                 &mut sink,
                 thread_started_emitted,
-                &thread_id,
+                &thread_identity.canonical_id,
                 &turn_id,
             )
             .await?;
@@ -460,11 +469,11 @@ async fn ingest_notification(
 
 fn validate_event_scope(
     event: &Value,
-    expected_thread_id: &str,
+    expected_canonical_thread_id: &str,
     active_turn_id: &str,
 ) -> Result<(), AgentError> {
     if let Some(thread_id) = event_thread_id(event)
-        && thread_id != expected_thread_id
+        && !thread_id_matches_canonical(thread_id, expected_canonical_thread_id)
     {
         return Err(AgentError::Execution(
             "codex app-server reported unexpected thread id in event".to_string(),
@@ -521,24 +530,35 @@ async fn ingest_event(event: Value, sink: &mut EventIngestSink<'_>) -> Result<()
 fn is_duplicate_thread_started(
     event: &Value,
     thread_started_emitted: bool,
-    expected_thread_id: &str,
+    expected_canonical_thread_id: &str,
 ) -> bool {
-    thread_started_emitted && is_thread_started_event(event, expected_thread_id)
+    thread_started_emitted && is_thread_started_event(event, expected_canonical_thread_id)
 }
 
-fn is_thread_started_event(event: &Value, expected_thread_id: &str) -> bool {
+fn is_thread_started_event(event: &Value, expected_canonical_thread_id: &str) -> bool {
     event.get("type").and_then(Value::as_str) == Some("thread.started")
-        && event_thread_id(event) == Some(expected_thread_id)
+        && event
+            .get("thread_id")
+            .and_then(Value::as_str)
+            .is_some_and(|thread_id| {
+                thread_id_matches_canonical(thread_id, expected_canonical_thread_id)
+            })
 }
 
 fn terminal_exit_code(
     event: &Value,
-    expected_thread_id: &str,
+    expected_canonical_thread_id: &str,
     active_turn_id: &str,
 ) -> Option<i32> {
     match event.get("type").and_then(Value::as_str)? {
         "turn.completed" => {
-            if event.get("thread_id").and_then(Value::as_str) != Some(expected_thread_id) {
+            if !event
+                .get("thread_id")
+                .and_then(Value::as_str)
+                .is_some_and(|thread_id| {
+                    thread_id_matches_canonical(thread_id, expected_canonical_thread_id)
+                })
+            {
                 return None;
             }
             let turn_id = event.pointer("/turn/id").and_then(Value::as_str)?;
@@ -552,7 +572,12 @@ fn terminal_exit_code(
             }
         }
         "error" => {
-            if event.get("thread_id").and_then(Value::as_str) == Some(expected_thread_id)
+            if event
+                .get("thread_id")
+                .and_then(Value::as_str)
+                .is_some_and(|thread_id| {
+                    thread_id_matches_canonical(thread_id, expected_canonical_thread_id)
+                })
                 && event.get("turn_id").and_then(Value::as_str) == Some(active_turn_id)
                 && event.get("will_retry").and_then(Value::as_bool) == Some(false)
             {
@@ -572,13 +597,28 @@ fn synthesize_thread_started_event(thread_id: &str) -> Value {
     })
 }
 
-fn thread_id_from_response(response: &Value) -> Result<String, AgentError> {
-    non_empty_string_at(response, "/thread/id", "thread response missing thread.id")
+fn thread_identity_from_response(response: &Value) -> Result<ThreadIdentity, AgentError> {
+    let wire_id = non_empty_string_at(response, "/thread/id", "thread response missing thread.id")?;
+    let canonical_id = canonical_codex_thread_id(
+        &wire_id,
+        "thread response returned an invalid Codex thread id",
+    )?;
+    Ok(ThreadIdentity {
+        wire_id,
+        canonical_id,
+    })
 }
 
-fn validate_resumed_thread_id(thread_id: &str) -> Result<(), AgentError> {
+fn validate_resumed_thread_id(canonical_thread_id: &str) -> Result<(), AgentError> {
     let resume_id = env::resume_session_id();
-    if !resume_id.is_empty() && thread_id != resume_id {
+    if resume_id.is_empty() {
+        return Ok(());
+    }
+    let canonical_resume_id = canonical_codex_thread_id(
+        resume_id,
+        "VM0_RESUME_SESSION_ID is not a valid Codex thread id",
+    )?;
+    if canonical_thread_id != canonical_resume_id {
         return Err(AgentError::Execution(
             "thread/resume returned a different thread id".to_string(),
         ));
@@ -588,6 +628,16 @@ fn validate_resumed_thread_id(thread_id: &str) -> Result<(), AgentError> {
 
 fn turn_id_from_response(response: &Value) -> Result<String, AgentError> {
     non_empty_string_at(response, "/turn/id", "turn/start response missing turn.id")
+}
+
+fn thread_id_matches_canonical(thread_id: &str, expected_canonical_thread_id: &str) -> bool {
+    guest_contracts::codex_thread_id::canonical_codex_thread_id(thread_id).as_deref()
+        == Some(expected_canonical_thread_id)
+}
+
+fn canonical_codex_thread_id(thread_id: &str, message: &'static str) -> Result<String, AgentError> {
+    guest_contracts::codex_thread_id::canonical_codex_thread_id(thread_id)
+        .ok_or_else(|| AgentError::Execution(message.to_string()))
 }
 
 fn non_empty_string_at(

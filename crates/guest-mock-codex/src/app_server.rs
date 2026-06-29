@@ -41,6 +41,7 @@ enum Scenario {
     RuntimeTurnCompleteWithoutThreadStarted,
     ResumeDifferentThreadId,
     ResumeRpcErrorWithThreadId,
+    ThreadStartInvalidThreadId,
     UnexpectedThreadTurnCompleted,
 }
 
@@ -78,6 +79,7 @@ impl Scenario {
                 }
                 "resume-different-thread-id" => Ok(Self::ResumeDifferentThreadId),
                 "resume-rpc-error-with-thread-id" => Ok(Self::ResumeRpcErrorWithThreadId),
+                "thread-start-invalid-thread-id" => Ok(Self::ThreadStartInvalidThreadId),
                 "unexpected-thread-turn-completed" => Ok(Self::UnexpectedThreadTurnCompleted),
                 _ => Err(io::Error::new(
                     io::ErrorKind::InvalidInput,
@@ -262,7 +264,12 @@ impl AppServerState {
                     thread_id.clone(),
                     params.get("runtimeWorkspaceRoots").is_some(),
                 );
-                let result = thread_response(&thread_id, false);
+                let response_thread_id = if self.scenario == Scenario::ThreadStartInvalidThreadId {
+                    "not-a-valid-codex-thread-id"
+                } else {
+                    &thread_id
+                };
+                let result = thread_response(response_thread_id, false);
                 match self.scenario {
                     Scenario::InvalidResponseId => {
                         write_success(
@@ -346,7 +353,7 @@ impl AppServerState {
                     params.get("runtimeWorkspaceRoots").is_some(),
                 );
                 let response_thread_id = if self.scenario == Scenario::ResumeDifferentThreadId {
-                    "unexpected-resume-thread-id"
+                    "0193abcd-ef01-7234-89ab-cdef01234568"
                 } else {
                     thread_id
                 };
