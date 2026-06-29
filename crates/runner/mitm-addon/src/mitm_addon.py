@@ -166,6 +166,7 @@ _STALE_TLS_ADMISSION_ERROR: Final = "stale_tls_admission"
 _UPSTREAM_DESTINATION_UNBOUND_ERROR: Final = "upstream_destination_unbound"
 _UPSTREAM_BINDING_DIAGNOSTICS = "_upstream_binding_diagnostics"
 _TRUSTED_HOST_ADDRESS_CACHE_TTL_SECONDS: Final = 60.0
+_TRUSTED_HOST_ADDRESS_NEGATIVE_CACHE_TTL_SECONDS: Final = 5.0
 _TRUSTED_HOST_ADDRESS_CACHE_MAX_ENTRIES: Final = 512
 
 _TlsAdmissionKind = Literal[
@@ -188,6 +189,7 @@ _RequestClassificationKind = Literal[
 ]
 _AuthBaseBodyCheckKind = Literal["ok", "too_large", "length_required"]
 _trusted_host_address_cache: dict[tuple[str, int], tuple[float, frozenset[str]]] = {}
+_trusted_host_address_lookup_tasks: dict[tuple[str, int], asyncio.Task[frozenset[str]]] = {}
 _REQUEST_HEADERS_TERMINATED = "_request_headers_terminated"
 _REQUEST_CLASSIFICATION = "_request_classification"
 _FIREWALL_AUTH_APPLIED_IN_REQUESTHEADERS = "_firewall_auth_applied_in_requestheaders"
@@ -1707,6 +1709,10 @@ def _ip_address_text(host: str) -> str | None:
     return str(address)
 
 
+def _trusted_host_address_cache_time() -> float:
+    return time.monotonic()
+
+
 def _is_authoritative_connected_endpoint(endpoint: tuple[str, int] | None) -> bool:
     if endpoint is None:
         return False
@@ -1734,16 +1740,46 @@ def _connected_destination_candidate_endpoints(
     return (peername, server_address, *extra_endpoints)
 
 
-def _resolved_trusted_host_addresses(host: str, port: int) -> frozenset[str]:
-    now = time.monotonic()
-    cache_key = (host, port)
+def _cached_trusted_host_addresses(
+    cache_key: tuple[str, int],
+    *,
+    now: float,
+) -> frozenset[str] | None:
     cached = _trusted_host_address_cache.get(cache_key)
     if cached is not None:
         expires_at, cached_addresses = cached
         if expires_at > now:
             return cached_addresses
         _trusted_host_address_cache.pop(cache_key, None)
+    return None
 
+
+def _cache_trusted_host_addresses(
+    cache_key: tuple[str, int],
+    addresses: frozenset[str],
+    *,
+    now: float,
+) -> None:
+    if len(_trusted_host_address_cache) >= _TRUSTED_HOST_ADDRESS_CACHE_MAX_ENTRIES:
+        expired_keys = [
+            key
+            for key, (expires_at, _addresses) in _trusted_host_address_cache.items()
+            if expires_at <= now
+        ]
+        for key in expired_keys:
+            _trusted_host_address_cache.pop(key, None)
+        if len(_trusted_host_address_cache) >= _TRUSTED_HOST_ADDRESS_CACHE_MAX_ENTRIES:
+            _trusted_host_address_cache.pop(next(iter(_trusted_host_address_cache)), None)
+
+    ttl = (
+        _TRUSTED_HOST_ADDRESS_CACHE_TTL_SECONDS
+        if addresses
+        else _TRUSTED_HOST_ADDRESS_NEGATIVE_CACHE_TTL_SECONDS
+    )
+    _trusted_host_address_cache[cache_key] = (now + ttl, addresses)
+
+
+def _resolve_trusted_host_addresses_sync(host: str, port: int) -> frozenset[str]:
     try:
         infos = socket.getaddrinfo(host, port, type=socket.SOCK_STREAM)
     except OSError:
@@ -1761,26 +1797,43 @@ def _resolved_trusted_host_addresses(host: str, port: int) -> frozenset[str]:
         if resolved_ip is not None:
             address_set.add(resolved_ip)
 
-    resolved_addresses = frozenset(address_set)
-    if not resolved_addresses:
-        return resolved_addresses
+    return frozenset(address_set)
 
-    if len(_trusted_host_address_cache) >= _TRUSTED_HOST_ADDRESS_CACHE_MAX_ENTRIES:
-        expired_keys = [
-            key
-            for key, (expires_at, _addresses) in _trusted_host_address_cache.items()
-            if expires_at <= now
-        ]
-        for key in expired_keys:
-            _trusted_host_address_cache.pop(key, None)
-        if len(_trusted_host_address_cache) >= _TRUSTED_HOST_ADDRESS_CACHE_MAX_ENTRIES:
-            _trusted_host_address_cache.pop(next(iter(_trusted_host_address_cache)), None)
 
-    _trusted_host_address_cache[cache_key] = (
-        now + _TRUSTED_HOST_ADDRESS_CACHE_TTL_SECONDS,
+def _complete_trusted_host_address_lookup(
+    cache_key: tuple[str, int],
+    task: asyncio.Task[frozenset[str]],
+) -> None:
+    if _trusted_host_address_lookup_tasks.get(cache_key) is not task:
+        return
+    _trusted_host_address_lookup_tasks.pop(cache_key, None)
+    if task.cancelled():
+        return
+    resolved_addresses = task.result()
+    _cache_trusted_host_addresses(
+        cache_key,
         resolved_addresses,
+        now=_trusted_host_address_cache_time(),
     )
-    return resolved_addresses
+
+
+async def _resolved_trusted_host_addresses(host: str, port: int) -> frozenset[str]:
+    cache_key = (host, port)
+    cached = _cached_trusted_host_addresses(cache_key, now=_trusted_host_address_cache_time())
+    if cached is not None:
+        return cached
+
+    lookup_task = _trusted_host_address_lookup_tasks.get(cache_key)
+    if lookup_task is None:
+        lookup_task = asyncio.create_task(
+            asyncio.to_thread(_resolve_trusted_host_addresses_sync, host, port)
+        )
+        _trusted_host_address_lookup_tasks[cache_key] = lookup_task
+        lookup_task.add_done_callback(
+            functools.partial(_complete_trusted_host_address_lookup, cache_key)
+        )
+
+    return await asyncio.shield(lookup_task)
 
 
 def _connected_verified_tls_destination_endpoint(
@@ -1888,6 +1941,7 @@ def _flow_requires_platform_connector_auth_bypass(
 
 def reset_upstream_destination_resolution_cache_for_tests() -> None:
     _trusted_host_address_cache.clear()
+    _trusted_host_address_lookup_tasks.clear()
 
 
 def _api_hostname_matches(hostname: str) -> bool:
@@ -1921,7 +1975,7 @@ def _api_destination() -> tuple[str, int] | None:
     return api_hostname, api_port
 
 
-def _address_resolves_to_trusted_host(
+async def _address_resolves_to_trusted_host(
     address: tuple[str, int] | None,
     *,
     host: str,
@@ -1935,10 +1989,10 @@ def _address_resolves_to_trusted_host(
     address_ip = _ip_address_text(address_host)
     if address_ip is None:
         return False
-    return address_ip in _resolved_trusted_host_addresses(host, port)
+    return address_ip in await _resolved_trusted_host_addresses(host, port)
 
 
-def _bind_api_upstream_destination_from_original_address(
+async def _bind_api_upstream_destination_from_original_address(
     *,
     client: object,
     server: connection.Server,
@@ -1951,18 +2005,15 @@ def _bind_api_upstream_destination_from_original_address(
         return False
     api_hostname, api_port = api_destination
 
-    original_address = next(
-        (
-            address
-            for address in (_server_address(server), _connection_sockname(client))
-            if _address_resolves_to_trusted_host(
-                address,
-                host=api_hostname,
-                port=api_port,
-            )
-        ),
-        None,
-    )
+    original_address = None
+    for candidate_address in (_server_address(server), _connection_sockname(client)):
+        if await _address_resolves_to_trusted_host(
+            candidate_address,
+            host=api_hostname,
+            port=api_port,
+        ):
+            original_address = candidate_address
+            break
     if original_address is None:
         return False
 
@@ -2055,7 +2106,7 @@ def _bind_privileged_upstream_destination(
     )
 
 
-def server_connect(data: object) -> None:
+async def server_connect(data: object) -> None:
     """Bind privileged HTTPS upstream connections to their trusted SNI host."""
     client = getattr(data, "client", None)
     server = getattr(data, "server", None)
@@ -2079,7 +2130,7 @@ def server_connect(data: object) -> None:
     raw_sni = getattr(client, "sni", None)
     if not raw_sni and tls_admission is not None:
         raw_sni = tls_admission.sni
-    if not raw_sni and _bind_api_upstream_destination_from_original_address(
+    if not raw_sni and await _bind_api_upstream_destination_from_original_address(
         client=client,
         server=server,
     ):
