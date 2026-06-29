@@ -618,6 +618,7 @@ def _public_destination_runtime_hosts(flow: http.HTTPFlow) -> tuple[object, ...]
         connected_endpoint = _connected_ip_destination_endpoint(
             flow.server_conn,
             port=flow.request.port,
+            extra_endpoints=(_connection_sockname(flow.client_conn),),
         )
         hosts: list[object] = []
         if original_address is not None:
