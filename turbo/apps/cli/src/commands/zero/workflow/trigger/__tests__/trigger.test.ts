@@ -126,6 +126,20 @@ const githubLabelTrigger = {
   nextRunAt: null,
 };
 
+const googleCalendarTrigger = {
+  ...triggerBase,
+  kind: "event",
+  eventType: "google-calendar-event-created",
+  eventConfig: {
+    provider: "google-calendar",
+    event: "event_created",
+    calendarId: "primary",
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+};
+
 const webhookTrigger = {
   ...triggerBase,
   kind: "event",
@@ -450,6 +464,41 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("triage");
       expect(logCalls).toContain("pull requests");
       expect(logCalls).toContain("anyone");
+    });
+
+    it("should add a Google Calendar event-created trigger", async () => {
+      const captured = captureCreateTrigger({
+        ...googleCalendarTrigger,
+        eventConfig: {
+          provider: "google-calendar",
+          event: "event_created",
+          calendarId: "team@example.com",
+        },
+      });
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "google-calendar-event-created",
+        "--calendar-id",
+        "team@example.com",
+      ]);
+
+      expect(captured.workflowId).toBe(WORKFLOW_ID);
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "google-calendar-event-created",
+        eventConfig: {
+          provider: "google-calendar",
+          event: "event_created",
+          calendarId: "team@example.com",
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Google Calendar event created");
+      expect(logCalls).toContain("team@example.com");
     });
 
     it("should add a webhook trigger", async () => {

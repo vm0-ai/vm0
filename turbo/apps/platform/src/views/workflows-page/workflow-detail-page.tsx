@@ -7,6 +7,7 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import type {
   GmailLabelAppliedEventConfig,
   GmailNewMessageEventConfig,
+  GoogleCalendarEventCreatedEventConfig,
   GithubLabelAppliedEventConfig,
   GithubLabelAppliedSubjectFilter,
   WorkflowFileEntry,
@@ -21,6 +22,7 @@ import {
   IconAlertTriangle,
   IconArrowRight,
   IconBrandGithub,
+  IconCalendarTime,
   IconChevronDown,
   IconClock,
   IconCopy,
@@ -68,6 +70,7 @@ import { user$ } from "../../signals/auth.ts";
 import {
   changeWorkflowVisibility$,
   createWorkflowGithubLabelAppliedTrigger$,
+  createWorkflowGoogleCalendarEventCreatedTrigger$,
   createWorkflowGmailLabelAppliedTrigger$,
   createWorkflowGmailNewMessageTrigger$,
   createWorkflowWebhookTrigger$,
@@ -2335,6 +2338,16 @@ function buildGmailLabelAppliedEventConfig(
   };
 }
 
+function buildGoogleCalendarEventCreatedEventConfig(
+  form: FormData,
+): GoogleCalendarEventCreatedEventConfig {
+  return {
+    provider: "google-calendar",
+    event: "event_created",
+    calendarId: formTextValue(form, "calendarId") ?? "primary",
+  };
+}
+
 function githubSubjectFilterValue(
   value: FormDataEntryValue | null,
   fallback: GithubLabelAppliedSubjectFilter,
@@ -2441,6 +2454,9 @@ function workflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "github-label-applied") {
     return "GitHub label applied";
   }
+  if (trigger.eventType === "google-calendar-event-created") {
+    return "Google Calendar event created";
+  }
   return "Webhook";
 }
 
@@ -2465,6 +2481,9 @@ function workflowTriggerSummary(
       trigger.eventConfig.filters.actor.type === "me" ? "me" : "anyone";
     return `Label ${quote(trigger.eventConfig.labelName)} · ${subject} · Actor ${actor}`;
   }
+  if (trigger.eventType === "google-calendar-event-created") {
+    return `Calendar ${quote(trigger.eventConfig.calendarId)}`;
+  }
   return null;
 }
 
@@ -2483,6 +2502,7 @@ type TriggerCreateDialogKind =
   | "gmail"
   | "gmail-label"
   | "github-label"
+  | "google-calendar"
   | "webhook";
 
 function TriggerCreateMenuItem({
@@ -2509,13 +2529,57 @@ function TriggerCreateMenuItem({
   );
 }
 
+function GithubLabelTriggerCreateMenuItem({
+  onSelect,
+}: {
+  readonly onSelect: () => void;
+}) {
+  return (
+    <TriggerCreateMenuItem
+      title="GitHub label applied"
+      description="Run when an issue or pull request gets a label."
+      icon={
+        <IconBrandGithub
+          size={15}
+          stroke={1.5}
+          className="mt-0.5 shrink-0 text-muted-foreground"
+        />
+      }
+      onSelect={onSelect}
+    />
+  );
+}
+
+function GoogleCalendarTriggerCreateMenuItem({
+  onSelect,
+}: {
+  readonly onSelect: () => void;
+}) {
+  return (
+    <TriggerCreateMenuItem
+      title="Google Calendar event"
+      description="Run when a new calendar event is created."
+      icon={
+        <IconCalendarTime
+          size={15}
+          stroke={1.5}
+          className="mt-0.5 shrink-0 text-muted-foreground"
+        />
+      }
+      onSelect={onSelect}
+    />
+  );
+}
+
 function TriggerCreateMenu({
   onSelect,
   githubLabelTriggersEnabled,
+  googleCalendarTriggersEnabled,
   webhookTriggersEnabled,
 }: {
   readonly onSelect: (kind: TriggerCreateDialogKind) => void;
   readonly githubLabelTriggersEnabled: boolean;
+  readonly googleCalendarTriggersEnabled: boolean;
   readonly webhookTriggersEnabled: boolean;
 }) {
   return (
@@ -2601,18 +2665,16 @@ function TriggerCreateMenu({
           }}
         />
         {githubLabelTriggersEnabled ? (
-          <TriggerCreateMenuItem
-            title="GitHub label applied"
-            description="Run when an issue or pull request gets a label."
-            icon={
-              <IconBrandGithub
-                size={15}
-                stroke={1.5}
-                className="mt-0.5 shrink-0 text-muted-foreground"
-              />
-            }
+          <GithubLabelTriggerCreateMenuItem
             onSelect={() => {
               onSelect("github-label");
+            }}
+          />
+        ) : null}
+        {googleCalendarTriggersEnabled ? (
+          <GoogleCalendarTriggerCreateMenuItem
+            onSelect={() => {
+              onSelect("google-calendar");
             }}
           />
         ) : null}
@@ -2655,6 +2717,8 @@ function TriggersSection({
     features[FeatureSwitchKey.WorkflowWebhookTriggers] ?? false;
   const githubLabelTriggersEnabled =
     features[FeatureSwitchKey.WorkflowGithubLabelEventTriggers] ?? false;
+  const googleCalendarTriggersEnabled =
+    features[FeatureSwitchKey.WorkflowGoogleCalendarEventTriggers] ?? false;
 
   return (
     <section className="mx-auto flex max-w-[900px] flex-col gap-3">
@@ -2668,6 +2732,7 @@ function TriggersSection({
         <TriggerCreateMenu
           onSelect={setCreateDialog}
           githubLabelTriggersEnabled={githubLabelTriggersEnabled}
+          googleCalendarTriggersEnabled={googleCalendarTriggersEnabled}
           webhookTriggersEnabled={webhookTriggersEnabled}
         />
       </div>
@@ -2731,6 +2796,13 @@ function TriggersSection({
         open={createDialog === "github-label"}
         onOpenChange={(open) => {
           setCreateDialog(open ? "github-label" : null);
+        }}
+      />
+      <CreateGoogleCalendarEventCreatedTriggerDialog
+        workflowId={detail.id}
+        open={createDialog === "google-calendar"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "google-calendar" : null);
         }}
       />
       <CreateWebhookTriggerDialog
@@ -3841,6 +3913,87 @@ function CreateGithubLabelAppliedTriggerDialog({
                 <IconLoader2 size={14} className="animate-spin" />
               ) : null}
               Add label trigger
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function CreateGoogleCalendarEventCreatedTriggerDialog({
+  workflowId,
+  open,
+  onOpenChange,
+}: {
+  readonly workflowId: string;
+  readonly open: boolean;
+  readonly onOpenChange: (open: boolean) => void;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [createLoadable, createGoogleCalendarTrigger] = useLoadableSet(
+    createWorkflowGoogleCalendarEventCreatedTrigger$,
+  );
+  const creating = createLoadable.state === "loading";
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent>
+        <DialogHeader>
+          <DialogTitle>Add Google Calendar trigger</DialogTitle>
+          <DialogDescription>
+            Run this workflow when a new Google Calendar event is created.
+          </DialogDescription>
+        </DialogHeader>
+        <form
+          aria-label="Add Google Calendar trigger"
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            const form = new FormData(event.currentTarget);
+            detach(
+              (async () => {
+                await createGoogleCalendarTrigger(
+                  {
+                    workflowId,
+                    eventConfig:
+                      buildGoogleCalendarEventCreatedEventConfig(form),
+                  },
+                  pageSignal,
+                );
+                onOpenChange(false);
+              })(),
+              Reason.DomCallback,
+            );
+          }}
+        >
+          <label className="flex flex-col gap-1 text-xs text-muted-foreground">
+            Calendar ID
+            <input
+              name="calendarId"
+              aria-label="Calendar ID"
+              disabled={creating}
+              defaultValue="primary"
+              placeholder="primary"
+              className={FIELD_CLASS}
+            />
+          </label>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              disabled={creating}
+              onClick={() => {
+                onOpenChange(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating ? (
+                <IconLoader2 size={14} className="animate-spin" />
+              ) : null}
+              Add Calendar trigger
             </Button>
           </DialogFooter>
         </form>

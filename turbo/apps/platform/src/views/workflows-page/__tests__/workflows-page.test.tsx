@@ -45,6 +45,7 @@ const COPIED_WORKFLOW_ID = "d0000000-0000-4000-a000-000000000205";
 const GMAIL_TRIGGER_ID = "workflow-trigger-gmail-new-message";
 const GMAIL_LABEL_TRIGGER_ID = "workflow-trigger-gmail-label-applied";
 const GITHUB_LABEL_TRIGGER_ID = "workflow-trigger-github-label-applied";
+const GOOGLE_CALENDAR_TRIGGER_ID = "workflow-trigger-google-calendar-created";
 const WORKFLOW_CHAT_THREAD_ID = "00000000-0000-4000-a000-000000000300";
 const TRIGGER_RUN_THREAD_ID = "00000000-0000-4000-a000-000000000301";
 
@@ -73,6 +74,10 @@ type WorkflowGmailLabelAppliedTriggerSummary = Extract<
 type WorkflowGithubLabelAppliedTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { kind: "event"; eventType: "github-label-applied" }
+>;
+type WorkflowGoogleCalendarEventCreatedTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "event"; eventType: "google-calendar-event-created" }
 >;
 
 function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
@@ -160,6 +165,26 @@ function githubLabelWorkflowTrigger(): WorkflowGithubLabelAppliedTriggerSummary 
     ownerUserId: CURRENT_USER_ID,
     enabled: true,
     chatThreadId: "thread_github_label_applied",
+    nextRunAt: null,
+    lastRunAt: null,
+  };
+}
+
+function googleCalendarWorkflowTrigger(): WorkflowGoogleCalendarEventCreatedTriggerSummary {
+  return {
+    id: GOOGLE_CALENDAR_TRIGGER_ID,
+    kind: "event",
+    eventType: "google-calendar-event-created",
+    eventConfig: {
+      provider: "google-calendar",
+      event: "event_created",
+      calendarId: "primary",
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_google_calendar_event_created",
     nextRunAt: null,
     lastRunAt: null,
   };
@@ -528,6 +553,12 @@ function mockCreateWorkflowTrigger(
       if (body.eventType === "github-label-applied") {
         return respond(201, {
           ...githubLabelWorkflowTrigger(),
+          eventConfig: body.eventConfig,
+        });
+      }
+      if (body.eventType === "google-calendar-event-created") {
+        return respond(201, {
+          ...googleCalendarWorkflowTrigger(),
           eventConfig: body.eventConfig,
         });
       }

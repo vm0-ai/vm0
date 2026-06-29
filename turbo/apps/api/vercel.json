@@ -21,6 +21,10 @@
       "schedule": "0 */12 * * *"
     },
     {
+      "path": "/api/cron/renew-google-calendar-watches",
+      "schedule": "0 */12 * * *"
+    },
+    {
       "path": "/api/cron/aggregate-usage",
       "schedule": "5 0 * * *"
     },
