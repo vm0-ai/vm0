@@ -91,4 +91,33 @@ describe("app auth pages", () => {
     expect(redirectUrl.searchParams.get("vm0_source")).toBe("homepage");
     expect(redirectUrl.searchParams.get("vm0_experiment")).toBe("491858");
   });
+
+  it.each([
+    "staging-so.vm6.ai",
+    "staging-www.vm6.ai",
+    "pr-123-so.vm6.ai",
+    "pr-123-www.vm6.ai",
+  ])(
+    "normalizes staging onboarding sign-up redirect from %s",
+    async (hostname) => {
+      const redirectUrl = `https://${hostname}/onboarding/2afcf6?domain=pr-123-api.vm6.ai`;
+      const path = `/sign-up?redirect_url=${encodeURIComponent(redirectUrl)}`;
+      setBrowserUrl(`https://app.vm0.ai${path}`);
+
+      detachedSetupPage({ context, path });
+
+      await waitFor(() => {
+        expect(screen.getByTestId("clerk-sign-up")).toBeInTheDocument();
+      });
+
+      const normalizedRedirectUrl = new URL(
+        screen.getByTestId("clerk-sign-up").dataset.clerkForceRedirectUrl ?? "",
+      );
+      expect(normalizedRedirectUrl.origin).toBe("https://www.vm7.ai:8443");
+      expect(normalizedRedirectUrl.pathname).toBe("/onboarding/2afcf6");
+      expect(normalizedRedirectUrl.searchParams.get("domain")).toBe(
+        "pr-123-api.vm6.ai",
+      );
+    },
+  );
 });

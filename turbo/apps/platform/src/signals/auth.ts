@@ -396,11 +396,13 @@ function buildVm0OnboardingEntryUrl(paramsInit?: URLSearchParams): string {
   return `${onboardingBaseUrl()}${VM0_ONBOARDING_PATH}${query ? `?${query}` : ""}`;
 }
 
-function isKnownStagingSoOnboardingRedirect(redirectUrl: URL): boolean {
+function isKnownStagingOnboardingRedirect(redirectUrl: URL): boolean {
   return (
     redirectUrl.protocol === "https:" &&
     (redirectUrl.hostname === "staging-so.vm6.ai" ||
-      redirectUrl.hostname.endsWith("-so.vm6.ai")) &&
+      redirectUrl.hostname === "staging-www.vm6.ai" ||
+      redirectUrl.hostname.endsWith("-so.vm6.ai") ||
+      redirectUrl.hostname.endsWith("-www.vm6.ai")) &&
     (redirectUrl.pathname === "/onboarding" ||
       redirectUrl.pathname.startsWith("/onboarding/"))
   );
@@ -414,7 +416,7 @@ function normalizeOnboardingRedirectUrl(
   redirectUrl: URL,
   onboardingUrl: string | undefined,
 ): URL {
-  if (!onboardingUrl || !isKnownStagingSoOnboardingRedirect(redirectUrl)) {
+  if (!onboardingUrl || !isKnownStagingOnboardingRedirect(redirectUrl)) {
     return redirectUrl;
   }
 

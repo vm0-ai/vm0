@@ -73,13 +73,13 @@ const STRUCTURAL_SELECTOR = [
   "ul",
 ].join(",");
 
-export interface InstrumentHtmlDomEditDocumentParams {
+interface InstrumentHtmlDomEditDocumentParams {
   readonly baseHref?: string;
   readonly html: string;
   readonly nodeIdPrefix?: string;
 }
 
-export interface InstrumentedHtmlDomEditDocument {
+interface InstrumentedHtmlDomEditDocument {
   readonly html: string;
   readonly nodeIds: readonly string[];
 }
