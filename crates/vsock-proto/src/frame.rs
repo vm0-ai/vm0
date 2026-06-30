@@ -3,6 +3,9 @@ use crate::read::{read_u8_at, read_u32_at};
 use crate::wire::{HEADER_SIZE, MAX_MESSAGE_SIZE, MIN_BODY_SIZE};
 use std::convert::Infallible;
 
+const INITIAL_BUFFER_CAPACITY: usize = 64 * 1024;
+const OVERSIZED_BUFFER_CAPACITY: usize = 4 * 1024 * 1024;
+
 /// A raw decoded message.
 #[derive(Debug, Clone)]
 pub struct RawMessage {
@@ -85,7 +88,7 @@ impl Decoder {
     /// Create an empty streaming decoder.
     pub fn new() -> Self {
         Self {
-            buf: Vec::with_capacity(64 * 1024),
+            buf: Vec::with_capacity(INITIAL_BUFFER_CAPACITY),
         }
     }
 
@@ -125,13 +128,13 @@ impl Decoder {
             };
 
             if length > MAX_MESSAGE_SIZE {
-                self.buf.clear();
+                self.clear_after_protocol_error();
                 return Err(DecodeWithError::Protocol(ProtocolError::MessageTooLarge(
                     length,
                 )));
             }
             if length < MIN_BODY_SIZE {
-                self.buf.clear();
+                self.clear_after_protocol_error();
                 return Err(DecodeWithError::Protocol(ProtocolError::MessageTooSmall(
                     length,
                 )));
@@ -179,8 +182,20 @@ impl Decoder {
         if verified_offset > 0 {
             self.buf.drain(..verified_offset);
         }
+        self.release_empty_oversized_buffer();
 
         Ok(())
+    }
+
+    fn clear_after_protocol_error(&mut self) {
+        self.buf.clear();
+        self.release_empty_oversized_buffer();
+    }
+
+    fn release_empty_oversized_buffer(&mut self) {
+        if self.buf.is_empty() && self.buf.capacity() > OVERSIZED_BUFFER_CAPACITY {
+            self.buf = Vec::with_capacity(INITIAL_BUFFER_CAPACITY);
+        }
     }
 }
 
@@ -525,5 +540,140 @@ mod tests {
         })
         .unwrap();
         assert_eq!(visited, vec![(MSG_READY, 3, b"third".to_vec())]);
+    }
+
+    #[test]
+    fn decode_with_releases_empty_oversized_buffer_after_large_frame() {
+        let payload = vec![0xAB; OVERSIZED_BUFFER_CAPACITY];
+        let data = encode(MSG_PING, 42, &payload).unwrap();
+        let mut dec = Decoder::new();
+        let mut visited = Vec::new();
+
+        dec.decode_with(&data, |msg| {
+            visited.push((msg.msg_type, msg.seq, msg.payload.len()));
+            Ok::<(), Infallible>(())
+        })
+        .unwrap();
+
+        assert_eq!(visited, vec![(MSG_PING, 42, payload.len())]);
+        assert!(dec.buf.is_empty());
+        assert!(dec.buf.capacity() <= OVERSIZED_BUFFER_CAPACITY);
+
+        let small = encode(MSG_PONG, 43, b"small").unwrap();
+        visited.clear();
+        dec.decode_with(&small, |msg| {
+            visited.push((msg.msg_type, msg.seq, msg.payload.len()));
+            Ok::<(), Infallible>(())
+        })
+        .unwrap();
+        assert_eq!(visited, vec![(MSG_PONG, 43, 5)]);
+    }
+
+    #[test]
+    fn decode_releases_empty_oversized_buffer_after_large_frame() {
+        let payload = vec![0xCD; OVERSIZED_BUFFER_CAPACITY];
+        let data = encode(MSG_READY, 0, &payload).unwrap();
+        let mut dec = Decoder::new();
+
+        let messages = dec.decode(&data).unwrap();
+
+        assert_eq!(messages.len(), 1);
+        assert_eq!(messages[0].msg_type, MSG_READY);
+        assert_eq!(messages[0].seq, 0);
+        assert_eq!(messages[0].payload.len(), payload.len());
+        assert!(dec.buf.is_empty());
+        assert!(dec.buf.capacity() <= OVERSIZED_BUFFER_CAPACITY);
+    }
+
+    #[test]
+    fn decode_with_preserves_partial_large_frame_before_release() {
+        let payload = vec![0xEF; OVERSIZED_BUFFER_CAPACITY + INITIAL_BUFFER_CAPACITY];
+        let data = encode(MSG_PING, 7, &payload).unwrap();
+        let split = OVERSIZED_BUFFER_CAPACITY + HEADER_SIZE;
+        let mut dec = Decoder::new();
+        let mut visited = false;
+
+        dec.decode_with(&data[..split], |_msg| {
+            visited = true;
+            Ok::<(), Infallible>(())
+        })
+        .unwrap();
+
+        assert!(!visited);
+        assert_eq!(dec.buf.len(), split);
+        assert_eq!(dec.buf.as_slice(), &data[..split]);
+        assert!(dec.buf.capacity() > OVERSIZED_BUFFER_CAPACITY);
+
+        let mut decoded = Vec::new();
+        dec.decode_with(&data[split..], |msg| {
+            decoded.push((msg.msg_type, msg.seq, msg.payload.len()));
+            Ok::<(), Infallible>(())
+        })
+        .unwrap();
+
+        assert_eq!(decoded, vec![(MSG_PING, 7, payload.len())]);
+        assert!(dec.buf.is_empty());
+        assert!(dec.buf.capacity() <= OVERSIZED_BUFFER_CAPACITY);
+    }
+
+    #[test]
+    fn decode_with_visitor_error_preserves_later_frame_after_large_frame() {
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        enum VisitorError {
+            Stop,
+        }
+
+        let payload = vec![0x11; OVERSIZED_BUFFER_CAPACITY];
+        let large = encode(MSG_PING, 1, &payload).unwrap();
+        let later = encode(MSG_PONG, 2, b"later").unwrap();
+        let mut data = large;
+        data.extend_from_slice(&later);
+        let mut dec = Decoder::new();
+
+        let err = dec
+            .decode_with(&data, |msg| {
+                if msg.seq == 1 {
+                    Err(VisitorError::Stop)
+                } else {
+                    Ok(())
+                }
+            })
+            .unwrap_err();
+
+        assert!(matches!(err, DecodeWithError::Visitor(VisitorError::Stop)));
+        assert_eq!(dec.buf, later);
+        assert!(dec.buf.capacity() > OVERSIZED_BUFFER_CAPACITY);
+
+        let mut visited = Vec::new();
+        dec.decode_with(&[], |msg| {
+            visited.push((msg.msg_type, msg.seq, msg.payload.to_vec()));
+            Ok::<(), Infallible>(())
+        })
+        .unwrap();
+
+        assert_eq!(visited, vec![(MSG_PONG, 2, b"later".to_vec())]);
+        assert!(dec.buf.is_empty());
+        assert!(dec.buf.capacity() <= OVERSIZED_BUFFER_CAPACITY);
+    }
+
+    #[test]
+    fn decode_with_protocol_error_resets_oversized_capacity() {
+        let mut dec = Decoder {
+            buf: Vec::with_capacity(OVERSIZED_BUFFER_CAPACITY + 1),
+        };
+        let too_large = ((MAX_MESSAGE_SIZE + 1) as u32).to_be_bytes();
+
+        let err = dec
+            .decode_with::<()>(&too_large, |_| {
+                panic!("visitor should not run for oversized frame")
+            })
+            .unwrap_err();
+
+        assert!(matches!(
+            err,
+            DecodeWithError::Protocol(ProtocolError::MessageTooLarge(_))
+        ));
+        assert!(dec.buf.is_empty());
+        assert!(dec.buf.capacity() <= OVERSIZED_BUFFER_CAPACITY);
     }
 }
