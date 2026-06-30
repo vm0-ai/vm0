@@ -94,14 +94,17 @@ impl LocalAdmission {
     }
 }
 
-pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: DiscoveredJobContext<'_>) {
+pub(super) async fn handle_discovered_job(
+    job: DiscoveredJob,
+    mut ctx: DiscoveredJobContext<'_>,
+) -> bool {
     let DiscoveredJob { candidate } = job;
     let run_id = candidate.run_id();
     let profile_name = candidate.profile_name().to_owned();
     // Look up profile config for resource requirements.
     let Some(profile_config) = ctx.profiles.get(&profile_name) else {
         warn!(run_id = %run_id, profile = %profile_name, "unknown profile, skipping");
-        return;
+        return false;
     };
     let job_vcpu = profile_config.vcpu;
     let job_memory = profile_config.memory_mb;
@@ -109,13 +112,13 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
     // Look up factory for this profile.
     let Some((factory, restore_guest_state)) = ctx.factories.get(&profile_name) else {
         warn!(run_id = %run_id, profile = %profile_name, "no factory for profile, skipping");
-        return;
+        return false;
     };
 
     let Some(admission) =
         claim_with_local_admission(candidate, run_id, job_vcpu, job_memory, &ctx).await
     else {
-        return;
+        return false;
     };
     let AdmittedClaim {
         claimed,
@@ -142,20 +145,21 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
     );
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::DeviceRateLimits, started_at);
 
-    let (reuse_entry, active_lease, reuse_result, idle_snapshot) = try_reuse_from_pool(
-        run_id,
-        ReuseAdmissionRequest {
-            profile_name: &profile_name,
-            device_rate_limits: &device_rate_limits,
-            workspace_disk_mb: job_workspace_disk_mb,
-            context: claimed.context(),
-            resume_session_valid,
-            job_lease,
-        },
-        &mut ctx,
-        &mut pre_spawn_timing,
-    )
-    .await;
+    let (reuse_entry, active_lease, reuse_result, idle_snapshot, needs_session_affinity_refresh) =
+        try_reuse_from_pool(
+            run_id,
+            ReuseAdmissionRequest {
+                profile_name: &profile_name,
+                device_rate_limits: &device_rate_limits,
+                workspace_disk_mb: job_workspace_disk_mb,
+                context: claimed.context(),
+                resume_session_valid,
+                job_lease,
+            },
+            &mut ctx,
+            &mut pre_spawn_timing,
+        )
+        .await;
 
     let session_history_restore_plan = build_session_history_restore_plan(
         &ctx.spawn_ctx.exec_config.http,
@@ -210,6 +214,7 @@ pub(super) async fn handle_discovered_job(job: DiscoveredJob, mut ctx: Discovere
         ctx.spawn_ctx,
         ctx.jobs,
     );
+    needs_session_affinity_refresh
 }
 
 fn build_session_history_restore_plan(
@@ -377,6 +382,7 @@ async fn try_reuse_from_pool(
     BudgetLease,
     SandboxReuseResult,
     Option<IdlePoolSnapshot>,
+    bool,
 ) {
     let ReuseAdmissionRequest {
         profile_name,
@@ -390,11 +396,23 @@ async fn try_reuse_from_pool(
     let started_at = Instant::now();
     if !resume_session_valid {
         pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
-        return (None, job_lease, SandboxReuseResult::NoSessionId, None);
+        return (
+            None,
+            job_lease,
+            SandboxReuseResult::NoSessionId,
+            None,
+            false,
+        );
     }
     let Some(cli_agent_session_id) = context.cli_agent_session_id() else {
         pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
-        return (None, job_lease, SandboxReuseResult::NoSessionId, None);
+        return (
+            None,
+            job_lease,
+            SandboxReuseResult::NoSessionId,
+            None,
+            false,
+        );
     };
     let session_fingerprint = diagnostic_session_fingerprint(cli_agent_session_id);
 
@@ -429,9 +447,7 @@ async fn try_reuse_from_pool(
         .provider
         .set_held_session_states(held_session_states)
         .await;
-    if took_idle_session || claimed_workspace_cache_session {
-        ctx.spawn_ctx.park_notify.notify_one();
-    }
+    let needs_session_affinity_refresh = took_idle_session || claimed_workspace_cache_session;
     pre_spawn_timing
         .record_phase_elapsed(RunnerPreSpawnPhase::ProviderHeldSessionUpdate, started_at);
     match taken {
@@ -463,7 +479,13 @@ async fn try_reuse_from_pool(
                         entry.into_destroy_job_without_workspace_promotion_for_mismatch(),
                         "reuse_workspace_promotion_mismatch",
                     );
-                    return (None, job_lease, SandboxReuseResult::PoolMiss, snapshot);
+                    return (
+                        None,
+                        job_lease,
+                        SandboxReuseResult::PoolMiss,
+                        snapshot,
+                        needs_session_affinity_refresh,
+                    );
                 }
             }
             let started_at = Instant::now();
@@ -488,6 +510,7 @@ async fn try_reuse_from_pool(
                         budget_lease,
                         SandboxReuseResult::Reused,
                         snapshot,
+                        needs_session_affinity_refresh,
                     )
                 }
                 IdleUnparkResult::Failed { destroy_job, error } => {
@@ -498,7 +521,13 @@ async fn try_reuse_from_pool(
                         "unpark failed, destroying idle VM and falling through to fresh create"
                     );
                     spawn_idle_destroy_job(ctx.destroy_tasks, *destroy_job, "reuse_unpark_failed");
-                    (None, job_lease, SandboxReuseResult::UnparkFailed, snapshot)
+                    (
+                        None,
+                        job_lease,
+                        SandboxReuseResult::UnparkFailed,
+                        snapshot,
+                        needs_session_affinity_refresh,
+                    )
                 }
             }
         }
@@ -519,6 +548,7 @@ async fn try_reuse_from_pool(
                 job_lease,
                 SandboxReuseResult::DeviceLimitMismatch,
                 snapshot,
+                needs_session_affinity_refresh,
             )
         }
         Some(stale) => {
@@ -539,6 +569,7 @@ async fn try_reuse_from_pool(
                 job_lease,
                 SandboxReuseResult::ProfileMismatch,
                 snapshot,
+                needs_session_affinity_refresh,
             )
         }
         None => {
@@ -547,7 +578,13 @@ async fn try_reuse_from_pool(
                 session_fingerprint = %session_fingerprint,
                 "no idle VM found for session"
             );
-            (None, job_lease, SandboxReuseResult::PoolMiss, None)
+            (
+                None,
+                job_lease,
+                SandboxReuseResult::PoolMiss,
+                None,
+                needs_session_affinity_refresh,
+            )
         }
     }
 }

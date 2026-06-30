@@ -33,7 +33,6 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use clap::Args;
-use futures_util::FutureExt;
 use sandbox::{RuntimeProvider, SandboxRuntime};
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
@@ -1392,7 +1391,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let Some(candidate) = discovered else { break };
                 // Future completed — create a new one for the next discovery.
                 discover_fut = Box::pin(provider_state.provider.discover());
-                handle_discovered_job(
+                let needs_session_affinity_refresh = handle_discovered_job(
                     DiscoveredJob { candidate },
                     DiscoveredJobContext {
                         profiles: &runner.profiles,
@@ -1407,14 +1406,15 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         jobs: &mut jobs,
                     },
                 ).await;
-                if park_notify.notified().now_or_never().is_some()
-                    && matches!(current_mode, RunnerMode::Running | RunnerMode::Draining)
+                let live_mode = *mode_rx.borrow();
+                if needs_session_affinity_refresh
+                    && matches!(live_mode, RunnerMode::Running | RunnerMode::Draining)
                 {
                     info!(
                         source = "post_discovery",
                         "session affinity state triggered immediate heartbeat"
                     );
-                    send_heartbeat(&hb_ctx, current_mode).await;
+                    send_heartbeat(&hb_ctx, live_mode).await;
                 }
             }
             // Mode changes (signals)
