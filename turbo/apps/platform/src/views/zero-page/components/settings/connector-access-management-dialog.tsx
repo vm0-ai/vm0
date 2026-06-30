@@ -254,11 +254,11 @@ function AgentAccessRow({
 
   return (
     <div className="flex flex-col gap-3 px-1 py-4">
-      <div className="flex items-center gap-3">
+      <div className="flex items-center gap-2">
         <AvatarFromUrl
           avatarUrl={row.agent.avatarUrl}
           alt={name}
-          className="h-9 w-9 shrink-0 rounded-full object-cover"
+          className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
         />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">{name}</p>
@@ -436,7 +436,7 @@ function ConnectorAccessDialog({
 
         <div
           className={cn(
-            "min-h-0 flex-1 overflow-hidden rounded-lg px-3",
+            "min-h-0 flex-1 overflow-hidden rounded-lg",
             !rowsLoaded && "flex",
             rowsLoaded && "flex flex-col",
           )}
