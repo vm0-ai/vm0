@@ -1,5 +1,20 @@
 # Changelog
 
+## [9.217.0](https://github.com/vm0-ai/vm0/compare/cli-v9.216.0...cli-v9.217.0) (2026-06-30)
+
+
+### Features
+
+* add zero chat get command ([#19405](https://github.com/vm0-ai/vm0/issues/19405)) ([3a90d8f](https://github.com/vm0-ai/vm0/commit/3a90d8f6fd3d575359569843da81b34d2c1a0604))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.129.0
+    * @vm0/core bumped to 8.377.2
+
 ## [9.216.0](https://github.com/vm0-ai/vm0/compare/cli-v9.215.3...cli-v9.216.0) (2026-06-30)
 
 

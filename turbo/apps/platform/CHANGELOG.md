@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.510.0](https://github.com/vm0-ai/vm0/compare/app-v0.509.1...app-v0.510.0) (2026-06-30)
+
+
+### Features
+
+* show agent page unread indicators ([#19412](https://github.com/vm0-ai/vm0/issues/19412)) ([e35b3c2](https://github.com/vm0-ai/vm0/commit/e35b3c2c16896e51f4a853d54c1b68c9eb552131))
+* start workflow creation from chat ([#19415](https://github.com/vm0-ai/vm0/issues/19415)) ([608d082](https://github.com/vm0-ai/vm0/commit/608d0826b3b43d2c9a68b44aee2a8bfbefa98ba2))
+
+
+### Bug Fixes
+
+* hide agent workflow tabs after automation migration ([#19414](https://github.com/vm0-ai/vm0/issues/19414)) ([b2073f8](https://github.com/vm0-ai/vm0/commit/b2073f87a3a36858cc31e7d9335c26d452848173))
+* open agent chat from pinned picker ([#19407](https://github.com/vm0-ai/vm0/issues/19407)) ([31c1486](https://github.com/vm0-ai/vm0/commit/31c1486a8f67d1a7e79fdeed38fba933292004d8))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.129.0
+    * @vm0/core bumped to 8.377.2
+
 ## [0.509.1](https://github.com/vm0-ai/vm0/compare/app-v0.509.0...app-v0.509.1) (2026-06-30)
 
 
