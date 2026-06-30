@@ -117,11 +117,14 @@ impl HttpClient {
 
     /// Build the HTTP client appropriate for the current environment.
     ///
-    /// Production guest-agent initialization should use this constructor. When
-    /// `VM0_API_TOKEN` is non-empty, this captures `VM0_API_URL`, the API
-    /// token, and optional Vercel bypass header once and returns a webhook-ready
-    /// client. Otherwise it returns a disabled client whose request methods fail
-    /// with the disabled-client error before building or sending HTTP requests.
+    /// Compatibility wrapper for legacy callers that still read process env
+    /// directly. Production guest-agent bootstrap should prefer
+    /// [`Self::for_config`] so API settings come from the captured runtime
+    /// config. When `VM0_API_TOKEN` is non-empty, this captures `VM0_API_URL`,
+    /// the API token, and optional Vercel bypass header once and returns a
+    /// webhook-ready client. Otherwise it returns a disabled client whose
+    /// request methods fail with the disabled-client error before building or
+    /// sending HTTP requests.
     pub fn for_current_env() -> Result<Self, AgentError> {
         let Some(api) = Self::api_config_from_current_env()? else {
             return Ok(Self {

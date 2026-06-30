@@ -7,8 +7,9 @@
 //! the position file (#11008).
 //!
 //! Callers interact via [`Telemetry`]: spawn the task with
-//! [`Telemetry::spawn`], request uploads with [`Telemetry::flush`], and
-//! release with [`Telemetry::shutdown`] or
+//! [`Telemetry::spawn_for_paths`] for explicit runtime paths or
+//! [`Telemetry::spawn`] for legacy process-global paths, request uploads with
+//! [`Telemetry::flush`], and release with [`Telemetry::shutdown`] or
 //! [`Telemetry::final_flush_and_shutdown`].
 
 mod delta;
@@ -193,7 +194,8 @@ enum Cmd {
 ///
 /// Holds both the command channel and the spawned task's [`JoinHandle`],
 /// so callers see one lifecycle object rather than juggling two.
-/// Construct with [`Self::spawn`]; release with [`Self::shutdown`].
+/// Construct with [`Self::spawn_for_paths`] or [`Self::spawn`]; release with
+/// [`Self::shutdown`].
 pub struct Telemetry {
     tx: mpsc::Sender<Cmd>,
     handle: JoinHandle<()>,
