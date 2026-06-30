@@ -16,6 +16,7 @@ import {
   IconLoader2,
   IconDotsVertical,
   IconInfoCircle,
+  IconUsers,
 } from "@tabler/icons-react";
 import {
   CONNECTOR_TYPES,
@@ -419,9 +420,11 @@ function ConnectorAccessAvatarButton({
               </span>
             ) : (
               <span
-                className="block h-7 w-7 rounded-full bg-muted/80 zero-border"
+                className="flex h-7 w-7 items-center justify-center rounded-full bg-muted/80 text-muted-foreground zero-border"
                 data-testid="connector-card-agent-avatar-placeholder"
-              />
+              >
+                <IconUsers size={15} stroke={1.7} aria-hidden="true" />
+              </span>
             )}
           </button>
         </TooltipTrigger>
