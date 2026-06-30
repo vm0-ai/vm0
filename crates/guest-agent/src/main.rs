@@ -212,9 +212,8 @@ async fn run(runtime: GuestRuntime) -> i32 {
         start,
         Some(heartbeat_status_rx),
         &telemetry,
-        http,
         active_input.into_writer(),
-        &runtime.config,
+        &runtime,
     )
     .await;
 
@@ -253,10 +252,13 @@ async fn execute(
     start: Instant,
     heartbeat_monitor: cli::HeartbeatMonitor,
     telemetry: &Telemetry,
-    http: HttpClient,
     active_input: guest_agent::active_input::ActiveInputWriter,
-    config: &env::GuestConfig,
+    runtime: &GuestRuntime,
 ) -> i32 {
+    let config = &runtime.config;
+    let runtime_paths = &runtime.paths;
+    let http = runtime.http.clone();
+
     // Pre-warm kernel DNS cache for the CLI's API endpoint.
     // Fire-and-forget: runs in background so the cache is populated by the
     // time the CLI spawns and makes its first HTTPS request.
@@ -287,7 +289,7 @@ async fn execute(
     // sandboxes, continuing after a setup failure can inherit stale auth state
     // from an earlier run.
     if matches!(config.framework, env::Framework::Codex)
-        && let Err(e) = cli::setup_codex(masker).await
+        && let Err(e) = cli::setup_codex_for_config(masker, config).await
     {
         let msg = format!(
             "Codex auth setup failed: {}",
@@ -324,11 +326,13 @@ async fn execute(
         skip_recovery_checkpoint_for_no_history,
         failure_diagnostic,
         cli_execution_succeeded,
-    ) = match cli::execute_cli_with_active_input(
+    ) = match cli::execute_cli_with_active_input_for_config(
         masker,
         heartbeat_monitor,
         http.clone(),
         active_input,
+        config,
+        runtime_paths,
     )
     .await
     {

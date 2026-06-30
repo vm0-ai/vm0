@@ -4,8 +4,8 @@
 mod common;
 
 use guest_agent::cli;
-use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
+use guest_agent::run_context::GuestRuntime;
 use std::collections::BTreeMap;
 
 #[tokio::test]
@@ -58,15 +58,29 @@ async fn execute_cli_injects_user_env_without_runner_owned_bootstrap_env()
         std::env::set_var("VM0_USER_ENV_FILE", &user_env_path);
     }
 
-    guest_agent::env::init_user_env()?;
+    let runtime = GuestRuntime::from_process_env()?;
     assert!(!user_env_path.exists());
     assert!(!user_env_dir.exists());
-    assert_eq!(guest_agent::env::home_dir(), user_home_str);
+    assert_eq!(runtime.config.home_dir, user_home_str);
 
-    let result = cli::execute_cli(
+    unsafe {
+        std::env::set_var("VM0_PROMPT", "stale prompt after runtime construction");
+        std::env::set_var("VM0_API_URL", "https://stale-api.example.invalid");
+        std::env::set_var("HOME", tmp.path().join("stale-home"));
+    }
+
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
+        &runtime.config.run_id,
+        false,
+        &runtime.config.prompt,
+    );
+    let result = cli::execute_cli_with_active_input_for_config(
         &SecretMasker::from_raw(""),
         common::spawn_dummy_heartbeat(),
-        HttpClient::for_current_env()?,
+        runtime.http.clone(),
+        active_input.into_writer(),
+        &runtime.config,
+        &runtime.paths,
     )
     .await?;
 

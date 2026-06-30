@@ -31,10 +31,43 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 /// - **No auth**: remove any stale auth.json left by a previous reused
 ///   sandbox run so Codex cannot inherit credentials from another run.
 pub async fn setup_codex(_masker: &SecretMasker) -> Result<(), AgentError> {
+    setup_codex_with_values(
+        env::is_codex_oauth_mode(),
+        env::home_dir(),
+        env::openai_api_key(),
+    )
+}
+
+/// Reconcile Codex auth using the config captured during guest-agent bootstrap.
+///
+/// Production should use this instead of [`setup_codex`] so OAuth/API-key mode
+/// and child `HOME` come from the same immutable [`env::GuestConfig`] as CLI
+/// execution. The legacy wrapper remains for tests and transitional callers
+/// that still use process-env facades.
+pub async fn setup_codex_for_config(
+    _masker: &SecretMasker,
+    config: &env::GuestConfig,
+) -> Result<(), AgentError> {
+    let codex_oauth_mode = config
+        .user_env
+        .get("CHATGPT_ACCOUNT_ID")
+        .is_some_and(|value| !value.is_empty());
+    let api_key = config
+        .user_env
+        .get("OPENAI_API_KEY")
+        .map(String::as_str)
+        .unwrap_or("");
+    setup_codex_with_values(codex_oauth_mode, &config.home_dir, api_key)
+}
+
+fn setup_codex_with_values(
+    codex_oauth_mode: bool,
+    home_dir: &str,
+    api_key: &str,
+) -> Result<(), AgentError> {
     let setup_start = Instant::now();
-    let home = std::path::PathBuf::from(env::home_dir());
-    let api_key = env::openai_api_key();
-    let (desired, mode_label) = if env::is_codex_oauth_mode() {
+    let home = std::path::PathBuf::from(home_dir);
+    let (desired, mode_label) = if codex_oauth_mode {
         (
             DesiredCodexAuth::ChatGpt {
                 now: chrono::Utc::now(),
