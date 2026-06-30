@@ -76,9 +76,23 @@ import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 
 const log = logger("callback:chat");
 const AGENT_RUN_EVENTS_DATASET = "agent-run-events";
+const PG_FOREIGN_KEY_VIOLATION = "23503";
 const RECENT_CHAT_RUN_LIMIT = 10;
 const PRIOR_MESSAGE_CHAR_CAP = 4000;
 const INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
+
+function isForeignKeyViolation(error: unknown): boolean {
+  if (!(error instanceof Error)) {
+    return false;
+  }
+
+  const { cause } = error;
+  if (typeof cause !== "object" || cause === null || !("code" in cause)) {
+    return false;
+  }
+
+  return cause.code === PG_FOREIGN_KEY_VIOLATION;
+}
 
 const chatCallbackPayloadSchema = z
   .object({
@@ -1537,6 +1551,15 @@ async function activeChatRunExistsForThread(
   return run !== undefined;
 }
 
+async function chatThreadExists(db: Db, threadId: string): Promise<boolean> {
+  const [thread] = await db
+    .select({ id: chatThreads.id })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, threadId))
+    .limit(1);
+  return thread !== undefined;
+}
+
 function fallbackAttachFiles(
   ids: readonly string[] | null,
 ): readonly ResolvedAttachFile[] {
@@ -2304,20 +2327,31 @@ export const handleChatInternalCallback$ = command(
     const dependencies: ChatCallbackDependencies = {
       ...baseDependencies,
       createQueuedRun: async (runInput, apiStartTime, inputSignal) => {
-        const runResult = await set(
-          createZeroRun$,
-          buildQueuedCreateZeroRunArgs(
-            runInput,
+        const createArgs = buildQueuedCreateZeroRunArgs(
+          runInput,
+          apiStartTime,
+          buildQueuedChatDispatchFailedCallbacks({
             apiStartTime,
-            buildQueuedChatDispatchFailedCallbacks({
-              apiStartTime,
-              dependencies: baseDependencies,
-              runInput,
-              signal: inputSignal,
-            }),
-          ),
+            dependencies: baseDependencies,
+            runInput,
+            signal: inputSignal,
+          }),
+        );
+        const settledRunResult = await settle(
+          set(createZeroRun$, createArgs, inputSignal),
           inputSignal,
         );
+        inputSignal.throwIfAborted();
+        if (!settledRunResult.ok) {
+          if (
+            isForeignKeyViolation(settledRunResult.error) &&
+            !(await chatThreadExists(db, runInput.threadId))
+          ) {
+            return null;
+          }
+          throw settledRunResult.error;
+        }
+        const runResult = settledRunResult.value;
         if (
           runResult.status !== 201 ||
           runResult.body.status === "failed" ||
