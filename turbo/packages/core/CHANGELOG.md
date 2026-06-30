@@ -1,5 +1,25 @@
 # Changelog
 
+## [8.379.0](https://github.com/vm0-ai/vm0/compare/core-v8.378.0...core-v8.379.0) (2026-06-30)
+
+
+### Features
+
+* mark all agent chats read ([#19442](https://github.com/vm0-ai/vm0/issues/19442)) ([6bd2da0](https://github.com/vm0-ai/vm0/commit/6bd2da0b2f91223211c0601c93468f5500b63dcf))
+
+
+### Bug Fixes
+
+* disable agent unread org rollout ([#19479](https://github.com/vm0-ai/vm0/issues/19479)) ([b99bc81](https://github.com/vm0-ai/vm0/commit/b99bc81fcfe432b4d30cb6db41a87774633b82a0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.130.0
+    * @vm0/connectors bumped to 1.117.0
+
 ## [8.378.0](https://github.com/vm0-ai/vm0/compare/core-v8.377.2...core-v8.378.0) (2026-06-30)
 
 
