@@ -49,11 +49,7 @@ const GOOGLE_CALENDAR_TRIGGER_ID = "workflow-trigger-google-calendar-created";
 const WORKFLOW_CHAT_THREAD_ID = "00000000-0000-4000-a000-000000000300";
 const TRIGGER_RUN_THREAD_ID = "00000000-0000-4000-a000-000000000301";
 
-type WorkflowDetailTestTab =
-  | "automations"
-  | "triggers"
-  | "instructions"
-  | "info";
+type WorkflowDetailTestTab = "automations" | "instructions" | "info";
 
 function workflowDetailPath(tab: WorkflowDetailTestTab): string {
   return `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}?tab=${tab}`;
@@ -1317,21 +1313,6 @@ describe("workflow detail page", () => {
       ).toBeInTheDocument();
     });
     expect(search()).toBe("?tab=instructions");
-  });
-
-  it("opens automations for legacy trigger tab links", async () => {
-    context.mocks.data.userPreferences({ timezone: "UTC" });
-    mockWorkflowApis([salesResearch()]);
-
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("triggers"),
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
-    });
-    expect(buttonByText("Automations")).toBeInTheDocument();
   });
 
   it("renders Gmail new message trigger match summaries", async () => {

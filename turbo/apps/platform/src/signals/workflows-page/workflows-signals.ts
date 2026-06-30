@@ -71,9 +71,6 @@ function workflowDetailTabFromSearchParams(
   const value = params.get(WORKFLOW_DETAIL_TAB_PARAM);
   switch (value) {
     case "automations":
-    case "triggers": {
-      return "automations";
-    }
     case "instructions":
     case "info": {
       return value;
