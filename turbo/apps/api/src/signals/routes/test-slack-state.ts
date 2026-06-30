@@ -1,7 +1,10 @@
 import { createHash } from "node:crypto";
 import type { createClerkClient } from "@clerk/backend";
 import { command, computed } from "ccstate";
-import { testSlackStateContract } from "@vm0/api-contracts/contracts/test-slack-state";
+import {
+  testSlackStateContract,
+  type TestSlackStatePostBody,
+} from "@vm0/api-contracts/contracts/test-slack-state";
 import {
   agentComposes,
   agentComposeVersions,
@@ -9,9 +12,12 @@ import {
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eSlackMockCallLog } from "@vm0/db/schema/e2e-slack-mock-call-log";
+import { orgCache } from "@vm0/db/schema/org-cache";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { secrets } from "@vm0/db/schema/secret";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { variables } from "@vm0/db/schema/variable";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -35,7 +41,22 @@ const DEFAULT_WORKSPACE_NAME = "E2E Test Workspace";
 const DEFAULT_AGENT_NAME = "e2e-slack-agent";
 const STARTER_GRANT_AMOUNT = 10_000;
 const STARTER_GRANT_SOURCE = "starter_grant";
-const SLACK_BOT_SCOPES = "chat:write,im:write,users:read";
+const SLACK_BOT_SCOPES = JSON.stringify([
+  "app_mentions:read",
+  "chat:write",
+  "channels:read",
+  "channels:history",
+  "groups:read",
+  "groups:history",
+  "im:history",
+  "im:write",
+  "commands",
+  "users:read",
+  "users:read.email",
+  "reactions:write",
+  "files:read",
+  "files:write",
+]);
 const ZERO_AGENT_ID_TEMPLATE = ["$", "{{ vars.ZERO_AGENT_ID }}"].join("");
 const ZERO_TOKEN_TEMPLATE = ["$", "{{ secrets.ZERO_TOKEN }}"].join("");
 const SLACK_E2E_FIXTURES = {
@@ -138,9 +159,13 @@ async function upsertSlackInstallation(
     .onConflictDoUpdate({
       target: slackOrgInstallations.slackWorkspaceId,
       set: {
+        slackWorkspaceName: input.slackWorkspaceName,
         orgId: input.orgId,
         encryptedBotToken,
         botUserId: input.botUserId,
+        botScopes: input.botScopes ?? null,
+        installedByUserId: input.installedByUserId,
+        updatedAt: nowDate(),
       },
     })
     .returning();
@@ -177,6 +202,7 @@ interface SeedDefaultAgentInput {
   readonly orgId: string;
   readonly userId: string;
   readonly name: string;
+  readonly displayName?: string | null;
 }
 
 async function seedDefaultAgent(
@@ -200,8 +226,18 @@ async function seedDefaultAgent(
       orgId: input.orgId,
       owner: input.userId,
       name: input.name,
+      displayName: input.displayName ?? null,
     })
-    .onConflictDoNothing();
+    .onConflictDoUpdate({
+      target: zeroAgents.id,
+      set: {
+        orgId: input.orgId,
+        owner: input.userId,
+        name: input.name,
+        displayName: input.displayName ?? null,
+        updatedAt: nowDate(),
+      },
+    });
 
   await db.transaction(async (tx) => {
     await ensureStarterCreditGrant(tx, input.orgId);
@@ -386,6 +422,33 @@ function defaultAgentContent(name: string) {
   };
 }
 
+async function setComposeHeadVersion(
+  db: Db,
+  args: {
+    readonly composeId: string;
+    readonly userId: string;
+    readonly content: unknown;
+  },
+): Promise<string> {
+  const versionId = createHash("sha256")
+    .update(JSON.stringify(args.content) + args.composeId)
+    .digest("hex");
+  await db
+    .insert(agentComposeVersions)
+    .values({
+      id: versionId,
+      composeId: args.composeId,
+      content: args.content,
+      createdBy: args.userId,
+    })
+    .onConflictDoNothing();
+  await db
+    .update(agentComposes)
+    .set({ headVersionId: versionId, updatedAt: nowDate() })
+    .where(eq(agentComposes.id, args.composeId));
+  return versionId;
+}
+
 async function ensureStarterCreditGrant(
   tx: StarterGrantTx,
   orgId: string,
@@ -568,6 +631,90 @@ async function defaultComposeVersionFor(
   );
 }
 
+async function upsertOrgCacheForTest(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly slug?: string;
+    readonly name?: string;
+    readonly createdBy?: string;
+  },
+): Promise<void> {
+  if (!args.slug && !args.name) {
+    return;
+  }
+  await db
+    .insert(orgCache)
+    .values({
+      orgId: args.orgId,
+      slug: args.slug ?? args.orgId,
+      name: args.name ?? "Test Org",
+      createdBy: args.createdBy,
+      cachedAt: nowDate(),
+    })
+    .onConflictDoUpdate({
+      target: orgCache.orgId,
+      set: {
+        slug: args.slug ?? args.orgId,
+        name: args.name ?? "Test Org",
+        createdBy: args.createdBy,
+        cachedAt: nowDate(),
+      },
+    });
+}
+
+async function seedUserSecretsForTest(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly names: readonly string[];
+  },
+): Promise<void> {
+  for (const name of args.names) {
+    await db
+      .insert(secrets)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
+        name,
+        encryptedValue: `test-secret-${name}`,
+        type: "user",
+      })
+      .onConflictDoNothing();
+  }
+}
+
+async function seedUserVariablesForTest(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly variables: Readonly<Record<string, string>>;
+  },
+): Promise<void> {
+  for (const [name, value] of Object.entries(args.variables)) {
+    await db
+      .insert(variables)
+      .values({
+        orgId: args.orgId,
+        userId: args.userId,
+        name,
+        value,
+        type: "user",
+      })
+      .onConflictDoUpdate({
+        target: [
+          variables.orgId,
+          variables.userId,
+          variables.type,
+          variables.name,
+        ],
+        set: { value, updatedAt: nowDate() },
+      });
+  }
+}
+
 function recentMockCalls(db: ReadonlyDb) {
   return db
     .select({
@@ -653,6 +800,157 @@ const getSlackState$ = computed(async (get) => {
 
 const postSlackStateBody$ = bodyResultOf(testSlackStateContract.post);
 
+function postSlackStateValidationError(
+  body: TestSlackStatePostBody,
+): string | null {
+  if (!body.team_id && !body.seed_default_agent && !body.org_id) {
+    return "team_id is required unless seeding an org-scoped test fixture";
+  }
+  if (body.seed_connection && (!body.team_id || !body.slack_user_id)) {
+    return "team_id and slack_user_id are required to seed a connection";
+  }
+  return null;
+}
+
+async function resolvePostSlackStateActor(
+  clerk: ClerkClient | null,
+  body: TestSlackStatePostBody,
+): Promise<{ readonly orgId: string; readonly userId: string }> {
+  if (body.org_id && !body.vm0_user_id && !body.email) {
+    return {
+      orgId: body.org_id,
+      userId: `user_${body.org_id.replace(/[^a-zA-Z0-9_]/g, "_")}`,
+    };
+  }
+  const userId =
+    body.vm0_user_id ??
+    (await resolveTestUserId(clerk!, body.email ?? DEFAULT_TEST_EMAIL));
+  const orgId = body.org_id ?? (await resolveTestOrgId(clerk!, userId));
+  return { orgId, userId };
+}
+
+async function maybeUpsertSlackInstallationForPost(
+  db: Db,
+  body: TestSlackStatePostBody,
+  actor: { readonly orgId: string; readonly userId: string },
+): Promise<void> {
+  if (!shouldUpsertSlackInstallationForPost(body)) {
+    return;
+  }
+  await upsertSlackInstallation(db, {
+    slackWorkspaceId: body.team_id!,
+    slackWorkspaceName: body.workspace_name ?? DEFAULT_WORKSPACE_NAME,
+    orgId: actor.orgId,
+    botUserId: body.bot_user_id ?? SLACK_E2E_FIXTURES.botUserId,
+    botToken: body.bot_token ?? SLACK_E2E_FIXTURES.botToken,
+    botScopes:
+      body.bot_scopes === undefined ? SLACK_BOT_SCOPES : body.bot_scopes,
+    installedByUserId: actor.userId,
+  });
+}
+
+function shouldUpsertSlackInstallationForPost(
+  body: TestSlackStatePostBody,
+): boolean {
+  if (!body.team_id) {
+    return false;
+  }
+
+  if (!body.seed_connection && !body.delete_connection) {
+    return true;
+  }
+
+  return (
+    body.workspace_name !== undefined ||
+    body.bot_user_id !== undefined ||
+    body.bot_scopes !== undefined ||
+    body.bot_token !== undefined
+  );
+}
+
+async function maybeDeleteSlackConnectionForPost(
+  db: Db,
+  body: TestSlackStatePostBody,
+): Promise<void> {
+  if (!body.delete_connection || !body.team_id) {
+    return;
+  }
+  if (body.vm0_user_id) {
+    await db
+      .delete(slackOrgConnections)
+      .where(
+        and(
+          eq(slackOrgConnections.slackWorkspaceId, body.team_id),
+          eq(slackOrgConnections.vm0UserId, body.vm0_user_id),
+        ),
+      );
+    return;
+  }
+  await db
+    .delete(slackOrgConnections)
+    .where(eq(slackOrgConnections.slackWorkspaceId, body.team_id));
+}
+
+async function maybeSeedSlackConnectionForPost(
+  db: Db,
+  body: TestSlackStatePostBody,
+  userId: string,
+): Promise<string | undefined> {
+  if (!body.seed_connection) {
+    return undefined;
+  }
+  return await insertSlackConnectionIfMissing(db, {
+    slackUserId: body.slack_user_id!,
+    slackWorkspaceId: body.team_id!,
+    vm0UserId: userId,
+  });
+}
+
+async function maybeSeedDefaultAgentForPost(
+  db: Db,
+  body: TestSlackStatePostBody,
+  actor: { readonly orgId: string; readonly userId: string },
+): Promise<{ readonly composeId: string } | undefined> {
+  if (!body.seed_default_agent) {
+    return undefined;
+  }
+  const defaultAgent = await seedDefaultAgent(db, {
+    orgId: actor.orgId,
+    userId: actor.userId,
+    name: body.default_agent_name ?? DEFAULT_AGENT_NAME,
+    displayName: body.default_agent_display_name,
+  });
+  if (body.compose_content !== undefined) {
+    await setComposeHeadVersion(db, {
+      composeId: defaultAgent.composeId,
+      userId: actor.userId,
+      content: body.compose_content,
+    });
+  }
+  return defaultAgent;
+}
+
+async function seedPostSlackUserData(
+  db: Db,
+  body: TestSlackStatePostBody,
+  actor: { readonly orgId: string; readonly userId: string },
+): Promise<void> {
+  if (body.seed_secret_names) {
+    await seedUserSecretsForTest(db, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      names: body.seed_secret_names,
+    });
+  }
+  if (body.seed_variables) {
+    await seedUserVariablesForTest(db, {
+      orgId: actor.orgId,
+      userId: actor.userId,
+      variables: body.seed_variables,
+    });
+  }
+}
+
 const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$);
   if (!isTestEndpointAllowed(request)) {
@@ -666,62 +964,49 @@ const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const body = bodyResult.data;
-  if (!body.team_id || !body.slack_user_id) {
+  const validationError = postSlackStateValidationError(body);
+  if (validationError) {
     return {
       status: 400 as const,
-      body: { error: "team_id and slack_user_id are required" },
+      body: { error: validationError },
     };
   }
 
-  const clerk = get(clerk$);
-  const userId = await resolveTestUserId(
-    clerk,
-    body.email ?? DEFAULT_TEST_EMAIL,
-  );
-  signal.throwIfAborted();
-
-  const orgId = await resolveTestOrgId(clerk, userId);
+  const clerk = body.vm0_user_id && body.org_id ? null : get(clerk$);
+  const actor = await resolvePostSlackStateActor(clerk, body);
   signal.throwIfAborted();
 
   const db = set(writeDb$);
-  await upsertSlackInstallation(db, {
-    slackWorkspaceId: body.team_id,
-    slackWorkspaceName: body.workspace_name ?? DEFAULT_WORKSPACE_NAME,
-    orgId,
-    botUserId: body.bot_user_id ?? SLACK_E2E_FIXTURES.botUserId,
-    botToken: SLACK_E2E_FIXTURES.botToken,
-    botScopes: SLACK_BOT_SCOPES,
-    installedByUserId: userId,
+  await upsertOrgCacheForTest(db, {
+    orgId: actor.orgId,
+    slug: body.org_slug,
+    name: body.org_name,
+    createdBy: actor.userId,
   });
   signal.throwIfAborted();
 
-  let connectionId: string | undefined;
-  if (body.seed_connection) {
-    connectionId = await insertSlackConnectionIfMissing(db, {
-      slackUserId: body.slack_user_id,
-      slackWorkspaceId: body.team_id,
-      vm0UserId: userId,
-    });
-    signal.throwIfAborted();
-  }
-
-  let defaultAgent: { composeId: string; versionId: string } | undefined;
-  if (body.seed_default_agent) {
-    defaultAgent = await seedDefaultAgent(db, {
-      orgId,
-      userId,
-      name: DEFAULT_AGENT_NAME,
-    });
-    signal.throwIfAborted();
-  }
+  await maybeUpsertSlackInstallationForPost(db, body, actor);
+  signal.throwIfAborted();
+  await maybeDeleteSlackConnectionForPost(db, body);
+  signal.throwIfAborted();
+  const connectionId = await maybeSeedSlackConnectionForPost(
+    db,
+    body,
+    actor.userId,
+  );
+  signal.throwIfAborted();
+  const defaultAgent = await maybeSeedDefaultAgentForPost(db, body, actor);
+  signal.throwIfAborted();
+  await seedPostSlackUserData(db, body, actor);
+  signal.throwIfAborted();
 
   return {
     status: 200 as const,
     body: {
       ok: true as const,
-      team_id: body.team_id,
-      org_id: orgId,
-      vm0_user_id: userId,
+      team_id: body.team_id ?? "",
+      org_id: actor.orgId,
+      vm0_user_id: actor.userId,
       connection_id: connectionId ?? null,
       default_agent_id: defaultAgent?.composeId ?? null,
     },
@@ -735,45 +1020,75 @@ const deleteSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const query = get(queryOf(testSlackStateContract.delete));
-  if (!query.team_id) {
+  if (!query.team_id && !query.org_id) {
     return {
       status: 400 as const,
-      body: { error: "team_id query param is required" },
+      body: { error: "team_id or org_id query param is required" },
     };
   }
 
   const db = set(writeDb$);
   const teamId = query.team_id;
-  const [existing] = await db
-    .select({ orgId: slackOrgInstallations.orgId })
-    .from(slackOrgInstallations)
-    .where(eq(slackOrgInstallations.slackWorkspaceId, teamId))
-    .limit(1);
+  const orgId = query.org_id;
+  const installationRows = teamId
+    ? await db
+        .select({
+          slackWorkspaceId: slackOrgInstallations.slackWorkspaceId,
+          orgId: slackOrgInstallations.orgId,
+        })
+        .from(slackOrgInstallations)
+        .where(eq(slackOrgInstallations.slackWorkspaceId, teamId))
+    : orgId
+      ? await db
+          .select({
+            slackWorkspaceId: slackOrgInstallations.slackWorkspaceId,
+            orgId: slackOrgInstallations.orgId,
+          })
+          .from(slackOrgInstallations)
+          .where(eq(slackOrgInstallations.orgId, orgId))
+      : [];
   signal.throwIfAborted();
 
-  if (existing?.orgId) {
-    await deleteVm0ManagedKeysForSeededDefaultAgent(db, existing.orgId);
+  const orgIds = new Set(
+    installationRows.flatMap((row) => {
+      return row.orgId ? [row.orgId] : [];
+    }),
+  );
+  if (orgId) {
+    orgIds.add(orgId);
+  }
+  for (const seededOrgId of orgIds) {
+    await deleteVm0ManagedKeysForSeededDefaultAgent(db, seededOrgId);
     signal.throwIfAborted();
   }
 
-  await db
-    .delete(slackOrgConnections)
-    .where(eq(slackOrgConnections.slackWorkspaceId, teamId));
-  signal.throwIfAborted();
+  const teamIds = installationRows.map((row) => {
+    return row.slackWorkspaceId;
+  });
+  if (teamId && !teamIds.includes(teamId)) {
+    teamIds.push(teamId);
+  }
 
-  await db
-    .delete(slackOrgInstallations)
-    .where(eq(slackOrgInstallations.slackWorkspaceId, teamId));
-  signal.throwIfAborted();
+  if (teamIds.length > 0) {
+    await db
+      .delete(slackOrgConnections)
+      .where(inArray(slackOrgConnections.slackWorkspaceId, teamIds));
+    signal.throwIfAborted();
 
-  if (existing?.orgId) {
+    await db
+      .delete(slackOrgInstallations)
+      .where(inArray(slackOrgInstallations.slackWorkspaceId, teamIds));
+    signal.throwIfAborted();
+  }
+
+  for (const seededOrgId of orgIds) {
     const slackAgentRuns = await db
       .select({ id: agentRuns.id })
       .from(agentRuns)
       .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
       .where(
         and(
-          eq(agentRuns.orgId, existing.orgId),
+          eq(agentRuns.orgId, seededOrgId),
           eq(zeroRuns.triggerSource, "slack"),
         ),
       );
@@ -788,6 +1103,39 @@ const deleteSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
       await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
       signal.throwIfAborted();
     }
+  }
+
+  if (orgId) {
+    await db.delete(secrets).where(eq(secrets.orgId, orgId));
+    signal.throwIfAborted();
+    await db.delete(variables).where(eq(variables.orgId, orgId));
+    signal.throwIfAborted();
+    await db.delete(orgCache).where(eq(orgCache.orgId, orgId));
+    signal.throwIfAborted();
+
+    const composeRows = await db
+      .select({ id: agentComposes.id })
+      .from(agentComposes)
+      .where(eq(agentComposes.orgId, orgId));
+    signal.throwIfAborted();
+    const composeIds = composeRows.map((row) => {
+      return row.id;
+    });
+    if (composeIds.length > 0) {
+      await db.delete(zeroAgents).where(inArray(zeroAgents.id, composeIds));
+      signal.throwIfAborted();
+      await db
+        .delete(agentComposeVersions)
+        .where(inArray(agentComposeVersions.composeId, composeIds));
+      signal.throwIfAborted();
+      await db
+        .delete(agentComposes)
+        .where(inArray(agentComposes.id, composeIds));
+      signal.throwIfAborted();
+    }
+
+    await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
+    signal.throwIfAborted();
   }
 
   return {
