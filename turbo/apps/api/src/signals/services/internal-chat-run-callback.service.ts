@@ -1552,8 +1552,9 @@ async function activeChatRunExistsForThread(
     eq(zeroRuns.chatThreadId, threadId),
     inArray(agentRuns.status, ["queued", "pending", "running"]),
   ];
-  if (options?.excludeRunId !== undefined) {
-    filters.push(ne(zeroRuns.id, options.excludeRunId));
+  const excludeRunId = options?.excludeRunId;
+  if (excludeRunId !== undefined) {
+    filters.push(ne(zeroRuns.id, excludeRunId));
   }
 
   const [run] = await db
