@@ -960,6 +960,7 @@ describe("codex-oauth-token codex provider", () => {
   it("firewall denies auth.openai.com via unknown endpoint policy", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
     expect(config.defaultPolicies).toEqual({
+      deny: ["denied"],
       unknownPolicy: "deny",
     });
     expect(config.apis[1]!.permissions).toEqual([]);

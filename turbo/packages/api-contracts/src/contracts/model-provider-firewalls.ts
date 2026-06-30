@@ -257,6 +257,9 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS = {
       },
     ],
     defaultPolicies: {
+      // Keep the legacy name denied during rolling deploys so new API-created
+      // policies still block old runner catalogs that exposed denied: ANY /*.
+      deny: ["denied"],
       unknownPolicy: "deny",
     },
     placeholders: {
