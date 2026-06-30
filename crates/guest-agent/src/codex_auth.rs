@@ -247,9 +247,9 @@ fn write_auth_json_atomic(codex_home: &Path, serialized: &str) -> Result<(), Age
 // ---------------------------------------------------------------------------
 // Setup function
 //
-// Inputs are explicit (`home_dir`, `now`) so this function is fully
-// testable without touching env or the real clock. The thin wrapper in
-// `cli.rs` reads `env::home_dir()` and `Utc::now()` and calls this.
+// Inputs are explicit so file-state transitions remain testable without
+// touching env or the real clock. The thin wrapper in `cli::codex_setup`
+// reads env and selects the desired auth state.
 // ---------------------------------------------------------------------------
 
 pub(crate) fn reconcile_codex_auth_state(
