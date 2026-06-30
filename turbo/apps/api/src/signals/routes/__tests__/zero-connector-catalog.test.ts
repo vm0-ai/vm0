@@ -54,7 +54,7 @@ describe("GET /api/zero/connector-catalog", () => {
   ): Promise<void> {
     seededFeatureSwitches.push({ orgId, userId });
     await enableFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.PublicConnectorCatalog]: true,
+      [FeatureSwitchKey.ConnectorCatalogApi]: true,
       ...switches,
     });
   }
@@ -111,7 +111,7 @@ describe("GET /api/zero/connector-catalog", () => {
     );
 
     expect(response.body.error.message).toBe(
-      "Public connector catalog is not enabled",
+      "Connector catalog API is not enabled",
     );
   });
 

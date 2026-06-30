@@ -333,7 +333,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.PublicConnectorCatalog]: {
+  [FeatureSwitchKey.ConnectorCatalogApi]: {
     maintainer: "liangyou@vm0.ai",
     description:
       "Expose the read-only public connector catalog API for frontend and CLI metadata migration.",

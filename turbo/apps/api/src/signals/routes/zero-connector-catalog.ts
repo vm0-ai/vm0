@@ -24,11 +24,11 @@ const connectorCatalogAuth = {
   requiredCapability: "connector:read",
 } as const;
 
-const publicConnectorCatalogDisabled = Object.freeze({
+const connectorCatalogApiDisabled = Object.freeze({
   status: 403 as const,
   body: Object.freeze({
     error: Object.freeze({
-      message: "Public connector catalog is not enabled",
+      message: "Connector catalog API is not enabled",
       code: "FORBIDDEN",
     }),
   }),
@@ -50,7 +50,7 @@ const connectorCatalogRequestContext$ = command(async ({ get }) => {
   };
   return {
     enabled: isFeatureEnabled(
-      FeatureSwitchKey.PublicConnectorCatalog,
+      FeatureSwitchKey.ConnectorCatalogApi,
       featureSwitchContext,
     ),
     featureStates: getAllFeatureStates(featureSwitchContext),
@@ -62,7 +62,7 @@ const listConnectorCatalogInner$ = command(
     const context = await set(connectorCatalogRequestContext$);
     signal.throwIfAborted();
     if (!context.enabled) {
-      return publicConnectorCatalogDisabled;
+      return connectorCatalogApiDisabled;
     }
 
     const connectors = await listPublicConnectorCatalog({
@@ -80,7 +80,7 @@ const getConnectorCatalogInner$ = command(
     const context = await set(connectorCatalogRequestContext$);
     signal.throwIfAborted();
     if (!context.enabled) {
-      return publicConnectorCatalogDisabled;
+      return connectorCatalogApiDisabled;
     }
 
     const params = get(pathParamsOf(zeroConnectorCatalogContract.get));
@@ -103,7 +103,7 @@ const getConnectorCatalogPermissionsInner$ = command(
     const context = await set(connectorCatalogRequestContext$);
     signal.throwIfAborted();
     if (!context.enabled) {
-      return publicConnectorCatalogDisabled;
+      return connectorCatalogApiDisabled;
     }
 
     const params = get(pathParamsOf(zeroConnectorCatalogContract.permissions));
