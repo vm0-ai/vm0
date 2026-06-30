@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.17.48](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.47...vsock-host-v0.17.48) (2026-06-30)
+
+
+### Performance Improvements
+
+* reduce host write-file frame copies ([#19524](https://github.com/vm0-ai/vm0/issues/19524)) ([6f60605](https://github.com/vm0-ai/vm0/commit/6f6060531fe3b0d15a60f223b636edec310358ee))
+
 ## [0.17.47](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.46...vsock-host-v0.17.47) (2026-06-30)
 
 ## [0.17.46](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.45...vsock-host-v0.17.46) (2026-06-29)
