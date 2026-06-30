@@ -211,6 +211,7 @@ UnknownPolicy = Literal["allow", "deny", "ask"]
 
 
 class _CompiledNetworkPolicy(NamedTuple):
+    allowed_permissions: frozenset[str]
     blocked_permissions: frozenset[str]
     unknown_policy: UnknownPolicy
     permission_malformed: bool
@@ -607,6 +608,9 @@ def _compile_rule(rule_str: str) -> _CompiledRule | None:
 # non-object top-level networkPolicies payload, non-object per-firewall grants,
 # malformed allow/deny/ask permission sets, and malformed unknownPolicy. It
 # skips non-string policy keys because they cannot address a firewall name.
+# A present per-firewall policy is an explicit grant list for known permission
+# rules; uncategorized known permissions fail closed at match time. Firewall
+# names absent from networkPolicies remain fully permissive.
 #
 # match_compiled_firewall_request applies retained malformed state only after a
 # request matches a compiled base. The relevant fail-closed reasons are
@@ -792,13 +796,14 @@ def compile_network_policies(raw_network_policies: object | None) -> CompiledNet
         if not isinstance(grant, dict):
             compiled[fw_name] = _CompiledNetworkPolicy(
                 frozenset(),
+                frozenset(),
                 "allow",
                 True,
                 False,
             )
             continue
 
-        _allow, allow_malformed = _compile_permission_set(grant.get("allow"))
+        allow, allow_malformed = _compile_permission_set(grant.get("allow"))
         deny, deny_malformed = _compile_permission_set(grant.get("deny"))
         ask, ask_malformed = _compile_permission_set(grant.get("ask"))
 
@@ -813,6 +818,7 @@ def compile_network_policies(raw_network_policies: object | None) -> CompiledNet
             unknown_policy_malformed = True
 
         compiled[fw_name] = _CompiledNetworkPolicy(
+            allow,
             deny | ask,
             unknown_policy,
             allow_malformed or deny_malformed or ask_malformed,
@@ -1121,8 +1127,11 @@ def _evaluate_rule_entries(
         if not decision.can_rule_specificity_affect_decision(rule.specificity):
             continue
 
-        permission_blocked = policy is not None and entry.permission in policy.blocked_permissions
-        if permission_blocked:
+        permission_denied = policy is not None and (
+            entry.permission in policy.blocked_permissions
+            or entry.permission not in policy.allowed_permissions
+        )
+        if permission_denied:
             if not _compiled_path_segments_match(rel_path_segs, rule.path.segments):
                 continue
             if not decision.accept_rule_specificity(rule.specificity):
@@ -1306,7 +1315,9 @@ def match_compiled_firewall_request(
     base, or auth config do not evaluate their rules; malformed permission/rule
     config can still leave valid compiled rules eligible. Malformed top-level
     policies or malformed allow/deny/ask permission sets skip rule evaluation
-    for the matched API. Recorded allow/deny rule decisions keep their current
+    for the matched API. Present per-firewall policies are explicit grants for
+    known permission rules; matched permissions absent from ``allow`` fail closed
+    as denied permissions. Recorded allow/deny rule decisions keep their current
     precedence over retained malformed state, and malformed ``unknownPolicy``
     only affects unknown-endpoint resolution.
 

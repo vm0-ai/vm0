@@ -36,6 +36,79 @@ def test_later_allowed_permission_still_wins_after_earlier_denied_match():
     assert compiled.permission == "repo-admin"
 
 
+def test_later_allowed_permission_still_wins_after_earlier_uncategorized_match():
+    fws = wrap_firewalls(
+        [
+            {
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [
+                    {"name": "repo-read", "rules": ["GET /repos/{owner}/{repo}"]},
+                    {"name": "repo-admin", "rules": ["GET /repos/{owner}/{repo}"]},
+                ],
+            }
+        ],
+        name="github",
+    )
+    policies = {
+        "github": {
+            "allow": ["repo-admin"],
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": "deny",
+        }
+    }
+    url = "https://api.github.com/repos/org/repo"
+    compiled = matching.match_compiled_firewall_request(
+        url,
+        "GET",
+        compile_firewalls_or_fail(fws),
+        policies,
+    )
+    assert isinstance(compiled, matching.FirewallAllow)
+    assert compiled.permission == "repo-admin"
+
+
+def test_uncategorized_permission_names_keep_encounter_order_and_deduplicate():
+    fws = wrap_firewalls(
+        [
+            {
+                "base": "https://api.github.com",
+                "auth": {"headers": {"Authorization": "Bearer token"}},
+                "permissions": [
+                    {
+                        "name": "repo-read",
+                        "rules": [
+                            "GET /repos/{owner}/{repo}",
+                            "ANY /repos/{owner}/{repo}",
+                        ],
+                    },
+                    {"name": "repo-admin", "rules": ["GET /repos/{owner}/{repo}"]},
+                ],
+            }
+        ],
+        name="github",
+    )
+    policies = {
+        "github": {
+            "allow": [],
+            "deny": [],
+            "ask": [],
+            "unknownPolicy": "deny",
+        }
+    }
+    url = "https://api.github.com/repos/org/repo"
+    compiled = matching.match_compiled_firewall_request(
+        url,
+        "GET",
+        compile_firewalls_or_fail(fws),
+        policies,
+    )
+    assert isinstance(compiled, matching.FirewallBlock)
+    assert compiled.permissions == ("repo-read", "repo-admin")
+    assert compiled.reason == "permission_denied"
+
+
 def test_denied_permission_names_keep_encounter_order_and_deduplicate():
     fws = wrap_firewalls(
         [

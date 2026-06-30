@@ -43,8 +43,8 @@ def test_direct_compile_firewalls_ignores_missing_empty_or_non_list_payloads(fir
 @pytest.mark.parametrize(
     "policies",
     [
-        {"github": {"deny": None, "ask": [], "unknownPolicy": "deny"}},
-        {"github": {"deny": [], "ask": None, "unknownPolicy": "deny"}},
+        {"github": {"allow": ["repo-read"], "deny": None, "ask": [], "unknownPolicy": "deny"}},
+        {"github": {"allow": ["repo-read"], "deny": [], "ask": None, "unknownPolicy": "deny"}},
     ],
 )
 def test_null_permission_lists_behave_as_empty(policies):
@@ -84,7 +84,9 @@ def test_malformed_permission_policy_fails_closed_after_base_match(policies):
 
 
 def test_invalid_unknown_policy_only_blocks_unknown_endpoint_branch():
-    policies = {"github": {"deny": [], "ask": [], "unknownPolicy": "broken"}}
+    policies = {
+        "github": {"allow": ["repo-read"], "deny": [], "ask": [], "unknownPolicy": "broken"}
+    }
     compiled_policies = matching.compile_network_policies(policies)
     compiled_firewalls = compile_firewalls_or_fail(_github_firewalls())
 

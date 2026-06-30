@@ -72,7 +72,7 @@ def test_literal_rule_wins_over_earlier_parameter_rule():
         ],
     }
     fws = wrap_firewalls([api_entry], name="x")
-    policies = {"x": {"allow": [], "deny": [], "unknownPolicy": "deny"}}
+    policies = {"x": {"allow": ["community-search"], "deny": [], "unknownPolicy": "deny"}}
 
     result = matching.match_compiled_firewall_request(
         "https://api.x.com/2/communities/search",
@@ -97,7 +97,13 @@ def test_denied_parameter_rule_does_not_block_more_specific_literal_allow():
         ],
     }
     fws = wrap_firewalls([api_entry], name="x")
-    policies = {"x": {"allow": [], "deny": ["community-by-id"], "unknownPolicy": "deny"}}
+    policies = {
+        "x": {
+            "allow": ["community-search"],
+            "deny": ["community-by-id"],
+            "unknownPolicy": "deny",
+        }
+    }
 
     result = matching.match_compiled_firewall_request(
         "https://api.x.com/2/communities/search",
@@ -146,7 +152,7 @@ def test_more_specific_parameter_shape_wins(
         ],
     }
     fws = wrap_firewalls([api_entry], name="example")
-    policies = {"example": {"allow": [], "deny": [], "unknownPolicy": "deny"}}
+    policies = {"example": {"allow": ["later"], "deny": [], "unknownPolicy": "deny"}}
 
     result = matching.match_compiled_firewall_request(
         url,
@@ -216,7 +222,7 @@ def test_many_lower_specificity_denies_do_not_shadow_later_literal_allow():
     fws = wrap_firewalls([api_entry], name="example")
     policies = {
         "example": {
-            "allow": [],
+            "allow": ["admin-read"],
             "deny": [permission["name"] for permission in broad_permissions],
             "unknownPolicy": "deny",
         }

@@ -280,8 +280,8 @@ class TestFirewallNetworkPolicyDecisions:
         assert result.permissions == ("repo-read",)
         assert result.reason == "permission_denied"
 
-    def test_uncategorized_permission_allowed(self):
-        """Permission not in allow/deny/ask defaults to allowed."""
+    def test_permission_absent_from_present_policy_is_blocked(self):
+        """Permission not in allow/deny/ask fails closed for a present policy."""
         policies = {"github": {"allow": [], "deny": [], "ask": [], "unknownPolicy": "deny"}}
         result = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",
@@ -289,8 +289,23 @@ class TestFirewallNetworkPolicyDecisions:
             self._firewalls(),
             network_policies=policies,
         )
-        assert isinstance(result, matching.FirewallAllow)
-        assert result.permission == "repo-read"
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ("repo-read",)
+        assert result.reason == "permission_denied"
+
+    def test_permission_absent_from_allow_is_blocked_even_when_other_permission_allowed(self):
+        policies = {
+            "github": {"allow": ["repo-read"], "deny": [], "ask": [], "unknownPolicy": "deny"}
+        }
+        result = match_request_with_raw_firewalls(
+            "https://api.github.com/repos/org/repo",
+            "PUT",
+            self._firewalls(),
+            network_policies=policies,
+        )
+        assert isinstance(result, matching.FirewallBlock)
+        assert result.permissions == ("repo-write",)
+        assert result.reason == "permission_denied"
 
     def test_ask_permission_blocked(self):
         """Permission in ask list is treated as denied at proxy level."""
@@ -444,8 +459,8 @@ class TestFirewallNetworkPolicyDecisions:
     @pytest.mark.parametrize(
         "policies",
         [
-            {"github": {"deny": None, "ask": [], "unknownPolicy": "deny"}},
-            {"github": {"deny": [], "ask": None, "unknownPolicy": "deny"}},
+            {"github": {"allow": ["repo-read"], "deny": None, "ask": [], "unknownPolicy": "deny"}},
+            {"github": {"allow": ["repo-read"], "deny": [], "ask": None, "unknownPolicy": "deny"}},
         ],
     )
     def test_null_permission_lists_behave_as_empty(self, policies):
@@ -500,7 +515,9 @@ class TestFirewallNetworkPolicyDecisions:
         assert matched.reason == "malformed_network_policy"
 
     def test_invalid_unknown_policy_only_blocks_unknown_endpoint_branch(self):
-        policies = {"github": {"deny": [], "ask": [], "unknownPolicy": "broken"}}
+        policies = {
+            "github": {"allow": ["repo-read"], "deny": [], "ask": [], "unknownPolicy": "broken"}
+        }
 
         allowed = match_request_with_raw_firewalls(
             "https://api.github.com/repos/org/repo",

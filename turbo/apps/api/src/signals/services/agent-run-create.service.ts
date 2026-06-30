@@ -3025,6 +3025,10 @@ function networkPolicyForFirewallPolicy(
       deny.push(name);
     } else if (value === "ask") {
       ask.push(name);
+    } else {
+      throw new Error(
+        `Missing firewall policy action for permission "${name}"`,
+      );
     }
   }
 
@@ -3172,7 +3176,7 @@ function applyConnectorPolicies(
     networkPolicies[firewall.name] = networkPolicyForFirewallPolicy(
       permissionNames,
       {
-        ...policy,
+        policies: { ...defaultPolicy.policies, ...policy.policies },
         unknownPolicy: policy.unknownPolicy ?? defaultPolicy.unknownPolicy,
       },
     );
@@ -3258,7 +3262,7 @@ function applyBuiltinConnectorMetadataPolicies(
     }
 
     networkPolicies[name] = networkPolicyForFirewallPolicy(permissionNames, {
-      ...policy,
+      policies: { ...defaultPolicy.policies, ...policy.policies },
       unknownPolicy: policy.unknownPolicy ?? defaultPolicy.unknownPolicy,
     });
   }

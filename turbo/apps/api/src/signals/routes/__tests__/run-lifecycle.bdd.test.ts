@@ -14,8 +14,12 @@ import {
   UNKNOWN_PERMISSION_GRANT,
   type ExecutionFirewallEntry,
   type FirewallApi,
+  type NetworkPolicies,
 } from "@vm0/connectors/firewall-types";
-import { getFirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
+import {
+  getFirewallExecutionMetadata,
+  loadFirewallPermissionIndex,
+} from "@vm0/connectors/firewall-metadata/server";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { createStore } from "ccstate";
@@ -82,6 +86,35 @@ const CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES = [
   "claim_route_response_assembly",
   "claim_route_transition_running",
 ] as const;
+
+async function expectCompleteBuiltinNetworkPolicy(
+  connectorType: string,
+  policy: NetworkPolicies[string],
+): Promise<void> {
+  const index = await loadFirewallPermissionIndex(connectorType);
+  if (!index) {
+    throw new Error(
+      `Expected firewall permission metadata for ${connectorType}`,
+    );
+  }
+
+  const categorized = new Map<string, string>();
+  for (const [action, names] of [
+    ["allow", policy.allow],
+    ["deny", policy.deny],
+    ["ask", policy.ask],
+  ] as const) {
+    for (const name of names) {
+      expect(index.hasPermission(name)).toBeTruthy();
+      expect(categorized.get(name)).toBeUndefined();
+      categorized.set(name, action);
+    }
+  }
+
+  expect([...categorized.keys()].sort()).toStrictEqual(
+    [...index.permissionNames].sort(),
+  );
+}
 const CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES = [
   "claim_route_transition_lock_run",
   "claim_route_transition_lock_queue_job",
@@ -2924,11 +2957,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     await api.enableAgentConnectors(actor, agentId, ["slack"]);
 
-    async function claimSlackPolicy(prompt: string): Promise<{
-      readonly allow: readonly string[];
-      readonly deny: readonly string[];
-      readonly unknownPolicy?: string;
-    }> {
+    async function claimSlackPolicy(
+      prompt: string,
+    ): Promise<NetworkPolicies[string]> {
       const run = await api.createRun(actor, {
         agentId,
         prompt,
@@ -2945,6 +2976,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     await api.heartbeatRunner(runnerGroup);
     const defaults = await claimSlackPolicy("no grants yet");
+    await expectCompleteBuiltinNetworkPolicy("slack", defaults);
     expect(defaults.allow).toContain("conversations:read");
     expect(defaults.allow).toContain("users:read");
     expect(defaults.deny).toContain("chat:write");
@@ -3048,10 +3080,13 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
       action: "deny",
     });
     const snapshotClaim = await api.claimRunnerJob(snapshotRun.runId);
-    expect(snapshotClaim.networkPolicies?.slack?.allow).toContain("chat:write");
-    expect(snapshotClaim.networkPolicies?.slack?.deny).not.toContain(
-      "chat:write",
-    );
+    const snapshotPolicy = snapshotClaim.networkPolicies?.slack;
+    if (!snapshotPolicy) {
+      throw new Error("Expected a slack network policy on the snapshot claim");
+    }
+    await expectCompleteBuiltinNetworkPolicy("slack", snapshotPolicy);
+    expect(snapshotPolicy.allow).toContain("chat:write");
+    expect(snapshotPolicy.deny).not.toContain("chat:write");
 
     await api.requestCancelRun(actor, snapshotRun.runId, [200]);
     const drained = await api.readRunQueue(actor);
@@ -3075,11 +3110,9 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
     await api.enableAgentConnectors(actor, agentId, ["cloudflare"]);
 
-    async function claimCloudflarePolicy(prompt: string): Promise<{
-      readonly allow: readonly string[];
-      readonly deny: readonly string[];
-      readonly unknownPolicy?: string;
-    }> {
+    async function claimCloudflarePolicy(
+      prompt: string,
+    ): Promise<NetworkPolicies[string]> {
       const run = await api.createRun(actor, {
         agentId,
         prompt,
@@ -3096,6 +3129,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
 
     await api.heartbeatRunner(runnerGroup);
     const defaults = await claimCloudflarePolicy("default unknown policy");
+    await expectCompleteBuiltinNetworkPolicy("cloudflare", defaults);
     expect(defaults.allow).toContain("dns-firewall.read");
     expect(defaults.deny).toContain("dns-firewall.write");
     expect(defaults.unknownPolicy).toBe("deny");
@@ -3108,6 +3142,7 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     });
 
     const overridden = await claimCloudflarePolicy("allow unknown endpoints");
+    await expectCompleteBuiltinNetworkPolicy("cloudflare", overridden);
     expect(overridden.allow).toContain("dns-firewall.read");
     expect(overridden.deny).toContain("dns-firewall.write");
     expect(overridden.unknownPolicy).toBe("allow");
@@ -3177,8 +3212,61 @@ describe("RUN-02: custom connectors, grants, and network policies", () => {
     if (!policy) {
       throw new Error("Expected a cloudflare network policy on the claim");
     }
+    await expectCompleteBuiltinNetworkPolicy("cloudflare", policy);
     expect(policy.allow).toContain("dns-firewall.read");
     expect(policy.deny).toContain("dns-firewall.write");
+    expect(policy.unknownPolicy).toBe("deny");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("resolves sparse direct-run permission policies into complete execution policies", async () => {
+    const bdd = createBddApi(context);
+    const api = createRunsAutomationsApi(context);
+    const fw = createFirewallApi(context);
+    const actor = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    api.acceptStorageDownloads();
+    api.acceptTelemetryIngest();
+    const runnerGroup = api.configureRunnerGroup();
+    await api.grantProEntitlement(actor);
+
+    await fw.seedTestConnector(actor, {
+      connectorName: "cloudflare",
+      authMethod: "oauth",
+      accessToken: "cloudflare-direct-sparse-policy-bdd-token",
+    });
+    const composeName = `bdd-cloudflare-sparse-policy-${randomUUID().slice(0, 8)}`;
+    const compose = await api.createCompose(actor, {
+      version: "1",
+      agents: {
+        [composeName]: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
+        },
+      },
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "direct run cloudflare sparse policy",
+      permissionPolicies: {
+        cloudflare: {
+          policies: { "dns-firewall.write": "allow" },
+        },
+      },
+    });
+
+    await api.heartbeatRunner(runnerGroup);
+    const claim = await api.claimRunnerJob(run.runId);
+    const policy = claim.networkPolicies?.cloudflare;
+    if (!policy) {
+      throw new Error("Expected a cloudflare network policy on the claim");
+    }
+    await expectCompleteBuiltinNetworkPolicy("cloudflare", policy);
+    expect(policy.allow).toContain("dns-firewall.read");
+    expect(policy.allow).toContain("dns-firewall.write");
+    expect(policy.deny).not.toContain("dns-firewall.write");
     expect(policy.unknownPolicy).toBe("deny");
 
     await api.requestCancelRun(actor, run.runId, [200]);
