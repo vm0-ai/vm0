@@ -127,7 +127,7 @@ interface WorkflowMetadataPatch {
  */
 export const currentWorkflowId$ = computed((get): string | null => {
   const route = get(activeRoute$);
-  if (route !== "agentWorkflowDetail" && route !== "workflowDetail") {
+  if (route !== "workflowDetail") {
     return null;
   }
   const workflowId = get(pathParams$)?.workflowId;

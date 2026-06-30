@@ -333,10 +333,9 @@ function TriggerCardHeader({
         </p>
       </div>
       <Link
-        pathname={ROUTES.agentWorkflowDetail}
+        pathname={ROUTES.workflowDetail}
         options={{
           pathParams: {
-            agentId: entry.workflow.agentId,
             workflowId: entry.workflow.id,
           },
           searchParams: new URLSearchParams({
@@ -364,10 +363,9 @@ function WorkflowAutomationTriggerCard({
   const running = runLoadable.state === "loading";
   const editLink = (
     <Link
-      pathname={ROUTES.agentWorkflowDetail}
+      pathname={ROUTES.workflowDetail}
       options={{
         pathParams: {
-          agentId: entry.workflow.agentId,
           workflowId: entry.workflow.id,
         },
         searchParams: new URLSearchParams({

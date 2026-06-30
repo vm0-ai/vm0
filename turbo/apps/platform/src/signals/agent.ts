@@ -80,9 +80,7 @@ export const currentAgentId$ = computed((get) => {
     route !== "agentDetail" &&
     route !== "agentChat" &&
     route !== "agentIdeas" &&
-    route !== "agentPermissions" &&
-    route !== "agentWorkflows" &&
-    route !== "agentWorkflowDetail"
+    route !== "agentPermissions"
   ) {
     return null;
   }

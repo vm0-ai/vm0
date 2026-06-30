@@ -1,6 +1,5 @@
 import { command, computed, state } from "ccstate";
-import { match } from "path-to-regexp";
-import { pathname, search } from "../../location.ts";
+import { search } from "../../location.ts";
 import {
   pathParams$,
   replacePathSilently$,
@@ -37,11 +36,6 @@ function isValidTab(tab: string): boolean {
 }
 
 function getInitialTab(): string {
-  if (
-    match(ROUTES.agentWorkflows, { decode: decodeURIComponent })(pathname())
-  ) {
-    return "workflows";
-  }
   const params = new URLSearchParams(search());
   const tab = params.get("tab") ?? "";
   return isValidTab(tab) ? tab : "authorization";
@@ -60,11 +54,6 @@ export const setAgentActiveTab$ = command(({ get, set }, tab: string) => {
   const params = get(pathParams$) ?? {};
   const agentId = params.agentId;
   if (typeof agentId !== "string") {
-    return;
-  }
-
-  if (nextTab === "workflows") {
-    set(replacePathSilently$, ROUTES.agentWorkflows, { agentId });
     return;
   }
 

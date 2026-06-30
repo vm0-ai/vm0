@@ -68,13 +68,11 @@ export function WorkflowListPanel({
   loading,
   showAgentColumn,
   emptyDescription,
-  linkMode = "agent",
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[] | null;
   readonly loading: boolean;
   readonly showAgentColumn: boolean;
   readonly emptyDescription: string;
-  readonly linkMode?: "agent" | "workspace";
 }) {
   return (
     <section className="min-h-[520px]">
@@ -84,7 +82,6 @@ export function WorkflowListPanel({
         <WorkflowGroups
           workflows={workflows}
           showAgentColumn={showAgentColumn}
-          linkMode={linkMode}
         />
       ) : (
         <div className="zero-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
@@ -101,11 +98,9 @@ export function WorkflowListPanel({
 function WorkflowGroups({
   workflows,
   showAgentColumn,
-  linkMode,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[];
   readonly showAgentColumn: boolean;
-  readonly linkMode: "agent" | "workspace";
 }) {
   const groups = groupWorkflows(workflows);
 
@@ -134,7 +129,6 @@ function WorkflowGroups({
                     key={workflow.id}
                     workflow={workflow}
                     showAgentColumn={showAgentColumn}
-                    linkMode={linkMode}
                   />
                 );
               })}
@@ -185,36 +179,14 @@ function WorkflowSlug({ name }: { readonly name: string }) {
 function WorkflowIndexCard({
   workflow,
   showAgentColumn,
-  linkMode,
 }: {
   readonly workflow: ZeroWorkflowSummary;
   readonly showAgentColumn: boolean;
-  readonly linkMode: "agent" | "workspace";
 }) {
-  const linkOptions =
-    linkMode === "workspace"
-      ? {
-          pathname: ROUTES.workflowDetail,
-          options: {
-            pathParams: {
-              workflowId: workflow.id,
-            },
-          },
-        }
-      : {
-          pathname: ROUTES.agentWorkflowDetail,
-          options: {
-            pathParams: {
-              agentId: workflow.agentId,
-              workflowId: workflow.id,
-            },
-          },
-        };
-
   return (
     <Link
-      pathname={linkOptions.pathname}
-      options={linkOptions.options}
+      pathname={ROUTES.workflowDetail}
+      options={{ pathParams: { workflowId: workflow.id } }}
       className="zero-card block px-5 py-4 text-left text-foreground no-underline transition-colors hover:bg-gray-50"
     >
       <div className="flex items-start justify-between gap-4">
@@ -285,7 +257,6 @@ export function WorkflowsPage() {
             workflows={workflows}
             loading={loading}
             showAgentColumn
-            linkMode="workspace"
             emptyDescription="Create a workflow from chat or save one from a useful run."
           />
         </div>
