@@ -1,4 +1,4 @@
-import type { MouseEvent, ReactNode } from "react";
+import type { CSSProperties, MouseEvent, ReactNode } from "react";
 import { IconDots } from "@tabler/icons-react";
 import {
   Tooltip,
@@ -29,14 +29,32 @@ function triggerClassName(
   isPrimarySelected: boolean,
 ) {
   if (variant === "sidebar") {
-    return `peer pointer-events-auto absolute left-1 top-1 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible group-focus-within:visible data-[state=open]:visible transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
+    return `peer pointer-events-auto absolute left-1 top-1 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
       isPrimarySelected
         ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
         : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
     }`;
   }
 
-  return "peer absolute inset-0 z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground invisible transition-colors duration-150 group-hover:visible group-focus-within:visible data-[state=open]:visible hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18 disabled:cursor-not-allowed disabled:opacity-50";
+  return "peer absolute inset-0 z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors duration-150 hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18 disabled:cursor-not-allowed disabled:opacity-50";
+}
+
+const actionVisibilityStyle = {
+  "--agent-row-trigger-opacity": 0,
+  "--agent-row-unread-opacity": 1,
+} as CSSProperties;
+
+const triggerOpacityStyle = {
+  opacity: "var(--agent-row-trigger-opacity)",
+} as CSSProperties;
+
+const unreadOpacityStyle = {
+  opacity: "var(--agent-row-unread-opacity)",
+} as CSSProperties;
+
+function setActionVisibility(element: HTMLElement, visible: boolean) {
+  element.style.setProperty("--agent-row-trigger-opacity", visible ? "1" : "0");
+  element.style.setProperty("--agent-row-unread-opacity", visible ? "0" : "1");
 }
 
 export function AgentRowSideActions({
@@ -61,10 +79,27 @@ export function AgentRowSideActions({
 
   return (
     <div
+      onPointerEnter={(e) => {
+        setActionVisibility(e.currentTarget, true);
+      }}
+      onPointerLeave={(e) => {
+        setActionVisibility(e.currentTarget, false);
+      }}
+      onFocusCapture={(e) => {
+        setActionVisibility(e.currentTarget, true);
+      }}
+      onBlurCapture={(e) => {
+        setActionVisibility(e.currentTarget, false);
+      }}
+      style={action ? actionVisibilityStyle : undefined}
       className={
         variant === "sidebar"
-          ? "pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center"
-          : "relative flex h-8 w-8 shrink-0 items-center justify-center"
+          ? `absolute right-0 top-0 flex h-8 w-8 items-center justify-center ${
+              action ? "" : "pointer-events-none"
+            }`
+          : `relative flex h-8 w-8 shrink-0 items-center justify-center ${
+              action ? "" : "pointer-events-none"
+            }`
       }
     >
       {action ? (
@@ -74,6 +109,7 @@ export function AgentRowSideActions({
               <button
                 type="button"
                 className={triggerClassName(variant, isPrimarySelected)}
+                style={triggerOpacityStyle}
                 onClick={handleMenuTriggerClick}
                 aria-label="Open agent menu"
                 disabled={action.disabled}
@@ -106,7 +142,10 @@ export function AgentRowSideActions({
         </TooltipProvider>
       ) : null}
       {hasUnread ? (
-        <span className="pointer-events-none flex items-center justify-center opacity-100 transition-opacity duration-150 group-hover:opacity-0 group-focus-within:opacity-0 peer-data-[state=open]:opacity-0">
+        <span
+          className="pointer-events-none flex items-center justify-center transition-opacity duration-150"
+          style={action ? unreadOpacityStyle : undefined}
+        >
           <AgentUnreadIndicator />
         </span>
       ) : null}
