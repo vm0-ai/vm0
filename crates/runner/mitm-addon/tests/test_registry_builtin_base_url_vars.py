@@ -189,6 +189,82 @@ class TestRegistryBuiltinBaseUrlVars:
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme。atlassian。net"
 
+    def test_builtin_provider_owned_rejects_unsafe_idna_compatibility_host(
+        self, tmp_path, monkeypatch
+    ):
+        install_test_builtin_firewall(
+            monkeypatch,
+            name="unsafe-provider-host",
+            base="https://fa\u212a.example.com",
+            host_policy={"kind": "providerOwned", "suffixes": ["example.com"]},
+        )
+        path = tmp_path / "registry.json"
+        write_builtin_firewall_registry(
+            path,
+            run_id="run-unsafe-provider-host",
+            name="unsafe-provider-host",
+            base_url_vars={},
+        )
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            context = registry.get_vm_context("10.200.0.1", str(path))
+            state = registry.load_registry_state(str(path))
+
+        assert context is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        invalid_vm = state.invalid_vms["10.200.0.1"]
+        assert invalid_vm.reason == "invalid_firewalls"
+        assert "resolved base URL is invalid" in invalid_vm.message
+
+    def test_builtin_provider_owned_accepts_percent_encoded_idna_host(self, tmp_path, monkeypatch):
+        install_test_builtin_firewall(
+            monkeypatch,
+            name="encoded-provider-host",
+            base="https://${{ vars.API_HOST }}",
+            host_policy={"kind": "providerOwned", "suffixes": ["example.com"]},
+        )
+        path = tmp_path / "registry.json"
+        write_builtin_firewall_registry(
+            path,
+            run_id="run-encoded-provider-host",
+            name="encoded-provider-host",
+            base_url_vars={"API_HOST": "b%C3%BCcher.example.com"},
+        )
+
+        context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        assert vm_info["firewalls"][0]["apis"][0]["base"] == ("https://b%C3%BCcher.example.com")
+
+    def test_builtin_public_destination_rejects_unsafe_idna_compatibility_host(
+        self, tmp_path, monkeypatch
+    ):
+        install_test_builtin_firewall(
+            monkeypatch,
+            name="unsafe-public-host",
+            base="https://fa\u212a.example.com",
+            host_policy={"kind": "publicDestination"},
+        )
+        path = tmp_path / "registry.json"
+        write_builtin_firewall_registry(
+            path,
+            run_id="run-unsafe-public-host",
+            name="unsafe-public-host",
+            base_url_vars={},
+        )
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            context = registry.get_vm_context("10.200.0.1", str(path))
+            state = registry.load_registry_state(str(path))
+
+        assert context is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        invalid_vm = state.invalid_vms["10.200.0.1"]
+        assert invalid_vm.reason == "invalid_firewalls"
+        assert "resolved base URL is invalid" in invalid_vm.message
+
     def test_builtin_provider_owned_whole_authority_rejects_unowned_hosts(self, tmp_path):
         for value in [
             "attacker.example",

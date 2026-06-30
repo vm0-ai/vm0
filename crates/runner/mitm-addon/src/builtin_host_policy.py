@@ -3,12 +3,15 @@
 import ipaddress
 import re
 import urllib.parse
+from typing import NamedTuple
 
 import public_destination
+from authority_utils import IPV6_VERSION, percent_decode_host
 from firewall_auth_config import (
     auth_config_injects_credentials,
     auth_config_injects_ordinary_upstream_credentials,
 )
+from host_normalization import normalize_idna_hostname
 from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 
 BUILTIN_HOST_POLICY_RUNTIME_MARKER = "_builtinHostPolicyRuntime"
@@ -28,6 +31,7 @@ _PROVIDER_OWNED_HOST_POLICY_KEYS = frozenset(
     ("kind", "exactHosts", "suffixes", "allowNonDefaultPort")
 )
 _PUBLIC_DESTINATION_HOST_POLICY_KEYS = frozenset(("kind",))
+_PERCENT_DECODED_HOST_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61,")
 
 
 class BuiltinHostPolicyError(ValueError):
@@ -41,6 +45,11 @@ class BuiltinRuntimeHostPolicyError(ValueError):
         super().__init__(message)
         self.reason = reason
         self.message = message
+
+
+class _RawBaseHost(NamedTuple):
+    hostname: str
+    bracketed: bool
 
 
 def validate_credentialed_builtin_base(
@@ -101,15 +110,85 @@ def _invalid_resolved_base_url(firewall_name: str) -> BuiltinHostPolicyError:
     )
 
 
-def _parsed_hostname(
+def _raw_base_host(
     *,
     firewall_name: str,
     parsed: urllib.parse.SplitResult,
-) -> str | None:
+) -> _RawBaseHost:
+    authority = parsed.netloc.rsplit("@", maxsplit=1)[-1]
+    if authority.startswith("["):
+        close_index = authority.find("]")
+        if close_index == -1:
+            raise _invalid_resolved_base_url(firewall_name)
+        rest = authority[close_index + 1 :]
+        if rest and not rest.startswith(":"):
+            raise _invalid_resolved_base_url(firewall_name)
+        hostname = authority[1:close_index]
+        if not hostname:
+            raise _invalid_resolved_base_url(firewall_name)
+        return _RawBaseHost(hostname, bracketed=True)
+
+    if authority.count(":") > 1:
+        raise _invalid_resolved_base_url(firewall_name)
+    if ":" in authority:
+        hostname, _, _port = authority.rpartition(":")
+        if not hostname:
+            raise _invalid_resolved_base_url(firewall_name)
+        return _RawBaseHost(hostname, bracketed=False)
+    if not authority:
+        raise _invalid_resolved_base_url(firewall_name)
+    return _RawBaseHost(authority, bracketed=False)
+
+
+def _decoded_base_host(
+    *,
+    firewall_name: str,
+    parsed: urllib.parse.SplitResult,
+) -> _RawBaseHost:
+    raw_host = _raw_base_host(firewall_name=firewall_name, parsed=parsed)
+    decoded = percent_decode_host(
+        raw_host.hostname,
+        syntax_chars=_PERCENT_DECODED_HOST_SYNTAX_CHARS,
+    )
+    if decoded.invalid_encoding or decoded.decoded_syntax:
+        raise _invalid_resolved_base_url(firewall_name)
+    if raw_host.bracketed:
+        try:
+            parsed_ip = ipaddress.ip_address(decoded.value)
+        except ValueError as e:
+            raise _invalid_resolved_base_url(firewall_name) from e
+        if parsed_ip.version != IPV6_VERSION or parsed_ip.scope_id is not None:
+            raise _invalid_resolved_base_url(firewall_name)
+    return _RawBaseHost(decoded.value, raw_host.bracketed)
+
+
+def _provider_owned_base_hostname(
+    *,
+    firewall_name: str,
+    parsed: urllib.parse.SplitResult,
+) -> str:
+    decoded_host = _decoded_base_host(firewall_name=firewall_name, parsed=parsed)
+    if decoded_host.bracketed:
+        return f"[{ipaddress.ip_address(decoded_host.hostname).compressed.lower()}]"
     try:
-        return parsed.hostname
-    except ValueError as e:
+        return normalize_idna_hostname(decoded_host.hostname)
+    except (UnicodeError, ValueError) as e:
         raise _invalid_resolved_base_url(firewall_name) from e
+
+
+def _public_destination_base_hostname(
+    *,
+    firewall_name: str,
+    parsed: urllib.parse.SplitResult,
+) -> str:
+    decoded_host = _decoded_base_host(firewall_name=firewall_name, parsed=parsed)
+    if decoded_host.bracketed:
+        return f"[{decoded_host.hostname}]"
+    try:
+        normalize_idna_hostname(decoded_host.hostname)
+    except (UnicodeError, ValueError) as e:
+        raise _invalid_resolved_base_url(firewall_name) from e
+    return decoded_host.hostname
 
 
 def _parsed_port(
@@ -233,12 +312,9 @@ def _validate_provider_owned_host_policy(
     parsed: urllib.parse.SplitResult,
     policy: dict,
 ) -> None:
-    parsed_hostname = _parsed_hostname(firewall_name=firewall_name, parsed=parsed)
-    if parsed_hostname is None:
-        raise BuiltinHostPolicyError(
-            f'builtin firewall "{firewall_name}" resolved base URL is invalid'
-        )
-    hostname = _normalize_host_policy_hostname(parsed_hostname)
+    hostname = _normalize_host_policy_hostname(
+        _provider_owned_base_hostname(firewall_name=firewall_name, parsed=parsed)
+    )
     exact_hosts = _host_policy_string_list(policy, "exactHosts")
     suffixes = _host_policy_string_list(policy, "suffixes")
     allow_non_default_port = _host_policy_optional_bool(
@@ -287,11 +363,7 @@ def _validate_public_destination_host_policy(
     firewall_name: str,
     parsed: urllib.parse.SplitResult,
 ) -> None:
-    hostname = _parsed_hostname(firewall_name=firewall_name, parsed=parsed)
-    if hostname is None:
-        raise BuiltinHostPolicyError(
-            f'builtin firewall "{firewall_name}" resolved base URL is invalid'
-        )
+    hostname = _public_destination_base_hostname(firewall_name=firewall_name, parsed=parsed)
     public_ip_literal = public_destination.public_ip_literal_is_public(hostname)
     if public_ip_literal is False:
         raise BuiltinHostPolicyError(

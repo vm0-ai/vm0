@@ -389,6 +389,25 @@ def _percent_decode_host(host: str) -> str:
     return decoded.value
 
 
+def _raw_rewrite_base_host(netloc: str) -> str | None:
+    authority = netloc.rsplit("@", maxsplit=1)[-1]
+    if authority.startswith("["):
+        close_index = authority.find("]")
+        if close_index == -1:
+            return None
+        rest = authority[close_index + 1 :]
+        if rest and not rest.startswith(":"):
+            return None
+        return authority[1:close_index]
+
+    if authority.count(":") > 1:
+        return None
+    if ":" in authority:
+        host, _, _port = authority.rpartition(":")
+        return host or None
+    return authority or None
+
+
 def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResult, str]:
     if "\\" in resolved_base:
         raise ValueError("Invalid auth.base URL: must not contain backslash")
@@ -413,8 +432,8 @@ def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResul
     if has_unsafe_path(parsed.path):
         raise ValueError("Invalid auth.base URL: unsafe path syntax is not allowed")
 
-    host = parsed.hostname
-    if not host:
+    host = _raw_rewrite_base_host(parsed.netloc)
+    if host is None:
         raise ValueError("Invalid auth.base URL: missing host")
     decoded_host = _percent_decode_host(host)
     try:

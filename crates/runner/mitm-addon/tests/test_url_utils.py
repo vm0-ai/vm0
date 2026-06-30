@@ -153,6 +153,8 @@ class TestBuildRewriteUrl:
             ("https://127。0。0。1?token=static", "invalid host"),
             ("https://127.0.0.1。/hook", "invalid host"),
             ("https://\uff11\uff12\uff17.\uff10.\uff10.\uff11/hook", "invalid host"),
+            ("https://fa\u212a.example/hook", "invalid host"),
+            ("https://\u212a.example/hook", "invalid host"),
         ],
     )
     def test_invalid_resolved_base_rejected(self, base, message):
