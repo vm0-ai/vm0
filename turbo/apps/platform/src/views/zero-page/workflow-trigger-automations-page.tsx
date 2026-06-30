@@ -23,8 +23,9 @@ import {
   IconPlayerPlay,
   IconPlus,
   IconRepeat,
+  IconTag,
 } from "@tabler/icons-react";
-import { Button } from "@vm0/ui";
+import { Button, Switch, cn } from "@vm0/ui";
 import {
   Dialog,
   DialogContent,
@@ -56,6 +57,7 @@ import {
   allWorkflowTriggerEntries$,
   allVisibleWorkflows$,
   runWorkflowTriggerNow$,
+  setWorkflowTriggerEnabled$,
   WORKFLOW_DETAIL_TAB_PARAM,
   type WorkflowTriggerAutomationEntry,
 } from "../../signals/workflows-page/workflows-signals.ts";
@@ -73,7 +75,7 @@ import {
   AgentDialogSearch,
   AgentDialogSection,
 } from "./zero-sidebar-dialogs.tsx";
-import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
+import { AgentAvatarImg, AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import {
   agentLabel,
   formatWorkflowIntervalSeconds,
@@ -260,7 +262,7 @@ function cronRuleLabel(
   return `Every day at ${time}`;
 }
 
-function triggerRuleLabel(
+function legacyTriggerRuleLabel(
   trigger: ZeroWorkflowTriggerSummary,
   displayTimezone: string,
 ): string {
@@ -285,6 +287,54 @@ function triggerRuleLabel(
   );
 }
 
+function quote(value: string): string {
+  return `"${value}"`;
+}
+
+function humanReadableTriggerRuleLabel(
+  trigger: ZeroWorkflowTriggerSummary,
+  displayTimezone: string,
+): string {
+  if (trigger.kind === "schedule") {
+    const schedule = trigger.schedule;
+    if (schedule.type === "loop") {
+      return `Every ${formatWorkflowIntervalSeconds(schedule.intervalSeconds)}`;
+    }
+    if (schedule.type === "once") {
+      const { date, hour, minute } = atTimeInTimezone(
+        schedule.atTime,
+        displayTimezone,
+      );
+      return `Once on ${date} at ${formatClockTime(hour, minute)}`;
+    }
+    return cronRuleLabel(
+      schedule.cronExpression,
+      schedule.timezone,
+      displayTimezone,
+    );
+  }
+
+  if (trigger.eventType === "gmail-new-message") {
+    const summary = gmailTriggerSummary(trigger);
+    return summary && summary !== "all inbound messages"
+      ? `When Gmail message matches ${summary}`
+      : "When any Gmail message arrives";
+  }
+  if (trigger.eventType === "gmail-label-applied") {
+    return `When Gmail label ${quote(trigger.eventConfig.labelName)} is applied`;
+  }
+  if (trigger.eventType === "github-label-applied") {
+    return `When GitHub label ${quote(trigger.eventConfig.labelName)} is applied`;
+  }
+  if (trigger.eventType === "google-calendar-event-created") {
+    return `When calendar ${quote(trigger.eventConfig.calendarId)} gets a new event`;
+  }
+  if (trigger.eventType === "webhook-received") {
+    return "When an inbound webhook is received";
+  }
+  return gmailTriggerTitle(trigger);
+}
+
 function triggerRows(
   trigger: ZeroWorkflowTriggerSummary,
   displayTimezone: string,
@@ -292,7 +342,7 @@ function triggerRows(
   const rows: WorkflowTriggerCardRow[] = [
     {
       label: trigger.kind === "schedule" ? "Schedule" : "Trigger",
-      value: triggerRuleLabel(trigger, displayTimezone),
+      value: legacyTriggerRuleLabel(trigger, displayTimezone),
     },
     {
       label: "Last run",
@@ -445,6 +495,185 @@ function TriggerGridSkeleton() {
         );
       })}
     </div>
+  );
+}
+
+function TriggerListSkeleton() {
+  return (
+    <div
+      className="flex flex-col gap-2.5"
+      data-testid="workflow-trigger-list-skeleton"
+    >
+      {["a", "b", "c"].map((key) => {
+        return (
+          <div
+            key={key}
+            className="zero-card grid min-h-[5.5rem] grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-4 px-5 py-4"
+          >
+            <Skeleton className="row-span-2 h-11 w-11 rounded-xl" />
+            <Skeleton className="h-4 w-48 max-w-full rounded-md" />
+            <Skeleton className="row-span-2 h-5 w-9 rounded-full" />
+            <div className="flex min-w-0 items-center gap-2">
+              <Skeleton className="h-5 w-5 rounded-full" />
+              <Skeleton className="h-3 w-64 max-w-full rounded-md" />
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
+function agentInitials(label: string): string {
+  const words = label.trim().split(/\s+/).filter(Boolean);
+  if (words.length >= 2) {
+    return `${words[0]?.[0] ?? ""}${words[1]?.[0] ?? ""}`.toUpperCase();
+  }
+  return (words[0]?.slice(0, 2) || "??").toUpperCase();
+}
+
+function WorkflowAgentAvatar({
+  agent,
+  label,
+}: {
+  readonly agent: TeamComposeItem | undefined;
+  readonly label: string;
+}) {
+  const className =
+    "h-5 w-5 shrink-0 overflow-hidden rounded-full border border-border/60 bg-gray-50 object-cover object-top text-[9px] font-semibold text-muted-foreground";
+  if (agent?.avatarUrl) {
+    return (
+      <AvatarFromUrl
+        avatarUrl={agent.avatarUrl}
+        alt={label}
+        className={className}
+        size={20}
+      />
+    );
+  }
+  return (
+    <span className={cn("inline-flex items-center justify-center", className)}>
+      {agentInitials(label)}
+    </span>
+  );
+}
+
+function TriggerListIcon({
+  trigger,
+}: {
+  readonly trigger: ZeroWorkflowTriggerSummary;
+}) {
+  const Icon = (() => {
+    if (trigger.kind === "schedule") {
+      if (trigger.schedule.type === "loop") {
+        return IconRepeat;
+      }
+      if (trigger.schedule.type === "once") {
+        return IconClock;
+      }
+      return IconCalendarTime;
+    }
+    if (trigger.eventType === "webhook-received") {
+      return IconLink;
+    }
+    if (trigger.eventType === "github-label-applied") {
+      return IconBrandGithub;
+    }
+    if (trigger.eventType === "gmail-label-applied") {
+      return IconTag;
+    }
+    return IconMail;
+  })();
+  const tone =
+    trigger.kind === "schedule"
+      ? "bg-blue-50 text-blue-600"
+      : trigger.eventType === "webhook-received"
+        ? "bg-amber-50 text-amber-700"
+        : "bg-emerald-50 text-emerald-700";
+
+  return (
+    <span
+      className={cn(
+        "row-span-2 flex h-11 w-11 shrink-0 items-center justify-center rounded-xl border border-border/60",
+        tone,
+      )}
+      aria-hidden="true"
+    >
+      <Icon size={20} stroke={1.6} />
+    </span>
+  );
+}
+
+function WorkflowTriggerEnabledSwitch({
+  entry,
+}: {
+  readonly entry: WorkflowTriggerAutomationEntry;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const [enabledLoadable, setEnabled] = useLoadableSet(
+    setWorkflowTriggerEnabled$,
+  );
+  const busy = enabledLoadable.state === "loading";
+  const title = workflowTitle(entry.workflow);
+
+  return (
+    <Switch
+      checked={entry.trigger.enabled}
+      disabled={busy || !entry.workflow.canManage}
+      aria-label={`${entry.trigger.enabled ? "Disable" : "Enable"} ${title}`}
+      className="row-span-2 h-5 w-9 data-[state=checked]:bg-primary data-[state=unchecked]:bg-muted [&>span]:h-4 [&>span]:w-4 [&>span]:data-[state=checked]:translate-x-4"
+      onCheckedChange={(enabled) => {
+        detach(
+          setEnabled({ triggerId: entry.trigger.id, enabled }, pageSignal),
+          Reason.DomCallback,
+        );
+      }}
+    />
+  );
+}
+
+function WorkflowTriggerIndexCard({
+  entry,
+  displayTimezone,
+  agents,
+}: {
+  readonly entry: WorkflowTriggerAutomationEntry;
+  readonly displayTimezone: string;
+  readonly agents: readonly TeamComposeItem[];
+}) {
+  const title = workflowTitle(entry.workflow);
+  const label = agentLabel(entry.workflow);
+  const agent = agents.find((item) => {
+    return item.id === entry.workflow.agentId;
+  });
+
+  return (
+    <article
+      className={cn(
+        "zero-card grid min-w-0 grid-cols-[2.75rem_minmax(0,1fr)_auto] items-center gap-x-4 gap-y-1 px-5 py-4 transition-colors hover:bg-gray-50",
+        !entry.trigger.enabled && "opacity-75",
+      )}
+    >
+      <TriggerListIcon trigger={entry.trigger} />
+      <Link
+        pathname={ROUTES.automationDetail}
+        options={{ pathParams: { automationId: entry.trigger.id } }}
+        className="min-w-0 truncate text-sm font-medium text-foreground no-underline underline-offset-4 hover:underline"
+      >
+        {title}
+      </Link>
+      <WorkflowTriggerEnabledSwitch entry={entry} />
+      <div className="flex min-w-0 flex-wrap items-center gap-x-1.5 gap-y-1 text-sm leading-5 text-muted-foreground">
+        <WorkflowAgentAvatar agent={agent} label={label} />
+        <span className="max-w-[10rem] truncate">{label}</span>
+        <span className="select-none text-muted-foreground/50">·</span>
+        <span>Trigger</span>
+        <span className="select-none text-muted-foreground/50">·</span>
+        <span className="min-w-0 font-medium text-foreground/85">
+          {humanReadableTriggerRuleLabel(entry.trigger, displayTimezone)}
+        </span>
+      </div>
+    </article>
   );
 }
 
@@ -883,12 +1112,51 @@ export function WorkflowTriggerAutomationList({
   );
 }
 
+function WorkflowTriggerAutomationIndexList({
+  entries,
+  displayTimezone,
+  agents,
+  loading,
+  onAdd,
+}: {
+  readonly entries: readonly WorkflowTriggerAutomationEntry[];
+  readonly displayTimezone: string;
+  readonly agents: readonly TeamComposeItem[];
+  readonly loading: boolean;
+  readonly onAdd: () => void;
+}) {
+  if (loading) {
+    return <TriggerListSkeleton />;
+  }
+
+  if (entries.length === 0) {
+    return <EmptyTriggers onAdd={onAdd} />;
+  }
+
+  return (
+    <div className="flex flex-col gap-2.5">
+      {entries.map((entry) => {
+        return (
+          <WorkflowTriggerIndexCard
+            key={entry.trigger.id}
+            entry={entry}
+            displayTimezone={displayTimezone}
+            agents={agents}
+          />
+        );
+      })}
+    </div>
+  );
+}
+
 export function WorkflowTriggerAutomationsPage() {
   const entriesLoadable = useLastLoadable(allWorkflowTriggerEntries$);
   const prefsLoadable = useLastLoadable(userPreferences$);
+  const agentsLoadable = useLastLoadable(agents$);
   const setCreateOpen = useSet(setWorkflowAutomationDialogOpen$);
   const entries =
     entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
+  const agents = agentsLoadable.state === "hasData" ? agentsLoadable.data : [];
   const displayTimezone =
     prefsLoadable.state === "hasData" && prefsLoadable.data?.timezone
       ? prefsLoadable.data.timezone
@@ -898,7 +1166,7 @@ export function WorkflowTriggerAutomationsPage() {
   return (
     <div className="flex min-h-0 flex-1 flex-col">
       <header className="shrink-0 bg-transparent px-4 pb-0 pt-3 sm:px-6 md:pb-3 md:pt-10">
-        <div className="mx-auto flex max-w-[1120px] flex-wrap items-end justify-between gap-4">
+        <div className="mx-auto flex max-w-[900px] flex-wrap items-end justify-between gap-4">
           <div className="hidden min-w-0 md:block">
             <h1 className="text-lg font-semibold tracking-tight text-foreground">
               Automations
@@ -923,10 +1191,11 @@ export function WorkflowTriggerAutomationsPage() {
       </header>
 
       <main className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6">
-        <div className="mx-auto max-w-[1120px]">
-          <WorkflowTriggerAutomationList
+        <div className="mx-auto max-w-[900px]">
+          <WorkflowTriggerAutomationIndexList
             entries={entries}
             displayTimezone={displayTimezone}
+            agents={agents}
             loading={loading}
             onAdd={() => {
               setCreateOpen(true);

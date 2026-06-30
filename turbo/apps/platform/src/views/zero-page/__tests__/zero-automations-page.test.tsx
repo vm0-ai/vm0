@@ -180,7 +180,27 @@ function supportWorkflowDetail(): ZeroWorkflowDetailResponse {
 }
 
 function mockWorkflowTriggerStory(): void {
-  const workflows = [workflowDetail(), supportWorkflowDetail()];
+  let workflows = [workflowDetail(), supportWorkflowDetail()];
+  const setTriggerEnabled = (
+    triggerId: string,
+    enabled: boolean,
+  ): ZeroWorkflowTriggerSummary | null => {
+    let updated: ZeroWorkflowTriggerSummary | null = null;
+    workflows = workflows.map((workflow) => {
+      return {
+        ...workflow,
+        triggers: workflow.triggers.map((trigger) => {
+          if (trigger.id !== triggerId) {
+            return trigger;
+          }
+          const next = { ...trigger, enabled };
+          updated = next;
+          return next;
+        }),
+      };
+    });
+    return updated;
+  };
   context.mocks.data.team([
     createAgent(zeroAgentId, "Zero"),
     createAgent(researchAgentId, "Research Agent"),
@@ -221,6 +241,30 @@ function mockWorkflowTriggerStory(): void {
       );
     },
   );
+  context.mocks.api(
+    zeroWorkflowTriggersContract.enable,
+    ({ params, respond }) => {
+      const trigger = setTriggerEnabled(params.id, true);
+      if (!trigger) {
+        return respond(404, {
+          error: { code: "NOT_FOUND", message: "missing" },
+        });
+      }
+      return respond(200, trigger);
+    },
+  );
+  context.mocks.api(
+    zeroWorkflowTriggersContract.disable,
+    ({ params, respond }) => {
+      const trigger = setTriggerEnabled(params.id, false);
+      if (!trigger) {
+        return respond(404, {
+          error: { code: "NOT_FOUND", message: "missing" },
+        });
+      }
+      return respond(200, trigger);
+    },
+  );
 }
 
 function buttonByText(
@@ -254,6 +298,18 @@ function tabByText(text: string): HTMLElement {
     throw new Error(`${text} tab not found`);
   }
   return tab;
+}
+
+function linkByNameAndPath(name: string, path: string): HTMLAnchorElement {
+  for (const candidate of screen.getAllByRole("link", { name })) {
+    if (
+      candidate instanceof HTMLAnchorElement &&
+      new URL(candidate.href).pathname === path
+    ) {
+      return candidate;
+    }
+  }
+  throw new Error(`${name} link to ${path} not found`);
 }
 
 function selectOptionByLabel(
@@ -438,13 +494,49 @@ describe("zero automations page", () => {
 
     expect(screen.queryByText("Calendar")).not.toBeInTheDocument();
     expect(screen.queryByText("List")).not.toBeInTheDocument();
-    expect(screen.getAllByText("Ops brief")[0]).toBeInTheDocument();
-    expect(screen.getAllByText("Zero")[0]).toBeInTheDocument();
-    expect(screen.getByText("Every 15 minutes")).toBeInTheDocument();
-    expect(screen.getByText("Gmail new message")).toBeInTheDocument();
-    expect(screen.getByText('from contains "@acme.com"')).toBeInTheDocument();
-    expect(screen.getByText("Support intake")).toBeInTheDocument();
-    expect(screen.getByText("Webhook trigger")).toBeInTheDocument();
+    expect(screen.queryByText("Run now")).not.toBeInTheDocument();
+
+    const opsLink = linkByNameAndPath(
+      "Ops brief",
+      `/automations/${intervalWorkflowTrigger().id}`,
+    );
+    const opsCard = opsLink.closest("article");
+    if (!opsCard) {
+      throw new Error("Ops brief card not found");
+    }
+    expect(within(opsCard).getByText("Zero")).toBeInTheDocument();
+    expect(within(opsCard).getByText("Trigger")).toBeInTheDocument();
+    expect(within(opsCard).getByText("Every 15 minutes")).toBeInTheDocument();
+    expect(
+      within(opsCard).getByRole("switch", { name: "Disable Ops brief" }),
+    ).toHaveAttribute("aria-checked", "true");
+
+    linkByNameAndPath(
+      "Support intake",
+      `/automations/${webhookWorkflowTrigger().id}`,
+    );
+    expect(
+      screen.getByText('When Gmail message matches from contains "@acme.com"'),
+    ).toBeInTheDocument();
+    expect(
+      screen.getByText("When an inbound webhook is received"),
+    ).toBeInTheDocument();
+
+    click(within(opsCard).getByRole("switch", { name: "Disable Ops brief" }));
+    await waitFor(() => {
+      const updatedOpsCard = linkByNameAndPath(
+        "Ops brief",
+        `/automations/${intervalWorkflowTrigger().id}`,
+      ).closest("article");
+      if (!updatedOpsCard) {
+        throw new Error("Updated ops brief card not found");
+      }
+      expect(
+        within(updatedOpsCard).getByRole("switch", {
+          name: "Enable Ops brief",
+        }),
+      ).toHaveAttribute("aria-checked", "false");
+    });
   });
 
   it.each([
