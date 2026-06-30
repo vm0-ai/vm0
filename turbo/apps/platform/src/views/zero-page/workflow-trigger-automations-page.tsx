@@ -19,10 +19,12 @@ import {
   IconLoader2,
   IconMail,
   IconMessageCircle,
+  IconPlayerPause,
   IconPlayerPlay,
   IconPlus,
   IconRepeat,
   IconTag,
+  IconTrash,
 } from "@tabler/icons-react";
 import { Button, Switch, cn } from "@vm0/ui";
 import {
@@ -47,11 +49,12 @@ import {
   workflowAutomationDialogOpen$,
 } from "../../signals/automation-page/workflow-trigger-automation-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { detachedNavigateTo$ } from "../../signals/route.ts";
+import { detachedNavigateTo$, pathParams$ } from "../../signals/route.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import {
   allWorkflowTriggerEntries$,
   allVisibleWorkflows$,
+  deleteWorkflowTrigger$,
   runWorkflowTriggerNow$,
   setWorkflowTriggerEnabled$,
   WORKFLOW_DETAIL_TAB_PARAM,
@@ -65,6 +68,12 @@ import { userPreferences$ } from "../../signals/zero-page/settings/user-preferen
 import { pinnedAgentIds$ } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
+import {
+  DetailPageBreadcrumbBar,
+  DetailPageHeader,
+  DetailPageMain,
+  DetailPageShell,
+} from "../components/detail-page-layout.tsx";
 import {
   AgentDialogAgentButton,
   agentDialogMatchesQuery,
@@ -600,6 +609,329 @@ function WorkflowTriggerIndexCard({
         </span>
       </div>
     </article>
+  );
+}
+
+function WorkflowTriggerDetailSkeleton() {
+  return (
+    <DetailPageShell>
+      <DetailPageBreadcrumbBar>
+        <Skeleton className="h-5 w-40 rounded-md" />
+        <span className="select-none text-muted-foreground/40">/</span>
+        <Skeleton className="h-5 w-32 rounded-md" />
+      </DetailPageBreadcrumbBar>
+      <DetailPageHeader>
+        <div className="flex min-w-0 items-center gap-4">
+          <Skeleton className="h-12 w-12 shrink-0 rounded-xl" />
+          <div className="min-w-0 flex-1 space-y-2">
+            <Skeleton className="h-5 w-56 max-w-full rounded-md" />
+            <Skeleton className="h-4 w-96 max-w-full rounded-md" />
+          </div>
+        </div>
+      </DetailPageHeader>
+      <DetailPageMain constrainContent>
+        <div className="grid gap-4">
+          <Skeleton className="h-40 w-full rounded-xl" />
+          <Skeleton className="h-28 w-full rounded-xl" />
+        </div>
+      </DetailPageMain>
+    </DetailPageShell>
+  );
+}
+
+function WorkflowTriggerAutomationNotFound() {
+  return (
+    <DetailPageShell>
+      <DetailPageBreadcrumbBar>
+        <Link
+          pathname={ROUTES.automations}
+          className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-inherit no-underline transition-colors hover:bg-muted hover:text-foreground"
+        >
+          Automations
+        </Link>
+        <span className="select-none text-muted-foreground/40">/</span>
+        <span className="rounded-md px-1.5 py-0.5 font-medium text-foreground">
+          Automation
+        </span>
+      </DetailPageBreadcrumbBar>
+      <div className="flex flex-1 flex-col items-center justify-center gap-3 px-4 pb-20">
+        <p className="text-lg font-semibold text-foreground">
+          Automation not found
+        </p>
+        <p className="max-w-sm text-center text-sm text-muted-foreground">
+          This automation doesn&apos;t exist or was removed.
+        </p>
+        <Link
+          pathname={ROUTES.automations}
+          className="zero-btn-morandi mt-2 inline-flex items-center justify-center rounded-md border px-3 py-1.5 text-sm font-medium text-inherit no-underline hover:bg-accent"
+        >
+          Back to automations
+        </Link>
+      </div>
+    </DetailPageShell>
+  );
+}
+
+function WorkflowTriggerStatusDot({ enabled }: { readonly enabled: boolean }) {
+  return (
+    <span
+      className={cn(
+        "h-1.5 w-1.5 shrink-0 rounded-full",
+        enabled ? "bg-emerald-500" : "bg-muted-foreground/50",
+      )}
+      aria-hidden="true"
+    />
+  );
+}
+
+function WorkflowTriggerDetailActions({
+  entry,
+}: {
+  readonly entry: WorkflowTriggerAutomationEntry;
+}) {
+  const pageSignal = useGet(pageSignal$);
+  const navigate = useSet(detachedNavigateTo$);
+  const [runLoadable, runNow] = useLoadableSet(runWorkflowTriggerNow$);
+  const [enabledLoadable, setEnabled] = useLoadableSet(
+    setWorkflowTriggerEnabled$,
+  );
+  const [deleteLoadable, deleteTrigger] = useLoadableSet(
+    deleteWorkflowTrigger$,
+  );
+  const running = runLoadable.state === "loading";
+  const toggling = enabledLoadable.state === "loading";
+  const deleting = deleteLoadable.state === "loading";
+  const busy = running || toggling || deleting;
+  const canManage = entry.workflow.canManage;
+
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-2">
+      <Link
+        pathname={ROUTES.workflowDetail}
+        options={{
+          pathParams: { workflowId: entry.workflow.id },
+          searchParams: new URLSearchParams({
+            [WORKFLOW_DETAIL_TAB_PARAM]: "automations",
+          }),
+        }}
+        className="zero-btn-morandi inline-flex h-9 shrink-0 items-center justify-center rounded-lg border px-3 text-sm font-medium text-inherit no-underline transition-colors hover:bg-accent"
+      >
+        View workflow
+      </Link>
+      <Button
+        type="button"
+        variant="outline"
+        size="sm"
+        className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-3"
+        disabled={busy}
+        onClick={() => {
+          detach(
+            runNow(entry.trigger.id, pageSignal),
+            Reason.DomCallback,
+            "run workflow trigger from automation detail",
+          );
+        }}
+      >
+        {running ? (
+          <IconLoader2 size={14} className="animate-spin" />
+        ) : (
+          <IconPlayerPlay size={14} stroke={1.5} />
+        )}
+        {running ? "Starting..." : "Run now"}
+      </Button>
+      {canManage ? (
+        <>
+          <Button
+            type="button"
+            variant="outline"
+            size="sm"
+            className="zero-btn-morandi h-9 shrink-0 gap-2 rounded-lg border px-3"
+            disabled={busy}
+            onClick={() => {
+              detach(
+                setEnabled(
+                  {
+                    triggerId: entry.trigger.id,
+                    enabled: !entry.trigger.enabled,
+                  },
+                  pageSignal,
+                ),
+                Reason.DomCallback,
+              );
+            }}
+          >
+            {toggling ? (
+              <IconLoader2 size={14} className="animate-spin" />
+            ) : entry.trigger.enabled ? (
+              <IconPlayerPause size={14} stroke={1.5} />
+            ) : (
+              <IconPlayerPlay size={14} stroke={1.5} />
+            )}
+            {entry.trigger.enabled ? "Pause" : "Resume"}
+          </Button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-9 shrink-0 gap-2 rounded-lg px-3 text-destructive/80 hover:bg-destructive/10 hover:text-destructive"
+            disabled={busy}
+            onClick={() => {
+              detach(
+                (async () => {
+                  await deleteTrigger(entry.trigger.id, pageSignal);
+                  navigate(ROUTES.automations);
+                })(),
+                Reason.DomCallback,
+              );
+            }}
+          >
+            {deleting ? (
+              <IconLoader2 size={14} className="animate-spin" />
+            ) : (
+              <IconTrash size={14} stroke={1.5} />
+            )}
+            {deleting ? "Deleting..." : "Delete"}
+          </Button>
+        </>
+      ) : null}
+    </div>
+  );
+}
+
+function WorkflowTriggerAutomationDetail({
+  entry,
+  displayTimezone,
+}: {
+  readonly entry: WorkflowTriggerAutomationEntry;
+  readonly displayTimezone: string;
+}) {
+  const title = workflowTitle(entry.workflow);
+  const agent = agentLabel(entry.workflow);
+  const triggerLabel = humanReadableTriggerRuleLabel(
+    entry.trigger,
+    displayTimezone,
+  );
+
+  return (
+    <DetailPageShell>
+      <DetailPageBreadcrumbBar>
+        <Link
+          pathname={ROUTES.automations}
+          className="inline-flex min-w-0 items-center gap-1 rounded-md px-1.5 py-0.5 text-inherit no-underline transition-colors hover:bg-muted hover:text-foreground"
+        >
+          Automations
+        </Link>
+        <span className="select-none text-muted-foreground/40">/</span>
+        <span className="min-w-0 truncate rounded-md px-1.5 py-0.5 font-medium text-foreground">
+          {title}
+        </span>
+      </DetailPageBreadcrumbBar>
+
+      <DetailPageHeader>
+        <div className="flex min-w-0 flex-col gap-4 sm:flex-row sm:items-start sm:justify-between">
+          <div className="flex min-w-0 items-start gap-4">
+            <TriggerListIcon trigger={entry.trigger} />
+            <div className="min-w-0">
+              <h1 className="truncate text-lg font-semibold tracking-tight text-foreground sm:text-xl">
+                {title}
+              </h1>
+              <div className="mt-1.5 flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-sm text-muted-foreground">
+                <span className="inline-flex items-center gap-1.5">
+                  <WorkflowTriggerStatusDot enabled={entry.trigger.enabled} />
+                  <span className="font-medium text-foreground">
+                    {entry.trigger.enabled ? "Active" : "Paused"}
+                  </span>
+                </span>
+                <span className="select-none text-muted-foreground/40">·</span>
+                <span className="truncate">{agent}</span>
+                <span className="select-none text-muted-foreground/40">·</span>
+                <span>{triggerTypeLabel(entry.trigger)}</span>
+              </div>
+              <p className="mt-1.5 line-clamp-2 text-sm text-muted-foreground">
+                {triggerLabel}
+              </p>
+            </div>
+          </div>
+          <WorkflowTriggerDetailActions entry={entry} />
+        </div>
+      </DetailPageHeader>
+
+      <DetailPageMain constrainContent>
+        <div className="grid gap-4">
+          <WorkflowTriggerCard
+            rows={triggerRows(entry.trigger, displayTimezone)}
+            dimmed={!entry.trigger.enabled}
+          />
+          <div className="zero-card overflow-hidden">
+            <dl className="px-5 py-1">
+              <div className="flex min-w-0 items-center justify-between gap-3 border-b border-border/50 py-3">
+                <dt className="shrink-0 text-sm text-muted-foreground">
+                  Workflow
+                </dt>
+                <dd className="min-w-0 truncate text-right text-sm font-medium text-foreground">
+                  {title}
+                </dd>
+              </div>
+              <div className="flex min-w-0 items-center justify-between gap-3 border-b border-border/50 py-3">
+                <dt className="shrink-0 text-sm text-muted-foreground">
+                  Agent
+                </dt>
+                <dd className="min-w-0 truncate text-right text-sm font-medium text-foreground">
+                  {agent}
+                </dd>
+              </div>
+              <div className="flex min-w-0 items-center justify-between gap-3 py-3">
+                <dt className="shrink-0 text-sm text-muted-foreground">
+                  Trigger ID
+                </dt>
+                <dd className="min-w-0 truncate text-right text-sm font-medium text-foreground">
+                  {entry.trigger.id}
+                </dd>
+              </div>
+            </dl>
+          </div>
+        </div>
+      </DetailPageMain>
+    </DetailPageShell>
+  );
+}
+
+export function WorkflowTriggerAutomationDetailPage() {
+  const params = useGet(pathParams$);
+  const triggerId =
+    params && typeof params === "object" && "automationId" in params
+      ? String(params.automationId)
+      : null;
+  const entriesLoadable = useLastLoadable(allWorkflowTriggerEntries$);
+  const prefsLoadable = useLastLoadable(userPreferences$);
+  const entries =
+    entriesLoadable.state === "hasData" ? entriesLoadable.data : [];
+  const displayTimezone =
+    prefsLoadable.state === "hasData" && prefsLoadable.data?.timezone
+      ? prefsLoadable.data.timezone
+      : new Intl.DateTimeFormat().resolvedOptions().timeZone;
+
+  if (!triggerId) {
+    return <WorkflowTriggerAutomationNotFound />;
+  }
+
+  if (entriesLoadable.state !== "hasData") {
+    return <WorkflowTriggerDetailSkeleton />;
+  }
+
+  const entry = entries.find((item) => {
+    return item.trigger.id === triggerId;
+  });
+
+  if (!entry) {
+    return <WorkflowTriggerAutomationNotFound />;
+  }
+
+  return (
+    <WorkflowTriggerAutomationDetail
+      entry={entry}
+      displayTimezone={displayTimezone}
+    />
   );
 }
 
