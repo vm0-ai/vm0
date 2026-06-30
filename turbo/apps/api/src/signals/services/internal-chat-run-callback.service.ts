@@ -247,15 +247,26 @@ interface CreateQueuedChatRunInput {
   readonly queuedMessage: QueuedUserMessage;
 }
 
-interface CompletedChatCallbackResult {
-  readonly lastResultText: string | null;
-  readonly followupContext: readonly ChatCompletionContextMessage[];
+type CompletedChatCallbackResult =
+  | {
+      readonly inserted: true;
+      readonly lastResultText: string | null;
+      readonly followupContext: readonly ChatCompletionContextMessage[];
+    }
+  | { readonly inserted: false };
+
+type FailedChatCallbackResult =
+  | { readonly inserted: true; readonly displayErrorMessage: string }
+  | { readonly inserted: false };
+
+interface TerminalChatCallbackWork {
+  readonly shouldAutoSendQueuedMessage: boolean;
+  readonly deferredSideEffects?: () => Promise<void>;
 }
 
-interface FailedChatCallbackResult {
-  readonly displayErrorMessage: string;
-  readonly inserted: boolean;
-}
+type AutoSendOutcome =
+  | { readonly ok: true }
+  | { readonly ok: false; readonly error: unknown };
 
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
@@ -510,7 +521,7 @@ async function insertAssistantErrorMessage(args: {
     return true;
   });
   if (!inserted) {
-    return { displayErrorMessage, inserted: false };
+    return { inserted: false };
   }
 
   await publishUserSignal(
@@ -764,7 +775,7 @@ async function handleCompletedChatCallback(args: {
     }),
   );
 
-  await insertRunLifecycleMarker({
+  const inserted = await insertRunLifecycleMarker({
     db: args.db,
     runId: args.runId,
     threadId: args.chatThread.chatThreadId,
@@ -773,6 +784,9 @@ async function handleCompletedChatCallback(args: {
     event: "completed",
   });
   args.signal.throwIfAborted();
+  if (!inserted) {
+    return { inserted: false };
+  }
 
   const followupContext = await loadRecommendedFollowupContextForCompletedRun({
     db: args.db,
@@ -781,7 +795,7 @@ async function handleCompletedChatCallback(args: {
   });
   args.signal.throwIfAborted();
 
-  return { lastResultText, followupContext };
+  return { lastResultText, followupContext, inserted: true };
 }
 
 async function runCompletedChatCallbackSideEffects(args: {
@@ -1826,6 +1840,131 @@ async function autoSendQueuedMessageForTerminalCallback(args: {
   });
 }
 
+async function prepareCompletedTerminalChatCallbackWork(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly run: ChatRunInfo;
+  readonly chatThread: ChatThreadForRunRow;
+  readonly isGoalRun: boolean;
+  readonly dependencies: ChatCallbackDependencies;
+  readonly signal: AbortSignal;
+}): Promise<TerminalChatCallbackWork> {
+  const completed = await handleCompletedChatCallback({
+    db: args.db,
+    runId: args.runId,
+    run: args.run,
+    chatThread: args.chatThread,
+    signal: args.signal,
+    insertAssistantItems: async (items) => {
+      await args.dependencies.insertAssistantItems(
+        {
+          runId: args.runId,
+          threadId: args.chatThread.chatThreadId,
+          userId: args.chatThread.userId,
+          items,
+        },
+        args.signal,
+      );
+    },
+  });
+  if (!completed.inserted) {
+    return { shouldAutoSendQueuedMessage: false };
+  }
+
+  return {
+    shouldAutoSendQueuedMessage: true,
+    deferredSideEffects: () => {
+      return runCompletedChatCallbackSideEffects({
+        db: args.db,
+        runId: args.runId,
+        run: args.run,
+        chatThread: args.chatThread,
+        isGoalRun: args.isGoalRun,
+        lastResultText: completed.lastResultText,
+        followupContext: completed.followupContext,
+        signal: args.signal,
+        saveRunSummary: (resultText) => {
+          return args.dependencies.saveRunSummary(
+            args.runId,
+            args.run.prompt,
+            resultText,
+            args.signal,
+          );
+        },
+      });
+    },
+  };
+}
+
+async function prepareFailedTerminalChatCallbackWork(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly run: ChatRunInfo;
+  readonly chatThread: ChatThreadForRunRow;
+  readonly errorMessage: string;
+  readonly dependencies: ChatCallbackDependencies;
+  readonly signal: AbortSignal;
+}): Promise<TerminalChatCallbackWork> {
+  const failed = await handleFailedChatCallback({
+    db: args.db,
+    runId: args.runId,
+    chatThread: args.chatThread,
+    errorMessage: args.errorMessage,
+    getFormattedError: () => {
+      return args.dependencies.formatRunError(
+        {
+          chatThreadId: args.chatThread.chatThreadId,
+          runId: args.runId,
+          errorMessage: args.errorMessage,
+        },
+        args.signal,
+      );
+    },
+  });
+  if (!failed.inserted) {
+    return { shouldAutoSendQueuedMessage: false };
+  }
+
+  return {
+    shouldAutoSendQueuedMessage: true,
+    deferredSideEffects: () => {
+      return runFailedChatCallbackSideEffects({
+        db: args.db,
+        run: args.run,
+        chatThread: args.chatThread,
+        displayErrorMessage: failed.displayErrorMessage,
+      });
+    },
+  };
+}
+
+async function maybeAutoSendQueuedMessageForTerminalCallback(args: {
+  readonly enabled: boolean;
+  readonly db: Db;
+  readonly runId: string;
+  readonly agentId: string;
+  readonly apiStartTime: number;
+  readonly dependencies: ChatCallbackDependencies;
+  readonly signal: AbortSignal;
+}): Promise<AutoSendOutcome> {
+  if (!args.enabled) {
+    return { ok: true };
+  }
+
+  const result = await settle(
+    autoSendQueuedMessageForTerminalCallback({
+      db: args.db,
+      runId: args.runId,
+      agentId: args.agentId,
+      apiStartTime: args.apiStartTime,
+      dependencies: args.dependencies,
+      signal: args.signal,
+    }),
+    args.signal,
+  );
+  return result.ok ? { ok: true } : { ok: false, error: result.error };
+}
+
 async function processTerminalChatCallback(args: {
   readonly apiStartTime: number;
   readonly db: Db;
@@ -1853,94 +1992,42 @@ async function processTerminalChatCallback(args: {
   const { run, chatThread } = loaded;
   const isGoalRun = args.payload.isGoalRun ?? false;
 
-  let deferredSideEffects: (() => Promise<void>) | undefined;
-
-  if (callbackStatus === "completed") {
-    const completed = await handleCompletedChatCallback({
-      db: args.db,
-      runId,
-      run,
-      chatThread,
-      signal: args.signal,
-      insertAssistantItems: async (items) => {
-        await args.dependencies.insertAssistantItems(
-          {
-            runId,
-            threadId: chatThread.chatThreadId,
-            userId: chatThread.userId,
-            items,
-          },
-          args.signal,
-        );
-      },
-    });
-    deferredSideEffects = () => {
-      return runCompletedChatCallbackSideEffects({
-        db: args.db,
-        runId,
-        run,
-        chatThread,
-        isGoalRun,
-        lastResultText: completed.lastResultText,
-        followupContext: completed.followupContext,
-        signal: args.signal,
-        saveRunSummary: (resultText) => {
-          return args.dependencies.saveRunSummary(
-            runId,
-            run.prompt,
-            resultText,
-            args.signal,
-          );
-        },
-      });
-    };
-  } else {
-    const errorMessage = args.callback.error ?? run.error ?? "Run failed";
-    const failed = await handleFailedChatCallback({
-      db: args.db,
-      runId,
-      chatThread,
-      errorMessage,
-      getFormattedError: () => {
-        return args.dependencies.formatRunError(
-          {
-            chatThreadId: chatThread.chatThreadId,
-            runId,
-            errorMessage,
-          },
-          args.signal,
-        );
-      },
-    });
-    if (failed.inserted) {
-      deferredSideEffects = () => {
-        return runFailedChatCallbackSideEffects({
+  const work =
+    callbackStatus === "completed"
+      ? await prepareCompletedTerminalChatCallbackWork({
           db: args.db,
+          runId,
           run,
           chatThread,
-          displayErrorMessage: failed.displayErrorMessage,
+          isGoalRun,
+          dependencies: args.dependencies,
+          signal: args.signal,
+        })
+      : await prepareFailedTerminalChatCallbackWork({
+          db: args.db,
+          runId,
+          run,
+          chatThread,
+          errorMessage: args.callback.error ?? run.error ?? "Run failed",
+          dependencies: args.dependencies,
+          signal: args.signal,
         });
-      };
-    }
-  }
 
-  const autoSendResult = await settle(
-    autoSendQueuedMessageForTerminalCallback({
-      db: args.db,
-      runId,
-      agentId: args.payload.agentId,
-      apiStartTime: args.apiStartTime,
-      dependencies: args.dependencies,
-      signal: args.signal,
-    }),
-    args.signal,
-  );
+  const autoSendResult = await maybeAutoSendQueuedMessageForTerminalCallback({
+    enabled: work.shouldAutoSendQueuedMessage,
+    db: args.db,
+    runId,
+    agentId: args.payload.agentId,
+    apiStartTime: args.apiStartTime,
+    dependencies: args.dependencies,
+    signal: args.signal,
+  });
 
-  if (deferredSideEffects) {
+  if (work.deferredSideEffects) {
     await runTerminalChatCallbackSideEffects({
       runId,
       status: callbackStatus,
-      run: deferredSideEffects,
+      run: work.deferredSideEffects,
     });
   }
 

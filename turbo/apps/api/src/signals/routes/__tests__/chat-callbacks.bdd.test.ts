@@ -8,10 +8,11 @@ import type {
   GenerationTemplateRequest,
   PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, onTestFinished } from "vitest";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
+import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
@@ -382,6 +383,9 @@ function deferredGate(): {
   let releaseGate = (): void => {};
   const promise = new Promise<void>((resolve) => {
     releaseGate = resolve;
+  });
+  onTestFinished(() => {
+    releaseGate();
   });
   return {
     wait: () => {
@@ -857,6 +861,48 @@ describe("CHAT-02: completed chat callback", () => {
     expect(markerAfterRelease?.recommendedFollowups).toStrictEqual([
       { prompt: "Review the queued result", kind: "talk" },
     ]);
+
+    await flushWaitUntilForTest();
+
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "queued after duplicate callback",
+    });
+    const afterSecondQueue = await chat.listThreadMessages(
+      actor,
+      first.threadId,
+    );
+    const duplicateProbeQueued = userMessages(afterSecondQueue.messages).find(
+      (message) => {
+        return message.content === "queued after duplicate callback";
+      },
+    );
+    if (!duplicateProbeQueued) {
+      throw new Error("Expected the duplicate probe message to queue");
+    }
+
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+    await flushWaitUntilForTest();
+
+    const afterDuplicateCallback = await chat.listThreadMessages(
+      actor,
+      first.threadId,
+    );
+    const duplicateProbeClaimed = userMessages(
+      afterDuplicateCallback.messages,
+    ).filter((message) => {
+      return message.revokesMessageId === duplicateProbeQueued.id;
+    });
+    expect(duplicateProbeClaimed).toHaveLength(0);
+    const duplicateProbeStillQueued = userMessages(
+      afterDuplicateCallback.messages,
+    ).find((message) => {
+      return message.id === duplicateProbeQueued.id;
+    });
+    expect(duplicateProbeStillQueued?.runId).toBeUndefined();
 
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
@@ -1380,10 +1426,13 @@ describe("CHAT-02: auto-send after failures", () => {
       filename: "queued-notes.txt",
       url: expect.stringContaining(queuedFile.id),
     });
-    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
-      `chatThreadRunCreated:${first.threadId}`,
-      null,
-    );
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some((call) => {
+          return call[0] === `chatThreadRunCreated:${first.threadId}`;
+        });
+      })
+      .toBe(true);
 
     const autoContext = await api.requestRunContext(
       actor,
