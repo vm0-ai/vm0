@@ -23,6 +23,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  ne,
   sql,
 } from "drizzle-orm";
 import { z } from "zod";
@@ -1509,17 +1510,21 @@ async function loadAgentForAutoSend(
 async function activeChatRunExistsForThread(
   db: Db,
   threadId: string,
+  options?: { readonly excludeRunId?: string },
 ): Promise<boolean> {
+  const filters = [
+    eq(zeroRuns.chatThreadId, threadId),
+    inArray(agentRuns.status, ["queued", "pending", "running"]),
+  ];
+  if (options?.excludeRunId !== undefined) {
+    filters.push(ne(zeroRuns.id, options.excludeRunId));
+  }
+
   const [run] = await db
     .select({ id: zeroRuns.id })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(
-      and(
-        eq(zeroRuns.chatThreadId, threadId),
-        inArray(agentRuns.status, ["queued", "pending", "running"]),
-      ),
-    )
+    .where(and(...filters))
     .limit(1);
   return run !== undefined;
 }
@@ -1735,6 +1740,15 @@ async function autoSendQueuedMessageOnRunComplete(args: {
   const run = await args.createRun({
     ...runInput,
     beforeDispatch: async ({ runId }) => {
+      const competingRunExists = await activeChatRunExistsForThread(
+        args.db,
+        threadId,
+        { excludeRunId: runId },
+      );
+      if (competingRunExists) {
+        return false;
+      }
+
       const claimed = await claimQueuedUserMessage({
         db: args.db,
         queuedMessage,
