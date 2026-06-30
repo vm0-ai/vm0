@@ -51,6 +51,7 @@ import { setupComputerUseAuthorizationPage$ } from "./computer-use-authorization
 import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-page-setup.ts";
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
+import { setupSignInPage$, setupSignUpPage$ } from "./auth-page-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
 import { setupReportErrorPage$ } from "./report-error/report-error-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
@@ -118,6 +119,23 @@ function setupAuthSidebarPageWrapper(
 }
 
 const ROUTE_CONFIG = [
+  {
+    path: ROUTES.signIn,
+    setup: setupSignInPage$,
+  },
+  {
+    path: ROUTES.signInCatchAll,
+    setup: setupSignInPage$,
+  },
+  {
+    path: ROUTES.signUp,
+    setup: setupSignUpPage$,
+  },
+  {
+    path: ROUTES.signUpCatchAll,
+    setup: setupSignUpPage$,
+  },
+
   // --- New routes ---
   {
     path: ROUTES.insights,

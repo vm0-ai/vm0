@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { clerk$, resolveWebAuthUrl } from "../auth.ts";
+import { clerk$, resolveAppAuthUrl } from "../auth.ts";
 import { searchParams$ } from "../route.ts";
 import {
   zeroOnboardingStatus$,
@@ -77,7 +77,7 @@ export const onboardGuard$ = command(
       signal.throwIfAborted();
       const memberships = clerk.user?.organizationMemberships ?? [];
       if (memberships.length > 0) {
-        window.location.href = resolveWebAuthUrl(
+        window.location.href = resolveAppAuthUrl(
           "/sign-in/tasks/choose-organization",
         );
         return true;

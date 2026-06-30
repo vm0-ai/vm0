@@ -6,6 +6,39 @@ import { bestEffort, onDomEventFn } from "./utils.ts";
 const reload$ = state(0);
 const clerkVersion$ = state(0);
 
+const ATTRIBUTION_SOURCE_PARAM = "vm0_source";
+const HOMEPAGE_ATTRIBUTION_VALUE = "homepage";
+const VM0_ONBOARDING_PATH = "/onboarding/491858";
+const VM0_ONBOARDING_EXPERIMENT = "491858";
+const DEFAULT_ONBOARDING_URL = "https://www.vm0.ai";
+const VM0_ROOT_DOMAIN = "vm0.ai";
+const LOCAL_VM7_SO_HOSTNAME = "so.vm7.ai";
+const LOCAL_VM7_API_HOSTNAME = "api.vm7.ai";
+const LOCAL_VM7_SERVICE_PORT = "8443";
+const LOCAL_VM7_MARKETING_DEV_PORT = "8441";
+
+const AD_ATTRIBUTION_PARAMS = [
+  "gclid",
+  "gbraid",
+  "wbraid",
+  "utm_source",
+  "utm_medium",
+  "utm_campaign",
+  "utm_content",
+  "utm_term",
+  "vm0_experiment",
+  "vm0_variant",
+  "lp_variant",
+] as const;
+
+const AD_TRAFFIC_MARKERS = [
+  "gclid",
+  "gbraid",
+  "wbraid",
+  "utm_source",
+  "utm_campaign",
+] as const;
+
 /**
  * Resolve the hosted auth/onboarding origin.
  * Prefer the configured onboarding origin; the app/platform -> www derivation
@@ -26,6 +59,122 @@ export function resolveWebOrigin(): string {
   const url = new URL(origin);
   url.hostname = url.hostname.replace(/(^|-)(platform|app)\./, "$1www.");
   return url.origin;
+}
+
+export function resolveAppOrigin(): string {
+  const origin = location.origin;
+  return !origin || origin === "null" ? "" : origin;
+}
+
+function hasVm6Suffix(hostname: string): boolean {
+  return hostname === "vm6.ai" || hostname.endsWith(".vm6.ai");
+}
+
+function parseUrl(value: string): URL | null {
+  if (!URL.canParse(value)) {
+    return null;
+  }
+  return new URL(value);
+}
+
+function parseDomainOverrideUrl(value: string): URL | null {
+  return parseUrl(value.includes("://") ? value : `https://${value}`);
+}
+
+function getVm6OriginFromDomainParam(value: string | null): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const url = parseDomainOverrideUrl(trimmed);
+  if (!url) {
+    return null;
+  }
+
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.port ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash ||
+    !hasVm6Suffix(url.hostname)
+  ) {
+    return null;
+  }
+
+  return url.origin;
+}
+
+function getLocalVm7OriginFromDomainParam(value: string | null): string | null {
+  const trimmed = value?.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  const url = parseDomainOverrideUrl(trimmed);
+  if (!url) {
+    return null;
+  }
+
+  if (
+    url.protocol !== "https:" ||
+    url.username ||
+    url.password ||
+    url.hostname !== LOCAL_VM7_API_HOSTNAME ||
+    url.port !== LOCAL_VM7_SERVICE_PORT ||
+    url.pathname !== "/" ||
+    url.search ||
+    url.hash
+  ) {
+    return null;
+  }
+
+  return url.origin;
+}
+
+function getDomainOverrideHostFromSearch(): string | null {
+  const domainParam = new URLSearchParams(location.search).get("domain");
+  const vm6Origin = getVm6OriginFromDomainParam(domainParam);
+  if (vm6Origin) {
+    return new URL(vm6Origin).host;
+  }
+
+  const localVm7Origin = getLocalVm7OriginFromDomainParam(domainParam);
+  return localVm7Origin ? new URL(localVm7Origin).host : null;
+}
+
+function replaceVm0ServiceLabel(
+  hostname: string,
+  service: "api" | "app" | "www",
+): string | null {
+  const labels = hostname.split(".");
+  const firstLabel = labels[0];
+  if (!firstLabel) {
+    return null;
+  }
+
+  if (
+    firstLabel === "api" ||
+    firstLabel === "app" ||
+    firstLabel === "so" ||
+    firstLabel === "www"
+  ) {
+    labels[0] = service;
+    return labels.join(".");
+  }
+
+  for (const label of ["api", "app", "so", "www"]) {
+    const suffix = `-${label}`;
+    if (firstLabel.endsWith(suffix)) {
+      labels[0] = `${firstLabel.slice(0, -label.length)}${service}`;
+      return labels.join(".");
+    }
+  }
+
+  return null;
 }
 
 function resolveDomainOverride(): string | null {
@@ -53,6 +202,35 @@ function resolveDomainOverride(): string | null {
   return apiHostname === url.hostname ? null : apiHostname;
 }
 
+function resolveUrlFromDomainOverride(
+  service: "api" | "app" | "www",
+): string | null {
+  const domainOverride = getDomainOverrideHostFromSearch();
+  if (!domainOverride) {
+    return null;
+  }
+
+  const hostname = replaceVm0ServiceLabel(domainOverride, service);
+  return hostname ? `https://${hostname}` : null;
+}
+
+export function resolveAppUrlFromDomainOverride(): string | null {
+  return resolveUrlFromDomainOverride("app");
+}
+
+function resolveApiUrlFromDomainOverride(): string | null {
+  const domainOverride = getDomainOverrideHostFromSearch();
+  return domainOverride ? `https://${domainOverride}` : null;
+}
+
+function resolveWebUrlFromDomainOverride(): string | null {
+  return resolveUrlFromDomainOverride("www");
+}
+
+export function resolveAppUrl(): string {
+  return resolveAppUrlFromDomainOverride() ?? resolveAppOrigin();
+}
+
 export function resolveWebAuthUrl(
   path: `/sign-${string}`,
   options: { redirectUrl?: string } = {},
@@ -70,6 +248,254 @@ export function resolveWebAuthUrl(
     url.searchParams.set("redirect_url", options.redirectUrl);
   }
   return url.toString();
+}
+
+export function resolveAppAuthUrl(
+  path: `/sign-${string}`,
+  options: { redirectUrl?: string } = {},
+): string {
+  const appOrigin = resolveAppOrigin();
+  if (!appOrigin) {
+    return path;
+  }
+  const url = new URL(path, appOrigin);
+  const domainOverride = resolveDomainOverride();
+  if (domainOverride) {
+    url.searchParams.set("domain", domainOverride);
+  }
+  if (options.redirectUrl) {
+    url.searchParams.set("redirect_url", options.redirectUrl);
+  }
+  return url.toString();
+}
+
+function paidOnboardingUrl(): string | undefined {
+  const configuredUrl = import.meta.env.VITE_ONBOARDING_URL as
+    | string
+    | undefined;
+  return configuredUrl || undefined;
+}
+
+function isVm6Origin(origin: string): boolean {
+  const url = parseUrl(origin);
+  if (!url) {
+    return false;
+  }
+  return url.hostname.endsWith(".vm6.ai");
+}
+
+export function getAllowedAuthRedirectOrigins(): string[] {
+  const appUrl = resolveAppUrl();
+  const onboardingUrl = paidOnboardingUrl();
+  const origins = onboardingUrl ? [appUrl, onboardingUrl] : [appUrl];
+
+  if (origins.some(isVm6Origin)) {
+    origins.push("https://*.vm6.ai");
+  }
+
+  return [...new Set(origins.filter(Boolean))];
+}
+
+export function getAllowedAuthRedirectOriginsFromDomainOverride(): string[] {
+  if (!getDomainOverrideHostFromSearch()) {
+    return [];
+  }
+
+  const origins = [
+    resolveWebUrlFromDomainOverride(),
+    resolveApiUrlFromDomainOverride(),
+    resolveAppUrlFromDomainOverride(),
+    resolveAppOrigin(),
+  ];
+
+  return [
+    ...new Set(
+      origins.filter((origin): origin is string => {
+        return Boolean(origin);
+      }),
+    ),
+  ];
+}
+
+export function getAllowedAuthRedirectOriginsFromCurrentRedirectUrl(): string[] {
+  const rawRedirectUrl = new URLSearchParams(location.search).get(
+    "redirect_url",
+  );
+  if (!rawRedirectUrl) {
+    return [];
+  }
+
+  const redirectUrl = parseUrl(rawRedirectUrl);
+  if (!redirectUrl) {
+    return [];
+  }
+
+  if (
+    redirectUrl.protocol !== "https:" ||
+    redirectUrl.hostname !== LOCAL_VM7_SO_HOSTNAME ||
+    (redirectUrl.port !== LOCAL_VM7_SERVICE_PORT &&
+      redirectUrl.port !== LOCAL_VM7_MARKETING_DEV_PORT) ||
+    (redirectUrl.pathname !== "/onboarding" &&
+      !redirectUrl.pathname.startsWith("/onboarding/"))
+  ) {
+    return [];
+  }
+
+  return [redirectUrl.origin];
+}
+
+export function getAllowedAuthRedirectOriginsForCurrentPage(): string[] {
+  return [
+    ...new Set([
+      ...getAllowedAuthRedirectOrigins(),
+      ...getAllowedAuthRedirectOriginsFromDomainOverride(),
+      ...getAllowedAuthRedirectOriginsFromCurrentRedirectUrl(),
+    ]),
+  ];
+}
+
+function hasAdTraffic(params: URLSearchParams): boolean {
+  return AD_TRAFFIC_MARKERS.some((param) => {
+    return params.has(param);
+  });
+}
+
+function appendHomepageAttributionParams(
+  url: URLSearchParams,
+  landingSearch: string,
+): void {
+  const landingParams = new URLSearchParams(landingSearch);
+  url.set(ATTRIBUTION_SOURCE_PARAM, HOMEPAGE_ATTRIBUTION_VALUE);
+  for (const param of AD_ATTRIBUTION_PARAMS) {
+    for (const value of landingParams.getAll(param)) {
+      url.append(param, value);
+    }
+  }
+}
+
+function onboardingBaseUrl(): string {
+  return (paidOnboardingUrl() || DEFAULT_ONBOARDING_URL).replace(/\/+$/u, "");
+}
+
+function setCurrentLandingContext(params: URLSearchParams): void {
+  if (!params.has("landing_host")) {
+    params.set("landing_host", location.hostname);
+  }
+  if (!params.has("landing_path")) {
+    params.set("landing_path", location.pathname);
+  }
+}
+
+function buildVm0OnboardingEntryUrl(paramsInit?: URLSearchParams): string {
+  const params = new URLSearchParams(paramsInit);
+  if (!params.has("vm0_experiment")) {
+    params.set("vm0_experiment", VM0_ONBOARDING_EXPERIMENT);
+  }
+  setCurrentLandingContext(params);
+  const query = params.toString();
+  return `${onboardingBaseUrl()}${VM0_ONBOARDING_PATH}${query ? `?${query}` : ""}`;
+}
+
+function isKnownStagingSoOnboardingRedirect(redirectUrl: URL): boolean {
+  return (
+    redirectUrl.protocol === "https:" &&
+    (redirectUrl.hostname === "staging-so.vm6.ai" ||
+      redirectUrl.hostname.endsWith("-so.vm6.ai")) &&
+    (redirectUrl.pathname === "/onboarding" ||
+      redirectUrl.pathname.startsWith("/onboarding/"))
+  );
+}
+
+function isVm0ProductionOrigin(url: URL): boolean {
+  return url.hostname === VM0_ROOT_DOMAIN || url.hostname.endsWith(".vm0.ai");
+}
+
+function normalizeOnboardingRedirectUrl(
+  redirectUrl: URL,
+  onboardingUrl: string | undefined,
+): URL {
+  if (!onboardingUrl || !isKnownStagingSoOnboardingRedirect(redirectUrl)) {
+    return redirectUrl;
+  }
+
+  const paidUrl = parseUrl(onboardingUrl);
+  if (!paidUrl) {
+    return redirectUrl;
+  }
+  if (isVm0ProductionOrigin(paidUrl)) {
+    return redirectUrl;
+  }
+
+  const normalized = new URL(redirectUrl.toString());
+  normalized.protocol = paidUrl.protocol;
+  normalized.host = paidUrl.host;
+  return normalized;
+}
+
+function isAllowedRedirectOrigin(
+  redirectUrl: URL,
+  allowedRedirectOrigins: readonly string[],
+): boolean {
+  return allowedRedirectOrigins.some((allowedOrigin) => {
+    if (allowedOrigin.startsWith("https://*.")) {
+      const suffix = allowedOrigin.slice("https://*.".length);
+      return (
+        redirectUrl.protocol === "https:" &&
+        redirectUrl.hostname.endsWith(`.${suffix}`)
+      );
+    }
+
+    const url = parseUrl(allowedOrigin);
+    if (!url) {
+      return false;
+    }
+    return url.origin === redirectUrl.origin;
+  });
+}
+
+function readAllowedRedirectUrl(
+  params: URLSearchParams,
+  allowedRedirectOrigins: readonly string[],
+  onboardingUrl: string | undefined,
+): string | null {
+  const rawRedirectUrl = params.get("redirect_url");
+  if (!rawRedirectUrl) {
+    return null;
+  }
+
+  const rawUrl = parseUrl(rawRedirectUrl);
+  if (!rawUrl) {
+    return null;
+  }
+  const redirectUrl = normalizeOnboardingRedirectUrl(rawUrl, onboardingUrl);
+  return isAllowedRedirectOrigin(redirectUrl, allowedRedirectOrigins)
+    ? redirectUrl.toString()
+    : null;
+}
+
+export function buildSignupRedirectUrl(
+  signUpSearch: string,
+  allowedRedirectOrigins: readonly string[] = getAllowedAuthRedirectOriginsForCurrentPage(),
+): string {
+  const appUrl = resolveAppUrl();
+  const params = new URLSearchParams(signUpSearch);
+  const onboardingUrl = paidOnboardingUrl();
+  const redirectUrl = readAllowedRedirectUrl(
+    params,
+    allowedRedirectOrigins,
+    onboardingUrl,
+  );
+  if (redirectUrl) {
+    return redirectUrl;
+  }
+
+  if (!hasAdTraffic(params)) {
+    return appUrl;
+  }
+
+  const redirectParams = new URLSearchParams();
+  appendHomepageAttributionParams(redirectParams, signUpSearch);
+  return buildVm0OnboardingEntryUrl(redirectParams);
 }
 
 /**
@@ -93,9 +519,9 @@ export const clerk$ = computed(async () => {
 
   const clerkInstance = new Clerk(publishableKey);
   await clerkInstance.load({
-    signInUrl: resolveWebAuthUrl("/sign-in"),
-    signUpUrl: resolveWebAuthUrl("/sign-up"),
-    afterSignOutUrl: resolveWebAuthUrl("/sign-in"),
+    signInUrl: resolveAppAuthUrl("/sign-in"),
+    signUpUrl: resolveAppAuthUrl("/sign-up"),
+    afterSignOutUrl: resolveAppAuthUrl("/sign-in"),
   });
   return clerkInstance;
 });
