@@ -1482,8 +1482,6 @@ export function chatThreadForRun(
   });
 }
 
-const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
-
 interface ThreadRunToCancel {
   readonly runId: string;
   readonly orgId: string;
