@@ -460,12 +460,21 @@ def _insert_api_trie_candidate(
 
 
 def _freeze_api_trie_node(builder: _ApiTrieBuilder) -> _CompiledApiTrieNode:
-    return _CompiledApiTrieNode(
-        tuple(builder.candidates),
-        MappingProxyType(
-            {segment: _freeze_api_trie_node(child) for segment, child in builder.children.items()}
-        ),
-    )
+    frozen_nodes: dict[int, _CompiledApiTrieNode] = {}
+    stack: list[tuple[_ApiTrieBuilder, bool]] = [(builder, False)]
+    while stack:
+        node, visited = stack.pop()
+        if visited:
+            frozen_nodes[id(node)] = _CompiledApiTrieNode(
+                tuple(node.candidates),
+                MappingProxyType(
+                    {segment: frozen_nodes[id(child)] for segment, child in node.children.items()}
+                ),
+            )
+            continue
+        stack.append((node, True))
+        stack.extend((child, False) for child in node.children.values())
+    return frozen_nodes[id(builder)]
 
 
 def _extend_api_trie_candidates(
@@ -545,12 +554,21 @@ def _insert_rule_trie_entry(
 
 
 def _freeze_rule_trie_node(builder: _RuleTrieBuilder) -> _CompiledRuleTrieNode:
-    return _CompiledRuleTrieNode(
-        tuple(builder.entries),
-        MappingProxyType(
-            {segment: _freeze_rule_trie_node(child) for segment, child in builder.children.items()}
-        ),
-    )
+    frozen_nodes: dict[int, _CompiledRuleTrieNode] = {}
+    stack: list[tuple[_RuleTrieBuilder, bool]] = [(builder, False)]
+    while stack:
+        node, visited = stack.pop()
+        if visited:
+            frozen_nodes[id(node)] = _CompiledRuleTrieNode(
+                tuple(node.entries),
+                MappingProxyType(
+                    {segment: frozen_nodes[id(child)] for segment, child in node.children.items()}
+                ),
+            )
+            continue
+        stack.append((node, True))
+        stack.extend((child, False) for child in node.children.values())
+    return frozen_nodes[id(builder)]
 
 
 def _add_rule_entries(

@@ -35,6 +35,10 @@ def _long_path(prefix, segment_count=1000):
     return prefix + "/" + "/".join(f"seg-{index}" for index in range(segment_count))
 
 
+def _segment_path(segment_count=1100):
+    return "/" + "/".join(f"seg-{index}" for index in range(segment_count))
+
+
 def test_indexed_matches_linear_for_unrelated_authority_candidates():
     firewalls = [
         firewall_entry(
@@ -466,3 +470,51 @@ def test_indexed_matching_long_path_does_not_use_prefix_key_helpers(monkeypatch)
 
     assert isinstance(result, matching.FirewallAllow)
     assert result.permission == "files-read"
+
+
+def test_indexed_matching_handles_deep_static_base_trie():
+    deep_base_path = _segment_path()
+    firewalls = wrap_firewalls(
+        [
+            firewall_api(
+                f"https://api.example.com{deep_base_path}",
+                [firewall_permission("root-read", "GET /")],
+            )
+        ],
+        name="example",
+    )
+    policies = {"example": network_policy(allow=["root-read"])}
+
+    result = _assert_indexed_matches_linear(
+        f"https://api.example.com{deep_base_path}",
+        "GET",
+        firewalls,
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.permission == "root-read"
+
+
+def test_indexed_matching_handles_deep_literal_rule_trie():
+    deep_rule_path = _segment_path()
+    firewalls = wrap_firewalls(
+        [
+            firewall_api(
+                "https://api.example.com",
+                [firewall_permission("deep-read", f"GET {deep_rule_path}")],
+            )
+        ],
+        name="example",
+    )
+    policies = {"example": network_policy(allow=["deep-read"])}
+
+    result = _assert_indexed_matches_linear(
+        f"https://api.example.com{deep_rule_path}",
+        "GET",
+        firewalls,
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.permission == "deep-read"
