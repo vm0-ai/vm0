@@ -7,7 +7,12 @@ import {
   useLastLoadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import { IconPlus, IconChevronRight, IconPinnedOff } from "@tabler/icons-react";
+import {
+  IconPlus,
+  IconChevronRight,
+  IconPinnedOff,
+  IconChecks,
+} from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Tooltip,
@@ -39,7 +44,10 @@ import {
   updatePinnedAgentIds$,
   pinnedAgents$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
-import { unreadAgentIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
+import {
+  markAgentThreadsRead$,
+  unreadAgentIds$,
+} from "../../signals/chat-page/sidebar-unread-threads.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -61,7 +69,11 @@ function PinnedAgentSideDecorator({
 }) {
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
   const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
+  const [markReadLoadable, markAgentThreadsRead] = useLoadableSet(
+    markAgentThreadsRead$,
+  );
   const savingPinned = pinLoadable.state === "loading";
+  const markingRead = markReadLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
 
   function unpinAgent() {
@@ -69,6 +81,14 @@ function PinnedAgentSideDecorator({
       return id !== null && id !== agentId;
     });
     detach(savePinnedIds(next, pageSignal), Reason.DomCallback);
+  }
+
+  function markAllRead() {
+    detach(
+      markAgentThreadsRead(agentId, pageSignal),
+      Reason.DomCallback,
+      "markAgentThreadsRead",
+    );
   }
 
   if (isDefaultAgent && !hasUnread) {
@@ -80,15 +100,27 @@ function PinnedAgentSideDecorator({
       variant="sidebar"
       isPrimarySelected={isPrimarySelected}
       hasUnread={hasUnread}
-      action={
+      actions={
         isDefaultAgent
           ? undefined
-          : {
-              label: "Unpin",
-              disabled: savingPinned,
-              icon: <IconPinnedOff size={16} stroke={2} />,
-              onSelect: unpinAgent,
-            }
+          : [
+              ...(hasUnread
+                ? [
+                    {
+                      label: "Mark all read",
+                      disabled: markingRead,
+                      icon: <IconChecks size={16} stroke={2} />,
+                      onSelect: markAllRead,
+                    },
+                  ]
+                : []),
+              {
+                label: "Unpin",
+                disabled: savingPinned,
+                icon: <IconPinnedOff size={16} stroke={2} />,
+                onSelect: unpinAgent,
+              },
+            ]
       }
     />
   );

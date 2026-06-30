@@ -13,7 +13,6 @@ import {
   type ConnectorType,
   type ConnectorDisplayCategory,
 } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethod,
@@ -45,7 +44,11 @@ import {
   reloadConnectors$,
 } from "../../external/connectors.ts";
 import { replaceSearchParams$, searchParams$ } from "../../route.ts";
-import { zeroClient$, type ZeroClientFactory } from "../../api-client.ts";
+import {
+  OAUTH_WEB_API_BASE,
+  zeroClient$,
+  type ZeroClientFactory,
+} from "../../api-client.ts";
 import {
   jsonParseOr,
   resetSignal,
@@ -406,16 +409,12 @@ export const connectorsSearch$ = computed((get) => {
 export const filteredConnectorTypes$ = computed(async (get) => {
   const keyword = get(connectorsSearch$);
   const connectionFilter = get(connectorsConnectionFilter$);
-  const features = get(featureSwitch$);
-  const shouldFilterConnected =
-    connectionFilter === "connected" &&
-    (features[FeatureSwitchKey.ConnectorAccessManagement] ?? false);
   const allConnectorTypes = await get(allConnectorTypes$);
   return allConnectorTypes.filter((connector) => {
     if (!matchesConnectorSearch(keyword, connector)) {
       return false;
     }
-    return !shouldFilterConnected || connector.connected;
+    return connectionFilter !== "connected" || connector.connected;
   });
 });
 
@@ -1026,7 +1025,7 @@ const pollConnectorOAuthDeviceAuth$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const client = createClient(zeroConnectorOauthDeviceAuthSessionContract, {
-      apiBase: "www",
+      apiBase: OAUTH_WEB_API_BASE,
     });
     const isCurrentRequest = (state: ConnectorOAuthDeviceAuthState) => {
       return isCurrentConnectorOAuthDeviceAuthRequest(
@@ -1181,7 +1180,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
         const createClient = get(zeroClient$);
         const client = createClient(
           zeroConnectorOauthDeviceAuthSessionContract,
-          { apiBase: "www" },
+          { apiBase: OAUTH_WEB_API_BASE },
         );
         const startOptionEntries = Object.entries(startOptions ?? {});
         const startSettled = await settle(
@@ -1434,7 +1433,7 @@ export const connectConnectorExternalCode$ = command(
 
         const createClient = get(zeroClient$);
         const client = createClient(zeroConnectorExternalCodeSessionContract, {
-          apiBase: "www",
+          apiBase: OAUTH_WEB_API_BASE,
         });
         const startSettled = await settle(
           accept(
@@ -1549,7 +1548,7 @@ const completeConnectorExternalCode$ = command(
     const flowSignal = set(resetConnectorExternalCodeFlowSignal$, signal);
     const createClient = get(zeroClient$);
     const client = createClient(zeroConnectorExternalCodeSessionContract, {
-      apiBase: "www",
+      apiBase: OAUTH_WEB_API_BASE,
     });
     const completeSettled = await settle(
       accept(
@@ -1774,7 +1773,7 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     }
 
     const startClient = get(zeroClient$)(zeroConnectorOauthStartContract, {
-      apiBase: "www",
+      apiBase: OAUTH_WEB_API_BASE,
     });
     const startResult = await accept(
       startClient.start({

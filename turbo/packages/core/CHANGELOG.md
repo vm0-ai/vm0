@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.378.0](https://github.com/vm0-ai/vm0/compare/core-v8.377.2...core-v8.378.0) (2026-06-30)
+
+
+### Features
+
+* add pexels connector ([#19440](https://github.com/vm0-ai/vm0/issues/19440)) ([135421b](https://github.com/vm0-ai/vm0/commit/135421be66534cfa975c01d7bc1c268c2fcd2b36))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.129.1
+    * @vm0/connectors bumped to 1.116.0
+
 ## [8.377.2](https://github.com/vm0-ai/vm0/compare/core-v8.377.1...core-v8.377.2) (2026-06-30)
 
 

@@ -60,17 +60,26 @@ function setActionVisibility(element: HTMLElement, visible: boolean) {
 export function AgentRowSideActions({
   hasUnread,
   action,
+  actions,
   variant = "dialog",
   isPrimarySelected = false,
 }: {
   readonly hasUnread: boolean;
   readonly action?: AgentRowMenuAction | undefined;
+  readonly actions?: readonly AgentRowMenuAction[] | undefined;
   readonly variant?: "dialog" | "sidebar" | undefined;
   readonly isPrimarySelected?: boolean | undefined;
 }) {
-  if (!hasUnread && !action) {
+  const menuActions = actions ?? (action ? [action] : []);
+  const hasMenuActions = menuActions.length > 0;
+
+  if (!hasUnread && !hasMenuActions) {
     return null;
   }
+
+  const triggerDisabled = menuActions.every((menuAction) => {
+    return menuAction.disabled;
+  });
 
   function handleMenuTriggerClick(e: MouseEvent<HTMLButtonElement>) {
     e.preventDefault();
@@ -91,18 +100,18 @@ export function AgentRowSideActions({
       onBlurCapture={(e) => {
         setActionVisibility(e.currentTarget, false);
       }}
-      style={action ? actionVisibilityStyle : undefined}
+      style={hasMenuActions ? actionVisibilityStyle : undefined}
       className={
         variant === "sidebar"
           ? `absolute right-0 top-0 flex h-8 w-8 items-center justify-center ${
-              action ? "" : "pointer-events-none"
+              hasMenuActions ? "" : "pointer-events-none"
             }`
           : `relative flex h-8 w-8 shrink-0 items-center justify-center ${
-              action ? "" : "pointer-events-none"
+              hasMenuActions ? "" : "pointer-events-none"
             }`
       }
     >
-      {action ? (
+      {hasMenuActions ? (
         <TooltipProvider delayDuration={200}>
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
@@ -112,7 +121,7 @@ export function AgentRowSideActions({
                 style={triggerOpacityStyle}
                 onClick={handleMenuTriggerClick}
                 aria-label="Open agent menu"
-                disabled={action.disabled}
+                disabled={triggerDisabled}
               >
                 <Tooltip>
                   <TooltipTrigger asChild>
@@ -129,14 +138,19 @@ export function AgentRowSideActions({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end" className="w-44">
-              <DropdownMenuItem
-                className="gap-2"
-                onSelect={action.onSelect}
-                disabled={action.disabled}
-              >
-                {action.icon}
-                {action.label}
-              </DropdownMenuItem>
+              {menuActions.map((menuAction) => {
+                return (
+                  <DropdownMenuItem
+                    key={menuAction.label}
+                    className="gap-2"
+                    onSelect={menuAction.onSelect}
+                    disabled={menuAction.disabled}
+                  >
+                    {menuAction.icon}
+                    {menuAction.label}
+                  </DropdownMenuItem>
+                );
+              })}
             </DropdownMenuContent>
           </DropdownMenu>
         </TooltipProvider>
@@ -144,7 +158,7 @@ export function AgentRowSideActions({
       {hasUnread ? (
         <span
           className="pointer-events-none flex items-center justify-center transition-opacity duration-150"
-          style={action ? unreadOpacityStyle : undefined}
+          style={hasMenuActions ? unreadOpacityStyle : undefined}
         >
           <AgentUnreadIndicator />
         </span>

@@ -430,16 +430,10 @@ describe("connectors page", () => {
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
-  it("filters connectors by connected status when access management is enabled", async () => {
+  it("filters connectors by connected status", async () => {
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
 
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorAccessManagement]: true,
-      },
-    });
+    detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
@@ -512,7 +506,7 @@ describe("connectors page", () => {
     expect(screen.queryByLabelText("Connect AWS")).not.toBeInTheDocument();
   });
 
-  it("hides connector access management when its switch is disabled", async () => {
+  it("shows the connection filter and hides access management when its switch is disabled", async () => {
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
 
     detachedSetupPage({
@@ -527,10 +521,10 @@ describe("connectors page", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(
-      screen.queryByRole("group", {
+      screen.getByRole("group", {
         name: "Connector connection filter",
       }),
-    ).not.toBeInTheDocument();
+    ).toBeInTheDocument();
     expect(
       screen.queryByLabelText("Manage GitHub access"),
     ).not.toBeInTheDocument();

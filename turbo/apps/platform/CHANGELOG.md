@@ -1,5 +1,42 @@
 # Changelog
 
+## [0.512.0](https://github.com/vm0-ai/vm0/compare/app-v0.511.2...app-v0.512.0) (2026-06-30)
+
+
+### Features
+
+* add connected connectors filter ([#19460](https://github.com/vm0-ai/vm0/issues/19460)) ([e7f098b](https://github.com/vm0-ai/vm0/commit/e7f098b13f4ba7c56cfb8e01bbe7ca5b42a57908))
+
+## [0.511.2](https://github.com/vm0-ai/vm0/compare/app-v0.511.1...app-v0.511.2) (2026-06-30)
+
+
+### Bug Fixes
+
+* update instatus widget integrity ([#19455](https://github.com/vm0-ai/vm0/issues/19455)) ([9fa280e](https://github.com/vm0-ai/vm0/commit/9fa280eb69b76323db22c40d5f1c203f3b0b7a82))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.129.1
+    * @vm0/connectors bumped to 1.116.0
+    * @vm0/core bumped to 8.378.0
+
+## [0.511.1](https://github.com/vm0-ai/vm0/compare/app-v0.511.0...app-v0.511.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* remove agent workflow routes ([#19421](https://github.com/vm0-ai/vm0/issues/19421)) ([9985c0c](https://github.com/vm0-ai/vm0/commit/9985c0cae761f1c614f78ce45945714455b6c66f))
+* show users icon for empty connector access ([#19430](https://github.com/vm0-ai/vm0/issues/19430)) ([0824944](https://github.com/vm0-ai/vm0/commit/0824944e5b77aa5a108363de1dea3e724939b30c))
+* simplify workflow chat creation ([#19429](https://github.com/vm0-ai/vm0/issues/19429)) ([3742c84](https://github.com/vm0-ai/vm0/commit/3742c84665888c4f179b943621de64c26e86663b))
+
+
+### Refactoring
+
+* restrict www api base to oauth flows ([#19453](https://github.com/vm0-ai/vm0/issues/19453)) ([2689068](https://github.com/vm0-ai/vm0/commit/2689068b85abc3fd4e1e1137919af3c74ec1b382))
+
 ## [0.511.0](https://github.com/vm0-ai/vm0/compare/app-v0.510.0...app-v0.511.0) (2026-06-30)
 
 

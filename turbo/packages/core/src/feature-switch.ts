@@ -160,6 +160,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Resend email service connector",
     enabled: false,
   },
+  [FeatureSwitchKey.PexelsConnector]: {
+    maintainer: "bingjie@vm0.ai",
+    description: "Enable the Pexels stock photo and video connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Spotify connector integration",
@@ -345,7 +350,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
     enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

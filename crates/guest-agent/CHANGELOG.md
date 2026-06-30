@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.42.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.42.1...guest-agent-v0.42.2) (2026-06-30)
+
+
+### Refactoring
+
+* **guest-agent:** add explicit run config and paths ([#19437](https://github.com/vm0-ai/vm0/issues/19437)) ([685db73](https://github.com/vm0-ai/vm0/commit/685db7388d2c935a518b5ca25b1e37bece8834c8))
+
 ## [0.42.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.42.0...guest-agent-v0.42.1) (2026-06-30)
 
 

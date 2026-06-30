@@ -4,10 +4,19 @@ import ipaddress
 import re
 import urllib.parse
 
+import public_destination
+from authority_utils import (
+    IPV6_VERSION,
+    RawAuthorityHost,
+    authority_has_empty_port,
+    percent_decode_host,
+    raw_authority_host,
+)
 from firewall_auth_config import (
     auth_config_injects_credentials,
     auth_config_injects_ordinary_upstream_credentials,
 )
+from host_normalization import normalize_idna_hostname
 from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 
 BUILTIN_HOST_POLICY_RUNTIME_MARKER = "_builtinHostPolicyRuntime"
@@ -27,36 +36,7 @@ _PROVIDER_OWNED_HOST_POLICY_KEYS = frozenset(
     ("kind", "exactHosts", "suffixes", "allowNonDefaultPort")
 )
 _PUBLIC_DESTINATION_HOST_POLICY_KEYS = frozenset(("kind",))
-_IPV4_NON_PUBLIC_RANGES = (
-    (0x00000000, 0x00FFFFFF),
-    (0x0A000000, 0x0AFFFFFF),
-    (0x64400000, 0x647FFFFF),
-    (0x7F000000, 0x7FFFFFFF),
-    (0xA9FE0000, 0xA9FEFFFF),
-    (0xAC100000, 0xAC1FFFFF),
-    (0xC0000000, 0xC00000FF),
-    (0xC0000200, 0xC00002FF),
-    (0xC0586300, 0xC05863FF),
-    (0xC0A80000, 0xC0A8FFFF),
-    (0xC6120000, 0xC613FFFF),
-    (0xC6336400, 0xC63364FF),
-    (0xCB007100, 0xCB0071FF),
-    (0xE0000000, 0xFFFFFFFF),
-)
-_IPV6_GLOBAL_UNICAST_FIRST_MIN = 0x2000
-_IPV6_GLOBAL_UNICAST_FIRST_MAX = 0x3FFF
-_IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST = 0x2001
-_IPV6_IETF_PROTOCOL_ASSIGNMENTS_SECOND_MAX = 0x01FF
-_IPV6_DOCUMENTATION_SECOND = 0x0DB8
-_IPV6_6TO4_FIRST = 0x2002
-_IPV6_SPECIAL_EXACT_SECOND = 0x0001
-_IPV6_AMT_SECOND = 0x0003
-_IPV6_AS112_SECOND = 0x0004
-_IPV6_AS112_THIRD = 0x0112
-_IPV6_ORCHID_SECOND_MIN = 0x0020
-_IPV6_ORCHID_SECOND_MAX = 0x002F
-_IPV6_DRONE_REMOTE_ID_SECOND_MIN = 0x0030
-_IPV6_DRONE_REMOTE_ID_SECOND_MAX = 0x003F
+_PERCENT_DECODED_HOST_SYNTAX_CHARS = frozenset("{}*.\u3002\uff0e\uff61,")
 
 
 class BuiltinHostPolicyError(ValueError):
@@ -81,12 +61,19 @@ def validate_credentialed_builtin_base(
 ) -> None:
     if not auth_config_injects_credentials(auth_config):
         return
-    parsed = urllib.parse.urlsplit(base)
+    try:
+        parsed = urllib.parse.urlsplit(base)
+    except ValueError as e:
+        raise _invalid_resolved_base_url(firewall_name) from e
     scheme = parsed.scheme.lower()
     if scheme != "https":
         raise BuiltinHostPolicyError(
             f'builtin firewall "{firewall_name}" credentialed base URL must use https'
         )
+    if parsed.username is not None or parsed.password is not None:
+        raise _invalid_resolved_base_url(firewall_name)
+    if authority_has_empty_port(parsed.netloc):
+        raise _invalid_resolved_base_url(firewall_name)
     _validate_builtin_base_host_policy(
         firewall_name=firewall_name,
         parsed=parsed,
@@ -119,6 +106,78 @@ def validate_credentialed_builtin_request_destination(
             firewall_name=firewall_name,
             message=str(e),
         ) from e
+
+
+def _invalid_resolved_base_url(firewall_name: str) -> BuiltinHostPolicyError:
+    return BuiltinHostPolicyError(
+        f'builtin firewall "{firewall_name}" resolved base URL is invalid'
+    )
+
+
+def _decoded_base_host(
+    *,
+    firewall_name: str,
+    parsed: urllib.parse.SplitResult,
+) -> RawAuthorityHost:
+    raw_host = raw_authority_host(parsed.netloc)
+    if raw_host is None:
+        raise _invalid_resolved_base_url(firewall_name)
+    decoded = percent_decode_host(
+        raw_host.hostname,
+        syntax_chars=_PERCENT_DECODED_HOST_SYNTAX_CHARS,
+    )
+    if decoded.invalid_encoding or decoded.decoded_syntax:
+        raise _invalid_resolved_base_url(firewall_name)
+    if "*" in decoded.value:
+        raise _invalid_resolved_base_url(firewall_name)
+    if raw_host.bracketed:
+        try:
+            parsed_ip = ipaddress.ip_address(decoded.value)
+        except ValueError as e:
+            raise _invalid_resolved_base_url(firewall_name) from e
+        if parsed_ip.version != IPV6_VERSION or parsed_ip.scope_id is not None:
+            raise _invalid_resolved_base_url(firewall_name)
+    return RawAuthorityHost(decoded.value, raw_host.bracketed)
+
+
+def _provider_owned_base_hostname(
+    *,
+    firewall_name: str,
+    parsed: urllib.parse.SplitResult,
+) -> str:
+    decoded_host = _decoded_base_host(firewall_name=firewall_name, parsed=parsed)
+    if decoded_host.bracketed:
+        return f"[{ipaddress.ip_address(decoded_host.hostname).compressed.lower()}]"
+    try:
+        return normalize_idna_hostname(decoded_host.hostname)
+    except (UnicodeError, ValueError) as e:
+        raise _invalid_resolved_base_url(firewall_name) from e
+
+
+def _public_destination_base_hostname(
+    *,
+    firewall_name: str,
+    parsed: urllib.parse.SplitResult,
+) -> str:
+    decoded_host = _decoded_base_host(firewall_name=firewall_name, parsed=parsed)
+    if decoded_host.bracketed:
+        return f"[{decoded_host.hostname}]"
+    try:
+        normalize_idna_hostname(decoded_host.hostname)
+    except (UnicodeError, ValueError) as e:
+        raise _invalid_resolved_base_url(firewall_name) from e
+    return decoded_host.hostname
+
+
+def _parsed_port(
+    *,
+    firewall_name: str,
+    parsed: urllib.parse.SplitResult,
+) -> int | None:
+    try:
+        return parsed.port
+    except ValueError as e:
+        raise _invalid_resolved_base_url(firewall_name) from e
 
 
 def _normalize_host_policy_hostname(hostname: str) -> str:
@@ -231,11 +290,9 @@ def _validate_provider_owned_host_policy(
     parsed: urllib.parse.SplitResult,
     policy: dict,
 ) -> None:
-    if parsed.hostname is None:
-        raise BuiltinHostPolicyError(
-            f'builtin firewall "{firewall_name}" resolved base URL is invalid'
-        )
-    hostname = _normalize_host_policy_hostname(parsed.hostname)
+    hostname = _normalize_host_policy_hostname(
+        _provider_owned_base_hostname(firewall_name=firewall_name, parsed=parsed)
+    )
     exact_hosts = _host_policy_string_list(policy, "exactHosts")
     suffixes = _host_policy_string_list(policy, "suffixes")
     allow_non_default_port = _host_policy_optional_bool(
@@ -271,74 +328,12 @@ def _validate_provider_owned_host_policy(
         )
     if (
         not allow_non_default_port
-        and parsed.port is not None
-        and parsed.port != _DEFAULT_HTTPS_PORT
+        and (parsed_port := _parsed_port(firewall_name=firewall_name, parsed=parsed)) is not None
+        and parsed_port != _DEFAULT_HTTPS_PORT
     ):
         raise BuiltinHostPolicyError(
             f'builtin firewall "{firewall_name}" host policy does not allow non-default ports'
         )
-
-
-def _ip_literal_is_public(hostname: str) -> bool | None:
-    try:
-        ip = ipaddress.ip_address(hostname)
-    except ValueError:
-        return None
-    if isinstance(ip, ipaddress.IPv6Address):
-        if (
-            ip.scope_id is not None
-            or ip.ipv4_mapped is not None
-            or ip.sixtofour is not None
-            or ip.teredo is not None
-        ):
-            return False
-        return _ipv6_literal_is_public_unicast(ip)
-    return _ipv4_literal_is_public(ip)
-
-
-def _ipv4_literal_is_public(ip: ipaddress.IPv4Address) -> bool:
-    value = int(ip)
-    return not any(start <= value <= end for start, end in _IPV4_NON_PUBLIC_RANGES)
-
-
-def _ipv6_word(ip: ipaddress.IPv6Address, index: int) -> int:
-    return (int(ip) >> (112 - (index * 16))) & 0xFFFF
-
-
-def _ipv6_special_registry_exception(ip: ipaddress.IPv6Address) -> bool:
-    second = _ipv6_word(ip, 1)
-    if (
-        second == _IPV6_SPECIAL_EXACT_SECOND
-        and _ipv6_word(ip, 2) == 0
-        and _ipv6_word(ip, 3) == 0
-        and _ipv6_word(ip, 4) == 0
-        and _ipv6_word(ip, 5) == 0
-        and _ipv6_word(ip, 6) == 0
-        and _ipv6_word(ip, 7) in (1, 2)
-    ):
-        return True
-    if second == _IPV6_AMT_SECOND:
-        return True
-    if second == _IPV6_AS112_SECOND and _ipv6_word(ip, 2) == _IPV6_AS112_THIRD:
-        return True
-    if _IPV6_ORCHID_SECOND_MIN <= second <= _IPV6_ORCHID_SECOND_MAX:
-        return True
-    return _IPV6_DRONE_REMOTE_ID_SECOND_MIN <= second <= _IPV6_DRONE_REMOTE_ID_SECOND_MAX
-
-
-def _ipv6_literal_is_public_unicast(ip: ipaddress.IPv6Address) -> bool:
-    first = _ipv6_word(ip, 0)
-    second = _ipv6_word(ip, 1)
-    if first < _IPV6_GLOBAL_UNICAST_FIRST_MIN or first > _IPV6_GLOBAL_UNICAST_FIRST_MAX:
-        return False
-    if (
-        first == _IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST
-        and second <= _IPV6_IETF_PROTOCOL_ASSIGNMENTS_SECOND_MAX
-    ):
-        return _ipv6_special_registry_exception(ip)
-    if first == _IPV6_IETF_PROTOCOL_ASSIGNMENTS_FIRST and second == _IPV6_DOCUMENTATION_SECOND:
-        return False
-    return first != _IPV6_6TO4_FIRST
 
 
 def _validate_public_destination_host_policy(
@@ -346,12 +341,8 @@ def _validate_public_destination_host_policy(
     firewall_name: str,
     parsed: urllib.parse.SplitResult,
 ) -> None:
-    if parsed.hostname is None:
-        raise BuiltinHostPolicyError(
-            f'builtin firewall "{firewall_name}" resolved base URL is invalid'
-        )
-    hostname = _normalize_host_policy_hostname(parsed.hostname)
-    public_ip_literal = _ip_literal_is_public(hostname)
+    hostname = _public_destination_base_hostname(firewall_name=firewall_name, parsed=parsed)
+    public_ip_literal = public_destination.public_ip_literal_is_public(hostname)
     if public_ip_literal is False:
         raise BuiltinHostPolicyError(
             f'builtin firewall "{firewall_name}" host policy does not allow '
@@ -411,7 +402,7 @@ def _validate_public_destination_runtime_host_policy(
     upstream_endpoint: tuple[str, int] | None,
 ) -> None:
     hostname = _normalize_host_policy_hostname(trusted_host)
-    public_ip_literal = _ip_literal_is_public(hostname)
+    public_ip_literal = public_destination.public_ip_literal_is_public(hostname)
     if public_ip_literal is False:
         raise _runtime_host_policy_error(
             reason="public_host_non_public_ip",
@@ -421,7 +412,7 @@ def _validate_public_destination_runtime_host_policy(
     if upstream_endpoint is None:
         return
     endpoint_host, _endpoint_port = upstream_endpoint
-    public_endpoint_ip_literal = _ip_literal_is_public(endpoint_host)
+    public_endpoint_ip_literal = public_destination.public_ip_literal_is_public(endpoint_host)
     if public_endpoint_ip_literal is False:
         raise _runtime_host_policy_error(
             reason="public_endpoint_non_public_ip",

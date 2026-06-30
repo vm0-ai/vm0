@@ -953,6 +953,7 @@ describe("matchFirewallBaseUrl", () => {
     ["userinfo", "https://user:pass@api.github.com/repos/owner/repo"],
     ["invalid authority percent escape", "https://api%zz.github.com/repos"],
     ["percent-encoded authority dot", "https://api%2egithub.com/repos"],
+    ["percent-encoded authority wildcard", "https://api%2Agithub.com/repos"],
     ["percent-encoded authority slash", "https://api%2Fgithub.com/repos"],
     ["percent-encoded authority backslash", "https://api%5Cgithub.com/repos"],
     ["percent-encoded authority at sign", "https://api%40github.com/repos"],
@@ -961,6 +962,7 @@ describe("matchFirewallBaseUrl", () => {
       "https:\\api%2egithub.com/repos",
     ],
     ["malformed IPv6 authority", "https://[::1/repos"],
+    ["empty port", "https://api.github.com:/repos"],
     ["non-default port", "https://api.github.com:8443/repos"],
   ])("rejects runtime URLs with %s", (_label, url) => {
     expect(matchFirewallBaseUrl(url, "https://api.github.com")).toBeNull();
@@ -980,6 +982,16 @@ describe("matchFirewallBaseUrl", () => {
     [
       "raw host comma",
       "https://eth,mainnet.g.alchemy.com/v2/demo",
+      "https://{network}.g.alchemy.com",
+    ],
+    [
+      "raw host wildcard",
+      "https://*.g.alchemy.com/v2/demo",
+      "https://{network}.g.alchemy.com",
+    ],
+    [
+      "mixed raw host wildcard",
+      "https://api*.g.alchemy.com/v2/demo",
       "https://{network}.g.alchemy.com",
     ],
     [
@@ -1063,7 +1075,9 @@ describe("matchFirewallBaseUrl", () => {
     ["invalid percent escape", "https://api%zz.github.com"],
     ["percent-encoded braces", "https://%7Benv%7D.github.com"],
     ["percent-encoded dot", "https://api%2egithub.com"],
+    ["percent-encoded wildcard", "https://api%2Agithub.com"],
     ["percent-encoded comma", "https://api%2Cgithub.com"],
+    ["empty port", "https://api.github.com:"],
     ["non-canonical IPv4 octal component", "https://0177.0.0.1"],
     ["non-canonical IPv4 hex component", "https://0x7f.0.0.1"],
     ["non-canonical IPv4 single number", "https://2130706433"],

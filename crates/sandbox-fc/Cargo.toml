@@ -1,6 +1,6 @@
 [package]
 name = "sandbox-fc"
-version = "0.37.79"
+version = "0.37.80"
 edition.workspace = true
 
 [dependencies]
