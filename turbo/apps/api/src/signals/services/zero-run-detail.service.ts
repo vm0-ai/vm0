@@ -326,12 +326,12 @@ ${paginationFilter}
 
     const events = (
       await get(
-        queryAxiom(
+        queryAxiom<AxiomAgentEvent>(
           apl,
           watermarkTarget !== null ? { noCache: true } : undefined,
         ),
       )
-    ).slice() as unknown as AxiomAgentEvent[];
+    ).slice();
 
     const pageHasMore = events.length > limit;
     const resultEvents = pageHasMore ? events.slice(0, limit) : events;
