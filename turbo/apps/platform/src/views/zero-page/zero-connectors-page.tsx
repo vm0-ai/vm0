@@ -379,12 +379,10 @@ function truncateAgentName(name: string): string {
 function ConnectorAccessButton({
   connectorType,
   connectorLabel,
-  showUsedByPrefix,
   onClick,
 }: {
   readonly connectorType: ConnectorType;
   readonly connectorLabel: string;
-  readonly showUsedByPrefix: boolean;
   readonly onClick: () => void;
 }) {
   const agentsLoadable = useLastLoadable(
@@ -394,7 +392,9 @@ function ConnectorAccessButton({
   const loading = agentsLoadable.state === "loading";
   const visibleNames = agents
     .slice(0, CONNECTOR_CARD_AGENT_NAME_LIMIT)
-    .map((agent) => truncateAgentName(connectorAgentName(agent)));
+    .map((agent) => {
+      return truncateAgentName(connectorAgentName(agent));
+    });
   const overflowCount = agents.length - visibleNames.length;
 
   return (
@@ -415,7 +415,7 @@ function ConnectorAccessButton({
         </span>
       ) : (
         <>
-          {showUsedByPrefix && <span className="shrink-0">Used by</span>}
+          <span className="shrink-0">Used by</span>
           <span
             className="truncate underline decoration-dotted decoration-muted-foreground/40 underline-offset-2"
             data-testid="connector-card-access-names"
@@ -573,7 +573,6 @@ function GlobalConnectorCard({
               <ConnectorAccessButton
                 connectorType={connector.type}
                 connectorLabel={connector.label}
-                showUsedByPrefix={connectionStatus === "connected"}
                 onClick={onManageAccess}
               />
             )}
