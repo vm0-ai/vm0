@@ -47,6 +47,7 @@ from mitmproxy.addonmanager import Loader
 import auth_base_forwarder
 import body_capture
 import builtin_connector_diagnostics
+import builtin_host_policy
 import flow_metadata_keys as metadata_keys
 import matching
 import network_log_sanitization
@@ -103,6 +104,7 @@ _BROWSER_USER_AGENT_MARKERS = (
     " safari/",
 )
 _TEST_ENDPOINT_BYPASS_HEADER: Final = "x-vm0-test-endpoint-bypass"
+_BUILTIN_HOST_POLICY_DENIED_ERROR: Final = "builtin_host_policy_denied"
 _MODEL_PROVIDER_USAGE_REPORTED = "_model_provider_usage_reported"
 _MODEL_WEBSOCKET_MESSAGE_TRIM_SCHEDULED = "_model_websocket_message_trim_scheduled"
 _TCP_MESSAGE_DRAIN_SCHEDULED = "_tcp_message_drain_scheduled"
@@ -801,6 +803,38 @@ def _firewall_allow_injects_ordinary_upstream_credentials(
     allow: matching.FirewallAllow,
 ) -> bool:
     return auth_config_injects_ordinary_upstream_credentials(allow.api_entry.get("auth"))
+
+
+def _builtin_host_policy_error_for_firewall_allow(
+    flow: http.HTTPFlow,
+    allow: matching.FirewallAllow,
+) -> builtin_host_policy.BuiltinRuntimeHostPolicyError | None:
+    if allow.api_entry.get(builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER) is not True:
+        return None
+    if not _firewall_allow_injects_ordinary_upstream_credentials(allow):
+        return None
+    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
+    if not isinstance(trusted_host, str) or not trusted_host:
+        return builtin_host_policy.BuiltinRuntimeHostPolicyError(
+            reason="trusted_authority_unavailable",
+            message="trusted request authority is unavailable",
+        )
+    upstream_endpoint = upstream_destination_binding.bound_destination_endpoint_for_flow(
+        flow,
+        allowed_kinds=frozenset(("connector_auth",)),
+    )
+    try:
+        builtin_host_policy.validate_credentialed_builtin_request_destination(
+            firewall_name=allow.name,
+            trusted_host=trusted_host,
+            trusted_port=flow.request.port,
+            auth_config=allow.api_entry.get("auth"),
+            host_policy=allow.api_entry.get("hostPolicy"),
+            upstream_endpoint=upstream_endpoint,
+        )
+    except builtin_host_policy.BuiltinRuntimeHostPolicyError as e:
+        return e
+    return None
 
 
 def _has_bound_upstream_destination(
@@ -1615,6 +1649,49 @@ def _block_upstream_destination_unbound(
     )
 
 
+def _block_builtin_host_policy_denied(
+    flow: http.HTTPFlow,
+    *,
+    allow: matching.FirewallAllow,
+    error: builtin_host_policy.BuiltinRuntimeHostPolicyError,
+) -> None:
+    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
+    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST, "")
+    upstream_endpoint = upstream_destination_binding.bound_destination_endpoint_for_flow(
+        flow,
+        allowed_kinds=frozenset(("connector_auth",)),
+    )
+    log_proxy_entry(
+        proxy_log_path,
+        "warn",
+        "Request blocked: builtin firewall host policy rejected credential injection",
+        type="builtin_host_policy",
+        name=allow.name,
+        reason=error.reason,
+        trusted_host=trusted_host,
+        request_port=flow.request.port,
+        upstream_endpoint=_endpoint_text(upstream_endpoint),
+    )
+    flow.metadata[metadata_keys.FIREWALL_ACTION] = "BLOCK"
+    flow.metadata[metadata_keys.FIREWALL_ERROR] = _BUILTIN_HOST_POLICY_DENIED_ERROR
+    body: dict[str, object] = {
+        "error": _BUILTIN_HOST_POLICY_DENIED_ERROR,
+        "message": "Request blocked: builtin firewall host policy rejected credential injection",
+        "reason": error.reason,
+        "name": allow.name,
+        "trusted_host": trusted_host,
+        "request_port": flow.request.port,
+    }
+    firewall_base = flow.metadata.get(metadata_keys.FIREWALL_BASE)
+    if isinstance(firewall_base, str):
+        body["base"] = firewall_base
+    flow.response = http.Response.make(
+        403,
+        json.dumps(body).encode(),
+        {"Content-Type": "application/json"},
+    )
+
+
 def _endpoint_text(address: tuple[str, int] | None) -> str:
     if address is None:
         return ""
@@ -2356,6 +2433,9 @@ async def _try_firewall_request_stream_capture_from_headers(
     ) and not _ensure_bound_upstream_destination(flow, kind="connector_auth"):
         _restore_request_headers_probe_metadata(flow, metadata_snapshot)
         return
+    if _builtin_host_policy_error_for_firewall_allow(flow, allow) is not None:
+        _restore_request_headers_probe_metadata(flow, metadata_snapshot)
+        return
 
     _start_request_timing(flow)
     try:
@@ -2508,6 +2588,15 @@ async def request(flow: http.HTTPFlow) -> None:
             ) and not _ensure_bound_upstream_destination(flow, kind="connector_auth"):
                 prepare_firewall_metadata(flow, allow, vm_info)
                 _block_upstream_destination_unbound(flow, reason="connector_auth")
+                return
+            host_policy_error = _builtin_host_policy_error_for_firewall_allow(flow, allow)
+            if host_policy_error is not None:
+                prepare_firewall_metadata(flow, allow, vm_info)
+                _block_builtin_host_policy_denied(
+                    flow,
+                    allow=allow,
+                    error=host_policy_error,
+                )
                 return
             _maybe_track_usage_flow(
                 flow,

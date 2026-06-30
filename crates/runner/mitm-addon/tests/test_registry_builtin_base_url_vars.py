@@ -3,6 +3,7 @@
 import json
 from unittest.mock import MagicMock, patch
 
+import builtin_host_policy
 import registry
 import registry_firewalls
 from tests.registry_helpers import write_builtin_firewall_registry
@@ -154,6 +155,23 @@ class TestRegistryBuiltinBaseUrlVars:
         vm_info, compiled_firewalls, _ = context
         assert compiled_firewalls is not None
         assert vm_info["firewalls"][0]["apis"][0]["base"] == "https://acme.atlassian.net"
+
+    def test_builtin_host_policy_marks_resolved_api_for_runtime_enforcement(self, tmp_path):
+        path = tmp_path / "registry.json"
+        write_builtin_firewall_registry(
+            path,
+            run_id="run-jira",
+            name="jira",
+            base_url_vars={"JIRA_DOMAIN": "acme.atlassian.net"},
+        )
+
+        context = registry.get_vm_context("10.200.0.1", str(path))
+
+        assert context is not None
+        vm_info, compiled_firewalls, _ = context
+        assert compiled_firewalls is not None
+        api = vm_info["firewalls"][0]["apis"][0]
+        assert api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER] is True
 
     def test_builtin_provider_owned_accepts_idna_dot_equivalent_host(self, tmp_path):
         path = tmp_path / "registry.json"
