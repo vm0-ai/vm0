@@ -1,14 +1,14 @@
 use std::collections::HashSet;
 use std::fs;
 use std::io::{BufRead, BufReader, Read, Write};
-use std::process::{Child, ChildStdin, Command, ExitStatus, Output, Stdio};
+use std::process::{ChildStdin, Command, ExitStatus, Output, Stdio};
 use std::sync::mpsc::{self, Receiver};
 use std::thread::JoinHandle;
 use std::time::Duration;
 
 #[cfg(unix)]
-use std::os::unix::process::CommandExt;
-
+use guest_mock_claude::process_group_child::observe_child_exit_without_reaping;
+use guest_mock_claude::process_group_child::{self, ProcessGroupChild};
 use serde_json::Value;
 
 const ACTIVE_INPUT_READY_RESULT: &str = "READY_FOR_ACTIVE_INPUT";
@@ -21,7 +21,7 @@ const STDOUT_TRUNCATION_MARKER: &str = "[stdout truncated after 1048576 bytes]";
 const STDERR_TRUNCATION_MARKER: &str = "[stderr truncated after 1048576 bytes]";
 
 struct StreamJsonChild {
-    child: Option<Child>,
+    child: Option<ProcessGroupChild>,
     stdin: Option<ChildStdin>,
     rx: Receiver<Result<Value, String>>,
     stdout_thread: Option<JoinHandle<()>>,
@@ -55,10 +55,8 @@ impl StreamJsonChild {
 impl Drop for StreamJsonChild {
     fn drop(&mut self) {
         self.close_stdin();
-        if let Some(mut child) = self.child.take() {
-            terminate_child(child.id());
-            let _ = child.kill();
-            let _ = child.wait();
+        if let Some(child) = self.child.take() {
+            child.terminate();
         }
         if let Some(stdout_thread) = self.stdout_thread.take() {
             let _ = stdout_thread.join();
@@ -70,66 +68,23 @@ fn mock_claude() -> Command {
     Command::new(env!("CARGO_BIN_EXE_guest-mock-claude"))
 }
 
-fn spawn_managed_mock_child(command: &mut Command) -> std::io::Result<Child> {
-    #[cfg(unix)]
-    command.process_group(0);
+fn spawn_managed_mock_child(command: &mut Command) -> std::io::Result<ProcessGroupChild> {
+    ProcessGroupChild::spawn(command)
+}
 
-    command.spawn()
+fn missing_child_pipe(pipe_name: &str) -> std::io::Error {
+    std::io::Error::other(format!("mock child missing {pipe_name} pipe"))
+}
+
+fn child_exit_timed_out(error: &(dyn std::error::Error + 'static)) -> bool {
+    error
+        .downcast_ref::<std::io::Error>()
+        .is_some_and(|error| error.kind() == std::io::ErrorKind::TimedOut)
 }
 
 fn run_mock_output(command: &mut Command) -> Result<Output, Box<dyn std::error::Error>> {
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     wait_child_output(spawn_managed_mock_child(command)?)
-}
-
-fn terminate_child(pid: u32) {
-    #[cfg(unix)]
-    {
-        terminate_child_process_group(pid);
-
-        if let Ok(pid) = i32::try_from(pid) {
-            unsafe {
-                libc::kill(pid as libc::pid_t, libc::SIGKILL);
-            }
-        }
-    }
-
-    #[cfg(not(unix))]
-    let _ = pid;
-}
-
-#[cfg(unix)]
-fn terminate_child_process_group(pid: u32) {
-    if let Some(pgid) = signalable_child_pgid(pid) {
-        unsafe {
-            libc::kill(-pgid, libc::SIGKILL);
-        }
-    }
-}
-
-#[cfg(not(unix))]
-fn terminate_child_process_group(_pid: u32) {}
-
-#[cfg(unix)]
-fn signalable_child_pgid(child_pid: u32) -> Option<libc::pid_t> {
-    let pgid = i32::try_from(child_pid).ok()?;
-    (pgid > 1 && pgid != current_process_group()).then_some(pgid as libc::pid_t)
-}
-
-#[cfg(unix)]
-fn current_process_group() -> i32 {
-    unsafe { libc::getpgrp() }
-}
-
-#[cfg(unix)]
-#[test]
-fn signalable_child_pgid_rejects_dangerous_values() {
-    assert_eq!(signalable_child_pgid(0), None);
-    assert_eq!(signalable_child_pgid(1), None);
-    assert_eq!(signalable_child_pgid((i32::MAX as u32) + 1), None);
-    if let Ok(current_pgid) = u32::try_from(current_process_group()) {
-        assert_eq!(signalable_child_pgid(current_pgid), None);
-    }
 }
 
 fn expected_history_path(home: &std::path::Path, session_id: &str) -> std::path::PathBuf {
@@ -246,8 +201,14 @@ fn spawn_stream_json_child(
         .stderr(Stdio::piped());
 
     let mut child = spawn_managed_mock_child(&mut command)?;
-    let stdin = child.stdin.take().ok_or("missing stdin")?;
-    let stdout = child.stdout.take().ok_or("missing stdout")?;
+    let Some(stdin) = child.take_stdin() else {
+        child.terminate();
+        return Err(missing_child_pipe("stdin").into());
+    };
+    let Some(stdout) = child.take_stdout() else {
+        child.terminate();
+        return Err(missing_child_pipe("stdout").into());
+    };
     let (tx, rx) = mpsc::channel();
     let stdout_thread = std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
@@ -312,10 +273,10 @@ fn recv_until_result(
 }
 
 fn wait_child(
-    mut child: Child,
+    mut child: ProcessGroupChild,
     stdout_thread: JoinHandle<()>,
 ) -> Result<(ExitStatus, String), Box<dyn std::error::Error>> {
-    let child_stderr = child.stderr.take();
+    let child_stderr = child.take_stderr();
     let stderr_thread = std::thread::spawn(move || -> Result<String, std::io::Error> {
         let mut stderr = String::new();
         if let Some(mut child_stderr) = child_stderr {
@@ -324,33 +285,26 @@ fn wait_child(
         Ok(stderr)
     });
 
-    let status = wait_child_status_and_cleanup_group(child)?;
+    let status = match wait_child_status_and_cleanup_group(child) {
+        Err(error) if child_exit_timed_out(error.as_ref()) => return Err(error),
+        result => result,
+    };
+    let stdout_result = stdout_thread
+        .join()
+        .map_err(|_| std::io::Error::other("stdout reader thread panicked"));
+    let stderr_result = stderr_thread
+        .join()
+        .map_err(|_| std::io::Error::other("stderr reader thread panicked"));
 
-    stdout_thread
-        .join()
-        .map_err(|_| std::io::Error::other("stdout reader thread panicked"))?;
-    let stderr = stderr_thread
-        .join()
-        .map_err(|_| std::io::Error::other("stderr reader thread panicked"))??;
+    let status = status?;
+    stdout_result?;
+    let stderr = stderr_result??;
     Ok((status, stderr))
 }
 
-#[cfg(any(
-    target_os = "linux",
-    target_vendor = "apple",
-    target_os = "freebsd",
-    target_os = "dragonfly",
-    target_os = "openbsd",
-    target_os = "netbsd",
-    target_os = "solaris",
-    target_os = "illumos",
-    target_os = "aix",
-    target_os = "haiku",
-    target_os = "hurd",
-    target_os = "nto",
-))]
+#[cfg(unix)]
 fn wait_child_status_and_cleanup_group(
-    mut child: Child,
+    child: ProcessGroupChild,
 ) -> Result<ExitStatus, Box<dyn std::error::Error>> {
     let pid = child.id();
     let (tx, rx) = mpsc::channel();
@@ -362,7 +316,7 @@ fn wait_child_status_and_cleanup_group(
     let child_observed = match rx.recv_timeout(CHILD_EXIT_TIMEOUT) {
         Ok(result) => result,
         Err(mpsc::RecvTimeoutError::Timeout) => {
-            terminate_child(pid);
+            process_group_child::terminate_child_by_pid(pid);
             rx.recv_timeout(CHILD_EXIT_TIMEOUT).map_err(|error| {
                 std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
@@ -378,100 +332,34 @@ fn wait_child_status_and_cleanup_group(
     wait_thread
         .join()
         .map_err(|_| std::io::Error::other("child wait thread panicked"))?;
-    child_observed?;
-    terminate_child_process_group(pid);
-    Ok(child.wait()?)
+    if let Err(error) = child_observed {
+        child.terminate();
+        return Err(error.into());
+    }
+    process_group_child::terminate_process_group(pid);
+    Ok(child.wait_direct_child()?)
 }
 
-#[cfg(not(any(
-    target_os = "linux",
-    target_vendor = "apple",
-    target_os = "freebsd",
-    target_os = "dragonfly",
-    target_os = "openbsd",
-    target_os = "netbsd",
-    target_os = "solaris",
-    target_os = "illumos",
-    target_os = "aix",
-    target_os = "haiku",
-    target_os = "hurd",
-    target_os = "nto",
-)))]
+#[cfg(not(unix))]
 fn wait_child_status_and_cleanup_group(
-    child: Child,
+    child: ProcessGroupChild,
 ) -> Result<ExitStatus, Box<dyn std::error::Error>> {
     wait_child_status(child)
 }
 
-#[cfg(any(
-    target_os = "linux",
-    target_vendor = "apple",
-    target_os = "freebsd",
-    target_os = "dragonfly",
-    target_os = "openbsd",
-    target_os = "netbsd",
-    target_os = "solaris",
-    target_os = "illumos",
-    target_os = "aix",
-    target_os = "haiku",
-    target_os = "hurd",
-    target_os = "nto",
-))]
-fn observe_child_exit_without_reaping(pid: u32) -> std::io::Result<()> {
-    let pid = i32::try_from(pid).map_err(|_| {
-        std::io::Error::new(
-            std::io::ErrorKind::InvalidInput,
-            "mock child PID does not fit in i32",
-        )
-    })?;
-
-    loop {
-        let mut info = std::mem::MaybeUninit::<libc::siginfo_t>::uninit();
-        let result = unsafe {
-            libc::waitid(
-                libc::P_PID,
-                pid as libc::id_t,
-                info.as_mut_ptr(),
-                libc::WEXITED | libc::WNOWAIT,
-            )
-        };
-        if result == 0 {
-            return Ok(());
-        }
-
-        let error = std::io::Error::last_os_error();
-        if error.kind() != std::io::ErrorKind::Interrupted {
-            return Err(error);
-        }
-    }
-}
-
-#[cfg(not(any(
-    target_os = "linux",
-    target_vendor = "apple",
-    target_os = "freebsd",
-    target_os = "dragonfly",
-    target_os = "openbsd",
-    target_os = "netbsd",
-    target_os = "solaris",
-    target_os = "illumos",
-    target_os = "aix",
-    target_os = "haiku",
-    target_os = "hurd",
-    target_os = "nto",
-)))]
-fn wait_child_status(mut child: Child) -> Result<ExitStatus, Box<dyn std::error::Error>> {
+#[cfg(not(unix))]
+fn wait_child_status(child: ProcessGroupChild) -> Result<ExitStatus, Box<dyn std::error::Error>> {
     let pid = child.id();
     let (tx, rx) = mpsc::channel();
     let wait_thread = std::thread::spawn(move || {
-        let result = child.wait();
+        let result = child.wait_direct_child();
         let _ = tx.send(result);
     });
 
     let child_result = match rx.recv_timeout(CHILD_EXIT_TIMEOUT) {
         Ok(result) => result,
         Err(mpsc::RecvTimeoutError::Timeout) => {
-            terminate_child(pid);
+            process_group_child::terminate_child_by_pid(pid);
             rx.recv_timeout(CHILD_EXIT_TIMEOUT).map_err(|error| {
                 std::io::Error::new(
                     std::io::ErrorKind::TimedOut,
@@ -490,9 +378,15 @@ fn wait_child_status(mut child: Child) -> Result<ExitStatus, Box<dyn std::error:
     Ok(child_result?)
 }
 
-fn wait_child_output(mut child: Child) -> Result<Output, Box<dyn std::error::Error>> {
-    let mut child_stdout = child.stdout.take().ok_or("missing stdout")?;
-    let mut child_stderr = child.stderr.take().ok_or("missing stderr")?;
+fn wait_child_output(mut child: ProcessGroupChild) -> Result<Output, Box<dyn std::error::Error>> {
+    let Some(mut child_stdout) = child.take_stdout() else {
+        child.terminate();
+        return Err(missing_child_pipe("stdout").into());
+    };
+    let Some(mut child_stderr) = child.take_stderr() else {
+        child.terminate();
+        return Err(missing_child_pipe("stderr").into());
+    };
     let stdout_thread = std::thread::spawn(move || -> Result<Vec<u8>, std::io::Error> {
         let mut stdout = Vec::new();
         child_stdout.read_to_end(&mut stdout)?;
@@ -504,13 +398,20 @@ fn wait_child_output(mut child: Child) -> Result<Output, Box<dyn std::error::Err
         Ok(stderr)
     });
 
-    let status = wait_child_status_and_cleanup_group(child)?;
-    let stdout = stdout_thread
+    let status = match wait_child_status_and_cleanup_group(child) {
+        Err(error) if child_exit_timed_out(error.as_ref()) => return Err(error),
+        result => result,
+    };
+    let stdout_result = stdout_thread
         .join()
-        .map_err(|_| std::io::Error::other("stdout reader thread panicked"))??;
-    let stderr = stderr_thread
+        .map_err(|_| std::io::Error::other("stdout reader thread panicked"));
+    let stderr_result = stderr_thread
         .join()
-        .map_err(|_| std::io::Error::other("stderr reader thread panicked"))??;
+        .map_err(|_| std::io::Error::other("stderr reader thread panicked"));
+
+    let status = status?;
+    let stdout = stdout_result??;
+    let stderr = stderr_result??;
 
     Ok(Output {
         status,
@@ -789,7 +690,7 @@ fn stream_json_input_reads_prompt_from_stdin() -> Result<(), Box<dyn std::error:
         .stderr(Stdio::piped());
     let mut child = spawn_managed_mock_child(&mut command)?;
 
-    let mut stdin = child.stdin.take().ok_or("missing stdin")?;
+    let mut stdin = child.take_stdin().ok_or("missing stdin")?;
     stdin.write_all(stream_json_user_frame("printf stdin-ok").as_bytes())?;
     drop(stdin);
 
