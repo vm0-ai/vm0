@@ -769,7 +769,9 @@ describe("agent workflows tab", () => {
     expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).toContain(
       "Help me create a workflow for this agent.",
     );
+    expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).toContain("desired outcome");
     expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).not.toContain("Zero workflow");
+    expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).not.toContain("side effects");
 
     click(buttonByText(/create with chat/i));
     const dialog = await screen.findByRole("dialog", {

@@ -106,7 +106,7 @@ interface WorkflowAutomationOption {
 }
 
 export const CREATE_WORKFLOW_WITH_CHAT_PROMPT =
-  "Help me create a workflow for this agent. Use the workflow-setup skill, then ask me for the automation goal, trigger, action, and allowed side effects before creating the workflow and trigger.";
+  "Help me create a workflow for this agent. Use the workflow-setup skill, then ask me for the desired outcome, trigger, and action before creating the workflow and trigger.";
 
 const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
   {
