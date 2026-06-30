@@ -9,6 +9,7 @@ import {
 import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
+import { runBuiltInAdmissions } from "@vm0/db/schema/run-built-in-admission";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
@@ -473,6 +474,30 @@ async function seedBehaviorCountForAction(
   return actionOk();
 }
 
+async function seedRunBuiltInAdmissionsForAction(
+  db: Db,
+  body: GenerationAction<"seed-run-built-in-admissions">,
+  signal: AbortSignal,
+) {
+  if (body.entries.length === 0) {
+    return actionOk();
+  }
+
+  await db.insert(runBuiltInAdmissions).values(
+    body.entries.map((entry) => {
+      return {
+        runId: body.run_id,
+        kind: entry.kind,
+        status: entry.status ?? "active",
+        expiresAt: new Date(entry.expires_at),
+      };
+    }),
+  );
+  signal.throwIfAborted();
+
+  return actionOk();
+}
+
 async function readBehaviorCountsForAction(
   db: Db,
   body: GenerationAction<"read-behavior-counts">,
@@ -554,6 +579,9 @@ const mutateGenerationState$ = command(
       }
       case "seed-behavior-count": {
         return await seedBehaviorCountForAction(db, body, signal);
+      }
+      case "seed-run-built-in-admissions": {
+        return await seedRunBuiltInAdmissionsForAction(db, body, signal);
       }
       case "read-behavior-counts": {
         return await readBehaviorCountsForAction(db, body, signal);

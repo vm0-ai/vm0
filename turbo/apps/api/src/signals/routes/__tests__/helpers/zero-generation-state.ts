@@ -390,6 +390,30 @@ export async function seedGenerationBehaviorCount(
   });
 }
 
+export async function seedGenerationRunBuiltInAdmissions(
+  signal: AbortSignal,
+  args: {
+    readonly runId: string;
+    readonly entries: readonly {
+      readonly kind: string;
+      readonly status?: string;
+      readonly expiresAt: Date;
+    }[];
+  },
+): Promise<void> {
+  await postAction(signal, {
+    action: "seed-run-built-in-admissions",
+    run_id: args.runId,
+    entries: args.entries.map((entry) => {
+      return {
+        kind: entry.kind,
+        status: entry.status,
+        expires_at: entry.expiresAt.toISOString(),
+      };
+    }),
+  });
+}
+
 export async function readGenerationBehaviorCounts(
   signal: AbortSignal,
   fixture: GenerationFixture,

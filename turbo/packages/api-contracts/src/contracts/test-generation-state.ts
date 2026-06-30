@@ -138,6 +138,17 @@ export const testGenerationStateActionBodySchema = z.discriminatedUnion(
       count: z.number(),
     }),
     z.object({
+      action: z.literal("seed-run-built-in-admissions"),
+      run_id: z.string(),
+      entries: z.array(
+        z.object({
+          kind: z.string(),
+          status: z.string().optional(),
+          expires_at: z.string(),
+        }),
+      ),
+    }),
+    z.object({
       action: z.literal("read-behavior-counts"),
       org_id: z.string(),
       user_id: z.string(),
