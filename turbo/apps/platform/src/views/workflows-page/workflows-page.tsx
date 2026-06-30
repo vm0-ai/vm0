@@ -1,14 +1,7 @@
 // Workflow list surfaces for agent-scoped tabs and the workspace index page.
 import { useLastLoadable, useSet } from "ccstate-react";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
-import { IconChevronDown, IconMessageCircle } from "@tabler/icons-react";
-import {
-  Button,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
-} from "@vm0/ui";
+import { Button } from "@vm0/ui";
 
 import { openCreateWorkflowDialog$ } from "../../signals/automation-page/workflow-trigger-automation-dialog.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
@@ -225,29 +218,16 @@ export function WorkflowsPage() {
               Reusable instructions your team can run, edit, or trigger.
             </p>
           </div>
-          <DropdownMenu>
-            <DropdownMenuTrigger asChild>
-              <Button
-                type="button"
-                size="sm"
-                className="h-9 shrink-0 gap-2 rounded-lg bg-foreground px-3 text-background hover:bg-foreground/90"
-              >
-                Create with chat
-                <IconChevronDown size={14} stroke={1.5} />
-              </Button>
-            </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-56">
-              <DropdownMenuItem
-                className="gap-2"
-                onClick={() => {
-                  openCreateWorkflowDialog();
-                }}
-              >
-                <IconMessageCircle size={14} stroke={1.5} />
-                Create with Zero
-              </DropdownMenuItem>
-            </DropdownMenuContent>
-          </DropdownMenu>
+          <Button
+            type="button"
+            size="sm"
+            className="h-9 shrink-0 rounded-lg bg-foreground px-3 text-background hover:bg-foreground/90"
+            onClick={() => {
+              openCreateWorkflowDialog();
+            }}
+          >
+            Create with chat
+          </Button>
         </div>
       </header>
 

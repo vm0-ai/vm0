@@ -780,12 +780,16 @@ describe("workflows routes", () => {
       `/workflows/${OTHER_WORKFLOW_ID}`,
     );
 
-    click(buttonByText(/create with chat/i));
-    await waitFor(() => {
-      expect(menuItemByText(/create with Zero/i)).toBeInTheDocument();
-    });
-    click(menuItemByText(/create with Zero/i));
+    expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).toContain(
+      "Help me create a workflow for this agent.",
+    );
+    expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).toContain("desired outcome");
+    expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).toContain("automation");
+    expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).not.toContain("Zero workflow");
+    expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).not.toContain("side effects");
+    expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).not.toContain("trigger");
 
+    click(buttonByText(/create with chat/i));
     const dialog = await screen.findByRole("dialog", {
       name: "Create workflow",
     });
