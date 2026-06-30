@@ -97,9 +97,20 @@ class _CompiledRuleEntry(NamedTuple):
     rule: _CompiledRule
 
 
+class _CompiledRuleTrieNode(NamedTuple):
+    entries: tuple[_CompiledRuleEntry, ...]
+    children: Mapping[str, "_CompiledRuleTrieNode"]
+
+
+@dataclass
+class _RuleTrieBuilder:
+    entries: list[_CompiledRuleEntry] = field(default_factory=list)
+    children: dict[str, "_RuleTrieBuilder"] = field(default_factory=dict)
+
+
 class _CompiledRuleMethodIndex(NamedTuple):
     fallback: tuple[_CompiledRuleEntry, ...]
-    prefix_buckets: Mapping[tuple[str, ...], tuple[_CompiledRuleEntry, ...]]
+    prefix_root: _CompiledRuleTrieNode
 
 
 class _CompiledRuleIndex(NamedTuple):
@@ -172,10 +183,21 @@ class _CompiledApiCandidate(NamedTuple):
     api: _CompiledApi
 
 
+class _CompiledApiTrieNode(NamedTuple):
+    candidates: tuple[_CompiledApiCandidate, ...]
+    children: Mapping[str, "_CompiledApiTrieNode"]
+
+
+@dataclass
+class _ApiTrieBuilder:
+    candidates: list[_CompiledApiCandidate] = field(default_factory=list)
+    children: dict[str, "_ApiTrieBuilder"] = field(default_factory=dict)
+
+
 class _CompiledApiIndex(NamedTuple):
     all_candidates: tuple[_CompiledApiCandidate, ...]
     fallback: tuple[_CompiledApiCandidate, ...]
-    static_buckets: Mapping[tuple[str, str, tuple[str, ...]], tuple[_CompiledApiCandidate, ...]]
+    static_roots: Mapping[tuple[str, str], _CompiledApiTrieNode]
 
 
 @dataclass(frozen=True, init=False, slots=True, eq=False, repr=False)
@@ -407,10 +429,6 @@ def _path_index_key(path: str) -> tuple[str, ...]:
     return tuple(_split_path_segments(path))
 
 
-def _path_prefix_index_keys(path_segs: list[str]) -> tuple[tuple[str, ...], ...]:
-    return tuple(tuple(path_segs[:length]) for length in range(1, len(path_segs) + 1))
-
-
 def _static_api_index_key(
     base: _CompiledBase,
 ) -> tuple[str, str, tuple[str, ...]] | None:
@@ -430,15 +448,39 @@ def _static_api_index_key(
     )
 
 
-def _request_api_index_keys(
-    url_parts: _BaseUrlParts,
-) -> tuple[tuple[str, str, tuple[str, ...]], ...]:
-    scheme = url_parts.scheme.lower()
-    authority = url_parts.authority.lower()
-    path_segs = _split_path_segments(url_parts.path)
-    return tuple(
-        (scheme, authority, tuple(path_segs[:length])) for length in range(len(path_segs) + 1)
+def _insert_api_trie_candidate(
+    root: _ApiTrieBuilder,
+    path_key: tuple[str, ...],
+    candidate: _CompiledApiCandidate,
+) -> None:
+    node = root
+    for segment in path_key:
+        node = node.children.setdefault(segment, _ApiTrieBuilder())
+    node.candidates.append(candidate)
+
+
+def _freeze_api_trie_node(builder: _ApiTrieBuilder) -> _CompiledApiTrieNode:
+    return _CompiledApiTrieNode(
+        tuple(builder.candidates),
+        MappingProxyType(
+            {segment: _freeze_api_trie_node(child) for segment, child in builder.children.items()}
+        ),
     )
+
+
+def _extend_api_trie_candidates(
+    candidates: list[_CompiledApiCandidate],
+    root: _CompiledApiTrieNode,
+    path_segs: list[str],
+) -> None:
+    candidates.extend(root.candidates)
+    node = root
+    for segment in path_segs:
+        child = node.children.get(segment)
+        if child is None:
+            break
+        node = child
+        candidates.extend(node.candidates)
 
 
 def _compile_api_candidate_index(
@@ -446,7 +488,7 @@ def _compile_api_candidate_index(
 ) -> _CompiledApiIndex:
     all_candidates: list[_CompiledApiCandidate] = []
     fallback: list[_CompiledApiCandidate] = []
-    static_buckets: dict[tuple[str, str, tuple[str, ...]], list[_CompiledApiCandidate]] = {}
+    static_roots: dict[tuple[str, str], _ApiTrieBuilder] = {}
 
     order = 0
     for firewall in firewalls:
@@ -457,13 +499,15 @@ def _compile_api_candidate_index(
             if key is None:
                 fallback.append(candidate)
             else:
-                static_buckets.setdefault(key, []).append(candidate)
+                scheme, authority, path_key = key
+                root = static_roots.setdefault((scheme, authority), _ApiTrieBuilder())
+                _insert_api_trie_candidate(root, path_key, candidate)
             order += 1
 
     return _CompiledApiIndex(
         tuple(all_candidates),
         tuple(fallback),
-        MappingProxyType({key: tuple(candidates) for key, candidates in static_buckets.items()}),
+        MappingProxyType({key: _freeze_api_trie_node(root) for key, root in static_roots.items()}),
     )
 
 
@@ -472,8 +516,9 @@ def _indexed_api_candidates(
     url_parts: _BaseUrlParts,
 ) -> tuple[_CompiledApiCandidate, ...]:
     candidates = list(api_index.fallback)
-    for key in _request_api_index_keys(url_parts):
-        candidates.extend(api_index.static_buckets.get(key, ()))
+    root = api_index.static_roots.get((url_parts.scheme.lower(), url_parts.authority.lower()))
+    if root is not None:
+        _extend_api_trie_candidates(candidates, root, _split_path_segments(url_parts.path))
     if len(candidates) <= 1:
         return tuple(candidates)
     return tuple(sorted(candidates, key=lambda candidate: candidate.order))
@@ -488,20 +533,67 @@ def _rule_path_index_key(rule: _CompiledRule) -> tuple[str, ...] | None:
     return tuple(prefix) if prefix else None
 
 
+def _insert_rule_trie_entry(
+    root: _RuleTrieBuilder,
+    path_key: tuple[str, ...],
+    entry: _CompiledRuleEntry,
+) -> None:
+    node = root
+    for segment in path_key:
+        node = node.children.setdefault(segment, _RuleTrieBuilder())
+    node.entries.append(entry)
+
+
+def _freeze_rule_trie_node(builder: _RuleTrieBuilder) -> _CompiledRuleTrieNode:
+    return _CompiledRuleTrieNode(
+        tuple(builder.entries),
+        MappingProxyType(
+            {segment: _freeze_rule_trie_node(child) for segment, child in builder.children.items()}
+        ),
+    )
+
+
+def _add_rule_entries(
+    candidates: list[_CompiledRuleEntry],
+    seen_orders: set[int],
+    entries: tuple[_CompiledRuleEntry, ...],
+) -> None:
+    for entry in entries:
+        if entry.order not in seen_orders:
+            seen_orders.add(entry.order)
+            candidates.append(entry)
+
+
+def _extend_rule_trie_candidates(
+    candidates: list[_CompiledRuleEntry],
+    seen_orders: set[int],
+    root: _CompiledRuleTrieNode,
+    rel_path_segs: list[str],
+) -> None:
+    _add_rule_entries(candidates, seen_orders, root.entries)
+    node = root
+    for segment in rel_path_segs:
+        child = node.children.get(segment)
+        if child is None:
+            break
+        node = child
+        _add_rule_entries(candidates, seen_orders, node.entries)
+
+
 def _compile_rule_method_index(
     entries: list[_CompiledRuleEntry],
 ) -> _CompiledRuleMethodIndex:
     fallback: list[_CompiledRuleEntry] = []
-    prefix_buckets: dict[tuple[str, ...], list[_CompiledRuleEntry]] = {}
+    prefix_root = _RuleTrieBuilder()
     for entry in entries:
         key = _rule_path_index_key(entry.rule)
         if key is None:
             fallback.append(entry)
         else:
-            prefix_buckets.setdefault(key, []).append(entry)
+            _insert_rule_trie_entry(prefix_root, key, entry)
     return _CompiledRuleMethodIndex(
         tuple(fallback),
-        MappingProxyType({key: tuple(candidates) for key, candidates in prefix_buckets.items()}),
+        _freeze_rule_trie_node(prefix_root),
     )
 
 
@@ -536,22 +628,19 @@ def _indexed_rule_candidates(
     rel_path_segs: list[str],
 ) -> tuple[_CompiledRuleEntry, ...]:
     candidates: list[_CompiledRuleEntry] = []
-    path_keys = _path_prefix_index_keys(rel_path_segs)
     seen_orders: set[int] = set()
 
     def add_method_candidates(method: str) -> None:
         method_index = api_entry.rule_index.by_method.get(method)
         if method_index is None:
             return
-        for entry in method_index.fallback:
-            if entry.order not in seen_orders:
-                seen_orders.add(entry.order)
-                candidates.append(entry)
-        for key in path_keys:
-            for entry in method_index.prefix_buckets.get(key, ()):
-                if entry.order not in seen_orders:
-                    seen_orders.add(entry.order)
-                    candidates.append(entry)
+        _add_rule_entries(candidates, seen_orders, method_index.fallback)
+        _extend_rule_trie_candidates(
+            candidates,
+            seen_orders,
+            method_index.prefix_root,
+            rel_path_segs,
+        )
 
     add_method_candidates("ANY")
     if upper_method != "ANY":
