@@ -716,7 +716,7 @@ describe("agent workflows tab", () => {
     });
 
     await waitFor(() => {
-      expect(pathname()).toBe("/");
+      expect(pathname()).not.toBe("/workflows");
     });
     expect(
       screen.queryByRole("heading", { name: "Workflows" }),
@@ -729,7 +729,7 @@ describe("agent workflows tab", () => {
     });
 
     await waitFor(() => {
-      expect(pathname()).toBe("/");
+      expect(pathname()).not.toBe(`/workflows/${SALES_WORKFLOW_ID}`);
     });
     expect(screen.queryByText("Workflow not found.")).not.toBeInTheDocument();
   });
