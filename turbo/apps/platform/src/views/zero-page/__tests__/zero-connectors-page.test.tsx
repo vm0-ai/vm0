@@ -403,9 +403,7 @@ describe("connectors page", () => {
       expect(
         within(card).queryByText("Permissions update available"),
       ).not.toBeInTheDocument();
-      expect(
-        within(card).queryByRole("button", { name: "Review" }),
-      ).not.toBeInTheDocument();
+      expect(queryButtonByText("Review", card)).not.toBeInTheDocument();
     });
 
     click(
