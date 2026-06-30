@@ -92,6 +92,7 @@ function OAuthCredentialsSection() {
               type="claude-code-oauth-token"
               title="Claude Code OAuth"
               description="Connect with Claude Code login for Claude-backed model routes."
+              provider={claudeCode}
               status={getOpenAIStatus(claudeCode)}
               menuItems={
                 claudeCode
@@ -123,6 +124,7 @@ function OAuthCredentialsSection() {
               type="codex-oauth-token"
               title="ChatGPT (Codex)"
               description="Connect with Codex device login for Codex-backed model routes."
+              provider={openAI}
               status={openAIStatus}
               menuItems={
                 openAI
@@ -175,6 +177,45 @@ function getOpenAIStatus(
   return provider ? "connected" : "missing";
 }
 
+function formatSubscriptionPlan(
+  provider: ModelProviderResponse,
+): string | null {
+  const plan = provider.planType?.trim();
+  if (!plan) {
+    return null;
+  }
+  return plan.charAt(0).toUpperCase() + plan.slice(1);
+}
+
+function formatSubscriptionAccount(provider: ModelProviderResponse): string {
+  const workspaceName = provider.workspaceName?.trim();
+  if (workspaceName) {
+    return workspaceName;
+  }
+  return "Unavailable";
+}
+
+function formatSubscriptionReset(provider: ModelProviderResponse): string {
+  const nextResetAt = provider.subscriptionNextResetAt?.trim();
+  if (nextResetAt) {
+    const date = new Date(nextResetAt);
+    if (!Number.isNaN(date.getTime())) {
+      return date.toLocaleDateString("en-US", {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      });
+    }
+    return nextResetAt;
+  }
+
+  const resetPeriod = provider.subscriptionResetPeriod?.trim();
+  if (resetPeriod) {
+    return resetPeriod;
+  }
+  return "Unknown";
+}
+
 interface OAuthMenuItem {
   label: string;
   disabled?: boolean;
@@ -185,6 +226,7 @@ function OAuthCredentialRow({
   type,
   title,
   description,
+  provider,
   status,
   disabled = false,
   menuItems,
@@ -194,12 +236,14 @@ function OAuthCredentialRow({
   type: ModelProviderType;
   title: string;
   description: string;
+  provider: ModelProviderResponse | undefined;
   status: OAuthStatus;
   disabled?: boolean;
   menuItems: OAuthMenuItem[];
   onAction: () => void;
   testId: string;
 }) {
+  const plan = provider ? formatSubscriptionPlan(provider) : null;
   return (
     <div
       data-testid={testId}
@@ -221,6 +265,17 @@ function OAuthCredentialRow({
         >
           {description}
         </p>
+        {provider && (
+          <div className="mt-1 flex min-w-0 flex-wrap gap-x-3 gap-y-0.5 text-xs text-muted-foreground">
+            <span className="min-w-0 truncate">
+              Account: {formatSubscriptionAccount(provider)}
+            </span>
+            {plan && <span className="shrink-0">Plan: {plan}</span>}
+            <span className="shrink-0">
+              Reset: {formatSubscriptionReset(provider)}
+            </span>
+          </div>
+        )}
       </div>
       {status === "missing" ? (
         <Button

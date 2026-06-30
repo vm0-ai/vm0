@@ -26,6 +26,7 @@ function stalePersonalCodexProvider(): ModelProviderResponse {
     selectedModel: null,
     workspaceName: "Personal ChatGPT",
     planType: "pro",
+    subscriptionResetPeriod: "Weekly",
     needsReconnect: true,
     lastRefreshErrorCode: "refresh_token_expired",
     createdAt: "2026-03-01T00:00:00Z",
@@ -234,7 +235,45 @@ describe("personal model providers settings", () => {
     await waitFor(() => {
       expect(screen.getByText("Claude Code connected")).toBeInTheDocument();
       expect(within(claudeCodeRow).getByText("Connected")).toBeInTheDocument();
+      expect(
+        within(claudeCodeRow).getByText("Account: Unavailable"),
+      ).toBeInTheDocument();
+      expect(
+        within(claudeCodeRow).getByText("Reset: Unknown"),
+      ).toBeInTheDocument();
     });
+  });
+
+  it("shows subscription account and reset details for connected credentials", async () => {
+    context.mocks.data.org({
+      id: "org_1",
+      slug: "test-org",
+      name: "Test Org",
+      role: "member",
+    });
+    context.mocks.data.personalModelProviders([
+      connectedPersonalClaudeCodeProvider(),
+      connectedPersonalCodexProvider(),
+    ]);
+
+    await openModelSettings();
+
+    const claudeCodeRow = await screen.findByTestId(
+      "oauth-card-claude-code-oauth-token",
+    );
+    expect(
+      within(claudeCodeRow).getByText("Account: Unavailable"),
+    ).toBeInTheDocument();
+    expect(
+      within(claudeCodeRow).getByText("Reset: Unknown"),
+    ).toBeInTheDocument();
+
+    const codexRow = await screen.findByTestId("oauth-card-codex-oauth-token");
+    expect(
+      within(codexRow).getByText("Account: Personal ChatGPT"),
+    ).toBeInTheDocument();
+    expect(within(codexRow).getByText("Plan: Pro")).toBeInTheDocument();
+    expect(within(codexRow).getByText("Reset: Weekly")).toBeInTheDocument();
   });
 
   it("opens reconnect login from a stale personal Codex credential", async () => {

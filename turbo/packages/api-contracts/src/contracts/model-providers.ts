@@ -1219,6 +1219,10 @@ export const modelProviderResponseSchema = z.object({
   // flow. Other provider types omit these.
   workspaceName: z.string().nullable().optional(),
   planType: z.string().nullable().optional(),
+  // Subscription quota metadata. Providers omit these until an upstream source
+  // exposes the reset cadence or next reset timestamp.
+  subscriptionResetPeriod: z.string().nullable().optional(),
+  subscriptionNextResetAt: z.string().nullable().optional(),
   // OAuth refresh state. `needsReconnect` flips to true when the firewall's
   // refresh attempt fails (#11921 writes this on the model_providers row).
   // `lastRefreshErrorCode` carries the typed code from `ChatgptRefreshError`
