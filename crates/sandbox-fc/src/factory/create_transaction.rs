@@ -202,6 +202,14 @@ pub(super) enum CreateTransactionCowDevice {
 }
 
 impl CreateTransactionCowDevice {
+    fn requires_async_cleanup(&self) -> bool {
+        match self {
+            Self::Real(_) => true,
+            #[cfg(test)]
+            Self::Test => false,
+        }
+    }
+
     fn validate_real(&self, _context: &str) -> sandbox::Result<()> {
         match self {
             Self::Real(_) => Ok(()),
@@ -473,7 +481,10 @@ impl SandboxCreateTransaction {
         self.workspace.has_resources()
             || self.sock_dir.is_some()
             || self.network.is_some()
-            || self.cow_device.is_some()
+            || self
+                .cow_device
+                .as_ref()
+                .is_some_and(CreateTransactionCowDevice::requires_async_cleanup)
     }
 
     fn take_filesystem_cleanup_on_rollback(
@@ -556,7 +567,11 @@ impl SandboxCreateTransaction {
     }
 
     fn send_async_leaked_resources(&mut self) -> bool {
-        if self.network.is_none() && self.cow_device.is_none() {
+        let has_async_cow_resource = self
+            .cow_device
+            .as_ref()
+            .is_some_and(CreateTransactionCowDevice::requires_async_cleanup);
+        if self.network.is_none() && !has_async_cow_resource {
             return false;
         }
 
@@ -621,7 +636,11 @@ impl Drop for SandboxCreateTransaction {
             let _ = std::fs::remove_dir_all(sock_dir);
         }
         self.cleanup_workspace_on_drop();
-        if self.cow_device.is_some() {
+        if self
+            .cow_device
+            .as_ref()
+            .is_some_and(CreateTransactionCowDevice::requires_async_cleanup)
+        {
             warn!(
                 id = %self.id,
                 "COW device acquired during create requires async rollback and may need runner gc"

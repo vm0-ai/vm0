@@ -1218,6 +1218,25 @@ async fn create_transaction_drop_without_async_resources_removes_dirs() {
 }
 
 #[tokio::test]
+async fn create_transaction_drop_with_test_cow_only_does_not_send_empty_leak_work() {
+    let fixture = WorkspaceSockFixture::new().await;
+    let (leak_tx, mut leak_rx) = tokio::sync::mpsc::unbounded_channel();
+
+    let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
+    fixture.track_on(&mut tx);
+    tx.track_test_cow_device_for_test();
+
+    drop(tx);
+
+    assert!(matches!(
+        leak_rx.try_recv(),
+        Err(tokio::sync::mpsc::error::TryRecvError::Disconnected)
+    ));
+    assert!(!fixture.workspace.exists());
+    assert!(!fixture.sock_dir.exists());
+}
+
+#[tokio::test]
 async fn create_transaction_drop_with_closed_leak_channel_falls_back_to_sync_dirs() {
     let fixture = WorkspaceSockFixture::new().await;
     let (leak_tx, leak_rx) = tokio::sync::mpsc::unbounded_channel();
