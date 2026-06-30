@@ -11,7 +11,7 @@ use crate::session_history;
 use guest_common::{log_error, log_info};
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use std::io;
-use std::path::{Component, Path};
+use std::path::{Component, Path, PathBuf};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
@@ -41,8 +41,16 @@ pub(crate) fn claude_history_path_payload(session_id: &str) -> Option<String> {
 }
 
 pub(crate) fn codex_history_marker_payload(thread_id: &str) -> String {
-    let sessions_dir = format!("{}/.codex/sessions", env::home_dir());
-    session_history::codex_marker_payload(Path::new(&sessions_dir), thread_id)
+    codex_history_marker_payload_for_home(Path::new(env::home_dir()), thread_id)
+}
+
+fn codex_history_marker_payload_for_home(home_dir: &Path, thread_id: &str) -> String {
+    let sessions_dir = codex_sessions_dir(home_dir);
+    session_history::codex_marker_payload(&sessions_dir, thread_id)
+}
+
+fn codex_sessions_dir(home_dir: &Path) -> PathBuf {
+    crate::codex_auth::codex_home_path(home_dir).join("sessions")
 }
 
 pub(crate) fn is_valid_session_history_id(session_id: &str) -> bool {
@@ -148,5 +156,23 @@ pub(crate) fn write_session_history_marker(history_path_payload: &str) {
             "Failed to write session history marker to {}: {e}",
             paths::session_history_path_file()
         ),
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn codex_history_marker_payload_for_empty_home_uses_same_home_resolution_as_codex_auth() {
+        let marker = codex_history_marker_payload_for_home(
+            Path::new(""),
+            "0193abcd-ef01-7234-89ab-cdef01234567",
+        );
+
+        assert!(
+            marker.starts_with("CODEX_SEARCH:15:.codex/sessions:"),
+            "marker should use relative .codex sessions dir for empty HOME, got {marker}"
+        );
     }
 }
