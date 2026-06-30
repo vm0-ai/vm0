@@ -134,22 +134,6 @@ pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) 
     hb.provider.heartbeat(&state).await;
 }
 
-#[cfg(test)]
-pub(super) async fn current_held_session_states(
-    idle_states: Vec<HeldSessionState>,
-    workspace_cache: Option<&SessionWorkspaceCache>,
-    active_cli_agent_sessions: &ActiveCliAgentSessions,
-    extra_active_session: Option<&str>,
-) -> Vec<HeldSessionState> {
-    let cache_states = workspace_cache_held_session_states(workspace_cache).await;
-    merge_current_held_session_states(
-        idle_states,
-        cache_states,
-        active_cli_agent_sessions,
-        extra_active_session,
-    )
-}
-
 async fn workspace_cache_held_session_states(
     workspace_cache: Option<&SessionWorkspaceCache>,
 ) -> Vec<HeldSessionState> {
@@ -442,7 +426,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn current_held_session_states_keeps_cache_sessions_and_filters_claimed_session() {
+    async fn workspace_cache_held_session_states_filters_claimed_session_after_merge() {
         let dir = tempfile::tempdir().unwrap();
         let paths = RunnerPaths::new(dir.path().join("runner"));
         tokio::fs::create_dir_all(paths.base_dir()).await.unwrap();
@@ -457,13 +441,13 @@ mod tests {
             last_completed_at: "2026-06-01T00:00:02.000Z".into(),
         }];
 
-        let states = current_held_session_states(
+        let cache_states = workspace_cache_held_session_states(Some(&cache)).await;
+        let states = merge_current_held_session_states(
             idle,
-            Some(&cache),
+            cache_states,
             &active_cli_agent_sessions,
             Some("sess-claimed"),
-        )
-        .await;
+        );
 
         assert!(
             states.iter().any(|state| state.session_id == "sess-idle"),
