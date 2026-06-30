@@ -960,7 +960,6 @@ describe("codex-oauth-token codex provider", () => {
   it("firewall denies auth.openai.com via unknown endpoint policy", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
     expect(config.defaultPolicies).toEqual({
-      deny: ["denied"],
       unknownPolicy: "deny",
     });
     expect(config.apis[1]!.permissions).toEqual([]);
@@ -974,11 +973,10 @@ describe("codex-oauth-token codex provider", () => {
     "auth.openai.com matches no allow permission for %s %s",
     (method, path) => {
       // auth.openai.com intentionally exposes no grantable permissions. The
-      // deny is delivered by defaultPolicies.unknownPolicy: "deny" (asserted
-      // just above), so traffic to auth.openai.com must NOT resolve to any
-      // permission name on apis[1]. This pins behavior so a future edit to
-      // `apis[1].permissions` breaks the test rather than silently widening
-      // auth.openai.com.
+      // deny is delivered by defaultPolicies.unknownPolicy: "deny", so traffic
+      // to auth.openai.com must NOT resolve to any permission name on apis[1].
+      // This pins behavior so a future edit to `apis[1].permissions` breaks the
+      // test rather than silently widening auth.openai.com.
       const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
       const fwConfig = { name: config.name, apis: [config.apis[1]!] };
       expect(findMatchingPermissions(method, path, fwConfig)).toEqual([]);

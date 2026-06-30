@@ -1,7 +1,5 @@
 """Raw firewall request network policy decision tests."""
 
-import copy
-
 import pytest
 
 import generated.builtin_firewalls as builtin_firewalls
@@ -89,7 +87,7 @@ class TestFirewallNetworkPolicyDecisions:
         policies = {
             "model-provider:codex-oauth-token": {
                 "allow": ["codex:api"],
-                "deny": ["denied"],
+                "deny": [],
                 "ask": [],
                 "unknownPolicy": "deny",
             }
@@ -113,31 +111,6 @@ class TestFirewallNetworkPolicyDecisions:
         assert auth_result.permissions == ()
         assert isinstance(codex_result, matching.FirewallAllow)
         assert codex_result.permission == "codex:api"
-
-    def test_codex_oauth_legacy_denied_policy_blocks_old_runner_catalog(self):
-        firewall = copy.deepcopy(
-            builtin_firewalls.BUILTIN_FIREWALLS["model-provider:codex-oauth-token"]
-        )
-        firewall["apis"][1]["permissions"] = [{"name": "denied", "rules": ["ANY /*"]}]
-        policies = {
-            "model-provider:codex-oauth-token": {
-                "allow": ["codex:api"],
-                "deny": ["denied"],
-                "ask": [],
-                "unknownPolicy": "deny",
-            }
-        }
-
-        result = match_request_with_raw_firewalls(
-            "https://auth.openai.com/*",
-            "POST",
-            [firewall],
-            network_policies=policies,
-        )
-
-        assert isinstance(result, matching.FirewallBlock)
-        assert result.reason == "permission_denied"
-        assert result.permissions == ("denied",)
 
     def test_allowed_permission_passes(self):
         policies = {
