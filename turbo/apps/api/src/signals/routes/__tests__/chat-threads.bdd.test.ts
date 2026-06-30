@@ -2612,10 +2612,7 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       throw new Error("Expected the queued v1 message to auto-send into a run");
     }
     expect(promoted.content).toBe("queued from v1");
-    await expectZeroPreCreateSource(
-      promoted.runId,
-      "chat_callback_auto_send",
-    );
+    await expectZeroPreCreateSource(promoted.runId, "chat_callback_auto_send");
     await cancelChatRun(actor, promoted.runId);
 
     // Workflows still mount as SKILL.md-backed volumes in the runtime. Under
