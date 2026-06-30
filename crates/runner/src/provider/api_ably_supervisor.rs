@@ -4,16 +4,18 @@
 //! keeping HTTP polling as the correctness fallback. Untargeted or
 //! matching-target job notifications become direct candidates when they include
 //! a supported profile; notifications targeted to another runner schedule
-//! deferred poll wakeups; and incomplete notifications or direct-queue fallback
-//! request immediate poll wakeups so the server remains the source of truth for
-//! job selection. Ably cancel notifications bypass discovery and only signal
-//! local cancellation handles. Invalid job notifications and unsupported
-//! profiles are ignored without mutating discovery wakeup state.
+//! deferred poll wakeups; and non-target-other incomplete notifications or
+//! direct-queue fallback request immediate poll wakeups so the server remains
+//! the source of truth for job selection. Ably cancel notifications bypass
+//! discovery and only signal local cancellation handles. Invalid job
+//! notifications and unsupported profiles are ignored without mutating
+//! discovery wakeup state.
 //!
 //! The direct candidate queues are an optimization, not the only delivery path:
-//! target-other deferrals, incomplete notifications, full or closed direct
-//! queues, backlog draining, and Ably connection state all route through
-//! `PollWakeups` so a runner can still discover work through HTTP polling.
+//! target-other deferrals, non-target-other incomplete notifications, full or
+//! closed direct queues, backlog draining, and Ably connection state all route
+//! through `PollWakeups` so a runner can still discover work through HTTP
+//! polling.
 
 use std::collections::HashMap;
 use std::sync::Arc;
@@ -155,9 +157,9 @@ impl PollRecord {
 ///
 /// - Ably connection state selects the ordinary polling cadence: slow while
 ///   connected, fast while disconnected.
-/// - Immediate wakeups request a prompt HTTP poll for startup, incomplete Ably
-///   job notifications, direct queue fallback, and backlog draining after a job
-///   is found.
+/// - Immediate wakeups request a prompt HTTP poll for startup,
+///   non-target-other incomplete Ably job notifications, direct queue fallback,
+///   and backlog draining after a job is found.
 /// - Target-other-runner notifications schedule deferred polls. The defer window
 ///   intentionally takes priority over immediate wakeups and wakeup retries so a
 ///   runner does not immediately steal work that was just targeted elsewhere.
