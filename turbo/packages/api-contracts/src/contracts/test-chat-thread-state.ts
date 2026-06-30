@@ -7,6 +7,14 @@ const c = initContract();
 
 const nullableDateStringSchema = z.string().nullable();
 const optionalDateStringSchema = z.string().optional();
+const runStatusSchema = z.enum([
+  "cancelled",
+  "completed",
+  "failed",
+  "pending",
+  "queued",
+  "running",
+]);
 
 export const testChatThreadStateErrorSchema = z.object({
   error: z.string(),
@@ -45,12 +53,26 @@ export const testChatThreadStateActionBodySchema = z.discriminatedUnion(
       action: z.literal("delete-thread"),
       fixture: fixtureInputSchema,
     }),
+    z.object({
+      action: z.literal("seed-thread-run"),
+      user_id: z.string(),
+      org_id: z.string(),
+      agent_id: z.string(),
+      thread_id: z.string(),
+      status: runStatusSchema,
+    }),
+    z.object({
+      action: z.literal("update-thread-run-status"),
+      run_id: z.string(),
+      status: runStatusSchema,
+    }),
   ],
 );
 
 export const testChatThreadStateActionResponseSchema = z.object({
   ok: z.literal(true),
   fixture: testChatThreadStateFixtureSchema.optional(),
+  run_id: z.string().optional(),
 });
 
 export const testChatThreadStateContract = c.router({

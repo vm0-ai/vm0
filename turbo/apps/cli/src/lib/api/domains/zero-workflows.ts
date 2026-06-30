@@ -5,7 +5,6 @@ import {
   zeroWorkflowTriggersContract,
   type WorkflowFileEntry,
   type ZeroWorkflowDetailResponse,
-  type ZeroWorkflowRunResponse,
   type ZeroWorkflowSummary,
   type ZeroWorkflowTriggerCreateRequest,
   type ZeroWorkflowTriggerSummary,
@@ -86,16 +85,6 @@ export async function copyWorkflow(
   });
   if (result.status === 201) return result.body;
   handleError(result, `Failed to copy workflow "${workflowId}"`);
-}
-
-export async function runWorkflow(
-  workflowId: string,
-): Promise<ZeroWorkflowRunResponse> {
-  const config = await getClientConfig();
-  const client = initClient(zeroWorkflowsDetailContract, config);
-  const result = await client.run({ params: { workflowId } });
-  if (result.status === 200) return result.body;
-  handleError(result, `Failed to run workflow "${workflowId}"`);
 }
 
 export async function listWorkflowTriggers(

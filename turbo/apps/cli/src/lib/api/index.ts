@@ -123,7 +123,6 @@ export {
   updateWorkflow,
   deleteWorkflow,
   copyWorkflow,
-  runWorkflow,
   listWorkflowTriggers,
   createWorkflowTrigger,
   getWorkflowTrigger,

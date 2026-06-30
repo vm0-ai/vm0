@@ -190,6 +190,12 @@ function agentRowByName(container: HTMLElement, name: string): HTMLElement {
   return row;
 }
 
+function openAgentRowMenu(container: HTMLElement, name: string): void {
+  click(
+    within(agentRowByName(container, name)).getByLabelText("Open agent menu"),
+  );
+}
+
 function openThreadMenu(title: string): void {
   click(
     within(threadRowByTitle(title)).getByTestId("chat-thread-menu-trigger"),
@@ -340,6 +346,101 @@ describe("zero sidebar", () => {
       expect(
         sidebar.querySelectorAll('[data-testid="sidebar-skeleton"]'),
       ).toHaveLength(0);
+    });
+
+    createDeferred.resolve();
+  });
+
+  it("preserves server thread order while creating an optimistic new chat", async () => {
+    prepareDefaultAgent();
+    const createDeferred = context.mocks.deferred<void>();
+    const serverOrderedThreads = [
+      {
+        id: EXISTING_THREAD_ID,
+        title: "A server first",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        running: false,
+        pinnedAt: null,
+      },
+      {
+        id: INCIDENT_THREAD_ID,
+        title: "B server second",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-11T00:00:00Z",
+        running: false,
+        pinnedAt: null,
+      },
+      {
+        id: AUTOMATION_THREAD_ID,
+        title: "C server third",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-12T00:00:00Z",
+        running: false,
+        pinnedAt: null,
+      },
+    ];
+
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse(serverOrderedThreads));
+    });
+    context.mocks.api(chatThreadsContract.create, async ({ body, respond }) => {
+      await createDeferred.promise;
+      return respond(201, {
+        id: body.clientThreadId ?? "created-thread-id",
+        title: null,
+        createdAt: "2026-03-12T12:00:00Z",
+      });
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+      const thread = serverOrderedThreads.find((candidate) => {
+        return candidate.id === params.id;
+      });
+      return respond(200, {
+        id: params.id,
+        title: thread?.title ?? null,
+        agentId: AGENT_ID,
+        activeRunIds: [],
+        draftContent: null,
+        draftAttachments: null,
+        createdAt: thread?.createdAt ?? "2026-03-12T12:00:00Z",
+        updatedAt: thread?.updatedAt ?? "2026-03-12T12:00:00Z",
+      });
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const newChatButton = await waitFor(() => {
+      expect(
+        visibleThreadTitles([
+          "A server first",
+          "B server second",
+          "C server third",
+        ]),
+      ).toStrictEqual(["A server first", "B server second", "C server third"]);
+      return screen.getByLabelText("Open chat list menu");
+    });
+
+    click(newChatButton);
+    click(menuItemByText("New chat"));
+
+    await waitFor(() => {
+      expect(
+        visibleThreadTitles([
+          "New chat",
+          "A server first",
+          "B server second",
+          "C server third",
+        ]),
+      ).toStrictEqual([
+        "New chat",
+        "A server first",
+        "B server second",
+        "C server third",
+      ]);
     });
 
     createDeferred.resolve();
@@ -989,31 +1090,35 @@ describe("zero sidebar", () => {
       expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
     });
 
-    click(within(dialog).getAllByLabelText("Pin to sidebar")[0]!);
+    openAgentRowMenu(dialog, "Research Agent");
+    click(menuItemByText("Pin to sidebar"));
 
     await waitFor(() => {
       expect(
-        within(dialog).getByLabelText("Unpin Research Agent"),
+        within(agentRowByName(dialog, "Research Agent")).getByLabelText(
+          "Open agent menu",
+        ),
       ).toBeInTheDocument();
       expect(within(sidebar).getByText("Research Agent")).toBeInTheDocument();
     });
 
-    click(within(dialog).getByLabelText("Unpin Research Agent"));
+    openAgentRowMenu(dialog, "Research Agent");
+    click(menuItemByText("Unpin"));
 
     await waitFor(() => {
-      expect(
-        within(dialog).queryByLabelText("Unpin Research Agent"),
-      ).not.toBeInTheDocument();
       expect(
         within(sidebar).queryByText("Research Agent"),
       ).not.toBeInTheDocument();
     });
 
-    click(within(dialog).getAllByLabelText("Pin to sidebar")[0]!);
+    openAgentRowMenu(dialog, "Research Agent");
+    click(menuItemByText("Pin to sidebar"));
 
     await waitFor(() => {
       expect(
-        within(dialog).getByLabelText("Unpin Research Agent"),
+        within(agentRowByName(dialog, "Research Agent")).getByLabelText(
+          "Open agent menu",
+        ),
       ).toBeInTheDocument();
       expect(within(sidebar).getByText("Research Agent")).toBeInTheDocument();
     });
