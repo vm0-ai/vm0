@@ -667,7 +667,7 @@ describe("connectors page", () => {
     expect(dialog).toBeInTheDocument();
   });
 
-  it("shows a stable placeholder when no agents are authorized", async () => {
+  it("shows a users icon when no agents are authorized", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000001";
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
     context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
@@ -688,8 +688,20 @@ describe("connectors page", () => {
       const placeholder = within(card).getByTestId(
         "connector-card-agent-avatar-placeholder",
       );
-      expect(placeholder).toHaveClass("block", "h-7", "w-7");
+      expect(placeholder).toHaveClass("flex", "h-7", "w-7");
+      expect(placeholder.querySelector(".tabler-icon-users")).not.toBeNull();
     });
+
+    click(
+      within(connectorCardByLabel("GitHub")).getByLabelText(
+        "Manage GitHub access",
+      ),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub access",
+    });
+    expect(dialog).toBeInTheDocument();
   });
 
   it("hides permission controls for connectors without firewall rules", async () => {
