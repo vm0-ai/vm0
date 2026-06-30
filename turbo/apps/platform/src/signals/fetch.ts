@@ -3,14 +3,16 @@ import { clerk$ } from "./auth.ts";
 import { fetchFreshToken, handleUnauthorizedRedirect } from "./auth-retry.ts";
 import { resolveApiBase, resolveApiBaseForNavigation } from "./api-base.ts";
 
+const OAUTH_WEB_NAVIGATION_TARGET = "www";
+
 /**
- * Web base URL for opening external navigation (e.g. connector OAuth popup).
+ * Web base URL for OAuth and web-origin handoff navigation only.
  * - On localhost: use VITE_API_URL so the popup hits the configured API (e.g. :3000).
  * - On a non-localhost host (e.g. app.vm7.ai): derive from current origin
  *   (e.g. www.vm7.ai) so we never open a localhost URL when the user is remote.
  */
 export const webBaseForNavigation$ = computed(() => {
-  return resolveApiBaseForNavigation("www");
+  return resolveApiBaseForNavigation(OAUTH_WEB_NAVIGATION_TARGET);
 });
 
 /**
