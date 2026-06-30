@@ -10,6 +10,8 @@ use std::fs::File;
 use std::ops::Range;
 use std::os::unix::fs::FileExt;
 use std::path::Path;
+#[cfg(test)]
+use std::sync::atomic::{AtomicUsize, Ordering};
 
 use bitvec::prelude::*;
 
@@ -20,6 +22,57 @@ mod bitmap;
 #[cfg(test)]
 pub(crate) use bitmap::bitmap_tmp_path_for;
 pub use bitmap::{bitmap_path_for, validate_bitmap, validate_bitmap_cow_coverage};
+
+#[derive(Clone, Copy, Eq, PartialEq)]
+enum FileReadSource {
+    Base,
+    Cow,
+}
+
+struct FileReadRun {
+    source: FileReadSource,
+    absolute_offset: u64,
+    buffer_offset: usize,
+    len: usize,
+}
+
+impl FileReadRun {
+    fn new(source: FileReadSource, span: &BlockSpan) -> Self {
+        Self {
+            source,
+            absolute_offset: span.absolute_offset,
+            buffer_offset: span.buffer_offset,
+            len: span.len,
+        }
+    }
+
+    fn can_extend(&self, source: FileReadSource, span: &BlockSpan) -> bool {
+        let Some(next_absolute_offset) = self.absolute_offset.checked_add(self.len as u64) else {
+            return false;
+        };
+        let Some(next_buffer_offset) = self.buffer_offset.checked_add(self.len) else {
+            return false;
+        };
+        self.source == source
+            && next_absolute_offset == span.absolute_offset
+            && next_buffer_offset == span.buffer_offset
+    }
+
+    fn extend(&mut self, span: &BlockSpan) {
+        self.len += span.len;
+    }
+
+    fn buffer_range(&self) -> Range<usize> {
+        self.buffer_offset..self.buffer_offset + self.len
+    }
+}
+
+#[cfg(test)]
+#[derive(Default)]
+struct ReadCallCounts {
+    base: AtomicUsize,
+    cow: AtomicUsize,
+}
 
 struct BlockSpan {
     block_idx: u64,
@@ -111,6 +164,8 @@ pub struct CowLayer {
     block_size: usize,
     /// Total device size in bytes.
     size: u64,
+    #[cfg(test)]
+    read_call_counts: ReadCallCounts,
 }
 
 impl CowLayer {
@@ -209,6 +264,8 @@ impl CowLayer {
             flush_threshold,
             block_size,
             size,
+            #[cfg(test)]
+            read_call_counts: ReadCallCounts::default(),
         })
     }
 
@@ -218,31 +275,36 @@ impl CowLayer {
     pub fn read(&self, offset: u64, buf: &mut [u8]) -> Result<()> {
         self.check_bounds(offset, buf.len() as u64)?;
 
+        let mut file_read_run: Option<FileReadRun> = None;
         for span in BlockSpans::new(offset, buf.len(), self.block_size) {
-            let dest = buf.get_mut(span.buffer_range()).ok_or_else(|| {
-                NbdCowError::Io(std::io::Error::other("slice out of bounds in read"))
-            })?;
-
             // Check write buffer first
             if let Some(block_data) = self.write_buffer.get(&span.block_idx) {
+                self.flush_file_read_run(&mut file_read_run, buf)?;
+                let dest = buf.get_mut(span.buffer_range()).ok_or_else(|| {
+                    NbdCowError::Io(std::io::Error::other("slice out of bounds in read"))
+                })?;
                 let src = block_data.get(span.block_range()).ok_or_else(|| {
                     NbdCowError::Io(std::io::Error::other("block_data slice out of bounds"))
                 })?;
                 dest.copy_from_slice(src);
-            } else if self.is_dirty(span.block_idx) {
-                // Read from COW file
-                if let Some(ref cow_fd) = self.cow_fd {
-                    cow_fd.read_exact_at(dest, span.absolute_offset)?;
-                } else {
-                    return Err(NbdCowError::Io(std::io::Error::other(
-                        "dirty bit set but COW file not open",
-                    )));
-                }
             } else {
-                // Read from base image
-                self.base_fd.read_exact_at(dest, span.absolute_offset)?;
+                let source = if self.is_dirty(span.block_idx) {
+                    FileReadSource::Cow
+                } else {
+                    FileReadSource::Base
+                };
+                if let Some(run) = file_read_run.as_mut()
+                    && run.can_extend(source, &span)
+                {
+                    run.extend(&span);
+                    continue;
+                }
+                self.flush_file_read_run(&mut file_read_run, buf)?;
+                file_read_run = Some(FileReadRun::new(source, &span));
             }
         }
+
+        self.flush_file_read_run(&mut file_read_run, buf)?;
 
         Ok(())
     }
@@ -389,6 +451,55 @@ impl CowLayer {
         if let Some(mut bit) = self.dirty.get_mut(block_idx as usize) {
             *bit = true;
         }
+    }
+
+    fn read_file_span(&self, source: FileReadSource, offset: u64, dest: &mut [u8]) -> Result<()> {
+        self.record_file_read(source);
+        match source {
+            FileReadSource::Base => self.base_fd.read_exact_at(dest, offset)?,
+            FileReadSource::Cow => {
+                let cow_fd = self.cow_fd.as_ref().ok_or_else(|| {
+                    NbdCowError::Io(std::io::Error::other("dirty bit set but COW file not open"))
+                })?;
+                cow_fd.read_exact_at(dest, offset)?;
+            }
+        }
+        Ok(())
+    }
+
+    fn flush_file_read_run(&self, run: &mut Option<FileReadRun>, buf: &mut [u8]) -> Result<()> {
+        let Some(run) = run.take() else {
+            return Ok(());
+        };
+        let dest = buf
+            .get_mut(run.buffer_range())
+            .ok_or_else(|| NbdCowError::Io(std::io::Error::other("slice out of bounds in read")))?;
+        self.read_file_span(run.source, run.absolute_offset, dest)
+    }
+
+    #[cfg(test)]
+    fn record_file_read(&self, source: FileReadSource) {
+        match source {
+            FileReadSource::Base => {
+                self.read_call_counts.base.fetch_add(1, Ordering::Relaxed);
+            }
+            FileReadSource::Cow => {
+                self.read_call_counts.cow.fetch_add(1, Ordering::Relaxed);
+            }
+        }
+    }
+
+    #[cfg(not(test))]
+    fn record_file_read(&self, _source: FileReadSource) {}
+
+    #[cfg(test)]
+    fn base_read_call_count(&self) -> usize {
+        self.read_call_counts.base.load(Ordering::Relaxed)
+    }
+
+    #[cfg(test)]
+    fn cow_read_call_count(&self) -> usize {
+        self.read_call_counts.cow.load(Ordering::Relaxed)
     }
 
     /// Read a full block, preferring COW file if dirty, otherwise base image.
