@@ -4720,14 +4720,7 @@ MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS = json.loads(r"""[
       },
       {
         "base": "https://auth.openai.com",
-        "permissions": [
-          {
-            "name": "denied",
-            "rules": [
-              "ANY /*"
-            ]
-          }
-        ]
+        "permissions": []
       }
     ],
     "name": "model-provider:codex-oauth-token"

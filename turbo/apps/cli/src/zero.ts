@@ -38,7 +38,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   "model-provider": null,
   logs: "agent-run:read",
   search: "chat-message:read",
-  chat: "chat-thread:write",
+  chat: ["chat-thread:read", "chat-thread:write"],
   resource: null,
   github: ["github:read", "github:write"],
   slack: "slack:write",

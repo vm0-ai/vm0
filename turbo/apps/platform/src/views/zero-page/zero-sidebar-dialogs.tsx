@@ -345,13 +345,13 @@ export function AgentListDialog({
   onOpenChange,
   displayName,
   subagents,
-  onNewChat,
+  onSelectChatAgent,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   displayName: string;
   subagents: SubagentInfo[];
-  onNewChat?: (agentId: string | null) => void;
+  onSelectChatAgent?: (agentId: string | null) => void;
 }) {
   const zeroAvatarUrl = useLastResolved(leadAgentAvatarUrl$) ?? null;
   const defaultAgentId = useLastResolved(defaultAgentId$);
@@ -429,7 +429,7 @@ export function AgentListDialog({
   const handleChat = (agentId: string | null) => {
     onOpenChange(false);
     setQuery("");
-    onNewChat?.(agentId);
+    onSelectChatAgent?.(agentId);
   };
 
   return (

@@ -11,10 +11,6 @@ import {
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroComposesMainContract } from "@vm0/api-contracts/contracts/zero-composes";
 import {
-  zeroWorkflowTriggersContract,
-  type ZeroWorkflowTriggerAutomationEntry,
-} from "@vm0/api-contracts/contracts/zero-workflows";
-import {
   type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
   zeroUserPermissionGrantsContract,
@@ -153,6 +149,14 @@ function tabByText(text: string): HTMLElement {
     throw new Error(`${text} tab not found`);
   }
   return tab;
+}
+
+function queryTabByText(text: string): HTMLElement | null {
+  return (
+    queryAllByRoleFast("tab").find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+    }) ?? null
+  );
 }
 
 async function permissionRowByName(
@@ -316,53 +320,6 @@ function mockTeamAPIs(): void {
   context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
     return respond(200, { content: null, filename: null });
   });
-}
-
-function workflowAutomationEntry({
-  workflowId,
-  agentId,
-  agentDisplayName,
-  name,
-  displayName,
-  triggerId,
-  intervalSeconds,
-}: {
-  workflowId: string;
-  agentId: string;
-  agentDisplayName: string;
-  name: string;
-  displayName: string;
-  triggerId: string;
-  intervalSeconds: number;
-}): ZeroWorkflowTriggerAutomationEntry {
-  return {
-    workflow: {
-      id: workflowId,
-      agentId,
-      agentName: null,
-      agentDisplayName,
-      name,
-      displayName,
-      description: null,
-      visibility: "private",
-      requestToPublish: false,
-      ownerUserId: "test-owner-id",
-      ownerUserDisplayName: "Test Owner",
-      ownerUserImageUrl: null,
-      canManage: true,
-    },
-    trigger: {
-      id: triggerId,
-      ownerUserId: "test-owner-id",
-      enabled: true,
-      chatThreadId: "thread-workflow-trigger",
-      nextRunAt: null,
-      lastRunAt: null,
-      kind: "schedule",
-      schedule: { type: "loop", intervalSeconds },
-      scheduleSummary: `Every ${intervalSeconds / 60} minutes`,
-    },
-  };
 }
 
 describe("team page navigation", () => {
@@ -629,40 +586,15 @@ describe("team page navigation", () => {
     });
   });
 
-  it("shows agent workflow triggers when workflow automation is enabled", async () => {
+  it("hides agent automation and workflow tabs when workflow automation is enabled", async () => {
     mockTeamAPIs();
-    context.mocks.data.userPreferences({ timezone: "UTC" });
-    context.mocks.api(
-      zeroWorkflowTriggersContract.listWorkspace,
-      ({ respond }) => {
-        return respond(200, [
-          workflowAutomationEntry({
-            workflowId: "d0000000-0000-4000-a000-000000000401",
-            agentId: researchAgentId,
-            agentDisplayName: "Research Agent",
-            name: "research-digest-workflow",
-            displayName: "Research digest workflow",
-            triggerId: "workflow-trigger-research-digest",
-            intervalSeconds: 900,
-          }),
-          workflowAutomationEntry({
-            workflowId: "d0000000-0000-4000-a000-000000000402",
-            agentId: zeroAgentId,
-            agentDisplayName: "Zero",
-            name: "zero-brief-workflow",
-            displayName: "Zero brief workflow",
-            triggerId: "workflow-trigger-zero-brief",
-            intervalSeconds: 1800,
-          }),
-        ]);
-      },
-    );
 
     detachedSetupPage({
       context,
-      path: `/agents/${researchAgentId}`,
+      path: `/agents/${researchAgentId}?tab=automations`,
       featureSwitches: {
         [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
+        [FeatureSwitchKey.WorkflowsViewer]: true,
       },
     });
 
@@ -671,30 +603,18 @@ describe("team page navigation", () => {
         screen.getByRole("heading", { name: "Research Agent" }),
       ).toBeInTheDocument();
     });
-    click(tabByText("Automations"));
 
     await waitFor(() => {
-      expect(screen.getByText("Research digest workflow")).toBeInTheDocument();
+      expect(screen.getByText("@workspace")).toBeInTheDocument();
     });
+    expect(queryTabByText("Automations")).not.toBeInTheDocument();
+    expect(queryTabByText("Workflows")).not.toBeInTheDocument();
     expect(
-      screen.getByText("Workflow automations attached to Research Agent."),
-    ).toBeInTheDocument();
-    expect(screen.getByText("Every 15 minutes")).toBeInTheDocument();
-    expect(screen.queryByText("Zero brief workflow")).not.toBeInTheDocument();
-    expect(screen.queryByText("Research digest")).not.toBeInTheDocument();
-
-    click(buttonByText("Add automation"));
-
-    const dialog = await screen.findByRole("dialog");
-    expect(
-      within(dialog).getByText("Choose how this workflow should run."),
-    ).toBeInTheDocument();
-    expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
-    expect(within(dialog).getByText("Fixed interval")).toBeInTheDocument();
-    expect(
-      within(dialog).queryByPlaceholderText("Search agents..."),
+      screen.queryByText("Research Agent's automations"),
     ).not.toBeInTheDocument();
-    expect(within(dialog).queryByText("Zero")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Workflow automations attached to Research Agent."),
+    ).not.toBeInTheDocument();
   });
 
   it("runs an agent automation and opens its detail page", async () => {

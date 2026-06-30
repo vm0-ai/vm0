@@ -229,7 +229,7 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS = {
     { name: "Authorization", valuePrefix: "Bearer" },
     MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
   ),
-  // ChatGPT OAuth provider: multi-header injection plus auth.openai.com deny.
+  // ChatGPT OAuth provider: multi-header injection plus unknown-policy auth.openai.com deny.
   "codex-oauth-token": {
     name: "model-provider:codex-oauth-token",
     apis: [
@@ -244,6 +244,8 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS = {
         permissions: [
           {
             name: "codex:api",
+            description:
+              "Access the ChatGPT Codex backend with GET and POST requests.",
             rules: ["GET /{path*}", "POST /{path*}"],
           },
         ],
@@ -251,11 +253,10 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS = {
       {
         base: "https://auth.openai.com",
         auth: { headers: {} },
-        permissions: [{ name: "denied", rules: ["ANY /*"] }],
+        permissions: [],
       },
     ],
     defaultPolicies: {
-      deny: ["denied"],
       unknownPolicy: "deny",
     },
     placeholders: {

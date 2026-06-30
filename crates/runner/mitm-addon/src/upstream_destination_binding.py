@@ -300,6 +300,32 @@ def _client_binding_matches_connected_endpoint(
     return False
 
 
+def _client_binding_connected_endpoint(
+    *,
+    client: object,
+    server: object,
+    bindings: tuple[UpstreamDestinationBinding, ...],
+) -> tuple[str, int] | None:
+    peername = getattr(server, "peername", None)
+    if _is_authoritative_connected_address(peername) and _endpoint_matches_any(peername, bindings):
+        return _address_pair(peername)
+
+    server_address = getattr(server, "address", None)
+    if _is_authoritative_connected_address(server_address) and _endpoint_matches_any(
+        server_address,
+        bindings,
+    ):
+        return _address_pair(server_address)
+
+    client_sockname = getattr(client, "sockname", None)
+    if _is_authoritative_connected_address(client_sockname) and _endpoint_matches_any(
+        client_sockname,
+        bindings,
+    ):
+        return _address_pair(client_sockname)
+    return None
+
+
 def diagnostic_snapshot_for_flow(
     flow: http.HTTPFlow,
     *,
@@ -399,6 +425,50 @@ def flow_matches_bound_destination(
         )
 
     return _address_matches(normalized_host, port, getattr(server, "address", None))
+
+
+def bound_destination_endpoint_for_flow(
+    flow: http.HTTPFlow,
+    *,
+    allowed_kinds: frozenset[BindingKind],
+) -> tuple[str, int] | None:
+    trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
+    if not isinstance(trusted_host, str) or not trusted_host:
+        return None
+    try:
+        normalized_host = normalize_trusted_hostname(trusted_host)
+    except (UnicodeError, ValueError):
+        return None
+
+    port = flow.request.port
+    server = flow.server_conn
+    server_id = _connection_id(server)
+    binding = _bindings_by_server_id.get(server_id) if server_id is not None else None
+    if (
+        binding is not None
+        and _binding_matches(
+            binding,
+            host=normalized_host,
+            port=port,
+            allowed_kinds=allowed_kinds,
+        )
+        and _server_binding_matches_current_destination(server, binding)
+    ):
+        return binding.original_address
+
+    matching_client_bindings = _matching_client_bindings(
+        flow.client_conn,
+        host=normalized_host,
+        port=port,
+        allowed_kinds=allowed_kinds,
+    )
+    if bool(getattr(server, "connected", False)):
+        return _client_binding_connected_endpoint(
+            client=flow.client_conn,
+            server=server,
+            bindings=matching_client_bindings,
+        )
+    return None
 
 
 def binding_snapshot_for_tests() -> dict[str, UpstreamDestinationBinding]:
