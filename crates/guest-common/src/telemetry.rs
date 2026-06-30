@@ -144,16 +144,16 @@ pub fn record_sandbox_op(
     success: bool,
     error: Option<&str>,
 ) {
+    let Some(path) = configured_sandbox_ops_log() else {
+        return;
+    };
+
     let entry = SandboxOpEntry {
         ts: log::timestamp(),
         action_type: action_type.to_string(),
         duration_ms: duration_ms(duration),
         success,
         error: error.map(String::from),
-    };
-
-    let Some(path) = configured_sandbox_ops_log() else {
-        return;
     };
 
     let Ok(mut record) = serde_json::to_vec(&entry) else {
@@ -208,6 +208,38 @@ mod tests {
         }
     }
 
+    struct RuntimeDirEnvGuard {
+        previous: Option<std::ffi::OsString>,
+    }
+
+    impl RuntimeDirEnvGuard {
+        fn set(path: impl AsRef<Path>) -> Self {
+            let previous = std::env::var_os(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
+            unsafe {
+                std::env::set_var(
+                    guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                    path.as_ref(),
+                );
+            }
+            Self { previous }
+        }
+    }
+
+    impl Drop for RuntimeDirEnvGuard {
+        fn drop(&mut self) {
+            unsafe {
+                if let Some(previous) = self.previous.as_ref() {
+                    std::env::set_var(
+                        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                        previous,
+                    );
+                } else {
+                    std::env::remove_var(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
+                }
+            }
+        }
+    }
+
     #[test]
     fn record_sandbox_op_writes_and_appends_jsonl() {
         let _guard = lock_test_state();
@@ -215,12 +247,7 @@ mod tests {
         clear_sandbox_ops_log_file();
         let dir = tempfile::tempdir().unwrap();
         let runtime_dir = dir.path().join("runtime");
-        unsafe {
-            std::env::set_var(
-                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-                &runtime_dir,
-            );
-        }
+        let _env_guard = RuntimeDirEnvGuard::set(&runtime_dir);
         let log_path = sandbox_ops_log();
         let _ = std::fs::remove_file(log_path);
 
@@ -285,9 +312,6 @@ mod tests {
         }
 
         let _ = std::fs::remove_file(log_path);
-        unsafe {
-            std::env::remove_var(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
-        }
     }
 
     #[test]

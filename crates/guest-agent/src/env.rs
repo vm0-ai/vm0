@@ -560,7 +560,9 @@ fn load_user_env_from_raw(raw: &GuestConfigRaw) -> Result<HashMap<String, String
     let runtime_dir = guest_runtime_dir_for_user_env_values(
         &raw.run_id,
         raw.guest_runtime_dir.as_deref(),
-        raw.home.as_deref(),
+        raw.runtime_home
+            .as_deref()
+            .or_else(|| raw.home.as_deref().map(Path::new)),
     )?;
     validate_user_env_file_path_for_runtime(path, &runtime_dir)?;
     load_user_env_from_path(path)
@@ -621,7 +623,7 @@ fn guest_runtime_dir_for_user_env_run_id(run_id: &str) -> Result<PathBuf, String
 fn guest_runtime_dir_for_user_env_values(
     run_id: &str,
     runtime_dir: Option<&Path>,
-    home: Option<&str>,
+    home: Option<&Path>,
 ) -> Result<PathBuf, String> {
     guest_contracts::runtime_paths::validate_run_id(run_id)
         .map_err(|e| format!("resolve guest runtime dir for {USER_ENV_FILE_ENV_KEY}: {e}"))?;
@@ -636,7 +638,7 @@ fn guest_runtime_dir_for_user_env_values(
         return Ok(runtime_dir.to_path_buf());
     }
 
-    let Some(home) = home.filter(|value| !value.is_empty()) else {
+    let Some(home) = home.filter(|value| !value.as_os_str().is_empty()) else {
         return Err(format!(
             "resolve guest runtime dir for {USER_ENV_FILE_ENV_KEY}: {}",
             guest_contracts::runtime_paths::RuntimePathError::MissingHome
@@ -1101,6 +1103,39 @@ mod tests {
         assert_eq!(
             config.user_env.get("OPENAI_MODEL").map(String::as_str),
             Some("gpt-test")
+        );
+        assert!(!user_env_path.exists());
+        assert!(!user_env_dir.exists());
+    }
+
+    #[test]
+    fn guest_config_from_raw_validates_user_env_with_runtime_home_when_home_string_missing() {
+        let tmp = tempfile::tempdir().unwrap();
+        let runtime_home = tmp.path().join("home");
+        let runtime_dir =
+            guest_contracts::runtime_paths::run_dir_for_home(&runtime_home, "run-123").unwrap();
+        let user_env_dir = runtime_dir.join(USER_ENV_PRIVATE_DIR_NAME);
+        std::fs::create_dir_all(&user_env_dir).unwrap();
+        let user_env_path = user_env_dir.join(USER_ENV_FILENAME);
+        std::fs::write(
+            &user_env_path,
+            r#"{"HOME":"/home/from-user-env","OPENAI_MODEL":"gpt-runtime-home"}"#,
+        )
+        .unwrap();
+
+        let raw = GuestConfigRaw {
+            user_env_file: user_env_path.to_string_lossy().into_owned(),
+            home: None,
+            runtime_home: Some(runtime_home),
+            ..raw_config_fixture()
+        };
+
+        let config = GuestConfig::from_raw(raw).unwrap();
+
+        assert_eq!(config.home_dir, "/home/from-user-env");
+        assert_eq!(
+            config.user_env.get("OPENAI_MODEL").map(String::as_str),
+            Some("gpt-runtime-home")
         );
         assert!(!user_env_path.exists());
         assert!(!user_env_dir.exists());
