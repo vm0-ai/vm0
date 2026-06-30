@@ -269,14 +269,17 @@ fn wait_child(
         Ok(stderr)
     });
 
-    let status = wait_child_status_and_cleanup_group(child)?;
+    let status = wait_child_status_and_cleanup_group(child);
+    let stdout_result = stdout_thread
+        .join()
+        .map_err(|_| std::io::Error::other("stdout reader thread panicked"));
+    let stderr_result = stderr_thread
+        .join()
+        .map_err(|_| std::io::Error::other("stderr reader thread panicked"));
 
-    stdout_thread
-        .join()
-        .map_err(|_| std::io::Error::other("stdout reader thread panicked"))?;
-    let stderr = stderr_thread
-        .join()
-        .map_err(|_| std::io::Error::other("stderr reader thread panicked"))??;
+    let status = status?;
+    stdout_result?;
+    let stderr = stderr_result??;
     Ok((status, stderr))
 }
 
@@ -370,13 +373,17 @@ fn wait_child_output(mut child: ProcessGroupChild) -> Result<Output, Box<dyn std
         Ok(stderr)
     });
 
-    let status = wait_child_status_and_cleanup_group(child)?;
-    let stdout = stdout_thread
+    let status = wait_child_status_and_cleanup_group(child);
+    let stdout_result = stdout_thread
         .join()
-        .map_err(|_| std::io::Error::other("stdout reader thread panicked"))??;
-    let stderr = stderr_thread
+        .map_err(|_| std::io::Error::other("stdout reader thread panicked"));
+    let stderr_result = stderr_thread
         .join()
-        .map_err(|_| std::io::Error::other("stderr reader thread panicked"))??;
+        .map_err(|_| std::io::Error::other("stderr reader thread panicked"));
+
+    let status = status?;
+    let stdout = stdout_result??;
+    let stderr = stderr_result??;
 
     Ok(Output {
         status,
