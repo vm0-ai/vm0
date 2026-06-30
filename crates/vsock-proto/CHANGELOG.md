@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.20](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.19...vsock-proto-v0.18.20) (2026-06-30)
+
+
+### Performance Improvements
+
+* release oversized vsock decoder buffers ([#19519](https://github.com/vm0-ai/vm0/issues/19519)) ([3d78004](https://github.com/vm0-ai/vm0/commit/3d780043010943bf0946f11da2b32edafea9d6d8))
+
 ## [0.18.19](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.18...vsock-proto-v0.18.19) (2026-06-26)
 
 
