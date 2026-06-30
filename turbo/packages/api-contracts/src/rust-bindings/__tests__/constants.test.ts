@@ -1,12 +1,13 @@
 import {
-  normalizeStringConstantBindings,
-  renderRustStringConstants,
-  type NormalizedStringConstantBinding,
+  normalizeConstantBindings,
+  renderRustConstants,
+  type NormalizedConstantBinding,
 } from "../generate";
 import {
-  type RustStringConstantModuleDoc,
-  type RustStringConstantBinding,
-  rustStringConstantBindings,
+  type RustConstantModuleDoc,
+  type RustConstantBinding,
+  type RustConstantValue,
+  rustConstantBindings,
 } from "../constants";
 import {
   MODEL_PROVIDER_ENV_PLACEHOLDERS,
@@ -15,6 +16,7 @@ import {
 import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
+  RESUME_SESSION_HISTORY_MAX_BYTES,
 } from "../../contracts/runners";
 
 const codexOauthPlaceholders =
@@ -30,6 +32,19 @@ const canonicalWorkingDirDoc = [
   "Rust and TypeScript components use this shared contract value when building runner commands and paths.",
 ] as const;
 
+const resumeSessionHistoryMaxBytesDoc = [
+  "Maximum resume session history blob size accepted by the API and runner.",
+  "Rust and TypeScript components use this shared contract value when validating resume history refs and downloads.",
+] as const;
+
+function rustString(value: string): RustConstantValue {
+  return { kind: "string", value };
+}
+
+function rustU64(value: number): RustConstantValue {
+  return { kind: "u64", value };
+}
+
 function placeholderRustDoc(name: string): readonly string[] {
   return [
     `Fake marker bytes for the \`${name}\` placeholder.`,
@@ -39,75 +54,81 @@ function placeholderRustDoc(name: string): readonly string[] {
 
 const expectedBindings = [
   {
+    rustModulePath: ["runners"],
+    rustConstName: "RESUME_SESSION_HISTORY_MAX_BYTES",
+    value: rustU64(RESUME_SESSION_HISTORY_MAX_BYTES),
+    rustDoc: resumeSessionHistoryMaxBytesDoc,
+  },
+  {
     rustModulePath: ["runners", "paths"],
     rustConstName: "CANONICAL_GUEST_HOME_DIR",
-    value: CANONICAL_GUEST_HOME_DIR,
+    value: rustString(CANONICAL_GUEST_HOME_DIR),
     rustDoc: canonicalGuestHomeDirDoc,
   },
   {
     rustModulePath: ["runners", "paths"],
     rustConstName: "CANONICAL_WORKING_DIR",
-    value: CANONICAL_WORKING_DIR,
+    value: rustString(CANONICAL_WORKING_DIR),
     rustDoc: canonicalWorkingDirDoc,
   },
   {
     rustModulePath: ["codex_oauth_token", "placeholders"],
     rustConstName: "CHATGPT_ACCESS_TOKEN",
-    value: codexOauthPlaceholders.CHATGPT_ACCESS_TOKEN,
+    value: rustString(codexOauthPlaceholders.CHATGPT_ACCESS_TOKEN),
     rustDoc: placeholderRustDoc("CHATGPT_ACCESS_TOKEN"),
   },
   {
     rustModulePath: ["codex_oauth_token", "placeholders"],
     rustConstName: "CHATGPT_ACCOUNT_ID",
-    value: codexOauthPlaceholders.CHATGPT_ACCOUNT_ID,
+    value: rustString(codexOauthPlaceholders.CHATGPT_ACCOUNT_ID),
     rustDoc: placeholderRustDoc("CHATGPT_ACCOUNT_ID"),
   },
   {
     rustModulePath: ["codex_oauth_token", "placeholders"],
     rustConstName: "CHATGPT_REFRESH_TOKEN",
-    value: codexOauthPlaceholders.CHATGPT_REFRESH_TOKEN,
+    value: rustString(codexOauthPlaceholders.CHATGPT_REFRESH_TOKEN),
     rustDoc: placeholderRustDoc("CHATGPT_REFRESH_TOKEN"),
   },
   {
     rustModulePath: ["model_provider_env", "placeholders"],
     rustConstName: "ANTHROPIC_API_KEY",
-    value: MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_API_KEY,
+    value: rustString(MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_API_KEY),
     rustDoc: placeholderRustDoc("ANTHROPIC_API_KEY"),
   },
   {
     rustModulePath: ["model_provider_env", "placeholders"],
     rustConstName: "ANTHROPIC_AUTH_TOKEN",
-    value: MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN,
+    value: rustString(MODEL_PROVIDER_ENV_PLACEHOLDERS.ANTHROPIC_AUTH_TOKEN),
     rustDoc: placeholderRustDoc("ANTHROPIC_AUTH_TOKEN"),
   },
   {
     rustModulePath: ["model_provider_env", "placeholders"],
     rustConstName: "CLAUDE_CODE_OAUTH_TOKEN",
-    value: MODEL_PROVIDER_ENV_PLACEHOLDERS.CLAUDE_CODE_OAUTH_TOKEN,
+    value: rustString(MODEL_PROVIDER_ENV_PLACEHOLDERS.CLAUDE_CODE_OAUTH_TOKEN),
     rustDoc: placeholderRustDoc("CLAUDE_CODE_OAUTH_TOKEN"),
   },
   {
     rustModulePath: ["model_provider_env", "placeholders"],
     rustConstName: "OPENAI_API_KEY",
-    value: MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
+    value: rustString(MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY),
     rustDoc: placeholderRustDoc("OPENAI_API_KEY"),
   },
   {
     rustModulePath: ["model_provider_env", "placeholders"],
     rustConstName: "CHATGPT_ACCESS_TOKEN",
-    value: MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCESS_TOKEN,
+    value: rustString(MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCESS_TOKEN),
     rustDoc: placeholderRustDoc("CHATGPT_ACCESS_TOKEN"),
   },
   {
     rustModulePath: ["model_provider_env", "placeholders"],
     rustConstName: "CHATGPT_ACCOUNT_ID",
-    value: MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCOUNT_ID,
+    value: rustString(MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_ACCOUNT_ID),
     rustDoc: placeholderRustDoc("CHATGPT_ACCOUNT_ID"),
   },
   {
     rustModulePath: ["model_provider_env", "placeholders"],
     rustConstName: "CHATGPT_REFRESH_TOKEN",
-    value: MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_REFRESH_TOKEN,
+    value: rustString(MODEL_PROVIDER_ENV_PLACEHOLDERS.CHATGPT_REFRESH_TOKEN),
     rustDoc: placeholderRustDoc("CHATGPT_REFRESH_TOKEN"),
   },
 ] as const;
@@ -117,21 +138,21 @@ const exampleModuleDocs = [
     rustModulePath: ["example"],
     rustDoc: ["Example generated constants."],
   },
-] satisfies readonly RustStringConstantModuleDoc[];
+] satisfies readonly RustConstantModuleDoc[];
 
 function validBinding(
-  overrides: Partial<RustStringConstantBinding> = {},
-): RustStringConstantBinding {
+  overrides: Partial<RustConstantBinding> = {},
+): RustConstantBinding {
   return {
     rustModulePath: ["example"],
     rustConstName: "EXAMPLE",
-    value: "example-value",
+    value: rustString("example-value"),
     rustDoc: ["Example generated constant."],
     ...overrides,
   };
 }
 
-function summarizeBinding(binding: NormalizedStringConstantBinding) {
+function summarizeBinding(binding: NormalizedConstantBinding) {
   return {
     rustModulePath: [...binding.rustModulePath],
     rustConstName: binding.rustConstName,
@@ -140,28 +161,37 @@ function summarizeBinding(binding: NormalizedStringConstantBinding) {
   };
 }
 
-describe("Rust string constant bindings", () => {
-  it("contains exactly the supported Rust string constant set", () => {
-    const actualBindings = normalizeStringConstantBindings(
-      rustStringConstantBindings,
-    ).map((binding) => {
-      return summarizeBinding(binding);
-    });
+function compareRustNames(
+  left: (typeof expectedBindings)[number],
+  right: (typeof expectedBindings)[number],
+): number {
+  const leftName = [...left.rustModulePath, left.rustConstName].join("::");
+  const rightName = [...right.rustModulePath, right.rustConstName].join("::");
+  if (leftName < rightName) {
+    return -1;
+  }
+  if (leftName > rightName) {
+    return 1;
+  }
+  return 0;
+}
+
+describe("Rust constant bindings", () => {
+  it("contains exactly the supported Rust constant set", () => {
+    const actualBindings = normalizeConstantBindings(rustConstantBindings).map(
+      (binding) => {
+        return summarizeBinding(binding);
+      },
+    );
 
     expect(actualBindings).toEqual(
-      [...expectedBindings].sort((left, right) => {
-        return [...left.rustModulePath, left.rustConstName]
-          .join("::")
-          .localeCompare(
-            [...right.rustModulePath, right.rustConstName].join("::"),
-          );
-      }),
+      [...expectedBindings].sort(compareRustNames),
     );
   });
 
   it("renders deterministic Rust constants for the supported registry", () => {
-    const firstRender = renderRustStringConstants(rustStringConstantBindings);
-    const secondRender = renderRustStringConstants(rustStringConstantBindings);
+    const firstRender = renderRustConstants(rustConstantBindings);
+    const secondRender = renderRustConstants(rustConstantBindings);
 
     expect(secondRender).toBe(firstRender);
     expect(firstRender).toContain("pub mod codex_oauth_token {");
@@ -169,7 +199,7 @@ describe("Rust string constant bindings", () => {
     expect(firstRender).toContain("pub mod runners {");
     expect(firstRender).toContain("pub mod placeholders {");
     expect(firstRender).toContain(
-      "//! Generated Rust string constants for `@vm0/api-contracts`.",
+      "//! Generated Rust constants for `@vm0/api-contracts`.",
     );
     expect(firstRender).toContain(
       "//! Do not edit by hand; regenerate with `cd turbo && pnpm -F @vm0/api-contracts generate:rust`.",
@@ -196,6 +226,12 @@ describe("Rust string constant bindings", () => {
       `pub const CANONICAL_WORKING_DIR: &str = "${CANONICAL_WORKING_DIR}";`,
     );
     expect(firstRender).toContain(
+      "/// Maximum resume session history blob size accepted by the API and runner.",
+    );
+    expect(firstRender).toContain(
+      `pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = ${RESUME_SESSION_HISTORY_MAX_BYTES};`,
+    );
+    expect(firstRender).toContain(
       `pub const CHATGPT_ACCOUNT_ID: &str = "${codexOauthPlaceholders.CHATGPT_ACCOUNT_ID}";`,
     );
     expect(firstRender).toContain("pub const OPENAI_API_KEY: &str =");
@@ -209,10 +245,12 @@ describe("Rust string constant bindings", () => {
   });
 
   it("escapes Rust string literals", () => {
-    const rendered = renderRustStringConstants(
+    const rendered = renderRustConstants(
       [
         validBinding({
-          value: 'quote" backslash\\ newline\n carriage\r tab\t control\x01',
+          value: rustString(
+            'quote" backslash\\ newline\n carriage\r tab\t control\x01',
+          ),
         }),
       ],
       exampleModuleDocs,
@@ -226,7 +264,7 @@ describe("Rust string constant bindings", () => {
 
   it("fails clearly when a Rust constant name is invalid", () => {
     expect(() => {
-      normalizeStringConstantBindings([
+      normalizeConstantBindings([
         validBinding({
           rustConstName: "bad_name",
         }),
@@ -236,7 +274,7 @@ describe("Rust string constant bindings", () => {
 
   it("fails clearly when Rust doc lines are empty", () => {
     expect(() => {
-      normalizeStringConstantBindings([
+      normalizeConstantBindings([
         validBinding({
           rustDoc: [],
         }),
@@ -244,24 +282,34 @@ describe("Rust string constant bindings", () => {
     }).toThrow("missing Rust doc lines");
   });
 
+  it("fails clearly when a u64 constant value is invalid", () => {
+    expect(() => {
+      normalizeConstantBindings([
+        validBinding({
+          value: rustU64(-1),
+        }),
+      ]);
+    }).toThrow("invalid u64 constant value");
+  });
+
   it("fails clearly when Rust module docs are missing", () => {
     expect(() => {
-      renderRustStringConstants(
+      renderRustConstants(
         [validBinding()],
         [],
         ["Example generated constants root."],
       );
-    }).toThrow("missing Rust docs for string constant module example");
+    }).toThrow("missing Rust docs for constant module example");
   });
 
   it("fails clearly when Rust constant names collide", () => {
     expect(() => {
-      normalizeStringConstantBindings([
+      normalizeConstantBindings([
         validBinding(),
         validBinding({
-          value: "different-value",
+          value: rustU64(42),
         }),
       ]);
-    }).toThrow("duplicate Rust string constant binding");
+    }).toThrow("duplicate Rust constant binding");
   });
 });

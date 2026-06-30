@@ -17,6 +17,7 @@
 
 use std::time::{Duration, Instant};
 
+use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use sha2::{Digest, Sha256};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -27,8 +28,6 @@ use crate::http::HttpClient;
 use crate::types::{ResumeSession, ResumeSessionHistoryRefKind};
 
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
-// Must stay in sync with RESUME_SESSION_HISTORY_MAX_BYTES in the API contracts.
-const MAX_SESSION_HISTORY_BYTES: u64 = 128 * 1024 * 1024;
 
 pub(crate) struct SessionHistoryMaterializer {
     state: SessionHistoryMaterializerState,
@@ -231,10 +230,10 @@ async fn download_resume_session_history(
         ResumeSessionHistoryRefKind::Blob => {}
     }
     if let Some(expected_size) = history_ref.size
-        && expected_size > MAX_SESSION_HISTORY_BYTES
+        && expected_size > RESUME_SESSION_HISTORY_MAX_BYTES
     {
         return Err(RunnerError::Internal(format!(
-            "session history is too large: {expected_size} bytes exceeds {MAX_SESSION_HISTORY_BYTES} bytes"
+            "session history is too large: {expected_size} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
         )));
     }
 
@@ -288,9 +287,9 @@ async fn download_body(
         })?;
 
     if let Some(content_length) = response.content_length() {
-        if content_length > MAX_SESSION_HISTORY_BYTES {
+        if content_length > RESUME_SESSION_HISTORY_MAX_BYTES {
             return Err(RunnerError::Internal(format!(
-                "session history is too large: {content_length} bytes exceeds {MAX_SESSION_HISTORY_BYTES} bytes"
+                "session history is too large: {content_length} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
             )));
         }
         if let Some(expected_size) = expected_size
@@ -304,7 +303,7 @@ async fn download_body(
 
     let capacity = expected_size
         .unwrap_or(64 * 1024)
-        .min(MAX_SESSION_HISTORY_BYTES)
+        .min(RESUME_SESSION_HISTORY_MAX_BYTES)
         .min(usize::MAX as u64) as usize;
     let mut body = Vec::with_capacity(capacity);
     let mut downloaded = 0u64;
@@ -316,9 +315,9 @@ async fn download_body(
         ))
     })? {
         downloaded += chunk.len() as u64;
-        if downloaded > MAX_SESSION_HISTORY_BYTES {
+        if downloaded > RESUME_SESSION_HISTORY_MAX_BYTES {
             return Err(RunnerError::Internal(format!(
-                "session history is too large: {downloaded} bytes exceeds {MAX_SESSION_HISTORY_BYTES} bytes"
+                "session history is too large: {downloaded} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
             )));
         }
         body.extend_from_slice(&chunk);
@@ -479,7 +478,7 @@ mod tests {
     #[tokio::test]
     async fn materializer_rejects_oversized_content_length() {
         let session = ref_session(
-            serve_once("200 OK", b"", Some(MAX_SESSION_HISTORY_BYTES + 1)).await,
+            serve_once("200 OK", b"", Some(RESUME_SESSION_HISTORY_MAX_BYTES + 1)).await,
             hex::encode(Sha256::digest(b"")),
             None,
         );
