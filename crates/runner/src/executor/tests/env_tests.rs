@@ -18,7 +18,8 @@ use super::super::env::{
 use super::super::{USER_ENV_FILE_ENV_KEY, guest_runtime_dir};
 use super::support::{
     api_artifact, api_storage, build_env_for_test, build_env_for_test_result,
-    build_env_for_test_with_host_env, context_with_env, minimal_context, sandbox_write_file_error,
+    build_env_for_test_with_active_input, build_env_for_test_with_host_env, context_with_env,
+    minimal_context, sandbox_write_file_error,
 };
 use crate::error::{RunnerError, RunnerResult};
 use crate::host_env::{
@@ -434,10 +435,47 @@ fn build_env_json_codex_gets_only_codex_framework_env() {
 
     assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
     assert_eq!(env.get("USE_MOCK_CODEX").unwrap(), "1");
+    assert!(!env.contains_key(guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV));
     assert!(!env.contains_key("USE_MOCK_CLAUDE"));
     assert!(!env.contains_key("VM0_DISALLOWED_TOOLS"));
     assert!(!env.contains_key("VM0_TOOLS"));
     assert!(!env.contains_key("VM0_SETTINGS"));
+}
+
+#[test]
+fn build_env_json_codex_without_active_input_does_not_enable_app_server_backend() {
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+
+    let env = build_env_for_test(&ctx, "http://localhost");
+
+    assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
+    assert!(!env.contains_key(guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV));
+}
+
+#[test]
+fn build_env_json_codex_with_active_input_enables_app_server_backend() {
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+
+    let env = build_env_for_test_with_active_input(&ctx, "http://localhost");
+
+    assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
+    assert_eq!(
+        env.get(guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV)
+            .unwrap(),
+        "1"
+    );
+}
+
+#[test]
+fn build_env_json_claude_with_active_input_does_not_enable_codex_app_server_backend() {
+    let ctx = minimal_context();
+
+    let env = build_env_for_test_with_active_input(&ctx, "http://localhost");
+
+    assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "claude-code");
+    assert!(!env.contains_key(guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV));
 }
 
 #[test]
@@ -488,6 +526,10 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
         (
             guest_contracts::env::FEATURE_FLAGS_ENV.into(),
             r#"{"bad":true}"#.into(),
+        ),
+        (
+            guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV.into(),
+            "1".into(),
         ),
         ("VM0_FUTURE_RUNNER_KEY".into(), "future".into()),
         (RUNNER_CONCURRENCY_FACTOR_ENV.into(), "99".into()),
@@ -548,6 +590,7 @@ fn build_env_json_scrubs_user_provided_runner_owned_env() {
         guest_contracts::env::WORKING_DIR_ENV,
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         guest_contracts::env::FEATURE_FLAGS_ENV,
+        guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV,
         "VM0_FUTURE_RUNNER_KEY",
         RUNNER_CONCURRENCY_FACTOR_ENV,
         RUNNER_DISK_BANDWIDTH_MIB_PER_SEC_ENV,

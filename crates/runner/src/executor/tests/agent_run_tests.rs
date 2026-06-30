@@ -1606,6 +1606,50 @@ async fn run_in_sandbox_forwards_local_active_inputs_in_order_and_dedupes() {
 }
 
 #[tokio::test]
+async fn run_in_sandbox_sets_codex_app_server_backend_for_active_input_source() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
+    let sandbox = create_overridden_sandbox(Arc::clone(&overrides)).await;
+    let mut ctx = minimal_context();
+    ctx.cli_agent_type = "codex".into();
+    let group_dir = dir.path().join("active-inputs");
+    let source = ActiveInputSource::local_queue(group_dir, ctx.run_id);
+    let cancel = tokio_util::sync::CancellationToken::new();
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &*sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::PoolMiss,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(cancel, Some(source)),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    let start_calls = overrides.start_process_calls();
+    assert_eq!(start_calls.len(), 1);
+    let env = start_calls[0]
+        .env
+        .iter()
+        .cloned()
+        .collect::<std::collections::HashMap<_, _>>();
+    assert_eq!(env.get("CLI_AGENT_TYPE").unwrap(), "codex");
+    assert_eq!(
+        env.get(guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV)
+            .unwrap(),
+        "1"
+    );
+}
+
+#[tokio::test]
 async fn run_in_sandbox_retries_active_input_after_control_error() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;

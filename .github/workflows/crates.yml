@@ -788,6 +788,159 @@ jobs:
             "$DEFAULT_SNAPSHOT_HASH" \
             "$OFFICIAL_RUNNER_SECRET"
 
+  runner-local-codex-active-input-smoke:
+    runs-on: ubuntu-latest
+    needs: [runner-build]
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: Setup SSH via Cloudflare Tunnel
+        uses: ./.github/actions/setup-ssh-tunnel
+        with:
+          ssh-key: ${{ secrets.AWS_METAL_RUNNER_SSH_KEY }}
+          cf-access-client-id: ${{ secrets.CF_ACCESS_CLIENT_ID }}
+          cf-access-client-secret: ${{ secrets.CF_ACCESS_CLIENT_SECRET }}
+
+      - name: Test local active input with real Codex
+        env:
+          METAL_USER: ${{ vars.AWS_METAL_RUNNER_USER }}
+          OFFICIAL_RUNNER_SECRET: ${{ secrets.OFFICIAL_RUNNER_SECRET }}
+          OPENAI_API_KEY: ${{ secrets.OPENAI_API_KEY }}
+          HOST: ${{ needs.runner-build.outputs.host }}
+          JOB_REF: ${{ needs.runner-build.outputs.job-ref }}
+          BIN_DIR: ${{ needs.runner-build.outputs.bin-dir }}
+          DEFAULT_ROOTFS_HASH: ${{ needs.runner-build.outputs.default-rootfs-hash }}
+          DEFAULT_SNAPSHOT_HASH: ${{ needs.runner-build.outputs.default-snapshot-hash }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${OPENAI_API_KEY:-}" ]; then
+            echo "::error::OPENAI_API_KEY is required for real Codex active-input smoke"
+            exit 1
+          fi
+
+          REMOTE="${METAL_USER}@${HOST}"
+          {
+            # Keep the CI provider key off SSH/bash argv; the runner CLI still
+            # receives it through --secret-env because that is the behavior
+            # under test.
+            printf 'OPENAI_API_KEY=%q\n' "$OPENAI_API_KEY"
+            cat <<'REMOTE_SCRIPT'
+          set -euo pipefail
+
+          BIN_DIR=$1
+          JOB_REF=$2
+          ROOTFS_HASH=$3
+          SNAPSHOT_HASH=$4
+          OFFICIAL_RUNNER_SECRET=$5
+
+          SVC="${JOB_REF}-local-codex-active-input"
+          RUNNER_DIR="/var/lib/vm0-runner/runners/${SVC}"
+          GROUP="vm0/local-codex-active-input-${JOB_REF}"
+          GROUP_DIR="/var/lib/vm0-runner/groups/vm0/local-codex-active-input-${JOB_REF}"
+
+          fail() {
+            echo "FAIL: $1" >&2
+            exit 1
+          }
+
+          print_service_logs() {
+            echo "--- ${SVC} service logs ---"
+            sudo "$BIN_DIR/runner" service logs --name "$SVC" --lines 200 || true
+          }
+
+          cleanup() {
+            echo "--- Cleanup local Codex active-input smoke runner ---"
+            sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
+            sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
+          }
+          trap cleanup EXIT
+
+          sudo "$BIN_DIR/runner" service stop --name "$SVC" --force
+          sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
+
+          echo "--- Generating local runner config ---"
+          sudo "$BIN_DIR/runner" config \
+            --profile vm0/default \
+            --rootfs-hash "$ROOTFS_HASH" \
+            --snapshot-hash "$SNAPSHOT_HASH" \
+            --name "$SVC" \
+            --group "$GROUP" \
+            --runner-dirname "$SVC" \
+            --max-concurrent 1 \
+            --api-url https://not-a-real-server.test \
+            --token "vm0_official_${OFFICIAL_RUNNER_SECRET}"
+
+          echo "--- Starting local runner ---"
+          sudo "$BIN_DIR/runner" service start \
+            --name "$SVC" \
+            --config "$RUNNER_DIR/runner.yaml" \
+            --local
+
+          PROMPT='This is a CI smoke test for Codex active input. The initial prompt token is codex-initial-8m6. Run shell command `sleep 3` before your final answer. During that sleep, two follow-up user messages will arrive, each containing one token. After the sleep and after reading both follow-up messages, reply with exactly RESULT=codex-initial-8m6+FIRST+SECOND, replacing FIRST and SECOND with the exact text of the first and second follow-up messages. If either follow-up message is missing, reply exactly RESULT=missing. Do not include any other text.'
+          EXPECTED_RESULT='RESULT=codex-initial-8m6+codex-active-one-2p9+codex-active-two-6v1'
+
+          echo "--- Submitting Codex active-input smoke job ---"
+          if ! SUBMIT_OUTPUT=$(sudo "$BIN_DIR/runner" local submit \
+            --group "$GROUP" \
+            --timeout 240 \
+            --cli-agent-type codex \
+            --env OPENAI_MODEL=gpt-5.4-mini \
+            --secret-env OPENAI_API_KEY="$OPENAI_API_KEY" \
+            --prompt "$PROMPT" \
+            --active-input 'after=1s,text=codex-active-one-2p9' \
+            --active-input 'after=2s,text=codex-active-two-6v1' 2>&1); then
+            echo "$SUBMIT_OUTPUT"
+            print_service_logs
+            fail "real Codex active-input local submit smoke failed"
+          fi
+          echo "$SUBMIT_OUTPUT"
+
+          SUBMIT_JSON="$(awk '/^\{/{line=$0} END{print line}' <<<"$SUBMIT_OUTPUT")"
+          [ -n "$SUBMIT_JSON" ] || fail "local submit output did not include a JSON response"
+          RUN_ID="$(jq -r '.run_id // empty' <<<"$SUBMIT_JSON")"
+          [ -n "$RUN_ID" ] || fail "local submit output did not include run_id"
+          STREAM_LOG="/var/lib/vm0-runner/logs/system-stream-${RUN_ID}.log"
+
+          print_failure_context() {
+            echo "--- Guest stdout stream tail ---"
+            sudo tail -200 "$STREAM_LOG" || true
+            print_service_logs
+          }
+
+          if sudo grep -q 'Using mock-codex for testing' "$STREAM_LOG"; then
+            print_failure_context
+            fail "real Codex active-input smoke used mock Codex"
+          fi
+
+          sudo grep -F -q 'Codex active input steer:' "$STREAM_LOG" || {
+            print_failure_context
+            fail "Codex active-input smoke did not use turn/steer"
+          }
+
+          sudo grep -F -q 'outcome=active_turn_advanced' "$STREAM_LOG" || {
+            print_failure_context
+            fail "Codex active-input turn/steer did not report success"
+          }
+
+          echo "--- Real Codex active-input result lines from guest stdout ---"
+          sudo grep -E 'RESULT=|Codex active input steer|Codex Completed' "$STREAM_LOG" || true
+
+          sudo grep -F -q "$EXPECTED_RESULT" "$STREAM_LOG" || {
+            print_failure_context
+            fail "real Codex output did not include initial and active-input tokens"
+          }
+
+          echo "PASS: local active input reached real Codex and returned ${EXPECTED_RESULT}"
+          REMOTE_SCRIPT
+          } | ssh "$REMOTE" bash -s -- \
+            "$BIN_DIR" \
+            "$JOB_REF" \
+            "$DEFAULT_ROOTFS_HASH" \
+            "$DEFAULT_SNAPSHOT_HASH" \
+            "$OFFICIAL_RUNNER_SECRET"
+
   runner-benchmark:
     runs-on: ubuntu-latest
     needs: [runner-build]
@@ -2025,6 +2178,7 @@ jobs:
       - runner-build
       - runner-image-architecture-manifest
       - runner-local-active-input-smoke
+      - runner-local-codex-active-input-smoke
       - runner-benchmark
       - runner-exec
       - runner-cancel
@@ -2078,6 +2232,7 @@ jobs:
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"
           check_result "runner-image-architecture-manifest" "${{ needs.runner-image-architecture-manifest.result }}" "true"
           check_result "runner-local-active-input-smoke" "${{ needs.runner-local-active-input-smoke.result }}" "true"
+          check_result "runner-local-codex-active-input-smoke" "${{ needs.runner-local-codex-active-input-smoke.result }}" "true"
           check_result "runner-benchmark" "${{ needs.runner-benchmark.result }}" "true"
           check_result "runner-exec" "${{ needs.runner-exec.result }}" "true"
           check_result "runner-cancel" "${{ needs.runner-cancel.result }}" "true"
