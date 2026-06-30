@@ -176,7 +176,7 @@ export function createChatCallbacksApi(context: TestContext) {
      * system prompt and returns the completion text.
      */
     mockOpenRouterCompletions(
-      handler: (body: OpenRouterCompletionBody) => string,
+      handler: (body: OpenRouterCompletionBody) => string | Promise<string>,
     ): void {
       server.use(
         http.post(OPENROUTER_COMPLETIONS_URL, async ({ request }) => {
@@ -184,7 +184,7 @@ export function createChatCallbacksApi(context: TestContext) {
             await request.json(),
           );
           return HttpResponse.json({
-            choices: [{ message: { content: handler(body) } }],
+            choices: [{ message: { content: await handler(body) } }],
           });
         }),
       );

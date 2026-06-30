@@ -35,6 +35,11 @@ export const testChatMessagesStateActionBodySchema = z.discriminatedUnion(
       action: z.literal("delete-openrouter-vm0-api-keys"),
       model: z.string(),
     }),
+    z.object({
+      action: z.literal("attach-pre-dispatch-cancelled-run-to-thread"),
+      run_id: z.uuid(),
+      thread_id: z.uuid(),
+    }),
   ],
 );
 

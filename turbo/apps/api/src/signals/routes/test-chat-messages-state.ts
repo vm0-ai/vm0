@@ -3,15 +3,19 @@ import {
   testChatMessagesStateContract,
   type TestChatMessagesStateActionBody,
 } from "@vm0/api-contracts/contracts/test-chat-messages-state";
+import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { secrets } from "@vm0/db/schema/secret";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, like, or } from "drizzle-orm";
 
+import { nowDate } from "../../lib/time";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { BEFORE_DISPATCH_CANCELLED_ERROR } from "../services/agent-run-create.service";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import {
   isTestEndpointAllowed,
@@ -118,6 +122,29 @@ async function deleteOpenRouterVm0ApiKeysForAction(
   return actionOk();
 }
 
+async function attachPreDispatchCancelledRunToThreadForAction(
+  db: Db,
+  body: ChatMessagesAction<"attach-pre-dispatch-cancelled-run-to-thread">,
+  signal: AbortSignal,
+) {
+  await db.transaction(async (tx) => {
+    await tx
+      .update(agentRuns)
+      .set({
+        status: "cancelled",
+        completedAt: nowDate(),
+        error: BEFORE_DISPATCH_CANCELLED_ERROR,
+      })
+      .where(eq(agentRuns.id, body.run_id));
+    await tx
+      .update(zeroRuns)
+      .set({ chatThreadId: body.thread_id })
+      .where(eq(zeroRuns.id, body.run_id));
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 const mutateChatMessagesState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -144,6 +171,13 @@ const mutateChatMessagesState$ = command(
       }
       case "delete-openrouter-vm0-api-keys": {
         return await deleteOpenRouterVm0ApiKeysForAction(db, body, signal);
+      }
+      case "attach-pre-dispatch-cancelled-run-to-thread": {
+        return await attachPreDispatchCancelledRunToThreadForAction(
+          db,
+          body,
+          signal,
+        );
       }
     }
   },

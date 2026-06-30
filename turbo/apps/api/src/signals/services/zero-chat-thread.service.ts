@@ -1482,13 +1482,22 @@ export function chatThreadForRun(
   });
 }
 
+interface ThreadRunToCancel {
+  readonly runId: string;
+  readonly orgId: string;
+}
+
 /**
  * Delete a chat thread after winding down everything attached to it. Deleting a
  * thread on its own leaves the linked automations firing and any in-flight runs
  * executing: `zero_runs.chatThreadId` is `ON DELETE SET NULL`, so a running run
- * simply loses its thread reference and keeps consuming credits. We therefore
- * follow the order: stop related automations, cancel related active runs, then
- * delete the thread.
+ * simply loses its thread reference and keeps consuming credits.
+ *
+ * Lock the thread row while deleting it and collecting active runs. Inserts into
+ * `zero_runs.chatThreadId` take a FK lock on the same parent row, so this closes
+ * the race where a new run attaches after the active-run scan but before the
+ * thread delete. Cancellation still happens after the delete transaction because
+ * it has runner notifications and queue-drain side effects.
  *
  * Run cancellation has side effects that cannot participate in the thread's
  * delete transaction (`cancelRun$` opens its own transaction and the runner
@@ -1506,45 +1515,59 @@ export const deleteChatThread$ = command(
   }> => {
     const writeDb = set(writeDb$);
 
-    const [ownedThread] = await writeDb
-      .select({ id: chatThreads.id })
-      .from(chatThreads)
-      .where(
-        and(
-          eq(chatThreads.id, args.threadId),
-          eq(chatThreads.userId, args.userId),
-        ),
-      )
-      .limit(1);
+    const deletion = await writeDb.transaction(async (tx) => {
+      const lockedRows = await tx.execute<{ readonly id: string }>(sql`
+        SELECT ${chatThreads.id} AS "id"
+        FROM ${chatThreads}
+        WHERE ${chatThreads.id} = ${args.threadId}
+          AND ${chatThreads.userId} = ${args.userId}
+        FOR UPDATE
+      `);
+      const ownedThread = lockedRows.rows[0];
+      if (!ownedThread) {
+        return {
+          deleted: false,
+          activeRuns: [] as readonly ThreadRunToCancel[],
+        };
+      }
+
+      // Stop related automations first so none of them can spawn a fresh run
+      // while we are cancelling the in-flight ones (their triggers cascade).
+      await tx
+        .delete(automations)
+        .where(eq(automations.chatThreadId, ownedThread.id));
+
+      // Capture related active runs while the thread row blocks new FK attaches.
+      // Terminal runs (completed/failed/cancelled) are left untouched; only
+      // queued/pending/running runs need stopping.
+      const activeRuns = await tx
+        .select({ runId: agentRuns.id, orgId: agentRuns.orgId })
+        .from(zeroRuns)
+        .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+        .where(
+          and(
+            eq(zeroRuns.chatThreadId, ownedThread.id),
+            eq(agentRuns.userId, args.userId),
+            inArray(agentRuns.status, [...ACTIVE_RUN_STATUSES]),
+          ),
+        );
+
+      // Delete the thread last inside the lock. Cascades chat_messages; captured
+      // active runs will have their zero_runs.chatThreadId set to NULL.
+      const [deletedThread] = await tx
+        .delete(chatThreads)
+        .where(eq(chatThreads.id, ownedThread.id))
+        .returning({ id: chatThreads.id });
+
+      return { deleted: Boolean(deletedThread), activeRuns };
+    });
     signal.throwIfAborted();
-    if (!ownedThread) {
+    if (!deletion.deleted) {
       return { deleted: false, cancelledRuns: [] };
     }
 
-    // Stop related automations first so none of them can spawn a fresh run
-    // while we are cancelling the in-flight ones (their triggers cascade).
-    await writeDb
-      .delete(automations)
-      .where(eq(automations.chatThreadId, ownedThread.id));
-    signal.throwIfAborted();
-
-    // Cancel related active runs. Terminal runs (completed/failed/cancelled)
-    // are left untouched; only queued/pending/running runs need stopping.
-    const activeRuns = await writeDb
-      .select({ runId: agentRuns.id, orgId: agentRuns.orgId })
-      .from(zeroRuns)
-      .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-      .where(
-        and(
-          eq(zeroRuns.chatThreadId, ownedThread.id),
-          eq(agentRuns.userId, args.userId),
-          inArray(agentRuns.status, [...ACTIVE_RUN_STATUSES]),
-        ),
-      );
-    signal.throwIfAborted();
-
     const cancelledRuns: CancelRunResult[] = [];
-    for (const run of activeRuns) {
+    for (const run of deletion.activeRuns) {
       const result = await set(
         cancelRun$,
         { runId: run.runId, userId: args.userId, orgId: run.orgId },
@@ -1559,15 +1582,7 @@ export const deleteChatThread$ = command(
       }
     }
 
-    // Delete the thread last. Cascades chat_messages; the now-cancelled runs
-    // have their zero_runs.chatThreadId set to NULL.
-    const [deletedThread] = await writeDb
-      .delete(chatThreads)
-      .where(eq(chatThreads.id, ownedThread.id))
-      .returning({ id: chatThreads.id });
-    signal.throwIfAborted();
-
-    return { deleted: Boolean(deletedThread), cancelledRuns };
+    return { deleted: true, cancelledRuns };
   },
 );
 

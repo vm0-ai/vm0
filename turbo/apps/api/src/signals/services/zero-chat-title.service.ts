@@ -32,7 +32,7 @@ const BUILT_IN_GENERATION_FOLLOWUP_CONTEXT = [
   "- website: create hosted websites or web pages.",
 ].join("\n");
 
-interface TitleContextMessage {
+export interface ChatCompletionContextMessage {
   readonly role: "user" | "assistant";
   readonly content: string;
 }
@@ -40,7 +40,7 @@ interface TitleContextMessage {
 interface ChatTitleInput {
   readonly currentUserMessage: string;
   readonly currentAssistantReply?: string;
-  readonly priorRounds?: readonly TitleContextMessage[];
+  readonly priorRounds?: readonly ChatCompletionContextMessage[];
 }
 
 interface OpenRouterResponse {
@@ -60,6 +60,25 @@ type SelectDb = Pick<Db, "select">;
 
 export function isChatTitleGenerationConfigured(): boolean {
   return Boolean(optionalEnv("OPENROUTER_API_KEY"));
+}
+
+function completedConversationContextMessageCondition() {
+  return sql<boolean>`NOT (
+      ${chatMessages.role} = 'user'
+      AND ${chatMessages.runId} IS NULL
+      AND ${chatMessages.revokesMessageId} IS NULL
+      AND ${chatMessages.interruptsRunId} IS NULL
+      AND ${chatMessages.error} IS NULL
+    )
+    AND NOT (
+      ${chatMessages.runId} IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM ${agentRuns}
+        WHERE ${agentRuns.id} = ${chatMessages.runId}
+          AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+      )
+    )`;
 }
 
 function stripMarkdown(text: string): string {
@@ -160,12 +179,13 @@ async function getLatestTitleContextMessages(
   db: Db,
   threadId: string,
   options?: { readonly excludeRunId?: string },
-): Promise<TitleContextMessage[]> {
+): Promise<ChatCompletionContextMessage[]> {
   const filters = [
     eq(chatMessages.chatThreadId, threadId),
     isNotNull(chatMessages.content),
     inArray(chatMessages.role, ["user", "assistant"]),
     visibleChatMessageCondition(),
+    completedConversationContextMessageCondition(),
   ];
   if (options?.excludeRunId !== undefined) {
     filters.push(
@@ -429,7 +449,7 @@ function parseWorkflowAutomationSuggestion(
 async function getLatestFollowupContextMessages(
   db: SelectDb,
   threadId: string,
-): Promise<TitleContextMessage[]> {
+): Promise<ChatCompletionContextMessage[]> {
   const rows = await db
     .select({
       role: chatMessages.role,
@@ -444,6 +464,7 @@ async function getLatestFollowupContextMessages(
         isNotNull(chatMessages.content),
         inArray(chatMessages.role, ["user", "assistant"]),
         visibleChatMessageCondition(),
+        completedConversationContextMessageCondition(),
       ),
     )
     .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
@@ -461,7 +482,7 @@ async function getLatestFollowupContextMessages(
 }
 
 async function generateRecommendedFollowups(
-  messages: readonly TitleContextMessage[],
+  messages: readonly ChatCompletionContextMessage[],
 ): Promise<ChatMessageRecommendedFollowups> {
   const last = messages[messages.length - 1];
   if (last?.role !== "assistant" || last.content.trim().length === 0) {
@@ -500,7 +521,7 @@ async function generateRecommendedFollowups(
 }
 
 async function generateWorkflowAutomationSuggestion(
-  messages: readonly TitleContextMessage[],
+  messages: readonly ChatCompletionContextMessage[],
 ): Promise<ChatMessageRecommendedFollowup | null> {
   const last = messages[messages.length - 1];
   if (last?.role !== "assistant" || last.content.trim().length === 0) {
@@ -541,22 +562,21 @@ async function generateWorkflowAutomationSuggestion(
   return text === null ? null : parseWorkflowAutomationSuggestion(text);
 }
 
-export async function generateChatThreadRecommendedFollowups(args: {
+export async function loadChatThreadRecommendedFollowupContext(args: {
   readonly db: SelectDb;
   readonly threadId: string;
+}): Promise<ChatCompletionContextMessage[]> {
+  return await getLatestFollowupContextMessages(args.db, args.threadId);
+}
+
+export async function generateChatThreadRecommendedFollowupsFromContext(args: {
+  readonly messages: readonly ChatCompletionContextMessage[];
+  readonly threadId?: string;
 }): Promise<ChatMessageRecommendedFollowups> {
-  const result = await settle(
-    (async () => {
-      const messages = await getLatestFollowupContextMessages(
-        args.db,
-        args.threadId,
-      );
-      return generateRecommendedFollowups(messages);
-    })(),
-  );
+  const result = await settle(generateRecommendedFollowups(args.messages));
   if (!result.ok) {
     log.warn("Recommended follow-up generation failed", {
-      threadId: args.threadId,
+      ...(args.threadId ? { threadId: args.threadId } : {}),
       err: result.error,
     });
     return [];
@@ -564,22 +584,16 @@ export async function generateChatThreadRecommendedFollowups(args: {
   return result.value;
 }
 
-export async function generateChatThreadWorkflowAutomationSuggestion(args: {
-  readonly db: SelectDb;
-  readonly threadId: string;
+export async function generateChatThreadWorkflowAutomationSuggestionFromContext(args: {
+  readonly messages: readonly ChatCompletionContextMessage[];
+  readonly threadId?: string;
 }): Promise<ChatMessageRecommendedFollowup | null> {
   const result = await settle(
-    (async () => {
-      const messages = await getLatestFollowupContextMessages(
-        args.db,
-        args.threadId,
-      );
-      return generateWorkflowAutomationSuggestion(messages);
-    })(),
+    generateWorkflowAutomationSuggestion(args.messages),
   );
   if (!result.ok) {
     log.warn("Workflow automation suggestion generation failed", {
-      threadId: args.threadId,
+      ...(args.threadId ? { threadId: args.threadId } : {}),
       err: result.error,
     });
     return null;
