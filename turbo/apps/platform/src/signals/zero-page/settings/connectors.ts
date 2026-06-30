@@ -13,7 +13,6 @@ import {
   type ConnectorType,
   type ConnectorDisplayCategory,
 } from "@vm0/connectors/connectors";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethod,
@@ -410,16 +409,12 @@ export const connectorsSearch$ = computed((get) => {
 export const filteredConnectorTypes$ = computed(async (get) => {
   const keyword = get(connectorsSearch$);
   const connectionFilter = get(connectorsConnectionFilter$);
-  const features = get(featureSwitch$);
-  const shouldFilterConnected =
-    connectionFilter === "connected" &&
-    (features[FeatureSwitchKey.ConnectorAccessManagement] ?? false);
   const allConnectorTypes = await get(allConnectorTypes$);
   return allConnectorTypes.filter((connector) => {
     if (!matchesConnectorSearch(keyword, connector)) {
       return false;
     }
-    return !shouldFilterConnected || connector.connected;
+    return connectionFilter !== "connected" || connector.connected;
   });
 });
 
