@@ -100,7 +100,7 @@ export function normalizeManualGrantSubmittedValues(args: {
       return [descriptor.privateName, descriptor];
     }),
   );
-  const normalizedValues: Record<string, string> = {};
+  const normalizedValues = new Map<string, string>();
   const seenPrivateNames = new Set<string>();
   const unknownNames: string[] = [];
   const ambiguousPublicNames: string[] = [];
@@ -136,7 +136,7 @@ export function normalizeManualGrantSubmittedValues(args: {
     }
 
     seenPrivateNames.add(descriptor.privateName);
-    normalizedValues[descriptor.privateName] = value;
+    normalizedValues.set(descriptor.privateName, value);
   }
 
   if (unknownNames.length > 0) {
@@ -159,7 +159,7 @@ export function normalizeManualGrantSubmittedValues(args: {
 
   return {
     ok: true,
-    values: normalizedValues,
+    values: Object.fromEntries(normalizedValues),
     errorNamesByPrivateName: Object.fromEntries(
       descriptors.map((descriptor) => {
         return [
@@ -198,7 +198,7 @@ export function normalizeDeviceAuthStartOptions(args: {
       return [descriptor.privateName, descriptor];
     }),
   );
-  const normalizedOptions: Record<string, string> = {};
+  const normalizedOptions = new Map<string, string>();
   const seenPrivateNames = new Set<string>();
   const ambiguousPublicNames: string[] = [];
 
@@ -208,7 +208,7 @@ export function normalizeDeviceAuthStartOptions(args: {
     const descriptor = publicDescriptor ?? legacyDescriptor;
 
     if (!descriptor) {
-      normalizedOptions[submittedName] = value;
+      normalizedOptions.set(submittedName, value);
       continue;
     }
 
@@ -227,7 +227,7 @@ export function normalizeDeviceAuthStartOptions(args: {
     }
 
     seenPrivateNames.add(descriptor.privateName);
-    normalizedOptions[descriptor.privateName] = value;
+    normalizedOptions.set(descriptor.privateName, value);
   }
 
   if (ambiguousPublicNames.length > 0) {
@@ -239,5 +239,5 @@ export function normalizeDeviceAuthStartOptions(args: {
     };
   }
 
-  return { ok: true, options: normalizedOptions };
+  return { ok: true, options: Object.fromEntries(normalizedOptions) };
 }
