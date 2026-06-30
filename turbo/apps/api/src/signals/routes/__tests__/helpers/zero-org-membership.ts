@@ -10,7 +10,7 @@ interface SeedOrgMembershipValues {
   readonly role?: "admin" | "member";
 }
 
-interface OrgMembershipFixture {
+export interface OrgMembershipFixture {
   readonly orgId: string;
   readonly userId: string;
 }
@@ -107,7 +107,7 @@ export const seedOrgMembership$ = command(
     { get, set },
     values: SeedOrgMembershipValues,
     signal: AbortSignal,
-  ): OrgMembershipFixture => {
+  ): Promise<OrgMembershipFixture> => {
     const membership: MockMembership = {
       orgId: values.orgId,
       userId: values.userId,
@@ -126,6 +126,24 @@ export const seedOrgMembership$ = command(
     set(orgMemberships$, memberships);
     installMembershipMocks(memberships);
     signal.throwIfAborted();
-    return { orgId: values.orgId, userId: values.userId };
+    return Promise.resolve({ orgId: values.orgId, userId: values.userId });
+  },
+);
+
+export const deleteOrgMembership$ = command(
+  (
+    { get, set },
+    fixture: OrgMembershipFixture,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const memberships = get(orgMemberships$).filter((candidate) => {
+      return (
+        candidate.orgId !== fixture.orgId || candidate.userId !== fixture.userId
+      );
+    });
+    set(orgMemberships$, memberships);
+    installMembershipMocks(memberships);
+    signal.throwIfAborted();
+    return Promise.resolve();
   },
 );
