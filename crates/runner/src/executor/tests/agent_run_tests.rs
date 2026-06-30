@@ -11,10 +11,12 @@ use guest_contracts::session_history_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
     FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
 };
 use httpmock::prelude::*;
 use sandbox::{
-    ExecResult, ProcessExit, ProcessOutputChunk, SandboxConfig, SandboxFactory, SandboxId,
+    ExecResult, ExecTermination, ProcessExit, ProcessOutputChunk, SandboxConfig, SandboxFactory,
+    SandboxId,
 };
 use sandbox_mock::MockSandboxFactory;
 use sha2::{Digest, Sha256};
@@ -125,6 +127,82 @@ fn assert_successful_action(ops: &[(String, bool, Option<String>)], action: &str
     assert!(
         ops.iter().any(|op| op.0 == action && op.1),
         "expected {action} telemetry, got: {ops:?}"
+    );
+}
+
+async fn assert_checkpointed_final_identity_helper_failure_falls_back(
+    session_id: &str,
+    helper_result: ExecResult,
+    expected_reason_action: &str,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let history = br#"{"type":"init"}"#;
+    let server = MockServer::start_async().await;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: session_id.into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: server.url("/history.blob?token=secret"),
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+    let (metadata_path, runtime_dir) = final_identity_runtime_paths(&ctx);
+    let metadata = FinalSessionHistoryIdentity::new(
+        FinalSessionHistoryFramework::ClaudeCode,
+        hex::encode(Sha256::digest(session_id.as_bytes())),
+        FinalSessionHistoryRefKind::Blob,
+        hex::encode(Sha256::digest(history)),
+        history.len() as u64,
+        claude_history_path(session_id),
+    )
+    .unwrap();
+    let idle_identity =
+        RestoredSessionIdentity::from_final_metadata(metadata, metadata_path, runtime_dir)
+            .expect("checkpointed identity");
+    sandbox.push_exec_result(Ok(helper_result));
+    sandbox.push_read_file_result(Ok(None));
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::Reused,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+            .with_session_history_restore_plan(SessionHistoryRestorePlan::SkipVerified(
+                idle_identity,
+            )),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    assert!(result.restored_session_identity.is_none());
+    history_mock.assert_calls_async(1).await;
+    assert_eq!(sandbox.exec_calls().len(), 1);
+    let ops = telemetry.pending_ops_snapshot();
+    assert_successful_action(&ops, expected_reason_action);
+    assert_successful_action(&ops, "session_history_restore_fallback_stale_idle_identity");
+    assert!(
+        ops.iter().all(|op| op.0 != "session_history_restore_skip"),
+        "helper failure should not record skip telemetry, got: {ops:?}"
     );
 }
 
@@ -736,6 +814,37 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_exec_er
         ops.iter().all(|op| op.0 != "session_history_restore_skip"),
         "helper exec error should not record skip telemetry, got: {ops:?}"
     );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_times_out() {
+    assert_checkpointed_final_identity_helper_failure_falls_back(
+        "sess-final-helper-timeout-123",
+        ExecResult {
+            termination: ExecTermination::TimedOut,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+            diagnostic: "session history identity helper timed out".to_string(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+        },
+        "session_history_identity_verify_helper_timed_out",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_is_over_budget() {
+    assert_checkpointed_final_identity_helper_failure_falls_back(
+        "sess-final-helper-too-large-123",
+        ExecResult::new(
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
+            Vec::new(),
+            Vec::new(),
+        ),
+        "session_history_identity_verify_helper_history_too_large",
+    )
+    .await;
 }
 
 #[tokio::test]
