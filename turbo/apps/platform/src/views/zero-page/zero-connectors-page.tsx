@@ -346,7 +346,7 @@ function ConnectorFilterDropdown({
               avatarUrl={activeAgent.avatarUrl}
               alt={connectorAgentName(activeAgent)}
               size={16}
-              className="h-4 w-4 rounded-full bg-muted/80 object-cover zero-border"
+              className="h-4 w-4 rounded-full object-cover zero-border"
             />
           )}
           <span className="max-w-[140px] truncate">
@@ -403,7 +403,7 @@ function ConnectorFilterDropdown({
                     avatarUrl={agent.avatarUrl}
                     alt={connectorAgentName(agent)}
                     size={16}
-                    className="h-4 w-4 rounded-full bg-muted/80 object-cover zero-border"
+                    className="h-4 w-4 rounded-full object-cover zero-border"
                   />
                   <span className="truncate">{connectorAgentName(agent)}</span>
                 </ConnectorFilterOption>
