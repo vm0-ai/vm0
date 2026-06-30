@@ -301,9 +301,10 @@ function tabByText(text: string): HTMLElement {
 }
 
 function linkByNameAndPath(name: string, path: string): HTMLAnchorElement {
-  for (const candidate of screen.getAllByRole("link", { name })) {
+  for (const candidate of queryAllByRoleFast("link")) {
     if (
       candidate instanceof HTMLAnchorElement &&
+      candidate.textContent?.replace(/\s+/g, " ").trim() === name &&
       new URL(candidate.href).pathname === path
     ) {
       return candidate;
