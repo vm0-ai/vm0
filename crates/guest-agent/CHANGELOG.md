@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.42.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.18...guest-agent-v0.42.0) (2026-06-30)
+
+
+### Features
+
+* add Codex app-server active input steering ([#19361](https://github.com/vm0-ai/vm0/issues/19361)) ([7a231a7](https://github.com/vm0-ai/vm0/commit/7a231a7e9069c817b314aeea7408859b496c60d2))
+
 ## [0.41.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.17...guest-agent-v0.41.18) (2026-06-29)
 
 

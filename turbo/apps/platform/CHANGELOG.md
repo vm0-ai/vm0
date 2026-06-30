@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.509.0](https://github.com/vm0-ai/vm0/compare/app-v0.508.0...app-v0.509.0) (2026-06-30)
+
+
+### Features
+
+* add top-level workflows page ([#19367](https://github.com/vm0-ai/vm0/issues/19367)) ([5b106de](https://github.com/vm0-ai/vm0/commit/5b106dec95af34f5465d445f3e8c25c7e27490a4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.128.0
+    * @vm0/core bumped to 8.377.1
+
 ## [0.508.0](https://github.com/vm0-ai/vm0/compare/app-v0.507.2...app-v0.508.0) (2026-06-30)
 
 

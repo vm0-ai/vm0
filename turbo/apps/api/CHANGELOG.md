@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.191.0](https://github.com/vm0-ai/vm0/compare/api-v1.190.0...api-v1.191.0) (2026-06-30)
+
+
+### Features
+
+* add zero chat rename command ([#19381](https://github.com/vm0-ai/vm0/issues/19381)) ([dd04ffb](https://github.com/vm0-ai/vm0/commit/dd04ffb0651ed7083bdb2831e9775315180d8ecd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.128.0
+    * @vm0/core bumped to 8.377.1
+    * @vm0/db bumped to 1.78.4
+
 ## [1.190.0](https://github.com/vm0-ai/vm0/compare/api-v1.189.2...api-v1.190.0) (2026-06-30)
 
 
