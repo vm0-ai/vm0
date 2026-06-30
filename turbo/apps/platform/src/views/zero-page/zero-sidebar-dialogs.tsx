@@ -28,10 +28,6 @@ import {
 } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
 import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -217,51 +213,27 @@ function SortablePinnedAgent({
           </span>
         </>
       )}
-      {unreadIndicatorsEnabled ? (
-        <div className="flex shrink-0 items-center gap-0.5">
-          <button
-            type="button"
-            className="flex h-8 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-colors duration-150 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-muted-foreground/18"
-            aria-label={`Reorder ${agent.displayName ?? agent.id}`}
-            disabled={disabled}
-            {...attributes}
-            {...listeners}
-          >
-            <IconArrowsMove size={16} stroke={2} />
-          </button>
-          <AgentRowSideActions
-            hasUnread={hasUnread}
-            action={{
-              label: "Unpin",
-              disabled,
-              icon: <IconPinnedOff size={16} stroke={2} />,
-              onSelect: onUnpin,
-            }}
-          />
-        </div>
-      ) : (
-        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
-          <button
-            type="button"
-            className="flex h-8 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted-foreground/12 hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-muted-foreground/18"
-            aria-label={`Reorder ${agent.displayName ?? agent.id}`}
-            disabled={disabled}
-            {...attributes}
-            {...listeners}
-          >
-            <IconArrowsMove size={16} stroke={2} />
-          </button>
-          <button
-            type="button"
-            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted-foreground/12 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-muted-foreground/18"
-            onClick={onUnpin}
-            aria-label={`Unpin ${agent.displayName ?? agent.id}`}
-            disabled={disabled}
-          >
-            <IconX size={16} stroke={2} />
-          </button>
-        </div>
-      )}
+      <div className="flex shrink-0 items-center gap-0.5">
+        <button
+          type="button"
+          className="flex h-8 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-colors duration-150 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-muted-foreground/18"
+          aria-label={`Reorder ${agent.displayName ?? agent.id}`}
+          disabled={disabled}
+          {...attributes}
+          {...listeners}
+        >
+          <IconArrowsMove size={16} stroke={2} />
+        </button>
+        <AgentRowSideActions
+          hasUnread={unreadIndicatorsEnabled && hasUnread}
+          action={{
+            label: "Unpin",
+            disabled,
+            icon: <IconPinnedOff size={16} stroke={2} />,
+            onSelect: onUnpin,
+          }}
+        />
+      </div>
     </div>
   );
 }
@@ -455,40 +427,21 @@ export function AgentListDialog({
                         return handleChat(agent.id);
                       }}
                     />
-                    {unreadIndicatorsEnabled ? (
-                      <AgentRowSideActions
-                        hasUnread={unreadAgentIds?.has(agent.id) ?? false}
-                        action={{
-                          label: "Pin to sidebar",
-                          disabled: saving,
-                          icon: <IconPin size={16} stroke={2} />,
-                          onSelect: () => {
-                            return togglePin(agent.id);
-                          },
-                        }}
-                      />
-                    ) : (
-                      <TooltipProvider delayDuration={200}>
-                        <Tooltip>
-                          <TooltipTrigger asChild>
-                            <button
-                              type="button"
-                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18 disabled:cursor-not-allowed disabled:opacity-50"
-                              onClick={() => {
-                                return togglePin(agent.id);
-                              }}
-                              aria-label="Pin to sidebar"
-                              disabled={saving}
-                            >
-                              <IconPin size={16} stroke={2} />
-                            </button>
-                          </TooltipTrigger>
-                          <TooltipContent side="right">
-                            <p className="text-xs">Pin to sidebar</p>
-                          </TooltipContent>
-                        </Tooltip>
-                      </TooltipProvider>
-                    )}
+                    <AgentRowSideActions
+                      hasUnread={
+                        unreadIndicatorsEnabled
+                          ? (unreadAgentIds?.has(agent.id) ?? false)
+                          : false
+                      }
+                      action={{
+                        label: "Pin to sidebar",
+                        disabled: saving,
+                        icon: <IconPin size={16} stroke={2} />,
+                        onSelect: () => {
+                          return togglePin(agent.id);
+                        },
+                      }}
+                    />
                   </div>
                 );
               })}

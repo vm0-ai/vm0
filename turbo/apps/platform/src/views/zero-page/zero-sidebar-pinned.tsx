@@ -7,12 +7,7 @@ import {
   useLastLoadable,
 } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
-import {
-  IconPlus,
-  IconChevronRight,
-  IconX,
-  IconPinnedOff,
-} from "@tabler/icons-react";
+import { IconPlus, IconChevronRight, IconPinnedOff } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Tooltip,
@@ -52,49 +47,6 @@ import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { AgentListDialog } from "./zero-sidebar-dialogs.tsx";
 import { AgentRowSideActions } from "./zero-sidebar-agent-row-actions.tsx";
-
-function UnpinButton({
-  agentId,
-  isPrimarySelected,
-}: {
-  agentId: string;
-  isPrimarySelected: boolean;
-}) {
-  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
-  const savingPinned = pinLoadable.state === "loading";
-  const pageSignal = useGet(pageSignal$);
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              const next = pinnedIds.filter((id): id is string => {
-                return id !== null && id !== agentId;
-              });
-              detach(savePinnedIds(next, pageSignal), Reason.DomCallback);
-            }}
-            disabled={savingPinned}
-            className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
-              isPrimarySelected
-                ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
-            }`}
-            aria-label="Unpin"
-          >
-            <IconX size={12} stroke={2} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right">
-          <p className="text-xs">Unpin</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
 
 function PinnedAgentSideDecorator({
   agentId,
@@ -259,6 +211,9 @@ export function PinnedAgentListSection() {
               const isFromChat = sidebarAgentId === agent.id;
               const hasUnread = unreadAgentIds?.has(agent.id) ?? false;
               const isDefaultAgent = agent.id === defaultAgentId;
+              const hasUnreadIndicator =
+                agentUnreadIndicatorsEnabled && hasUnread;
+              const hasSideActions = !isDefaultAgent || hasUnreadIndicator;
               return (
                 <div
                   key={agent.id}
@@ -269,7 +224,7 @@ export function PinnedAgentListSection() {
                     pathname="/agents/:agentId/chat"
                     options={{ pathParams: { agentId: agent.id } }}
                     className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg text-left text-sm leading-5 no-underline transition-colors duration-200 ${
-                      agentUnreadIndicatorsEnabled ? "pl-2 pr-8" : "px-2"
+                      hasSideActions ? "pl-2 pr-8" : "px-2"
                     } ${
                       isPrimarySelected
                         ? "bg-gray-200 text-foreground font-medium"
@@ -287,20 +242,13 @@ export function PinnedAgentListSection() {
                       {agent.displayName ?? agent.id}
                     </span>
                   </Link>
-                  {agentUnreadIndicatorsEnabled ? (
+                  {hasSideActions ? (
                     <PinnedAgentSideDecorator
                       agentId={agent.id}
                       isDefaultAgent={isDefaultAgent}
                       isPrimarySelected={isPrimarySelected}
-                      hasUnread={hasUnread}
+                      hasUnread={hasUnreadIndicator}
                     />
-                  ) : agent.id !== defaultAgentId ? (
-                    <div className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-                      <UnpinButton
-                        agentId={agent.id}
-                        isPrimarySelected={isPrimarySelected}
-                      />
-                    </div>
                   ) : null}
                 </div>
               );
