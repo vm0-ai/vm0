@@ -64,7 +64,7 @@ import {
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { settle, tapError } from "../utils";
+import { settle, tapError, throwIfAbort } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -882,12 +882,25 @@ async function runCompletedChatCallbackSideEffects(args: {
     });
   })();
 
-  await Promise.all([
+  const results = await Promise.allSettled([
     saveSummaryStep,
     titleStep,
     lifecycleMarkerStep,
     pushStep,
   ]);
+  const errors = results.flatMap((result) => {
+    if (result.status === "fulfilled") {
+      return [];
+    }
+    throwIfAbort(result.reason);
+    return [result.reason];
+  });
+  if (errors.length > 0) {
+    throw new AggregateError(
+      errors,
+      "Completed chat callback side effects failed",
+    );
+  }
 }
 
 async function handleFailedChatCallback(args: {
