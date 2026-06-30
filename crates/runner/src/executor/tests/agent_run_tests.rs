@@ -10,11 +10,13 @@ use api_contracts::generated::types::runners::storage::StorageManifest;
 use guest_contracts::session_history_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
     FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-    SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
 };
 use httpmock::prelude::*;
 use sandbox::{
-    ExecResult, ProcessExit, ProcessOutputChunk, SandboxConfig, SandboxFactory, SandboxId,
+    ExecResult, ExecTermination, ProcessExit, ProcessOutputChunk, SandboxConfig, SandboxFactory,
+    SandboxId,
 };
 use sandbox_mock::MockSandboxFactory;
 use sha2::{Digest, Sha256};
@@ -43,6 +45,8 @@ use crate::types::{
     ResumeSession, ResumeSessionHistory, ResumeSessionHistoryRef, ResumeSessionHistoryRefKind,
     SandboxReuseResult,
 };
+
+const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
 
 async fn serve_history_once(body: &'static [u8]) -> String {
     let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -123,6 +127,82 @@ fn assert_successful_action(ops: &[(String, bool, Option<String>)], action: &str
     assert!(
         ops.iter().any(|op| op.0 == action && op.1),
         "expected {action} telemetry, got: {ops:?}"
+    );
+}
+
+async fn assert_checkpointed_final_identity_helper_failure_falls_back(
+    session_id: &str,
+    helper_result: ExecResult,
+    expected_reason_action: &str,
+) {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let history = br#"{"type":"init"}"#;
+    let server = MockServer::start_async().await;
+    let history_mock = server
+        .mock_async(|when, then| {
+            when.method(GET).path("/history.blob");
+            then.status(200).body(history);
+        })
+        .await;
+    let mut ctx = minimal_context();
+    ctx.resume_session = Some(ResumeSession {
+        cli_agent_session_id: session_id.into(),
+        history: ResumeSessionHistory::Ref {
+            history_ref: ResumeSessionHistoryRef {
+                kind: ResumeSessionHistoryRefKind::Blob,
+                hash: hex::encode(Sha256::digest(history)),
+                url: server.url("/history.blob?token=secret"),
+                size: Some(history.len() as u64),
+            },
+        },
+    });
+    let (metadata_path, runtime_dir) = final_identity_runtime_paths(&ctx);
+    let metadata = FinalSessionHistoryIdentity::new(
+        FinalSessionHistoryFramework::ClaudeCode,
+        hex::encode(Sha256::digest(session_id.as_bytes())),
+        FinalSessionHistoryRefKind::Blob,
+        hex::encode(Sha256::digest(history)),
+        history.len() as u64,
+        claude_history_path(session_id),
+    )
+    .unwrap();
+    let idle_identity =
+        RestoredSessionIdentity::from_final_metadata(metadata, metadata_path, runtime_dir)
+            .expect("checkpointed identity");
+    sandbox.push_exec_result(Ok(helper_result));
+    sandbox.push_read_file_result(Ok(None));
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::Reused,
+            prev_storage: None,
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
+            .with_session_history_restore_plan(SessionHistoryRestorePlan::SkipVerified(
+                idle_identity,
+            )),
+    )
+    .await
+    .unwrap();
+
+    assert!(result.failure.is_none());
+    assert!(result.restored_session_identity.is_none());
+    history_mock.assert_calls_async(1).await;
+    assert_eq!(sandbox.exec_calls().len(), 1);
+    let ops = telemetry.pending_ops_snapshot();
+    assert_successful_action(&ops, expected_reason_action);
+    assert_successful_action(&ops, "session_history_restore_fallback_stale_idle_identity");
+    assert!(
+        ops.iter().all(|op| op.0 != "session_history_restore_skip"),
+        "helper failure should not record skip telemetry, got: {ops:?}"
     );
 }
 
@@ -452,98 +532,16 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
 }
 
 #[tokio::test]
-async fn run_in_sandbox_skips_verified_session_history_restore() {
-    let dir = tempfile::tempdir().unwrap();
-    let config = test_executor_config(dir.path()).await;
-    let sandbox = sandbox_mock::MockSandbox::new("test");
-    let history = br#"{"type":"init"}"#;
-    let server = MockServer::start_async().await;
-    let history_mock = server
-        .mock_async(|when, then| {
-            when.method(GET).path("/history.blob");
-            then.status(200).body(history);
-        })
-        .await;
-    let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "sess-skip-123".into(),
-        history: ResumeSessionHistory::Ref {
-            history_ref: ResumeSessionHistoryRef {
-                kind: ResumeSessionHistoryRefKind::Blob,
-                hash: hex::encode(Sha256::digest(history)),
-                url: server.url("/history.blob?token=secret"),
-                size: Some(history.len() as u64),
-            },
-        },
-    });
-    let identity = RestoredSessionIdentity::from_context(&ctx)
-        .expect("identity")
-        .with_guest_history(
-            history.len() as u64,
-            "/home/user/.claude/projects/-home-user-workspace/sess-skip-123.jsonl",
-        );
-    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
-    sandbox.push_read_file_result(Ok(None));
-    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let result = run_in_sandbox(
-        &sandbox,
-        &ctx,
-        &config,
-        RunStart {
-            restore_guest_state: false,
-            reuse_result: SandboxReuseResult::Reused,
-            prev_storage: None,
-        },
-        &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_restore_plan(SessionHistoryRestorePlan::SkipVerified(
-                identity.clone(),
-            )),
-    )
-    .await
-    .unwrap();
-
-    assert!(result.failure.is_none());
-    assert_eq!(result.restored_session_identity, Some(identity));
-    assert_eq!(sandbox.read_file_calls().len(), 3);
-    assert!(sandbox.write_file_calls().is_empty());
-    history_mock.assert_calls_async(0).await;
-    let ops = telemetry.pending_ops_snapshot();
-    assert!(
-        ops.iter()
-            .any(|op| op.0 == "session_history_identity_reuse_hit" && op.1),
-        "expected identity reuse hit telemetry, got: {ops:?}"
-    );
-    assert!(
-        ops.iter()
-            .all(|op| op.0 != "session_history_identity_restored"),
-        "skip path should not record newly restored identity telemetry, got: {ops:?}"
-    );
-    assert!(
-        ops.iter()
-            .any(|op| op.0 == "session_history_restore_skip" && op.1),
-        "expected skip telemetry, got: {ops:?}"
-    );
-    assert!(
-        ops.iter()
-            .all(|op| op.0 != "session_history_download" && op.0 != "session_restore"),
-        "skip path should not download or restore, got: {ops:?}"
-    );
-}
-
-#[tokio::test]
 async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
-    let history = br#"{"type":"init"}"#;
+    let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
     let server = MockServer::start_async().await;
     let history_mock = server
         .mock_async(|when, then| {
             when.method(GET).path("/history.blob");
-            then.status(200).body(history);
+            then.status(200).body(history.clone());
         })
         .await;
     let mut ctx = minimal_context();
@@ -553,7 +551,7 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
         history: ResumeSessionHistory::Ref {
             history_ref: ResumeSessionHistoryRef {
                 kind: ResumeSessionHistoryRefKind::Blob,
-                hash: hex::encode(Sha256::digest(history)),
+                hash: hex::encode(Sha256::digest(&history)),
                 url: server.url("/history.blob?token=secret"),
                 size: Some(history.len() as u64),
             },
@@ -567,7 +565,7 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
         FinalSessionHistoryFramework::ClaudeCode,
         hex::encode(Sha256::digest(session_id.as_bytes())),
         FinalSessionHistoryRefKind::Blob,
-        hex::encode(Sha256::digest(history)),
+        hex::encode(Sha256::digest(&history)),
         history.len() as u64,
         claude_history_path(session_id),
     )
@@ -654,7 +652,7 @@ async fn run_in_sandbox_skips_checkpointed_final_session_history_restore() {
 }
 
 #[tokio::test]
-async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_fails() {
+async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_reports_mismatch() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
@@ -667,7 +665,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_fails()
         })
         .await;
     let mut ctx = minimal_context();
-    let session_id = "sess-final-helper-fails-123";
+    let session_id = "sess-final-helper-mismatch-123";
     ctx.resume_session = Some(ResumeSession {
         cli_agent_session_id: session_id.into(),
         history: ResumeSessionHistory::Ref {
@@ -692,9 +690,12 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_fails()
     let idle_identity =
         RestoredSessionIdentity::from_final_metadata(metadata, metadata_path.clone(), runtime_dir)
             .expect("checkpointed identity");
-    sandbox.push_exec_result(Ok(ExecResult::new(1, Vec::new(), Vec::new())));
+    sandbox.push_exec_result(Ok(ExecResult::new(
+        SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
+        Vec::new(),
+        Vec::new(),
+    )));
     sandbox.push_read_file_result(Ok(None));
-    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
     let mut telemetry = test_telemetry(&config, &ctx);
 
     let result = run_in_sandbox(
@@ -716,18 +717,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_fails()
     .unwrap();
 
     assert!(result.failure.is_none());
-    let restored_identity = result
-        .restored_session_identity
-        .as_ref()
-        .expect("restored identity");
-    assert_eq!(
-        restored_identity.guest_history_path(),
-        Some(claude_history_path(session_id).as_str())
-    );
-    assert_eq!(
-        restored_identity.history_size_bytes(),
-        Some(history.len() as u64)
-    );
+    assert!(result.restored_session_identity.is_none());
     let exec_calls = sandbox.exec_calls();
     assert_eq!(exec_calls.len(), 1);
     assert!(exec_calls[0].cmd.contains(&metadata_path));
@@ -737,7 +727,10 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_fails()
     assert_eq!(writes[0].path, claude_history_path(session_id));
     assert_eq!(writes[0].content, history);
     let ops = telemetry.pending_ops_snapshot();
-    assert_successful_action(&ops, "session_history_identity_verify_helper_failed");
+    assert_successful_action(
+        &ops,
+        "session_history_identity_verify_helper_history_mismatch",
+    );
     assert!(
         ops.iter()
             .any(|op| op.0 == "session_history_restore_fallback_stale_idle_identity" && op.1),
@@ -790,7 +783,6 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_exec_er
             .expect("checkpointed identity");
     sandbox.push_exec_result(Err(sandbox_exec_error("vsock exec failed")));
     sandbox.push_read_file_result(Ok(None));
-    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
     let mut telemetry = test_telemetry(&config, &ctx);
 
     let result = run_in_sandbox(
@@ -812,6 +804,7 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_exec_er
     .unwrap();
 
     assert!(result.failure.is_none());
+    assert!(result.restored_session_identity.is_none());
     history_mock.assert_calls_async(1).await;
     assert_eq!(sandbox.exec_calls().len(), 1);
     let ops = telemetry.pending_ops_snapshot();
@@ -821,6 +814,37 @@ async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_exec_er
         ops.iter().all(|op| op.0 != "session_history_restore_skip"),
         "helper exec error should not record skip telemetry, got: {ops:?}"
     );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_times_out() {
+    assert_checkpointed_final_identity_helper_failure_falls_back(
+        "sess-final-helper-timeout-123",
+        ExecResult {
+            termination: ExecTermination::TimedOut,
+            stdout: Vec::new(),
+            stderr: Vec::new(),
+            diagnostic: "session history identity helper timed out".to_string(),
+            stdout_truncated: false,
+            stderr_truncated: false,
+        },
+        "session_history_identity_verify_helper_timed_out",
+    )
+    .await;
+}
+
+#[tokio::test]
+async fn run_in_sandbox_restores_when_checkpointed_final_identity_helper_is_over_budget() {
+    assert_checkpointed_final_identity_helper_failure_falls_back(
+        "sess-final-helper-too-large-123",
+        ExecResult::new(
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
+            Vec::new(),
+            Vec::new(),
+        ),
+        "session_history_identity_verify_helper_history_too_large",
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -860,14 +884,8 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
             },
         },
     });
-    let idle_identity = RestoredSessionIdentity::from_context(&mismatched_ctx)
-        .expect("identity")
-        .with_guest_history(
-            history.len() as u64,
-            "/home/user/.claude/projects/-home-user-workspace/sess-mismatch-skip-123.jsonl",
-        );
+    let idle_identity = RestoredSessionIdentity::from_context(&mismatched_ctx).expect("identity");
     sandbox.push_read_file_result(Ok(None));
-    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
     let mut telemetry = test_telemetry(&config, &ctx);
 
     let result = run_in_sandbox(
@@ -889,6 +907,7 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
     .unwrap();
 
     assert!(result.failure.is_none());
+    assert!(result.restored_session_identity.is_none());
     history_mock.assert_calls_async(1).await;
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
@@ -897,7 +916,6 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
         "/home/user/.claude/projects/-home-user-workspace/sess-mismatch-skip-123.jsonl"
     );
     assert_eq!(writes[0].content, history);
-    assert_eq!(sandbox.read_file_calls().len(), 2);
     let ops = telemetry.pending_ops_snapshot();
     assert_successful_action(&ops, "session_history_identity_verify_request_mismatch");
     assert!(
@@ -908,386 +926,6 @@ async fn run_in_sandbox_restores_when_skip_verified_identity_mismatches_request(
     assert!(
         ops.iter().all(|op| op.0 != "session_history_restore_skip"),
         "mismatched identity should not record skip telemetry, got: {ops:?}"
-    );
-}
-
-#[tokio::test]
-async fn run_in_sandbox_restores_when_skip_verified_identity_is_stale_before_start() {
-    let dir = tempfile::tempdir().unwrap();
-    let config = test_executor_config(dir.path()).await;
-    let sandbox = sandbox_mock::MockSandbox::new("test");
-    let history = br#"{"type":"init"}"#;
-    let server = MockServer::start_async().await;
-    let history_mock = server
-        .mock_async(|when, then| {
-            when.method(GET).path("/history.blob");
-            then.status(200).body(history);
-        })
-        .await;
-    let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "sess-stale-skip-123".into(),
-        history: ResumeSessionHistory::Ref {
-            history_ref: ResumeSessionHistoryRef {
-                kind: ResumeSessionHistoryRefKind::Blob,
-                hash: hex::encode(Sha256::digest(history)),
-                url: server.url("/history.blob?token=secret"),
-                size: Some(history.len() as u64),
-            },
-        },
-    });
-    let idle_identity = RestoredSessionIdentity::from_context(&ctx)
-        .expect("identity")
-        .with_guest_history(
-            history.len() as u64,
-            "/home/user/.claude/projects/-home-user-workspace/sess-stale-skip-123.jsonl",
-        );
-    sandbox.push_read_file_result(Ok(None));
-    sandbox.push_read_file_result(Ok(None));
-    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let result = run_in_sandbox(
-        &sandbox,
-        &ctx,
-        &config,
-        RunStart {
-            restore_guest_state: false,
-            reuse_result: SandboxReuseResult::Reused,
-            prev_storage: None,
-        },
-        &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_restore_plan(SessionHistoryRestorePlan::SkipVerified(
-                idle_identity,
-            )),
-    )
-    .await
-    .unwrap();
-
-    assert!(result.failure.is_none());
-    let restored_identity = result
-        .restored_session_identity
-        .as_ref()
-        .expect("restored identity");
-    assert_eq!(
-        restored_identity.guest_history_path(),
-        Some("/home/user/.claude/projects/-home-user-workspace/sess-stale-skip-123.jsonl")
-    );
-    assert_eq!(
-        restored_identity.history_size_bytes(),
-        Some(history.len() as u64)
-    );
-    history_mock.assert_calls_async(1).await;
-    let writes = sandbox.write_file_calls();
-    assert_eq!(writes.len(), 1);
-    assert_eq!(
-        writes[0].path,
-        "/home/user/.claude/projects/-home-user-workspace/sess-stale-skip-123.jsonl"
-    );
-    assert_eq!(writes[0].content, history);
-    let ops = telemetry.pending_ops_snapshot();
-    assert_successful_action(&ops, "session_history_identity_verify_missing_file");
-    assert!(
-        ops.iter()
-            .any(|op| op.0 == "session_history_restore_fallback_stale_idle_identity" && op.1),
-        "expected stale identity fallback telemetry, got: {ops:?}"
-    );
-    assert!(
-        ops.iter().all(|op| op.0 != "session_history_restore_skip"),
-        "stale identity should not record skip telemetry, got: {ops:?}"
-    );
-}
-
-#[tokio::test]
-async fn run_in_sandbox_restores_when_skip_verified_identity_has_invalid_path() {
-    let dir = tempfile::tempdir().unwrap();
-    let config = test_executor_config(dir.path()).await;
-    let sandbox = sandbox_mock::MockSandbox::new("test");
-    let history = br#"{"type":"init"}"#;
-    let server = MockServer::start_async().await;
-    let history_mock = server
-        .mock_async(|when, then| {
-            when.method(GET).path("/history.blob");
-            then.status(200).body(history);
-        })
-        .await;
-    let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "sess-invalid-path-123".into(),
-        history: ResumeSessionHistory::Ref {
-            history_ref: ResumeSessionHistoryRef {
-                kind: ResumeSessionHistoryRefKind::Blob,
-                hash: hex::encode(Sha256::digest(history)),
-                url: server.url("/history.blob?token=secret"),
-                size: Some(history.len() as u64),
-            },
-        },
-    });
-    let idle_identity = RestoredSessionIdentity::from_context(&ctx)
-        .expect("identity")
-        .with_guest_history(history.len() as u64, "relative/session.jsonl");
-    sandbox.push_read_file_result(Ok(None));
-    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let result = run_in_sandbox(
-        &sandbox,
-        &ctx,
-        &config,
-        RunStart {
-            restore_guest_state: false,
-            reuse_result: SandboxReuseResult::Reused,
-            prev_storage: None,
-        },
-        &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_restore_plan(SessionHistoryRestorePlan::SkipVerified(
-                idle_identity,
-            )),
-    )
-    .await
-    .unwrap();
-
-    assert!(result.failure.is_none());
-    history_mock.assert_calls_async(1).await;
-    let writes = sandbox.write_file_calls();
-    assert_eq!(writes.len(), 1);
-    assert_eq!(
-        writes[0].path,
-        "/home/user/.claude/projects/-home-user-workspace/sess-invalid-path-123.jsonl"
-    );
-    assert_eq!(writes[0].content, history);
-    let read_calls = sandbox.read_file_calls();
-    assert_eq!(read_calls.len(), 2);
-    assert_eq!(
-        read_calls[1].path,
-        "/home/user/.claude/projects/-home-user-workspace/sess-invalid-path-123.jsonl"
-    );
-    let ops = telemetry.pending_ops_snapshot();
-    assert_successful_action(&ops, "session_history_identity_verify_missing_verifier");
-    assert!(
-        ops.iter()
-            .any(|op| op.0 == "session_history_restore_fallback_stale_idle_identity" && op.1),
-        "expected invalid path fallback telemetry, got: {ops:?}"
-    );
-    assert!(
-        ops.iter().all(|op| op.0 != "session_history_restore_skip"),
-        "invalid path should not record skip telemetry, got: {ops:?}"
-    );
-}
-
-#[tokio::test]
-async fn run_in_sandbox_restores_when_skip_verified_identity_read_errors() {
-    let dir = tempfile::tempdir().unwrap();
-    let config = test_executor_config(dir.path()).await;
-    let sandbox = sandbox_mock::MockSandbox::new("test");
-    let history = br#"{"type":"init"}"#;
-    let server = MockServer::start_async().await;
-    let history_mock = server
-        .mock_async(|when, then| {
-            when.method(GET).path("/history.blob");
-            then.status(200).body(history);
-        })
-        .await;
-    let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "sess-read-error-skip-123".into(),
-        history: ResumeSessionHistory::Ref {
-            history_ref: ResumeSessionHistoryRef {
-                kind: ResumeSessionHistoryRefKind::Blob,
-                hash: hex::encode(Sha256::digest(history)),
-                url: server.url("/history.blob?token=secret"),
-                size: Some(history.len() as u64),
-            },
-        },
-    });
-    let idle_identity = RestoredSessionIdentity::from_context(&ctx)
-        .expect("identity")
-        .with_guest_history(
-            history.len() as u64,
-            "/home/user/.claude/projects/-home-user-workspace/sess-read-error-skip-123.jsonl",
-        );
-    sandbox.push_read_file_result(Err(sandbox_exec_error("vsock read failed")));
-    sandbox.push_read_file_result(Ok(None));
-    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let result = run_in_sandbox(
-        &sandbox,
-        &ctx,
-        &config,
-        RunStart {
-            restore_guest_state: false,
-            reuse_result: SandboxReuseResult::Reused,
-            prev_storage: None,
-        },
-        &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_restore_plan(SessionHistoryRestorePlan::SkipVerified(
-                idle_identity,
-            )),
-    )
-    .await
-    .unwrap();
-
-    assert!(result.failure.is_none());
-    history_mock.assert_calls_async(1).await;
-    let ops = telemetry.pending_ops_snapshot();
-    assert_successful_action(&ops, "session_history_identity_verify_read_failed");
-    assert_successful_action(&ops, "session_history_restore_fallback_stale_idle_identity");
-    assert!(
-        ops.iter().all(|op| op.0 != "session_history_restore_skip"),
-        "read error should not record skip telemetry, got: {ops:?}"
-    );
-}
-
-#[tokio::test]
-async fn run_in_sandbox_restores_when_skip_verified_identity_size_changes() {
-    let dir = tempfile::tempdir().unwrap();
-    let config = test_executor_config(dir.path()).await;
-    let sandbox = sandbox_mock::MockSandbox::new("test");
-    let history = br#"{"type":"init"}"#;
-    let server = MockServer::start_async().await;
-    let history_mock = server
-        .mock_async(|when, then| {
-            when.method(GET).path("/history.blob");
-            then.status(200).body(history);
-        })
-        .await;
-    let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "sess-size-changed-skip-123".into(),
-        history: ResumeSessionHistory::Ref {
-            history_ref: ResumeSessionHistoryRef {
-                kind: ResumeSessionHistoryRefKind::Blob,
-                hash: hex::encode(Sha256::digest(history)),
-                url: server.url("/history.blob?token=secret"),
-                size: Some(history.len() as u64),
-            },
-        },
-    });
-    let idle_identity = RestoredSessionIdentity::from_context(&ctx)
-        .expect("identity")
-        .with_guest_history(
-            history.len() as u64,
-            "/home/user/.claude/projects/-home-user-workspace/sess-size-changed-skip-123.jsonl",
-        );
-    let mut changed_history = history.to_vec();
-    changed_history.push(b'\n');
-    sandbox.push_read_file_result(Ok(Some(changed_history)));
-    sandbox.push_read_file_result(Ok(None));
-    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let result = run_in_sandbox(
-        &sandbox,
-        &ctx,
-        &config,
-        RunStart {
-            restore_guest_state: false,
-            reuse_result: SandboxReuseResult::Reused,
-            prev_storage: None,
-        },
-        &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_restore_plan(SessionHistoryRestorePlan::SkipVerified(
-                idle_identity,
-            )),
-    )
-    .await
-    .unwrap();
-
-    assert!(result.failure.is_none());
-    history_mock.assert_calls_async(1).await;
-    let ops = telemetry.pending_ops_snapshot();
-    assert_successful_action(&ops, "session_history_identity_verify_size_mismatch");
-    assert_successful_action(&ops, "session_history_restore_fallback_stale_idle_identity");
-    assert!(
-        ops.iter().all(|op| op.0 != "session_history_restore_skip"),
-        "size mismatch should not record skip telemetry, got: {ops:?}"
-    );
-}
-
-#[tokio::test]
-async fn run_in_sandbox_restores_when_skip_verified_identity_is_too_large_to_verify() {
-    let dir = tempfile::tempdir().unwrap();
-    let config = test_executor_config(dir.path()).await;
-    let sandbox = sandbox_mock::MockSandbox::new("test");
-    let history = br#"{"type":"init"}"#;
-    let server = MockServer::start_async().await;
-    let history_mock = server
-        .mock_async(|when, then| {
-            when.method(GET).path("/history.blob");
-            then.status(200).body(history);
-        })
-        .await;
-    let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "sess-large-skip-123".into(),
-        history: ResumeSessionHistory::Ref {
-            history_ref: ResumeSessionHistoryRef {
-                kind: ResumeSessionHistoryRefKind::Blob,
-                hash: hex::encode(Sha256::digest(history)),
-                url: server.url("/history.blob?token=secret"),
-                size: Some(history.len() as u64),
-            },
-        },
-    });
-    let idle_identity = RestoredSessionIdentity::from_context(&ctx)
-        .expect("identity")
-        .with_guest_history(
-            SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES,
-            "/home/user/.claude/projects/-home-user-workspace/sess-large-skip-123.jsonl",
-        );
-    sandbox.push_read_file_result(Ok(None));
-    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let result = run_in_sandbox(
-        &sandbox,
-        &ctx,
-        &config,
-        RunStart {
-            restore_guest_state: false,
-            reuse_result: SandboxReuseResult::Reused,
-            prev_storage: None,
-        },
-        &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_restore_plan(SessionHistoryRestorePlan::SkipVerified(
-                idle_identity,
-            )),
-    )
-    .await
-    .unwrap();
-
-    assert!(result.failure.is_none());
-    history_mock.assert_calls_async(1).await;
-    let writes = sandbox.write_file_calls();
-    assert_eq!(writes.len(), 1);
-    assert_eq!(
-        writes[0].path,
-        "/home/user/.claude/projects/-home-user-workspace/sess-large-skip-123.jsonl"
-    );
-    assert_eq!(writes[0].content, history);
-    let read_calls = sandbox.read_file_calls();
-    assert_eq!(read_calls.len(), 2);
-    assert_eq!(
-        read_calls[1].path,
-        "/home/user/.claude/projects/-home-user-workspace/sess-large-skip-123.jsonl"
-    );
-    assert_eq!(read_calls[1].max_bytes, history.len() as u64 + 1);
-    let ops = telemetry.pending_ops_snapshot();
-    assert_successful_action(&ops, "session_history_identity_verify_missing_verifier");
-    assert!(
-        ops.iter()
-            .any(|op| op.0 == "session_history_restore_fallback_stale_idle_identity" && op.1),
-        "expected oversized identity fallback telemetry, got: {ops:?}"
-    );
-    assert!(
-        ops.iter().all(|op| op.0 != "session_history_restore_skip"),
-        "oversized identity should not record skip telemetry, got: {ops:?}"
     );
 }
 
@@ -1316,9 +954,7 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
             },
         },
     });
-    let expected_identity = RestoredSessionIdentity::from_context(&ctx).expect("identity");
     sandbox.push_read_file_result(Ok(None));
-    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
         ctx.resume_session.as_ref(),
@@ -1346,7 +982,7 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
     .unwrap();
 
     assert!(result.failure.is_none());
-    assert_eq!(result.restored_session_identity, Some(expected_identity));
+    assert!(result.restored_session_identity.is_none());
     history_mock.assert_calls_async(1).await;
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
@@ -1370,11 +1006,7 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
         ops.iter().any(|op| op.0 == "session_restore" && op.1),
         "expected restore telemetry, got: {ops:?}"
     );
-    assert!(
-        ops.iter()
-            .any(|op| op.0 == "session_history_identity_restored" && op.1),
-        "expected restored identity telemetry, got: {ops:?}"
-    );
+    assert_successful_action(&ops, "session_history_identity_finalize_missing_metadata");
 }
 
 #[tokio::test]
@@ -1403,7 +1035,6 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
         },
     });
     sandbox.push_read_file_result(Ok(None));
-    sandbox.push_read_file_result(Ok(Some(history.to_vec())));
     let materializer = SessionHistoryMaterializer::start_cancellable(
         &config.http,
         ctx.resume_session.as_ref(),
@@ -1431,7 +1062,7 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
     .unwrap();
 
     assert!(result.failure.is_none());
-    assert!(result.restored_session_identity.is_some());
+    assert!(result.restored_session_identity.is_none());
     history_mock.assert_calls_async(1).await;
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
@@ -1456,73 +1087,6 @@ async fn run_in_sandbox_records_missing_idle_identity_reuse_fallback() {
             .any(|op| op.0 == "session_history_identity_reuse_missing" && op.1),
         "expected identity reuse missing telemetry, got: {ops:?}"
     );
-    assert!(
-        ops.iter()
-            .any(|op| op.0 == "session_history_identity_restored" && op.1),
-        "expected restored identity telemetry, got: {ops:?}"
-    );
-}
-
-#[tokio::test]
-async fn run_in_sandbox_clears_restored_identity_when_history_changes_before_parking() {
-    let dir = tempfile::tempdir().unwrap();
-    let config = test_executor_config(dir.path()).await;
-    let sandbox = sandbox_mock::MockSandbox::new("test");
-    let history = br#"{"type":"init"}"#;
-    let server = MockServer::start_async().await;
-    server
-        .mock_async(|when, then| {
-            when.method(GET).path("/history.blob");
-            then.status(200).body(history);
-        })
-        .await;
-    let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "sess-mutated-123".into(),
-        history: ResumeSessionHistory::Ref {
-            history_ref: ResumeSessionHistoryRef {
-                kind: ResumeSessionHistoryRefKind::Blob,
-                hash: hex::encode(Sha256::digest(history)),
-                url: server.url("/history.blob?token=secret"),
-                size: Some(history.len() as u64),
-            },
-        },
-    });
-    let mut changed_history = history.to_vec();
-    changed_history[0] = b'[';
-    sandbox.push_read_file_result(Ok(None));
-    sandbox.push_read_file_result(Ok(Some(changed_history)));
-    let materializer = SessionHistoryMaterializer::start_cancellable(
-        &config.http,
-        ctx.resume_session.as_ref(),
-        tokio_util::sync::CancellationToken::new(),
-    );
-    let mut telemetry = test_telemetry(&config, &ctx);
-
-    let result = run_in_sandbox(
-        &sandbox,
-        &ctx,
-        &config,
-        RunStart {
-            restore_guest_state: false,
-            reuse_result: SandboxReuseResult::Reused,
-            prev_storage: None,
-        },
-        &mut telemetry,
-        RunControls::new(tokio_util::sync::CancellationToken::new(), None)
-            .with_session_history_restore_plan(SessionHistoryRestorePlan::Prestarted {
-                materializer,
-                fallback: None,
-            }),
-    )
-    .await
-    .unwrap();
-
-    assert!(result.failure.is_none());
-    assert_eq!(result.restored_session_identity, None);
-    let ops = telemetry.pending_ops_snapshot();
-    assert_successful_action(&ops, "session_history_identity_finalize_missing_metadata");
-    assert_successful_action(&ops, "session_history_identity_verify_hash_mismatch");
 }
 
 #[tokio::test]
@@ -1597,7 +1161,6 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
         identity.history_size_bytes(),
         Some(final_history.len() as u64)
     );
-    assert_eq!(identity.guest_history_path(), None);
     assert_eq!(identity.final_metadata_path(), Some(metadata_path.as_str()));
     let read_calls = sandbox.read_file_calls();
     assert_eq!(read_calls.len(), 1);
@@ -1611,11 +1174,6 @@ async fn run_in_sandbox_uses_final_identity_when_restored_history_changes_before
         ops.iter()
             .any(|op| op.0 == "session_history_identity_finalized" && op.1),
         "expected final identity telemetry, got: {ops:?}"
-    );
-    assert!(
-        ops.iter()
-            .all(|op| op.0 != "session_history_identity_restored"),
-        "mutated restore-time identity should not record restored telemetry, got: {ops:?}"
     );
 }
 
@@ -1660,7 +1218,6 @@ async fn run_in_sandbox_uses_final_identity_without_resume_request() {
         hex::encode(Sha256::digest(history))
     );
     assert_eq!(identity.history_size_bytes(), Some(history.len() as u64));
-    assert_eq!(identity.guest_history_path(), None);
     assert_eq!(identity.final_metadata_path(), Some(metadata_path.as_str()));
     let read_calls = sandbox.read_file_calls();
     assert_eq!(read_calls.len(), 1);
@@ -1709,18 +1266,19 @@ async fn run_in_sandbox_records_invalid_final_identity_metadata_reason() {
 }
 
 #[tokio::test]
-async fn run_in_sandbox_records_unverifiable_final_identity_metadata_reason() {
+async fn run_in_sandbox_records_large_final_identity_metadata() {
     let dir = tempfile::tempdir().unwrap();
     let config = test_executor_config(dir.path()).await;
     let sandbox = sandbox_mock::MockSandbox::new("test");
     let ctx = minimal_context();
+    let (metadata_path, _) = final_identity_runtime_paths(&ctx);
     let metadata = serde_json::json!({
         "version": 1,
         "framework": "claude-code",
         "sessionIdHash": "a".repeat(64),
         "historyRefKind": "blob",
         "historyHash": "b".repeat(64),
-        "historySizeBytes": SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES + 1,
+        "historySizeBytes": LARGE_SESSION_HISTORY_SIZE_BYTES,
         "historyMarkerPayload": "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
     });
     sandbox.push_read_file_result(Ok(Some(serde_json::to_vec(&metadata).unwrap())));
@@ -1742,16 +1300,20 @@ async fn run_in_sandbox_records_unverifiable_final_identity_metadata_reason() {
     .unwrap();
 
     assert!(result.failure.is_none());
-    assert!(result.restored_session_identity.is_none());
-    let ops = telemetry.pending_ops_snapshot();
-    assert_successful_action(
-        &ops,
-        "session_history_identity_finalize_unverifiable_metadata",
+    let identity = result
+        .restored_session_identity
+        .as_ref()
+        .expect("large final identity");
+    assert_eq!(
+        identity.history_size_bytes(),
+        Some(LARGE_SESSION_HISTORY_SIZE_BYTES as u64)
     );
+    assert_eq!(identity.final_metadata_path(), Some(metadata_path.as_str()));
+    let ops = telemetry.pending_ops_snapshot();
     assert!(
         ops.iter()
-            .all(|op| op.0 != "session_history_identity_finalized"),
-        "unverifiable metadata should not record finalized identity telemetry, got: {ops:?}"
+            .any(|op| op.0 == "session_history_identity_finalized" && op.1),
+        "large metadata should record finalized identity telemetry, got: {ops:?}"
     );
 }
 

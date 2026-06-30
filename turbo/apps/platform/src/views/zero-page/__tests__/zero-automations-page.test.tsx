@@ -633,7 +633,7 @@ describe("zero automations page", () => {
 
     await waitFor(() => {
       expect(pathname()).toBe(`/workflows/${workflowId}`);
-      expect(search()).toBe("?tab=triggers");
+      expect(search()).toBe("?tab=automations");
     });
   });
 

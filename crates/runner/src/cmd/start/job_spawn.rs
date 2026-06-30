@@ -1191,11 +1191,7 @@ mod tests {
         let run_id = RunId::new_v4();
         let sandbox_id = SandboxId::new_v4();
         let cleanup_state = RunCleanupState::new();
-        let identity = RestoredSessionIdentity::claude_code_for_test("history-hash-a")
-            .with_guest_history(
-                12,
-                "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
-            );
+        let identity = RestoredSessionIdentity::claude_code_for_test("history-hash-a");
         let finalization = fixture.finalization_phase(
             run_id,
             sandbox_id,

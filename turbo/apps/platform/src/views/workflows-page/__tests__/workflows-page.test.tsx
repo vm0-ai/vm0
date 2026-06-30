@@ -31,6 +31,7 @@ import {
   mockChatLifecycle,
   PLACEHOLDER,
 } from "../../zero-page/__tests__/chat-test-helpers.ts";
+import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../zero-page/workflow-trigger-automations-page.tsx";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
@@ -49,10 +50,24 @@ const GOOGLE_CALENDAR_TRIGGER_ID = "workflow-trigger-google-calendar-created";
 const WORKFLOW_CHAT_THREAD_ID = "00000000-0000-4000-a000-000000000300";
 const TRIGGER_RUN_THREAD_ID = "00000000-0000-4000-a000-000000000301";
 
-type WorkflowDetailTestTab = "triggers" | "instructions" | "info";
+type WorkflowDetailTestTab = "automations" | "instructions" | "info";
 
 function workflowDetailPath(tab: WorkflowDetailTestTab): string {
-  return `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}?tab=${tab}`;
+  return `/workflows/${SALES_WORKFLOW_ID}?tab=${tab}`;
+}
+
+function detachedSetupWorkflowDetailPage(
+  path: string,
+  featureSwitches: Partial<Record<FeatureSwitchKey, boolean>> = {},
+) {
+  detachedSetupPage({
+    context,
+    path,
+    featureSwitches: {
+      [FeatureSwitchKey.WorkflowsViewer]: true,
+      ...featureSwitches,
+    },
+  });
 }
 
 type WorkflowScheduleTriggerSummary = Extract<
@@ -707,7 +722,7 @@ function selectOptionByLabel(
   click(screen.getByRole("option", { name: option }));
 }
 
-describe("agent workflows tab", () => {
+describe("workflows routes", () => {
   it("redirects the workspace workflows index when workflows are disabled", async () => {
     detachedSetupPage({
       context,
@@ -738,6 +753,7 @@ describe("agent workflows tab", () => {
 
   it("shows all visible workflows on the workspace workflows page", async () => {
     mockAgentPageApis();
+    mockChatLifecycle(context);
     mockWorkflowApis([
       salesResearch(),
       opsPlaybook(),
@@ -764,21 +780,33 @@ describe("agent workflows tab", () => {
       `/workflows/${OTHER_WORKFLOW_ID}`,
     );
 
-    click(buttonByText(/create in chat/i));
-    await waitFor(() => {
-      expect(menuItemByText(/create in chat/i)).toBeInTheDocument();
-    });
-    click(menuItemByText(/create in chat/i));
+    expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).toContain(
+      "Help me create a workflow for this agent.",
+    );
+    expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).toContain("desired outcome");
+    expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).toContain("automation");
+    expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).not.toContain("Zero workflow");
+    expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).not.toContain("side effects");
+    expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).not.toContain("trigger");
 
+    click(buttonByText(/create in chat/i));
     const dialog = await screen.findByRole("dialog", {
       name: "Create workflow",
     });
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByText("Research Bot")).toBeInTheDocument();
     expect(within(dialog).getByText("Support Bot")).toBeInTheDocument();
+
+    click(buttonByText("Research Bot", dialog));
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+    });
+    await expect(
+      screen.findByDisplayValue(CREATE_WORKFLOW_WITH_CHAT_PROMPT),
+    ).resolves.toBeInTheDocument();
   });
 
-  it("shows the agent's workflows and links into the detail page", async () => {
+  it("shows the agent's workflows tab and links into the workspace detail page", async () => {
     mockAgentPageApis();
     mockWorkflowApis([
       salesResearch(),
@@ -789,7 +817,7 @@ describe("agent workflows tab", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${AGENT_ID}/workflows`,
+      path: `/agents/${AGENT_ID}?tab=workflows`,
       featureSwitches: { [FeatureSwitchKey.WorkflowsViewer]: true },
     });
 
@@ -832,10 +860,7 @@ describe("agent workflows tab", () => {
     ).toBeTruthy();
 
     const opsLink = screen.getByText("Ops Playbook").closest("a");
-    expect(opsLink).toHaveAttribute(
-      "href",
-      `/agents/${AGENT_ID}/workflows/${OPS_WORKFLOW_ID}`,
-    );
+    expect(opsLink).toHaveAttribute("href", `/workflows/${OPS_WORKFLOW_ID}`);
   });
 });
 
@@ -845,10 +870,7 @@ describe("workflow detail page", () => {
     mockWorkflowApis([salesResearch()]);
     mockConnectedTriggerConnectors();
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("instructions"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("instructions"));
 
     await waitFor(() => {
       expect(
@@ -858,25 +880,20 @@ describe("workflow detail page", () => {
     const breadcrumb = screen.getByLabelText("Breadcrumb");
     const workflowsLink = queryAllByRoleFast("link", breadcrumb).find(
       (link) => {
-        return link.textContent?.trim() === "workflows";
+        return link.textContent?.trim() === "Workflows";
       },
     );
-    expect(workflowsLink).toHaveAttribute(
-      "href",
-      `/agents/${AGENT_ID}/workflows`,
-    );
-    expect(within(breadcrumb).getByText("Agents")).toBeInTheDocument();
-    expect(within(breadcrumb).getByText("Research Bot")).toBeInTheDocument();
+    expect(workflowsLink).toHaveAttribute("href", "/workflows");
     const currentBreadcrumb = within(breadcrumb).getByText("Sales Research");
     expect(currentBreadcrumb).toBeInTheDocument();
     expect(currentBreadcrumb).toHaveClass("font-medium", "text-foreground");
     const workflowFilesButton = screen.getByLabelText("Workflow files");
     expect(workflowFilesButton).toHaveTextContent("instructions");
-    click(buttonByText("Triggers"));
+    click(buttonByText("Automations"));
     await waitFor(() => {
       expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
     });
-    expect(search()).toBe("?tab=triggers");
+    expect(search()).toBe("?tab=automations");
     expect(screen.getByText("Schedule")).toBeInTheDocument();
     expect(screen.getAllByText("Last run").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Next run").length).toBeGreaterThan(0);
@@ -921,10 +938,7 @@ describe("workflow detail page", () => {
     });
     mockWorkflowApis([workflow]);
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("instructions"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("instructions"));
 
     await waitFor(() => {
       expect(
@@ -947,10 +961,7 @@ describe("workflow detail page", () => {
       openedWorkflowIds.push(workflowId);
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("instructions"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("instructions"));
 
     await waitFor(() => {
       expect(
@@ -975,10 +986,7 @@ describe("workflow detail page", () => {
     mockWorkflowAuditMembers();
     mockWorkflowApis([salesResearch()]);
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("info"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
 
     await waitFor(() => {
       expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
@@ -1041,10 +1049,7 @@ describe("workflow detail page", () => {
       },
     );
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("info"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
 
     await waitFor(() => {
       expect(buttonByText(/^Copy workflow$/)).toBeInTheDocument();
@@ -1079,14 +1084,14 @@ describe("workflow detail page", () => {
     });
     expect(screen.getByText("Source")).toBeInTheDocument();
     expect(screen.getByText("Target")).toBeInTheDocument();
-    expect(buttonByText(/Pause source triggers/)).toBeInTheDocument();
+    expect(buttonByText(/Pause source automations/)).toBeInTheDocument();
     expect(buttonByText(/Delete source workflow/)).toBeInTheDocument();
     expect(buttonByText(/View target workflow/)).toBeInTheDocument();
 
-    click(buttonByText(/Pause source triggers/));
-    expect(buttonByText(/Pause source triggers/)).toBeDisabled();
+    click(buttonByText(/Pause source automations/));
+    expect(buttonByText(/Pause source automations/)).toBeDisabled();
     expect(
-      buttonByText(/Pause source triggers/).querySelector(".animate-spin"),
+      buttonByText(/Pause source automations/).querySelector(".animate-spin"),
     ).not.toBeNull();
     await waitFor(() => {
       expect(disabledTriggerIds).toStrictEqual([
@@ -1094,14 +1099,12 @@ describe("workflow detail page", () => {
       ]);
     });
     expect(
-      screen.getByText("Source triggers are paused on Research Bot"),
+      screen.getByText("Source automations are paused on Research Bot"),
     ).toBeInTheDocument();
 
     click(buttonByText(/View target workflow/));
     await waitFor(() => {
-      expect(pathname()).toBe(
-        `/agents/${OTHER_AGENT_ID}/workflows/${COPIED_WORKFLOW_ID}`,
-      );
+      expect(pathname()).toBe(`/workflows/${COPIED_WORKFLOW_ID}`);
     });
   });
 
@@ -1117,10 +1120,7 @@ describe("workflow detail page", () => {
       });
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("info"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
 
     await waitFor(() => {
       expect(buttonByText(/^Copy workflow$/)).toBeInTheDocument();
@@ -1171,10 +1171,7 @@ describe("workflow detail page", () => {
       return respond(201, summary(copiedWorkflow));
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("info"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
 
     await waitFor(() => {
       expect(buttonByText(/^Copy workflow$/)).toBeInTheDocument();
@@ -1190,13 +1187,13 @@ describe("workflow detail page", () => {
         screen.getByText("Workflow copied to Support Bot"),
       ).toBeInTheDocument();
     });
-    expect(buttonByText(/Pause source triggers/)).not.toBeDisabled();
+    expect(buttonByText(/Pause source automations/)).not.toBeDisabled();
     click(buttonByText(/Delete source workflow/));
 
     await waitFor(() => {
       expect(deletedWorkflowIds).toStrictEqual([SALES_WORKFLOW_ID]);
     });
-    expect(buttonByText(/Pause source triggers/)).toBeDisabled();
+    expect(buttonByText(/Pause source automations/)).toBeDisabled();
     expect(buttonByText(/Delete source workflow/)).toBeDisabled();
     expect(
       buttonByText(/Delete source workflow/).querySelector(".animate-spin"),
@@ -1208,7 +1205,7 @@ describe("workflow detail page", () => {
     deleteGate.resolve();
 
     await waitFor(() => {
-      expect(pathname()).toBe(`/agents/${AGENT_ID}/workflows`);
+      expect(pathname()).toBe("/workflows");
     });
     expect(
       workflows.some((workflow) => {
@@ -1223,10 +1220,7 @@ describe("workflow detail page", () => {
       updateBodies.push(body);
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("info"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
 
     const form = await screen.findByRole("form", {
       name: "Workflow metadata",
@@ -1274,10 +1268,7 @@ describe("workflow detail page", () => {
     });
     mockWorkflowApis([workflow]);
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("info"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
 
     const form = await screen.findByRole("form", {
       name: "Workflow metadata",
@@ -1292,10 +1283,7 @@ describe("workflow detail page", () => {
     context.mocks.data.userPreferences({ timezone: "UTC" });
     mockWorkflowApis([salesResearch()]);
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("triggers"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
       expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
@@ -1322,10 +1310,7 @@ describe("workflow detail page", () => {
     };
     mockWorkflowApis([workflow]);
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("triggers"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
       expect(screen.getAllByText("Gmail new message").length).toBeGreaterThan(
@@ -1352,10 +1337,7 @@ describe("workflow detail page", () => {
       runTriggerIds.push(triggerId);
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("triggers"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
       expect(buttonByText("Run now")).toBeInTheDocument();
@@ -1378,16 +1360,13 @@ describe("workflow detail page", () => {
       createBodies.push(body);
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("triggers"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
-      expect(buttonByText("Add trigger")).toBeInTheDocument();
+      expect(buttonByText("Add automation")).toBeInTheDocument();
     });
     const addTriggerButton = queryAllByRoleFast("button").find((button) => {
-      return button.textContent?.trim() === "Add trigger";
+      return button.textContent?.trim() === "Add automation";
     });
     expect(addTriggerButton).toBeDefined();
     click(addTriggerButton!);
@@ -1406,7 +1385,7 @@ describe("workflow detail page", () => {
     click(gmailMenuItem!);
 
     const createTriggerForm = await screen.findByRole("form", {
-      name: "Add Gmail trigger",
+      name: "Add Gmail automation",
     });
     await fill(
       within(createTriggerForm).getByLabelText("From contains"),
@@ -1441,16 +1420,13 @@ describe("workflow detail page", () => {
       createBodies.push(body);
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("triggers"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
-      expect(buttonByText("Add trigger")).toBeInTheDocument();
+      expect(buttonByText("Add automation")).toBeInTheDocument();
     });
     const addTriggerButton = queryAllByRoleFast("button").find((button) => {
-      return button.textContent?.trim() === "Add trigger";
+      return button.textContent?.trim() === "Add automation";
     });
     expect(addTriggerButton).toBeDefined();
     click(addTriggerButton!);
@@ -1469,7 +1445,7 @@ describe("workflow detail page", () => {
     click(gmailLabelMenuItem!);
 
     const createTriggerForm = await screen.findByRole("form", {
-      name: "Add Gmail label trigger",
+      name: "Add Gmail label automation",
     });
     await fill(
       within(createTriggerForm).getByLabelText("Label name"),
@@ -1497,19 +1473,14 @@ describe("workflow detail page", () => {
       createBodies.push(body);
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("triggers"),
-      featureSwitches: {
-        [FeatureSwitchKey.WorkflowsViewer]: true,
-        [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
-      },
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
     });
 
     await waitFor(() => {
-      expect(buttonByText("Add trigger")).toBeInTheDocument();
+      expect(buttonByText("Add automation")).toBeInTheDocument();
     });
-    click(buttonByText("Add trigger"));
+    click(buttonByText("Add automation"));
 
     await waitFor(() => {
       expect(menuItemByText(/^Webhook/)).toBeInTheDocument();
@@ -1555,19 +1526,16 @@ describe("workflow detail page", () => {
       createBodies.push(body);
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("triggers"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
-      expect(buttonByText("Add trigger")).toBeInTheDocument();
+      expect(buttonByText("Add automation")).toBeInTheDocument();
     });
-    click(buttonByText("Add trigger"));
+    click(buttonByText("Add automation"));
     click(menuItemByText(/Scheduled time/u));
 
     const createTriggerForm = await screen.findByRole("form", {
-      name: "Add schedule trigger",
+      name: "Add schedule automation",
     });
     expect(
       within(createTriggerForm).getByText("Time (Asia/Shanghai)"),
@@ -1593,19 +1561,16 @@ describe("workflow detail page", () => {
       createBodies.push(body);
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("triggers"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
-      expect(buttonByText("Add trigger")).toBeInTheDocument();
+      expect(buttonByText("Add automation")).toBeInTheDocument();
     });
-    click(buttonByText("Add trigger"));
+    click(buttonByText("Add automation"));
     click(menuItemByText(/^Interval/u));
 
     const createTriggerForm = await screen.findByRole("form", {
-      name: "Add interval trigger",
+      name: "Add interval automation",
     });
     selectOptionByLabel("Every", "30 minutes", createTriggerForm);
     click(buttonByText("Add interval", createTriggerForm));
@@ -1627,19 +1592,16 @@ describe("workflow detail page", () => {
       createBodies.push(body);
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("triggers"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
-      expect(buttonByText("Add trigger")).toBeInTheDocument();
+      expect(buttonByText("Add automation")).toBeInTheDocument();
     });
-    click(buttonByText("Add trigger"));
+    click(buttonByText("Add automation"));
     click(menuItemByText(/One-time run/u));
 
     const createTriggerForm = await screen.findByRole("form", {
-      name: "Add one-time trigger",
+      name: "Add one-time automation",
     });
     fireEvent.change(within(createTriggerForm).getByLabelText("Run at"), {
       target: { value: "2026-07-01T10:30" },
@@ -1681,10 +1643,7 @@ describe("workflow detail page", () => {
       updateBodies.push({ triggerId, body });
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("triggers"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
       expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
@@ -1693,7 +1652,7 @@ describe("workflow detail page", () => {
     click(buttonByText("Edit"));
 
     const updateTriggerForm = screen.getByRole("form", {
-      name: "Update schedule trigger",
+      name: "Update schedule automation",
     });
     selectOptionByLabel("Hour", "16", updateTriggerForm);
     selectOptionByLabel("Minute", "45", updateTriggerForm);
@@ -1736,10 +1695,7 @@ describe("workflow detail page", () => {
       updateBodies.push({ triggerId, body });
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("triggers"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
       expect(screen.getByText("Every 1 hour")).toBeInTheDocument();
@@ -1748,7 +1704,7 @@ describe("workflow detail page", () => {
     click(buttonByText("Edit"));
 
     const updateTriggerForm = screen.getByRole("form", {
-      name: "Update schedule trigger",
+      name: "Update schedule automation",
     });
     selectOptionByLabel("Every", "30 minutes", updateTriggerForm);
     fireEvent.submit(updateTriggerForm);
@@ -1792,10 +1748,7 @@ describe("workflow detail page", () => {
       updateBodies.push({ triggerId, body });
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("triggers"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
       expect(screen.getAllByText("Gmail new message").length).toBeGreaterThan(
@@ -1806,7 +1759,7 @@ describe("workflow detail page", () => {
     click(buttonByText("Edit"));
 
     const updateTriggerForm = screen.getByRole("form", {
-      name: "Update Gmail new message trigger",
+      name: "Update Gmail new message automation",
     });
     await fill(
       within(updateTriggerForm).getByLabelText("From contains"),
@@ -1853,10 +1806,7 @@ describe("workflow detail page", () => {
       updateBodies.push({ triggerId, body });
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("triggers"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"));
 
     await waitFor(() => {
       expect(screen.getByText("Gmail label applied")).toBeInTheDocument();
@@ -1865,7 +1815,7 @@ describe("workflow detail page", () => {
     click(buttonByText("Edit"));
 
     const updateTriggerForm = screen.getByRole("form", {
-      name: "Update Gmail label trigger",
+      name: "Update Gmail label automation",
     });
     await fill(
       within(updateTriggerForm).getByLabelText("Label name"),
@@ -1898,10 +1848,7 @@ describe("workflow detail page", () => {
     };
     mockWorkflowApis([workflow]);
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("instructions"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("instructions"));
 
     await waitFor(() => {
       expect(screen.getByText(/currently resolves to/i)).toBeInTheDocument();
@@ -1915,10 +1862,7 @@ describe("workflow detail page", () => {
       updateBodies.push(body);
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("instructions"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("instructions"));
 
     await waitFor(() => {
       expect(
@@ -1946,10 +1890,7 @@ describe("workflow detail page", () => {
       updateBodies.push(body);
     });
 
-    detachedSetupPage({
-      context,
-      path: workflowDetailPath("instructions"),
-    });
+    detachedSetupWorkflowDetailPage(workflowDetailPath("instructions"));
 
     await waitFor(() => {
       expect(

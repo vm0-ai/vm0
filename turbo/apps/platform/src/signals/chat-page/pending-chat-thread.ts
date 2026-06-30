@@ -8,13 +8,17 @@ export function createPendingChatThread(
   computerUseHostId: string | null = null,
 ): ChatThread {
   const activeRunIds: string[] = pendingRunId ? [pendingRunId] : [];
+  const createdAt = nowDate().toISOString();
   return {
     id: threadId,
     title: null,
     agentId,
+    createdAt,
+    updatedAt: createdAt,
     lastReadMessageId: null,
     lastReadAt: null,
-    lastMessageAt: nowDate().toISOString(),
+    lastMessageAt: createdAt,
+    pinnedAt: null,
     activeRunIds,
     isLegacySession: false,
     draftContent: null,

@@ -1,6 +1,6 @@
-// Workflow detail for workspace and agent-scoped routes. Hosts the instruction
-// editor, supplementary file manager (SKILL.md is never shown), triggers,
-// visibility controls, metadata editing, slash use, copy, and delete.
+// Workflow detail hosts the instruction editor, supplementary file manager
+// (SKILL.md is never shown), automations, visibility controls, metadata
+// editing, slash use, copy, and delete.
 import type { FormEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
@@ -39,7 +39,6 @@ import {
   IconRoute,
   IconTrash,
   IconUpload,
-  IconUsers,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -126,7 +125,6 @@ import {
   workflowMetadataPatch$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { activeRoute$ } from "../../signals/active-route.ts";
 import {
   orgMembers$,
   type OrgMember,
@@ -323,19 +321,15 @@ function WorkflowDetailContent({
       ? detailLoadable.data
       : (lastResolvedDetail ?? null);
   const activeTab = useGet(workflowDetailActiveTab$);
-  const activeRoute = useGet(activeRoute$);
   const setActiveTab = useSet(setWorkflowDetailActiveTab$);
 
   if (!detail && detailLoadable.state !== "hasData") {
-    return <DetailSkeleton workspaceRoute={activeRoute === "workflowDetail"} />;
+    return <DetailSkeleton />;
   }
 
   return (
     <DetailPageShell>
-      <WorkflowBreadcrumb
-        detail={detail}
-        workspaceRoute={activeRoute === "workflowDetail"}
-      />
+      <WorkflowBreadcrumb detail={detail} />
       <DetailHeader
         detail={detail}
         activeTab={activeTab}
@@ -354,10 +348,8 @@ function WorkflowDetailContent({
 
 function WorkflowBreadcrumb({
   detail,
-  workspaceRoute,
 }: {
   readonly detail: ZeroWorkflowDetailResponse | null;
-  readonly workspaceRoute: boolean;
 }) {
   if (!detail) {
     return (
@@ -369,37 +361,12 @@ function WorkflowBreadcrumb({
 
   return (
     <DetailPageBreadcrumbBar>
-      {workspaceRoute ? (
-        <BreadcrumbLink
-          pathname={ROUTES.workflows}
-          icon={<IconRoute size={14} stroke={1.5} className="shrink-0" />}
-        >
-          Workflows
-        </BreadcrumbLink>
-      ) : (
-        <>
-          <BreadcrumbLink
-            pathname={ROUTES.agents}
-            icon={<IconUsers size={14} stroke={1.5} className="shrink-0" />}
-          >
-            Agents
-          </BreadcrumbLink>
-          <span className="select-none text-muted-foreground/40">/</span>
-          <BreadcrumbLink
-            pathname={ROUTES.agentDetail}
-            options={{ pathParams: { agentId: detail.agentId } }}
-          >
-            {agentLabel(detail)}
-          </BreadcrumbLink>
-          <span className="select-none text-muted-foreground/40">/</span>
-          <BreadcrumbLink
-            pathname={ROUTES.agentWorkflows}
-            options={{ pathParams: { agentId: detail.agentId } }}
-          >
-            workflows
-          </BreadcrumbLink>
-        </>
-      )}
+      <BreadcrumbLink
+        pathname={ROUTES.workflows}
+        icon={<IconRoute size={14} stroke={1.5} className="shrink-0" />}
+      >
+        Workflows
+      </BreadcrumbLink>
       <span className="select-none text-muted-foreground/40">/</span>
       <span className="min-w-0 truncate rounded-md px-1.5 py-0.5 font-medium text-foreground">
         {workflowTitle(detail)}
@@ -502,16 +469,16 @@ function WorkflowTabNav({
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="triggers">Triggers</SelectItem>
+            <SelectItem value="automations">Automations</SelectItem>
             <SelectItem value="instructions">Instructions</SelectItem>
             <SelectItem value="info">Info</SelectItem>
           </SelectContent>
         </Select>
       </div>
       <TabsList className="zero-tabs hidden h-9 gap-1 px-1 py-1 sm:inline-flex">
-        <TabsTrigger value="triggers" className={WORKFLOW_TAB_TRIGGER_CLASS}>
+        <TabsTrigger value="automations" className={WORKFLOW_TAB_TRIGGER_CLASS}>
           <IconClock size={14} stroke={1.5} />
-          Triggers
+          Automations
         </TabsTrigger>
         <TabsTrigger
           value="instructions"
@@ -574,7 +541,7 @@ function WorkflowTabContent({
 }) {
   const content = (() => {
     switch (activeTab) {
-      case "triggers": {
+      case "automations": {
         return <TriggersSection detail={detail} />;
       }
       case "instructions": {
@@ -636,8 +603,8 @@ function WorkflowInfoTab({
                   Danger zone
                 </h3>
                 <p className="mt-1 text-xs leading-snug text-muted-foreground">
-                  Delete this workflow and its triggers. This action cannot be
-                  undone.
+                  Delete this workflow and its automations. This action cannot
+                  be undone.
                 </p>
               </div>
               <div className="flex w-full shrink-0 justify-end sm:w-auto">
@@ -1126,7 +1093,6 @@ function WorkflowCopyDialog({
             copyState={copyState}
             enabledSourceTriggerIds={enabledSourceTriggerIds}
             onOpenChange={onOpenChange}
-            sourceAgentId={detail.agentId}
             sourceAgentName={sourceAgentName}
             sourceWorkflowId={detail.id}
             sourceWorkflowName={sourceWorkflowName}
@@ -1266,7 +1232,6 @@ function WorkflowCopySuccessState({
   copyState,
   enabledSourceTriggerIds,
   onOpenChange,
-  sourceAgentId,
   sourceAgentName,
   sourceWorkflowId,
   sourceWorkflowName,
@@ -1274,7 +1239,6 @@ function WorkflowCopySuccessState({
   readonly copyState: Extract<WorkflowCopyDialogState, { kind: "copied" }>;
   readonly enabledSourceTriggerIds: readonly string[];
   readonly onOpenChange: (open: boolean) => void;
-  readonly sourceAgentId: string;
   readonly sourceAgentName: string;
   readonly sourceWorkflowId: string;
   readonly sourceWorkflowName: string;
@@ -1306,7 +1270,7 @@ function WorkflowCopySuccessState({
               <IconPlayerPause size={15} stroke={1.5} />
             )
           }
-          title="Pause source triggers"
+          title="Pause source automations"
           description={sourceTriggerActionDescription({
             enabledCount: enabledSourceTriggerIds.length,
             sourceAgentName,
@@ -1348,9 +1312,7 @@ function WorkflowCopySuccessState({
               (async () => {
                 await deleteWorkflow(sourceWorkflowId, pageSignal);
                 onOpenChange(false);
-                navigate(ROUTES.agentWorkflows, {
-                  pathParams: { agentId: sourceAgentId },
-                });
+                navigate(ROUTES.workflows);
               })(),
               Reason.DomCallback,
             );
@@ -1362,9 +1324,8 @@ function WorkflowCopySuccessState({
           description={`Open ${workflowTitle(copyState.workflow)} on ${workflowCopyAgentName(copyState.agent)}`}
           onClick={() => {
             onOpenChange(false);
-            navigate(ROUTES.agentWorkflowDetail, {
+            navigate(ROUTES.workflowDetail, {
               pathParams: {
-                agentId: copyState.workflow.agentId,
                 workflowId: copyState.workflow.id,
               },
             });
@@ -1424,13 +1385,13 @@ function sourceTriggerActionDescription({
   readonly paused: boolean;
 }): string {
   if (paused) {
-    return `Source triggers are paused on ${sourceAgentName}`;
+    return `Source automations are paused on ${sourceAgentName}`;
   }
   if (enabledCount === 0) {
-    return `No enabled source triggers on ${sourceAgentName}`;
+    return `No enabled source automations on ${sourceAgentName}`;
   }
   return `Pause ${enabledCount} enabled source ${
-    enabledCount === 1 ? "trigger" : "triggers"
+    enabledCount === 1 ? "automation" : "automations"
   } on ${sourceAgentName}`;
 }
 
@@ -1537,11 +1498,12 @@ function WorkflowDeleteDialog({
           <DialogTitle>Delete workflow</DialogTitle>
           <DialogDescription>
             This is a dangerous operation. Deleting this workflow also deletes
-            every trigger bound to it, including triggers other users created.
+            every automation bound to it, including automations other users
+            created.
           </DialogDescription>
         </DialogHeader>
         <div className="rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-          {workflowTitle(detail)} and all bound triggers will be deleted.
+          {workflowTitle(detail)} and all bound automations will be deleted.
         </div>
         <DialogFooter>
           <Button
@@ -1563,9 +1525,7 @@ function WorkflowDeleteDialog({
                 (async () => {
                   await deleteWorkflow(detail.id, pageSignal);
                   onOpenChange(false);
-                  navigate(ROUTES.agentWorkflows, {
-                    pathParams: { agentId: detail.agentId },
-                  });
+                  navigate(ROUTES.workflows);
                 })(),
                 Reason.DomCallback,
               );
@@ -2609,7 +2569,7 @@ function TriggerCreateMenu({
           className="zero-btn-morandi inline-flex h-8 shrink-0 items-center justify-center gap-1.5 rounded-md px-2 text-xs"
         >
           <IconPlus size={13} stroke={1.5} />
-          <span>Add trigger</span>
+          <span>Add automation</span>
         </button>
       </DropdownMenuTrigger>
       <DropdownMenuContent align="end" className="w-64">
@@ -2743,7 +2703,9 @@ function TriggersSection({
     <section className="mx-auto flex max-w-[900px] flex-col gap-3">
       <div className="flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-2">
-          <span className="text-sm font-medium text-foreground">Triggers</span>
+          <span className="text-sm font-medium text-foreground">
+            Automations
+          </span>
           <span className="text-xs text-muted-foreground">
             {triggers.length}
           </span>
@@ -2769,7 +2731,7 @@ function TriggersSection({
           })
         ) : (
           <div className="zero-card px-5 py-4">
-            <p className="text-sm text-muted-foreground">No triggers.</p>
+            <p className="text-sm text-muted-foreground">No automations.</p>
           </div>
         )}
       </div>
@@ -2854,13 +2816,13 @@ function CreateIntervalTriggerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add interval trigger</DialogTitle>
+          <DialogTitle>Add interval automation</DialogTitle>
           <DialogDescription>
             Choose how often this workflow should run.
           </DialogDescription>
         </DialogHeader>
         <form
-          aria-label="Add interval trigger"
+          aria-label="Add interval automation"
           className="flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
@@ -2938,13 +2900,13 @@ function CreateScheduledTriggerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add schedule trigger</DialogTitle>
+          <DialogTitle>Add schedule automation</DialogTitle>
           <DialogDescription>
             Choose when this workflow should run.
           </DialogDescription>
         </DialogHeader>
         <form
-          aria-label="Add schedule trigger"
+          aria-label="Add schedule automation"
           className="flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
@@ -3027,13 +2989,13 @@ function CreateOnceTriggerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add one-time trigger</DialogTitle>
+          <DialogTitle>Add one-time automation</DialogTitle>
           <DialogDescription>
             Choose the date and time for this workflow to run once.
           </DialogDescription>
         </DialogHeader>
         <form
-          aria-label="Add one-time trigger"
+          aria-label="Add one-time automation"
           className="flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
@@ -3499,13 +3461,13 @@ function CreateGmailNewMessageTriggerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Add Gmail trigger</DialogTitle>
+          <DialogTitle>Add Gmail automation</DialogTitle>
           <DialogDescription>
             Run this workflow when a matching message arrives.
           </DialogDescription>
         </DialogHeader>
         <form
-          aria-label="Add Gmail trigger"
+          aria-label="Add Gmail automation"
           className="flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
@@ -3562,7 +3524,7 @@ function CreateGmailNewMessageTriggerDialog({
               {creating ? (
                 <IconLoader2 size={14} className="animate-spin" />
               ) : null}
-              Add Gmail trigger
+              Add Gmail automation
             </Button>
           </DialogFooter>
         </form>
@@ -3606,13 +3568,13 @@ function CreateGmailLabelAppliedTriggerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Gmail label trigger</DialogTitle>
+          <DialogTitle>Add Gmail label automation</DialogTitle>
           <DialogDescription>
             Run this workflow when a named Gmail label is applied.
           </DialogDescription>
         </DialogHeader>
         <form
-          aria-label="Add Gmail label trigger"
+          aria-label="Add Gmail label automation"
           className="flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
@@ -3659,7 +3621,7 @@ function CreateGmailLabelAppliedTriggerDialog({
               {creating ? (
                 <IconLoader2 size={14} className="animate-spin" />
               ) : null}
-              Add label trigger
+              Add label automation
             </Button>
           </DialogFooter>
         </form>
@@ -3715,7 +3677,7 @@ function GithubLabelTriggerFields({
         </Select>
       </label>
       <label className="flex flex-col gap-1 text-xs text-muted-foreground">
-        Triggered by
+        Started by
         <Select
           name="actor"
           value={actor}
@@ -3724,7 +3686,7 @@ function GithubLabelTriggerFields({
             onActorChange(value === "anyone" ? "anyone" : "me");
           }}
         >
-          <SelectTrigger className="h-9 w-full" aria-label="Triggered by">
+          <SelectTrigger className="h-9 w-full" aria-label="Started by">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
@@ -3876,13 +3838,13 @@ function CreateGithubLabelAppliedTriggerDialog({
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add GitHub label trigger</DialogTitle>
+          <DialogTitle>Add GitHub label automation</DialogTitle>
           <DialogDescription>
             Run this workflow when a GitHub label is applied.
           </DialogDescription>
         </DialogHeader>
         <form
-          aria-label="Add GitHub label trigger"
+          aria-label="Add GitHub label automation"
           className="flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
@@ -3931,7 +3893,7 @@ function CreateGithubLabelAppliedTriggerDialog({
               {creating ? (
                 <IconLoader2 size={14} className="animate-spin" />
               ) : null}
-              Add label trigger
+              Add label automation
             </Button>
           </DialogFooter>
         </form>
@@ -3959,13 +3921,13 @@ function CreateGoogleCalendarEventCreatedTriggerDialog({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>Add Google Calendar trigger</DialogTitle>
+          <DialogTitle>Add Google Calendar automation</DialogTitle>
           <DialogDescription>
             Run this workflow when a new Google Calendar event is created.
           </DialogDescription>
         </DialogHeader>
         <form
-          aria-label="Add Google Calendar trigger"
+          aria-label="Add Google Calendar automation"
           className="flex flex-col gap-4"
           onSubmit={(event) => {
             event.preventDefault();
@@ -4012,7 +3974,7 @@ function CreateGoogleCalendarEventCreatedTriggerDialog({
               {creating ? (
                 <IconLoader2 size={14} className="animate-spin" />
               ) : null}
-              Add Calendar trigger
+              Add Calendar automation
             </Button>
           </DialogFooter>
         </form>
@@ -4054,7 +4016,7 @@ function CreateWebhookTriggerDialog({
     >
       <DialogContent className="max-w-2xl">
         <DialogHeader>
-          <DialogTitle>Add webhook trigger</DialogTitle>
+          <DialogTitle>Add webhook automation</DialogTitle>
           <DialogDescription>
             Create a signed endpoint for this workflow.
           </DialogDescription>
@@ -4251,7 +4213,7 @@ function triggerCardRows(
 ): readonly WorkflowTriggerCardRow[] {
   const rows: WorkflowTriggerCardRow[] = [
     {
-      label: trigger.kind === "schedule" ? "Schedule" : "Trigger",
+      label: trigger.kind === "schedule" ? "Schedule" : "Automation",
       value: workflowScheduleTitle(trigger, displayTimezone),
     },
     {
@@ -4468,7 +4430,7 @@ function EditWorkflowTriggerDialog({
       >
         <DialogHeader>
           <DialogTitle>{editWorkflowTriggerTitle(trigger)}</DialogTitle>
-          <DialogDescription>Update this trigger.</DialogDescription>
+          <DialogDescription>Update this automation.</DialogDescription>
         </DialogHeader>
         {trigger.kind === "schedule" ? (
           <UpdateScheduleTriggerForm
@@ -4523,7 +4485,7 @@ function UpdateScheduleTriggerForm({
 
   return (
     <form
-      aria-label="Update schedule trigger"
+      aria-label="Update schedule automation"
       className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
@@ -4610,7 +4572,7 @@ function UpdateGmailNewMessageTriggerForm({
 
   return (
     <form
-      aria-label="Update Gmail new message trigger"
+      aria-label="Update Gmail new message automation"
       className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
@@ -4705,7 +4667,7 @@ function UpdateGmailLabelAppliedTriggerForm({
 
   return (
     <form
-      aria-label="Update Gmail label trigger"
+      aria-label="Update Gmail label automation"
       className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
@@ -4813,7 +4775,7 @@ function UpdateGithubLabelAppliedTriggerForm({
 
   return (
     <form
-      aria-label="Update GitHub label trigger"
+      aria-label="Update GitHub label automation"
       className="flex flex-col gap-4"
       onSubmit={(event) => {
         event.preventDefault();
@@ -4881,14 +4843,10 @@ function UpdateGithubLabelAppliedTriggerForm({
   );
 }
 
-function DetailSkeleton({
-  workspaceRoute,
-}: {
-  readonly workspaceRoute: boolean;
-}) {
+function DetailSkeleton() {
   return (
     <DetailPageShell scroll={false}>
-      <WorkflowBreadcrumb detail={null} workspaceRoute={workspaceRoute} />
+      <WorkflowBreadcrumb detail={null} />
       <DetailPageHeader className="pb-3">
         <div className="animate-pulse space-y-3">
           <div className="h-5 w-48 rounded bg-muted" />

@@ -84,8 +84,8 @@ import {
   type WorkflowTriggerCardRow,
 } from "../workflows-page/workflow-trigger-card.tsx";
 
-const CREATE_WORKFLOW_CHAT_PROMPT =
-  "I'd like to create a workflow that I can run manually without an automation schedule or event. Help me define the workflow.";
+export const CREATE_WORKFLOW_WITH_CHAT_PROMPT =
+  "Help me create a workflow for this agent. Use the workflow-setup skill, then ask me for the desired outcome, automation, and action before creating the workflow and automation.";
 
 const CREATE_AUTOMATION_CHAT_PROMPT =
   "I'd like to create a workflow automation. Help me define the reusable workflow and decide when it should run automatically. An automation can run on a schedule, every few minutes, when an email arrives, when a Gmail label is applied, from a webhook, from a GitHub label, or when a calendar event is created. Ask what the workflow should do each time it runs, what inputs or sources it should use, what output it should produce, what side effects are allowed, and whether it should be enabled immediately.";
@@ -308,14 +308,13 @@ function TriggerCardHeader({
         </p>
       </div>
       <Link
-        pathname={ROUTES.agentWorkflowDetail}
+        pathname={ROUTES.workflowDetail}
         options={{
           pathParams: {
-            agentId: entry.workflow.agentId,
             workflowId: entry.workflow.id,
           },
           searchParams: new URLSearchParams({
-            [WORKFLOW_DETAIL_TAB_PARAM]: "triggers",
+            [WORKFLOW_DETAIL_TAB_PARAM]: "automations",
           }),
         }}
         className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
@@ -339,14 +338,13 @@ function WorkflowAutomationTriggerCard({
   const running = runLoadable.state === "loading";
   const editLink = (
     <Link
-      pathname={ROUTES.agentWorkflowDetail}
+      pathname={ROUTES.workflowDetail}
       options={{
         pathParams: {
-          agentId: entry.workflow.agentId,
           workflowId: entry.workflow.id,
         },
         searchParams: new URLSearchParams({
-          [WORKFLOW_DETAIL_TAB_PARAM]: "triggers",
+          [WORKFLOW_DETAIL_TAB_PARAM]: "automations",
         }),
       }}
       className="rounded-md px-1 py-1 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
@@ -882,7 +880,7 @@ export function CreateWorkflowAutomationDialog() {
       agentId,
       intent === "automation-chat"
         ? CREATE_AUTOMATION_CHAT_PROMPT
-        : CREATE_WORKFLOW_CHAT_PROMPT,
+        : CREATE_WORKFLOW_WITH_CHAT_PROMPT,
     );
   };
 
@@ -891,7 +889,7 @@ export function CreateWorkflowAutomationDialog() {
     navigate(ROUTES.workflowDetail, {
       pathParams: { workflowId: workflow.id },
       searchParams: new URLSearchParams({
-        [WORKFLOW_DETAIL_TAB_PARAM]: "triggers",
+        [WORKFLOW_DETAIL_TAB_PARAM]: "automations",
       }),
     });
   };

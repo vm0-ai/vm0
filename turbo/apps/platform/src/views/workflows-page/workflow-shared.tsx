@@ -56,11 +56,11 @@ export function formatWorkflowIntervalSeconds(seconds: number): string {
 
 export function triggerKindLabel(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.kind === "schedule") {
-    return "Schedule trigger";
+    return "Schedule automation";
   }
   return trigger.eventType === "webhook-received"
-    ? "Webhook trigger"
-    : "Event trigger";
+    ? "Webhook automation"
+    : "Event automation";
 }
 
 type GmailMatchRules = NonNullable<GmailNewMessageEventConfig["match"]>;
@@ -197,7 +197,7 @@ export function gmailTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "google-calendar-event-created") {
     return "Google Calendar event created";
   }
-  return "Webhook trigger";
+  return "Webhook automation";
 }
 
 export function gmailTriggerSummary(

@@ -5,6 +5,7 @@ import { AgentDetailPage } from "../../views/team-page/zero-team-detail-page.tsx
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
+import { ROUTES } from "../route-paths.ts";
 import {
   currentAgentId$,
   agents$,
@@ -17,7 +18,6 @@ import { setActiveAgent$ } from "../zero-page/zero-job-detail.ts";
 import { setChatAgentId$ } from "../agent-chat.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { reloadWorkflows$ } from "../workflows-page/workflows-signals.ts";
 
 export const setupAgentDetailPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -58,7 +58,18 @@ export const setupAgentDetailPage$ = command(
     set(rememberLastUsedAgentId$, agentId);
     const features = get(featureSwitch$);
     if (features[FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]) {
-      set(reloadWorkflows$);
+      const params = get(searchParams$);
+      const tab = params.get("tab");
+      if (tab === "automations" || tab === "workflows") {
+        const nextParams = new URLSearchParams(params);
+        nextParams.delete("tab");
+        set(detachedNavigateTo$, ROUTES.agentDetail, {
+          pathParams: { agentId },
+          searchParams: nextParams,
+          replace: true,
+        });
+        return;
+      }
     }
 
     const displayName = agent.displayName ?? "Agent";

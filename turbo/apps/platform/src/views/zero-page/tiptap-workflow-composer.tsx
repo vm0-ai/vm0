@@ -621,7 +621,6 @@ export function TiptapWorkflowComposer({
           loading={isLoadingOrgWorkflows}
           selectedIndex={selectedWorkflowIndex}
           showWorkflowsPageLink={showWorkflowsPageLink}
-          currentAgentId={currentAgentId}
           onSelect={(workflow) => {
             insertWorkflow(workflow);
           }}

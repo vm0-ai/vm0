@@ -1,5 +1,26 @@
 # Changelog
 
+## [1.192.0](https://github.com/vm0-ai/vm0/compare/api-v1.191.0...api-v1.192.0) (2026-06-30)
+
+
+### Features
+
+* add zero chat get command ([#19405](https://github.com/vm0-ai/vm0/issues/19405)) ([3a90d8f](https://github.com/vm0-ai/vm0/commit/3a90d8f6fd3d575359569843da81b34d2c1a0604))
+
+
+### Refactoring
+
+* add connector catalog reader ([#19413](https://github.com/vm0-ai/vm0/issues/19413)) ([2d4da46](https://github.com/vm0-ai/vm0/commit/2d4da46517093ef9558ffc93419ffc1f072d2e6d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.129.0
+    * @vm0/core bumped to 8.377.2
+    * @vm0/db bumped to 1.78.5
+
 ## [1.191.0](https://github.com/vm0-ai/vm0/compare/api-v1.190.0...api-v1.191.0) (2026-06-30)
 
 
