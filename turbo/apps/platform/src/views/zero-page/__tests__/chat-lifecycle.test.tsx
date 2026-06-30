@@ -263,21 +263,28 @@ function makeMessage(id: string, text: string): PagedChatMessage {
 
 function mockKeyboardNavigationThreads({
   currentTitle = "Current keyboard thread",
-}: { currentTitle?: string } = {}): void {
+  currentDetailTitle = currentTitle,
+}: {
+  currentTitle?: string;
+  currentDetailTitle?: string | null;
+} = {}): void {
   const threadFixtures = [
     {
       id: "keyboard-prev-thread",
       title: "Previous keyboard thread",
+      detailTitle: "Previous keyboard thread",
       message: "Previous thread launch note",
     },
     {
       id: "keyboard-current-thread",
       title: currentTitle,
+      detailTitle: currentDetailTitle,
       message: "Current thread launch note",
     },
     {
       id: "keyboard-next-thread",
       title: "Next keyboard thread",
+      detailTitle: "Next keyboard thread",
       message: "Next thread launch note",
     },
   ];
@@ -314,7 +321,7 @@ function mockKeyboardNavigationThreads({
     }
     return respond(200, {
       id: thread.id,
-      title: thread.title,
+      title: thread.detailTitle,
       agentId: AGENT_ID,
       activeRunIds: [],
       createdAt: "2026-06-01T00:00:00Z",
@@ -2993,7 +3000,7 @@ describe("chat lifecycle", () => {
   it("adds an emoji to the current chat with Shift+F2", async () => {
     const renameRequest = vi.fn();
     mockResizeObserver();
-    mockKeyboardNavigationThreads();
+    mockKeyboardNavigationThreads({ currentDetailTitle: null });
     context.mocks.api(
       chatThreadRenameContract.rename,
       ({ body, params, respond }) => {

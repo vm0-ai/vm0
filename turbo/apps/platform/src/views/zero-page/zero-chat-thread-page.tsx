@@ -2914,24 +2914,39 @@ function ChatThread({
 
 function useOpenCurrentChatThreadRenameDialog(thread: ChatThreadSignals) {
   const openRenameChatThreadDialog = useSet(openRenameChatThreadDialog$);
-  const threadData = useLastResolved(thread.threadData$);
+  const title = useCurrentChatThreadDialogTitle(thread);
   return () => {
     openRenameChatThreadDialog({
       threadId: thread.threadId,
-      title: threadData?.title,
+      title,
     });
   };
 }
 
 function useOpenCurrentChatThreadEmojiDialog(thread: ChatThreadSignals) {
   const openChatThreadEmojiDialog = useSet(openChatThreadEmojiDialog$);
-  const threadData = useLastResolved(thread.threadData$);
+  const title = useCurrentChatThreadDialogTitle(thread);
   return () => {
     openChatThreadEmojiDialog({
       threadId: thread.threadId,
-      title: threadData?.title,
+      title,
     });
   };
+}
+
+function useCurrentChatThreadDialogTitle(
+  thread: ChatThreadSignals,
+): string | null | undefined {
+  const threadData = useLastResolved(thread.threadData$);
+  const sidebarThreads = useLastResolved(sidebarChatThreads$) ?? [];
+  if (threadData?.title?.trim()) {
+    return threadData.title;
+  }
+  return (
+    sidebarThreads.find((sidebarThread) => {
+      return sidebarThread.id === thread.threadId;
+    })?.title ?? threadData?.title
+  );
 }
 
 // Drag the divider to resize the artifact preview against the chat thread.
