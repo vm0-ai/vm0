@@ -10,7 +10,8 @@
 //! discovery and only signal local cancellation handles. Invalid job
 //! notifications are ignored. Profile support is checked only after target
 //! routing, so target-other notifications defer even when their profile is
-//! missing or unsupported.
+//! missing or unsupported; non-target-other unsupported profiles are ignored
+//! without mutating discovery wakeup state.
 //!
 //! The direct candidate queues are an optimization, not the only delivery path:
 //! target-other deferrals, non-target-other incomplete notifications, full or
