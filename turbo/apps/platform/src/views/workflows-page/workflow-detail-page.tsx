@@ -1,6 +1,6 @@
-// Workflow detail for workspace and agent-scoped routes. Hosts the instruction
-// editor, supplementary file manager (SKILL.md is never shown), triggers,
-// visibility controls, metadata editing, slash use, copy, and delete.
+// Workflow detail hosts the instruction editor, supplementary file manager
+// (SKILL.md is never shown), triggers, visibility controls, metadata editing,
+// slash use, copy, and delete.
 import type { FormEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
@@ -39,7 +39,6 @@ import {
   IconRoute,
   IconTrash,
   IconUpload,
-  IconUsers,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -126,7 +125,6 @@ import {
   workflowMetadataPatch$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { activeRoute$ } from "../../signals/active-route.ts";
 import {
   orgMembers$,
   type OrgMember,
@@ -323,19 +321,15 @@ function WorkflowDetailContent({
       ? detailLoadable.data
       : (lastResolvedDetail ?? null);
   const activeTab = useGet(workflowDetailActiveTab$);
-  const activeRoute = useGet(activeRoute$);
   const setActiveTab = useSet(setWorkflowDetailActiveTab$);
 
   if (!detail && detailLoadable.state !== "hasData") {
-    return <DetailSkeleton workspaceRoute={activeRoute === "workflowDetail"} />;
+    return <DetailSkeleton />;
   }
 
   return (
     <DetailPageShell>
-      <WorkflowBreadcrumb
-        detail={detail}
-        workspaceRoute={activeRoute === "workflowDetail"}
-      />
+      <WorkflowBreadcrumb detail={detail} />
       <DetailHeader
         detail={detail}
         activeTab={activeTab}
@@ -354,10 +348,8 @@ function WorkflowDetailContent({
 
 function WorkflowBreadcrumb({
   detail,
-  workspaceRoute,
 }: {
   readonly detail: ZeroWorkflowDetailResponse | null;
-  readonly workspaceRoute: boolean;
 }) {
   if (!detail) {
     return (
@@ -369,37 +361,12 @@ function WorkflowBreadcrumb({
 
   return (
     <DetailPageBreadcrumbBar>
-      {workspaceRoute ? (
-        <BreadcrumbLink
-          pathname={ROUTES.workflows}
-          icon={<IconRoute size={14} stroke={1.5} className="shrink-0" />}
-        >
-          Workflows
-        </BreadcrumbLink>
-      ) : (
-        <>
-          <BreadcrumbLink
-            pathname={ROUTES.agents}
-            icon={<IconUsers size={14} stroke={1.5} className="shrink-0" />}
-          >
-            Agents
-          </BreadcrumbLink>
-          <span className="select-none text-muted-foreground/40">/</span>
-          <BreadcrumbLink
-            pathname={ROUTES.agentDetail}
-            options={{ pathParams: { agentId: detail.agentId } }}
-          >
-            {agentLabel(detail)}
-          </BreadcrumbLink>
-          <span className="select-none text-muted-foreground/40">/</span>
-          <BreadcrumbLink
-            pathname={ROUTES.agentWorkflows}
-            options={{ pathParams: { agentId: detail.agentId } }}
-          >
-            workflows
-          </BreadcrumbLink>
-        </>
-      )}
+      <BreadcrumbLink
+        pathname={ROUTES.workflows}
+        icon={<IconRoute size={14} stroke={1.5} className="shrink-0" />}
+      >
+        Workflows
+      </BreadcrumbLink>
       <span className="select-none text-muted-foreground/40">/</span>
       <span className="min-w-0 truncate rounded-md px-1.5 py-0.5 font-medium text-foreground">
         {workflowTitle(detail)}
@@ -1126,7 +1093,6 @@ function WorkflowCopyDialog({
             copyState={copyState}
             enabledSourceTriggerIds={enabledSourceTriggerIds}
             onOpenChange={onOpenChange}
-            sourceAgentId={detail.agentId}
             sourceAgentName={sourceAgentName}
             sourceWorkflowId={detail.id}
             sourceWorkflowName={sourceWorkflowName}
@@ -1266,7 +1232,6 @@ function WorkflowCopySuccessState({
   copyState,
   enabledSourceTriggerIds,
   onOpenChange,
-  sourceAgentId,
   sourceAgentName,
   sourceWorkflowId,
   sourceWorkflowName,
@@ -1274,7 +1239,6 @@ function WorkflowCopySuccessState({
   readonly copyState: Extract<WorkflowCopyDialogState, { kind: "copied" }>;
   readonly enabledSourceTriggerIds: readonly string[];
   readonly onOpenChange: (open: boolean) => void;
-  readonly sourceAgentId: string;
   readonly sourceAgentName: string;
   readonly sourceWorkflowId: string;
   readonly sourceWorkflowName: string;
@@ -1348,9 +1312,7 @@ function WorkflowCopySuccessState({
               (async () => {
                 await deleteWorkflow(sourceWorkflowId, pageSignal);
                 onOpenChange(false);
-                navigate(ROUTES.agentWorkflows, {
-                  pathParams: { agentId: sourceAgentId },
-                });
+                navigate(ROUTES.workflows);
               })(),
               Reason.DomCallback,
             );
@@ -1362,9 +1324,8 @@ function WorkflowCopySuccessState({
           description={`Open ${workflowTitle(copyState.workflow)} on ${workflowCopyAgentName(copyState.agent)}`}
           onClick={() => {
             onOpenChange(false);
-            navigate(ROUTES.agentWorkflowDetail, {
+            navigate(ROUTES.workflowDetail, {
               pathParams: {
-                agentId: copyState.workflow.agentId,
                 workflowId: copyState.workflow.id,
               },
             });
@@ -1563,9 +1524,7 @@ function WorkflowDeleteDialog({
                 (async () => {
                   await deleteWorkflow(detail.id, pageSignal);
                   onOpenChange(false);
-                  navigate(ROUTES.agentWorkflows, {
-                    pathParams: { agentId: detail.agentId },
-                  });
+                  navigate(ROUTES.workflows);
                 })(),
                 Reason.DomCallback,
               );
@@ -4881,14 +4840,10 @@ function UpdateGithubLabelAppliedTriggerForm({
   );
 }
 
-function DetailSkeleton({
-  workspaceRoute,
-}: {
-  readonly workspaceRoute: boolean;
-}) {
+function DetailSkeleton() {
   return (
     <DetailPageShell scroll={false}>
-      <WorkflowBreadcrumb detail={null} workspaceRoute={workspaceRoute} />
+      <WorkflowBreadcrumb detail={null} />
       <DetailPageHeader className="pb-3">
         <div className="animate-pulse space-y-3">
           <div className="h-5 w-48 rounded bg-muted" />

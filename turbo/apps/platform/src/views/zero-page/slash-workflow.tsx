@@ -109,14 +109,12 @@ export function SlashWorkflowMenu({
   loading,
   selectedIndex,
   showWorkflowsPageLink,
-  currentAgentId,
   onSelect,
 }: {
   readonly workflows: readonly ComposerSlashWorkflow[];
   readonly loading: boolean;
   readonly selectedIndex: number;
   readonly showWorkflowsPageLink: boolean;
-  readonly currentAgentId: string | null | undefined;
   readonly onSelect: (workflow: ComposerSlashWorkflow) => void;
 }) {
   return (
@@ -170,11 +168,10 @@ export function SlashWorkflowMenu({
           No matching workflows
         </div>
       )}
-      {showWorkflowsPageLink && currentAgentId && (
+      {showWorkflowsPageLink && (
         <div className="shrink-0 border-t border-border/60 bg-popover/95 p-1.5">
           <Link
-            pathname={ROUTES.agentWorkflows}
-            options={{ pathParams: { agentId: currentAgentId } }}
+            pathname={ROUTES.workflows}
             className="flex h-9 w-full items-center justify-between rounded px-2 text-sm font-medium text-popover-foreground transition-colors hover:bg-accent"
           >
             <span className="flex min-w-0 items-center gap-2">

@@ -2310,10 +2310,9 @@ function HeaderWorkflowTriggerCard({
           {title}
         </p>
         <Link
-          pathname={ROUTES.agentWorkflowDetail}
+          pathname={ROUTES.workflowDetail}
           options={{
             pathParams: {
-              agentId: trigger.workflowAgentId,
               workflowId: trigger.workflowId,
             },
             searchParams: new URLSearchParams({
@@ -6848,9 +6847,8 @@ function WorkflowUserMessage({
       <div className="px-4 py-3">{workflowBody}</div>
     </div>
   );
-  const workflowAgentId = workflowSnapshot.agentId;
   const workflowId = workflowSnapshot.id;
-  const linked = workflowAgentId !== undefined && workflowId !== undefined;
+  const linked = workflowId !== undefined;
 
   return (
     <div data-role="user" className="group">
@@ -6867,10 +6865,9 @@ function WorkflowUserMessage({
           </div>
           {linked ? (
             <Link
-              pathname={ROUTES.agentWorkflowDetail}
+              pathname={ROUTES.workflowDetail}
               options={{
                 pathParams: {
-                  agentId: workflowAgentId,
                   workflowId,
                 },
               }}
