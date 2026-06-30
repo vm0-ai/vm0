@@ -1,7 +1,15 @@
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
-import { testWorkflowTriggerStateContract } from "@vm0/api-contracts/contracts/test-workflow-trigger-state";
+import {
+  getCustomSkillStorageName,
+  getInstructionsStorageName,
+  VOLUME_ORG_USER_ID,
+} from "@vm0/core/storage-names";
+import {
+  type TestWorkflowTriggerStateActionBody,
+  testWorkflowTriggerStateContract,
+} from "@vm0/api-contracts/contracts/test-workflow-trigger-state";
 import {
   agentComposes,
   agentComposeVersions,
@@ -24,12 +32,14 @@ import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { secrets } from "@vm0/db/schema/secret";
+import { storages, storageVersions } from "@vm0/db/schema/storage";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import {
+  zeroWorkflowGithubProcessedEvents,
   workflowUserTriggerThreads,
   zeroWorkflowTriggers,
   zeroWorkflows,
@@ -60,6 +70,16 @@ function actionOk(extra: Record<string, unknown> = {}) {
 function actionBadRequest(error: string) {
   return { status: 400 as const, body: { error } };
 }
+
+type WorkflowTriggerStateAction = TestWorkflowTriggerStateActionBody["action"];
+type WorkflowTriggerStateActionResponse =
+  | ReturnType<typeof actionOk>
+  | ReturnType<typeof actionBadRequest>;
+type WorkflowTriggerStateActionHandler = (
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) => Promise<WorkflowTriggerStateActionResponse>;
 
 function readString(body: Record<string, unknown>, key: string): string | null {
   const value = body[key];
@@ -116,6 +136,19 @@ function readScheduleType(
 
 function readVisibility(body: Record<string, unknown>): "public" | "private" {
   return body.visibility === "private" ? "private" : "public";
+}
+
+function readStringArray(
+  body: Record<string, unknown>,
+  key: string,
+): readonly string[] {
+  const value = body[key];
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item) => {
+    return typeof item === "string" && item.length > 0 ? [item] : [];
+  });
 }
 
 function readConnectorType(
@@ -297,6 +330,147 @@ async function seedTriggerForAction(
   return actionOk({ trigger_id: trigger.id, thread_id: threadId });
 }
 
+async function seedWorkflowsFixtureForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const orgId = readOptionalString(body, "org_id") ?? `org_${randomUUID()}`;
+  const userId = readOptionalString(body, "user_id") ?? `user_${randomUUID()}`;
+  await db
+    .insert(orgMetadata)
+    .values({
+      orgId,
+      tier: readOptionalString(body, "tier") ?? "free",
+      credits: readNumber(body, "credits") ?? 10_000,
+    })
+    .onConflictDoNothing();
+  signal.throwIfAborted();
+  return actionOk({
+    fixture: {
+      org_id: orgId,
+      user_id: userId,
+    },
+  });
+}
+
+async function seedWorkflowForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const orgId = readString(body, "org_id");
+  const userId = readString(body, "user_id");
+  const agentId = readString(body, "agent_id");
+  const name = readString(body, "name");
+  if (!orgId || !userId || !agentId || !name) {
+    return actionBadRequest("org_id, user_id, agent_id, and name are required");
+  }
+  const [workflow] = await db
+    .insert(zeroWorkflows)
+    .values({
+      orgId,
+      agentId,
+      name,
+      visibility: readVisibility(body),
+      instruction: readOptionalString(body, "instruction") ?? null,
+      ownerUserId: userId,
+      displayName: readOptionalString(body, "display_name") ?? null,
+      description: readOptionalString(body, "description") ?? null,
+      createdBy: userId,
+      updatedBy: readOptionalString(body, "updated_by_user_id") ?? userId,
+    })
+    .returning({ id: zeroWorkflows.id });
+  signal.throwIfAborted();
+  if (!workflow) {
+    return actionBadRequest("failed to seed workflow");
+  }
+  return actionOk({ workflow_id: workflow.id });
+}
+
+async function seedWorkflowStorageForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const orgId = readString(body, "org_id");
+  const userId = readString(body, "user_id");
+  const workflowId = readString(body, "workflow_id");
+  const s3Key = readString(body, "s3_key");
+  const headVersionId = readString(body, "head_version_id");
+  if (!orgId || !userId || !workflowId || !s3Key || !headVersionId) {
+    return actionBadRequest(
+      "org_id, user_id, workflow_id, s3_key, and head_version_id are required",
+    );
+  }
+  const storageId = randomUUID();
+  const storageName = getCustomSkillStorageName(workflowId);
+  await db.insert(storages).values({
+    id: storageId,
+    userId: VOLUME_ORG_USER_ID,
+    name: storageName,
+    type: readOptionalString(body, "type") ?? "volume",
+    orgId,
+    s3Prefix: `orgs/${orgId}/${storageName}`,
+  });
+  signal.throwIfAborted();
+  await db.insert(storageVersions).values({
+    id: headVersionId,
+    storageId,
+    s3Key,
+    createdBy: userId,
+  });
+  signal.throwIfAborted();
+  await db
+    .update(storages)
+    .set({ headVersionId })
+    .where(eq(storages.id, storageId));
+  signal.throwIfAborted();
+  return actionOk({ storage_id: storageId });
+}
+
+async function seedInstructionsStorageForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const orgId = readString(body, "org_id");
+  const userId = readString(body, "user_id");
+  const agentName = readString(body, "agent_name");
+  const s3Key = readString(body, "s3_key");
+  if (!orgId || !userId || !agentName || !s3Key) {
+    return actionBadRequest(
+      "org_id, user_id, agent_name, and s3_key are required",
+    );
+  }
+  const storageId = randomUUID();
+  const storageName = getInstructionsStorageName(agentName);
+  const headVersionId =
+    readOptionalString(body, "head_version_id") ?? `head-${randomUUID()}`;
+  await db.insert(storages).values({
+    id: storageId,
+    userId: VOLUME_ORG_USER_ID,
+    name: storageName,
+    type: "volume",
+    orgId,
+    s3Prefix: `orgs/${orgId}/${storageName}`,
+  });
+  signal.throwIfAborted();
+  await db.insert(storageVersions).values({
+    id: headVersionId,
+    storageId,
+    s3Key,
+    createdBy: userId,
+  });
+  signal.throwIfAborted();
+  await db
+    .update(storages)
+    .set({ headVersionId })
+    .where(eq(storages.id, storageId));
+  signal.throwIfAborted();
+  return actionOk({ storage_id: storageId, head_version_id: headVersionId });
+}
+
 async function seedAgentWorkflowForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -313,7 +487,13 @@ async function seedAgentWorkflowForAction(
   const agentName =
     readOptionalString(body, "agent_name") ??
     `workflow-agent-${randomUUID().slice(0, 8)}`;
-  const workflowName = readOptionalString(body, "workflow_name") ?? "workflow";
+  const workflowName = readOptionalString(body, "workflow_name");
+  const workflowNames = [
+    ...new Set([
+      ...readStringArray(body, "workflow_names"),
+      ...(workflowName ? [workflowName] : []),
+    ]),
+  ];
   const visibility = readVisibility(body);
 
   await db.insert(agentComposes).values({
@@ -323,57 +503,95 @@ async function seedAgentWorkflowForAction(
     name: agentName,
   });
   signal.throwIfAborted();
-  await db.insert(agentComposeVersions).values({
-    id: versionId,
-    composeId: agentId,
-    content: {
-      version: "1",
-      agents: {
-        [agentName]: {
-          framework: "claude-code",
-          environment: { ANTHROPIC_API_KEY: "test-key" },
+  if (
+    body.compose_content !== undefined ||
+    readBoolean(body, "with_compose_version", true)
+  ) {
+    await db.insert(agentComposeVersions).values({
+      id: versionId,
+      composeId: agentId,
+      content: body.compose_content ?? {
+        version: "1",
+        agents: {
+          [agentName]: {
+            framework: readOptionalString(body, "framework") ?? "claude-code",
+            ...(readOptionalString(body, "instructions")
+              ? { instructions: readOptionalString(body, "instructions") }
+              : {}),
+            environment: { ANTHROPIC_API_KEY: "test-key" },
+          },
         },
       },
-    },
-    createdBy: userId,
-  });
-  signal.throwIfAborted();
-  await db
-    .update(agentComposes)
-    .set({ headVersionId: versionId })
-    .where(eq(agentComposes.id, agentId));
-  signal.throwIfAborted();
-  await db.insert(zeroAgents).values({
-    id: agentId,
-    orgId,
-    owner: userId,
-    name: agentName,
-    visibility,
-  });
-  signal.throwIfAborted();
-  const [workflow] = await db
-    .insert(zeroWorkflows)
-    .values({
-      orgId,
-      agentId,
-      name: workflowName,
-      visibility: "public",
-      ownerUserId: userId,
-      displayName: null,
-      description: null,
       createdBy: userId,
-      updatedBy: userId,
-    })
-    .returning({ id: zeroWorkflows.id });
-  signal.throwIfAborted();
-  if (!workflow) {
-    return actionBadRequest("failed to seed workflow");
+    });
+    signal.throwIfAborted();
+    await db
+      .update(agentComposes)
+      .set({ headVersionId: versionId })
+      .where(eq(agentComposes.id, agentId));
+    signal.throwIfAborted();
   }
+
+  if (readBoolean(body, "with_zero_agent", true)) {
+    await db
+      .insert(zeroAgents)
+      .values({
+        id: agentId,
+        orgId,
+        owner: userId,
+        name: agentName,
+        displayName: readOptionalString(body, "display_name") ?? null,
+        description: readOptionalString(body, "description") ?? null,
+        sound: readOptionalString(body, "sound") ?? null,
+        avatarUrl: readOptionalString(body, "avatar_url") ?? null,
+        modelProviderId: readOptionalString(body, "model_provider_id") ?? null,
+        selectedModel: readOptionalString(body, "selected_model") ?? null,
+        preferPersonalProvider: readBoolean(
+          body,
+          "prefer_personal_provider",
+          false,
+        ),
+        visibility,
+      })
+      .onConflictDoNothing();
+    signal.throwIfAborted();
+  }
+
+  const workflows =
+    workflowNames.length > 0
+      ? await db
+          .insert(zeroWorkflows)
+          .values(
+            workflowNames.map((name) => {
+              return {
+                orgId,
+                agentId,
+                name,
+                visibility: "public" as const,
+                ownerUserId: userId,
+                displayName: null,
+                description: null,
+                createdBy: userId,
+                updatedBy: userId,
+              };
+            }),
+          )
+          .onConflictDoNothing()
+          .returning({ id: zeroWorkflows.id, name: zeroWorkflows.name })
+      : [];
+  signal.throwIfAborted();
+  const workflowIdsByName = Object.fromEntries(
+    workflows.map((workflow) => {
+      return [workflow.name, workflow.id] as const;
+    }),
+  );
 
   return actionOk({
     agent_id: agentId,
-    workflow_id: workflow.id,
+    name: agentName,
+    workflow_id: workflowName ? workflowIdsByName[workflowName] : undefined,
     workflow_name: workflowName,
+    workflow_ids_by_name: workflowIdsByName,
   });
 }
 
@@ -598,6 +816,7 @@ async function setTriggerRunStateForAction(
   await db
     .update(zeroWorkflowTriggers)
     .set({
+      lastRunId: readOptionalString(body, "last_run_id") ?? undefined,
       lastRunAt: readDate(body, "last_run_at"),
       nextRunAt: readNullableDate(body, "next_run_at"),
     })
@@ -855,6 +1074,29 @@ async function getChatThreadForAction(
   return actionOk({ thread: thread ?? null, messages });
 }
 
+async function getGithubProcessedEventsForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const triggerId = readString(body, "trigger_id");
+  if (!triggerId) {
+    return actionBadRequest("trigger_id is required");
+  }
+  const processed = await db
+    .select({
+      githubDeliveryId: zeroWorkflowGithubProcessedEvents.githubDeliveryId,
+      action: zeroWorkflowGithubProcessedEvents.action,
+      labelNameNormalized:
+        zeroWorkflowGithubProcessedEvents.labelNameNormalized,
+    })
+    .from(zeroWorkflowGithubProcessedEvents)
+    .where(eq(zeroWorkflowGithubProcessedEvents.triggerId, triggerId))
+    .orderBy(zeroWorkflowGithubProcessedEvents.githubDeliveryId);
+  signal.throwIfAborted();
+  return actionOk({ processed });
+}
+
 async function deleteScenarioForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -929,6 +1171,8 @@ async function deleteScenarioForAction(
     .delete(zeroWorkflowTriggers)
     .where(eq(zeroWorkflowTriggers.orgId, orgId));
   signal.throwIfAborted();
+  await db.delete(storages).where(eq(storages.orgId, orgId));
+  signal.throwIfAborted();
   await db.delete(zeroWorkflows).where(eq(zeroWorkflows.orgId, orgId));
   signal.throwIfAborted();
   await db
@@ -972,6 +1216,34 @@ async function deleteScenarioForAction(
   return actionOk();
 }
 
+const workflowTriggerStateActionHandlers = {
+  "seed-scenario": seedScenarioForAction,
+  "delete-scenario": deleteScenarioForAction,
+  "seed-workflows-fixture": seedWorkflowsFixtureForAction,
+  "seed-agent-workflow": seedAgentWorkflowForAction,
+  "seed-workflow": seedWorkflowForAction,
+  "seed-workflow-storage": seedWorkflowStorageForAction,
+  "seed-instructions-storage": seedInstructionsStorageForAction,
+  "seed-trigger": seedTriggerForAction,
+  "seed-connector": seedConnectorForAction,
+  "seed-gmail-authorization": seedGmailAuthorizationForAction,
+  "seed-github-installation": seedGithubInstallationForAction,
+  "seed-github-user-link": seedGithubUserLinkForAction,
+  "set-owner-timezone": setOwnerTimezoneForAction,
+  "seed-active-run": seedActiveRunForAction,
+  "set-trigger-run-state": setTriggerRunStateForAction,
+  "get-trigger": getTriggerForAction,
+  "get-run-state": getRunStateForAction,
+  "get-workflow-state": getWorkflowStateForAction,
+  "get-gmail-watch": getGmailWatchForAction,
+  "get-google-calendar-watch": getGoogleCalendarWatchForAction,
+  "get-chat-thread": getChatThreadForAction,
+  "get-github-processed-events": getGithubProcessedEventsForAction,
+} satisfies Record<
+  WorkflowTriggerStateAction,
+  WorkflowTriggerStateActionHandler
+>;
+
 const mutateTestWorkflowTriggerState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -984,60 +1256,8 @@ const mutateTestWorkflowTriggerState$ = command(
     }
     const body = bodyResult.data as Record<string, unknown>;
     const db = set(writeDb$);
-
-    switch (bodyResult.data.action) {
-      case "seed-scenario": {
-        return await seedScenarioForAction(db, body, signal);
-      }
-      case "delete-scenario": {
-        return await deleteScenarioForAction(db, body, signal);
-      }
-      case "seed-agent-workflow": {
-        return await seedAgentWorkflowForAction(db, body, signal);
-      }
-      case "seed-trigger": {
-        return await seedTriggerForAction(db, body, signal);
-      }
-      case "seed-connector": {
-        return await seedConnectorForAction(db, body, signal);
-      }
-      case "seed-gmail-authorization": {
-        return await seedGmailAuthorizationForAction(db, body, signal);
-      }
-      case "seed-github-installation": {
-        return await seedGithubInstallationForAction(db, body, signal);
-      }
-      case "seed-github-user-link": {
-        return await seedGithubUserLinkForAction(db, body, signal);
-      }
-      case "set-owner-timezone": {
-        return await setOwnerTimezoneForAction(db, body, signal);
-      }
-      case "seed-active-run": {
-        return await seedActiveRunForAction(db, body, signal);
-      }
-      case "set-trigger-run-state": {
-        return await setTriggerRunStateForAction(db, body, signal);
-      }
-      case "get-trigger": {
-        return await getTriggerForAction(db, body, signal);
-      }
-      case "get-run-state": {
-        return await getRunStateForAction(db, body, signal);
-      }
-      case "get-workflow-state": {
-        return await getWorkflowStateForAction(db, body, signal);
-      }
-      case "get-gmail-watch": {
-        return await getGmailWatchForAction(db, body, signal);
-      }
-      case "get-google-calendar-watch": {
-        return await getGoogleCalendarWatchForAction(db, body, signal);
-      }
-      case "get-chat-thread": {
-        return await getChatThreadForAction(db, body, signal);
-      }
-    }
+    const handler = workflowTriggerStateActionHandlers[bodyResult.data.action];
+    return await handler(db, body, signal);
   },
 );
 

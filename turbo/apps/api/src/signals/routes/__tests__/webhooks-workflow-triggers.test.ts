@@ -1,25 +1,20 @@
 import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import {
-  zeroWorkflowTriggers,
-  zeroWorkflows,
-} from "@vm0/db/schema/zero-workflow";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
-import { writeDb$ } from "../../external/db";
 import {
   deleteWorkflowsForFixture$,
+  getWorkflowTriggerRunState$,
+  getWorkflowTriggerState$,
   seedAgentForInstructions$,
+  seedWorkflowActiveRun$,
   seedWorkflowsFixture$,
+  setWorkflowTriggerRunState$,
   type WorkflowsFixture,
 } from "./helpers/zero-workflows";
 import {
@@ -57,7 +52,7 @@ async function setupFixture(): Promise<{
     context.signal,
   );
   context.mocks.s3.send.mockResolvedValue({});
-  const { agentId } = await store.set(
+  const seededAgent = await store.set(
     seedAgentForInstructions$,
     {
       orgId: fixture.orgId,
@@ -76,22 +71,12 @@ async function setupFixture(): Promise<{
     },
     context.signal,
   );
-  const [workflow] = await store
-    .set(writeDb$)
-    .select({ id: zeroWorkflows.id })
-    .from(zeroWorkflows)
-    .where(
-      and(
-        eq(zeroWorkflows.orgId, fixture.orgId),
-        eq(zeroWorkflows.agentId, agentId),
-        eq(zeroWorkflows.name, WORKFLOW_NAME),
-      ),
-    );
-  if (!workflow) {
+  const workflowId = seededAgent.workflowIdsByName[WORKFLOW_NAME];
+  if (!workflowId) {
     throw new Error("Expected the agent to own the seeded workflow");
   }
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-  return { fixture, agentId, workflowId: workflow.id };
+  return { fixture, agentId: seededAgent.agentId, workflowId };
 }
 
 async function markTriggerWithActiveRun(args: {
@@ -99,32 +84,17 @@ async function markTriggerWithActiveRun(args: {
   readonly agentId: string;
   readonly triggerId: string;
 }): Promise<string> {
-  const db = store.set(writeDb$);
-  const [session] = await db
-    .insert(agentSessions)
-    .values({
-      userId: args.fixture.userId,
-      orgId: args.fixture.orgId,
-      agentComposeId: args.agentId,
-    })
-    .returning({ id: agentSessions.id });
-  const [run] = await db
-    .insert(agentRuns)
-    .values({
-      userId: args.fixture.userId,
-      orgId: args.fixture.orgId,
-      sessionId: session!.id,
-      status: "running",
-      prompt: "active event run",
-    })
-    .returning({ id: agentRuns.id });
-
-  await db
-    .update(zeroWorkflowTriggers)
-    .set({ lastRunId: run!.id })
-    .where(eq(zeroWorkflowTriggers.id, args.triggerId));
-
-  return run!.id;
+  const runId = await store.set(
+    seedWorkflowActiveRun$,
+    { fixture: args.fixture, agentId: args.agentId },
+    context.signal,
+  );
+  await store.set(
+    setWorkflowTriggerRunState$,
+    { triggerId: args.triggerId, lastRunId: runId },
+    context.signal,
+  );
+  return runId;
 }
 
 async function enableWebhookWorkflowTriggers(
@@ -220,11 +190,11 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
       throw new Error("Expected webhook dispatch response to include runId");
     }
 
-    const db = store.set(writeDb$);
-    const runsAfterFirst = await db
-      .select({ id: zeroRuns.id, triggerSource: zeroRuns.triggerSource })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.workflowTriggerId, created.body.id));
+    const runsAfterFirst = await store.set(
+      getWorkflowTriggerRunState$,
+      { triggerId: created.body.id },
+      context.signal,
+    );
     expect(runsAfterFirst).toStrictEqual([
       { id: first.body.runId, triggerSource: "workflow-event" },
     ]);
@@ -241,10 +211,11 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
       success: true,
       duplicate: true,
     });
-    const runsAfterDuplicate = await db
-      .select({ id: zeroRuns.id })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.workflowTriggerId, created.body.id));
+    const runsAfterDuplicate = await store.set(
+      getWorkflowTriggerRunState$,
+      { triggerId: created.body.id },
+      context.signal,
+    );
     expect(runsAfterDuplicate).toHaveLength(1);
   });
 
@@ -333,22 +304,20 @@ describe("POST /api/webhooks/workflow-triggers/:token", () => {
       runId: expect.any(String),
     });
 
-    const db = store.set(writeDb$);
-    const runs = await db
-      .select({ id: zeroRuns.id, triggerSource: zeroRuns.triggerSource })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.workflowTriggerId, created.body.id));
+    const runs = await store.set(
+      getWorkflowTriggerRunState$,
+      { triggerId: created.body.id },
+      context.signal,
+    );
     expect(runs).toHaveLength(1);
     expect(runs[0]?.triggerSource).toBe("workflow-event");
 
-    const [trigger] = await db
-      .select({
-        lastRunId: zeroWorkflowTriggers.lastRunId,
-        lastRunAt: zeroWorkflowTriggers.lastRunAt,
-      })
-      .from(zeroWorkflowTriggers)
-      .where(eq(zeroWorkflowTriggers.id, created.body.id));
+    const trigger = await store.set(
+      getWorkflowTriggerState$,
+      { triggerId: created.body.id },
+      context.signal,
+    );
     expect(trigger?.lastRunId).toBe(activeRunId);
-    expect(trigger?.lastRunAt).toBeInstanceOf(Date);
+    expect(trigger?.lastRunAt).toStrictEqual(expect.any(String));
   });
 });
