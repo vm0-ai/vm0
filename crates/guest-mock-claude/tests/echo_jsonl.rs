@@ -72,6 +72,16 @@ fn spawn_managed_mock_child(command: &mut Command) -> std::io::Result<ProcessGro
     ProcessGroupChild::spawn(command)
 }
 
+fn missing_child_pipe(pipe_name: &str) -> std::io::Error {
+    std::io::Error::other(format!("mock child missing {pipe_name} pipe"))
+}
+
+fn child_exit_timed_out(error: &(dyn std::error::Error + 'static)) -> bool {
+    error
+        .downcast_ref::<std::io::Error>()
+        .is_some_and(|error| error.kind() == std::io::ErrorKind::TimedOut)
+}
+
 fn run_mock_output(command: &mut Command) -> Result<Output, Box<dyn std::error::Error>> {
     command.stdout(Stdio::piped()).stderr(Stdio::piped());
     wait_child_output(spawn_managed_mock_child(command)?)
@@ -191,8 +201,14 @@ fn spawn_stream_json_child(
         .stderr(Stdio::piped());
 
     let mut child = spawn_managed_mock_child(&mut command)?;
-    let stdin = child.take_stdin().ok_or("missing stdin")?;
-    let stdout = child.take_stdout().ok_or("missing stdout")?;
+    let Some(stdin) = child.take_stdin() else {
+        child.terminate();
+        return Err(missing_child_pipe("stdin").into());
+    };
+    let Some(stdout) = child.take_stdout() else {
+        child.terminate();
+        return Err(missing_child_pipe("stdout").into());
+    };
     let (tx, rx) = mpsc::channel();
     let stdout_thread = std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
@@ -269,7 +285,10 @@ fn wait_child(
         Ok(stderr)
     });
 
-    let status = wait_child_status_and_cleanup_group(child);
+    let status = match wait_child_status_and_cleanup_group(child) {
+        Err(error) if child_exit_timed_out(error.as_ref()) => return Err(error),
+        result => result,
+    };
     let stdout_result = stdout_thread
         .join()
         .map_err(|_| std::io::Error::other("stdout reader thread panicked"));
@@ -360,8 +379,14 @@ fn wait_child_status(child: ProcessGroupChild) -> Result<ExitStatus, Box<dyn std
 }
 
 fn wait_child_output(mut child: ProcessGroupChild) -> Result<Output, Box<dyn std::error::Error>> {
-    let mut child_stdout = child.take_stdout().ok_or("missing stdout")?;
-    let mut child_stderr = child.take_stderr().ok_or("missing stderr")?;
+    let Some(mut child_stdout) = child.take_stdout() else {
+        child.terminate();
+        return Err(missing_child_pipe("stdout").into());
+    };
+    let Some(mut child_stderr) = child.take_stderr() else {
+        child.terminate();
+        return Err(missing_child_pipe("stderr").into());
+    };
     let stdout_thread = std::thread::spawn(move || -> Result<Vec<u8>, std::io::Error> {
         let mut stdout = Vec::new();
         child_stdout.read_to_end(&mut stdout)?;
@@ -373,7 +398,10 @@ fn wait_child_output(mut child: ProcessGroupChild) -> Result<Output, Box<dyn std
         Ok(stderr)
     });
 
-    let status = wait_child_status_and_cleanup_group(child);
+    let status = match wait_child_status_and_cleanup_group(child) {
+        Err(error) if child_exit_timed_out(error.as_ref()) => return Err(error),
+        result => result,
+    };
     let stdout_result = stdout_thread
         .join()
         .map_err(|_| std::io::Error::other("stdout reader thread panicked"));
