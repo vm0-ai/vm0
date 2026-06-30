@@ -12,6 +12,7 @@ import { activeRoute$ } from "./active-route.ts";
 import { reloadChatThreadsCounter$ } from "./chat-thread-list-reload.ts";
 import { clerk$ } from "./auth.ts";
 import { readThreadMeta$ } from "./external/idb-thread-meta-store.ts";
+import { chatThreadOnlyUnread$ } from "./chat-page/chat-thread-only-unread.ts";
 
 export { reloadChatThreads$ } from "./chat-thread-list-reload.ts";
 
@@ -96,9 +97,12 @@ export interface ChatThread {
   id: string;
   agentId: string;
   title: string | null;
+  createdAt?: string;
+  updatedAt?: string;
   lastReadMessageId: string | null;
   lastReadAt: string | null;
   lastMessageAt: string;
+  pinnedAt?: string | null;
   activeRunIds: string[];
   isLegacySession: boolean;
   draftContent: string | null;
@@ -124,10 +128,16 @@ const chatThreadsFirstPage$ = computed(async (get) => {
   if (!agentId) {
     return null;
   }
+  const onlyUnread = get(chatThreadOnlyUnread$);
 
   const client = get(zeroClient$)(chatThreadsContract);
   const result = await accept(
-    client.list({ query: { agentId: agentId } }),
+    client.list({
+      query: {
+        agentId: agentId,
+        ...(onlyUnread ? { filter: "unread" as const } : {}),
+      },
+    }),
     [200],
   );
   return result.body;

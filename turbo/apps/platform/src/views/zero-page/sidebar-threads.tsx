@@ -16,6 +16,7 @@ import {
   IconPin,
   IconPinnedOff,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
@@ -77,6 +78,7 @@ import {
   sidebarChatThreadsLatestCursor$,
 } from "../../signals/chat-page/sidebar-chat-threads-pagination.ts";
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   headerAutomationMenu$,
@@ -85,6 +87,10 @@ import {
 } from "../../signals/chat-page/header-automation-menu.ts";
 import { sidebarDraftThreadIds$ } from "../../signals/chat-page/sidebar-draft-threads.ts";
 import { sidebarUnreadThreadIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
+import {
+  chatThreadOnlyUnread$,
+  setChatThreadOnlyUnread$,
+} from "../../signals/chat-page/chat-thread-only-unread.ts";
 import {
   openRenameChatThreadDialog$,
   pendingDeleteThreadId$,
@@ -95,8 +101,6 @@ import {
   setRenameDialogInput$,
   sessionListCollapsed$,
   setSessionListCollapsed$,
-  sessionListUnreadOnly$,
-  setSessionListUnreadOnly$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { Link } from "../router/link.tsx";
 
@@ -754,10 +758,7 @@ function ChatThreads() {
   const pageSignal = useGet(pageSignal$);
 
   const chatThreads = useLastResolved(sidebarChatThreads$) ?? [];
-  const unreadOnly = useGet(sessionListUnreadOnly$);
-  const unreadThreadIds = useLastResolved(sidebarUnreadThreadIds$);
-  const pathParams = useGet(pathParams$);
-  const searchParams = useGet(searchParams$);
+  const unreadOnly = useGet(chatThreadOnlyUnread$);
   const firstPageHasMore = useLastResolved(chatThreadsHasMore$) ?? false;
   const firstPageNextCursor = useLastResolved(chatThreadsNextCursor$);
   const hasLoadedExtraPages =
@@ -773,18 +774,6 @@ function ChatThreads() {
   const cursorForLoadMore = hasLoadedExtraPages
     ? extraLatestCursor
     : firstPageNextCursor;
-  const currentThreadId =
-    typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
-  const sidebarThreadId = searchParams.get(SIDEBAR_PARAM);
-  const visibleChatThreads = unreadOnly
-    ? chatThreads.filter((session) => {
-        return (
-          session.id === currentThreadId ||
-          session.id === sidebarThreadId ||
-          (unreadThreadIds?.has(session.id) ?? false)
-        );
-      })
-    : chatThreads;
 
   function handleLoadMore() {
     if (!cursorForLoadMore || loadingMore) {
@@ -793,7 +782,7 @@ function ChatThreads() {
     detach(loadMore(cursorForLoadMore, pageSignal), Reason.DomCallback);
   }
 
-  if (visibleChatThreads.length === 0) {
+  if (chatThreads.length === 0) {
     return (
       <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
         {unreadOnly
@@ -804,7 +793,7 @@ function ChatThreads() {
   }
   return (
     <>
-      {visibleChatThreads.map((session) => {
+      {chatThreads.map((session) => {
         return <ChatThreadItem key={session.id} session={session} />;
       })}
       {hasMore && cursorForLoadMore && (
@@ -838,8 +827,11 @@ function ChatThreadsTitle() {
   };
   const setCollapsed = useSet(setSessionListCollapsed$);
   const collapsed = useGet(sessionListCollapsed$);
-  const unreadOnly = useGet(sessionListUnreadOnly$);
-  const setUnreadOnly = useSet(setSessionListUnreadOnly$);
+  const features = useGet(featureSwitch$);
+  const unreadFilterEnabled =
+    features[FeatureSwitchKey.AgentUnreadIndicators] ?? false;
+  const unreadOnly = useGet(chatThreadOnlyUnread$);
+  const setUnreadOnly = useSet(setChatThreadOnlyUnread$);
 
   function toggleUnreadOnly(next: boolean) {
     setUnreadOnly(next);
@@ -905,14 +897,16 @@ function ChatThreadsTitle() {
                 <IconPlus size={16} stroke={2} className="mr-2" />
                 New chat
               </DropdownMenuItem>
-              <div className="flex h-9 items-center justify-between gap-3 px-2 text-sm text-popover-foreground">
-                <span>Unread</span>
-                <Switch
-                  checked={unreadOnly}
-                  onCheckedChange={toggleUnreadOnly}
-                  aria-label="Unread"
-                />
-              </div>
+              {unreadFilterEnabled && (
+                <div className="flex h-9 items-center justify-between gap-3 px-2 text-sm text-popover-foreground">
+                  <span>Unread</span>
+                  <Switch
+                    checked={unreadOnly}
+                    onCheckedChange={toggleUnreadOnly}
+                    aria-label="Unread"
+                  />
+                </div>
+              )}
             </DropdownMenuContent>
           </DropdownMenu>
         </TooltipProvider>

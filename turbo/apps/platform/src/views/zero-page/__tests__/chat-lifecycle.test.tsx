@@ -3033,7 +3033,9 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Scheduled launch review").length,
+      ).toBeGreaterThan(0);
       expect(buttonByLabel("Automations")).toBeInTheDocument();
     });
 
