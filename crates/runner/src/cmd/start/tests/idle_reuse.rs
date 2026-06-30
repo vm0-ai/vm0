@@ -314,6 +314,53 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
         "immediate heartbeat should advertise the promoted workspace cache session",
     );
 
+    let second_gate = sandbox_mock::MockLifecycleGate::new();
+    overrides.set_wait_process_lifecycle_gate(second_gate.clone());
+    overrides.push_wait_process_exit(sandbox::ProcessExit::new(1, 1, Vec::new(), Vec::new()));
+    let second_before = env.handle.heartbeat_count();
+    let second_run_id = RunId::new_v4();
+    push_job(
+        &env,
+        second_run_id,
+        "vm0/default",
+        Some(context_with_session(second_run_id, session_id)),
+    );
+    second_gate
+        .wait_entered(1, Duration::from_secs(5))
+        .await
+        .expect("second wait_process should enter before heartbeat assertion");
+    assert!(
+        env.handle
+            .wait_heartbeat_past(second_before, Duration::from_secs(5))
+            .await,
+        "claiming a workspace-cache-only session should trigger an immediate heartbeat",
+    );
+    let post_claim_heartbeats = {
+        let heartbeats = env
+            .handle
+            .heartbeats
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        heartbeats[second_before..].to_vec()
+    };
+    assert!(
+        post_claim_heartbeats.iter().any(|heartbeat| {
+            heartbeat
+                .held_session_states
+                .iter()
+                .all(|state| state.session_id != session_id)
+        }),
+        "post-claim heartbeat should stop advertising the active workspace cache session; heartbeats: {post_claim_heartbeats:?}",
+    );
+    overrides.clear_wait_process_lifecycle_gate();
+    second_gate.release_one();
+    let second_completion = env
+        .handle
+        .wait_completion(second_run_id, Duration::from_secs(5))
+        .await
+        .expect("second job should complete");
+    assert_eq!(second_completion.exit_code, 1);
+
     shutdown(&env, run_handle).await;
 }
 

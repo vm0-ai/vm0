@@ -410,6 +410,10 @@ async fn try_reuse_from_pool(
     let took_idle_session = taken.is_some();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
     let started_at = Instant::now();
+    let claimed_workspace_cache_session = ctx
+        .spawn_ctx
+        .held_session_snapshot
+        .contains_workspace_cache_session(cli_agent_session_id);
     let held_session_states = ctx
         .spawn_ctx
         .held_session_snapshot
@@ -424,7 +428,7 @@ async fn try_reuse_from_pool(
         .provider
         .set_held_session_states(held_session_states)
         .await;
-    if took_idle_session {
+    if took_idle_session || claimed_workspace_cache_session {
         ctx.spawn_ctx.park_notify.notify_one();
     }
     pre_spawn_timing

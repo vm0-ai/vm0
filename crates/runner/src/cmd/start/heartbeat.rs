@@ -77,6 +77,12 @@ impl HeldSessionStateSnapshot {
         *self.lock_workspace_cache_states() = states;
     }
 
+    pub(super) fn contains_workspace_cache_session(&self, session_id: &str) -> bool {
+        self.lock_workspace_cache_states()
+            .iter()
+            .any(|state| state.session_id == session_id)
+    }
+
     pub(super) fn current_held_session_states(
         &self,
         idle_states: Vec<HeldSessionState>,
