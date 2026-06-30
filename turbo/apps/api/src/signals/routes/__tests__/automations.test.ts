@@ -117,7 +117,7 @@ async function enableScheduleAutomationToWorkflowTriggerSwitch(
   fixture: AutomationsFixture,
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
+    [FeatureSwitchKey.WorkflowAutomation]: true,
   });
 }
 

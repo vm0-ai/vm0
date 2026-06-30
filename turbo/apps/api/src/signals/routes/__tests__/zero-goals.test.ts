@@ -115,7 +115,7 @@ async function seedGoalApiFixture(args: {
   );
   if (args.featureEnabled) {
     await updateFeatureSwitchesForUser(context, fixture, {
-      [FeatureSwitchKey.GoalWorkflows]: true,
+      [FeatureSwitchKey.WorkflowAutomation]: true,
     });
   }
   return await track(

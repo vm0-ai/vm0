@@ -1,13 +1,11 @@
 import { randomBytes, randomUUID } from "node:crypto";
 
-import { command, computed } from "ccstate";
+import { command } from "ccstate";
 import { and, eq, inArray, lte, or, sql } from "drizzle-orm";
 import { z } from "zod";
 
 import { googleCalendarEventCreatedEventConfigSchema } from "@vm0/api-contracts/contracts/zero-workflows";
 import { refreshGoogleToken } from "@vm0/connectors/auth-providers/oauth/google";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { connectors } from "@vm0/db/schema/connector";
 import {
   googleCalendarEventSnapshots,
@@ -32,7 +30,7 @@ import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
-import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
 import {
   buildChatOnlyWorkflowTriggerCallbacks,
   runWorkflowTriggerNow$,
@@ -1047,23 +1045,6 @@ export async function ensureGoogleCalendarWatchForUser(args: {
     : { kind: "bad_request", message: registered.message };
 }
 
-export function googleCalendarWorkflowEventTriggersEnabledForOwner(
-  orgId: string,
-  userId: string,
-) {
-  return computed(async (get) => {
-    const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
-    return isFeatureEnabled(
-      FeatureSwitchKey.WorkflowGoogleCalendarEventTriggers,
-      {
-        orgId,
-        userId,
-        overrides,
-      },
-    );
-  });
-}
-
 function decodeCalendarWebhookHeaders(
   headers: Headers,
 ): GoogleCalendarWebhookNotification | { readonly kind: "bad_request" } {
@@ -1538,9 +1519,7 @@ export const dispatchGoogleCalendarWebhook$ = command(
       orgId,
       userId,
     ) => {
-      return await get(
-        googleCalendarWorkflowEventTriggersEnabledForOwner(orgId, userId),
-      );
+      return await get(workflowAutomationEnabledForOwner(orgId, userId));
     };
     const runStarterOverride = googleCalendarRunStarterOverride.get();
     const startRun: GoogleCalendarRunStarter = runStarterOverride

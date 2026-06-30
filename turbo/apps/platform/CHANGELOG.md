@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.513.0](https://github.com/vm0-ai/vm0/compare/app-v0.512.0...app-v0.513.0) (2026-06-30)
+
+
+### Features
+
+* add app auth routes ([#19398](https://github.com/vm0-ai/vm0/issues/19398)) ([b6abf82](https://github.com/vm0-ai/vm0/commit/b6abf82d99aba23ab262c1400dd9be881714285a))
+* mark all agent chats read ([#19442](https://github.com/vm0-ai/vm0/issues/19442)) ([6bd2da0](https://github.com/vm0-ai/vm0/commit/6bd2da0b2f91223211c0601c93468f5500b63dcf))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.130.0
+    * @vm0/connectors bumped to 1.117.0
+    * @vm0/core bumped to 8.379.0
+
 ## [0.512.0](https://github.com/vm0-ai/vm0/compare/app-v0.511.2...app-v0.512.0) (2026-06-30)
 
 

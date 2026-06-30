@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.130.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.13...runner-rs-v0.130.14) (2026-06-30)
+
+
+### Documentation
+
+* document runner snapshot publish contract ([#19477](https://github.com/vm0-ai/vm0/issues/19477)) ([7412194](https://github.com/vm0-ai/vm0/commit/74121940890576935986994d6691efbc82d8e68f))
+
 ## [0.130.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.12...runner-rs-v0.130.13) (2026-06-30)
 
 

@@ -85,6 +85,7 @@ import { zeroComposesRoutes } from "./routes/zero-composes";
 import { zeroComputerUseAuthorizationRoutes } from "./routes/zero-computer-use-authorization";
 import { zeroComputerUseRoutes } from "./routes/zero-computer-use";
 import { zeroCodexDeviceAuthRoutes } from "./routes/zero-codex-device-auth";
+import { zeroConnectorCatalogRoutes } from "./routes/zero-connector-catalog";
 import { zeroConnectorsExternalCodeRoutes } from "./routes/zero-connectors-external-code";
 import { zeroConnectorsOauthDeviceAuthRoutes } from "./routes/zero-connectors-oauth-device-auth";
 import { zeroConnectorsRoutes } from "./routes/zero-connectors";
@@ -152,6 +153,7 @@ import { zeroSlackConnectRoutes } from "./routes/zero-slack-connect";
 import { zeroSlackEventsRoutes } from "./routes/zero-slack-events";
 import { zeroSlackInteractiveRoutes } from "./routes/zero-slack-interactive";
 import { zeroSlackOauthRoutes } from "./routes/zero-slack-oauth";
+import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
 import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsHtmlDomEditSnapshotRoutes } from "./routes/zero-uploads-html-dom-edit-snapshot";
@@ -278,6 +280,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroComputerUseAuthorizationRoutes,
   ...zeroComputerUseRoutes,
   ...zeroCodexDeviceAuthRoutes,
+  ...zeroConnectorCatalogRoutes,
   ...zeroConnectorsExternalCodeRoutes,
   ...zeroConnectorsOauthDeviceAuthRoutes,
   ...zeroConnectorsRoutes,
@@ -336,6 +339,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroSlackCommandsRoutes,
   ...zeroSlackEventsRoutes,
   ...zeroSlackInteractiveRoutes,
+  ...zeroTeamsBotRoutes,
   ...zeroIntegrationsAgentPhoneRoutes,
   ...zeroIntegrationsPhoneDownloadFileRoutes,
   ...zeroIntegrationsPhoneMessageRoutes,

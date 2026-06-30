@@ -32,6 +32,22 @@ interface SeedChatThreadOptions {
   readonly agentAvatarUrl?: string | null;
 }
 
+type ChatThreadRunStatus =
+  | "cancelled"
+  | "completed"
+  | "failed"
+  | "pending"
+  | "queued"
+  | "running";
+
+interface SeedChatThreadRunOptions {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId: string;
+  readonly threadId: string;
+  readonly status: ChatThreadRunStatus;
+}
+
 function dateToWire(value: Date | null | undefined): string | null | undefined {
   if (value === undefined) {
     return undefined;
@@ -142,6 +158,44 @@ export const deleteZeroChatThread$ = command(
     await postAction(signal, {
       action: "delete-thread",
       fixture: fixtureToWire(fixture),
+    });
+  },
+);
+
+export const seedZeroChatThreadRun$ = command(
+  async (
+    _,
+    options: SeedChatThreadRunOptions,
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const response = await postAction(signal, {
+      action: "seed-thread-run",
+      user_id: options.userId,
+      org_id: options.orgId,
+      agent_id: options.agentId,
+      thread_id: options.threadId,
+      status: options.status,
+    });
+    if (!response.run_id) {
+      throw new Error("seedZeroChatThreadRun$: response missing run id");
+    }
+    return response.run_id;
+  },
+);
+
+export const updateZeroChatThreadRunStatus$ = command(
+  async (
+    _,
+    args: {
+      readonly runId: string;
+      readonly status: ChatThreadRunStatus;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "update-thread-run-status",
+      run_id: args.runId,
+      status: args.status,
     });
   },
 );

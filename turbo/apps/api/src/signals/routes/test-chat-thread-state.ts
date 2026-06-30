@@ -2,7 +2,10 @@ import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
 import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
-import { testChatThreadStateContract } from "@vm0/api-contracts/contracts/test-chat-thread-state";
+import {
+  testChatThreadStateContract,
+  type TestChatThreadStateActionBody,
+} from "@vm0/api-contracts/contracts/test-chat-thread-state";
 import {
   agentComposes,
   agentComposeVersions,
@@ -15,6 +18,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq, inArray } from "drizzle-orm";
 
+import { nowDate } from "../../lib/time";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
@@ -30,6 +34,10 @@ interface ChatThreadFixture {
   readonly composeId: string;
   readonly threadId: string;
 }
+
+type ChatThreadStateAction<
+  TAction extends TestChatThreadStateActionBody["action"],
+> = Extract<TestChatThreadStateActionBody, { action: TAction }>;
 
 function parseOptionalDate(value: string | null | undefined): Date | null {
   if (!value) {
@@ -179,6 +187,100 @@ async function deleteChatThreadFixture(
   signal.throwIfAborted();
 }
 
+function completedAtForRunStatus(status: string): Date | null {
+  return status === "queued" || status === "pending" || status === "running"
+    ? null
+    : nowDate();
+}
+
+async function seedThreadRun(
+  db: Db,
+  args: {
+    readonly userId: string;
+    readonly orgId: string;
+    readonly agentId: string;
+    readonly threadId: string;
+    readonly status: string;
+  },
+  signal: AbortSignal,
+): Promise<string> {
+  const [session] = await db
+    .insert(agentSessions)
+    .values({
+      userId: args.userId,
+      orgId: args.orgId,
+      agentComposeId: args.agentId,
+    })
+    .returning({ id: agentSessions.id });
+  signal.throwIfAborted();
+  if (!session) {
+    throw new Error("seedThreadRun: session insert returned no row");
+  }
+
+  const [run] = await db
+    .insert(agentRuns)
+    .values({
+      userId: args.userId,
+      orgId: args.orgId,
+      sessionId: session.id,
+      status: args.status,
+      prompt: "bdd active unread aggregate",
+      completedAt: completedAtForRunStatus(args.status),
+    })
+    .returning({ id: agentRuns.id });
+  signal.throwIfAborted();
+  if (!run) {
+    throw new Error("seedThreadRun: run insert returned no row");
+  }
+
+  await db.insert(zeroRuns).values({
+    id: run.id,
+    triggerSource: "web",
+    chatThreadId: args.threadId,
+  });
+  signal.throwIfAborted();
+
+  return run.id;
+}
+
+async function seedThreadRunForAction(
+  db: Db,
+  body: ChatThreadStateAction<"seed-thread-run">,
+  signal: AbortSignal,
+) {
+  const runId = await seedThreadRun(
+    db,
+    {
+      userId: body.user_id,
+      orgId: body.org_id,
+      agentId: body.agent_id,
+      threadId: body.thread_id,
+      status: body.status,
+    },
+    signal,
+  );
+  return {
+    status: 200 as const,
+    body: { ok: true as const, run_id: runId },
+  };
+}
+
+async function updateThreadRunStatusForAction(
+  db: Db,
+  body: ChatThreadStateAction<"update-thread-run-status">,
+  signal: AbortSignal,
+) {
+  await db
+    .update(agentRuns)
+    .set({
+      status: body.status,
+      completedAt: completedAtForRunStatus(body.status),
+    })
+    .where(eq(agentRuns.id, body.run_id));
+  signal.throwIfAborted();
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
 const actionBody$ = bodyResultOf(testChatThreadStateContract.action);
 
 const mutateTestChatThreadState$ = command(
@@ -236,6 +338,12 @@ const mutateTestChatThreadState$ = command(
           signal,
         );
         return { status: 200 as const, body: { ok: true as const } };
+      }
+      case "seed-thread-run": {
+        return await seedThreadRunForAction(db, body, signal);
+      }
+      case "update-thread-run-status": {
+        return await updateThreadRunStatusForAction(db, body, signal);
       }
     }
   },

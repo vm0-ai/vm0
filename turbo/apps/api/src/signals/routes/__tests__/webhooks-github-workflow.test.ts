@@ -47,7 +47,7 @@ async function enableGithubWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowGithubLabelEventTriggers]: true,
+    [FeatureSwitchKey.WorkflowAutomation]: true,
   });
 }
 

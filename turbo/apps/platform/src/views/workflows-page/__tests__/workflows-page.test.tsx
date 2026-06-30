@@ -27,10 +27,7 @@ import {
   patchWorkflowMetadataForm$,
   setWorkflowFileDraft$,
 } from "../../../signals/workflows-page/workflows-signals.ts";
-import {
-  mockChatLifecycle,
-  PLACEHOLDER,
-} from "../../zero-page/__tests__/chat-test-helpers.ts";
+import { mockChatLifecycle } from "../../zero-page/__tests__/chat-test-helpers.ts";
 import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../zero-page/workflow-trigger-automations-page.tsx";
 
 const context = testContext();
@@ -64,9 +61,28 @@ function detachedSetupWorkflowDetailPage(
     context,
     path,
     featureSwitches: {
-      [FeatureSwitchKey.WorkflowsViewer]: true,
+      [FeatureSwitchKey.WorkflowAutomation]: true,
       ...featureSwitches,
     },
+  });
+}
+
+async function findComposerEditor(): Promise<HTMLElement> {
+  return await waitFor(() => {
+    const editor = document.querySelector(
+      '.zero-composer [contenteditable="true"]',
+    );
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error("Composer editor not found");
+    }
+    return editor;
+  });
+}
+
+async function expectComposerText(text: string): Promise<void> {
+  const editor = await findComposerEditor();
+  await waitFor(() => {
+    expect(editor.textContent).toContain(text);
   });
 }
 
@@ -727,7 +743,7 @@ describe("workflows routes", () => {
     detachedSetupPage({
       context,
       path: "/workflows",
-      featureSwitches: { [FeatureSwitchKey.WorkflowsViewer]: false },
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
     });
 
     await waitFor(() => {
@@ -742,7 +758,7 @@ describe("workflows routes", () => {
     detachedSetupPage({
       context,
       path: `/workflows/${SALES_WORKFLOW_ID}`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowsViewer]: false },
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
     });
 
     await waitFor(() => {
@@ -764,7 +780,7 @@ describe("workflows routes", () => {
     detachedSetupPage({
       context,
       path: "/workflows",
-      featureSwitches: { [FeatureSwitchKey.WorkflowsViewer]: true },
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     await waitFor(() => {
@@ -801,12 +817,10 @@ describe("workflows routes", () => {
     await waitFor(() => {
       expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
     });
-    await expect(
-      screen.findByDisplayValue(CREATE_WORKFLOW_WITH_CHAT_PROMPT),
-    ).resolves.toBeInTheDocument();
+    await expectComposerText(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
   });
 
-  it("shows the agent's workflows tab and links into the workspace detail page", async () => {
+  it("redirects the legacy agent workflows tab when workflow automation is enabled", async () => {
     mockAgentPageApis();
     mockWorkflowApis([
       salesResearch(),
@@ -818,49 +832,15 @@ describe("workflows routes", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}?tab=workflows`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowsViewer]: true },
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+      expect(pathname()).toBe(`/agents/${AGENT_ID}`);
+      expect(search()).toBe("");
     });
-    expect(screen.getByText("Launch Checklist")).toBeInTheDocument();
-    expect(screen.getByText("Ops Playbook")).toBeInTheDocument();
-    expect(screen.queryByText("Support Intake")).not.toBeInTheDocument();
-    expect(screen.queryByLabelText("Search workflows")).not.toBeInTheDocument();
-
-    for (const title of [
-      "Sales Research",
-      "Launch Checklist",
-      "Ops Playbook",
-    ]) {
-      const cardLink = screen.getByText(title).closest("a");
-      if (!cardLink) {
-        throw new Error(`${title} workflow card link not found`);
-      }
-      expect(within(cardLink).getByText("Test User")).toBeInTheDocument();
-    }
-
-    const pendingHeading = screen.getByRole("heading", {
-      name: "Pending review",
-    });
-    const publicHeading = screen.getByRole("heading", { name: "Public" });
-    const privateHeading = screen.getByRole("heading", { name: "Private" });
-    expect(
-      Boolean(
-        pendingHeading.compareDocumentPosition(publicHeading) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-      ),
-    ).toBeTruthy();
-    expect(
-      Boolean(
-        publicHeading.compareDocumentPosition(privateHeading) &
-        Node.DOCUMENT_POSITION_FOLLOWING,
-      ),
-    ).toBeTruthy();
-
-    const opsLink = screen.getByText("Ops Playbook").closest("a");
-    expect(opsLink).toHaveAttribute("href", `/workflows/${OPS_WORKFLOW_ID}`);
+    expect(screen.queryByText("Sales Research")).not.toBeInTheDocument();
+    expect(screen.queryByText("Launch Checklist")).not.toBeInTheDocument();
   });
 });
 
@@ -974,12 +954,9 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(openedWorkflowIds).toStrictEqual([SALES_WORKFLOW_ID]);
     });
-    const textarea = await waitFor(() => {
-      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
-    });
     expect(pathname()).toBe(`/chats/${WORKFLOW_CHAT_THREAD_ID}`);
     expect(search()).toBe("");
-    expect(textarea).toHaveValue("/sales-research");
+    await expectComposerText("/sales-research");
   });
 
   it("orders workflow info sections with audit metadata last", async () => {
@@ -1474,7 +1451,7 @@ describe("workflow detail page", () => {
     });
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
-      [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
+      [FeatureSwitchKey.WorkflowAutomation]: true,
     });
 
     await waitFor(() => {

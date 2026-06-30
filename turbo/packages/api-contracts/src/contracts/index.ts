@@ -1139,6 +1139,21 @@ export {
   type ZeroConnectorsSearchContract,
 } from "./zero-connectors";
 export {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogAuthMethodDetail,
+  type PublicConnectorCatalogAuthMethodSummary,
+  type PublicConnectorCatalogDetail,
+  type PublicConnectorCatalogDetailResponse,
+  type PublicConnectorCatalogItem,
+  type PublicConnectorCatalogListResponse,
+  type PublicConnectorCatalogManualField,
+  type PublicConnectorCatalogPermissionDetail,
+  type PublicConnectorCatalogPermissionDetailResponse,
+  type PublicConnectorCatalogPermissionSummary,
+  type PublicConnectorCatalogStartOption,
+  type ZeroConnectorCatalogContract,
+} from "./zero-connector-catalog";
+export {
   codexDeviceAuthScopeSchema,
   zeroCodexDeviceAuthContract,
   type CodexDeviceAuthScope,
@@ -1432,6 +1447,14 @@ export {
   zeroSlackEventsContract,
   type ZeroSlackEventsContract,
 } from "./zero-slack-events";
+export {
+  zeroTeamsBotContract,
+  teamsInboundActivitySchema,
+  teamsBotIngressResponseSchema,
+  type TeamsInboundActivity,
+  type TeamsBotIngressResponse,
+  type ZeroTeamsBotContract,
+} from "./zero-teams-bot";
 export {
   zeroSlackInteractiveContract,
   type ZeroSlackInteractiveContract,

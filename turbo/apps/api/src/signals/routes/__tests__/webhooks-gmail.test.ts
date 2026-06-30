@@ -315,7 +315,7 @@ async function enableGmailWorkflowTriggers(
   actor: ApiTestUser & { readonly orgId: string },
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, actor, {
-    [FeatureSwitchKey.WorkflowGmailEventTriggers]: true,
+    [FeatureSwitchKey.WorkflowAutomation]: true,
   });
 }
 

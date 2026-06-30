@@ -824,7 +824,7 @@ function JobPermissionsTab({
 
 function JobAutomationsTab({ displayName }: { displayName: string }) {
   const features = useLastResolved(featureSwitch$);
-  if (features?.[FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]) {
+  if (features?.[FeatureSwitchKey.WorkflowAutomation]) {
     return null;
   }
 
@@ -1142,11 +1142,11 @@ function useTabVisibility(agentId: string, ownerId: string) {
   const setActiveTab = useSet(setAgentActiveTab$);
   const features = useLastResolved(featureSwitch$);
   const showAutomations = !(
-    features?.[FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger] ??
-    false
+    features?.[FeatureSwitchKey.WorkflowAutomation] ?? false
   );
   const showWorkflows =
-    showAutomations && (features?.[FeatureSwitchKey.WorkflowsViewer] ?? false);
+    showAutomations &&
+    (features?.[FeatureSwitchKey.WorkflowAutomation] ?? false);
   const hideProfileAndInstructions = !isAdmin && !isOwner;
   const activeTab = resolveVisibleTab(
     rawTab,

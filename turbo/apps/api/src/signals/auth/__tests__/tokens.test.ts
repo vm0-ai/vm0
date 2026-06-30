@@ -144,7 +144,7 @@ describe("auth tokens", () => {
     );
   });
 
-  it("gates goal capabilities behind the goal workflows feature switch", () => {
+  it("gates goal capabilities behind the workflow automation feature switch", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
     const staffOrgToken = generateZeroToken(
       "user_zero",
@@ -155,7 +155,7 @@ describe("auth tokens", () => {
       "user_zero",
       "run_zero",
       "org_zero",
-      { [FeatureSwitchKey.GoalWorkflows]: true },
+      { [FeatureSwitchKey.WorkflowAutomation]: true },
     );
 
     expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
@@ -188,14 +188,14 @@ describe("auth tokens", () => {
       "user_zero",
       "run_zero",
       "org_zero",
-      { [FeatureSwitchKey.GoalWorkflows]: true },
+      { [FeatureSwitchKey.WorkflowAutomation]: true },
       { triggerSource: "web" },
     );
     const continuationToken = generateZeroToken(
       "user_zero",
       "run_zero",
       "org_zero",
-      { [FeatureSwitchKey.GoalWorkflows]: true },
+      { [FeatureSwitchKey.WorkflowAutomation]: true },
       { triggerSource: "workflow-event" },
     );
 

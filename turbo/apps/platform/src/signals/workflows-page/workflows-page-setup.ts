@@ -17,7 +17,7 @@ export const setupWorkflowsPage$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const features = await get(featureSwitch$);
     signal.throwIfAborted();
-    if (!features[FeatureSwitchKey.WorkflowsViewer]) {
+    if (!features[FeatureSwitchKey.WorkflowAutomation]) {
       set(detachedNavigateTo$, ROUTES.home, { replace: true });
       return;
     }

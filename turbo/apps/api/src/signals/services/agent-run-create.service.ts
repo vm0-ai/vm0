@@ -583,7 +583,7 @@ function buildSystemSkillVolumes(
   framework: SupportedFramework,
   goalSeedEnabled: boolean,
 ): readonly AdditionalVolume[] {
-  // The `goal` skill is mounted only when the GoalWorkflows switch is on, so it
+  // The `goal` skill is mounted only when workflow automation is on, so it
   // is appended here rather than living in the always-on SEED_SKILLS list.
   const seedNames = goalSeedEnabled
     ? [...SEED_SKILLS, GOAL_SKILL_NAME]
@@ -4318,7 +4318,7 @@ async function buildStoredExecutionContext(args: {
       disallowedTools: withBuiltinGoalDisabled(
         args.body.disallowedTools,
         isFeatureEnabled(
-          FeatureSwitchKey.GoalWorkflows,
+          FeatureSwitchKey.WorkflowAutomation,
           args.featureSwitchContext,
         ),
       ),
@@ -5285,7 +5285,7 @@ function preparedRunAdditionalVolumes(args: {
       },
       args.framework,
       isFeatureEnabled(
-        FeatureSwitchKey.GoalWorkflows,
+        FeatureSwitchKey.WorkflowAutomation,
         args.featureSwitchContext,
       ),
     ),

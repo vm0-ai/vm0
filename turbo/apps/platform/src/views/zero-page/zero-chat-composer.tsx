@@ -5893,7 +5893,7 @@ function ComposerInputSlot({
 }) {
   const features = useLastResolved(featureSwitch$);
   const slashWorkflowCommandsEnabled =
-    features?.[FeatureSwitchKey.ChatSlashWorkflowCommands] ?? false;
+    features?.[FeatureSwitchKey.WorkflowAutomation] ?? false;
   const singleLineOnMobile = enableMobileSingleLine;
 
   if (slashWorkflowCommandsEnabled) {

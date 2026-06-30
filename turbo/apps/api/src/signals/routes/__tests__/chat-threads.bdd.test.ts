@@ -45,6 +45,10 @@ import {
   seedUsagePricing$,
   setUsageOrgTier$,
 } from "./helpers/zero-usage";
+import {
+  seedZeroChatThreadRun$,
+  updateZeroChatThreadRunStatus$,
+} from "./helpers/zero-chat-threads";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 /**
@@ -78,7 +82,6 @@ const MODEL_FIRST_SELECTION_PROVIDER_ID =
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
 type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
-
 interface EntitledChatActor {
   readonly actor: ApiTestUser;
   readonly agentId: string;
@@ -981,6 +984,37 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     await connectorsApi.updateFeatureSwitches(owner, {
       [FeatureSwitchKey.AgentUnreadIndicators]: true,
     });
+    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
+
+    const activeUnreadThread = await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      prompt: "unread aggregate with active run",
+    });
+    if (!owner.orgId) {
+      throw new Error("Expected owner to belong to an org");
+    }
+    const activeRunId = await store.set(
+      seedZeroChatThreadRun$,
+      {
+        userId: owner.userId,
+        orgId: owner.orgId,
+        agentId: agentA.agentId,
+        threadId: activeUnreadThread,
+        status: "running",
+      },
+      context.signal,
+    );
+    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
+
+    await store.set(
+      updateZeroChatThreadRunStatus$,
+      { runId: activeRunId, status: "completed" },
+      context.signal,
+    );
+    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([
+      agentA.agentId,
+    ]);
+    await chat.markThreadRead(owner, activeUnreadThread);
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
 
     const threadA = await sendNoCreditMessage(owner, {
