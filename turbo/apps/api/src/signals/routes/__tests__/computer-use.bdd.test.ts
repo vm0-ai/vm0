@@ -1,24 +1,17 @@
 import { randomUUID } from "node:crypto";
 
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import type {
+  TestComputerUseStateGetResponse,
+  TestComputerUseStatePostResponse,
+} from "@vm0/api-contracts/contracts/test-computer-use-state";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
-import { writeDb$ } from "../../external/db";
+import { testComputerUseStateRoutes } from "../test-computer-use-state";
 import {
   createBddApi,
   expectApiError,
@@ -29,6 +22,8 @@ import {
   zeroComputerUseToken,
 } from "./helpers/api-bdd-computer-use";
 import { mockClerkMembership } from "./helpers/api-bdd-github";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { createFixtureTracker } from "./helpers/zero-route-test";
 
 /*
  * FILE-03 timing notes:
@@ -46,7 +41,7 @@ import { mockClerkMembership } from "./helpers/api-bdd-github";
 const context = testContext();
 const bdd = createBddApi(context);
 const api = createComputerUseBddApi(context);
-const store = createStore();
+const COMPUTER_USE_STATE_ROUTE = "/api/test/computer-use-state";
 
 afterEach(() => {
   clearMockNow();
@@ -62,114 +57,86 @@ function requireOrg(actor: ApiTestUser): string {
 async function enableComputerUseDelegatedAuthorization(
   actor: ApiTestUser,
 ): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(userFeatureSwitches).values({
-    orgId: requireOrg(actor),
-    userId: actor.userId,
-    switches: { [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: true },
-  });
+  await updateFeatureSwitchesForUser(
+    context,
+    {
+      userId: actor.userId,
+      orgId: requireOrg(actor),
+      orgRole: actor.orgRole,
+    },
+    {
+      [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: true,
+    },
+  );
 }
 
-async function seedZeroRun(args: {
-  readonly actor: ApiTestUser;
-  readonly triggerSource: "web" | "slack";
-}): Promise<{
+interface ComputerUseRunFixture {
   readonly composeId: string;
   readonly runId: string;
   readonly sessionId: string;
   readonly threadId: string | null;
-}> {
-  const writeDb = store.set(writeDb$);
-  const orgId = requireOrg(args.actor);
-  const composeId = randomUUID();
-  const sessionId = randomUUID();
-  const runId = randomUUID();
-  const threadId = args.triggerSource === "web" ? randomUUID() : null;
-
-  await writeDb.insert(agentComposes).values({
-    id: composeId,
-    userId: args.actor.userId,
-    orgId,
-    name: `computer-use-auth-${composeId.slice(0, 8)}`,
-  });
-
-  if (threadId) {
-    await writeDb.insert(chatThreads).values({
-      id: threadId,
-      userId: args.actor.userId,
-      agentComposeId: composeId,
-      title: "Computer Use authorization test",
-    });
-  }
-
-  await writeDb.insert(agentSessions).values({
-    id: sessionId,
-    userId: args.actor.userId,
-    orgId,
-    agentComposeId: composeId,
-  });
-  await writeDb.insert(agentRuns).values({
-    id: runId,
-    userId: args.actor.userId,
-    orgId,
-    sessionId,
-    status: "running",
-    prompt: "Need Computer Use",
-  });
-  await writeDb.insert(zeroRuns).values({
-    id: runId,
-    triggerSource: args.triggerSource,
-    chatThreadId: threadId,
-  });
-
-  return { composeId, runId, sessionId, threadId };
+  readonly slack: TestComputerUseStatePostResponse["slack"];
 }
 
-async function seedSlackContext(args: {
+function requestComputerUseState(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: testComputerUseStateRoutes,
+  });
+  return Promise.resolve(app.request(path, init));
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+async function deleteComputerUseRunFixture(
+  fixture: ComputerUseRunFixture,
+): Promise<void> {
+  await requestComputerUseState(
+    `${COMPUTER_USE_STATE_ROUTE}?run_id=${encodeURIComponent(fixture.runId)}`,
+    { method: "DELETE" },
+  );
+}
+
+const trackComputerUseRun = createFixtureTracker(deleteComputerUseRunFixture);
+
+async function seedZeroRun(args: {
   readonly actor: ApiTestUser;
-  readonly runId: string;
-  readonly composeId: string;
-}): Promise<{
-  readonly connectionId: string;
-  readonly channelId: string;
-  readonly threadTs: string;
-}> {
-  const writeDb = store.set(writeDb$);
-  const orgId = requireOrg(args.actor);
-  const workspaceId = `T${randomUUID().replaceAll("-", "").slice(0, 10)}`;
-  const slackUserId = `U${randomUUID().replaceAll("-", "").slice(0, 10)}`;
-  const channelId = `C${randomUUID().replaceAll("-", "").slice(0, 10)}`;
-  const threadTs = "1710000000.000100";
-  const connectionId = randomUUID();
+  readonly triggerSource: "web" | "slack";
+}): Promise<ComputerUseRunFixture> {
+  const response = await requestComputerUseState(COMPUTER_USE_STATE_ROUTE, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      user_id: args.actor.userId,
+      org_id: requireOrg(args.actor),
+      trigger_source: args.triggerSource,
+    }),
+  });
+  expect(response.status).toBe(200);
+  const body = await readJson<TestComputerUseStatePostResponse>(response);
+  const fixture = {
+    composeId: body.compose_id,
+    runId: body.run_id,
+    sessionId: body.session_id,
+    threadId: body.thread_id,
+    slack: body.slack,
+  };
+  return await trackComputerUseRun(Promise.resolve(fixture));
+}
 
-  await writeDb.insert(slackOrgInstallations).values({
-    slackWorkspaceId: workspaceId,
-    slackWorkspaceName: "Computer Use Auth Workspace",
-    orgId,
-    encryptedBotToken: "encrypted-bot-token",
-    botUserId: "U_BOT_TEST",
-  });
-  await writeDb.insert(slackOrgConnections).values({
-    id: connectionId,
-    slackWorkspaceId: workspaceId,
-    slackUserId,
-    vm0UserId: args.actor.userId,
-  });
-  await writeDb.insert(agentRunCallbacks).values({
-    runId: args.runId,
-    internalKind: "slack:org",
-    encryptedSecret: "encrypted-callback-secret",
-    payload: {
-      workspaceId,
-      channelId,
-      threadTs,
-      messageTs: threadTs,
-      connectionId,
-      agentId: args.composeId,
-    },
-  });
-
-  return { connectionId, channelId, threadTs };
+async function readComputerUseRunState(
+  runId: string,
+): Promise<TestComputerUseStateGetResponse> {
+  const response = await requestComputerUseState(
+    `${COMPUTER_USE_STATE_ROUTE}?run_id=${encodeURIComponent(runId)}`,
+  );
+  expect(response.status).toBe(200);
+  return await readJson<TestComputerUseStateGetResponse>(response);
 }
 
 function requestTokenFromUrl(authorizationUrl: string): string {
@@ -270,12 +237,10 @@ describe("FILE-03 desktop computer-use runtime", () => {
       computerUseHostId: host.hostId,
     });
 
-    const writeDb = store.set(writeDb$);
-    const [thread] = await writeDb
-      .select({ computerUseHostId: chatThreads.computerUseHostId })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, run.threadId));
-    expect(thread).toStrictEqual({ computerUseHostId: host.hostId });
+    await expect(readComputerUseRunState(run.runId)).resolves.toStrictEqual({
+      source: "web",
+      computer_use_host_id: host.hostId,
+    });
 
     const completed = await api.readComputerUseAuthorizationRequest(
       actor,
@@ -360,12 +325,10 @@ describe("FILE-03 desktop computer-use runtime", () => {
       computerUseHostId: onlineHost.hostId,
     });
 
-    const writeDb = store.set(writeDb$);
-    const [thread] = await writeDb
-      .select({ computerUseHostId: chatThreads.computerUseHostId })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, run.threadId));
-    expect(thread).toStrictEqual({ computerUseHostId: onlineHost.hostId });
+    await expect(readComputerUseRunState(run.runId)).resolves.toStrictEqual({
+      source: "web",
+      computer_use_host_id: onlineHost.hostId,
+    });
   });
 
   it("creates a delegated authorization link and applies the selected host to the Slack thread", async () => {
@@ -373,11 +336,6 @@ describe("FILE-03 desktop computer-use runtime", () => {
     const actor = bdd.user({ orgId });
     await enableComputerUseDelegatedAuthorization(actor);
     const run = await seedZeroRun({ actor, triggerSource: "slack" });
-    const slack = await seedSlackContext({
-      actor,
-      runId: run.runId,
-      composeId: run.composeId,
-    });
 
     const host = await api.startComputerUseHost(actor, {
       hostName: "Slack Desktop",
@@ -407,18 +365,10 @@ describe("FILE-03 desktop computer-use runtime", () => {
       computerUseHostId: host.hostId,
     });
 
-    const writeDb = store.set(writeDb$);
-    const [threadSession] = await writeDb
-      .select({ computerUseHostId: slackOrgThreadSessions.computerUseHostId })
-      .from(slackOrgThreadSessions)
-      .where(
-        and(
-          eq(slackOrgThreadSessions.connectionId, slack.connectionId),
-          eq(slackOrgThreadSessions.slackChannelId, slack.channelId),
-          eq(slackOrgThreadSessions.slackThreadTs, slack.threadTs),
-        ),
-      );
-    expect(threadSession).toStrictEqual({ computerUseHostId: host.hostId });
+    await expect(readComputerUseRunState(run.runId)).resolves.toStrictEqual({
+      source: "slack",
+      computer_use_host_id: host.hostId,
+    });
   });
 
   it("chains host start, command claim, completion, audit, and host deletion", async () => {

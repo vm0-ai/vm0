@@ -13,11 +13,11 @@ export const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v1";
 const { set$: setFeatureSwitchLocalStorage$, get$: featureSwitchCache$ } =
   localStorageSignals(FEATURE_SWITCH_CACHE_KEY);
 
-// Pinned to the web backend: feature switches bootstrap before the platform API
-// client is available, and this keeps Lab overrides on the web origin.
-const webFeatureSwitchClient$ = computed((get) => {
+// Pinned to the API backend: feature switches bootstrap before the platform API
+// client is available.
+const apiFeatureSwitchClient$ = computed((get) => {
   return createAuthedContractClient(zeroFeatureSwitchesContract, {
-    baseUrl: resolveApiBaseForTarget("www"),
+    baseUrl: resolveApiBaseForTarget("api"),
     getClerk: () => {
       return get(clerk$);
     },
@@ -59,7 +59,7 @@ export const reloadFeatureSwitch$ = command(
       return;
     }
 
-    const client = get(webFeatureSwitchClient$);
+    const client = get(apiFeatureSwitchClient$);
     const result = await accept(
       client.get({ fetchOptions: { signal } }),
       [200],
@@ -83,7 +83,7 @@ export const setFeatureSwitch$ = command(
     overrides: Partial<Record<FeatureSwitchKey, boolean>>,
     signal: AbortSignal,
   ) => {
-    const client = get(webFeatureSwitchClient$);
+    const client = get(apiFeatureSwitchClient$);
     signal.throwIfAborted();
     await accept(
       client.update({
@@ -99,7 +99,7 @@ export const setFeatureSwitch$ = command(
 
 export const resetFeatureSwitches$ = command(
   async ({ get, set }, signal: AbortSignal) => {
-    const client = get(webFeatureSwitchClient$);
+    const client = get(apiFeatureSwitchClient$);
     signal.throwIfAborted();
     await accept(client.delete({ fetchOptions: { signal } }), [200]);
     signal.throwIfAborted();

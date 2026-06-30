@@ -24,8 +24,20 @@ export type ZeroClientFactory = <T extends AppRouter>(
   options?: ZeroClientOptions,
 ) => InitClientReturn<T, InitClientArgs>;
 
+declare const oauthWebApiBaseBrand: unique symbol;
+
+type OAuthWebApiBase = "www" & {
+  readonly [oauthWebApiBaseBrand]: true;
+};
+
+/**
+ * Web-origin API base is reserved for OAuth and web-origin handoff flows only.
+ * Normal platform API calls should use the default API backend or `apiBase: "api"`.
+ */
+export const OAUTH_WEB_API_BASE = "www" as OAuthWebApiBase;
+
 export interface ZeroClientOptions {
-  readonly apiBase?: "auto" | "api" | "www";
+  readonly apiBase?: "auto" | "api" | OAuthWebApiBase;
 }
 
 function rebaseApiPath(path: string, apiBase: string): string {
@@ -62,8 +74,11 @@ export const zeroClient$ = computed((get) => {
         if (options?.apiBase === "api") {
           return rebaseApiPath(path, resolveApiBaseForTarget("api"));
         }
-        if (options?.apiBase === "www") {
-          return rebaseApiPath(path, resolveApiBaseForTarget("www"));
+        if (options?.apiBase === OAUTH_WEB_API_BASE) {
+          return rebaseApiPath(
+            path,
+            resolveApiBaseForTarget(OAUTH_WEB_API_BASE),
+          );
         }
         return rebaseApiPath(path, resolveApiBase());
       },

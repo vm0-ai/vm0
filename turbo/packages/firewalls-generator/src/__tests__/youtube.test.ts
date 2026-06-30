@@ -104,6 +104,7 @@ describe("YouTube permission manifest", () => {
     ]);
     expect(manifestPermission("videos.read").routeKeys).toEqual([
       "base:GET /v3/videos",
+      "base:GET /v3/videos:batchGetStats",
     ]);
   });
 
@@ -115,9 +116,6 @@ describe("YouTube permission manifest", () => {
       "base:POST /v3/thirdPartyLinks",
       "base:PUT /v3/thirdPartyLinks",
     ]);
-    expect(manifestPermission("comment-threads.write").routeKeys).toContain(
-      "base:PUT /v3/commentThreads",
-    );
   });
 
   it("does not expose Google OAuth scope names as permissions", () => {

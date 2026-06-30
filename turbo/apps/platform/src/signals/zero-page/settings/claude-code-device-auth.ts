@@ -100,7 +100,7 @@ function isActive(
 const startClaudeCodeDeviceAuth$ = command(
   async ({ get }, scope: ClaudeCodeDeviceAuthScope, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroClaudeCodeDeviceAuthContract, {
-      apiBase: "www",
+      apiBase: "api",
     });
     const result = await accept(
       client.start({
@@ -122,7 +122,7 @@ const completeClaudeCodeDeviceAuth$ = command(
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(zeroClaudeCodeDeviceAuthContract, {
-      apiBase: "www",
+      apiBase: "api",
     });
     const result = await accept(
       client.complete({
@@ -143,7 +143,7 @@ const completeClaudeCodeDeviceAuth$ = command(
 const cancelClaudeCodeDeviceAuth$ = command(
   async ({ get }, sessionToken: string, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroClaudeCodeDeviceAuthContract, {
-      apiBase: "www",
+      apiBase: "api",
     });
     const result = await accept(
       client.cancel({

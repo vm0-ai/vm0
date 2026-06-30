@@ -1,7 +1,9 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroMemoryActivityContract } from "@vm0/api-contracts/contracts/zero-memory-activity";
-import type { MemoryChangeDiff } from "@vm0/db/schema/memory-change-item";
+import {
+  zeroMemoryActivityContract,
+  type MemoryActivityResponse,
+} from "@vm0/api-contracts/contracts/zero-memory-activity";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
@@ -20,6 +22,9 @@ const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
+type MemoryActivityDiff =
+  MemoryActivityResponse["entries"][number]["items"][number]["diff"];
+
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
@@ -28,7 +33,7 @@ function activityClient() {
   return setupApp({ context })(zeroMemoryActivityContract);
 }
 
-function addedDiff(text: string): MemoryChangeDiff {
+function addedDiff(text: string): MemoryActivityDiff {
   return {
     format: "line",
     beforeExists: false,
@@ -45,7 +50,7 @@ function addedDiff(text: string): MemoryChangeDiff {
   };
 }
 
-function removedDiff(text: string): MemoryChangeDiff {
+function removedDiff(text: string): MemoryActivityDiff {
   return {
     format: "line",
     beforeExists: true,
@@ -62,7 +67,10 @@ function removedDiff(text: string): MemoryChangeDiff {
   };
 }
 
-function updatedDiff(beforeText: string, afterText: string): MemoryChangeDiff {
+function updatedDiff(
+  beforeText: string,
+  afterText: string,
+): MemoryActivityDiff {
   return {
     format: "line",
     beforeExists: true,

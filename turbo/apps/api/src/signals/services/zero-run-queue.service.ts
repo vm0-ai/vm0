@@ -158,7 +158,7 @@ async function insertPromotedRunnerJob(
       ...args.payload.executionContext,
       apiStartTime: promotedAt,
     },
-    expiresAt: new Date(promotedAt + 2 * 60 * 60 * 1000),
+    expiresAt: sql`now() + interval '2 hours'`,
   });
 }
 

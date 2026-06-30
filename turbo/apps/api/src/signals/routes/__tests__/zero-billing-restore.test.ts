@@ -1,13 +1,13 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroBillingRestoreContract } from "@vm0/api-contracts/contracts/zero-billing";
+import {
+  zeroBillingRestoreContract,
+  zeroBillingStatusContract,
+} from "@vm0/api-contracts/contracts/zero-billing";
 import { createStore } from "ccstate";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
-import { writeDb$ } from "../../external/db";
 import {
   deleteInvoicesOrg$,
   seedInvoicesOrg$,
@@ -32,6 +32,15 @@ function mockSubscriptionWithPaymentMethod(
     customer: customerId,
     default_payment_method: "pm_test",
   });
+}
+
+async function readBillingStatus() {
+  return await accept(
+    setupApp({ context })(zeroBillingStatusContract).get({
+      headers: { authorization: "Bearer clerk-session" },
+    }),
+    [200],
+  );
 }
 
 describe("POST /api/zero/billing/restore", () => {
@@ -191,23 +200,9 @@ describe("POST /api/zero/billing/restore", () => {
       { cancel_at_period_end: false },
     );
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
-        pendingSubscriptionScheduleId:
-          orgMetadata.pendingSubscriptionScheduleId,
-        pendingSubscriptionTargetTier:
-          orgMetadata.pendingSubscriptionTargetTier,
-        pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId))
-      .limit(1);
-    expect(row?.cancelAtPeriodEnd).toBeFalsy();
-    expect(row?.pendingSubscriptionScheduleId).toBeNull();
-    expect(row?.pendingSubscriptionTargetTier).toBeNull();
-    expect(row?.pendingSubscriptionChangeAt).toBeNull();
+    const status = await readBillingStatus();
+    expect(status.body.cancelAtPeriodEnd).toBeFalsy();
+    expect(status.body.scheduledChange).toBeNull();
   });
 
   it("restores a scheduled downgrade by releasing its subscription schedule", async () => {
@@ -252,23 +247,9 @@ describe("POST /api/zero/billing/restore", () => {
     ).toHaveBeenCalledWith(scheduleId);
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
 
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({
-        cancelAtPeriodEnd: orgMetadata.cancelAtPeriodEnd,
-        pendingSubscriptionScheduleId:
-          orgMetadata.pendingSubscriptionScheduleId,
-        pendingSubscriptionTargetTier:
-          orgMetadata.pendingSubscriptionTargetTier,
-        pendingSubscriptionChangeAt: orgMetadata.pendingSubscriptionChangeAt,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId))
-      .limit(1);
-    expect(row?.cancelAtPeriodEnd).toBeFalsy();
-    expect(row?.pendingSubscriptionScheduleId).toBeNull();
-    expect(row?.pendingSubscriptionTargetTier).toBeNull();
-    expect(row?.pendingSubscriptionChangeAt).toBeNull();
+    const status = await readBillingStatus();
+    expect(status.body.cancelAtPeriodEnd).toBeFalsy();
+    expect(status.body.scheduledChange).toBeNull();
   });
 
   it("returns setup checkout URL when restore requires a payment method", async () => {

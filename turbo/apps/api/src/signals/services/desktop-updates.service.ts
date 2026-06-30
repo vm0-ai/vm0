@@ -45,7 +45,7 @@ const desktopUpdateManifestSchema = z.object({
   releases: z.record(z.string(), desktopUpdateReleaseSchema),
 });
 
-export type DesktopUpdateManifest = z.infer<typeof desktopUpdateManifestSchema>;
+type DesktopUpdateManifest = z.infer<typeof desktopUpdateManifestSchema>;
 
 interface DesktopUpdateFeedRequest {
   readonly channel: DesktopUpdateChannel;
@@ -68,18 +68,6 @@ const desktopUpdateManifestOverride = testOverride<
 >(() => {
   return undefined;
 });
-
-export function clearDesktopUpdateManifestCacheForTest(): void {
-  desktopUpdateManifestCache.clear();
-  desktopUpdateManifestOverride.clear();
-}
-
-export function mockDesktopUpdateManifestForTest(
-  manifest: DesktopUpdateManifest,
-): void {
-  desktopUpdateManifestCache.clear();
-  desktopUpdateManifestOverride.set(manifest);
-}
 
 function compareDesktopVersions(left: string, right: string): number {
   const leftParts = left.split(/[+-]/, 1)[0]?.split(".").map(Number) ?? [];

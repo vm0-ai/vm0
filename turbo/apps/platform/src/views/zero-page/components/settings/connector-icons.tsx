@@ -213,6 +213,7 @@ const CONNECTOR_ICON_COLORFUL = {
   pdforge: true,
   "people-data-labs": true,
   perplexity: true,
+  pexels: true,
   pika: true,
   pipedrive: true,
   pipedream: true,

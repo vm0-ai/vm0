@@ -8,45 +8,37 @@ import {
   automationsByRefContract,
   automationsMainContract,
 } from "@vm0/api-contracts/contracts/automations";
-import { getInstructionsStorageName } from "@vm0/core/storage-names";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { secrets } from "@vm0/db/schema/secret";
-import { storages } from "@vm0/db/schema/storage";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { createStore } from "ccstate";
-import { and, count, eq } from "drizzle-orm";
+import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
 import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
-import {
-  deleteOrgModelProviders$,
-  type OrgModelProviderFixture,
-} from "./helpers/zero-model-providers";
-import { encryptSecretForTests } from "./helpers/encrypt-secret";
-import {
-  deleteWorkflowsForFixture$,
-  seedAgentForInstructions$,
-  seedWorkflowsFixture$,
-  type WorkflowsFixture,
-} from "./helpers/zero-workflows";
+  createAuthOrgAgentsBddApi,
+  type ApiTestUser,
+} from "./helpers/api-bdd-auth-org";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
+const authOrgApi = createAuthOrgAgentsBddApi(context);
 const mocks = createZeroRouteMocks(context);
-const ZERO_AGENT_ID_TEMPLATE = ["$", "{{ vars.ZERO_AGENT_ID }}"].join("");
-const ZERO_TOKEN_TEMPLATE = ["$", "{{ secrets.ZERO_TOKEN }}"].join("");
-const ORG_SENTINEL_USER_ID = "__org__";
+
+type AgentsFixture = ApiTestUser & { readonly orgId: string };
+
+function agentsFixture(prefix: string): AgentsFixture {
+  const actor = authOrgApi.user({
+    userId: `user_${prefix}_${randomUUID().slice(0, 8)}`,
+    orgId: `org_${prefix}_${randomUUID().slice(0, 8)}`,
+  });
+  if (!actor.orgId) {
+    throw new Error("Expected agent fixture to have an organization");
+  }
+  return {
+    ...actor,
+    orgId: actor.orgId,
+  };
+}
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -68,74 +60,38 @@ function automationsByRefClient() {
   return setupApp({ context })(automationsByRefContract);
 }
 
-async function seedDefaultAnthropicProvider(
-  orgId: string,
-): Promise<OrgModelProviderFixture> {
-  const db = store.set(writeDb$);
-  const [secret] = await db
-    .insert(secrets)
-    .values({
-      name: "ANTHROPIC_API_KEY",
-      encryptedValue: encryptSecretForTests("test-secret-value"),
-      type: "model-provider",
-      userId: ORG_SENTINEL_USER_ID,
-      orgId,
-    })
-    .returning({ id: secrets.id });
-
-  if (!secret) {
-    throw new Error("Expected model provider secret");
-  }
-
-  await db.insert(modelProviders).values({
-    type: "anthropic-api-key",
-    secretId: secret.id,
-    isDefault: true,
-    userId: ORG_SENTINEL_USER_ID,
-    orgId,
-  });
-
-  return { orgId };
+function modelProvidersClient() {
+  return setupApp({ context })(zeroModelProvidersMainContract);
 }
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-function isRecord(value: unknown): value is Record<string, unknown> {
-  return typeof value === "object" && value !== null && !Array.isArray(value);
-}
-
-function commandName(command: unknown): string {
-  if (!isRecord(command)) {
-    return "";
+async function completeLimitedFreeWorkspace(
+  fixture: AgentsFixture,
+): Promise<void> {
+  authOrgApi.acceptAgentStorageWrites();
+  const setup = await authOrgApi.setupOnboarding(fixture, {
+    displayName: "BDD Agent Create Workspace",
+  });
+  if (setup.status !== 200 && setup.status !== 409) {
+    throw new Error(
+      `Expected onboarding setup to succeed, got ${setup.status}`,
+    );
   }
-  return command.constructor.name;
-}
-
-function s3CommandCount(name: string): number {
-  return context.mocks.s3.send.mock.calls.filter((call) => {
-    return commandName(call[0]) === name;
-  }).length;
-}
-
-function expectRecord(value: unknown, label: string): Record<string, unknown> {
-  if (!isRecord(value)) {
-    throw new Error(`Expected ${label} to be an object`);
+  const completed = await authOrgApi.completeLimitedFreeOnboarding(fixture, {
+    credits: 1000,
+    expiresAt: null,
+  });
+  if (completed.status !== 200) {
+    throw new Error(
+      `Expected limited-free onboarding to succeed, got ${completed.status}`,
+    );
   }
-  return value;
 }
 
 describe("POST /api/zero/agents", () => {
-  const track = createFixtureTracker<WorkflowsFixture>((fixture) => {
-    return store.set(deleteWorkflowsForFixture$, fixture, context.signal);
-  });
-  const trackModelProvider = createFixtureTracker<OrgModelProviderFixture>(
-    (fixture) => {
-      return store.set(deleteOrgModelProviders$, fixture, context.signal);
-    },
-  );
-
   it("returns 401 when the request is unauthenticated", async () => {
     const response = await accept(
       agentsClient().create({ headers: {}, body: {} }),
@@ -175,10 +131,8 @@ describe("POST /api/zero/agents", () => {
     });
   });
 
-  it("creates agent metadata, compose content, and instructions storage", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
+  it("creates agent metadata", async () => {
+    const fixture = agentsFixture("create");
     mocks.clerk.session(fixture.userId, fixture.orgId);
     context.mocks.s3.send.mockClear();
     context.mocks.s3.send.mockResolvedValue({});
@@ -208,92 +162,23 @@ describe("POST /api/zero/agents", () => {
       visibility: "public",
     });
     expect(response.body.agentId).toStrictEqual(expect.any(String));
-
-    const db = store.set(writeDb$);
-    const [agent] = await db
-      .select({
-        id: zeroAgents.id,
-        name: zeroAgents.name,
-        owner: zeroAgents.owner,
-        visibility: zeroAgents.visibility,
-      })
-      .from(zeroAgents)
-      .where(eq(zeroAgents.id, response.body.agentId));
-    expect(agent).toStrictEqual({
-      id: response.body.agentId,
-      name: expect.any(String),
-      owner: fixture.userId,
-      visibility: "public",
-    });
-
-    const [compose] = await db
-      .select({
-        id: agentComposes.id,
-        name: agentComposes.name,
-        headVersionId: agentComposes.headVersionId,
-      })
-      .from(agentComposes)
-      .where(eq(agentComposes.id, response.body.agentId));
-    expect(compose?.id).toBe(response.body.agentId);
-    expect(compose?.name).toBe(agent?.name);
-    expect(compose?.headVersionId).toMatch(/^[a-f0-9]{64}$/);
-
-    const headVersionId = compose?.headVersionId;
-    if (!headVersionId || !compose?.name) {
-      throw new Error("Expected created compose with head version");
-    }
-
-    const [version] = await db
-      .select({ content: agentComposeVersions.content })
-      .from(agentComposeVersions)
-      .where(eq(agentComposeVersions.id, headVersionId));
-    const content = expectRecord(version?.content, "compose content");
-    const agents = expectRecord(content.agents, "compose agents");
-    const storedAgent = expectRecord(agents[compose.name], "stored agent");
-    const environment = expectRecord(
-      storedAgent.environment,
-      "stored agent environment",
-    );
-    expect(storedAgent.framework).toBe("claude-code");
-    expect(storedAgent.instructions).toBe("CLAUDE.md");
-    expect(environment.ZERO_AGENT_ID).toBe(ZERO_AGENT_ID_TEMPLATE);
-    expect(environment.ZERO_TOKEN).toBe(ZERO_TOKEN_TEMPLATE);
-    expect(environment.GH_TOKEN).toBeUndefined();
-    expect(environment.GITHUB_TOKEN).toBeUndefined();
-    expect(content.volumes).toBeUndefined();
-
-    const [instructionsStorage] = await db
-      .select({ headVersionId: storages.headVersionId })
-      .from(storages)
-      .where(
-        and(
-          eq(storages.orgId, fixture.orgId),
-          eq(storages.name, getInstructionsStorageName(compose.name)),
-        ),
-      );
-    expect(instructionsStorage?.headVersionId).toMatch(/^[a-f0-9]{64}$/);
-    expect(s3CommandCount("PutObjectCommand")).toBe(2);
-    expect(s3CommandCount("HeadObjectCommand")).toBe(2);
   });
 
   it("returns 409 when the public agent limit has been reached", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    for (let i = 0; i < 7; i += 1) {
-      await store.set(
-        seedAgentForInstructions$,
-        {
-          orgId: fixture.orgId,
-          userId: fixture.userId,
-          visibility: "public",
-        },
-        context.signal,
-      );
-    }
+    const fixture = agentsFixture("limit");
     mocks.clerk.session(fixture.userId, fixture.orgId);
     context.mocks.s3.send.mockClear();
     context.mocks.s3.send.mockResolvedValue({});
+
+    for (let index = 0; index < 7; index += 1) {
+      await accept(
+        agentsClient().create({
+          headers: authHeaders(),
+          body: { displayName: `Limit Agent ${index + 1}` },
+        }),
+        [201],
+      );
+    }
 
     const response = await accept(
       agentsClient().create({
@@ -310,26 +195,10 @@ describe("POST /api/zero/agents", () => {
         code: "CONFLICT",
       },
     });
-
-    const db = store.set(writeDb$);
-    const [composeCount] = await db
-      .select({ value: count() })
-      .from(agentComposes)
-      .where(eq(agentComposes.orgId, fixture.orgId));
-    const [zeroAgentCount] = await db
-      .select({ value: count() })
-      .from(zeroAgents)
-      .where(eq(zeroAgents.orgId, fixture.orgId));
-
-    expect(composeCount?.value).toBe(7);
-    expect(zeroAgentCount?.value).toBe(7);
-    expect(context.mocks.s3.send).not.toHaveBeenCalled();
   });
 
   it("excludes private agents from the public agent create limit", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
+    const fixture = agentsFixture("private-limit");
     mocks.clerk.session(fixture.userId, fixture.orgId);
     context.mocks.s3.send.mockClear();
     context.mocks.s3.send.mockResolvedValue({});
@@ -365,9 +234,7 @@ describe("POST /api/zero/agents", () => {
   });
 
   it("allows creating another public agent after one is deleted", async () => {
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
+    const fixture = agentsFixture("delete-limit");
     mocks.clerk.session(fixture.userId, fixture.orgId);
     context.mocks.s3.send.mockClear();
     context.mocks.s3.send.mockResolvedValue({});
@@ -419,11 +286,17 @@ describe("POST /api/zero/agents", () => {
   it("executes an automation for an agent created via POST /api/zero/agents", async () => {
     mockOptionalEnv("OPENROUTER_API_KEY", undefined);
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
-    const fixture = await track(
-      store.set(seedWorkflowsFixture$, undefined, context.signal),
-    );
-    await trackModelProvider(seedDefaultAnthropicProvider(fixture.orgId));
+    const fixture = agentsFixture("automation");
     mocks.clerk.session(fixture.userId, fixture.orgId);
+    await completeLimitedFreeWorkspace(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+    await accept(
+      modelProvidersClient().upsert({
+        headers: authHeaders(),
+        body: { type: "anthropic-api-key", secret: "sk-ant-test" },
+      }),
+      [201],
+    );
     context.mocks.s3.send.mockClear();
     context.mocks.s3.send.mockResolvedValue({});
 

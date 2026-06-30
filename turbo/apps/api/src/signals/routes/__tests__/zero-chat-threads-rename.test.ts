@@ -1,16 +1,16 @@
 import { randomUUID } from "node:crypto";
 
-import { chatThreadRenameContract } from "@vm0/api-contracts/contracts/chat-threads";
+import {
+  chatThreadMetadataContract,
+  chatThreadRenameContract,
+} from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
 import {
   deleteZeroChatThread$,
   seedZeroChatThread$,
@@ -47,8 +47,12 @@ function zeroToken(args: {
   });
 }
 
-function client() {
+function renameClient() {
   return setupApp({ context })(chatThreadRenameContract);
+}
+
+function metadataClient() {
+  return setupApp({ context })(chatThreadMetadataContract);
 }
 
 describe("POST /api/zero/chat-threads/:id/rename", () => {
@@ -83,7 +87,7 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
     });
 
     const response = await accept(
-      client().rename({
+      renameClient().rename({
         headers: { authorization: `Bearer ${token}` },
         params: { id: fixture.threadId },
         body: { title: "CLI renamed title" },
@@ -92,15 +96,22 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
     );
     expect(response.status).toBe(204);
 
-    const [thread] = await store
-      .set(writeDb$)
-      .select({ title: chatThreads.title, renamedAt: chatThreads.renamedAt })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, fixture.threadId))
-      .limit(1);
-    expect(thread).toStrictEqual({
+    const metadataResponse = await accept(
+      metadataClient().get({
+        headers: {
+          authorization: `Bearer ${zeroToken({
+            userId: fixture.userId,
+            orgId: fixture.orgId,
+            capabilities: ["chat-thread:read"],
+          })}`,
+        },
+        params: { id: fixture.threadId },
+      }),
+      [200],
+    );
+    expect(metadataResponse.body).toStrictEqual({
+      id: fixture.threadId,
       title: "CLI renamed title",
-      renamedAt: expect.any(Date),
     });
   });
 
@@ -126,7 +137,7 @@ describe("POST /api/zero/chat-threads/:id/rename", () => {
     });
 
     const response = await accept(
-      client().rename({
+      renameClient().rename({
         headers: { authorization: `Bearer ${token}` },
         params: { id: fixture.threadId },
         body: { title: "Unauthorized title" },

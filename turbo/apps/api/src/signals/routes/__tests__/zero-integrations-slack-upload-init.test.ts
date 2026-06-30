@@ -7,11 +7,7 @@ import { integrationsSlackUploadInitContract } from "@vm0/api-contracts/contract
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteSlackIntegrationFixture$,
   seedSlackOrgInstallation$,
@@ -57,7 +53,6 @@ function sandboxToken(args: {
 
 describe("POST /api/zero/integrations/slack/upload-file/init", () => {
   const slackFixtures: SlackIntegrationFixture[] = [];
-  const memberships: OrgMembershipFixture[] = [];
 
   beforeEach(() => {
     context.mocks.slack.files.getUploadURLExternal.mockResolvedValue({
@@ -78,12 +73,6 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
         );
       }
     }
-    while (memberships.length > 0) {
-      const membership = memberships.pop();
-      if (membership) {
-        await store.set(deleteOrgMembership$, membership, context.signal);
-      }
-    }
   });
 
   async function seedWithInstallation(): Promise<{
@@ -92,12 +81,11 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
   }> {
     const orgId = `org_${randomUUID().slice(0, 8)}`;
     const userId = `user_${randomUUID().slice(0, 8)}`;
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, role: "admin" },
       context.signal,
     );
-    memberships.push(membership);
     const fixture = await store.set(
       seedSlackOrgInstallation$,
       { orgId },
@@ -142,12 +130,11 @@ describe("POST /api/zero/integrations/slack/upload-file/init", () => {
   it("returns 404 when no Slack installation exists for org", async () => {
     const orgId = `org_${randomUUID().slice(0, 8)}`;
     const userId = `user_${randomUUID().slice(0, 8)}`;
-    const membership = await store.set(
+    await store.set(
       seedOrgMembership$,
       { orgId, userId, role: "admin" },
       context.signal,
     );
-    memberships.push(membership);
     const token = zeroToken({ userId, orgId, runId: `run_${randomUUID()}` });
 
     const client = setupApp({ context })(integrationsSlackUploadInitContract);

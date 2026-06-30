@@ -1,32 +1,38 @@
-import { randomUUID } from "node:crypto";
+import { createHash, createHmac, randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { afterEach, describe, expect, it } from "vitest";
-import { and, count, eq } from "drizzle-orm";
 import {
   OFFICIAL_TELEGRAM_BOT_ID,
   zeroIntegrationsTelegramContract,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramMessages } from "@vm0/db/schema/telegram-message";
-import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
-import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { writeDb$ } from "../../external/db";
+import { mockEnv } from "../../../lib/env";
+import { now } from "../../external/time";
 import {
   deleteTelegramFixture$,
-  seedTelegramInstallation$,
   type TelegramFixture,
 } from "./helpers/zero-telegram";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
 
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const bdd = createBddApi(context);
 const AUTH_HEADERS = { authorization: "Bearer clerk-session" } as const;
+const OFFICIAL_BOT_TOKEN = "9876543210:official-test-token";
+const OFFICIAL_BOT_USERNAME = "official_zero_bot";
+const OFFICIAL_WEBHOOK_SECRET = "official-test-webhook-secret";
+
+interface TelegramAuthTestData {
+  readonly id: number;
+  readonly first_name: string;
+  readonly username?: string;
+  readonly auth_date: number;
+  readonly hash: string;
+}
 
 interface SeededBot extends TelegramFixture {
   readonly botId: string;
@@ -50,6 +56,106 @@ describe("DELETE /api/integrations/telegram", () => {
     return `${prefix}_${randomUUID().slice(0, 8)}`;
   }
 
+  function newTelegramBotId(): string {
+    return String(Math.floor(Math.random() * 9_000_000_000) + 1_000_000_000);
+  }
+
+  function botTokenFor(botId: string): string {
+    return `${botId}:test-bot-token`;
+  }
+
+  function configureOfficialBotEnv(): void {
+    mockEnv("TELEGRAM_OFFICIAL_BOT_TOKEN", OFFICIAL_BOT_TOKEN);
+    mockEnv("TELEGRAM_OFFICIAL_BOT_USERNAME", OFFICIAL_BOT_USERNAME);
+    mockEnv("TELEGRAM_OFFICIAL_WEBHOOK_SECRET", OFFICIAL_WEBHOOK_SECRET);
+  }
+
+  function makeTelegramAuth(
+    telegramUserId: number,
+    username?: string,
+    botToken = "test-bot-token",
+  ): TelegramAuthTestData {
+    const authDate = Math.floor(now() / 1000);
+    const fields: Omit<TelegramAuthTestData, "hash"> = username
+      ? {
+          auth_date: authDate,
+          id: telegramUserId,
+          first_name: "Test",
+          username,
+        }
+      : {
+          auth_date: authDate,
+          id: telegramUserId,
+          first_name: "Test",
+        };
+
+    const checkString = Object.entries(fields)
+      .sort(([a], [b]) => {
+        return a.localeCompare(b);
+      })
+      .map(([key, value]) => {
+        return `${key}=${value}`;
+      })
+      .join("\n");
+
+    const secretKey = createHash("sha256").update(botToken).digest();
+    const hash = createHmac("sha256", secretKey)
+      .update(checkString)
+      .digest("hex");
+
+    return { ...fields, hash };
+  }
+
+  function user(args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly orgRole?: "org:admin" | "org:member";
+  }): ApiTestUser {
+    return {
+      orgId: args.orgId,
+      userId: args.userId,
+      orgRole: args.orgRole ?? "org:admin",
+      email: `${args.userId}@example.test`,
+    };
+  }
+
+  function mockTelegramGetMe(): void {
+    context.mocks.telegram.getMe.mockImplementation((token: unknown) => {
+      const tokenText = typeof token === "string" ? token : "";
+      const botId = tokenText.split(":", 1)[0] ?? newTelegramBotId();
+      return Promise.resolve({
+        id: Number(botId),
+        is_bot: true,
+        first_name: "Bot",
+        username:
+          botId === OFFICIAL_BOT_TOKEN.split(":", 1)[0]
+            ? OFFICIAL_BOT_USERNAME
+            : `bot_${botId}`,
+      });
+    });
+  }
+
+  async function createAgent(args: {
+    readonly orgId: string;
+    readonly userId: string;
+  }): Promise<string> {
+    bdd.acceptAgentStorageWrites();
+    const agent = await bdd.createAgent(user(args), {
+      displayName: newId("agent"),
+      visibility: "private",
+    });
+    return agent.agentId;
+  }
+
+  async function createDefaultAgent(args: {
+    readonly orgId: string;
+    readonly userId: string;
+  }): Promise<string> {
+    const agentId = await createAgent(args);
+    await bdd.setDefaultAgent(user(args), agentId);
+    return agentId;
+  }
+
   async function seedBot(
     args: {
       readonly orgId?: string;
@@ -59,19 +165,29 @@ describe("DELETE /api/integrations/telegram", () => {
   ): Promise<SeededBot> {
     const orgId = args.orgId ?? newId("org");
     const ownerUserId = args.ownerUserId ?? newId("user");
-    const botId = args.botId ?? newId("bot");
-    const installation = await store.set(
-      seedTelegramInstallation$,
-      { orgId, ownerUserId, telegramBotId: botId },
-      context.signal,
+    const botId = args.botId ?? newTelegramBotId();
+    const composeId = await createAgent({ orgId, userId: ownerUserId });
+    mockTelegramGetMe();
+    mocks.clerk.session(ownerUserId, orgId, "org:admin");
+
+    await accept(
+      client().register({
+        headers: AUTH_HEADERS,
+        body: {
+          botToken: botTokenFor(botId),
+          defaultAgentId: composeId,
+        },
+      }),
+      [201],
     );
+
     const fixture = {
       orgId,
-      composeIds: [installation.composeId],
+      composeIds: [composeId],
       telegramBotIds: [botId],
       userIds: [ownerUserId],
       botId,
-      composeId: installation.composeId,
+      composeId,
       ownerUserId,
     };
     fixtures.push(fixture);
@@ -82,150 +198,118 @@ describe("DELETE /api/integrations/telegram", () => {
     return setupApp({ context })(zeroIntegrationsTelegramContract);
   }
 
-  function requireInsertedRow<T>(row: T | undefined, label: string): T {
-    if (!row) {
-      throw new Error(`Failed to insert ${label}`);
-    }
-    return row;
-  }
-
-  async function insertUserLink(args: {
-    readonly installationId: string;
+  async function linkCustomBot(args: {
+    readonly bot: SeededBot;
     readonly userId: string;
-    readonly telegramUserId?: string;
-  }): Promise<string> {
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .insert(telegramUserLinks)
-      .values({
-        installationId: args.installationId,
-        vm0UserId: args.userId,
-        telegramUserId: args.telegramUserId ?? newId("telegram-user"),
-      })
-      .returning({ id: telegramUserLinks.id });
-    return requireInsertedRow(row, "Telegram user link").id;
+    readonly telegramUserId: string;
+  }): Promise<void> {
+    bdd.acceptAgentStorageWrites();
+    mocks.clerk.session(args.userId, args.bot.orgId, "org:member");
+    await accept(
+      client().link({
+        headers: AUTH_HEADERS,
+        body: {
+          telegramBotId: args.bot.botId,
+          telegramAuth: makeTelegramAuth(
+            Number(args.telegramUserId),
+            `telegram_${args.telegramUserId}`,
+            botTokenFor(args.bot.botId),
+          ),
+        },
+      }),
+      [200],
+    );
   }
 
-  async function insertOfficialUserLink(args: {
+  async function linkOfficialBot(args: {
     readonly orgId: string;
     readonly userId: string;
-    readonly telegramUserId?: string;
-  }): Promise<string> {
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .insert(telegramOfficialUserLinks)
-      .values({
-        orgId: args.orgId,
-        vm0UserId: args.userId,
-        telegramUserId: args.telegramUserId ?? newId("telegram-official-user"),
+    readonly telegramUserId: string;
+  }): Promise<void> {
+    configureOfficialBotEnv();
+    const composeId = await createDefaultAgent(args);
+    fixtures.push({
+      orgId: args.orgId,
+      composeIds: [composeId],
+      telegramBotIds: [],
+      userIds: [args.userId],
+    });
+    bdd.acceptAgentStorageWrites();
+    mocks.clerk.session(args.userId, args.orgId, "org:member");
+    await accept(
+      client().link({
+        headers: AUTH_HEADERS,
+        body: {
+          telegramBotId: OFFICIAL_TELEGRAM_BOT_ID,
+          telegramAuth: makeTelegramAuth(
+            Number(args.telegramUserId),
+            `official_${args.telegramUserId}`,
+            OFFICIAL_BOT_TOKEN,
+          ),
+        },
+      }),
+      [200],
+    );
+  }
+
+  async function connectedCustomBotIds(args: {
+    readonly orgId: string;
+    readonly userId: string;
+  }): Promise<string[]> {
+    mockTelegramGetMe();
+    mocks.clerk.session(args.userId, args.orgId, "org:member");
+    const response = await accept(
+      client().list({ headers: AUTH_HEADERS }),
+      [200],
+    );
+    return response.body.bots
+      .filter((bot) => {
+        return bot.id !== OFFICIAL_TELEGRAM_BOT_ID && bot.isConnected;
       })
-      .returning({ id: telegramOfficialUserLinks.id });
-    return requireInsertedRow(row, "official Telegram user link").id;
-  }
-
-  async function countInstallations(botId: string): Promise<number> {
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ value: count() })
-      .from(telegramInstallations)
-      .where(eq(telegramInstallations.telegramBotId, botId));
-    return row?.value ?? 0;
-  }
-
-  async function countMessages(installationId: string): Promise<number> {
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ value: count() })
-      .from(telegramMessages)
-      .where(eq(telegramMessages.installationId, installationId));
-    return row?.value ?? 0;
-  }
-
-  async function countOfficialLinks(id: string): Promise<number> {
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ value: count() })
-      .from(telegramOfficialUserLinks)
-      .where(eq(telegramOfficialUserLinks.id, id));
-    return row?.value ?? 0;
-  }
-
-  async function linkInstallationsForUser(userId: string): Promise<string[]> {
-    const writeDb = store.set(writeDb$);
-    const rows = await writeDb
-      .select({ installationId: telegramUserLinks.installationId })
-      .from(telegramUserLinks)
-      .where(eq(telegramUserLinks.vm0UserId, userId));
-    return rows
-      .map((row) => {
-        return row.installationId;
+      .map((bot) => {
+        return bot.id;
       })
       .sort();
   }
 
-  async function userLinkExists(args: {
-    readonly installationId: string;
-    readonly telegramUserId: string;
-  }): Promise<boolean> {
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ id: telegramUserLinks.id })
-      .from(telegramUserLinks)
-      .where(
-        and(
-          eq(telegramUserLinks.installationId, args.installationId),
-          eq(telegramUserLinks.telegramUserId, args.telegramUserId),
-        ),
-      )
-      .limit(1);
-    return row !== undefined;
-  }
-
-  async function threadSessionExists(args: {
-    readonly userLinkId: string;
-    readonly chatId: string;
-    readonly rootMessageId: string;
-  }): Promise<boolean> {
-    const writeDb = store.set(writeDb$);
-    const [row] = await writeDb
-      .select({ id: telegramThreadSessions.id })
-      .from(telegramThreadSessions)
-      .where(
-        and(
-          eq(telegramThreadSessions.telegramUserLinkId, args.userLinkId),
-          eq(telegramThreadSessions.chatId, args.chatId),
-          eq(telegramThreadSessions.rootMessageId, args.rootMessageId),
-        ),
-      )
-      .limit(1);
-    return row !== undefined;
-  }
-
-  async function seedThreadSession(args: {
-    readonly userId: string;
+  async function expectCustomBotHidden(args: {
     readonly orgId: string;
-    readonly composeId: string;
-    readonly userLinkId: string;
-    readonly chatId: string;
-    readonly rootMessageId: string;
+    readonly userId: string;
+    readonly botId: string;
   }): Promise<void> {
-    const writeDb = store.set(writeDb$);
-    const [session] = await writeDb
-      .insert(agentSessions)
-      .values({
-        userId: args.userId,
-        orgId: args.orgId,
-        agentComposeId: args.composeId,
-      })
-      .returning({ id: agentSessions.id });
-    const insertedSession = requireInsertedRow(session, "agent session");
+    mockTelegramGetMe();
+    mocks.clerk.session(args.userId, args.orgId, "org:member");
+    const list = await accept(client().list({ headers: AUTH_HEADERS }), [200]);
+    expect(list.body.bots).not.toContainEqual(
+      expect.objectContaining({ id: args.botId }),
+    );
+    const status = await accept(
+      client().getBot({
+        params: { botId: args.botId },
+        headers: AUTH_HEADERS,
+      }),
+      [404],
+    );
+    expect(status.body.error.code).toBe("NOT_FOUND");
+  }
 
-    await writeDb.insert(telegramThreadSessions).values({
-      telegramUserLinkId: args.userLinkId,
-      chatId: args.chatId,
-      rootMessageId: args.rootMessageId,
-      agentSessionId: insertedSession.id,
-    });
+  async function expectLinkStatus(args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly botId: string;
+    readonly linked: boolean;
+  }): Promise<void> {
+    configureOfficialBotEnv();
+    mockTelegramGetMe();
+    mocks.clerk.session(args.userId, args.orgId, "org:member");
+    const response = await accept(
+      client().getLinkStatus({
+        query: { botId: args.botId },
+        headers: AUTH_HEADERS,
+      }),
+      [200],
+    );
+    expect(response.body.linked).toBe(args.linked);
   }
 
   describe("DELETE /api/integrations/telegram/:botId", () => {
@@ -327,9 +411,13 @@ describe("DELETE /api/integrations/telegram", () => {
       expect(response.status).toBe(204);
       expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledTimes(1);
       expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledWith(
-        "test-bot-token",
+        botTokenFor(bot.botId),
       );
-      await expect(countInstallations(bot.botId)).resolves.toBe(0);
+      await expectCustomBotHidden({
+        orgId: bot.orgId,
+        userId: bot.ownerUserId,
+        botId: bot.botId,
+      });
       expect(context.mocks.ably.publish).toHaveBeenCalledWith(
         "telegram:changed",
         null,
@@ -338,7 +426,8 @@ describe("DELETE /api/integrations/telegram", () => {
 
     it("deletes the installation for an org admin", async () => {
       const bot = await seedBot({ ownerUserId: newId("owner") });
-      mocks.clerk.session(newId("admin"), bot.orgId, "org:admin");
+      const adminUserId = newId("admin");
+      mocks.clerk.session(adminUserId, bot.orgId, "org:admin");
 
       const response = await client().disconnect({
         params: { botId: bot.botId },
@@ -347,7 +436,11 @@ describe("DELETE /api/integrations/telegram", () => {
 
       expect(response.status).toBe(204);
       expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledTimes(1);
-      await expect(countInstallations(bot.botId)).resolves.toBe(0);
+      await expectCustomBotHidden({
+        orgId: bot.orgId,
+        userId: adminUserId,
+        botId: bot.botId,
+      });
     });
 
     it("deletes the installation when webhook removal fails", async () => {
@@ -364,32 +457,25 @@ describe("DELETE /api/integrations/telegram", () => {
 
       expect(response.status).toBe(204);
       expect(context.mocks.telegram.deleteWebhook).toHaveBeenCalledTimes(1);
-      await expect(countInstallations(bot.botId)).resolves.toBe(0);
+      await expectCustomBotHidden({
+        orgId: bot.orgId,
+        userId: bot.ownerUserId,
+        botId: bot.botId,
+      });
     });
 
-    it("cascades links, messages, and thread sessions for the deleted bot", async () => {
+    it("removes the disconnected bot from external bot and link status", async () => {
       const bot = await seedBot();
-      const telegramUserId = "99077";
-      const userLinkId = await insertUserLink({
-        installationId: bot.botId,
+      await linkCustomBot({
+        bot,
         userId: bot.ownerUserId,
-        telegramUserId,
+        telegramUserId: "99077",
       });
-      const writeDb = store.set(writeDb$);
-      await writeDb.insert(telegramMessages).values({
-        installationId: bot.botId,
-        chatId: "77001",
-        messageId: "88001",
-        fromUserId: telegramUserId,
-        text: "before delete",
-      });
-      await seedThreadSession({
-        userId: bot.ownerUserId,
+      await expectLinkStatus({
         orgId: bot.orgId,
-        composeId: bot.composeId,
-        userLinkId,
-        chatId: "77001",
-        rootMessageId: "dm",
+        userId: bot.ownerUserId,
+        botId: bot.botId,
+        linked: true,
       });
       mocks.clerk.session(bot.ownerUserId, bot.orgId, "org:admin");
 
@@ -399,17 +485,17 @@ describe("DELETE /api/integrations/telegram", () => {
       });
 
       expect(response.status).toBe(204);
-      await expect(
-        userLinkExists({ installationId: bot.botId, telegramUserId }),
-      ).resolves.toBeFalsy();
-      await expect(countMessages(bot.botId)).resolves.toBe(0);
-      await expect(
-        threadSessionExists({
-          userLinkId,
-          chatId: "77001",
-          rootMessageId: "dm",
-        }),
-      ).resolves.toBeFalsy();
+      await expectCustomBotHidden({
+        orgId: bot.orgId,
+        userId: bot.ownerUserId,
+        botId: bot.botId,
+      });
+      await expectLinkStatus({
+        orgId: bot.orgId,
+        userId: bot.ownerUserId,
+        botId: bot.botId,
+        linked: false,
+      });
     });
   });
 
@@ -440,8 +526,8 @@ describe("DELETE /api/integrations/telegram", () => {
 
     it("deletes the user's custom bot link", async () => {
       const bot = await seedBot();
-      await insertUserLink({
-        installationId: bot.botId,
+      await linkCustomBot({
+        bot,
         userId: bot.ownerUserId,
         telegramUserId: "99001",
       });
@@ -454,8 +540,17 @@ describe("DELETE /api/integrations/telegram", () => {
 
       expect(response.status).toBe(204);
       await expect(
-        linkInstallationsForUser(bot.ownerUserId),
+        connectedCustomBotIds({
+          orgId: bot.orgId,
+          userId: bot.ownerUserId,
+        }),
       ).resolves.toStrictEqual([]);
+      await expectLinkStatus({
+        orgId: bot.orgId,
+        userId: bot.ownerUserId,
+        botId: bot.botId,
+        linked: false,
+      });
       expect(context.mocks.ably.publish).toHaveBeenCalledWith(
         "telegram:changed",
         null,
@@ -467,13 +562,13 @@ describe("DELETE /api/integrations/telegram", () => {
       const userId = newId("user");
       const firstBot = await seedBot({ orgId, ownerUserId: userId });
       const secondBot = await seedBot({ orgId, ownerUserId: userId });
-      await insertUserLink({
-        installationId: firstBot.botId,
+      await linkCustomBot({
+        bot: firstBot,
         userId,
         telegramUserId: "99011",
       });
-      await insertUserLink({
-        installationId: secondBot.botId,
+      await linkCustomBot({
+        bot: secondBot,
         userId,
         telegramUserId: "99012",
       });
@@ -485,20 +580,32 @@ describe("DELETE /api/integrations/telegram", () => {
       });
 
       expect(response.status).toBe(204);
-      await expect(linkInstallationsForUser(userId)).resolves.toStrictEqual([
-        secondBot.botId,
-      ]);
+      await expect(
+        connectedCustomBotIds({ orgId, userId }),
+      ).resolves.toStrictEqual([secondBot.botId]);
+      await expectLinkStatus({
+        orgId,
+        userId,
+        botId: firstBot.botId,
+        linked: false,
+      });
+      await expectLinkStatus({
+        orgId,
+        userId,
+        botId: secondBot.botId,
+        linked: true,
+      });
     });
 
     it("deletes only the official link when botId is official", async () => {
       const bot = await seedBot();
-      const officialLinkId = await insertOfficialUserLink({
+      await linkOfficialBot({
         orgId: bot.orgId,
         userId: bot.ownerUserId,
         telegramUserId: "99090",
       });
-      await insertUserLink({
-        installationId: bot.botId,
+      await linkCustomBot({
+        bot,
         userId: bot.ownerUserId,
         telegramUserId: "99091",
       });
@@ -510,9 +617,17 @@ describe("DELETE /api/integrations/telegram", () => {
       });
 
       expect(response.status).toBe(204);
-      await expect(countOfficialLinks(officialLinkId)).resolves.toBe(0);
+      await expectLinkStatus({
+        orgId: bot.orgId,
+        userId: bot.ownerUserId,
+        botId: OFFICIAL_TELEGRAM_BOT_ID,
+        linked: false,
+      });
       await expect(
-        linkInstallationsForUser(bot.ownerUserId),
+        connectedCustomBotIds({
+          orgId: bot.orgId,
+          userId: bot.ownerUserId,
+        }),
       ).resolves.toStrictEqual([bot.botId]);
     });
 
@@ -520,13 +635,13 @@ describe("DELETE /api/integrations/telegram", () => {
       const userId = newId("user");
       const activeBot = await seedBot({ ownerUserId: userId });
       const otherBot = await seedBot({ ownerUserId: userId });
-      await insertUserLink({
-        installationId: activeBot.botId,
+      await linkCustomBot({
+        bot: activeBot,
         userId,
         telegramUserId: "99101",
       });
-      await insertUserLink({
-        installationId: otherBot.botId,
+      await linkCustomBot({
+        bot: otherBot,
         userId,
         telegramUserId: "99102",
       });
@@ -538,9 +653,12 @@ describe("DELETE /api/integrations/telegram", () => {
       });
 
       expect(response.status).toBe(204);
-      await expect(linkInstallationsForUser(userId)).resolves.toStrictEqual([
-        otherBot.botId,
-      ]);
+      await expect(
+        connectedCustomBotIds({ orgId: activeBot.orgId, userId }),
+      ).resolves.toStrictEqual([]);
+      await expect(
+        connectedCustomBotIds({ orgId: otherBot.orgId, userId }),
+      ).resolves.toStrictEqual([otherBot.botId]);
     });
   });
 });

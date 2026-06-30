@@ -7,7 +7,7 @@ import { agentSessions } from "@vm0/db/schema/agent-session";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubIssueSessions } from "@vm0/db/schema/github-issue-session";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, desc, eq, gte } from "drizzle-orm";
+import { and, eq, isNotNull } from "drizzle-orm";
 
 import { optionalEnv, env } from "../../lib/env";
 import { logger } from "../../lib/log";
@@ -66,11 +66,11 @@ function parsePayload(payload: unknown): GitHubIssuesCallbackPayload | null {
   return result.success ? result.data : null;
 }
 
-async function findNewSessionId(args: {
+async function findCompletedRunSessionId(args: {
   readonly db: Db;
   readonly userId: string;
   readonly agentId: string;
-  readonly runCreatedAt: Date;
+  readonly runSessionId: string;
   readonly signal: AbortSignal;
 }): Promise<string | undefined> {
   const [newSession] = await args.db
@@ -78,12 +78,12 @@ async function findNewSessionId(args: {
     .from(agentSessions)
     .where(
       and(
+        eq(agentSessions.id, args.runSessionId),
         eq(agentSessions.userId, args.userId),
         eq(agentSessions.agentComposeId, args.agentId),
-        gte(agentSessions.updatedAt, args.runCreatedAt),
+        isNotNull(agentSessions.conversationId),
       ),
     )
-    .orderBy(desc(agentSessions.updatedAt))
     .limit(1);
   args.signal.throwIfAborted();
   return newSession?.id;
@@ -102,7 +102,7 @@ async function saveIssueSession(args: {
   readonly signal: AbortSignal;
 }): Promise<void> {
   const [run] = await args.db
-    .select({ userId: agentRuns.userId, createdAt: agentRuns.createdAt })
+    .select({ userId: agentRuns.userId, sessionId: agentRuns.sessionId })
     .from(agentRuns)
     .where(eq(agentRuns.id, args.runId))
     .limit(1);
@@ -113,11 +113,11 @@ async function saveIssueSession(args: {
   }
 
   const newSessionId = !args.existingSessionId
-    ? await findNewSessionId({
+    ? await findCompletedRunSessionId({
         db: args.db,
         userId: run.userId,
         agentId: args.agentId,
-        runCreatedAt: run.createdAt,
+        runSessionId: run.sessionId,
         signal: args.signal,
       })
     : undefined;

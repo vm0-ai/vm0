@@ -88,6 +88,40 @@ const promiseChainAllowlist = [
   "src/signals/context/wait-until.ts",
 ];
 
+const apiTestExternalBehaviorMessage =
+  "API tests must exercise external behavior through API endpoints. Do not test internal implementation details. See docs/testing/testing-external-behavior.md.";
+
+const apiTestServiceImportPatterns = [
+  "./services/*",
+  "./services/**/*",
+  "../services/*",
+  "../services/**/*",
+  "../signals/services/*",
+  "../signals/services/**/*",
+  "../../services/*",
+  "../../services/**/*",
+  "../../signals/services/*",
+  "../../signals/services/**/*",
+  "../../../services/*",
+  "../../../services/**/*",
+  "../../../signals/services/*",
+  "../../../signals/services/**/*",
+  "../../../../services/*",
+  "../../../../services/**/*",
+  "../../../../signals/services/*",
+  "../../../../signals/services/**/*",
+  "src/signals/services/*",
+  "src/signals/services/**/*",
+];
+
+const apiServiceTestParentImportPatterns = [
+  "../*.service",
+  "../*.utils",
+  "../assistant-message-id",
+  "../automations/*",
+  "../automations/**/*",
+];
+
 export default [
   ...config,
   {
@@ -148,4 +182,60 @@ export default [
     ignores: ["**/dist/**", ".vercel/**"],
   },
   ...oxlint.buildFromOxlintConfigFile("./.oxlintrc.json"),
+  {
+    files: ["src/**/__tests__/**/*.ts", "src/**/*.test.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@vm0/db/schema",
+              message: apiTestExternalBehaviorMessage,
+            },
+          ],
+          patterns: [
+            {
+              group: ["@vm0/db/schema/*"],
+              message: apiTestExternalBehaviorMessage,
+            },
+            {
+              group: apiTestServiceImportPatterns,
+              message: apiTestExternalBehaviorMessage,
+            },
+          ],
+        },
+      ],
+    },
+  },
+  {
+    files: ["src/signals/services/__tests__/**/*.ts"],
+    rules: {
+      "no-restricted-imports": [
+        "error",
+        {
+          paths: [
+            {
+              name: "@vm0/db/schema",
+              message: apiTestExternalBehaviorMessage,
+            },
+          ],
+          patterns: [
+            {
+              group: ["@vm0/db/schema/*"],
+              message: apiTestExternalBehaviorMessage,
+            },
+            {
+              group: apiTestServiceImportPatterns,
+              message: apiTestExternalBehaviorMessage,
+            },
+            {
+              group: apiServiceTestParentImportPatterns,
+              message: apiTestExternalBehaviorMessage,
+            },
+          ],
+        },
+      ],
+    },
+  },
 ];

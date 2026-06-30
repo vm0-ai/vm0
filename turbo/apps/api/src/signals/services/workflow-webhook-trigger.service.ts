@@ -61,7 +61,7 @@ export function hashWorkflowWebhookToken(token: string): string {
   return createHash("sha256").update(token).digest("hex");
 }
 
-export function sha256Hex(value: string): string {
+function sha256Hex(value: string): string {
   return createHash("sha256").update(value, "utf8").digest("hex");
 }
 
@@ -157,7 +157,7 @@ interface AcceptedWebhookDelivery {
   readonly bodySha256: string;
 }
 
-export interface WorkflowWebhookRunStartTestInput {
+interface WorkflowWebhookRunStartTestInput {
   readonly triggerId: string;
   readonly workflowName: string;
   readonly deliveryKey: string;
@@ -174,15 +174,6 @@ const workflowWebhookRunStarterOverride = testOverride<
 >(() => {
   return undefined;
 });
-
-export function setWorkflowWebhookRunStarterForTests(
-  starter: WorkflowWebhookRunStarterTestOverride,
-): () => void {
-  workflowWebhookRunStarterOverride.set(starter);
-  return () => {
-    workflowWebhookRunStarterOverride.clear();
-  };
-}
 
 function headerValue(
   headers: Readonly<Record<string, string>>,

@@ -31,6 +31,14 @@ def _assert_indexed_matches_linear(url, method, firewalls, network_policies):
     return indexed
 
 
+def _long_path(prefix, segment_count=1000):
+    return prefix + "/" + "/".join(f"seg-{index}" for index in range(segment_count))
+
+
+def _segment_path(segment_count=1100):
+    return "/" + "/".join(f"seg-{index}" for index in range(segment_count))
+
+
 def test_indexed_matches_linear_for_unrelated_authority_candidates():
     firewalls = [
         firewall_entry(
@@ -327,3 +335,186 @@ def test_indexed_matching_skips_unrelated_literal_rule_path_checks(monkeypatch):
     assert isinstance(result, matching.FirewallAllow)
     assert result.permission == "target"
     assert path_match_count == 1
+
+
+def test_indexed_matches_linear_for_root_static_base_with_long_path():
+    firewalls = wrap_firewalls(
+        [
+            firewall_api(
+                "https://api.example.com",
+                [firewall_permission("files-read", "GET /files/{path+}")],
+            )
+        ],
+        name="example",
+    )
+    policies = {"example": network_policy(allow=["files-read"])}
+
+    result = _assert_indexed_matches_linear(
+        f"https://api.example.com{_long_path('/files')}",
+        "GET",
+        firewalls,
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.name == "example"
+    assert result.permission == "files-read"
+
+
+def test_indexed_matches_linear_for_nested_static_base_with_long_suffix():
+    firewalls = wrap_firewalls(
+        [
+            firewall_api(
+                "https://api.example.com/admin",
+                [firewall_permission("files-read", "GET /files/{path+}")],
+            )
+        ],
+        name="example",
+    )
+    policies = {"example": network_policy(allow=["files-read"])}
+
+    result = _assert_indexed_matches_linear(
+        f"https://api.example.com/admin{_long_path('/files')}",
+        "GET",
+        firewalls,
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.rel_path.startswith("/files/")
+    assert result.permission == "files-read"
+
+
+def test_indexed_matches_linear_for_repeated_slash_static_base():
+    firewalls = wrap_firewalls(
+        [
+            firewall_api(
+                "https://api.example.com//v1",
+                [firewall_permission("files-read", "GET /files/{path+}")],
+            )
+        ],
+        name="example",
+    )
+    policies = {"example": network_policy(allow=["files-read"])}
+
+    result = _assert_indexed_matches_linear(
+        "https://api.example.com//v1/files//report",
+        "GET",
+        firewalls,
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.params == {"path": "/report"}
+
+
+def test_indexed_matches_linear_for_encoded_slash_under_static_base():
+    firewalls = wrap_firewalls(
+        [
+            firewall_api(
+                "https://api.example.com/v1",
+                [firewall_permission("repo-read", "GET /repos/{owner}/{repo}")],
+            )
+        ],
+        name="example",
+    )
+    policies = {"example": network_policy(allow=["repo-read"])}
+
+    result = _assert_indexed_matches_linear(
+        "https://api.example.com/v1/repos/acme%2Fteam/project",
+        "GET",
+        firewalls,
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.params == {"owner": "acme%2Fteam", "repo": "project"}
+
+
+def test_indexed_matching_long_path_does_not_use_prefix_key_helpers(monkeypatch):
+    if hasattr(matching, "_request_api_index_keys"):
+        monkeypatch.setattr(
+            matching,
+            "_request_api_index_keys",
+            lambda _url_parts: (_ for _ in ()).throw(
+                AssertionError("request prefix keys should not be materialized")
+            ),
+        )
+    if hasattr(matching, "_path_prefix_index_keys"):
+        monkeypatch.setattr(
+            matching,
+            "_path_prefix_index_keys",
+            lambda _path_segs: (_ for _ in ()).throw(
+                AssertionError("rule prefix keys should not be materialized")
+            ),
+        )
+
+    firewalls = wrap_firewalls(
+        [
+            firewall_api(
+                "https://api.example.com",
+                [firewall_permission("files-read", "GET /files/{path+}")],
+            )
+        ],
+        name="example",
+    )
+    policies = {"example": network_policy(allow=["files-read"])}
+    compiled = compile_firewalls_or_fail(firewalls)
+
+    result = matching.match_compiled_firewall_request(
+        f"https://api.example.com{_long_path('/files')}",
+        "GET",
+        compiled,
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.permission == "files-read"
+
+
+def test_indexed_matching_handles_deep_static_base_trie():
+    deep_base_path = _segment_path()
+    firewalls = wrap_firewalls(
+        [
+            firewall_api(
+                f"https://api.example.com{deep_base_path}",
+                [firewall_permission("root-read", "GET /")],
+            )
+        ],
+        name="example",
+    )
+    policies = {"example": network_policy(allow=["root-read"])}
+
+    result = _assert_indexed_matches_linear(
+        f"https://api.example.com{deep_base_path}",
+        "GET",
+        firewalls,
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.permission == "root-read"
+
+
+def test_indexed_matching_handles_deep_literal_rule_trie():
+    deep_rule_path = _segment_path()
+    firewalls = wrap_firewalls(
+        [
+            firewall_api(
+                "https://api.example.com",
+                [firewall_permission("deep-read", f"GET {deep_rule_path}")],
+            )
+        ],
+        name="example",
+    )
+    policies = {"example": network_policy(allow=["deep-read"])}
+
+    result = _assert_indexed_matches_linear(
+        f"https://api.example.com{deep_rule_path}",
+        "GET",
+        firewalls,
+        policies,
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.permission == "deep-read"
