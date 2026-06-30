@@ -133,7 +133,7 @@ def _is_ipv4_number_component(value: str) -> bool:
         return len(value) > _IPV4_HEX_PREFIX_LENGTH and all(
             char in "0123456789abcdefABCDEF" for char in value[_IPV4_HEX_PREFIX_LENGTH:]
         )
-    return all("0" <= char <= "9" for char in value)
+    return value.isdecimal()
 
 
 def _is_ipv4_literal_like(value: str) -> bool:
@@ -148,7 +148,7 @@ def _is_canonical_ipv4_address(value: str) -> bool:
     if len(parts) != _IPV4_PART_COUNT:
         return False
     for part in parts:
-        if not part.isdigit():
+        if not part.isascii() or not part.isdigit():
             return False
         if len(part) > 1 and part.startswith("0"):
             return False
@@ -418,7 +418,7 @@ def normalize_idna_hostname(host: str) -> str:
     ordinary ``UnicodeError``.
 
     IPv4-literal-like input is accepted only when it is already a canonical
-    dotted quad: four decimal octets, ASCII dots, no non-decimal forms, no
+    dotted quad: four ASCII decimal octets, ASCII dots, no non-decimal forms, no
     leading zeroes except ``0``, and each octet at most 255. One trailing dot is
     allowed only when it is also an ASCII dot. Other IPv4-literal-like spellings
     raise ``UnicodeError`` instead of being normalized to a different address.

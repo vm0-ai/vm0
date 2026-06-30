@@ -91,6 +91,83 @@ def _write_auth_base_firewall_registry(
     )
 
 
+def _write_public_destination_firewall_registry(
+    tmp_path,
+    *,
+    auth_config: dict[str, object] | None = None,
+    vm_fields: dict[str, object] | None = None,
+):
+    return _write_registry(
+        tmp_path,
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name="example",
+            api_entry={
+                "base": "https://service.example.com",
+                "hostPolicy": {"kind": "publicDestination"},
+                "auth": auth_config
+                or {"headers": {"Authorization": "Bearer ${{ secrets.EXAMPLE_TOKEN }}"}},
+                "permissions": [{"name": "call", "rules": ["ANY /{path+}"]}],
+            },
+            network_policy={
+                "allow": ["call"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+            vm_fields=vm_fields,
+        ),
+    )
+
+
+def _public_destination_flow(
+    real_flow,
+    headers,
+    *,
+    destination_host: str,
+    method: str = "GET",
+    extra_headers: tuple[tuple[str, str], ...] = (),
+):
+    return real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host=destination_host,
+        sni="service.example.com",
+        path="/v1/items",
+        method=method,
+        request_headers=headers(("Host", "service.example.com"), *extra_headers),
+    )
+
+
+def _assert_public_destination_denied(flow, *, destination_host: str, reason: str) -> None:
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_public_destination"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://service.example.com"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "example"
+    assert "Authorization" not in flow.request.headers
+    body = json.loads(flow.response.content)
+    assert body == {
+        "error": "unsafe_public_destination",
+        "message": "Request blocked: publicDestination resolved to a non-public destination",
+        "name": "example",
+        "base": "https://service.example.com",
+        "destination_host": destination_host,
+        "trusted_authority_host": "service.example.com",
+        "reason": reason,
+    }
+
+
+def _assert_public_destination_headers_terminated(flow) -> None:
+    assert flow.response is None
+    assert flow.error is not None
+    assert flow.error.msg == Error.KILLED_MESSAGE
+    assert flow.live is False
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_public_destination"
+
+
 async def test_firewall_match_calls_handler(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
@@ -112,6 +189,1099 @@ async def test_firewall_match_calls_handler(
     assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://api.github.com"
     assert flow.metadata[metadata_keys.FIREWALL_NAME] == "github"
     assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "full-access"
+
+
+@pytest.mark.parametrize(
+    ("destination_host", "reason"),
+    [
+        ("10.0.0.1", "non_public_destination"),
+        ("127.0.0.1", "non_public_destination"),
+        ("169.254.169.254", "non_public_destination"),
+        ("::1", "non_public_destination"),
+        ("fe80::1", "non_public_destination"),
+        ("3fff::1", "non_public_destination"),
+        ("service.example.com", "invalid_destination"),
+    ],
+)
+async def test_public_destination_blocks_unsafe_runtime_destination_before_auth(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    destination_host,
+    reason,
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host=destination_host)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(flow, destination_host=destination_host, reason=reason)
+    [proxy_log_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert proxy_log_entry["level"] == "warn"
+    assert proxy_log_entry["type"] == "public_destination"
+    assert proxy_log_entry["name"] == "example"
+    assert proxy_log_entry["firewall_base"] == "https://service.example.com"
+    assert proxy_log_entry["destination_host"] == destination_host
+    assert proxy_log_entry["trusted_authority_host"] == "service.example.com"
+    assert proxy_log_entry["reason"] == reason
+
+
+@pytest.mark.parametrize(
+    "destination_host",
+    [
+        "93.184.216.34",
+        "192.0.0.9",
+        "192.0.0.10",
+        "2001:1::3",
+        "2001:4860:4860::8888",
+        "3fff:1000::1",
+    ],
+)
+async def test_public_destination_allows_public_runtime_destination(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, destination_host
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host=destination_host)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://service.example.com"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "example"
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "call"
+    assert flow.request.headers["Authorization"] == "Bearer x"
+
+
+async def test_public_destination_blocks_prebound_private_original_destination(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+    flow.server_conn.address = ("service.example.com", 443)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("10.0.0.1", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+
+
+async def test_public_destination_allows_prebound_public_original_destination(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+    flow.server_conn.address = ("service.example.com", 443)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("93.184.216.34", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.metadata[metadata_keys.FIREWALL_BASE] == "https://service.example.com"
+    assert flow.metadata[metadata_keys.FIREWALL_NAME] == "example"
+    assert flow.metadata[metadata_keys.FIREWALL_PERMISSION] == "call"
+    assert flow.request.headers["Authorization"] == "Bearer x"
+
+
+async def test_public_destination_blocks_private_transparent_host_despite_public_original(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="10.0.0.1")
+    flow.server_conn.address = ("service.example.com", 443)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("93.184.216.34", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+
+
+async def test_public_destination_blocks_bracketed_private_host_despite_public_original(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="[::1]")
+    flow.server_conn.address = ("service.example.com", 443)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("93.184.216.34", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="[::1]",
+        reason="non_public_destination",
+    )
+
+
+async def test_public_destination_allows_bracketed_public_ipv6_host_with_public_original(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="[2001:4860:4860::8888]",
+    )
+    flow.server_conn.address = ("service.example.com", 443)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("2001:4860:4860::8888", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.request.headers["Authorization"] == "Bearer x"
+
+
+@pytest.mark.parametrize(
+    "destination_host",
+    [
+        "0177.0.0.1",
+        "0x7f.0.0.1",
+        "2130706433",
+        "127.1",
+        "127.0.0.1.",
+        "93.184.216.34.",
+    ],
+)
+async def test_public_destination_blocks_legacy_ipv4_host_despite_public_original(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, destination_host
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host=destination_host)
+    flow.server_conn.address = ("service.example.com", 443)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("93.184.216.34", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host=destination_host,
+        reason="invalid_destination",
+    )
+
+
+@pytest.mark.parametrize(
+    "destination_host",
+    [
+        "127%2e0%2e0%2e1",
+        "example%2ecom",
+        "example%252ecom",
+        "example%2dcom",
+        "ex%61mple.com",
+        "127%zz0.0.1",
+    ],
+)
+async def test_public_destination_blocks_percent_encoded_host_despite_public_original(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, destination_host
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host=destination_host)
+    flow.server_conn.address = ("service.example.com", 443)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("93.184.216.34", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host=destination_host,
+        reason="invalid_destination",
+    )
+
+
+@pytest.mark.parametrize(
+    "destination_host",
+    [
+        "example/com",
+        "example:443",
+        "example@evil.com",
+        "[service.example.com]",
+        " service.example.com ",
+    ],
+)
+async def test_public_destination_blocks_malformed_host_despite_public_original(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, destination_host
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host=destination_host)
+    flow.server_conn.address = ("service.example.com", 443)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("93.184.216.34", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host=destination_host,
+        reason="invalid_destination",
+    )
+
+
+async def test_public_destination_blocks_prebound_public_original_port_mismatch(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+    flow.server_conn.address = ("service.example.com", 443)
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("93.184.216.34", 8443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="",
+        reason="missing_destination",
+    )
+
+
+async def test_public_destination_allows_connected_prebound_public_original_destination(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+    flow.server_conn.address = ("service.example.com", 443)
+    flow.server_conn.peername = ("93.184.216.35", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.sni = "service.example.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("93.184.216.34", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.request.headers["Authorization"] == "Bearer x"
+
+
+async def test_public_destination_blocks_connected_private_transparent_host_despite_public_original(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="10.0.0.1")
+    flow.server_conn.address = ("service.example.com", 443)
+    flow.server_conn.peername = ("93.184.216.35", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.sni = "service.example.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("93.184.216.34", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+
+
+async def test_public_destination_blocks_connected_public_original_port_mismatch(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+    flow.server_conn.address = ("service.example.com", 443)
+    flow.server_conn.peername = ("93.184.216.35", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.sni = "service.example.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("93.184.216.34", 8443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="",
+        reason="missing_destination",
+    )
+
+
+async def test_public_destination_allows_connected_public_transparent_sockname_without_peername(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+    flow.server_conn.address = ("service.example.com", 443)
+    flow.server_conn.peername = None
+    flow.client_conn.sockname = ("93.184.216.34", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.sni = "service.example.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.request.headers["Authorization"] == "Bearer x"
+
+
+async def test_public_destination_blocks_connected_private_transparent_sockname_without_peername(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+    flow.server_conn.address = ("service.example.com", 443)
+    flow.server_conn.peername = None
+    flow.client_conn.sockname = ("10.0.0.1", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.sni = "service.example.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+
+
+async def test_public_destination_blocks_private_peer_before_public_transparent_sockname(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+    flow.server_conn.address = ("service.example.com", 443)
+    flow.server_conn.peername = ("10.0.0.1", 443)
+    flow.client_conn.sockname = ("93.184.216.34", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.sni = "service.example.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+
+
+async def test_public_destination_blocks_private_transparent_host_despite_public_peer(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="10.0.0.1")
+    flow.server_conn.address = ("service.example.com", 443)
+    flow.server_conn.peername = ("93.184.216.35", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.sni = "service.example.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+
+
+async def test_public_destination_blocks_private_server_address_despite_public_peer(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+    flow.server_conn.address = ("10.0.0.1", 443)
+    flow.server_conn.peername = ("93.184.216.35", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.sni = "service.example.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+
+
+async def test_public_destination_blocks_public_server_address_port_mismatch(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+    flow.server_conn.address = ("93.184.216.34", 8443)
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="",
+        reason="missing_destination",
+    )
+
+
+async def test_public_destination_blocks_loopback_peer_before_public_transparent_sockname(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+    flow.server_conn.address = ("service.example.com", 443)
+    flow.server_conn.peername = ("127.0.0.1", 443)
+    flow.client_conn.sockname = ("93.184.216.34", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.sni = "service.example.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="127.0.0.1",
+        reason="non_public_destination",
+    )
+
+
+async def test_public_destination_blocks_transparent_sockname_port_mismatch(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+    flow.server_conn.address = ("service.example.com", 443)
+    flow.server_conn.peername = None
+    flow.client_conn.sockname = ("93.184.216.34", 8443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.sni = "service.example.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="",
+        reason="missing_destination",
+    )
+
+
+async def test_public_destination_blocks_peer_port_mismatch_before_transparent_sockname(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+    flow.server_conn.address = ("service.example.com", 443)
+    flow.server_conn.peername = ("93.184.216.35", 8443)
+    flow.client_conn.sockname = ("93.184.216.34", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.sni = "service.example.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="",
+        reason="missing_destination",
+    )
+
+
+async def test_public_destination_blocks_connected_private_peer_despite_public_original(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+    flow.server_conn.address = ("service.example.com", 443)
+    flow.server_conn.peername = ("10.0.0.1", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.sni = "service.example.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("93.184.216.34", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+
+
+async def test_public_destination_blocks_private_original_despite_connected_public_peer(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+    flow.server_conn.address = ("service.example.com", 443)
+    flow.server_conn.peername = ("93.184.216.35", 443)
+    flow.server_conn.state = connection.ConnectionState.OPEN
+    flow.server_conn.sni = "service.example.com"
+    flow.server_conn.timestamp_tls_setup = 1.0
+    flow.server_conn.certificate_list = (object(),)
+    flow.server_conn.error = None
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("10.0.0.1", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+
+
+async def test_public_destination_ignores_stale_prebound_public_original_destination(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="10.0.0.1")
+    upstream_destination_binding.record_server_binding(
+        flow.server_conn,
+        client=flow.client_conn,
+        host="service.example.com",
+        port=443,
+        kinds=frozenset(("connector_auth",)),
+        original_address=("93.184.216.34", 443),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+
+
+async def test_public_destination_revalidates_connected_peer_after_requestheaders_prebind(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="93.184.216.34",
+        method="POST",
+        extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        assert "Authorization" not in flow.request.headers
+        assert flow.server_conn.address == ("service.example.com", 443)
+
+        flow.server_conn.peername = ("10.0.0.1", 443)
+        flow.server_conn.state = connection.ConnectionState.OPEN
+        flow.server_conn.sni = "service.example.com"
+        flow.server_conn.timestamp_tls_setup = 1.0
+        flow.server_conn.certificate_list = (object(),)
+        flow.server_conn.error = None
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+
+
+async def test_public_destination_requestheaders_defers_unresolved_hostname_until_connected(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="service.example.com",
+        method="POST",
+        extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        assert flow.response is None
+        assert flow.error is None
+        assert flow.server_conn.address == ("service.example.com", 443)
+
+        flow.server_conn.peername = ("93.184.216.35", 443)
+        flow.server_conn.state = connection.ConnectionState.OPEN
+        flow.server_conn.sni = "service.example.com"
+        flow.server_conn.timestamp_tls_setup = 1.0
+        flow.server_conn.certificate_list = (object(),)
+        flow.server_conn.error = None
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_awaited_once()
+    assert flow.response is None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    assert flow.request.headers["Authorization"] == "Bearer x"
+
+
+async def test_public_destination_requestheaders_deferred_hostname_still_blocks_private_peer(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="service.example.com",
+        method="POST",
+        extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        assert mitm_addon.requestheaders(flow) is None
+        assert flow.response is None
+        assert flow.error is None
+
+        flow.server_conn.peername = ("10.0.0.1", 443)
+        flow.server_conn.state = connection.ConnectionState.OPEN
+        flow.server_conn.sni = "service.example.com"
+        flow.server_conn.timestamp_tls_setup = 1.0
+        flow.server_conn.certificate_list = (object(),)
+        flow.server_conn.error = None
+
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+
+
+async def test_public_destination_request_phase_blocks_unresolved_hostname_without_runtime_ip(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(tmp_path)
+    flow = _public_destination_flow(real_flow, headers, destination_host="service.example.com")
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    _assert_public_destination_denied(
+        flow,
+        destination_host="service.example.com",
+        reason="invalid_destination",
+    )
+
+
+async def test_public_destination_revalidates_cached_auth_base_classification(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_public_destination_firewall_registry(
+        tmp_path,
+        auth_config={"headers": {}, "base": "${{ secrets.WEBHOOK_URL }}"},
+    )
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="93.184.216.34",
+        method="POST",
+        extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        assert mitm_addon.requestheaders(flow) is None
+        assert mitm_addon._REQUEST_CLASSIFICATION in flow.metadata
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
+            1,
+            mitm_addon.STREAM_BUFFER_LIMIT + 1,
+        )
+
+        flow.server_conn.peername = ("10.0.0.1", 443)
+        flow.server_conn.state = connection.ConnectionState.OPEN
+        flow.server_conn.sni = "service.example.com"
+        flow.server_conn.timestamp_tls_setup = 1.0
+        flow.server_conn.certificate_list = (object(),)
+        flow.server_conn.error = None
+
+        await mitm_addon.request(flow)
+
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+
+async def test_public_destination_revalidates_cached_auth_base_hostname_classification(
+    tmp_path, real_flow, mitm_ctx, headers
+):
+    reg_path = _write_public_destination_firewall_registry(
+        tmp_path,
+        auth_config={"headers": {}, "base": "${{ secrets.WEBHOOK_URL }}"},
+    )
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="service.example.com",
+        method="POST",
+        extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
+    )
+
+    with mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"):
+        assert mitm_addon.requestheaders(flow) is None
+        assert mitm_addon._REQUEST_CLASSIFICATION in flow.metadata
+        assert auth_base_forwarder.forward_request_admission_state_for_tests() == (
+            1,
+            mitm_addon.STREAM_BUFFER_LIMIT + 1,
+        )
+
+        flow.server_conn.peername = ("10.0.0.1", 443)
+        flow.server_conn.state = connection.ConnectionState.OPEN
+        flow.server_conn.sni = "service.example.com"
+        flow.server_conn.timestamp_tls_setup = 1.0
+        flow.server_conn.certificate_list = (object(),)
+        flow.server_conn.error = None
+
+        await mitm_addon.request(flow)
+
+    _assert_public_destination_denied(
+        flow,
+        destination_host="10.0.0.1",
+        reason="non_public_destination",
+    )
+    assert auth_base_forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
+
+@pytest.mark.parametrize("request_stream", [False, True])
+async def test_public_destination_requestheaders_blocks_before_early_auth(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers, request_stream
+):
+    reg_path = _write_public_destination_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="10.0.0.1",
+        method="POST",
+        extra_headers=(("Content-Length", str(mitm_addon.STREAM_BUFFER_LIMIT + 1)),),
+    )
+    flow.request.stream = request_stream
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        assert requestheaders_result is None
+        _assert_public_destination_headers_terminated(flow)
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.request.stream is False
+    assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+    [proxy_log_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert proxy_log_entry["type"] == "public_destination"
+
+
+async def test_public_destination_requestheaders_kills_unknown_length_before_early_auth(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_public_destination_firewall_registry(
+        tmp_path,
+        vm_fields={"captureNetworkBodies": True},
+    )
+    flow = _public_destination_flow(
+        real_flow,
+        headers,
+        destination_host="10.0.0.1",
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        requestheaders_result = mitm_addon.requestheaders(flow)
+        assert requestheaders_result is None
+        _assert_public_destination_headers_terminated(flow)
+        await mitm_addon.request(flow)
+
+    auth_fetch.assert_not_called()
+    assert flow.request.stream is False
+    assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
+    [proxy_log_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+    assert proxy_log_entry["type"] == "public_destination"
 
 
 async def test_inactive_builtin_connector_url_without_auth_gets_local_diagnostic(

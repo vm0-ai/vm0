@@ -1,5 +1,7 @@
 """Tests for mitm addon configuration hooks."""
 
+import importlib.util
+import sys
 import uuid
 from collections.abc import Sequence
 from dataclasses import dataclass
@@ -76,6 +78,18 @@ def _usage_event(source_key: str) -> usage_buffer.UsageEvent:
 
 
 class TestAddonConfiguration:
+    def test_addon_script_executes_without_sys_modules_preregistration(self):
+        spec = importlib.util.spec_from_file_location(
+            "mitm_addon_without_preregistration",
+            Path(mitm_addon.__file__),
+        )
+        assert spec is not None
+        assert spec.loader is not None
+        module = importlib.util.module_from_spec(spec)
+
+        assert module.__name__ not in sys.modules
+        spec.loader.exec_module(module)
+
     def test_load_registers_usage_options_and_signal_handler_without_pending_write(self, tmp_path):
         master = _RecordingMaster()
         loader = Loader(master)
