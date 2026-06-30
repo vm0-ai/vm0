@@ -645,7 +645,7 @@ jobs:
           PROFILE: vm0/default
         run: .github/scripts/wait-runner-image.sh
 
-  runner-local-active-input-smoke:
+  runner-local-claude-active-input-smoke:
     runs-on: ubuntu-latest
     needs: [runner-build]
     timeout-minutes: 5
@@ -692,10 +692,10 @@ jobs:
           SNAPSHOT_HASH=$4
           OFFICIAL_RUNNER_SECRET=$5
 
-          SVC="${JOB_REF}-local-active-input"
+          SVC="${JOB_REF}-local-claude-active-input"
           RUNNER_DIR="/var/lib/vm0-runner/runners/${SVC}"
-          GROUP="vm0/local-active-input-${JOB_REF}"
-          GROUP_DIR="/var/lib/vm0-runner/groups/vm0/local-active-input-${JOB_REF}"
+          GROUP="vm0/local-claude-active-input-${JOB_REF}"
+          GROUP_DIR="/var/lib/vm0-runner/groups/vm0/local-claude-active-input-${JOB_REF}"
 
           fail() {
             echo "FAIL: $1" >&2
@@ -708,7 +708,7 @@ jobs:
           }
 
           cleanup() {
-            echo "--- Cleanup local active-input smoke runner ---"
+            echo "--- Cleanup local Claude active-input smoke runner ---"
             sudo "$BIN_DIR/runner" service stop --name "$SVC" --force || true
             sudo rm -rf "$GROUP_DIR" "$RUNNER_DIR"
           }
@@ -2177,7 +2177,7 @@ jobs:
       - runner-host-groups
       - runner-build
       - runner-image-architecture-manifest
-      - runner-local-active-input-smoke
+      - runner-local-claude-active-input-smoke
       - runner-local-codex-active-input-smoke
       - runner-benchmark
       - runner-exec
@@ -2231,7 +2231,7 @@ jobs:
           check_result "runner-host-groups" "${{ needs.runner-host-groups.result }}" "true"
           check_result "runner-build" "${{ needs.runner-build.result }}" "true"
           check_result "runner-image-architecture-manifest" "${{ needs.runner-image-architecture-manifest.result }}" "true"
-          check_result "runner-local-active-input-smoke" "${{ needs.runner-local-active-input-smoke.result }}" "true"
+          check_result "runner-local-claude-active-input-smoke" "${{ needs.runner-local-claude-active-input-smoke.result }}" "true"
           check_result "runner-local-codex-active-input-smoke" "${{ needs.runner-local-codex-active-input-smoke.result }}" "true"
           check_result "runner-benchmark" "${{ needs.runner-benchmark.result }}" "true"
           check_result "runner-exec" "${{ needs.runner-exec.result }}" "true"
