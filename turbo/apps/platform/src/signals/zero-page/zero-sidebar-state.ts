@@ -57,33 +57,32 @@ export const openRenameChatThreadDialog$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Emoji picker dialog state (RecentChatList)
+// Emoji picker menu state (chat header)
 // ---------------------------------------------------------------------------
-const internalEmojiDialogThreadId$ = state<string | null>(null);
-export const emojiDialogThreadId$ = computed((get) => {
-  return get(internalEmojiDialogThreadId$);
-});
-export const setEmojiDialogThreadId$ = command(({ set }, id: string | null) => {
-  set(internalEmojiDialogThreadId$, id);
+const internalEmojiMenuThreadId$ = state<string | null>(null);
+export const emojiMenuThreadId$ = computed((get) => {
+  return get(internalEmojiMenuThreadId$);
 });
 
-const internalEmojiDialogTitle$ = state<string | null>(null);
-export const emojiDialogTitle$ = computed((get) => {
-  return get(internalEmojiDialogTitle$);
-});
-export const setEmojiDialogTitle$ = command(({ set }, title: string | null) => {
-  set(internalEmojiDialogTitle$, title);
+const internalEmojiMenuTitle$ = state<string | null>(null);
+export const emojiMenuTitle$ = computed((get) => {
+  return get(internalEmojiMenuTitle$);
 });
 
-export const openChatThreadEmojiDialog$ = command(
+export const openChatThreadEmojiMenu$ = command(
   (
     { set },
     { threadId, title }: { threadId: string; title: string | null | undefined },
   ) => {
-    set(internalEmojiDialogTitle$, title?.trim() || null);
-    set(internalEmojiDialogThreadId$, threadId);
+    set(internalEmojiMenuTitle$, title?.trim() || null);
+    set(internalEmojiMenuThreadId$, threadId);
   },
 );
+
+export const closeChatThreadEmojiMenu$ = command(({ set }) => {
+  set(internalEmojiMenuThreadId$, null);
+  set(internalEmojiMenuTitle$, null);
+});
 
 // ---------------------------------------------------------------------------
 // Session list collapse state (RecentChatSection) — persisted in localStorage

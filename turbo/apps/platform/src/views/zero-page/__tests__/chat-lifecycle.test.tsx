@@ -818,6 +818,16 @@ function buttonByLabel(label: string): HTMLElement {
   return button;
 }
 
+function menuItemByLabel(label: string, container: HTMLElement): HTMLElement {
+  const item = queryAllByRoleFast("menuitem", container).find((candidate) => {
+    return candidate.getAttribute("aria-label") === label;
+  });
+  if (!item) {
+    throw new Error(`${label} menu item not found`);
+  }
+  return item;
+}
+
 function linkByText(text: string): HTMLElement {
   const link = queryAllByRoleFast("link").find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
@@ -2776,6 +2786,7 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -2852,7 +2863,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("opens the current chat rename dialog with F2", async () => {
+  it("hides the chat emoji shortcut when the feature switch is off", async () => {
     mockResizeObserver();
     mockKeyboardNavigationThreads();
 
@@ -2865,7 +2876,39 @@ describe("chat lifecycle", () => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Current keyboard thread").length,
+      ).toBeGreaterThan(0);
+    });
+
+    expect(screen.queryByLabelText("Change emoji")).not.toBeInTheDocument();
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
+
+    await waitFor(() => {
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument();
+    });
+  });
+
+  it("opens the current chat rename dialog with F2", async () => {
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Current keyboard thread").length,
+      ).toBeGreaterThan(0);
     });
 
     const threadRegion = screen.getByLabelText("Chat thread");
@@ -3012,22 +3055,25 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
       expect(
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
-      expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Current keyboard thread").length,
+      ).toBeGreaterThan(0);
     });
 
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
     fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
 
-    const dialog = await screen.findByRole("dialog", { name: "Change emoji" });
-    expect(dialog).toBeInTheDocument();
-    click(buttonByLabel("Done ✅"));
+    const menu = await screen.findByRole("menu");
+    expect(queryAllByRoleFast("menuitem", menu)).toHaveLength(7);
+    click(menuItemByLabel("Done ✅", menu));
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
@@ -3054,6 +3100,7 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
     });
 
     await waitFor(() => {
@@ -3061,19 +3108,26 @@ describe("chat lifecycle", () => {
         screen.getByText("Current thread launch note"),
       ).toBeInTheDocument();
       expect(document.title).toBe("🔥   Current keyboard thread | VM0");
+      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+      expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
     });
 
     const threadRegion = screen.getByLabelText("Chat thread");
     threadRegion.focus();
     fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
 
-    const dialog = await screen.findByRole("dialog", { name: "Change emoji" });
-    fireEvent.keyDown(dialog, { key: "@", code: "Digit2", shiftKey: true });
+    const menu = await screen.findByRole("menu");
+    expect(
+      queryAllByRoleFast("menuitem", menu).some((item) => {
+        return item.getAttribute("aria-label") === "Important 📌";
+      }),
+    ).toBeFalsy();
+    fireEvent.keyDown(menu, { key: "1", code: "Digit1" });
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
         "keyboard-current-thread",
-        "👀 Current keyboard thread",
+        "✅ Current keyboard thread",
       );
     });
   });

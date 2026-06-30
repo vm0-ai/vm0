@@ -1,5 +1,6 @@
 import { command } from "ccstate";
 import { isEditableTarget, matchShortcut } from "@vm0/ui";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   currentLeftThread$,
   currentRightThread$,
@@ -11,9 +12,10 @@ import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onDomEventFn, onRef } from "../utils.ts";
 import {
-  openChatThreadEmojiDialog$,
+  openChatThreadEmojiMenu$,
   openRenameChatThreadDialog$,
 } from "../zero-page/zero-sidebar-state.ts";
+import { featureSwitch$ } from "../external/feature-switch.ts";
 
 /**
  * Snapshot row shape consumed by `navigateToAdjacentThread$`. The caller
@@ -146,12 +148,18 @@ export const setChatKeyboardScrollRoot$ = onRef(
     };
 
     const onGlobalChatKeyDown = onDomEventFn(async (event: KeyboardEvent) => {
+      const renameShortcut = matchShortcut("f2", event);
+      const emojiShortcut = matchShortcut("shift+f2", event);
       if (
         event.defaultPrevented ||
-        (!matchShortcut("f2", event) && !matchShortcut("shift+f2", event)) ||
+        (!renameShortcut && !emojiShortcut) ||
         hasOpenDialog(el.ownerDocument) ||
         !isChatShortcutTarget(el, event.target)
       ) {
+        return;
+      }
+      const features = get(featureSwitch$);
+      if (emojiShortcut && !features[FeatureSwitchKey.ChatThreadEmoji]) {
         return;
       }
       const mainThread = get(currentLeftThread$);
@@ -171,8 +179,8 @@ export const setChatKeyboardScrollRoot$ = onRef(
           sidebarThreads,
         ),
       };
-      if (matchShortcut("shift+f2", event)) {
-        set(openChatThreadEmojiDialog$, dialogPayload);
+      if (emojiShortcut) {
+        set(openChatThreadEmojiMenu$, dialogPayload);
       } else {
         set(openRenameChatThreadDialog$, dialogPayload);
       }
