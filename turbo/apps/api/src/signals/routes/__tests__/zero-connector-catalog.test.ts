@@ -244,6 +244,37 @@ describe("GET /api/zero/connector-catalog", () => {
     ]);
   });
 
+  it("omits auth text and placeholders derived from private names", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    await enablePublicCatalog(orgId, userId);
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(
+      client.get({
+        params: { connectorRef: "parallel" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    const apiToken = response.body.connector.authMethods.find((method) => {
+      return method.id === "api-token";
+    });
+    expect(apiToken?.description).toBeNull();
+    expect(apiToken?.manualFields).toStrictEqual([
+      {
+        id: "field-1",
+        label: "API Key",
+        required: true,
+        placeholder: null,
+        inputType: "password",
+      },
+    ]);
+  });
+
   it("returns 404 for hidden connector catalog refs", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;

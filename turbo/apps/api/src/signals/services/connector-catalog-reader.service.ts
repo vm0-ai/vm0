@@ -69,14 +69,117 @@ function permissionSummaryForCatalog(
   };
 }
 
+function addValueRefName(valueRef: string, privateNames: Set<string>): void {
+  const match = /^\$(?:secrets|vars)\.(.+)$/.exec(valueRef);
+  if (match?.[1]) {
+    privateNames.add(match[1]);
+  }
+}
+
+function privateNamesForAuthMethod(
+  method: ConnectorAuthMethodConfig,
+): ReadonlySet<string> {
+  const privateNames = new Set([
+    ...method.storage.secrets,
+    ...method.storage.variables,
+  ]);
+
+  if (method.grant.kind === "manual") {
+    for (const fieldName of Object.keys(method.grant.fields)) {
+      privateNames.add(fieldName);
+    }
+  }
+
+  if ("outputs" in method.grant) {
+    for (const valueRef of Object.values(method.grant.outputs)) {
+      addValueRefName(valueRef, privateNames);
+    }
+  }
+
+  if (method.access.kind !== "none") {
+    for (const [envName, binding] of Object.entries(
+      method.access.envBindings,
+    )) {
+      privateNames.add(envName);
+      addValueRefName(
+        typeof binding === "string" ? binding : binding.valueRef,
+        privateNames,
+      );
+    }
+    for (const platformSecret of method.access.platformSecrets ?? []) {
+      privateNames.add(platformSecret);
+    }
+  }
+
+  if (method.access.kind === "refresh-token") {
+    for (const valueRef of Object.values(method.access.inputs)) {
+      addValueRefName(valueRef, privateNames);
+    }
+    for (const valueRef of Object.values(method.access.outputs)) {
+      addValueRefName(valueRef, privateNames);
+    }
+    for (const refreshableSecret of method.access.refreshableSecrets) {
+      privateNames.add(refreshableSecret);
+    }
+  }
+
+  if (method.revoke.kind === "token-revoke") {
+    for (const valueRef of Object.values(method.revoke.inputs)) {
+      addValueRefName(valueRef, privateNames);
+    }
+  }
+
+  if ("client" in method && method.client) {
+    if ("clientIdEnv" in method.client) {
+      privateNames.add(method.client.clientIdEnv);
+    }
+    if ("clientSecretEnv" in method.client) {
+      privateNames.add(method.client.clientSecretEnv);
+    }
+  }
+
+  return privateNames;
+}
+
+function normalizePublicText(value: string): string {
+  return value.replace(/[^a-zA-Z0-9]/g, "").toLowerCase();
+}
+
+function publicTextOrNull(
+  value: string | undefined,
+  privateNames: ReadonlySet<string>,
+): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalizedValue = normalizePublicText(value);
+  for (const privateName of privateNames) {
+    const normalizedPrivateName = normalizePublicText(privateName);
+    const checkDerivedPrivateName = privateName.includes("_");
+    if (
+      privateName.length > 0 &&
+      (value.includes(privateName) ||
+        (checkDerivedPrivateName &&
+          normalizedPrivateName.length > 0 &&
+          normalizedValue.includes(normalizedPrivateName)))
+    ) {
+      return null;
+    }
+  }
+
+  return value;
+}
+
 function authMethodSummaryForCatalog(
   id: ConnectorAuthMethodId,
   method: ConnectorAuthMethodConfig,
 ): PublicConnectorCatalogAuthMethodSummary {
+  const privateNames = privateNamesForAuthMethod(method);
   return {
     id,
     label: method.label,
-    description: method.helpText ?? null,
+    description: publicTextOrNull(method.helpText, privateNames),
     grantKind: method.grant.kind,
   };
 }
@@ -87,12 +190,13 @@ function manualFieldsForCatalog(
   if (method.grant.kind !== "manual") {
     return [];
   }
+  const privateNames = privateNamesForAuthMethod(method);
   return Object.values(method.grant.fields).map((field, index) => {
     return {
       id: `field-${index + 1}`,
       label: field.label,
       required: field.required,
-      placeholder: field.placeholder ?? null,
+      placeholder: publicTextOrNull(field.placeholder, privateNames),
       inputType: field.storage === "variable" ? "text" : "password",
     };
   });
