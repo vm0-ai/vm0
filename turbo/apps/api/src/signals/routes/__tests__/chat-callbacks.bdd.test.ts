@@ -7,20 +7,15 @@ import type {
   GenerationTemplateRequest,
   PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
 import { mockOptionalEnv } from "../../../lib/env";
-import { nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
-import { writeDb$ } from "../../external/db";
-import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../../services/zero-model-selection.service";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
+import { mockClerkMembership } from "./helpers/api-bdd-clerk";
 import { createChatCallbacksApi } from "./helpers/api-bdd-chat-callbacks";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
+import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 
@@ -38,14 +33,14 @@ const api = createRunsAutomationsApi(context);
 const chat = createChatFilesBddApi(context);
 const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
-const store = createStore();
+const misc = createMiscRoutesApi(context);
 
+const MODEL_FIRST_SELECTION_PROVIDER_ID =
+  "00000000-0000-4000-8000-000000000000";
 const USER_ARTIFACTS_BUCKET = "test-user-artifacts";
 
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
 type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
-type TestModelProviderType = "anthropic-api-key" | "claude-code-oauth-token";
-type TestCredentialScope = "member" | "org";
 type TestOrgRole = "admin" | "member";
 
 interface EntitledChatActor {
@@ -78,6 +73,23 @@ async function entitledChatActor(): Promise<EntitledChatActor> {
     visibility: "private",
   });
   return { actor, agentId: agent.agentId, runnerGroup, providerId, storage };
+}
+
+async function entitledChatMemberActor(): Promise<EntitledChatActor> {
+  const adminFixture = await entitledChatActor();
+  if (!adminFixture.actor.orgId) {
+    throw new Error("Expected the admin fixture to be org-scoped");
+  }
+  const actor = bdd.user({
+    orgId: adminFixture.actor.orgId,
+    orgRole: "org:member",
+  });
+  const agent = await bdd.createAgent(actor, {
+    displayName: "BDD member chat callback agent",
+    description: "Exercises member-owned chat callback terminal processing.",
+    visibility: "private",
+  });
+  return { ...adminFixture, actor, agentId: agent.agentId };
 }
 
 async function startChatRun(
@@ -151,48 +163,20 @@ async function claimChatRun(
   runId: string,
 ): Promise<{ readonly authorization: string }> {
   await api.heartbeatRunner(runnerGroup);
-  const claim = await api.claimRunnerJob(runId);
-  return { authorization: `Bearer ${claim.sandboxToken}` };
-}
-
-async function setRunModelProvider(
-  runId: string,
-  params: {
-    readonly modelProvider: TestModelProviderType;
-    readonly credentialScope: TestCredentialScope;
-  },
-): Promise<void> {
-  await store
-    .set(writeDb$)
-    .update(zeroRuns)
-    .set({
-      modelProvider: params.modelProvider,
-      modelProviderCredentialScope: params.credentialScope,
-    })
-    .where(eq(zeroRuns.id, runId));
-}
-
-async function seedOrgMemberRole(
-  actor: ApiTestUser,
-  role: TestOrgRole,
-): Promise<void> {
-  if (!actor.orgId) {
-    throw new Error("Expected an org-scoped actor");
+  let claim: Awaited<ReturnType<typeof api.requestClaimRunnerJob>> | undefined;
+  await expect
+    .poll(
+      async () => {
+        claim = await api.requestClaimRunnerJob(true, runId, [200, 404]);
+        return claim.status;
+      },
+      { interval: 100, timeout: 10_000 },
+    )
+    .toBe(200);
+  if (!claim || claim.status !== 200) {
+    throw new Error("Expected the chat run to be claimable");
   }
-
-  await store
-    .set(writeDb$)
-    .insert(orgMembersCache)
-    .values({
-      orgId: actor.orgId,
-      userId: actor.userId,
-      role,
-      cachedAt: nowDate(),
-    })
-    .onConflictDoUpdate({
-      target: [orgMembersCache.orgId, orgMembersCache.userId],
-      set: { role, cachedAt: nowDate() },
-    });
+  return { authorization: `Bearer ${claim.body.sandboxToken}` };
 }
 
 async function waitForThreadMessages(
@@ -919,33 +903,42 @@ describe("CHAT-02: failed chat callbacks", () => {
   }, 90_000);
 
   it("shows Claude Code credential recovery guidance for upstream auth 401s", async () => {
-    const { actor, agentId, runnerGroup } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     const upstreamAuthError =
       "Failed to authenticate. API Error: 401 Invalid authentication credentials";
 
     async function failAndReadError(params: {
       readonly prompt: string;
-      readonly modelProvider: TestModelProviderType;
-      readonly credentialScope: TestCredentialScope;
+      readonly selectedModel?: string;
       readonly orgRole?: TestOrgRole;
+      readonly configureProvider?: (
+        fixture: EntitledChatActor,
+      ) => Promise<void>;
     }): Promise<string> {
-      if (params.orgRole !== undefined) {
-        await seedOrgMemberRole(actor, params.orgRole);
-      }
-      const run = await startChatRun(actor, {
-        agentId,
+      const fixture =
+        params.orgRole === "member"
+          ? await entitledChatMemberActor()
+          : await entitledChatActor();
+      await params.configureProvider?.(fixture);
+      const run = await startChatRun(fixture.actor, {
+        agentId: fixture.agentId,
         prompt: params.prompt,
+        ...(params.selectedModel === undefined
+          ? {}
+          : { selectedModel: params.selectedModel }),
       });
-      await setRunModelProvider(run.runId, {
-        modelProvider: params.modelProvider,
-        credentialScope: params.credentialScope,
-      });
-      const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+      const sandboxHeaders = await claimChatRun(fixture.runnerGroup, run.runId);
+      if (params.orgRole !== undefined) {
+        mockClerkMembership(
+          context,
+          fixture.actor,
+          params.orgRole === "admin" ? "org:admin" : "org:member",
+        );
+      }
       await failChatRun(run.runId, sandboxHeaders, upstreamAuthError);
 
       const page = await waitForThreadMessages(
-        actor,
+        fixture.actor,
         run.threadId,
         (messages) => {
           return lifecycleMarkers(messages, run.runId, "failed").some(
@@ -967,8 +960,30 @@ describe("CHAT-02: failed chat callbacks", () => {
     await expect(
       failAndReadError({
         prompt: "subscription credential failed",
-        modelProvider: "claude-code-oauth-token",
-        credentialScope: "member",
+        selectedModel: "claude-opus-4-8",
+        async configureProvider(fixture) {
+          await misc.upsertPersonalModelProvider(
+            fixture.actor,
+            { type: "claude-code-oauth-token", secret: "sk-ant-oat-bdd" },
+            [200, 201],
+          );
+          await api.updateOrgModelPolicies(fixture.actor, [
+            {
+              model: "claude-sonnet-4-6",
+              isDefault: true,
+              defaultProviderType: "anthropic-api-key",
+              credentialScope: "org",
+              modelProviderId: fixture.providerId,
+            },
+            {
+              model: "claude-opus-4-8",
+              isDefault: false,
+              defaultProviderType: "claude-code-oauth-token",
+              credentialScope: "member",
+              modelProviderId: null,
+            },
+          ]);
+        },
       }),
     ).resolves.toBe(
       "Claude Code subscription authentication failed. Reconnect Claude Code in Model Providers, then retry.\n\nReconnect Claude Code: http://localhost:3002/?settings=model",
@@ -976,8 +991,6 @@ describe("CHAT-02: failed chat callbacks", () => {
     await expect(
       failAndReadError({
         prompt: "org key failed for admin",
-        modelProvider: "anthropic-api-key",
-        credentialScope: "org",
         orgRole: "admin",
       }),
     ).resolves.toBe(
@@ -986,8 +999,6 @@ describe("CHAT-02: failed chat callbacks", () => {
     await expect(
       failAndReadError({
         prompt: "org key failed for member",
-        modelProvider: "anthropic-api-key",
-        credentialScope: "org",
         orgRole: "member",
       }),
     ).resolves.toBe(

@@ -8,13 +8,13 @@ import {
 import { afterAll, afterEach, beforeAll, beforeEach } from "vitest";
 
 import { clearMockedEnv, mockEnv } from "../lib/env";
-import { clearMockNow } from "../lib/time";
-import { server } from "../mocks/server";
 import {
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
   type SecretKmsClient,
-} from "../signals/services/crypto.utils";
+} from "../lib/secret-kms-client";
+import { clearMockNow } from "../lib/time";
+import { server } from "../mocks/server";
 import { clearAllDetached } from "../signals/utils";
 
 type MockKmsCommand = GenerateDataKeyCommand | DecryptCommand;

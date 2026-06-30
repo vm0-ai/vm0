@@ -1,7 +1,6 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { command, createStore } from "ccstate";
-import { asc, eq } from "drizzle-orm";
+import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 import {
@@ -9,22 +8,14 @@ import {
   zeroWorkflowsDetailContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { chatMessages } from "@vm0/db/schema/chat-message";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
-import { clearMockNow, mockNow, now, nowDate } from "../../../lib/time";
+import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { writeDb$ } from "../../external/db";
-import { maybeEmitRunUsageMessage$ } from "../../services/zero-chat-usage-message.service";
-import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../../services/zero-model-selection.service";
 import {
   createBddApi,
   expectApiError,
@@ -48,6 +39,12 @@ import {
   uniqueAutomationName,
 } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  emitRunUsageMessage$,
+  insertUsageEvent$,
+  seedUsagePricing$,
+  setUsageOrgTier$,
+} from "./helpers/zero-usage";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 /**
@@ -75,101 +72,12 @@ const cu = createComputerUseBddApi(context);
 const connectorsApi = createConnectorBddApi(context);
 const authOrg = createAuthOrgAgentsBddApi(context);
 const routeMocks = createZeroRouteMocks(context);
+const MODEL_FIRST_SELECTION_PROVIDER_ID =
+  "00000000-0000-4000-8000-000000000000";
 
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
 type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
-
-const seedUsagePricing$ = command(
-  async (
-    { set },
-    args: {
-      readonly provider: string;
-      readonly category: string;
-      readonly unitPrice: number;
-      readonly unitSize: number;
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    await db.insert(usagePricing).values({
-      kind: "connector",
-      provider: args.provider,
-      category: args.category,
-      unitPrice: args.unitPrice,
-      unitSize: args.unitSize,
-    });
-    signal.throwIfAborted();
-  },
-);
-
-const insertRunUsageEvent$ = command(
-  async (
-    { set },
-    args: {
-      readonly runId: string;
-      readonly orgId: string;
-      readonly userId: string;
-      readonly provider: string;
-      readonly status: "pending" | "processed";
-      readonly creditsCharged: number | null;
-    },
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    await db.insert(usageEvent).values({
-      runId: args.runId,
-      orgId: args.orgId,
-      userId: args.userId,
-      kind: "connector",
-      provider: args.provider,
-      category: "api_request",
-      quantity: 1,
-      status: args.status,
-      creditsCharged: args.creditsCharged,
-      processedAt: args.status === "processed" ? nowDate() : null,
-      idempotencyKey: randomUUID(),
-    });
-    signal.throwIfAborted();
-  },
-);
-
-const usageEventsForRun$ = command(
-  async ({ set }, runId: string, signal: AbortSignal) => {
-    const db = set(writeDb$);
-    const rows = await db
-      .select({
-        provider: usageEvent.provider,
-        category: usageEvent.category,
-        creditsCharged: usageEvent.creditsCharged,
-        status: usageEvent.status,
-        billingError: usageEvent.billingError,
-      })
-      .from(usageEvent)
-      .where(eq(usageEvent.runId, runId))
-      .orderBy(asc(usageEvent.provider), asc(usageEvent.category));
-    signal.throwIfAborted();
-    return rows;
-  },
-);
-
-const usageMessagesForRun$ = command(
-  async ({ set }, runId: string, signal: AbortSignal) => {
-    const db = set(writeDb$);
-    const rows = await db
-      .select({
-        id: chatMessages.id,
-        usagePayload: chatMessages.usagePayload,
-      })
-      .from(chatMessages)
-      .where(eq(chatMessages.runId, runId))
-      .orderBy(asc(chatMessages.createdAt), asc(chatMessages.id));
-    signal.throwIfAborted();
-    return rows.filter((row) => {
-      return row.usagePayload !== null;
-    });
-  },
-);
 
 interface EntitledChatActor {
   readonly actor: ApiTestUser;
@@ -317,6 +225,17 @@ function userMessages(messages: readonly PagedChatMessage[]): UserMessage[] {
   });
 }
 
+async function usageMessagesForRun(
+  actor: ApiTestUser,
+  threadId: string,
+  runId: string,
+): Promise<PagedChatMessage[]> {
+  const page = await chat.listThreadMessages(actor, threadId);
+  return page.messages.filter((message) => {
+    return message.runId === runId && message.usage !== undefined;
+  });
+}
+
 function sessionHeaders(actor: ApiTestUser): {
   readonly authorization: string;
 } {
@@ -356,21 +275,6 @@ async function sendNoCreditMessage(
     throw new Error("Expected a no-credit send without a run");
   }
   return sent.body.threadId;
-}
-
-async function readThreadComputerUseHostId(
-  threadId: string,
-): Promise<string | null> {
-  const db = store.set(writeDb$);
-  const [thread] = await db
-    .select({ computerUseHostId: chatThreads.computerUseHostId })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, threadId))
-    .limit(1);
-  if (!thread) {
-    throw new Error("Expected chat thread to exist");
-  }
-  return thread.computerUseHostId;
 }
 
 const malformedChatThreadIdRequests = [
@@ -559,11 +463,11 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     if (!actor.orgId) {
       throw new Error("Expected actor org");
     }
-    const db = store.set(writeDb$);
-    await db
-      .update(orgMetadata)
-      .set({ tier: "limited-free-1" })
-      .where(eq(orgMetadata.orgId, actor.orgId));
+    await store.set(
+      setUsageOrgTier$,
+      { orgId: actor.orgId, tier: "limited-free-1" },
+      context.signal,
+    );
 
     const thread = await chat.createThread(actor, {
       agentId,
@@ -585,12 +489,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
       code: "INSUFFICIENT_CREDITS",
     });
 
-    const [threadRow] = await db
-      .select({ selectedModel: chatThreads.selectedModel })
-      .from(chatThreads)
-      .where(eq(chatThreads.id, thread.id))
-      .limit(1);
-    expect(threadRow?.selectedModel).toBeNull();
+    await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
+      selectedModel: null,
+    });
 
     await chat.updateThreadModelSelection(actor, thread.id, {
       modelProviderId: MODEL_FIRST_SELECTION_PROVIDER_ID,
@@ -612,9 +513,6 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
 
     const host = await cu.startComputerUseHost(actor);
     await chat.updateThreadComputerUseHost(actor, thread.id, host.hostId);
-    await expect(readThreadComputerUseHostId(thread.id)).resolves.toBe(
-      host.hostId,
-    );
     await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
       computerUseHostId: host.hostId,
     });
@@ -639,7 +537,9 @@ describe("CHAT-01 thread detail, create, and delete cascades", () => {
     expect(peerUpdate.body.error.message).toBe("Chat thread not found");
 
     await chat.updateThreadComputerUseHost(actor, thread.id, null);
-    await expect(readThreadComputerUseHostId(thread.id)).resolves.toBeNull();
+    await expect(chat.readThread(actor, thread.id)).resolves.toMatchObject({
+      computerUseHostId: null,
+    });
 
     const missingThread = await chat.requestUpdateThreadComputerUseHost(
       actor,
@@ -1235,34 +1135,7 @@ describe("CHAT-03 run usage messages", () => {
     await completeChatRunOk(runId, sandboxHeaders);
     await flushWaitUntilForTest();
 
-    const usageRows = await store.set(
-      usageEventsForRun$,
-      runId,
-      context.signal,
-    );
-    expect(usageRows).toStrictEqual(
-      expect.arrayContaining([
-        expect.objectContaining({
-          provider,
-          category,
-          creditsCharged: 18,
-          status: "processed",
-          billingError: null,
-        }),
-        expect.objectContaining({
-          provider: missingProvider,
-          category,
-          creditsCharged: 0,
-          status: "processed",
-          billingError: "missing_pricing",
-        }),
-      ]),
-    );
-
-    const page = await chat.listThreadMessages(actor, threadId);
-    const usageMessages = page.messages.filter((message) => {
-      return message.runId === runId && message.usage !== undefined;
-    });
+    let usageMessages = await usageMessagesForRun(actor, threadId, runId);
     expect(usageMessages.length).toBeGreaterThanOrEqual(1);
     expect(usageMessages.at(-1)).toMatchObject({
       role: "assistant",
@@ -1284,24 +1157,19 @@ describe("CHAT-03 run usage messages", () => {
       },
     });
 
-    let usageMessageRows = await store.set(
-      usageMessagesForRun$,
-      runId,
-      context.signal,
-    );
-    expect(usageMessageRows.length).toBeGreaterThanOrEqual(1);
-    const initialUsageMessageCount = usageMessageRows.length;
+    const initialUsageMessageCount = usageMessages.length;
 
     onTestFinished(() => {
       clearMockNow();
     });
     mockNow(new Date("2030-01-01T00:00:00.000Z"));
     await store.set(
-      insertRunUsageEvent$,
+      insertUsageEvent$,
       {
         runId,
         orgId: actor.orgId!,
         userId: actor.userId,
+        category,
         provider: missingProvider,
         status: "processed",
         creditsCharged: 0,
@@ -1309,26 +1177,23 @@ describe("CHAT-03 run usage messages", () => {
       context.signal,
     );
     await expect(
-      store.set(maybeEmitRunUsageMessage$, runId, context.signal),
+      store.set(emitRunUsageMessage$, runId, context.signal),
     ).resolves.toBeTruthy();
-    usageMessageRows = await store.set(
-      usageMessagesForRun$,
-      runId,
-      context.signal,
-    );
-    expect(usageMessageRows).toHaveLength(initialUsageMessageCount + 1);
-    expect(usageMessageRows.at(-1)?.usagePayload).toMatchObject({
+    usageMessages = await usageMessagesForRun(actor, threadId, runId);
+    expect(usageMessages).toHaveLength(initialUsageMessageCount + 1);
+    expect(usageMessages.at(-1)?.usage).toMatchObject({
       totalCredits: 18,
       settledAt: "2030-01-01T00:00:00.000Z",
     });
 
     mockNow(new Date("2030-01-01T00:00:01.000Z"));
     await store.set(
-      insertRunUsageEvent$,
+      insertUsageEvent$,
       {
         runId,
         orgId: actor.orgId!,
         userId: actor.userId,
+        category,
         provider,
         status: "processed",
         creditsCharged: 11,
@@ -1336,27 +1201,19 @@ describe("CHAT-03 run usage messages", () => {
       context.signal,
     );
     await expect(
-      store.set(maybeEmitRunUsageMessage$, runId, context.signal),
+      store.set(emitRunUsageMessage$, runId, context.signal),
     ).resolves.toBeTruthy();
-    usageMessageRows = await store.set(
-      usageMessagesForRun$,
-      runId,
-      context.signal,
-    );
-    expect(usageMessageRows).toHaveLength(initialUsageMessageCount + 2);
-    expect(usageMessageRows.at(-1)?.usagePayload).toMatchObject({
+    usageMessages = await usageMessagesForRun(actor, threadId, runId);
+    expect(usageMessages).toHaveLength(initialUsageMessageCount + 2);
+    expect(usageMessages.at(-1)?.usage).toMatchObject({
       totalCredits: 29,
       settledAt: "2030-01-01T00:00:01.000Z",
     });
     await expect(
-      store.set(maybeEmitRunUsageMessage$, runId, context.signal),
+      store.set(emitRunUsageMessage$, runId, context.signal),
     ).resolves.toBeFalsy();
-    usageMessageRows = await store.set(
-      usageMessagesForRun$,
-      runId,
-      context.signal,
-    );
-    expect(usageMessageRows).toHaveLength(initialUsageMessageCount + 2);
+    usageMessages = await usageMessagesForRun(actor, threadId, runId);
+    expect(usageMessages).toHaveLength(initialUsageMessageCount + 2);
   }, 60_000);
 
   it("emits zero-credit usage messages and suppresses emission while usage is pending", async () => {
@@ -1421,11 +1278,12 @@ describe("CHAT-03 run usage messages", () => {
     await completeChatRunOk(pendingRun.runId, pendingSandboxHeaders);
     await flushWaitUntilForTest();
     await store.set(
-      insertRunUsageEvent$,
+      insertUsageEvent$,
       {
         runId: pendingRun.runId,
         orgId: actor.orgId,
         userId: actor.userId,
+        category: "api_request",
         provider: `processed-${randomUUID().slice(0, 8)}`,
         status: "processed",
         creditsCharged: 12,
@@ -1433,11 +1291,12 @@ describe("CHAT-03 run usage messages", () => {
       context.signal,
     );
     await store.set(
-      insertRunUsageEvent$,
+      insertUsageEvent$,
       {
         runId: pendingRun.runId,
         orgId: actor.orgId,
         userId: actor.userId,
+        category: "api_request",
         provider: `pending-${randomUUID().slice(0, 8)}`,
         status: "pending",
         creditsCharged: null,
@@ -1446,10 +1305,10 @@ describe("CHAT-03 run usage messages", () => {
     );
 
     await expect(
-      store.set(maybeEmitRunUsageMessage$, pendingRun.runId, context.signal),
+      store.set(emitRunUsageMessage$, pendingRun.runId, context.signal),
     ).resolves.toBeFalsy();
     await expect(
-      store.set(usageMessagesForRun$, pendingRun.runId, context.signal),
+      usageMessagesForRun(actor, pendingRun.threadId, pendingRun.runId),
     ).resolves.toHaveLength(0);
   }, 60_000);
 });

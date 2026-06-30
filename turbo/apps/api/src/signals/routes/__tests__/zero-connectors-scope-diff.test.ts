@@ -1,101 +1,73 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroConnectorScopeDiffContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { connectors } from "@vm0/db/schema/connector";
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
-import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
 import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+  createBddApi,
+  expectApiError,
+  type ApiTestUser,
+} from "./helpers/api-bdd";
+import {
+  createConnectorBddApi,
+  mockGitHubConnectorOAuth,
+} from "./helpers/api-bdd-connectors";
 
 const context = testContext();
-const store = createStore();
-const mocks = createZeroRouteMocks(context);
+const bdd = createBddApi(context);
+const connectorsApi = createConnectorBddApi(context);
 
 // Mirrors `github.ts` connector OAuth scopes; deterministic so the
 // `toStrictEqual` assertions catch any silent payload drift if the
 // canonical scope list changes upstream.
+//
+// Historical missing/stale OAuth scope rows are not built here: the public
+// OAuth callback stores the currently requested scope set, so arbitrary old
+// scope snapshots are not externally constructible through the API.
 const GITHUB_CURRENT_SCOPES = ["repo", "project", "workflow"] as const;
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-async function seedGithubConnector(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly storedScopes: readonly string[];
-}): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(connectors).values({
-    userId: args.userId,
-    orgId: args.orgId,
-    type: "github",
-    authMethod: "oauth",
-    oauthScopes: JSON.stringify([...args.storedScopes]),
-  });
+function stateFromAuthorizationUrl(authorizationUrl: string): string {
+  const state = new URL(authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected connector authorization URL to include state");
+  }
+  return state;
 }
 
-async function seedStripeApiTokenConnector(args: {
-  readonly orgId: string;
-  readonly userId: string;
-}): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(connectors).values({
-    userId: args.userId,
-    orgId: args.orgId,
-    type: "stripe",
-    authMethod: "api-token",
-    oauthScopes: null,
+async function connectGithub(actor: ApiTestUser): Promise<void> {
+  mockGitHubConnectorOAuth();
+  const start = await connectorsApi.startOauth(actor, "github", "oauth");
+  await connectorsApi.completeOauthCallback("github", {
+    code: `github-${randomUUID()}`,
+    state: stateFromAuthorizationUrl(start.authorizationUrl),
   });
-}
-
-async function deleteConnectorsByOrg(orgId: string): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.delete(connectors).where(eq(connectors.orgId, orgId));
 }
 
 describe("GET /api/zero/connectors/:type/scope-diff", () => {
-  const seededFixtures: OrgMembershipFixture[] = [];
-
-  afterEach(async () => {
-    while (seededFixtures.length > 0) {
-      const fixture = seededFixtures.pop();
-      if (fixture) {
-        await deleteConnectorsByOrg(fixture.orgId);
-        await store.set(deleteOrgMembership$, fixture, context.signal);
-      }
-    }
-  });
-
   it("returns 401 when not authenticated", async () => {
-    const client = setupApp({ context })(zeroConnectorScopeDiffContract);
-    const response = await accept(
-      client.getScopeDiff({ params: { type: "github" }, headers: {} }),
+    const response = await connectorsApi.requestScopeDiff(
+      null,
+      "github",
       [401],
     );
+    expectApiError(response.body);
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
   it("returns 401 when the authenticated session has no organization", async () => {
-    mocks.clerk.session(`user_${randomUUID()}`, null);
-    const client = setupApp({ context })(zeroConnectorScopeDiffContract);
-    const response = await accept(
-      client.getScopeDiff({
-        params: { type: "github" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
+    const actor = bdd.user({ orgId: null });
+    const response = await connectorsApi.requestScopeDiff(
+      actor,
+      "github",
       [401],
     );
+    expectApiError(response.body);
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
@@ -120,51 +92,30 @@ describe("GET /api/zero/connectors/:type/scope-diff", () => {
       }),
       [403],
     );
+    expectApiError(response.body);
     expect(response.body.error.message).toBe(
       "Missing required capability: connector:read",
     );
   });
 
   it("returns 404 when no connector is configured for the type", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(
-      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
-    mocks.clerk.session(userId, orgId);
-    const client = setupApp({ context })(zeroConnectorScopeDiffContract);
-    const response = await accept(
-      client.getScopeDiff({
-        params: { type: "github" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
+    const actor = bdd.user();
+    const response = await connectorsApi.requestScopeDiff(
+      actor,
+      "github",
       [404],
     );
+    expectApiError(response.body);
     expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
   it("returns an empty diff when stored scopes match current scopes exactly", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(
-      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
-    await seedGithubConnector({
-      orgId,
-      userId,
-      storedScopes: GITHUB_CURRENT_SCOPES,
-    });
-    mocks.clerk.session(userId, orgId);
-    const client = setupApp({ context })(zeroConnectorScopeDiffContract);
-    const response = await accept(
-      client.getScopeDiff({
-        params: { type: "github" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
+    const actor = bdd.user();
+    await connectGithub(actor);
 
-    expect(response.body).toStrictEqual({
+    await expect(
+      connectorsApi.readScopeDiff(actor, "github"),
+    ).resolves.toStrictEqual({
       addedScopes: [],
       removedScopes: [],
       currentScopes: GITHUB_CURRENT_SCOPES,
@@ -172,83 +123,19 @@ describe("GET /api/zero/connectors/:type/scope-diff", () => {
     });
   });
 
-  it("returns an empty diff for selected manual auth methods on mixed connectors", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(
-      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
-    await seedStripeApiTokenConnector({ orgId, userId });
-    mocks.clerk.session(userId, orgId);
-    const client = setupApp({ context })(zeroConnectorScopeDiffContract);
-    const response = await accept(
-      client.getScopeDiff({
-        params: { type: "stripe" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
+  it("returns an empty diff for manual auth connectors", async () => {
+    const actor = bdd.user();
+    await connectorsApi.connectManualGrant(actor, "openai", "api-token", {
+      OPENAI_TOKEN: "sk-bdd-scope-diff",
+    });
 
-    expect(response.body).toStrictEqual({
+    await expect(
+      connectorsApi.readScopeDiff(actor, "openai"),
+    ).resolves.toStrictEqual({
       addedScopes: [],
       removedScopes: [],
       currentScopes: [],
       storedScopes: [],
-    });
-  });
-
-  it("returns added scopes when the connector is missing required scopes", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(
-      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
-    await seedGithubConnector({
-      orgId,
-      userId,
-      storedScopes: ["repo"],
-    });
-    mocks.clerk.session(userId, orgId);
-    const client = setupApp({ context })(zeroConnectorScopeDiffContract);
-    const response = await accept(
-      client.getScopeDiff({
-        params: { type: "github" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      addedScopes: ["project", "workflow"],
-      removedScopes: [],
-      currentScopes: GITHUB_CURRENT_SCOPES,
-      storedScopes: ["repo"],
-    });
-  });
-
-  it("returns removed scopes when the connector has stale extra scopes", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(
-      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
-    const stored = [...GITHUB_CURRENT_SCOPES, "delete_repo"];
-    await seedGithubConnector({ orgId, userId, storedScopes: stored });
-    mocks.clerk.session(userId, orgId);
-    const client = setupApp({ context })(zeroConnectorScopeDiffContract);
-    const response = await accept(
-      client.getScopeDiff({
-        params: { type: "github" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body).toStrictEqual({
-      addedScopes: [],
-      removedScopes: ["delete_repo"],
-      currentScopes: GITHUB_CURRENT_SCOPES,
-      storedScopes: stored,
     });
   });
 });

@@ -115,8 +115,8 @@ function recordWith(
   const userPredicate = userIdLit ? `AND ue.user_id = ${userIdLit}` : "";
   const periodPredicate = period
     ? `
-        AND ue.created_at >= ${pgLit(period.start.toISOString())}::timestamptz
-        AND ue.created_at < ${pgLit(period.end.toISOString())}::timestamptz`
+        AND ue.created_at AT TIME ZONE 'UTC' >= ${pgLit(period.start.toISOString())}::timestamptz
+        AND ue.created_at AT TIME ZONE 'UTC' < ${pgLit(period.end.toISOString())}::timestamptz`
     : "";
   return `
     WITH usage_rows AS (
@@ -292,8 +292,8 @@ async function queryUsageRecordBreakdown(
   const userPredicate = userIdLit ? `AND ue.user_id = ${userIdLit}` : "";
   const periodPredicate = period
     ? `
-          AND ue.created_at >= ${pgLit(period.start.toISOString())}::timestamptz
-          AND ue.created_at < ${pgLit(period.end.toISOString())}::timestamptz`
+          AND ue.created_at AT TIME ZONE 'UTC' >= ${pgLit(period.start.toISOString())}::timestamptz
+          AND ue.created_at AT TIME ZONE 'UTC' < ${pgLit(period.end.toISOString())}::timestamptz`
     : "";
   const rowKeyList = rowKeys.map(pgLit).join(", ");
   const sourceSql = sourceExpr("zr.trigger_source");

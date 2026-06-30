@@ -1,17 +1,16 @@
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { eq } from "drizzle-orm";
+import type {
+  TestSlackStatePostBody,
+  TestSlackStatePostResponse,
+  TestSlackStateResponse,
+} from "@vm0/api-contracts/contracts/test-slack-state";
 
-import { writeDb$ } from "../../../external/db";
-import { encryptSecretForTests } from "./encrypt-secret";
+import { createAppWithRoutes } from "../../../../app-factory-core";
+import { testSlackStateRoutes } from "../../test-slack-state";
+
+const SLACK_STATE_ROUTE = "/api/test/slack-state";
 
 export interface SlackIntegrationFixture {
   readonly orgId: string;
@@ -36,46 +35,98 @@ function randomSlackId(prefix: string): string {
   return `${prefix}${randomUUID().replaceAll("-", "").slice(0, 9).toUpperCase()}`;
 }
 
+function requestSlackState(
+  signal: AbortSignal,
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal,
+    routes: testSlackStateRoutes,
+  });
+  return Promise.resolve(app.request(path, init));
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+function expectOk(response: Response, operation: string): void {
+  if (response.ok) {
+    return;
+  }
+  throw new Error(`${operation} failed with ${response.status}`);
+}
+
+async function postSlackState(
+  signal: AbortSignal,
+  body: TestSlackStatePostBody,
+): Promise<TestSlackStatePostResponse> {
+  const response = await requestSlackState(signal, SLACK_STATE_ROUTE, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  expectOk(response, "seed Slack state");
+  return await readJson<TestSlackStatePostResponse>(response);
+}
+
+async function getSlackState(
+  signal: AbortSignal,
+  slackWorkspaceId: string,
+): Promise<TestSlackStateResponse> {
+  const response = await requestSlackState(
+    signal,
+    `${SLACK_STATE_ROUTE}?${new URLSearchParams({
+      team_id: slackWorkspaceId,
+    }).toString()}`,
+  );
+  expectOk(response, "read Slack state");
+  return await readJson<TestSlackStateResponse>(response);
+}
+
 export const seedSlackOrgInstallation$ = command(
   async (
-    { set },
+    _,
     values: SeedSlackInstallationValues,
     signal: AbortSignal,
   ): Promise<SlackIntegrationFixture> => {
-    const writeDb = set(writeDb$);
     const slackWorkspaceId = values.slackWorkspaceId ?? randomSlackId("T");
-
-    await writeDb.insert(slackOrgInstallations).values({
-      slackWorkspaceId,
-      slackWorkspaceName: values.slackWorkspaceName ?? "Test Org Workspace",
-      orgId: values.orgId,
-      encryptedBotToken: encryptSecretForTests(
-        values.botToken ?? "xoxb-test-token",
-      ),
-      botUserId: randomSlackId("U"),
-      botScopes: values.botScopes ?? null,
+    const response = await postSlackState(signal, {
+      team_id: slackWorkspaceId,
+      org_id: values.orgId,
+      workspace_name: values.slackWorkspaceName ?? "Test Org Workspace",
+      bot_scopes: values.botScopes ?? null,
+      bot_token: values.botToken ?? "xoxb-test-token",
     });
-    signal.throwIfAborted();
 
-    return { orgId: values.orgId, slackWorkspaceId };
+    return {
+      orgId: response.org_id,
+      slackWorkspaceId: response.team_id,
+    };
   },
 );
 
 export const seedSlackOrgConnection$ = command(
   async (
-    { set },
+    _,
     values: SeedSlackConnectionValues,
     signal: AbortSignal,
   ): Promise<{ readonly slackUserId: string }> => {
-    const writeDb = set(writeDb$);
     const slackUserId = values.slackUserId ?? randomSlackId("U");
+    const state = await getSlackState(signal, values.slackWorkspaceId);
+    const orgId = state.installation?.orgId;
+    if (!orgId) {
+      throw new Error("Cannot seed Slack connection without installation org");
+    }
 
-    await writeDb.insert(slackOrgConnections).values({
-      slackUserId,
-      slackWorkspaceId: values.slackWorkspaceId,
-      vm0UserId: values.vm0UserId,
+    await postSlackState(signal, {
+      team_id: values.slackWorkspaceId,
+      org_id: orgId,
+      vm0_user_id: values.vm0UserId,
+      slack_user_id: slackUserId,
+      seed_connection: true,
     });
-    signal.throwIfAborted();
 
     return { slackUserId };
   },
@@ -83,63 +134,32 @@ export const seedSlackOrgConnection$ = command(
 
 export const seedSlackEnvironmentAgent$ = command(
   async (
-    { set },
+    _,
     args: { readonly orgId: string; readonly userId: string },
     signal: AbortSignal,
   ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    const composeId = randomUUID();
-    const versionId = randomUUID().replaceAll("-", "");
-
-    await writeDb.insert(agentComposes).values({
-      id: composeId,
-      userId: args.userId,
-      orgId: args.orgId,
-      name: `agent-${composeId.slice(0, 8)}`,
-      headVersionId: versionId,
+    await postSlackState(signal, {
+      org_id: args.orgId,
+      vm0_user_id: args.userId,
+      seed_default_agent: true,
     });
-    signal.throwIfAborted();
-    await writeDb.insert(agentComposeVersions).values({
-      id: versionId,
-      composeId,
-      content: {},
-      createdBy: args.userId,
-    });
-    signal.throwIfAborted();
-    await writeDb
-      .insert(orgMetadata)
-      .values({
-        orgId: args.orgId,
-        defaultAgentId: composeId,
-        tier: "free",
-        credits: 10_000,
-      })
-      .onConflictDoUpdate({
-        target: orgMetadata.orgId,
-        set: { defaultAgentId: composeId, tier: "free", credits: 10_000 },
-      });
-    signal.throwIfAborted();
   },
 );
 
 export const deleteSlackIntegrationFixture$ = command(
   async (
-    { set },
+    _,
     fixture: SlackIntegrationFixture,
     signal: AbortSignal,
   ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb
-      .delete(slackOrgConnections)
-      .where(
-        eq(slackOrgConnections.slackWorkspaceId, fixture.slackWorkspaceId),
-      );
-    signal.throwIfAborted();
-    await writeDb
-      .delete(slackOrgInstallations)
-      .where(
-        eq(slackOrgInstallations.slackWorkspaceId, fixture.slackWorkspaceId),
-      );
-    signal.throwIfAborted();
+    const params = new URLSearchParams({
+      team_id: fixture.slackWorkspaceId,
+    });
+    const response = await requestSlackState(
+      signal,
+      `${SLACK_STATE_ROUTE}?${params.toString()}`,
+      { method: "DELETE" },
+    );
+    expectOk(response, "delete Slack state");
   },
 );

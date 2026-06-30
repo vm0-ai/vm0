@@ -1,17 +1,15 @@
 import { randomUUID } from "node:crypto";
 
 import { zeroUsageRecordContract } from "@vm0/api-contracts/contracts/zero-usage-record";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockNow, nowDate } from "../../../lib/time";
-import { writeDb$ } from "../../external/db";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import {
   deleteUsageFixture$,
   insertModelUsage$,
@@ -25,6 +23,7 @@ import {
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const chatApi = createChatFilesBddApi(context);
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -69,6 +68,15 @@ function mockClerkUserLookup(): void {
 
 function createdAt(minutesAgo: number): Date {
   return new Date(nowDate().getTime() - minutesAgo * 60 * 1000);
+}
+
+function actorFor(fixture: UsageFixture) {
+  return {
+    userId: fixture.userId,
+    orgId: fixture.orgId,
+    orgRole: "org:admin" as const,
+    email: `${fixture.userId}@example.test`,
+  };
 }
 
 describe("GET /api/zero/usage/record", () => {
@@ -334,13 +342,9 @@ describe("GET /api/zero/usage/record", () => {
       context.signal,
     );
 
-    const db = store.set(writeDb$);
-    await db
-      .delete(chatThreads)
-      .where(eq(chatThreads.id, deletedOlder.threadId));
-    await db
-      .delete(chatThreads)
-      .where(eq(chatThreads.id, deletedNewer.threadId));
+    const actor = actorFor(fixture);
+    await chatApi.deleteThread(actor, deletedOlder.threadId);
+    await chatApi.deleteThread(actor, deletedNewer.threadId);
 
     mocks.clerk.session(fixture.userId, fixture.orgId);
 

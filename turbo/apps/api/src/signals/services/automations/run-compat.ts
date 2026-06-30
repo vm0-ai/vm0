@@ -12,7 +12,6 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq } from "drizzle-orm";
 
 import type { Db } from "../../external/db";
-import { calculateNextRun } from "./time-trigger";
 import {
   resolveModelFirstProviderAdmission,
   type ModelFirstPin,
@@ -34,10 +33,6 @@ function chatMessageAutomationSnapshot(
     description: automation.description ?? null,
   };
 }
-
-// Re-exported from the time trigger so existing callers keep importing it
-// from this module.
-export { calculateNextRun };
 
 export type RunCreationErrorResponse = {
   readonly status: 400 | 402 | 403 | 404 | 429 | 503;

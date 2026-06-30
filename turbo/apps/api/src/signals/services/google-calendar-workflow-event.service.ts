@@ -202,7 +202,7 @@ type GoogleCalendarRunStarter = (args: {
   readonly event: CalendarEventContext;
 }) => Promise<"ok" | "error">;
 
-export interface GoogleCalendarWorkflowRunStartTestInput {
+interface GoogleCalendarWorkflowRunStartTestInput {
   readonly triggerId: string;
   readonly workflowName: string;
   readonly calendarId: string;
@@ -219,15 +219,6 @@ const googleCalendarRunStarterOverride = testOverride<
 >(() => {
   return undefined;
 });
-
-export function setGoogleCalendarWorkflowRunStarterForTests(
-  starter: GoogleCalendarRunStarterTestOverride,
-): () => void {
-  googleCalendarRunStarterOverride.set(starter);
-  return () => {
-    googleCalendarRunStarterOverride.clear();
-  };
-}
 
 type GoogleCalendarDispatchStateResult =
   | {

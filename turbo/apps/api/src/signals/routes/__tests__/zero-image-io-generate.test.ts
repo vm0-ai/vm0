@@ -2,36 +2,35 @@ import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
-import { and, eq, inArray, sql } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
+import { v5 as uuidv5 } from "uuid";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
-import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { runBuiltInAdmissions } from "@vm0/db/schema/run-built-in-admission";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import {
-  IMAGE_IO_MODEL,
-  imagePricingKey,
-} from "../../services/zero-image-io-generate.service";
-import { builtInGenerationUsageIdempotencyKey } from "../../services/built-in-generation-usage-idempotency";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
 import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import { zeroImageIoGenerateRoutes } from "../zero-image-io-generate";
 import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-} from "./helpers/zero-org-membership";
+  deleteGenerationFixture,
+  deleteGenerationPricingRows,
+  readGenerationJobs,
+  readGenerationOrgCredits,
+  readGenerationUploadedFiles,
+  readGenerationUsageEvents,
+  restoreGenerationPricingRows,
+  seedGenerationFixture,
+  seedGenerationRunBuiltInAdmissions,
+  type GenerationFixture,
+  type GenerationPricingRow,
+  upsertGenerationPricingRows,
+  ensureGenerationPricingRow,
+} from "./helpers/zero-generation-state";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -48,6 +47,9 @@ const store = createStore();
 const mocks = createZeroRouteMocks(context);
 const TEST_BUCKET = "test-user-artifacts";
 const IMAGE_BYTES = Buffer.from("fake image bytes");
+const IMAGE_IO_MODEL = "gpt-image-1";
+const BUILT_IN_GENERATION_USAGE_NAMESPACE =
+  "7ed0d80f-a1be-4a53-b182-0195e2e8b7f4";
 const FAL_GPT_IMAGE_1_URL =
   "https://queue.fal.run/fal-ai/gpt-image-1/text-to-image";
 const FAL_GPT_IMAGE_15_URL = "https://queue.fal.run/fal-ai/gpt-image-1.5";
@@ -101,22 +103,30 @@ const tokenRequest = Object.freeze({
 
 type ImagePricingCategory = (typeof IMAGE_PRICING_CATEGORIES)[number];
 
-interface ImageFixture {
-  readonly orgId: string;
-  readonly userId: string;
+function imagePricingKey(
+  model: string,
+  category: ImagePricingCategory,
+): string {
+  return `${model}:${category}`;
+}
+
+function builtInGenerationUsageIdempotencyKey(parts: {
+  readonly generationId: string;
+  readonly scope: string;
+  readonly category: string;
+}): string {
+  return uuidv5(
+    `${parts.generationId}:${parts.scope}:${parts.category}`,
+    BUILT_IN_GENERATION_USAGE_NAMESPACE,
+  );
+}
+
+interface ImageFixture extends GenerationFixture {
   readonly insertedPricingCategories: readonly ImagePricingCategory[];
 }
 
-interface PricingSnapshot {
-  readonly category: ImagePricingCategory;
-  readonly unitPrice: number;
-  readonly unitSize: number;
-}
-
-interface DeletedPricingSnapshot {
-  readonly provider: string;
-  readonly rows: readonly PricingSnapshot[];
-}
+type PricingSnapshot = GenerationPricingRow;
+type DeletedPricingSnapshot = readonly GenerationPricingRow[];
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -151,13 +161,7 @@ function commandInput(command: unknown): Record<string, unknown> {
 }
 
 async function orgCredits(orgId: string): Promise<number | undefined> {
-  const [row] = await store
-    .set(writeDb$)
-    .select({ credits: orgMetadata.credits })
-    .from(orgMetadata)
-    .where(eq(orgMetadata.orgId, orgId))
-    .limit(1);
-  return row?.credits;
+  return (await readGenerationOrgCredits(context.signal, orgId)) ?? undefined;
 }
 
 function falQueueHandle(requestId: string): Record<string, string> {
@@ -263,91 +267,61 @@ async function ensureImagePricing(): Promise<{
   readonly pricing: ReadonlyMap<string, PricingSnapshot>;
   readonly insertedCategories: readonly ImagePricingCategory[];
 }> {
-  const writeDb = store.set(writeDb$);
-  const rows = await writeDb
-    .select({
-      category: usagePricing.category,
-      unitPrice: usagePricing.unitPrice,
-      unitSize: usagePricing.unitSize,
-    })
-    .from(usagePricing)
-    .where(
-      and(
-        eq(usagePricing.kind, "image"),
-        eq(usagePricing.provider, IMAGE_IO_MODEL),
-        inArray(usagePricing.category, [...IMAGE_PRICING_CATEGORIES]),
-      ),
-    );
-
-  const pricing = new Map<string, PricingSnapshot>();
-  for (const row of rows) {
-    if (isImagePricingCategory(row.category)) {
-      pricing.set(imagePricingKey(IMAGE_IO_MODEL, row.category), {
-        category: row.category,
-        unitPrice: row.unitPrice,
-        unitSize: row.unitSize,
-      });
-    }
-  }
-
-  const insertedCategories: ImagePricingCategory[] = [];
   const defaults: Readonly<Record<ImagePricingCategory, PricingSnapshot>> = {
     "output_image.low.standard": {
+      kind: "image",
+      provider: IMAGE_IO_MODEL,
       category: "output_image.low.standard",
       unitPrice: 13,
       unitSize: 1,
     },
     "output_image.low.large": {
+      kind: "image",
+      provider: IMAGE_IO_MODEL,
       category: "output_image.low.large",
       unitPrice: 19,
       unitSize: 1,
     },
     "output_image.medium.standard": {
+      kind: "image",
+      provider: IMAGE_IO_MODEL,
       category: "output_image.medium.standard",
       unitPrice: 50,
       unitSize: 1,
     },
     "output_image.medium.large": {
+      kind: "image",
+      provider: IMAGE_IO_MODEL,
       category: "output_image.medium.large",
       unitPrice: 76,
       unitSize: 1,
     },
     "output_image.high.standard": {
+      kind: "image",
+      provider: IMAGE_IO_MODEL,
       category: "output_image.high.standard",
       unitPrice: 200,
       unitSize: 1,
     },
     "output_image.high.large": {
+      kind: "image",
+      provider: IMAGE_IO_MODEL,
       category: "output_image.high.large",
       unitPrice: 300,
       unitSize: 1,
     },
   };
 
+  const pricing = new Map<string, PricingSnapshot>();
+  const insertedCategories: ImagePricingCategory[] = [];
   for (const category of IMAGE_PRICING_CATEGORIES) {
-    if (!pricing.has(imagePricingKey(IMAGE_IO_MODEL, category))) {
-      const row = defaults[category];
-      const inserted = await writeDb
-        .insert(usagePricing)
-        .values({
-          kind: "image",
-          provider: IMAGE_IO_MODEL,
-          category,
-          unitPrice: row.unitPrice,
-          unitSize: row.unitSize,
-        })
-        .onConflictDoNothing({
-          target: [
-            usagePricing.kind,
-            usagePricing.provider,
-            usagePricing.category,
-          ],
-        })
-        .returning({ category: usagePricing.category });
-      pricing.set(imagePricingKey(IMAGE_IO_MODEL, category), row);
-      if (inserted.length > 0) {
-        insertedCategories.push(category);
-      }
+    const result = await ensureGenerationPricingRow(
+      context.signal,
+      defaults[category],
+    );
+    pricing.set(imagePricingKey(IMAGE_IO_MODEL, category), result.pricing);
+    if (result.inserted) {
+      insertedCategories.push(category);
     }
   }
 
@@ -355,182 +329,133 @@ async function ensureImagePricing(): Promise<{
 }
 
 async function upsertFalImagePricing(): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .insert(usagePricing)
-    .values({
+  await upsertGenerationPricingRows(context.signal, [
+    {
       kind: "image",
       provider: "fal-ai/qwen-image",
       category: "output_megapixel",
       unitPrice: 24,
       unitSize: 1,
-    })
-    .onConflictDoUpdate({
-      target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
-      set: {
-        unitPrice: 24,
-        unitSize: 1,
-        updatedAt: sql`now()`,
-      },
-    });
+    },
+  ]);
 }
 
 async function upsertFluxImagePricing(): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .insert(usagePricing)
-    .values({
+  await upsertGenerationPricingRows(context.signal, [
+    {
       kind: "image",
       provider: "fal-ai/flux-pro/v1.1",
       category: "output_megapixel",
       unitPrice: FAL_FLUX_MARKED_UP_CREDITS_PER_MEGAPIXEL,
       unitSize: 1,
-    })
-    .onConflictDoUpdate({
-      target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
-      set: {
-        unitPrice: FAL_FLUX_MARKED_UP_CREDITS_PER_MEGAPIXEL,
-        unitSize: 1,
-        updatedAt: sql`now()`,
-      },
-    });
+    },
+  ]);
 }
 
 async function upsertNanoBanana2ImagePricing(): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .insert(usagePricing)
-    .values({
+  await upsertGenerationPricingRows(context.signal, [
+    {
       kind: "image",
       provider: "fal-ai/nano-banana-2",
       category: "output_image",
       unitPrice: FAL_NANO_BANANA_2_MARKED_UP_CREDITS_PER_IMAGE,
       unitSize: 1,
-    })
-    .onConflictDoUpdate({
-      target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
-      set: {
-        unitPrice: FAL_NANO_BANANA_2_MARKED_UP_CREDITS_PER_IMAGE,
-        unitSize: 1,
-        updatedAt: sql`now()`,
-      },
-    });
+    },
+  ]);
 }
 
 async function upsertFalMiniImagePricing(): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .insert(usagePricing)
-    .values([
-      {
-        kind: "image",
-        provider: "gpt-image-1-mini",
-        category: "output_image.low.standard",
-        unitPrice: 6,
-        unitSize: 1,
-      },
-      {
-        kind: "image",
-        provider: "gpt-image-1-mini",
-        category: "output_image.low.large",
-        unitPrice: 7,
-        unitSize: 1,
-      },
-      {
-        kind: "image",
-        provider: "gpt-image-1-mini",
-        category: "output_image.medium.standard",
-        unitPrice: 13,
-        unitSize: 1,
-      },
-      {
-        kind: "image",
-        provider: "gpt-image-1-mini",
-        category: "output_image.medium.large",
-        unitPrice: 18,
-        unitSize: 1,
-      },
-      {
-        kind: "image",
-        provider: "gpt-image-1-mini",
-        category: "output_image.high.standard",
-        unitPrice: 43,
-        unitSize: 1,
-      },
-      {
-        kind: "image",
-        provider: "gpt-image-1-mini",
-        category: "output_image.high.large",
-        unitPrice: 62,
-        unitSize: 1,
-      },
-    ])
-    .onConflictDoUpdate({
-      target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
-      set: {
-        unitPrice: sql`excluded.unit_price`,
-        unitSize: 1,
-        updatedAt: sql`now()`,
-      },
-    });
+  await upsertGenerationPricingRows(context.signal, [
+    {
+      kind: "image",
+      provider: "gpt-image-1-mini",
+      category: "output_image.low.standard",
+      unitPrice: 6,
+      unitSize: 1,
+    },
+    {
+      kind: "image",
+      provider: "gpt-image-1-mini",
+      category: "output_image.low.large",
+      unitPrice: 7,
+      unitSize: 1,
+    },
+    {
+      kind: "image",
+      provider: "gpt-image-1-mini",
+      category: "output_image.medium.standard",
+      unitPrice: 13,
+      unitSize: 1,
+    },
+    {
+      kind: "image",
+      provider: "gpt-image-1-mini",
+      category: "output_image.medium.large",
+      unitPrice: 18,
+      unitSize: 1,
+    },
+    {
+      kind: "image",
+      provider: "gpt-image-1-mini",
+      category: "output_image.high.standard",
+      unitPrice: 43,
+      unitSize: 1,
+    },
+    {
+      kind: "image",
+      provider: "gpt-image-1-mini",
+      category: "output_image.high.large",
+      unitPrice: 62,
+      unitSize: 1,
+    },
+  ]);
 }
 
 async function upsertFalGptImage15Pricing(): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .insert(usagePricing)
-    .values([
-      {
-        kind: "image",
-        provider: "gpt-image-1.5",
-        category: "output_image.low.standard",
-        unitPrice: 11,
-        unitSize: 1,
-      },
-      {
-        kind: "image",
-        provider: "gpt-image-1.5",
-        category: "output_image.low.large",
-        unitPrice: 16,
-        unitSize: 1,
-      },
-      {
-        kind: "image",
-        provider: "gpt-image-1.5",
-        category: "output_image.medium.standard",
-        unitPrice: 41,
-        unitSize: 1,
-      },
-      {
-        kind: "image",
-        provider: "gpt-image-1.5",
-        category: "output_image.medium.large",
-        unitPrice: 61,
-        unitSize: 1,
-      },
-      {
-        kind: "image",
-        provider: "gpt-image-1.5",
-        category: "output_image.high.standard",
-        unitPrice: 160,
-        unitSize: 1,
-      },
-      {
-        kind: "image",
-        provider: "gpt-image-1.5",
-        category: "output_image.high.large",
-        unitPrice: 240,
-        unitSize: 1,
-      },
-    ])
-    .onConflictDoUpdate({
-      target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
-      set: {
-        unitPrice: sql`excluded.unit_price`,
-        unitSize: 1,
-        updatedAt: sql`now()`,
-      },
-    });
+  await upsertGenerationPricingRows(context.signal, [
+    {
+      kind: "image",
+      provider: "gpt-image-1.5",
+      category: "output_image.low.standard",
+      unitPrice: 11,
+      unitSize: 1,
+    },
+    {
+      kind: "image",
+      provider: "gpt-image-1.5",
+      category: "output_image.low.large",
+      unitPrice: 16,
+      unitSize: 1,
+    },
+    {
+      kind: "image",
+      provider: "gpt-image-1.5",
+      category: "output_image.medium.standard",
+      unitPrice: 41,
+      unitSize: 1,
+    },
+    {
+      kind: "image",
+      provider: "gpt-image-1.5",
+      category: "output_image.medium.large",
+      unitPrice: 61,
+      unitSize: 1,
+    },
+    {
+      kind: "image",
+      provider: "gpt-image-1.5",
+      category: "output_image.high.standard",
+      unitPrice: 160,
+      unitSize: 1,
+    },
+    {
+      kind: "image",
+      provider: "gpt-image-1.5",
+      category: "output_image.high.large",
+      unitPrice: 240,
+      unitSize: 1,
+    },
+  ]);
 }
 
 function isImagePricingCategory(value: string): value is ImagePricingCategory {
@@ -542,135 +467,56 @@ function isImagePricingCategory(value: string): value is ImagePricingCategory {
 async function deleteImagePricingRows(
   provider: string,
 ): Promise<DeletedPricingSnapshot> {
-  const writeDb = store.set(writeDb$);
-  const rows = await writeDb
-    .select({
-      category: usagePricing.category,
-      unitPrice: usagePricing.unitPrice,
-      unitSize: usagePricing.unitSize,
-    })
-    .from(usagePricing)
-    .where(
-      and(
-        eq(usagePricing.kind, "image"),
-        eq(usagePricing.provider, provider),
-        inArray(usagePricing.category, [...IMAGE_PRICING_CATEGORIES]),
-      ),
-    );
-
-  await writeDb
-    .delete(usagePricing)
-    .where(
-      and(
-        eq(usagePricing.kind, "image"),
-        eq(usagePricing.provider, provider),
-        inArray(usagePricing.category, [...IMAGE_PRICING_CATEGORIES]),
-      ),
-    );
-
-  return {
+  const rows = await deleteGenerationPricingRows(context.signal, {
+    kind: "image",
     provider,
-    rows: rows.filter((row): row is PricingSnapshot => {
-      return isImagePricingCategory(row.category);
-    }),
-  };
+    categories: [...IMAGE_PRICING_CATEGORIES],
+  });
+  return rows.filter((row) => {
+    return isImagePricingCategory(row.category);
+  });
 }
 
 async function restoreImagePricingRows(
   snapshot: DeletedPricingSnapshot,
 ): Promise<void> {
-  if (snapshot.rows.length === 0) {
-    return;
-  }
-  await store
-    .set(writeDb$)
-    .insert(usagePricing)
-    .values(
-      snapshot.rows.map((row) => {
-        return {
-          kind: "image",
-          provider: snapshot.provider,
-          category: row.category,
-          unitPrice: row.unitPrice,
-          unitSize: row.unitSize,
-        };
-      }),
-    )
-    .onConflictDoNothing({
-      target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
-    });
+  await restoreGenerationPricingRows(context.signal, snapshot);
 }
 
 async function seedImageFixture(options: {
   readonly credits?: number;
   readonly withPricing?: boolean;
 }): Promise<ImageFixture> {
-  const orgId = `org_${randomUUID()}`;
-  const userId = `user_${randomUUID()}`;
-  const writeDb = store.set(writeDb$);
+  const fixture = await seedGenerationFixture(context.signal, {
+    credits: options.credits,
+    tier: "free",
+  });
 
   await store.set(
     seedOrgMembership$,
-    { orgId, userId, role: "admin" },
+    { orgId: fixture.orgId, userId: fixture.userId, role: "admin" },
     context.signal,
   );
-  await writeDb.insert(orgMetadata).values({
-    orgId,
-    tier: "free",
-    credits: options.credits ?? 10_000,
-  });
-  await writeDb.insert(orgMembersMetadata).values({
-    orgId,
-    userId,
-  });
 
   const pricing = options.withPricing
     ? await ensureImagePricing()
     : { insertedCategories: [] };
 
   return {
-    orgId,
-    userId,
+    ...fixture,
     insertedPricingCategories: pricing.insertedCategories,
   };
 }
 
 async function deleteImageFixture(fixture: ImageFixture): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .delete(builtInGenerationJobs)
-    .where(eq(builtInGenerationJobs.orgId, fixture.orgId));
-  await writeDb
-    .delete(runUploadedFiles)
-    .where(
-      and(
-        eq(runUploadedFiles.orgId, fixture.orgId),
-        eq(runUploadedFiles.userId, fixture.userId),
-      ),
-    );
-  await writeDb
-    .delete(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, fixture.orgId),
-        eq(orgMembersMetadata.userId, fixture.userId),
-      ),
-    );
+  await deleteGenerationFixture(context.signal, fixture);
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
-  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
-  await store.set(deleteOrgMembership$, fixture, context.signal);
   if (fixture.insertedPricingCategories.length > 0) {
-    await writeDb
-      .delete(usagePricing)
-      .where(
-        and(
-          eq(usagePricing.kind, "image"),
-          eq(usagePricing.provider, IMAGE_IO_MODEL),
-          inArray(usagePricing.category, [
-            ...fixture.insertedPricingCategories,
-          ]),
-        ),
-      );
+    await deleteGenerationPricingRows(context.signal, {
+      kind: "image",
+      provider: IMAGE_IO_MODEL,
+      categories: fixture.insertedPricingCategories,
+    });
   }
 }
 
@@ -866,29 +712,26 @@ describe("POST /api/zero/image-io/generate", () => {
       },
       context.signal,
     );
-    await store
-      .set(writeDb$)
-      .insert(runBuiltInAdmissions)
-      .values([
+    await seedGenerationRunBuiltInAdmissions(context.signal, {
+      runId,
+      entries: [
         {
-          runId,
           kind: "image",
           status: "active",
           expiresAt: new Date(now() + 60_000),
         },
         {
-          runId,
           kind: "video",
           status: "active",
           expiresAt: new Date(now() + 60_000),
         },
         {
-          runId,
           kind: "presentation",
           status: "active",
           expiresAt: new Date(now() + 60_000),
         },
-      ]);
+      ],
+    });
 
     let calledFal = false;
     server.use(
@@ -1083,11 +926,9 @@ describe("POST /api/zero/image-io/generate", () => {
     }
     expect(putBody).toStrictEqual(IMAGE_BYTES);
 
-    const uploadRows = await store
-      .set(writeDb$)
-      .select()
-      .from(runUploadedFiles)
-      .where(eq(runUploadedFiles.externalId, fileId));
+    const uploadRows = await readGenerationUploadedFiles(context.signal, {
+      externalId: fileId,
+    });
     expect(uploadRows).toHaveLength(1);
     expect(uploadRows[0]).toMatchObject({
       runId,
@@ -1111,18 +952,12 @@ describe("POST /api/zero/image-io/generate", () => {
       s3Key: `artifacts/${fixture.userId}/${fileId}/${filename}`,
     });
 
-    const usageRows = await store
-      .set(writeDb$)
-      .select()
-      .from(usageEvent)
-      .where(
-        and(
-          eq(usageEvent.orgId, fixture.orgId),
-          eq(usageEvent.userId, fixture.userId),
-          eq(usageEvent.kind, "image"),
-          eq(usageEvent.provider, IMAGE_IO_MODEL),
-        ),
-      );
+    const usageRows = await readGenerationUsageEvents(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      kind: "image",
+      provider: IMAGE_IO_MODEL,
+    });
     expect(usageRows).toHaveLength(1);
     expect(usageRows).toStrictEqual(
       expect.arrayContaining([
@@ -1240,18 +1075,12 @@ describe("POST /api/zero/image-io/generate", () => {
     });
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
 
-    const usageRows = await store
-      .set(writeDb$)
-      .select()
-      .from(usageEvent)
-      .where(
-        and(
-          eq(usageEvent.orgId, fixture.orgId),
-          eq(usageEvent.userId, fixture.userId),
-          eq(usageEvent.kind, "image"),
-          eq(usageEvent.provider, IMAGE_IO_MODEL),
-        ),
-      );
+    const usageRows = await readGenerationUsageEvents(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      kind: "image",
+      provider: IMAGE_IO_MODEL,
+    });
     expect(usageRows).toHaveLength(0);
   });
 
@@ -1378,18 +1207,12 @@ describe("POST /api/zero/image-io/generate", () => {
     );
     expect(putInput.ContentType).toBe("image/jpeg");
 
-    const usageRows = await store
-      .set(writeDb$)
-      .select()
-      .from(usageEvent)
-      .where(
-        and(
-          eq(usageEvent.orgId, fixture.orgId),
-          eq(usageEvent.userId, fixture.userId),
-          eq(usageEvent.kind, "image"),
-          eq(usageEvent.provider, "fal-ai/qwen-image"),
-        ),
-      );
+    const usageRows = await readGenerationUsageEvents(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      kind: "image",
+      provider: "fal-ai/qwen-image",
+    });
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
       runId,
@@ -1497,18 +1320,12 @@ describe("POST /api/zero/image-io/generate", () => {
     });
     expect(observedBody).not.toHaveProperty("image_prompt_strength");
 
-    const usageRows = await store
-      .set(writeDb$)
-      .select()
-      .from(usageEvent)
-      .where(
-        and(
-          eq(usageEvent.orgId, fixture.orgId),
-          eq(usageEvent.userId, fixture.userId),
-          eq(usageEvent.kind, "image"),
-          eq(usageEvent.provider, "fal-ai/flux-pro/v1.1"),
-        ),
-      );
+    const usageRows = await readGenerationUsageEvents(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      kind: "image",
+      provider: "fal-ai/flux-pro/v1.1",
+    });
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
       idempotencyKey: builtInGenerationUsageIdempotencyKey({
@@ -1613,18 +1430,12 @@ describe("POST /api/zero/image-io/generate", () => {
       safety_tolerance: "5",
     });
 
-    const usageRows = await store
-      .set(writeDb$)
-      .select()
-      .from(usageEvent)
-      .where(
-        and(
-          eq(usageEvent.orgId, fixture.orgId),
-          eq(usageEvent.userId, fixture.userId),
-          eq(usageEvent.kind, "image"),
-          eq(usageEvent.provider, "fal-ai/nano-banana-2"),
-        ),
-      );
+    const usageRows = await readGenerationUsageEvents(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      kind: "image",
+      provider: "fal-ai/nano-banana-2",
+    });
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
       idempotencyKey: builtInGenerationUsageIdempotencyKey({
@@ -1813,18 +1624,12 @@ describe("POST /api/zero/image-io/generate", () => {
       openai_api_key: "test-openai-key",
     });
 
-    const usageRows = await store
-      .set(writeDb$)
-      .select()
-      .from(usageEvent)
-      .where(
-        and(
-          eq(usageEvent.orgId, fixture.orgId),
-          eq(usageEvent.userId, fixture.userId),
-          eq(usageEvent.kind, "image"),
-          eq(usageEvent.provider, "gpt-image-1.5"),
-        ),
-      );
+    const usageRows = await readGenerationUsageEvents(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      kind: "image",
+      provider: "gpt-image-1.5",
+    });
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
       idempotencyKey: builtInGenerationUsageIdempotencyKey({
@@ -1927,18 +1732,12 @@ describe("POST /api/zero/image-io/generate", () => {
     });
     expect(observedBody).not.toHaveProperty("openai_api_key");
 
-    const usageRows = await store
-      .set(writeDb$)
-      .select()
-      .from(usageEvent)
-      .where(
-        and(
-          eq(usageEvent.orgId, fixture.orgId),
-          eq(usageEvent.userId, fixture.userId),
-          eq(usageEvent.kind, "image"),
-          eq(usageEvent.provider, "gpt-image-1-mini"),
-        ),
-      );
+    const usageRows = await readGenerationUsageEvents(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      kind: "image",
+      provider: "gpt-image-1-mini",
+    });
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
       idempotencyKey: builtInGenerationUsageIdempotencyKey({
@@ -1982,11 +1781,10 @@ describe("POST /api/zero/image-io/generate", () => {
         code: "FAL_IMAGE_REQUEST_FAILED",
       },
     });
-    const jobRows = await store
-      .set(writeDb$)
-      .select()
-      .from(builtInGenerationJobs)
-      .where(eq(builtInGenerationJobs.orgId, fixture.orgId));
+    const jobRows = await readGenerationJobs(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+    });
     expect(jobRows).toHaveLength(1);
     expect(jobRows[0]).toMatchObject({
       type: "image",
@@ -2005,11 +1803,9 @@ describe("POST /api/zero/image-io/generate", () => {
       }),
     );
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
-    const usageRows = await store
-      .set(writeDb$)
-      .select()
-      .from(usageEvent)
-      .where(eq(usageEvent.orgId, fixture.orgId));
+    const usageRows = await readGenerationUsageEvents(context.signal, {
+      orgId: fixture.orgId,
+    });
     expect(usageRows).toHaveLength(0);
     await expect(orgCredits(fixture.orgId)).resolves.toBe(1000);
   });

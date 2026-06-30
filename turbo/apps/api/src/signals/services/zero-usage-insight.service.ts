@@ -285,15 +285,15 @@ function pgLit(value: string): string {
 }
 
 function usageBucketExpr(p: UsageInsightSqlParams): string {
-  return `date_trunc(${p.truncLit}, ${USAGE_ROW_ALIAS}.activity_time::timestamptz AT TIME ZONE ${p.tzLit})`;
+  return `date_trunc(${p.truncLit}, ${USAGE_ROW_ALIAS}.activity_time AT TIME ZONE 'UTC' AT TIME ZONE ${p.tzLit})`;
 }
 
 function activityTimeWindowPredicate(
   alias: string,
   p: UsageInsightSqlParams,
 ): string {
-  return `${alias}.created_at >= ${p.startTsLit}::timestamptz
-        AND ${alias}.created_at < ${p.endTsLit}::timestamptz`;
+  return `${alias}.created_at AT TIME ZONE 'UTC' >= ${p.startTsLit}::timestamptz
+        AND ${alias}.created_at AT TIME ZONE 'UTC' < ${p.endTsLit}::timestamptz`;
 }
 
 function usageRowTokenExpr(): string {

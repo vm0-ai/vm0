@@ -1,63 +1,115 @@
-import { createHash, randomUUID } from "node:crypto";
+import { createHash } from "node:crypto";
 import { gzipSync } from "node:zlib";
 
-import { MEMORY_ARTIFACT_NAME } from "@vm0/core/storage-names";
 import { command } from "ccstate";
-import {
-  memoryChangeItems,
-  type MemoryChangeDiff,
-} from "@vm0/db/schema/memory-change-item";
-import { memoryChangeSummaries } from "@vm0/db/schema/memory-change-summary";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
-import { eq } from "drizzle-orm";
+import type {
+  TestMemoryStateActionBody,
+  TestMemoryStateActionResponse,
+  TestMemoryStateFixture,
+  TestMemoryStateSummaryRow,
+} from "@vm0/api-contracts/contracts/test-memory-state";
 
 import type { TestContext } from "../../../../__tests__/test-context";
-import { writeDb$ } from "../../../external/db";
+import { createAppWithRoutes } from "../../../../app-factory-core";
+import { testMemoryStateRoutes } from "../../test-memory-state";
+
+const MEMORY_STATE_ROUTE = "/api/test/memory-state";
+
+type MemoryChangeDiff = unknown;
 
 export interface MemoryFixture {
   readonly orgId: string;
   readonly userId: string;
 }
 
+interface MemorySummary {
+  readonly id: string;
+  readonly date: string;
+  readonly fromVersionId: string | null;
+  readonly toVersionId: string;
+  readonly summary: string | null;
+}
+
+function requestMemoryState(
+  signal: AbortSignal,
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal,
+    routes: testMemoryStateRoutes,
+  });
+  return Promise.resolve(app.request(path, init));
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+function expectOk(response: Response, operation: string): void {
+  if (response.ok) {
+    return;
+  }
+  throw new Error(`${operation} failed with ${response.status}`);
+}
+
+async function postAction(
+  signal: AbortSignal,
+  body: TestMemoryStateActionBody,
+): Promise<TestMemoryStateActionResponse> {
+  const response = await requestMemoryState(
+    signal,
+    `${MEMORY_STATE_ROUTE}/action`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  signal.throwIfAborted();
+  expectOk(response, `memory state action ${body.action}`);
+  signal.throwIfAborted();
+  const result = await readJson<TestMemoryStateActionResponse>(response);
+  signal.throwIfAborted();
+  return result;
+}
+
+function fixtureFromWire(fixture: TestMemoryStateFixture): MemoryFixture {
+  return { orgId: fixture.org_id, userId: fixture.user_id };
+}
+
+function fixtureToWire(fixture: MemoryFixture): TestMemoryStateFixture {
+  return { org_id: fixture.orgId, user_id: fixture.userId };
+}
+
+function summaryFromWire(row: TestMemoryStateSummaryRow): MemorySummary {
+  return {
+    id: row.id,
+    date: row.date,
+    fromVersionId: row.from_version_id,
+    toVersionId: row.to_version_id,
+    summary: row.summary,
+  };
+}
+
 export const seedMemoryFixture$ = command(
-  async (
-    { set },
-    _input: void,
-    signal: AbortSignal,
-  ): Promise<MemoryFixture> => {
-    const db = set(writeDb$);
-    const fixture = {
-      orgId: `org_${randomUUID()}`,
-      userId: `user_${randomUUID()}`,
-    };
-    await db.insert(orgMetadata).values({
-      orgId: fixture.orgId,
-      tier: "free",
-      credits: 10_000,
+  async (_, _input: void, signal: AbortSignal): Promise<MemoryFixture> => {
+    const response = await postAction(signal, {
+      action: "seed-fixture",
     });
-    signal.throwIfAborted();
-    return fixture;
+    if (!response.fixture) {
+      throw new Error("seedMemoryFixture$: response missing fixture");
+    }
+    return fixtureFromWire(response.fixture);
   },
 );
 
 export const deleteMemoryForFixture$ = command(
-  async (
-    { set },
-    fixture: MemoryFixture,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    // Storage cascade deletes storage_versions via FK.
-    await db.delete(storages).where(eq(storages.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    // Change items cascade delete with their parent summary via FK.
-    await db
-      .delete(memoryChangeSummaries)
-      .where(eq(memoryChangeSummaries.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
-    signal.throwIfAborted();
+  async (_, fixture: MemoryFixture, signal: AbortSignal): Promise<void> => {
+    await postAction(signal, {
+      action: "delete-fixture",
+      fixture: fixtureToWire(fixture),
+    });
   },
 );
 
@@ -89,42 +141,29 @@ function emptyMemoryChangeDiff(): MemoryChangeDiff {
 
 export const seedMemoryActivitySummary$ = command(
   async (
-    { set },
+    _,
     seed: MemoryActivitySummarySeed,
     signal: AbortSignal,
   ): Promise<string> => {
-    const db = set(writeDb$);
-    const summaryId = randomUUID();
-    await db.insert(memoryChangeSummaries).values({
-      id: summaryId,
-      orgId: seed.orgId,
-      userId: seed.userId,
+    const response = await postAction(signal, {
+      action: "seed-activity-summary",
+      org_id: seed.orgId,
+      user_id: seed.userId,
       date: seed.date,
-      fromVersionId: seed.fromVersionId ?? null,
-      toVersionId: seed.toVersionId,
+      from_version_id: seed.fromVersionId ?? null,
+      to_version_id: seed.toVersionId,
       summary: seed.summary ?? null,
+      items: (seed.items ?? []).map((item) => {
+        return {
+          file_path: item.filePath,
+          diff: item.diff ?? emptyMemoryChangeDiff(),
+        };
+      }),
     });
-    signal.throwIfAborted();
-
-    const items = seed.items ?? [];
-    if (items.length > 0) {
-      // Mirror the cron: every item of a summary is batch-inserted in one
-      // transaction and so shares the same transaction-start `now()`
-      // `created_at`. This leaves `created_at` order undefined and lets the
-      // service's `file_path` ordering be exercised honestly.
-      await db.insert(memoryChangeItems).values(
-        items.map((item) => {
-          return {
-            summaryId,
-            filePath: item.filePath,
-            diff: item.diff ?? emptyMemoryChangeDiff(),
-          };
-        }),
-      );
-      signal.throwIfAborted();
+    if (!response.summary_id) {
+      throw new Error("seedMemoryActivitySummary$: response missing summary");
     }
-
-    return summaryId;
+    return response.summary_id;
   },
 );
 
@@ -141,46 +180,19 @@ interface MemoryStorageSeed {
 }
 
 export const seedMemoryStorage$ = command(
-  async (
-    { set },
-    args: MemoryStorageSeed,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    const storageId = randomUUID();
-    const name = args.name ?? MEMORY_ARTIFACT_NAME;
-
-    await db.insert(storages).values({
-      id: storageId,
-      userId: args.userId,
-      name,
-      type: args.type ?? "artifact",
-      orgId: args.orgId,
-      s3Prefix: `orgs/${args.orgId}/users/${args.userId}/${name}`,
-      size: args.size ?? 0,
-      fileCount: args.fileCount ?? 0,
-      updatedAt: args.updatedAt ?? new Date("2025-01-01T00:00:00.000Z"),
+  async (_, args: MemoryStorageSeed, signal: AbortSignal): Promise<void> => {
+    await postAction(signal, {
+      action: "seed-storage",
+      org_id: args.orgId,
+      user_id: args.userId,
+      s3_key: args.s3Key,
+      head_version_id: args.headVersionId,
+      size: args.size,
+      file_count: args.fileCount,
+      updated_at: args.updatedAt?.toISOString(),
+      type: args.type,
+      name: args.name,
     });
-    signal.throwIfAborted();
-
-    if (args.headVersionId === null) {
-      return;
-    }
-
-    const headVersionId = args.headVersionId ?? `head-${randomUUID()}`;
-    await db.insert(storageVersions).values({
-      id: headVersionId,
-      storageId,
-      s3Key: args.s3Key,
-      createdBy: args.userId,
-    });
-    signal.throwIfAborted();
-
-    await db
-      .update(storages)
-      .set({ headVersionId })
-      .where(eq(storages.id, storageId));
-    signal.throwIfAborted();
   },
 );
 
@@ -323,38 +335,79 @@ interface MemoryVersionSeed {
 }
 
 export const seedMemoryVersion$ = command(
-  async (
-    { set },
-    args: MemoryVersionSeed,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    await db.insert(storageVersions).values({
-      id: args.versionId,
-      storageId: args.storageId,
-      s3Key: args.s3Key,
-      createdBy: args.userId,
-      createdAt: args.createdAt,
+  async (_, args: MemoryVersionSeed, signal: AbortSignal): Promise<void> => {
+    await postAction(signal, {
+      action: "seed-version",
+      storage_id: args.storageId,
+      version_id: args.versionId,
+      s3_key: args.s3Key,
+      user_id: args.userId,
+      created_at: args.createdAt.toISOString(),
     });
-    signal.throwIfAborted();
   },
 );
 
 export const findMemoryStorageId$ = command(
-  async ({ set }, orgId: string, signal: AbortSignal): Promise<string> => {
-    const db = set(writeDb$);
-    const [row] = await db
-      .select({ id: storages.id })
-      .from(storages)
-      .where(eq(storages.orgId, orgId))
-      .limit(1);
-    signal.throwIfAborted();
-    if (!row) {
+  async (_, orgId: string, signal: AbortSignal): Promise<string> => {
+    const response = await postAction(signal, {
+      action: "read-storage-id",
+      org_id: orgId,
+    });
+    if (!response.storage_id) {
       throw new Error("Memory storage not found for org");
     }
-    return row.id;
+    return response.storage_id;
   },
 );
+
+export async function updateMemoryVersionCreatedAt(
+  signal: AbortSignal,
+  versionId: string,
+  createdAt: Date,
+): Promise<void> {
+  await postAction(signal, {
+    action: "update-version-created-at",
+    version_id: versionId,
+    created_at: createdAt.toISOString(),
+  });
+}
+
+export async function readMemorySummary(
+  signal: AbortSignal,
+  fixture: MemoryFixture,
+  date: string,
+): Promise<MemorySummary | null> {
+  const response = await postAction(signal, {
+    action: "read-summary",
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+    date,
+  });
+  return response.summary ? summaryFromWire(response.summary) : null;
+}
+
+export async function readMemorySummaries(
+  signal: AbortSignal,
+  fixture: MemoryFixture,
+): Promise<readonly MemorySummary[]> {
+  const response = await postAction(signal, {
+    action: "read-summaries",
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+  });
+  return (response.summaries ?? []).map(summaryFromWire);
+}
+
+export async function readMemoryItems(
+  signal: AbortSignal,
+  summaryId: string,
+): Promise<readonly string[]> {
+  const response = await postAction(signal, {
+    action: "read-items",
+    summary_id: summaryId,
+  });
+  return response.file_paths ?? [];
+}
 
 interface MemoryVersionContent {
   readonly s3Key: string;

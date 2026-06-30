@@ -38,7 +38,7 @@ import {
   seedZeroChatThread$,
   type ZeroChatThreadFixture,
 } from "../__tests__/helpers/zero-chat-threads";
-import { seedUserModelProvider$ } from "../__tests__/helpers/zero-model-providers";
+import { seedUserModelProvider$ } from "./helpers/zero-model-providers";
 import { seedOrgMembership$ } from "../__tests__/helpers/zero-org-membership";
 import { createZeroRouteMocks } from "../__tests__/helpers/zero-route-test";
 

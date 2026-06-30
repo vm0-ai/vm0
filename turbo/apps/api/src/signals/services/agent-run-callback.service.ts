@@ -229,7 +229,7 @@ const dispatchSingleInternalCallback$ = command(
   },
 );
 
-export async function dispatchRunCallbacks(
+async function dispatchRunCallbacks(
   db: Db,
   runId: string,
   status: TerminalCallbackStatus,

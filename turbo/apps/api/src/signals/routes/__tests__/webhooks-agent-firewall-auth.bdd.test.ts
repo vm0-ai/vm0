@@ -9,7 +9,6 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { now } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
-import { setFirewallAuthRefreshTimeoutMsForTests } from "../../services/agent-webhook-firewall-auth.service";
 import {
   basicTemplate,
   createFirewallApi,
@@ -21,6 +20,10 @@ import {
   expectApiError,
   type ApiTestUser,
 } from "./helpers/api-bdd";
+import {
+  resetFirewallAuthRefreshTimeoutMsState,
+  setFirewallAuthRefreshTimeoutMsState,
+} from "./helpers/webhooks-state";
 import { createConnectorBddApi } from "./helpers/api-bdd-connectors";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
@@ -1004,8 +1007,10 @@ describe("FW-4: test-oauth connector refresh", () => {
 
   it("classifies refresh timeouts as upstream without marking reconnect", async () => {
     const fw = createFirewallApi(context);
-    const restoreRefreshTimeout = setFirewallAuthRefreshTimeoutMsForTests(25);
-    onTestFinished(restoreRefreshTimeout);
+    await setFirewallAuthRefreshTimeoutMsState(context, 25);
+    onTestFinished(async () => {
+      await resetFirewallAuthRefreshTimeoutMsState(context);
+    });
     const { actor, headers } = await firewallRun();
     await fw.seedTestConnector(actor, {
       connectorName: "test-oauth",
@@ -1042,7 +1047,7 @@ describe("FW-4: test-oauth connector refresh", () => {
 
     // The connector was not flagged for reconnect: with the normal timeout
     // restored and a fast provider, the next call refreshes successfully.
-    restoreRefreshTimeout();
+    await resetFirewallAuthRefreshTimeoutMsState(context);
     fw.mockTestOauthTokenRefresh(() => {
       return fw.oauthTokenResponse({
         accessToken: "after-timeout",
