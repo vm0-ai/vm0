@@ -40,6 +40,7 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
+import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
 import type { InternalRunCallbackEnvelope } from "./internal-run-callback";
 import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
 import { saveRunSummary, saveRunSummary$ } from "./run-summary.service";
@@ -288,6 +289,7 @@ function parseModelProviderCredentialScope(
 function buildQueuedCreateZeroRunArgs(
   input: CreateQueuedChatRunInput,
   apiStartTime: number,
+  dispatchFailedCallbacks?: DispatchFailedRunCallbacks,
 ) {
   return {
     auth: {
@@ -315,6 +317,7 @@ function buildQueuedCreateZeroRunArgs(
     triggerSource: "web" as const,
     zeroPreCreateSource: "chat_callback_auto_send" as const,
     appendSystemPrompt: input.appendSystemPrompt,
+    dispatchFailedCallbacks,
     beforeDispatch: input.beforeDispatch,
     body: {
       prompt: input.prompt,
@@ -2059,6 +2062,65 @@ async function processTerminalChatCallback(args: {
   }
 }
 
+function withoutQueuedRunDependency(
+  dependencies: ChatCallbackDependencies,
+): ChatCallbackDependencies {
+  return {
+    insertAssistantItems: dependencies.insertAssistantItems,
+    saveRunSummary: dependencies.saveRunSummary,
+    formatRunError: dependencies.formatRunError,
+    getResolvedAttachFiles: dependencies.getResolvedAttachFiles,
+  };
+}
+
+async function claimedUserMessageExistsForRun(
+  db: Db,
+  runId: string,
+): Promise<boolean> {
+  const [message] = await db
+    .select({ id: chatMessages.id })
+    .from(chatMessages)
+    .where(
+      and(
+        eq(chatMessages.runId, runId),
+        eq(chatMessages.role, "user"),
+        isNotNull(chatMessages.revokesMessageId),
+      ),
+    )
+    .limit(1);
+  return message !== undefined;
+}
+
+function buildQueuedChatDispatchFailedCallbacks(args: {
+  readonly apiStartTime: number;
+  readonly dependencies: ChatCallbackDependencies;
+  readonly runInput: CreateQueuedChatRunInput;
+  readonly signal: AbortSignal;
+}): DispatchFailedRunCallbacks {
+  return async (db, runId, error) => {
+    if (!(await claimedUserMessageExistsForRun(db, runId))) {
+      return;
+    }
+    const payload = {
+      threadId: args.runInput.threadId,
+      agentId: args.runInput.agentId,
+    };
+    await processTerminalChatCallback({
+      apiStartTime: args.apiStartTime,
+      db,
+      callback: {
+        runId,
+        status: "failed",
+        error,
+        payload,
+      },
+      payload,
+      dependencies: withoutQueuedRunDependency(args.dependencies),
+      signal: args.signal,
+    });
+  };
+}
+
 function handleChatInternalCallback(args: {
   readonly db: Db;
   readonly callback: InternalRunCallbackEnvelope;
@@ -2157,52 +2219,65 @@ export const handleChatInternalCallback$ = command(
     | { readonly success: false; readonly error: string }
   > => {
     const db = set(writeDb$);
+    const baseDependencies: ChatCallbackDependencies = {
+      insertAssistantItems: async (args, inputSignal) => {
+        await set(insertAssistantEventMessages$, args, inputSignal);
+      },
+      saveRunSummary: (runId, prompt, resultText, inputSignal) => {
+        return set(
+          saveRunSummary$,
+          {
+            runId,
+            triggerSource: "chat",
+            prompt,
+            resultText,
+          },
+          inputSignal,
+        );
+      },
+      formatRunError: (params, inputSignal) => {
+        return set(formatRunErrorForRunOwner$, params, inputSignal);
+      },
+      getResolvedAttachFiles: (userId, fileIds) => {
+        return get(resolveAttachFileUrls(userId, fileIds));
+      },
+    };
+    const dependencies: ChatCallbackDependencies = {
+      ...baseDependencies,
+      createQueuedRun: async (runInput, apiStartTime, inputSignal) => {
+        const runResult = await set(
+          createZeroRun$,
+          buildQueuedCreateZeroRunArgs(
+            runInput,
+            apiStartTime,
+            buildQueuedChatDispatchFailedCallbacks({
+              apiStartTime,
+              dependencies: baseDependencies,
+              runInput,
+              signal: inputSignal,
+            }),
+          ),
+          inputSignal,
+        );
+        if (
+          runResult.status !== 201 ||
+          runResult.body.status === "failed" ||
+          runResult.body.status === "cancelled"
+        ) {
+          log.warn("Auto-send failed to create run", {
+            threadId: runInput.threadId,
+            status: runResult.status,
+          });
+          return null;
+        }
+        return { runId: runResult.body.runId };
+      },
+    };
     return await handleChatInternalCallback({
       db,
       callback,
       signal,
-      dependencies: {
-        insertAssistantItems: async (args, inputSignal) => {
-          await set(insertAssistantEventMessages$, args, inputSignal);
-        },
-        saveRunSummary: (runId, prompt, resultText, inputSignal) => {
-          return set(
-            saveRunSummary$,
-            {
-              runId,
-              triggerSource: "chat",
-              prompt,
-              resultText,
-            },
-            inputSignal,
-          );
-        },
-        formatRunError: (params, inputSignal) => {
-          return set(formatRunErrorForRunOwner$, params, inputSignal);
-        },
-        getResolvedAttachFiles: (userId, fileIds) => {
-          return get(resolveAttachFileUrls(userId, fileIds));
-        },
-        createQueuedRun: async (runInput, apiStartTime, inputSignal) => {
-          const runResult = await set(
-            createZeroRun$,
-            buildQueuedCreateZeroRunArgs(runInput, apiStartTime),
-            inputSignal,
-          );
-          if (
-            runResult.status !== 201 ||
-            runResult.body.status === "failed" ||
-            runResult.body.status === "cancelled"
-          ) {
-            log.warn("Auto-send failed to create run", {
-              threadId: runInput.threadId,
-              status: runResult.status,
-            });
-            return null;
-          }
-          return { runId: runResult.body.runId };
-        },
-      },
+      dependencies,
     });
   },
 );
