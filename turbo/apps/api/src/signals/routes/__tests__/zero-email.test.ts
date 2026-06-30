@@ -953,9 +953,11 @@ describe("POST /api/zero/email/inbound", () => {
     });
     expect(Array.isArray(suppressions)).toBe(true);
     expect(
-      (suppressions as { emailAddress: string; reason: string }[]).map((row) => {
-        return { emailAddress: row.emailAddress, reason: row.reason };
-      }),
+      (suppressions as { emailAddress: string; reason: string }[]).map(
+        (row) => {
+          return { emailAddress: row.emailAddress, reason: row.reason };
+        },
+      ),
     ).toStrictEqual(
       expect.arrayContaining([
         { emailAddress: bounced, reason: "bounced" },
@@ -966,7 +968,9 @@ describe("POST /api/zero/email/inbound", () => {
       action: "get-user",
       user_id: fx.userId,
     });
-    expect((user as { emailUnsubscribed?: boolean } | null)?.emailUnsubscribed).toBeTruthy();
+    expect(
+      (user as { emailUnsubscribed?: boolean } | null)?.emailUnsubscribed,
+    ).toBeTruthy();
   });
 
   it("dispatches a Zero run for a new org-address email", async () => {

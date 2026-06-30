@@ -11,7 +11,7 @@ import { testWebhooksStateRoutes } from "../../test-webhooks-state";
 
 const WEBHOOKS_STATE_ROUTE = "/api/test/webhooks-state";
 
-export interface OrgCleanupRows {
+interface OrgCleanupRows {
   readonly cache: readonly { readonly orgId: string }[];
   readonly metadata: readonly {
     readonly stripeCustomerId: string | null;
@@ -20,7 +20,7 @@ export interface OrgCleanupRows {
   readonly members: readonly { readonly userId: string }[];
 }
 
-export interface WebhookBillingState {
+interface WebhookBillingState {
   readonly stripeSubscriptionId: string | null;
   readonly concurrencyEntitlements: readonly {
     readonly stripeInvoiceLineId: string;

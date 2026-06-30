@@ -71,7 +71,7 @@ export interface OnboardingSetupBody {
   readonly role?: string;
 }
 
-export interface OnboardingCompleteLimitedFreeBody {
+interface OnboardingCompleteLimitedFreeBody {
   readonly credits?: number;
   readonly expiresAt?: string | null;
 }

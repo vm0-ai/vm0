@@ -1,5 +1,4 @@
 import { randomUUID } from "node:crypto";
-import { gzipSync } from "node:zlib";
 
 import type {
   TestWorkflowTriggerStateActionBody,
@@ -18,17 +17,17 @@ export interface WorkflowsFixture {
   readonly userId: string;
 }
 
-export interface WorkflowRunStateRow {
+interface WorkflowRunStateRow {
   readonly id: string;
   readonly triggerSource: string | null;
 }
 
-export interface WorkflowTriggerState {
+interface WorkflowTriggerState {
   readonly lastRunId: string | null;
   readonly lastRunAt: string | null;
 }
 
-export interface GithubProcessedWorkflowEvent {
+interface GithubProcessedWorkflowEvent {
   readonly githubDeliveryId: string;
   readonly action: string;
   readonly labelNameNormalized: string;
@@ -42,15 +41,15 @@ export interface GoogleCalendarWatchState {
   readonly syncToken: string | null;
 }
 
-export interface GoogleCalendarProcessedEvent {
+interface GoogleCalendarProcessedEvent {
   readonly calendarEventId: string;
 }
 
-export interface GoogleCalendarEventSnapshot {
+interface GoogleCalendarEventSnapshot {
   readonly calendarEventId: string;
 }
 
-export interface GoogleCalendarWatchStateResult {
+interface GoogleCalendarWatchStateResult {
   readonly watches: readonly GoogleCalendarWatchState[];
   readonly processed: readonly GoogleCalendarProcessedEvent[];
   readonly snapshots: readonly GoogleCalendarEventSnapshot[];
@@ -388,73 +387,6 @@ export const getWorkflowGoogleCalendarWatchState$ = command(
   },
 );
 
-export const seedWorkflow$ = command(
-  async (
-    _,
-    args: {
-      orgId: string;
-      userId: string;
-      agentId: string;
-      name: string;
-      visibility?: "public" | "private";
-      instruction?: string | null;
-      displayName?: string | null;
-      description?: string | null;
-      updatedByUserId?: string;
-    },
-    signal: AbortSignal,
-  ): Promise<string> => {
-    const response = await postAction(signal, {
-      action: "seed-workflow",
-      org_id: args.orgId,
-      user_id: args.userId,
-      agent_id: args.agentId,
-      name: args.name,
-      visibility: args.visibility,
-      instruction: args.instruction,
-      display_name: args.displayName,
-      description: args.description,
-      updated_by_user_id: args.updatedByUserId,
-    });
-    return stringField(response, "workflow_id");
-  },
-);
-
-interface WorkflowStorageSeed {
-  readonly orgId: string;
-  readonly userId: string;
-  // The workflow volume is keyed by the workflow id under the agent-scoped model.
-  readonly workflowId: string;
-  readonly s3Key: string;
-  readonly headVersionId: string;
-  readonly type?: string;
-}
-
-export const seedWorkflowStorage$ = command(
-  async (_, args: WorkflowStorageSeed, signal: AbortSignal): Promise<void> => {
-    await postAction(signal, {
-      action: "seed-workflow-storage",
-      org_id: args.orgId,
-      user_id: args.userId,
-      workflow_id: args.workflowId,
-      s3_key: args.s3Key,
-      head_version_id: args.headVersionId,
-      type: args.type,
-    });
-  },
-);
-
-interface WorkflowContentMockExtra {
-  readonly path: string;
-  readonly content: string;
-}
-
-interface WorkflowContentMockArgs {
-  readonly s3Key: string;
-  readonly content: string;
-  readonly extraFiles?: readonly WorkflowContentMockExtra[];
-}
-
 type AgentFramework = "claude-code" | "codex";
 
 interface AgentComposeContent {
@@ -469,183 +401,6 @@ interface AgentComposeContent {
     >
   >;
 }
-
-const TAR_BLOCK_SIZE = 512;
-
-function octal(value: number, length: number): string {
-  return value.toString(8).padStart(length - 1, "0") + "\0";
-}
-
-function createTarEntry(filename: string, content: Buffer): Buffer {
-  // POSIX tar header (USTAR-compatible) is sufficient for extractFileFromTarGz
-  // to parse the filename, size, and payload.
-  const header = Buffer.alloc(TAR_BLOCK_SIZE);
-  header.write(filename, 0, 100, "utf8");
-  header.write("0000644\0", 100); // mode
-  header.write("0000000\0", 108); // uid
-  header.write("0000000\0", 116); // gid
-  header.write(octal(content.length, 12), 124); // size
-  header.write(octal(0, 12), 136); // mtime
-  // Checksum placeholder: 8 spaces required so the checksum sum is correct.
-  header.write("        ", 148);
-  header.write("0", 156); // type flag (regular file)
-
-  let checksum = 0;
-  for (const byte of header) {
-    checksum += byte;
-  }
-  // Final checksum: 6 octal digits, NUL, space.
-  header.write(checksum.toString(8).padStart(6, "0") + "\0 ", 148);
-
-  const padding = content.length % TAR_BLOCK_SIZE;
-  const dataBlocks =
-    padding === 0
-      ? content
-      : Buffer.concat([content, Buffer.alloc(TAR_BLOCK_SIZE - padding)]);
-
-  return Buffer.concat([header, dataBlocks]);
-}
-
-function createTarGz(
-  files: readonly { readonly filename: string; readonly content: Buffer }[],
-): Buffer {
-  const eofBlocks = Buffer.alloc(TAR_BLOCK_SIZE * 2);
-  return gzipSync(
-    Buffer.concat([
-      ...files.map((file) => {
-        return createTarEntry(file.filename, file.content);
-      }),
-      eofBlocks,
-    ]),
-  );
-}
-
-function asyncIterableOf(buffer: Buffer): AsyncIterable<Uint8Array> {
-  return {
-    async *[Symbol.asyncIterator]() {
-      yield buffer;
-    },
-  };
-}
-
-function commandKey(command: unknown): string {
-  if (
-    typeof command !== "object" ||
-    command === null ||
-    !("input" in command)
-  ) {
-    return "";
-  }
-  const input = (command as { input: unknown }).input;
-  if (
-    typeof input !== "object" ||
-    input === null ||
-    !("Key" in input) ||
-    typeof (input as { Key: unknown }).Key !== "string"
-  ) {
-    return "";
-  }
-  return (input as { Key: string }).Key;
-}
-
-export function mockWorkflowContent(
-  context: TestContext,
-  args: WorkflowContentMockArgs,
-): void {
-  const contentBuffer = Buffer.from(args.content, "utf8");
-  const extraFiles = (args.extraFiles ?? []).map((file) => {
-    return {
-      path: file.path,
-      content: Buffer.from(file.content, "utf8"),
-    };
-  });
-  const archive = createTarGz([
-    { filename: "SKILL.md", content: contentBuffer },
-    ...extraFiles.map((file) => {
-      return { filename: file.path, content: file.content };
-    }),
-  ]);
-
-  const manifest = {
-    version: "test-version",
-    createdAt: new Date(0).toISOString(),
-    files: [
-      { path: "SKILL.md", hash: "test-hash-skill", size: contentBuffer.length },
-      ...extraFiles.map((file) => {
-        return {
-          path: file.path,
-          hash: "test-hash-extra",
-          size: file.content.length,
-        };
-      }),
-    ],
-    totalSize:
-      contentBuffer.length +
-      extraFiles.reduce((sum, file) => {
-        return sum + file.content.length;
-      }, 0),
-    fileCount: 1 + extraFiles.length,
-  };
-  const manifestBuffer = Buffer.from(JSON.stringify(manifest), "utf8");
-
-  context.mocks.s3.send.mockImplementation((cmd: unknown): Promise<unknown> => {
-    const key = commandKey(cmd);
-    if (key === `${args.s3Key}/manifest.json`) {
-      return Promise.resolve({ Body: asyncIterableOf(manifestBuffer) });
-    }
-    if (key === `${args.s3Key}/archive.tar.gz`) {
-      return Promise.resolve({ Body: asyncIterableOf(archive) });
-    }
-    return Promise.resolve({});
-  });
-}
-
-export function mockMissingWorkflowContent(
-  context: TestContext,
-  args: { readonly s3Key: string },
-): void {
-  context.mocks.s3.send.mockImplementation((cmd: unknown): Promise<unknown> => {
-    const key = commandKey(cmd);
-    if (
-      key === `${args.s3Key}/manifest.json` ||
-      key === `${args.s3Key}/archive.tar.gz`
-    ) {
-      return Promise.reject(
-        Object.assign(new Error(`No such key: ${key}`), {
-          name: "NoSuchKey",
-          Code: "NoSuchKey",
-          $metadata: { httpStatusCode: 404 },
-        }),
-      );
-    }
-    return Promise.resolve({});
-  });
-}
-
-interface InstructionsStorageSeed {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly agentName: string;
-  readonly s3Key: string;
-  readonly headVersionId?: string;
-}
-
-export const seedInstructionsStorage$ = command(
-  async (
-    _,
-    args: InstructionsStorageSeed,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await postAction(signal, {
-      action: "seed-instructions-storage",
-      org_id: args.orgId,
-      user_id: args.userId,
-      agent_name: args.agentName,
-      s3_key: args.s3Key,
-      head_version_id: args.headVersionId,
-    });
-  },
-);
 
 function createAgentComposeContent(
   name: string,

@@ -10,7 +10,7 @@ import { testBankingStateRoutes } from "../../test-banking-state";
 
 const BANKING_STATE_ROUTE = "/api/test/banking-state";
 
-export interface SeedBankingStateInput {
+interface SeedBankingStateInput {
   readonly orgId: string;
   readonly userId: string;
   readonly agentId: string;
@@ -23,7 +23,7 @@ export interface SeedBankingStateInput {
   readonly connectionStatus: string;
 }
 
-export interface BankingAuditEvent {
+interface BankingAuditEvent {
   readonly action: string;
   readonly status: string;
   readonly failureCode: string | null;

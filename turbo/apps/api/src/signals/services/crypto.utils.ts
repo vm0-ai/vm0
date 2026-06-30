@@ -14,7 +14,7 @@ import { env } from "../../lib/env";
 import { singleton, testOverride } from "../../lib/singleton";
 
 const secretsMapSchema = z.record(z.string(), z.string());
-export const STORED_SECRET_ENVELOPE_PREFIX = "vm0secret:v1:";
+const STORED_SECRET_ENVELOPE_PREFIX = "vm0secret:v1:";
 
 const directKmsCiphertextSchema = z.object({
   keyId: z.string().min(1),
@@ -255,17 +255,6 @@ export async function decryptStoredSecretValue(
 ): Promise<string> {
   const envelope = decodeStoredSecretEnvelope(encrypted);
   return await decryptSecretValueWithKms(envelope.kms);
-}
-
-export async function encryptStoredSecretsMap(
-  secrets: Record<string, string> | null | undefined,
-  ctx: FeatureSwitchContext = {},
-): Promise<string | null> {
-  if (!secrets) {
-    return null;
-  }
-
-  return await encryptStoredSecretValue(JSON.stringify(secrets), ctx);
 }
 
 export async function encryptPersistentSecretValue(

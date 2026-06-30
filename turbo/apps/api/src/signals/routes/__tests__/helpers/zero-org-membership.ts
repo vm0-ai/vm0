@@ -10,7 +10,7 @@ interface SeedOrgMembershipValues {
   readonly role?: "admin" | "member";
 }
 
-export interface OrgMembershipFixture {
+interface OrgMembershipFixture {
   readonly orgId: string;
   readonly userId: string;
 }

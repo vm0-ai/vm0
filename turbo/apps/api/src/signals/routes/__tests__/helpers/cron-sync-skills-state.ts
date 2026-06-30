@@ -10,7 +10,7 @@ import { testCronSyncSkillsStateRoutes } from "../../test-cron-sync-skills-state
 
 const CRON_SYNC_SKILLS_STATE_ROUTE = "/api/test/cron-sync-skills-state";
 
-export interface CronSyncSkillRow {
+interface CronSyncSkillRow {
   readonly fullPath: string;
   readonly commitSha: string | null;
   readonly versionHash: string | null;
@@ -18,7 +18,7 @@ export interface CronSyncSkillRow {
   readonly frontmatter: unknown;
 }
 
-export interface CronSyncStorageRow {
+interface CronSyncStorageRow {
   readonly type: string;
   readonly headVersionId: string | null;
 }

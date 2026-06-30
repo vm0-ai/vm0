@@ -57,12 +57,6 @@ interface SeedTelegramUserLinkValues {
   readonly telegramDisplayName?: string | null;
 }
 
-interface SeedUserAgentPreferenceValues {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly composeId: string;
-}
-
 function requestTelegramStateAction(
   signal: AbortSignal,
   body: TestTelegramStateActionBody,
@@ -202,21 +196,6 @@ export const seedTelegramUserLink$ = command(
           ? response.user_link_id
           : null,
     };
-  },
-);
-
-export const seedUserAgentPreference$ = command(
-  async (
-    _,
-    values: SeedUserAgentPreferenceValues,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    await postAction(signal, {
-      action: "seed-user-agent-preference",
-      org_id: values.orgId,
-      user_id: values.userId,
-      compose_id: values.composeId,
-    });
   },
 );
 

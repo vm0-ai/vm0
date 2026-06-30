@@ -27,7 +27,7 @@ export interface GenerationPricingRow {
   readonly unitSize: number;
 }
 
-export interface GenerationUploadedFile {
+interface GenerationUploadedFile {
   readonly id: string;
   readonly runId: string;
   readonly source: string;
@@ -41,7 +41,7 @@ export interface GenerationUploadedFile {
   readonly metadata: unknown;
 }
 
-export interface GenerationUsageEvent {
+interface GenerationUsageEvent {
   readonly id: string;
   readonly runId: string | null;
   readonly idempotencyKey: string;
@@ -56,7 +56,7 @@ export interface GenerationUsageEvent {
   readonly billingError: string | null;
 }
 
-export interface GenerationJob {
+interface GenerationJob {
   readonly id: string;
   readonly type: string;
   readonly status: string;
@@ -68,7 +68,7 @@ export interface GenerationJob {
   readonly error: unknown | null;
 }
 
-export interface BehaviorCount {
+interface BehaviorCount {
   readonly behaviorKey: string;
   readonly count: number;
 }

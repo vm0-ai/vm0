@@ -18,7 +18,7 @@ interface SeedEmailOutboxOptions {
   readonly nextRetryAt?: Date | null;
 }
 
-export interface EmailOutboxRow {
+interface EmailOutboxRow {
   readonly status: string;
   readonly attempts: number;
   readonly lastError: string | null;

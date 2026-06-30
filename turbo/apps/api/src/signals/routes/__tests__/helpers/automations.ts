@@ -47,13 +47,11 @@ export interface AutomationsFixture {
   readonly automationIds: readonly string[];
 }
 
-export type AutomationState = NonNullable<
+type AutomationState = NonNullable<
   TestAutomationsStateReadResponse["automation"]
 >;
-export type AutomationRunState = NonNullable<
-  TestAutomationsStateReadResponse["run"]
->;
-export type AutomationTriggerRow = TestAutomationsStateTriggerRow;
+type AutomationRunState = NonNullable<TestAutomationsStateReadResponse["run"]>;
+type AutomationTriggerRow = TestAutomationsStateTriggerRow;
 
 function requestAutomationsState(
   context: TestContext,

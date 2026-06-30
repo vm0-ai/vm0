@@ -22,7 +22,7 @@ export interface MemoryFixture {
   readonly userId: string;
 }
 
-export interface MemorySummary {
+interface MemorySummary {
   readonly id: string;
   readonly date: string;
   readonly fromVersionId: string | null;
