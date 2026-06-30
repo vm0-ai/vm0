@@ -972,6 +972,39 @@ export function zeroChatThreadUnreads(args: {
 }
 
 /**
+ * Agents that currently have at least one unread thread for the user. Uses
+ * the same read-cursor comparison as `zeroChatThreadUnreads`.
+ */
+export function zeroChatThreadUnreadAgentIds(args: {
+  readonly userId: string;
+  readonly orgId: string;
+}): Computed<Promise<readonly string[]>> {
+  return computed(async (get) => {
+    const db = get(db$);
+    const lastMessage = lastVisibleMessageSubquery(db);
+    const rows = await db
+      .selectDistinct({ agentId: chatThreads.agentComposeId })
+      .from(chatThreads)
+      .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
+      .leftJoinLateral(lastMessage, sql`true`)
+      .where(
+        and(
+          eq(chatThreads.userId, args.userId),
+          eq(zeroAgents.orgId, args.orgId),
+          isNotNull(lastMessage.id),
+          or(
+            isNull(chatThreads.lastReadMessageId),
+            sql`${chatThreads.lastReadMessageId} <> ${lastMessage.id}`,
+          ),
+        ),
+      );
+    return rows.map((row) => {
+      return row.agentId;
+    });
+  });
+}
+
+/**
  * Of the given thread ids, the ones owned by the user that currently hold an
  * unsent composer draft (non-empty `draftContent` or one+ `draftAttachments`).
  */

@@ -58,4 +58,5 @@ export enum FeatureSwitchKey {
   ComputerUseDelegatedAuthorization = "computerUseDelegatedAuthorization",
   ConnectorAccessManagement = "connectorAccessManagement",
   PresentationTemplateRunbook = "presentationTemplateRunbook",
+  AgentUnreadIndicators = "agentUnreadIndicators",
 }

@@ -79,14 +79,13 @@ const markReadInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     );
   signal.throwIfAborted();
 
-  // Per-thread read-cursor signal only. No threadListChanged broadcast: the
-  // caller syncs from the unread snapshot in this response, and other
-  // clients converge on their next unreads fetch.
-  await publishUserSignal(
-    [auth.userId],
-    `chatThreadReadCursorUpdated:${params.id}`,
-    { lastReadMessageId: latestMessageId },
-  );
+  // Read-state invalidation only. Thread-list shape is unchanged, and
+  // clients refetch unread snapshots from this generic user-level topic.
+  await publishUserSignal([auth.userId], "chatThreadReadCursorUpdated", {
+    threadId: params.id,
+    agentId: thread.agentComposeId,
+    lastReadMessageId: latestMessageId,
+  });
   signal.throwIfAborted();
 
   return {

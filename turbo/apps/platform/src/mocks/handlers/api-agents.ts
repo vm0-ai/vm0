@@ -216,6 +216,11 @@ export const apiAgentsHandlers = [
     return respond(200, { unreads: [] });
   }),
 
+  // GET /api/zero/chat-thread-unread-agents
+  mockApi(chatThreadsContract.unreadAgents, ({ respond }) => {
+    return respond(200, { agentIds: [] });
+  }),
+
   // POST /api/zero/chat-threads/:id/mark-read
   mockApi(chatThreadMarkReadContract.markRead, ({ respond }) => {
     return respond(200, { lastReadMessageId: null, unreads: [] });

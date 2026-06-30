@@ -2,6 +2,7 @@ import { command, computed, state } from "ccstate";
 import { setAblyLoop$ } from "./realtime.ts";
 
 const internalReloadChatThreads$ = state(0);
+const internalReloadChatUnreadState$ = state(0);
 
 /**
  * Read-only view of the reload counter. Consumers subscribe to this to
@@ -9,6 +10,10 @@ const internalReloadChatThreads$ = state(0);
  */
 export const reloadChatThreadsCounter$ = computed((get) => {
   return get(internalReloadChatThreads$);
+});
+
+export const reloadChatUnreadStateCounter$ = computed((get) => {
+  return get(internalReloadChatUnreadState$);
 });
 
 /**
@@ -21,12 +26,17 @@ export const reloadChatThreads$ = command(({ set }) => {
   });
 });
 
+export const reloadChatUnreadState$ = command(({ set }) => {
+  set(internalReloadChatUnreadState$, (n) => {
+    return n + 1;
+  });
+});
+
 /**
  * Subscribe to the user-level `threadListChanged` topic and trigger a
  * sidebar reload on every signal. Server publishes this on any mutation
  * that alters the thread list shape (create, delete, new message, run
- * create/update, title update). Mark-read intentionally syncs through the
- * unread snapshot returned by the mark-read response.
+ * create/update, title update). These changes can also affect unread state.
  *
  * Loop command returns false so it keeps listening until the signal aborts.
  * Isolated in its own file to avoid an import cycle when `route.ts` wires
@@ -36,8 +46,19 @@ export const subscribeThreadListChanged$ = command(
   async ({ set }, signal: AbortSignal) => {
     const onChanged$ = command(({ set }) => {
       set(reloadChatThreads$);
+      set(reloadChatUnreadState$);
       return false;
     });
     await set(setAblyLoop$, "threadListChanged", onChanged$, signal);
+  },
+);
+
+export const subscribeChatThreadReadCursorUpdated$ = command(
+  async ({ set }, signal: AbortSignal) => {
+    const onChanged$ = command(({ set }) => {
+      set(reloadChatUnreadState$);
+      return false;
+    });
+    await set(setAblyLoop$, "chatThreadReadCursorUpdated", onChanged$, signal);
   },
 );
