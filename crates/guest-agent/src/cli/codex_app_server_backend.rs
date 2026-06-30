@@ -173,6 +173,7 @@ async fn run_codex_app_server(
                 thread_started_emitted,
                 &thread_identity.canonical_id,
                 "",
+                None,
             )
             .await?;
             thread_started_emitted = thread_started_emitted || ingest_result.emitted_thread_started;
@@ -230,6 +231,7 @@ async fn run_codex_app_server(
                     let terminal_exit_code = ingest_run_notification(
                         notification,
                         &mut sink,
+                        &active_input,
                         &mut thread_started_emitted,
                         &notification_scope,
                     )
@@ -268,6 +270,7 @@ async fn run_codex_app_server(
                     if let Some(exit_code) = drain_queued_notifications(
                         &mut client,
                         &mut sink,
+                        &active_input,
                         &mut thread_started_emitted,
                         &notification_scope,
                     )
@@ -569,12 +572,19 @@ async fn race_with_heartbeat<T>(
 async fn drain_queued_notifications(
     client: &mut CodexAppServerClient,
     sink: &mut EventIngestSink<'_>,
+    active_input: &ActiveInputWriter,
     thread_started_emitted: &mut bool,
     scope: &CodexTurnScope<'_>,
 ) -> Result<Option<i32>, AgentError> {
     while let Some(notification) = client.pop_notification() {
-        if let Some(exit_code) =
-            ingest_run_notification(notification, sink, thread_started_emitted, scope).await?
+        if let Some(exit_code) = ingest_run_notification(
+            notification,
+            sink,
+            active_input,
+            thread_started_emitted,
+            scope,
+        )
+        .await?
         {
             return Ok(Some(exit_code));
         }
@@ -585,6 +595,7 @@ async fn drain_queued_notifications(
 async fn ingest_run_notification(
     notification: ServerNotification,
     sink: &mut EventIngestSink<'_>,
+    active_input: &ActiveInputWriter,
     thread_started_emitted: &mut bool,
     scope: &CodexTurnScope<'_>,
 ) -> Result<Option<i32>, AgentError> {
@@ -594,6 +605,7 @@ async fn ingest_run_notification(
         *thread_started_emitted,
         scope.thread_id,
         scope.turn_id,
+        Some(active_input),
     )
     .await?;
     *thread_started_emitted = *thread_started_emitted || ingest_result.emitted_thread_started;
@@ -634,6 +646,7 @@ async fn ingest_notification(
     thread_started_emitted: bool,
     expected_thread_id: &str,
     active_turn_id: &str,
+    terminal_active_input: Option<&ActiveInputWriter>,
 ) -> Result<NotificationIngestResult, AgentError> {
     let Some(event) = notification_to_codex_event(&notification)
         .map_err(|error| AgentError::Execution(error.to_string()))?
@@ -652,6 +665,13 @@ async fn ingest_notification(
     }
     let emitted_thread_started = is_thread_started_event(&event, expected_thread_id);
     let terminal_exit_code = terminal_exit_code(&event, expected_thread_id, active_turn_id);
+    // Close before any ingest await so the control path cannot accept input
+    // after this run has already observed a terminal turn event.
+    if terminal_exit_code.is_some()
+        && let Some(active_input) = terminal_active_input
+    {
+        active_input.close_terminal();
+    }
     ingest_event(event, sink).await?;
     Ok(NotificationIngestResult {
         emitted_thread_started,
