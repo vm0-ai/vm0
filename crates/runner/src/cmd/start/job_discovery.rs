@@ -407,6 +407,7 @@ async fn try_reuse_from_pool(
         let held_session_states = pool.held_session_states();
         (taken, snapshot, held_session_states)
     };
+    let took_idle_session = taken.is_some();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
     let started_at = Instant::now();
     let held_session_states = ctx
@@ -423,6 +424,9 @@ async fn try_reuse_from_pool(
         .provider
         .set_held_session_states(held_session_states)
         .await;
+    if took_idle_session {
+        ctx.spawn_ctx.park_notify.notify_one();
+    }
     pre_spawn_timing
         .record_phase_elapsed(RunnerPreSpawnPhase::ProviderHeldSessionUpdate, started_at);
     match taken {

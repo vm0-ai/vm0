@@ -847,6 +847,7 @@ async fn reuse_take_clears_idle_status_while_job_is_active() {
     );
 
     let run_handle = tokio::spawn(run(config));
+    let heartbeat_count = env.handle.heartbeat_count();
     let run_id = RunId::new_v4();
     push_job(
         &env,
@@ -857,6 +858,29 @@ async fn reuse_take_clears_idle_status_while_job_is_active() {
 
     wait_idle_pool_len(&idle_pool, 0, Duration::from_secs(5)).await;
     wait_status_idle_empty_with_active_run(&status_path, run_id, Duration::from_secs(5)).await;
+    assert!(
+        env.handle
+            .wait_heartbeat_past(heartbeat_count, Duration::from_secs(5))
+            .await,
+        "idle take should trigger an immediate heartbeat while the reused job is active"
+    );
+    let post_take_heartbeats = {
+        let heartbeats = env
+            .handle
+            .heartbeats
+            .lock()
+            .unwrap_or_else(|e| e.into_inner());
+        heartbeats[heartbeat_count..].to_vec()
+    };
+    assert!(
+        post_take_heartbeats.iter().any(|heartbeat| {
+            heartbeat
+                .held_session_states
+                .iter()
+                .all(|state| state.session_id != "sess-reuse-status")
+        }),
+        "post-take heartbeat should stop advertising the active session; heartbeats: {post_take_heartbeats:?}"
+    );
 
     gate.notify_one();
     let completion = env
