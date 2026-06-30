@@ -620,6 +620,7 @@ impl VsockHost {
                 ),
             ));
         }
+        vsock_proto::validate_write_files(&proto_entries).map_err(protocol_invalid_input)?;
 
         let timeout = Duration::from_secs(300);
         let resp = normal_request_on_shared_with_write_observer_frame_builder(
@@ -663,6 +664,8 @@ impl VsockHost {
         tracking: WriteFileChunkTracking<'_>,
         write_observer: FrameWriteObserver,
     ) -> io::Result<()> {
+        validate_write_file_chunk_request(request)?;
+
         let timeout = Duration::from_secs(300);
         let resp = match tracking {
             WriteFileChunkTracking::Tracked => {
@@ -710,6 +713,20 @@ impl VsockHost {
 
         Ok(())
     }
+}
+
+fn validate_write_file_chunk_request(request: WriteFileChunkRequest<'_>) -> io::Result<()> {
+    if request.private {
+        vsock_proto::validate_private_write_file(request.path, request.content, request.append)
+    } else {
+        vsock_proto::validate_write_file(
+            request.path,
+            request.content,
+            request.sudo,
+            request.append,
+        )
+    }
+    .map_err(protocol_invalid_input)
 }
 
 fn encode_write_file_chunk_frame(

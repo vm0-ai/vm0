@@ -54,6 +54,16 @@ pub fn encode_write_file(
     encode_write_file_flags(path, content, sudo, append, false)
 }
 
+/// Validate a write_file payload without encoding it.
+pub fn validate_write_file(
+    path: &str,
+    content: &[u8],
+    sudo: bool,
+    append: bool,
+) -> Result<(), ProtocolError> {
+    validate_write_file_payload(path, content, sudo, append, false).map(|_| ())
+}
+
 /// Encode a full write_file frame into `frame`.
 ///
 /// The resulting frame uses the same bytes as
@@ -77,6 +87,15 @@ pub fn encode_private_write_file(
     append: bool,
 ) -> Result<Vec<u8>, ProtocolError> {
     encode_write_file_flags(path, content, false, append, true)
+}
+
+/// Validate a private write_file payload without encoding it.
+pub fn validate_private_write_file(
+    path: &str,
+    content: &[u8],
+    append: bool,
+) -> Result<(), ProtocolError> {
+    validate_write_file_payload(path, content, false, append, true).map(|_| ())
 }
 
 /// Encode a full private write_file frame into `frame`.
@@ -106,6 +125,11 @@ pub fn encode_write_files(files: &[WriteFileBatchEntry<'_>]) -> Result<Vec<u8>, 
     append_write_files_payload(&mut p, &encoded);
     debug_assert_eq!(p.len(), encoded.payload_len);
     Ok(p)
+}
+
+/// Validate a write_files payload without encoding it.
+pub fn validate_write_files(files: &[WriteFileBatchEntry<'_>]) -> Result<(), ProtocolError> {
+    validate_write_files_payload(files).map(|_| ())
 }
 
 /// Encode a full write_files frame into `frame`.
