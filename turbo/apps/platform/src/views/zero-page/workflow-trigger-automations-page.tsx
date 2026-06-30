@@ -113,7 +113,7 @@ const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
       "Create a workflow you can run from chat or the workflows page.",
     Icon: IconPlayerPlay,
     prompt:
-      "I'd like to create a workflow that I can run manually without an automatic trigger. Help me define the workflow.",
+      "I'd like to create a workflow that I can run manually without an automation schedule or event. Help me define the workflow.",
   },
   {
     kind: "interval",
@@ -121,7 +121,7 @@ const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
     description: "Run a workflow every few minutes or hours.",
     Icon: IconRepeat,
     prompt:
-      "I'd like to set up an interval workflow trigger that runs every few minutes or hours. Help me define the workflow.",
+      "I'd like to set up a workflow automation that runs every few minutes or hours. Help me define the workflow.",
   },
   {
     kind: "scheduled",
@@ -130,7 +130,7 @@ const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
       "Run a workflow on a daily, weekly, monthly, or custom cron schedule.",
     Icon: IconCalendarTime,
     prompt:
-      "I'd like to set up a scheduled workflow trigger that runs on a daily, weekly, monthly, or custom cron schedule. Help me define the workflow.",
+      "I'd like to set up a workflow automation that runs on a daily, weekly, monthly, or custom cron schedule. Help me define the workflow.",
   },
   {
     kind: "once",
@@ -138,15 +138,15 @@ const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
     description: "Run a workflow once at a specific date and time.",
     Icon: IconClock,
     prompt:
-      "I'd like to set up a one-time workflow trigger that runs at a specific date and time. Help me define the workflow.",
+      "I'd like to set up a one-time workflow automation that runs at a specific date and time. Help me define the workflow.",
   },
   {
     kind: "webhook",
-    title: "Web trigger",
+    title: "Webhook",
     description: "Run a workflow when an inbound webhook is received.",
     Icon: IconLink,
     prompt:
-      "I'd like to set up a webhook workflow trigger that runs when an inbound webhook is received. Help me define the workflow.",
+      "I'd like to set up a webhook workflow automation that runs when an inbound webhook is received. Help me define the workflow.",
   },
   {
     kind: "google-calendar-event-created",
@@ -154,7 +154,7 @@ const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
     description: "Run a workflow when a Google Calendar event is created.",
     Icon: IconCalendarTime,
     prompt:
-      "I'd like to set up a Google Calendar workflow trigger that runs when a new calendar event is created. Help me define the workflow.",
+      "I'd like to set up a Google Calendar workflow automation that runs when a new calendar event is created. Help me define the workflow.",
   },
   {
     kind: "gmail-new-message",
@@ -162,7 +162,7 @@ const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
     description: "Run a workflow when a matching Gmail message arrives.",
     Icon: IconMail,
     prompt:
-      "I'd like to set up an email workflow trigger that runs when a Gmail message matches my criteria. Help me define the workflow.",
+      "I'd like to set up an email workflow automation that runs when a Gmail message matches my criteria. Help me define the workflow.",
   },
   {
     kind: "gmail-label-applied",
@@ -170,7 +170,7 @@ const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
     description: "Run a workflow when a Gmail label is applied.",
     Icon: IconMail,
     prompt:
-      "I'd like to set up an email-label workflow trigger that runs when a Gmail label is applied. Help me define the workflow.",
+      "I'd like to set up an email-label workflow automation that runs when a Gmail label is applied. Help me define the workflow.",
   },
   {
     kind: "github-label-applied",
@@ -178,7 +178,7 @@ const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
     description: "Run a workflow when a GitHub label is applied.",
     Icon: IconBrandGithub,
     prompt:
-      "I'd like to set up a GitHub workflow trigger that runs when a label is applied. Help me define the workflow.",
+      "I'd like to set up a GitHub workflow automation that runs when a label is applied. Help me define the workflow.",
   },
 ] as const;
 
@@ -291,7 +291,7 @@ function triggerRows(
 ): readonly WorkflowTriggerCardRow[] {
   const rows: WorkflowTriggerCardRow[] = [
     {
-      label: trigger.kind === "schedule" ? "Schedule" : "Trigger",
+      label: trigger.kind === "schedule" ? "Schedule" : "Automation",
       value: triggerRuleLabel(trigger, displayTimezone),
     },
     {
@@ -337,7 +337,7 @@ function TriggerCardHeader({
             workflowId: entry.workflow.id,
           },
           searchParams: new URLSearchParams({
-            [WORKFLOW_DETAIL_TAB_PARAM]: "triggers",
+            [WORKFLOW_DETAIL_TAB_PARAM]: "automations",
           }),
         }}
         className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
@@ -368,7 +368,7 @@ function WorkflowAutomationTriggerCard({
           workflowId: entry.workflow.id,
         },
         searchParams: new URLSearchParams({
-          [WORKFLOW_DETAIL_TAB_PARAM]: "triggers",
+          [WORKFLOW_DETAIL_TAB_PARAM]: "automations",
         }),
       }}
       className="rounded-md px-1 py-1 text-sm font-medium text-muted-foreground underline-offset-4 transition-colors hover:text-foreground hover:underline"
@@ -451,9 +451,9 @@ function TriggerGridSkeleton() {
 function EmptyTriggers({ onAdd }: { readonly onAdd: () => void }) {
   return (
     <div className="zero-card flex min-h-56 flex-col items-center justify-center px-6 py-10 text-center">
-      <p className="text-sm font-medium text-foreground">No triggers yet</p>
+      <p className="text-sm font-medium text-foreground">No automations yet</p>
       <p className="mt-1 max-w-sm text-sm text-muted-foreground">
-        Create a triggered workflow and it will show up here.
+        Create a workflow automation and it will show up here.
       </p>
       <Button
         type="button"
@@ -513,7 +513,7 @@ function WorkflowSelectionStep({
             Create with Zero
           </span>
           <span className="mt-0.5 block text-sm text-muted-foreground">
-            Build a new workflow in chat before adding a trigger.
+            Build a new workflow in chat before adding an automation.
           </span>
         </span>
       </button>
@@ -794,7 +794,7 @@ export function CreateWorkflowAutomationDialog() {
     navigate(ROUTES.workflowDetail, {
       pathParams: { workflowId: workflow.id },
       searchParams: new URLSearchParams({
-        [WORKFLOW_DETAIL_TAB_PARAM]: "triggers",
+        [WORKFLOW_DETAIL_TAB_PARAM]: "automations",
       }),
     });
   };
@@ -904,7 +904,7 @@ export function WorkflowTriggerAutomationsPage() {
               Automations
             </h1>
             <p className="mt-0.5 text-sm text-muted-foreground">
-              Workflow triggers running across your workspace.
+              Workflow automations running across your workspace.
             </p>
           </div>
           <Button

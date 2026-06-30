@@ -854,7 +854,7 @@ function JobWorkflowAutomationsTab({
             Automations
           </h2>
           <p className="mt-0.5 text-sm text-muted-foreground">
-            Workflow triggers attached to {displayName}.
+            Workflow automations attached to {displayName}.
           </p>
         </div>
         <Button

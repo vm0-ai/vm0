@@ -677,7 +677,7 @@ describe("team page navigation", () => {
       expect(screen.getByText("Research digest workflow")).toBeInTheDocument();
     });
     expect(
-      screen.getByText("Workflow triggers attached to Research Agent."),
+      screen.getByText("Workflow automations attached to Research Agent."),
     ).toBeInTheDocument();
     expect(screen.getByText("Every 15 minutes")).toBeInTheDocument();
     expect(screen.queryByText("Zero brief workflow")).not.toBeInTheDocument();

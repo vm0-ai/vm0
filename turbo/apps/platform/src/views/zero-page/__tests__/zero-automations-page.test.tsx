@@ -432,7 +432,7 @@ describe("zero automations page", () => {
         screen.getByRole("heading", { name: "Automations" }),
       ).toBeInTheDocument();
       expect(
-        screen.getByText("Workflow triggers running across your workspace."),
+        screen.getByText("Workflow automations running across your workspace."),
       ).toBeInTheDocument();
     });
 
@@ -444,44 +444,44 @@ describe("zero automations page", () => {
     expect(screen.getByText("Gmail new message")).toBeInTheDocument();
     expect(screen.getByText('from contains "@acme.com"')).toBeInTheDocument();
     expect(screen.getByText("Support intake")).toBeInTheDocument();
-    expect(screen.getByText("Webhook trigger")).toBeInTheDocument();
+    expect(screen.getByText("Webhook automation")).toBeInTheDocument();
   });
 
   it.each([
     [
       "Manual run",
-      "I'd like to create a workflow that I can run manually without an automatic trigger. Help me define the workflow.",
+      "I'd like to create a workflow that I can run manually without an automation schedule or event. Help me define the workflow.",
     ],
     [
       "Fixed interval",
-      "I'd like to set up an interval workflow trigger that runs every few minutes or hours. Help me define the workflow.",
+      "I'd like to set up a workflow automation that runs every few minutes or hours. Help me define the workflow.",
     ],
     [
       "Fixed schedule",
-      "I'd like to set up a scheduled workflow trigger that runs on a daily, weekly, monthly, or custom cron schedule. Help me define the workflow.",
+      "I'd like to set up a workflow automation that runs on a daily, weekly, monthly, or custom cron schedule. Help me define the workflow.",
     ],
     [
       "One-time run",
-      "I'd like to set up a one-time workflow trigger that runs at a specific date and time. Help me define the workflow.",
+      "I'd like to set up a one-time workflow automation that runs at a specific date and time. Help me define the workflow.",
     ],
     [
-      "Web trigger",
-      "I'd like to set up a webhook workflow trigger that runs when an inbound webhook is received. Help me define the workflow.",
+      "Webhook",
+      "I'd like to set up a webhook workflow automation that runs when an inbound webhook is received. Help me define the workflow.",
     ],
     [
       "New email",
-      "I'd like to set up an email workflow trigger that runs when a Gmail message matches my criteria. Help me define the workflow.",
+      "I'd like to set up an email workflow automation that runs when a Gmail message matches my criteria. Help me define the workflow.",
     ],
     [
       "Email label",
-      "I'd like to set up an email-label workflow trigger that runs when a Gmail label is applied. Help me define the workflow.",
+      "I'd like to set up an email-label workflow automation that runs when a Gmail label is applied. Help me define the workflow.",
     ],
     [
       "GitHub label",
-      "I'd like to set up a GitHub workflow trigger that runs when a label is applied. Help me define the workflow.",
+      "I'd like to set up a GitHub workflow automation that runs when a label is applied. Help me define the workflow.",
     ],
   ])(
-    "starts workflow-trigger creation with the %s prompt",
+    "starts workflow automation creation with the %s prompt",
     async (triggerName, prompt) => {
       mockWorkflowTriggerStory();
 
@@ -506,7 +506,9 @@ describe("zero automations page", () => {
       click(within(dialog).getByText("Create with Zero"));
 
       expect(within(dialog).queryByText("1 Agent")).not.toBeInTheDocument();
-      expect(within(dialog).queryByText("2 Trigger")).not.toBeInTheDocument();
+      expect(
+        within(dialog).queryByText("2 Automation"),
+      ).not.toBeInTheDocument();
       expect(within(dialog).getByText("Zero")).toBeInTheDocument();
       expect(
         within(dialog).queryByLabelText("Pin to sidebar"),
@@ -515,7 +517,9 @@ describe("zero automations page", () => {
       click(buttonByText("Zero", dialog));
       await waitFor(() => {
         expect(within(dialog).queryByText("1 Agent")).not.toBeInTheDocument();
-        expect(within(dialog).queryByText("2 Trigger")).not.toBeInTheDocument();
+        expect(
+          within(dialog).queryByText("2 Automation"),
+        ).not.toBeInTheDocument();
         expect(
           within(dialog).getByText("What do you want me to do?"),
         ).toBeInTheDocument();
@@ -556,7 +560,7 @@ describe("zero automations page", () => {
 
     await waitFor(() => {
       expect(pathname()).toBe(`/workflows/${workflowId}`);
-      expect(search()).toBe("?tab=triggers");
+      expect(search()).toBe("?tab=automations");
     });
   });
 

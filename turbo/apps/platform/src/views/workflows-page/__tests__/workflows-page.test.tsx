@@ -49,7 +49,11 @@ const GOOGLE_CALENDAR_TRIGGER_ID = "workflow-trigger-google-calendar-created";
 const WORKFLOW_CHAT_THREAD_ID = "00000000-0000-4000-a000-000000000300";
 const TRIGGER_RUN_THREAD_ID = "00000000-0000-4000-a000-000000000301";
 
-type WorkflowDetailTestTab = "triggers" | "instructions" | "info";
+type WorkflowDetailTestTab =
+  | "automations"
+  | "triggers"
+  | "instructions"
+  | "info";
 
 function workflowDetailPath(tab: WorkflowDetailTestTab): string {
   return `/agents/${AGENT_ID}/workflows/${SALES_WORKFLOW_ID}?tab=${tab}`;
@@ -872,11 +876,11 @@ describe("workflow detail page", () => {
     expect(currentBreadcrumb).toHaveClass("font-medium", "text-foreground");
     const workflowFilesButton = screen.getByLabelText("Workflow files");
     expect(workflowFilesButton).toHaveTextContent("instructions");
-    click(buttonByText("Triggers"));
+    click(buttonByText("Automations"));
     await waitFor(() => {
       expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
     });
-    expect(search()).toBe("?tab=triggers");
+    expect(search()).toBe("?tab=automations");
     expect(screen.getByText("Schedule")).toBeInTheDocument();
     expect(screen.getAllByText("Last run").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Next run").length).toBeGreaterThan(0);
@@ -1079,14 +1083,14 @@ describe("workflow detail page", () => {
     });
     expect(screen.getByText("Source")).toBeInTheDocument();
     expect(screen.getByText("Target")).toBeInTheDocument();
-    expect(buttonByText(/Pause source triggers/)).toBeInTheDocument();
+    expect(buttonByText(/Pause source automations/)).toBeInTheDocument();
     expect(buttonByText(/Delete source workflow/)).toBeInTheDocument();
     expect(buttonByText(/View target workflow/)).toBeInTheDocument();
 
-    click(buttonByText(/Pause source triggers/));
-    expect(buttonByText(/Pause source triggers/)).toBeDisabled();
+    click(buttonByText(/Pause source automations/));
+    expect(buttonByText(/Pause source automations/)).toBeDisabled();
     expect(
-      buttonByText(/Pause source triggers/).querySelector(".animate-spin"),
+      buttonByText(/Pause source automations/).querySelector(".animate-spin"),
     ).not.toBeNull();
     await waitFor(() => {
       expect(disabledTriggerIds).toStrictEqual([
@@ -1094,7 +1098,7 @@ describe("workflow detail page", () => {
       ]);
     });
     expect(
-      screen.getByText("Source triggers are paused on Research Bot"),
+      screen.getByText("Source automations are paused on Research Bot"),
     ).toBeInTheDocument();
 
     click(buttonByText(/View target workflow/));
@@ -1190,13 +1194,13 @@ describe("workflow detail page", () => {
         screen.getByText("Workflow copied to Support Bot"),
       ).toBeInTheDocument();
     });
-    expect(buttonByText(/Pause source triggers/)).not.toBeDisabled();
+    expect(buttonByText(/Pause source automations/)).not.toBeDisabled();
     click(buttonByText(/Delete source workflow/));
 
     await waitFor(() => {
       expect(deletedWorkflowIds).toStrictEqual([SALES_WORKFLOW_ID]);
     });
-    expect(buttonByText(/Pause source triggers/)).toBeDisabled();
+    expect(buttonByText(/Pause source automations/)).toBeDisabled();
     expect(buttonByText(/Delete source workflow/)).toBeDisabled();
     expect(
       buttonByText(/Delete source workflow/).querySelector(".animate-spin"),
@@ -1294,7 +1298,7 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: workflowDetailPath("triggers"),
+      path: workflowDetailPath("automations"),
     });
 
     await waitFor(() => {
@@ -1315,6 +1319,21 @@ describe("workflow detail page", () => {
     expect(search()).toBe("?tab=instructions");
   });
 
+  it("opens automations for legacy trigger tab links", async () => {
+    context.mocks.data.userPreferences({ timezone: "UTC" });
+    mockWorkflowApis([salesResearch()]);
+
+    detachedSetupPage({
+      context,
+      path: workflowDetailPath("triggers"),
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
+    });
+    expect(buttonByText("Automations")).toBeInTheDocument();
+  });
+
   it("renders Gmail new message trigger match summaries", async () => {
     const workflow = {
       ...salesResearch(),
@@ -1324,7 +1343,7 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: workflowDetailPath("triggers"),
+      path: workflowDetailPath("automations"),
     });
 
     await waitFor(() => {
@@ -1354,7 +1373,7 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: workflowDetailPath("triggers"),
+      path: workflowDetailPath("automations"),
     });
 
     await waitFor(() => {
@@ -1380,14 +1399,14 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: workflowDetailPath("triggers"),
+      path: workflowDetailPath("automations"),
     });
 
     await waitFor(() => {
-      expect(buttonByText("Add trigger")).toBeInTheDocument();
+      expect(buttonByText("Add automation")).toBeInTheDocument();
     });
     const addTriggerButton = queryAllByRoleFast("button").find((button) => {
-      return button.textContent?.trim() === "Add trigger";
+      return button.textContent?.trim() === "Add automation";
     });
     expect(addTriggerButton).toBeDefined();
     click(addTriggerButton!);
@@ -1406,7 +1425,7 @@ describe("workflow detail page", () => {
     click(gmailMenuItem!);
 
     const createTriggerForm = await screen.findByRole("form", {
-      name: "Add Gmail trigger",
+      name: "Add Gmail automation",
     });
     await fill(
       within(createTriggerForm).getByLabelText("From contains"),
@@ -1443,14 +1462,14 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: workflowDetailPath("triggers"),
+      path: workflowDetailPath("automations"),
     });
 
     await waitFor(() => {
-      expect(buttonByText("Add trigger")).toBeInTheDocument();
+      expect(buttonByText("Add automation")).toBeInTheDocument();
     });
     const addTriggerButton = queryAllByRoleFast("button").find((button) => {
-      return button.textContent?.trim() === "Add trigger";
+      return button.textContent?.trim() === "Add automation";
     });
     expect(addTriggerButton).toBeDefined();
     click(addTriggerButton!);
@@ -1469,7 +1488,7 @@ describe("workflow detail page", () => {
     click(gmailLabelMenuItem!);
 
     const createTriggerForm = await screen.findByRole("form", {
-      name: "Add Gmail label trigger",
+      name: "Add Gmail label automation",
     });
     await fill(
       within(createTriggerForm).getByLabelText("Label name"),
@@ -1499,7 +1518,7 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: workflowDetailPath("triggers"),
+      path: workflowDetailPath("automations"),
       featureSwitches: {
         [FeatureSwitchKey.WorkflowsViewer]: true,
         [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
@@ -1507,9 +1526,9 @@ describe("workflow detail page", () => {
     });
 
     await waitFor(() => {
-      expect(buttonByText("Add trigger")).toBeInTheDocument();
+      expect(buttonByText("Add automation")).toBeInTheDocument();
     });
-    click(buttonByText("Add trigger"));
+    click(buttonByText("Add automation"));
 
     await waitFor(() => {
       expect(menuItemByText(/^Webhook/)).toBeInTheDocument();
@@ -1557,17 +1576,17 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: workflowDetailPath("triggers"),
+      path: workflowDetailPath("automations"),
     });
 
     await waitFor(() => {
-      expect(buttonByText("Add trigger")).toBeInTheDocument();
+      expect(buttonByText("Add automation")).toBeInTheDocument();
     });
-    click(buttonByText("Add trigger"));
+    click(buttonByText("Add automation"));
     click(menuItemByText(/Scheduled time/u));
 
     const createTriggerForm = await screen.findByRole("form", {
-      name: "Add schedule trigger",
+      name: "Add schedule automation",
     });
     expect(
       within(createTriggerForm).getByText("Time (Asia/Shanghai)"),
@@ -1595,17 +1614,17 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: workflowDetailPath("triggers"),
+      path: workflowDetailPath("automations"),
     });
 
     await waitFor(() => {
-      expect(buttonByText("Add trigger")).toBeInTheDocument();
+      expect(buttonByText("Add automation")).toBeInTheDocument();
     });
-    click(buttonByText("Add trigger"));
+    click(buttonByText("Add automation"));
     click(menuItemByText(/^Interval/u));
 
     const createTriggerForm = await screen.findByRole("form", {
-      name: "Add interval trigger",
+      name: "Add interval automation",
     });
     selectOptionByLabel("Every", "30 minutes", createTriggerForm);
     click(buttonByText("Add interval", createTriggerForm));
@@ -1629,17 +1648,17 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: workflowDetailPath("triggers"),
+      path: workflowDetailPath("automations"),
     });
 
     await waitFor(() => {
-      expect(buttonByText("Add trigger")).toBeInTheDocument();
+      expect(buttonByText("Add automation")).toBeInTheDocument();
     });
-    click(buttonByText("Add trigger"));
+    click(buttonByText("Add automation"));
     click(menuItemByText(/One-time run/u));
 
     const createTriggerForm = await screen.findByRole("form", {
-      name: "Add one-time trigger",
+      name: "Add one-time automation",
     });
     fireEvent.change(within(createTriggerForm).getByLabelText("Run at"), {
       target: { value: "2026-07-01T10:30" },
@@ -1683,7 +1702,7 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: workflowDetailPath("triggers"),
+      path: workflowDetailPath("automations"),
     });
 
     await waitFor(() => {
@@ -1693,7 +1712,7 @@ describe("workflow detail page", () => {
     click(buttonByText("Edit"));
 
     const updateTriggerForm = screen.getByRole("form", {
-      name: "Update schedule trigger",
+      name: "Update schedule automation",
     });
     selectOptionByLabel("Hour", "16", updateTriggerForm);
     selectOptionByLabel("Minute", "45", updateTriggerForm);
@@ -1738,7 +1757,7 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: workflowDetailPath("triggers"),
+      path: workflowDetailPath("automations"),
     });
 
     await waitFor(() => {
@@ -1748,7 +1767,7 @@ describe("workflow detail page", () => {
     click(buttonByText("Edit"));
 
     const updateTriggerForm = screen.getByRole("form", {
-      name: "Update schedule trigger",
+      name: "Update schedule automation",
     });
     selectOptionByLabel("Every", "30 minutes", updateTriggerForm);
     fireEvent.submit(updateTriggerForm);
@@ -1794,7 +1813,7 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: workflowDetailPath("triggers"),
+      path: workflowDetailPath("automations"),
     });
 
     await waitFor(() => {
@@ -1806,7 +1825,7 @@ describe("workflow detail page", () => {
     click(buttonByText("Edit"));
 
     const updateTriggerForm = screen.getByRole("form", {
-      name: "Update Gmail new message trigger",
+      name: "Update Gmail new message automation",
     });
     await fill(
       within(updateTriggerForm).getByLabelText("From contains"),
@@ -1855,7 +1874,7 @@ describe("workflow detail page", () => {
 
     detachedSetupPage({
       context,
-      path: workflowDetailPath("triggers"),
+      path: workflowDetailPath("automations"),
     });
 
     await waitFor(() => {
@@ -1865,7 +1884,7 @@ describe("workflow detail page", () => {
     click(buttonByText("Edit"));
 
     const updateTriggerForm = screen.getByRole("form", {
-      name: "Update Gmail label trigger",
+      name: "Update Gmail label automation",
     });
     await fill(
       within(updateTriggerForm).getByLabelText("Label name"),
