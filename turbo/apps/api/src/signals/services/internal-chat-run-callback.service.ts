@@ -8,6 +8,7 @@ import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
   type ChatMessageGenerationTemplate,
+  type ChatMessageRecommendedFollowup,
   type ChatMessageRecommendedFollowups,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
@@ -55,6 +56,7 @@ import { sendUserPushNotifications } from "./zero-push-notifications.service";
 import {
   generateAndPersistChatThreadTitleFromCallback,
   generateChatThreadRecommendedFollowups,
+  generateChatThreadWorkflowAutomationSuggestion,
   generateChatNotificationSummary,
 } from "./zero-chat-title.service";
 import { createZeroRun$ } from "./zero-runs-create.service";
@@ -604,6 +606,58 @@ async function generateRecommendedFollowupsForCompletedRun(args: {
   return suggestions.length > 0 ? suggestions : undefined;
 }
 
+async function generateWorkflowAutomationSuggestionForCompletedRun(args: {
+  readonly db: Db;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<ChatMessageRecommendedFollowup | undefined> {
+  args.signal.throwIfAborted();
+  const enabled = isFeatureEnabled(
+    FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger,
+    await loadUserFeatureSwitchContext(args.db, args.orgId, args.userId),
+  );
+  args.signal.throwIfAborted();
+  if (!enabled) {
+    return undefined;
+  }
+
+  const suggestion = await generateChatThreadWorkflowAutomationSuggestion({
+    db: args.db,
+    threadId: args.threadId,
+  });
+  args.signal.throwIfAborted();
+  return suggestion ?? undefined;
+}
+
+function mergeRecommendedFollowups(
+  followups: ChatMessageRecommendedFollowups | undefined,
+  workflowAutomationSuggestion: ChatMessageRecommendedFollowup | undefined,
+): ChatMessageRecommendedFollowups | undefined {
+  const merged: ChatMessageRecommendedFollowups = followups
+    ? [...followups]
+    : [];
+  if (!workflowAutomationSuggestion) {
+    return merged.length > 0 ? merged : undefined;
+  }
+  if (
+    merged.some((item) => {
+      return item.prompt === workflowAutomationSuggestion.prompt;
+    })
+  ) {
+    return merged.length > 0 ? merged : undefined;
+  }
+
+  if (merged.length === 0) {
+    return [workflowAutomationSuggestion];
+  }
+
+  const replacementIndex = Math.floor(Math.random() * merged.length);
+  merged[replacementIndex] = workflowAutomationSuggestion;
+  return merged.length > 0 ? merged : undefined;
+}
+
 async function handleCompletedChatCallback(args: {
   readonly db: Db;
   readonly runId: string;
@@ -674,12 +728,25 @@ async function handleCompletedChatCallback(args: {
   });
 
   const lifecycleMarkerStep = (async () => {
-    const recommendedFollowups =
-      await generateRecommendedFollowupsForCompletedRun({
-        db: args.db,
-        threadId: args.chatThread.chatThreadId,
-        signal: args.signal,
-      });
+    const [recommendedFollowups, workflowAutomationSuggestion] =
+      await Promise.all([
+        generateRecommendedFollowupsForCompletedRun({
+          db: args.db,
+          threadId: args.chatThread.chatThreadId,
+          signal: args.signal,
+        }),
+        generateWorkflowAutomationSuggestionForCompletedRun({
+          db: args.db,
+          orgId: args.chatThread.orgId,
+          userId: args.chatThread.userId,
+          threadId: args.chatThread.chatThreadId,
+          signal: args.signal,
+        }),
+      ]);
+    const mergedRecommendedFollowups = mergeRecommendedFollowups(
+      recommendedFollowups,
+      workflowAutomationSuggestion,
+    );
     await insertRunLifecycleMarker({
       db: args.db,
       runId: args.runId,
@@ -687,7 +754,7 @@ async function handleCompletedChatCallback(args: {
       userId: args.chatThread.userId,
       publishRunFinished: args.chatThread.triggerSource === "web",
       event: "completed",
-      recommendedFollowups,
+      recommendedFollowups: mergedRecommendedFollowups,
     });
   })();
 
