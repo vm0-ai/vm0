@@ -130,6 +130,21 @@ fn assert_successful_action(ops: &[(String, bool, Option<String>)], action: &str
     );
 }
 
+fn assert_failed_action_error(ops: &[(String, bool, Option<String>)], action: &str, error: &str) {
+    assert!(
+        ops.iter()
+            .any(|op| op.0 == action && !op.1 && op.2.as_deref() == Some(error)),
+        "expected failed {action} telemetry with {error:?}, got: {ops:?}"
+    );
+}
+
+fn assert_no_action(ops: &[(String, bool, Option<String>)], action: &str) {
+    assert!(
+        ops.iter().all(|op| op.0 != action),
+        "expected no {action} telemetry, got: {ops:?}"
+    );
+}
+
 async fn assert_checkpointed_final_identity_helper_failure_falls_back(
     session_id: &str,
     helper_result: ExecResult,
@@ -396,15 +411,130 @@ async fn run_in_sandbox_runs_guest_download_for_cached_instruction_normalization
         "cached instruction storage should still invoke guest-download; calls: {exec_calls:?}"
     );
     let ops = telemetry.pending_ops_snapshot();
-    assert!(
-        ops.iter()
-            .any(|(action, success, _)| action == "runner_storage_manifest_apply" && *success),
-        "runner storage manifest apply should be recorded with the disambiguated metric name: {ops:?}"
-    );
+    assert_successful_action(&ops, "runner_storage_manifest_fingerprint_reuse");
+    assert_successful_action(&ops, "runner_storage_manifest_has_work");
+    assert_successful_action(&ops, "runner_storage_manifest_cache_populate");
+    assert_successful_action(&ops, "runner_storage_manifest_guest_download");
+    assert_successful_action(&ops, "runner_storage_manifest_apply");
     assert!(
         ops.iter()
             .all(|(action, _, _)| action != "storage_download"),
         "runner telemetry should not use the guest-download per-entry metric name: {ops:?}"
+    );
+}
+
+#[tokio::test]
+async fn run_in_sandbox_records_storage_manifest_no_work_timing_without_guest_download() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    let mut ctx = minimal_context();
+    ctx.storage_manifest = Some(StorageManifest {
+        storages: vec![api_storage(
+            "instructions",
+            "/home/user/.codex",
+            "v1",
+            "https://example.com/instructions.tar.gz",
+        )],
+        artifacts: vec![],
+    });
+    let prev_storage = StorageFingerprints {
+        storages: HashMap::from([(
+            "/home/user/.codex".into(),
+            StorageFingerprint::new("instructions", "v1"),
+        )]),
+        artifacts: HashMap::new(),
+    };
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::Reused,
+            prev_storage: Some(&prev_storage),
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await
+    .unwrap();
+
+    let exec_calls = sandbox.exec_calls();
+    assert!(
+        exec_calls
+            .iter()
+            .all(|call| call.cmd != guest_download_stdin_command()),
+        "fully cached storage without cleanup or instruction normalization should skip guest-download; calls: {exec_calls:?}"
+    );
+    let ops = telemetry.pending_ops_snapshot();
+    assert_successful_action(&ops, "runner_storage_manifest_fingerprint_reuse");
+    assert_successful_action(&ops, "runner_storage_manifest_has_work");
+    assert_successful_action(&ops, "runner_storage_manifest_apply");
+    assert_no_action(&ops, "runner_storage_manifest_cache_populate");
+    assert_no_action(&ops, "runner_storage_manifest_guest_download");
+}
+
+#[tokio::test]
+async fn run_in_sandbox_records_storage_manifest_guest_download_failure_timing() {
+    let dir = tempfile::tempdir().unwrap();
+    let config = test_executor_config(dir.path()).await;
+    let sandbox = sandbox_mock::MockSandbox::new("test");
+    sandbox.push_exec_result(Err(sandbox_exec_error("vsock exec failed")));
+    let mut ctx = minimal_context();
+    let mut storage = api_storage(
+        "instructions",
+        "/home/user/.codex",
+        "v1",
+        "https://example.com/instructions.tar.gz",
+    );
+    storage.instructions_target_filename = Some("AGENTS.md".into());
+    ctx.storage_manifest = Some(StorageManifest {
+        storages: vec![storage],
+        artifacts: vec![],
+    });
+    let prev_storage = StorageFingerprints {
+        storages: HashMap::from([(
+            "/home/user/.codex".into(),
+            StorageFingerprint::new("instructions", "v1"),
+        )]),
+        artifacts: HashMap::new(),
+    };
+    let mut telemetry = test_telemetry(&config, &ctx);
+
+    let result = run_in_sandbox(
+        &sandbox,
+        &ctx,
+        &config,
+        RunStart {
+            restore_guest_state: false,
+            reuse_result: SandboxReuseResult::Reused,
+            prev_storage: Some(&prev_storage),
+        },
+        &mut telemetry,
+        RunControls::new(tokio_util::sync::CancellationToken::new(), None),
+    )
+    .await;
+
+    assert!(
+        result.is_err(),
+        "guest-download failure should still fail the storage manifest phase"
+    );
+    let ops = telemetry.pending_ops_snapshot();
+    assert_successful_action(&ops, "runner_storage_manifest_fingerprint_reuse");
+    assert_successful_action(&ops, "runner_storage_manifest_has_work");
+    assert_successful_action(&ops, "runner_storage_manifest_cache_populate");
+    assert_failed_action_error(
+        &ops,
+        "runner_storage_manifest_guest_download",
+        "storage-download-failed",
+    );
+    assert!(
+        ops.iter()
+            .any(|op| op.0 == "runner_storage_manifest_apply" && !op.1),
+        "top-level storage manifest apply failure should still be recorded, got: {ops:?}"
     );
 }
 
