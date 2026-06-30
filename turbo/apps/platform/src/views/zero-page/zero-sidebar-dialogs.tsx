@@ -1,6 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import type { MouseEvent, ReactNode } from "react";
+import type { ReactNode } from "react";
 import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
@@ -8,7 +8,6 @@ import {
   IconX,
   IconArrowsMove,
   IconPin,
-  IconDots,
   IconPinnedOff,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -39,10 +38,6 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
 } from "@vm0/ui";
 import {
   chatListQuery$,
@@ -62,6 +57,7 @@ import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AgentAvatarImg, AvatarFromUrl } from "./zero-sidebar-shared.tsx";
+import { AgentRowSideActions } from "./zero-sidebar-agent-row-actions.tsx";
 
 export interface AgentDialogItem {
   readonly id: string;
@@ -179,74 +175,6 @@ export function AgentDialogAgentButton({
   );
 }
 
-function AgentUnreadIndicator() {
-  return (
-    <span aria-label="Unread" className="h-2 w-2 rounded-full bg-sky-600" />
-  );
-}
-
-function AgentDialogMenuAction({
-  label,
-  disabled,
-  icon,
-  onSelect,
-}: {
-  readonly label: string;
-  readonly disabled?: boolean;
-  readonly icon: ReactNode;
-  readonly onSelect: () => void;
-}) {
-  function handleMenuTriggerClick(e: MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-  }
-
-  return (
-    <DropdownMenu>
-      <DropdownMenuTrigger asChild>
-        <button
-          type="button"
-          className="peer absolute inset-0 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground invisible transition-colors duration-150 group-hover:visible group-focus-within:visible data-[state=open]:visible hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18 disabled:cursor-not-allowed disabled:opacity-50"
-          onClick={handleMenuTriggerClick}
-          aria-label="Open agent menu"
-          disabled={disabled}
-        >
-          <IconDots size={16} stroke={2} />
-        </button>
-      </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-44">
-        <DropdownMenuItem onSelect={onSelect} disabled={disabled}>
-          <span className="mr-2">{icon}</span>
-          {label}
-        </DropdownMenuItem>
-      </DropdownMenuContent>
-    </DropdownMenu>
-  );
-}
-
-function AgentDialogSideDecorator({
-  hasUnread,
-  action,
-}: {
-  readonly hasUnread: boolean;
-  readonly action?: ReactNode;
-}) {
-  if (!hasUnread && !action) {
-    return null;
-  }
-
-  return (
-    <div className="relative flex h-8 w-8 shrink-0 items-center justify-center">
-      {action}
-      {hasUnread && (
-        <span className="flex items-center justify-center group-hover:hidden group-focus-within:hidden peer-data-[state=open]:hidden">
-          <AgentUnreadIndicator />
-        </span>
-      )}
-    </div>
-  );
-}
-
 function SortablePinnedAgent({
   agent,
   onUnpin,
@@ -301,16 +229,14 @@ function SortablePinnedAgent({
           >
             <IconArrowsMove size={16} stroke={2} />
           </button>
-          <AgentDialogSideDecorator
+          <AgentRowSideActions
             hasUnread={hasUnread}
-            action={
-              <AgentDialogMenuAction
-                label="Unpin"
-                disabled={disabled}
-                icon={<IconPinnedOff size={16} stroke={2} />}
-                onSelect={onUnpin}
-              />
-            }
+            action={{
+              label: "Unpin",
+              disabled,
+              icon: <IconPinnedOff size={16} stroke={2} />,
+              onSelect: onUnpin,
+            }}
           />
         </div>
       ) : (
@@ -464,7 +390,7 @@ export function AgentListDialog({
                   subtitle="Your lead assistant, always here for you"
                 />
                 {unreadIndicatorsEnabled && (
-                  <AgentDialogSideDecorator
+                  <AgentRowSideActions
                     hasUnread={
                       defaultAgentId
                         ? (unreadAgentIds?.has(defaultAgentId) ?? false)
@@ -530,18 +456,16 @@ export function AgentListDialog({
                       }}
                     />
                     {unreadIndicatorsEnabled ? (
-                      <AgentDialogSideDecorator
+                      <AgentRowSideActions
                         hasUnread={unreadAgentIds?.has(agent.id) ?? false}
-                        action={
-                          <AgentDialogMenuAction
-                            label="Pin to sidebar"
-                            disabled={saving}
-                            icon={<IconPin size={16} stroke={2} />}
-                            onSelect={() => {
-                              return togglePin(agent.id);
-                            }}
-                          />
-                        }
+                        action={{
+                          label: "Pin to sidebar",
+                          disabled: saving,
+                          icon: <IconPin size={16} stroke={2} />,
+                          onSelect: () => {
+                            return togglePin(agent.id);
+                          },
+                        }}
                       />
                     ) : (
                       <TooltipProvider delayDuration={200}>

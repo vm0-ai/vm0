@@ -1,6 +1,5 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import type { MouseEvent } from "react";
 import {
   useGet,
   useSet,
@@ -12,7 +11,6 @@ import {
   IconPlus,
   IconChevronRight,
   IconX,
-  IconDots,
   IconPinnedOff,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -21,10 +19,6 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
 } from "@vm0/ui";
 import {
   isChatRoute,
@@ -57,6 +51,7 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { AgentListDialog } from "./zero-sidebar-dialogs.tsx";
+import { AgentRowSideActions } from "./zero-sidebar-agent-row-actions.tsx";
 
 function UnpinButton({
   agentId,
@@ -101,18 +96,16 @@ function UnpinButton({
   );
 }
 
-function AgentUnreadIndicator() {
-  return (
-    <span aria-label="Unread" className="h-2 w-2 rounded-full bg-sky-600" />
-  );
-}
-
-function PinnedAgentMenu({
+function PinnedAgentSideDecorator({
   agentId,
+  isDefaultAgent,
   isPrimarySelected,
+  hasUnread,
 }: {
   agentId: string;
+  isDefaultAgent: boolean;
   isPrimarySelected: boolean;
+  hasUnread: boolean;
 }) {
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
   const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
@@ -126,78 +119,26 @@ function PinnedAgentMenu({
     detach(savePinnedIds(next, pageSignal), Reason.DomCallback);
   }
 
-  function handleMenuTriggerClick(e: MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-  }
-
-  return (
-    <TooltipProvider delayDuration={200}>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            onClick={handleMenuTriggerClick}
-            disabled={savingPinned}
-            className={`peer pointer-events-auto absolute left-1 top-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible data-[state=open]:visible transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
-              isPrimarySelected
-                ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
-            }`}
-            aria-label="Open agent menu"
-          >
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
-                  <IconDots size={16} stroke={2} />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">More</p>
-              </TooltipContent>
-            </Tooltip>
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
-          <DropdownMenuItem onSelect={unpinAgent} disabled={savingPinned}>
-            <IconPinnedOff size={16} stroke={2} className="mr-2" />
-            Unpin
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </TooltipProvider>
-  );
-}
-
-function PinnedAgentSideDecorator({
-  agentId,
-  isDefaultAgent,
-  isPrimarySelected,
-  hasUnread,
-}: {
-  agentId: string;
-  isDefaultAgent: boolean;
-  isPrimarySelected: boolean;
-  hasUnread: boolean;
-}) {
   if (isDefaultAgent && !hasUnread) {
     return null;
   }
 
   return (
-    <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-      {!isDefaultAgent && (
-        <PinnedAgentMenu
-          agentId={agentId}
-          isPrimarySelected={isPrimarySelected}
-        />
-      )}
-      {hasUnread && (
-        <span className="flex items-center justify-center group-hover:hidden group-focus-within:hidden peer-data-[state=open]:hidden">
-          <AgentUnreadIndicator />
-        </span>
-      )}
-    </div>
+    <AgentRowSideActions
+      variant="sidebar"
+      isPrimarySelected={isPrimarySelected}
+      hasUnread={hasUnread}
+      action={
+        isDefaultAgent
+          ? undefined
+          : {
+              label: "Unpin",
+              disabled: savingPinned,
+              icon: <IconPinnedOff size={16} stroke={2} />,
+              onSelect: unpinAgent,
+            }
+      }
+    />
   );
 }
 
