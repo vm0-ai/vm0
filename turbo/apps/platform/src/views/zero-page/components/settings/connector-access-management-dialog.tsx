@@ -258,7 +258,7 @@ function AgentAccessRow({
         <AvatarFromUrl
           avatarUrl={row.agent.avatarUrl}
           alt={name}
-          className="h-9 w-9 shrink-0 rounded-full bg-muted object-cover"
+          className="h-9 w-9 shrink-0 rounded-full object-cover"
         />
         <div className="min-w-0 flex-1">
           <p className="truncate text-sm font-medium text-foreground">{name}</p>
