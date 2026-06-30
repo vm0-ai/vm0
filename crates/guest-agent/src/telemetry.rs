@@ -7,8 +7,9 @@
 //! the position file (#11008).
 //!
 //! Callers interact via [`Telemetry`]: spawn the task with
-//! [`Telemetry::spawn`], request uploads with [`Telemetry::flush`], and
-//! release with [`Telemetry::shutdown`] or
+//! [`Telemetry::spawn_for_paths`] for explicit runtime paths or
+//! [`Telemetry::spawn`] for legacy process-global paths, request uploads with
+//! [`Telemetry::flush`], and release with [`Telemetry::shutdown`] or
 //! [`Telemetry::final_flush_and_shutdown`].
 
 mod delta;
@@ -19,7 +20,7 @@ use crate::env;
 use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::masker::SecretMasker;
-use crate::paths;
+use crate::paths::{self, GuestPaths};
 use guest_common::log_warn;
 use serde_json::json;
 use std::path::Path;
@@ -34,6 +35,42 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 /// Buffer size for the command channel. Only one flush is in flight at a
 /// time during cleanup, so a small bounded queue is plenty.
 const COMMAND_CHANNEL_CAPACITY: usize = 8;
+
+/// Log and position files owned by one telemetry uploader.
+#[derive(Clone)]
+pub struct TelemetryPaths {
+    system_log_file: String,
+    metrics_log_file: String,
+    sandbox_ops_file: String,
+    system_log_pos_file: String,
+    metrics_pos_file: String,
+    sandbox_ops_pos_file: String,
+}
+
+impl TelemetryPaths {
+    /// Build telemetry paths from explicit guest runtime paths.
+    pub fn from_guest_paths(paths: &GuestPaths) -> Self {
+        Self {
+            system_log_file: paths.system_log_file().to_string(),
+            metrics_log_file: paths.metrics_log_file().to_string(),
+            sandbox_ops_file: paths.sandbox_ops_file().to_string(),
+            system_log_pos_file: paths.telemetry_system_log_pos_file().to_string(),
+            metrics_pos_file: paths.telemetry_metrics_pos_file().to_string(),
+            sandbox_ops_pos_file: paths.telemetry_sandbox_ops_pos_file().to_string(),
+        }
+    }
+
+    fn from_legacy_paths() -> Self {
+        Self {
+            system_log_file: paths::system_log_file().to_string(),
+            metrics_log_file: paths::metrics_log_file().to_string(),
+            sandbox_ops_file: paths::sandbox_ops_file().to_string(),
+            system_log_pos_file: paths::telemetry_system_log_pos_file().to_string(),
+            metrics_pos_file: paths::telemetry_metrics_pos_file().to_string(),
+            sandbox_ops_pos_file: paths::telemetry_sandbox_ops_pos_file().to_string(),
+        }
+    }
+}
 
 /// Whether an upload pass should defer a trailing fragment to the next
 /// pass, or consume it as-is because no next pass is coming.
@@ -68,22 +105,24 @@ fn save_position(pos_path: impl AsRef<Path>, pos: u64) {
 async fn upload_telemetry(
     http: &HttpClient,
     masker: &SecretMasker,
+    run_id: &str,
+    telemetry_paths: &TelemetryPaths,
     mode: UploadMode,
 ) -> Result<(), AgentError> {
     // Read deltas
     let system_log = read_file_delta(
-        paths::system_log_file(),
-        paths::telemetry_system_log_pos_file(),
+        &telemetry_paths.system_log_file,
+        &telemetry_paths.system_log_pos_file,
         mode,
     );
     let metrics = read_jsonl_delta(
-        paths::metrics_log_file(),
-        paths::telemetry_metrics_pos_file(),
+        &telemetry_paths.metrics_log_file,
+        &telemetry_paths.metrics_pos_file,
         mode,
     );
     let sandbox_ops = read_jsonl_delta(
-        paths::sandbox_ops_file(),
-        paths::telemetry_sandbox_ops_pos_file(),
+        &telemetry_paths.sandbox_ops_file,
+        &telemetry_paths.sandbox_ops_pos_file,
         mode,
     );
     let log_pos = system_log.new_pos;
@@ -96,9 +135,9 @@ async fn upload_telemetry(
     if system_log.content.is_empty() && metrics.entries.is_empty() && sandbox_ops.entries.is_empty()
     {
         if made_progress {
-            save_position(paths::telemetry_system_log_pos_file(), log_pos);
-            save_position(paths::telemetry_metrics_pos_file(), metrics_pos);
-            save_position(paths::telemetry_sandbox_ops_pos_file(), sandbox_ops_pos);
+            save_position(&telemetry_paths.system_log_pos_file, log_pos);
+            save_position(&telemetry_paths.metrics_pos_file, metrics_pos);
+            save_position(&telemetry_paths.sandbox_ops_pos_file, sandbox_ops_pos);
         }
         return Ok(());
     }
@@ -113,7 +152,7 @@ async fn upload_telemetry(
     let sandbox_ops_entries = sandbox_ops.entries;
 
     let payload = json!({
-        "runId": env::run_id(),
+        "runId": run_id,
         "systemLog": masked_log,
         "metrics": metrics_entries,
         "sandboxOperations": sandbox_ops_entries,
@@ -123,9 +162,9 @@ async fn upload_telemetry(
     let url = http.telemetry_url()?;
     match http.post_json(url, &payload, 1).await {
         Ok(_) => {
-            save_position(paths::telemetry_system_log_pos_file(), log_pos);
-            save_position(paths::telemetry_metrics_pos_file(), metrics_pos);
-            save_position(paths::telemetry_sandbox_ops_pos_file(), sandbox_ops_pos);
+            save_position(&telemetry_paths.system_log_pos_file, log_pos);
+            save_position(&telemetry_paths.metrics_pos_file, metrics_pos);
+            save_position(&telemetry_paths.sandbox_ops_pos_file, sandbox_ops_pos);
             Ok(())
         }
         Err(e) => {
@@ -155,7 +194,8 @@ enum Cmd {
 ///
 /// Holds both the command channel and the spawned task's [`JoinHandle`],
 /// so callers see one lifecycle object rather than juggling two.
-/// Construct with [`Self::spawn`]; release with [`Self::shutdown`].
+/// Construct with [`Self::spawn_for_paths`] or [`Self::spawn`]; release with
+/// [`Self::shutdown`].
 pub struct Telemetry {
     tx: mpsc::Sender<Cmd>,
     handle: JoinHandle<()>,
@@ -164,16 +204,46 @@ pub struct Telemetry {
 impl Telemetry {
     /// Spawn the uploader task and return an owning handle.
     ///
-    /// Spawn **at most one instance per process.** The pos files
-    /// (`paths::telemetry_*_pos_file`) are process-global; two uploader
-    /// tasks would each call `upload_telemetry` on the same files,
-    /// reintroducing the multi-writer race that the channel was built
-    /// to eliminate (#11008). The type system can't enforce this — the
-    /// constraint is the shared pos paths, not the channel.
+    /// Spawn **at most one instance per telemetry path set.** Legacy callers
+    /// use process-global paths, while explicit runtime callers pass a single
+    /// run's paths. Two uploader tasks targeting the same pos files would
+    /// reintroduce the multi-writer race that the channel was built to
+    /// eliminate (#11008). The type system can't enforce this — the constraint
+    /// is the shared pos paths, not the channel.
     pub fn spawn(masker: Arc<SecretMasker>, http: HttpClient) -> Self {
+        Self::spawn_for_run(
+            env::run_id().to_string(),
+            TelemetryPaths::from_legacy_paths(),
+            masker,
+            http,
+        )
+    }
+
+    /// Spawn the uploader task using explicit run id and paths.
+    pub fn spawn_for_run(
+        run_id: String,
+        telemetry_paths: TelemetryPaths,
+        masker: Arc<SecretMasker>,
+        http: HttpClient,
+    ) -> Self {
         let (tx, rx) = mpsc::channel(COMMAND_CHANNEL_CAPACITY);
-        let handle = tokio::spawn(run(rx, masker, http));
+        let handle = tokio::spawn(run(rx, run_id, telemetry_paths, masker, http));
         Self { tx, handle }
+    }
+
+    /// Spawn the uploader task using explicit guest runtime paths.
+    pub fn spawn_for_paths(
+        run_id: String,
+        guest_paths: &GuestPaths,
+        masker: Arc<SecretMasker>,
+        http: HttpClient,
+    ) -> Self {
+        Self::spawn_for_run(
+            run_id,
+            TelemetryPaths::from_guest_paths(guest_paths),
+            masker,
+            http,
+        )
     }
 
     /// Trigger a telemetry upload and await completion.
@@ -234,7 +304,13 @@ impl Telemetry {
 /// select boundary, so a caller-driven flush is never blocked behind a
 /// tick that hasn't started yet. (A tick already in its `await` cannot
 /// be preempted; the worst-case wait for a flush is one in-flight tick.)
-async fn run(mut rx: mpsc::Receiver<Cmd>, masker: Arc<SecretMasker>, http: HttpClient) {
+async fn run(
+    mut rx: mpsc::Receiver<Cmd>,
+    run_id: String,
+    telemetry_paths: TelemetryPaths,
+    masker: Arc<SecretMasker>,
+    http: HttpClient,
+) {
     if !http.has_api() {
         // Drain commands so callers don't block on `reply_rx`. Flushes
         // are a no-op (no API to upload to); Shutdown ends the loop.
@@ -266,18 +342,25 @@ async fn run(mut rx: mpsc::Receiver<Cmd>, masker: Arc<SecretMasker>, http: HttpC
             biased;
             cmd = rx.recv() => match cmd {
                 Some(Cmd::Flush { mode, reply }) => {
-                    let result = upload_telemetry(&http, &masker, mode).await;
+                    let result = upload_telemetry(&http, &masker, &run_id, &telemetry_paths, mode).await;
                     let _ = reply.send(result);
                 }
                 Some(Cmd::FinalFlushAndShutdown { reply }) => {
-                    let result = upload_telemetry(&http, &masker, UploadMode::Final).await;
+                    let result = upload_telemetry(
+                        &http,
+                        &masker,
+                        &run_id,
+                        &telemetry_paths,
+                        UploadMode::Final,
+                    )
+                    .await;
                     let _ = reply.send(result);
                     break;
                 }
                 Some(Cmd::Shutdown) | None => break,
             },
             _ = interval.tick() => {
-                let _ = upload_telemetry(&http, &masker, UploadMode::Live).await;
+                let _ = upload_telemetry(&http, &masker, &run_id, &telemetry_paths, UploadMode::Live).await;
             }
         }
     }
