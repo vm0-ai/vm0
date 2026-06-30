@@ -563,7 +563,7 @@ mod tests {
         codex_thread_id::canonical_codex_thread_id,
         session_history_identity::{
             FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-            SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES,
+            SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES,
         },
     };
     use sandbox::SandboxFactory;
@@ -1076,12 +1076,12 @@ mod tests {
         let http = test_http_client();
         let context = context_with_history_ref_and_size(
             "history-hash-a",
-            Some(SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES),
+            Some(SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES),
         );
         let restored_identity = RestoredSessionIdentity::from_context(&context)
             .unwrap()
             .with_guest_history(
-                SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES,
+                SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES,
                 "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
             );
         let reusable_sandbox = reusable_sandbox_with_identity(Some(restored_identity)).await;

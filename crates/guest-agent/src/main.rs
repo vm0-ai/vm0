@@ -22,7 +22,11 @@ use guest_contracts::diagnostics::{
     AgentFramework, CliTerminationDiagnostic, CliTerminationReason, FailureClass,
     FailureDetailSource, FailureDiagnostic, FailureReason, PromptMetadata, SessionHistoryStatus,
 };
-use guest_contracts::session_history_identity::FinalSessionHistoryIdentityExpectation;
+use guest_contracts::session_history_identity::{
+    FinalSessionHistoryIdentityExpectation, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS,
+};
 use serde_json::Value;
 use std::io::ErrorKind;
 use std::path::Path;
@@ -58,15 +62,22 @@ fn helper_exit_code_from_args() -> Option<i32> {
     let remaining = args.collect::<Vec<_>>();
     let expected = match parse_session_history_identity_expectation(&remaining) {
         Ok(expected) => expected,
-        Err(()) => return Some(2),
+        Err(()) => return Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS),
     };
     Some(
         match session_history_identity::verify_final_session_history_identity_file(
             metadata_path,
             expected.as_ref(),
         ) {
-            Ok(()) => 0,
-            Err(_) => 1,
+            Ok(()) => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS,
+            Err(error) => {
+                let exit_code = error.helper_exit_code();
+                if exit_code == SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS {
+                    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE
+                } else {
+                    exit_code
+                }
+            }
         },
     )
 }

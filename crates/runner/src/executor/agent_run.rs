@@ -3,6 +3,14 @@ use std::time::{Duration, Instant};
 use guest_contracts::diagnostics::FailureDiagnostic;
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryIdentity, FinalSessionHistoryIdentityError,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
 };
 use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, ProcessControlMode, ProcessOutputMode,
@@ -90,6 +98,15 @@ enum SessionHistoryIdentityReason {
     VerifySizeMismatch,
     VerifyHashMismatch,
     VerifyHelperFailed,
+    VerifyHelperTimedOut,
+    VerifyHelperInvalidArgs,
+    VerifyHelperMetadataRead,
+    VerifyHelperInvalidMetadata,
+    VerifyHelperFrameworkMismatch,
+    VerifyHelperExpectedMismatch,
+    VerifyHelperHistoryRead,
+    VerifyHelperHistoryMismatch,
+    VerifyHelperHistoryTooLarge,
     VerifyHelperExecError,
     ReuseMissingNoIdleIdentity,
 }
@@ -119,6 +136,29 @@ impl SessionHistoryIdentityReason {
             Self::VerifySizeMismatch => "session_history_identity_verify_size_mismatch",
             Self::VerifyHashMismatch => "session_history_identity_verify_hash_mismatch",
             Self::VerifyHelperFailed => "session_history_identity_verify_helper_failed",
+            Self::VerifyHelperTimedOut => "session_history_identity_verify_helper_timed_out",
+            Self::VerifyHelperInvalidArgs => "session_history_identity_verify_helper_invalid_args",
+            Self::VerifyHelperMetadataRead => {
+                "session_history_identity_verify_helper_metadata_read_failed"
+            }
+            Self::VerifyHelperInvalidMetadata => {
+                "session_history_identity_verify_helper_invalid_metadata"
+            }
+            Self::VerifyHelperFrameworkMismatch => {
+                "session_history_identity_verify_helper_framework_mismatch"
+            }
+            Self::VerifyHelperExpectedMismatch => {
+                "session_history_identity_verify_helper_expected_mismatch"
+            }
+            Self::VerifyHelperHistoryRead => {
+                "session_history_identity_verify_helper_history_read_failed"
+            }
+            Self::VerifyHelperHistoryMismatch => {
+                "session_history_identity_verify_helper_history_mismatch"
+            }
+            Self::VerifyHelperHistoryTooLarge => {
+                "session_history_identity_verify_helper_history_too_large"
+            }
             Self::VerifyHelperExecError => "session_history_identity_verify_helper_exec_error",
             Self::ReuseMissingNoIdleIdentity => {
                 "session_history_identity_reuse_missing_no_idle_identity"
@@ -333,7 +373,7 @@ async fn verify_final_identity_metadata(
                 termination = %helper_exec_termination_label(&result),
                 "restored session identity final metadata verification failed"
             );
-            Err(SessionHistoryIdentityReason::VerifyHelperFailed)
+            Err(session_history_identity_reason_from_helper_result(&result))
         }
         Err(_) => {
             debug!(
@@ -341,6 +381,44 @@ async fn verify_final_identity_metadata(
                 "restored session identity final metadata verification errored"
             );
             Err(SessionHistoryIdentityReason::VerifyHelperExecError)
+        }
+    }
+}
+
+fn session_history_identity_reason_from_helper_result(
+    result: &sandbox::ExecResult,
+) -> SessionHistoryIdentityReason {
+    match result.termination {
+        ExecTermination::TimedOut => SessionHistoryIdentityReason::VerifyHelperTimedOut,
+        ExecTermination::Exited { exit_code } => match exit_code {
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS => {
+                SessionHistoryIdentityReason::VerifyHelperInvalidArgs
+            }
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ => {
+                SessionHistoryIdentityReason::VerifyHelperMetadataRead
+            }
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA => {
+                SessionHistoryIdentityReason::VerifyHelperInvalidMetadata
+            }
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH => {
+                SessionHistoryIdentityReason::VerifyHelperFrameworkMismatch
+            }
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH => {
+                SessionHistoryIdentityReason::VerifyHelperExpectedMismatch
+            }
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ => {
+                SessionHistoryIdentityReason::VerifyHelperHistoryRead
+            }
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH => {
+                SessionHistoryIdentityReason::VerifyHelperHistoryMismatch
+            }
+            SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE => {
+                SessionHistoryIdentityReason::VerifyHelperHistoryTooLarge
+            }
+            _ => SessionHistoryIdentityReason::VerifyHelperFailed,
+        },
+        ExecTermination::Cancelled | ExecTermination::StartFailed | ExecTermination::WaitFailed => {
+            SessionHistoryIdentityReason::VerifyHelperFailed
         }
     }
 }

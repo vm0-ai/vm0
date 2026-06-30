@@ -8,7 +8,14 @@ use guest_contracts::session_history_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
     FinalSessionHistoryIdentity, FinalSessionHistoryIdentityError,
     FinalSessionHistoryIdentityExpectation, FinalSessionHistoryRefKind,
-    SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES,
+    SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
 };
 use sha2::{Digest, Sha256};
 use std::fmt;
@@ -101,16 +108,25 @@ fn verify_final_session_history_identity(
         }
     }
 
-    let history_bytes = session_history::read_session_history_from_payload_bounded(
+    if identity.history_size_bytes > SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES {
+        return Err(FinalSessionHistoryIdentityVerifyError::HistoryTooLarge);
+    }
+    let digest = match session_history::digest_session_history_from_payload_bounded(
         &identity.history_marker_payload,
-        SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES,
-    )
-    .map_err(FinalSessionHistoryIdentityVerifyError::HistoryRead)?;
-    if history_bytes.len() as u64 != identity.history_size_bytes {
+        identity.history_size_bytes,
+    ) {
+        Ok(digest) => digest,
+        Err(session_history::SessionHistoryDigestError::Read(error)) => {
+            return Err(FinalSessionHistoryIdentityVerifyError::HistoryRead(error));
+        }
+        Err(session_history::SessionHistoryDigestError::ExceedsMaxBytes) => {
+            return Err(FinalSessionHistoryIdentityVerifyError::HistoryMismatch);
+        }
+    };
+    if digest.size_bytes != identity.history_size_bytes {
         return Err(FinalSessionHistoryIdentityVerifyError::HistoryMismatch);
     }
-    let actual_hash = hex::encode(Sha256::digest(&history_bytes));
-    if actual_hash != identity.history_hash {
+    if digest.sha256_hex != identity.history_hash {
         return Err(FinalSessionHistoryIdentityVerifyError::HistoryMismatch);
     }
     Ok(())
@@ -153,6 +169,25 @@ pub enum FinalSessionHistoryIdentityVerifyError {
     HistoryRead(AgentError),
     /// Session history size or hash does not match metadata.
     HistoryMismatch,
+    /// Session history exceeds the guest helper verification budget.
+    HistoryTooLarge,
+}
+
+impl FinalSessionHistoryIdentityVerifyError {
+    /// Return the stable helper exit code for this verification failure.
+    pub fn helper_exit_code(&self) -> i32 {
+        match self {
+            Self::MetadataRead => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ,
+            Self::InvalidMetadata(_) => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA,
+            Self::FrameworkMismatch => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH,
+            Self::ExpectedIdentityMismatch => {
+                SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH
+            }
+            Self::HistoryRead(_) => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ,
+            Self::HistoryMismatch => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
+            Self::HistoryTooLarge => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE,
+        }
+    }
 }
 
 impl fmt::Display for FinalSessionHistoryIdentityVerifyError {
@@ -168,6 +203,9 @@ impl fmt::Display for FinalSessionHistoryIdentityVerifyError {
             }
             Self::HistoryRead(_) => f.write_str("final session history could not be read"),
             Self::HistoryMismatch => f.write_str("final session history did not match identity"),
+            Self::HistoryTooLarge => {
+                f.write_str("final session history exceeds verification budget")
+            }
         }
     }
 }
@@ -237,6 +275,36 @@ mod tests {
     }
 
     #[test]
+    fn verifies_codex_zstd_marker_history() {
+        let dir = tempfile::tempdir().unwrap();
+        let sessions_dir = dir.path().join("sessions");
+        let history_dir = sessions_dir.join("2026").join("06").join("29");
+        std::fs::create_dir_all(&history_dir).unwrap();
+        let thread_id = "00000000-0000-4000-8000-000000000001";
+        let history = br#"{"type":"session_meta","timestamp":"2026-06-29T10:00:00Z"}"#;
+        let compressed = zstd::encode_all(history.as_slice(), 0).unwrap();
+        std::fs::write(
+            history_dir
+                .join("rollout-2026-06-29T10-00-00-00000000000040008000000000000001.jsonl.zst"),
+            compressed,
+        )
+        .unwrap();
+        let marker = session_history::codex_marker_payload(&sessions_dir, thread_id);
+        let identity = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::Codex,
+            "a".repeat(64),
+            FinalSessionHistoryRefKind::Blob,
+            hex::encode(Sha256::digest(history)),
+            history.len() as u64,
+            marker,
+        )
+        .unwrap();
+        let metadata_path = write_metadata(&dir, &identity);
+
+        verify_final_session_history_identity_file(metadata_path, None).unwrap();
+    }
+
+    #[test]
     fn rejects_history_mismatch() {
         let dir = tempfile::tempdir().unwrap();
         let history_path = dir.path().join("history.jsonl");
@@ -280,25 +348,65 @@ mod tests {
     }
 
     #[test]
-    fn build_rejects_history_above_verify_cap() {
-        let err = FinalSessionHistoryIdentity::new(
+    fn build_allows_history_above_host_read_cap() {
+        let identity = FinalSessionHistoryIdentity::new(
             FinalSessionHistoryFramework::ClaudeCode,
             "a".repeat(64),
             FinalSessionHistoryRefKind::Blob,
             "b".repeat(64),
-            SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES + 1,
+            guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES
+                + 1,
             "/history.jsonl",
         )
-        .unwrap_err();
-        assert_eq!(err, FinalSessionHistoryIdentityError::HistoryTooLarge);
+        .unwrap();
+
+        assert_eq!(
+            identity.history_size_bytes,
+            guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES
+                + 1
+        );
     }
 
     #[test]
-    fn rejects_current_history_above_verify_cap() {
+    fn verifies_large_claude_literal_history() {
         let dir = tempfile::tempdir().unwrap();
         let history_path = dir.path().join("history.jsonl");
-        let expected_history = vec![b'a'; SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES as usize];
-        let oversized_history = vec![b'a'; SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES as usize + 1];
+        let history = vec![
+            b'a';
+            guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES
+                as usize
+                + 1
+        ];
+        std::fs::write(&history_path, &history).unwrap();
+        let identity = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            "a".repeat(64),
+            FinalSessionHistoryRefKind::Blob,
+            hex::encode(Sha256::digest(&history)),
+            history.len() as u64,
+            history_path.to_string_lossy(),
+        )
+        .unwrap();
+        let metadata_path = write_metadata(&dir, &identity);
+
+        verify_final_session_history_identity_file(metadata_path, None).unwrap();
+    }
+
+    #[test]
+    fn rejects_current_history_larger_than_identity_size() {
+        let dir = tempfile::tempdir().unwrap();
+        let history_path = dir.path().join("history.jsonl");
+        let expected_history = vec![
+            b'a';
+            guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES
+                as usize
+        ];
+        let oversized_history = vec![
+            b'a';
+            guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES
+                as usize
+                + 1
+        ];
         std::fs::write(&history_path, oversized_history).unwrap();
         let identity = FinalSessionHistoryIdentity::new(
             FinalSessionHistoryFramework::ClaudeCode,
@@ -315,6 +423,29 @@ mod tests {
         assert!(matches!(
             err,
             FinalSessionHistoryIdentityVerifyError::HistoryMismatch
+        ));
+    }
+
+    #[test]
+    fn rejects_history_above_guest_verify_cap() {
+        let dir = tempfile::tempdir().unwrap();
+        let history_path = dir.path().join("history.jsonl");
+        std::fs::write(&history_path, b"small").unwrap();
+        let identity = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            "a".repeat(64),
+            FinalSessionHistoryRefKind::Blob,
+            "b".repeat(64),
+            SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES + 1,
+            history_path.to_string_lossy(),
+        )
+        .unwrap();
+        let metadata_path = write_metadata(&dir, &identity);
+
+        let err = verify_final_session_history_identity_file(metadata_path, None).unwrap_err();
+        assert!(matches!(
+            err,
+            FinalSessionHistoryIdentityVerifyError::HistoryTooLarge
         ));
     }
 

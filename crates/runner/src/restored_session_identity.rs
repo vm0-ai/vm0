@@ -3,7 +3,7 @@ use std::fmt;
 use guest_contracts::session_history_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
     FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-    SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES,
+    SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES,
 };
 use sha2::{Digest, Sha256};
 
@@ -172,16 +172,16 @@ impl RestoredSessionIdentity {
         &self,
     ) -> Option<RestoredSessionHistoryVerification<'_>> {
         let expected_size = self.history_size_bytes?;
-        if expected_size > SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES {
-            return None;
-        }
         match self.verifier.as_ref()? {
             RestoredSessionIdentityVerifier::GuestHistoryPath { guest_history_path } => {
                 if !guest_history_path.starts_with('/') {
                     return None;
                 }
+                if expected_size > SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES {
+                    return None;
+                }
                 let read_limit = expected_size.checked_add(1)?;
-                if read_limit > SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES {
+                if read_limit > SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES {
                     return None;
                 }
                 Some(RestoredSessionHistoryVerification::GuestHistoryPath {
