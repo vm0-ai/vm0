@@ -3,4 +3,5 @@
 
 // Workspace-internal support for the mock binary and its integration tests.
 // This is not a stable external API.
+#[doc(hidden)]
 pub mod process_group_child;

@@ -191,8 +191,8 @@ fn spawn_stream_json_child(
         .stderr(Stdio::piped());
 
     let mut child = spawn_managed_mock_child(&mut command)?;
-    let stdin = child.child_mut().stdin.take().ok_or("missing stdin")?;
-    let stdout = child.child_mut().stdout.take().ok_or("missing stdout")?;
+    let stdin = child.take_stdin().ok_or("missing stdin")?;
+    let stdout = child.take_stdout().ok_or("missing stdout")?;
     let (tx, rx) = mpsc::channel();
     let stdout_thread = std::thread::spawn(move || {
         let reader = BufReader::new(stdout);
@@ -260,7 +260,7 @@ fn wait_child(
     mut child: ProcessGroupChild,
     stdout_thread: JoinHandle<()>,
 ) -> Result<(ExitStatus, String), Box<dyn std::error::Error>> {
-    let child_stderr = child.child_mut().stderr.take();
+    let child_stderr = child.take_stderr();
     let stderr_thread = std::thread::spawn(move || -> Result<String, std::io::Error> {
         let mut stderr = String::new();
         if let Some(mut child_stderr) = child_stderr {
@@ -310,7 +310,10 @@ fn wait_child_status_and_cleanup_group(
     wait_thread
         .join()
         .map_err(|_| std::io::Error::other("child wait thread panicked"))?;
-    child_observed?;
+    if let Err(error) = child_observed {
+        child.terminate();
+        return Err(error.into());
+    }
     process_group_child::terminate_process_group(pid);
     Ok(child.wait_direct_child()?)
 }
@@ -354,8 +357,8 @@ fn wait_child_status(child: ProcessGroupChild) -> Result<ExitStatus, Box<dyn std
 }
 
 fn wait_child_output(mut child: ProcessGroupChild) -> Result<Output, Box<dyn std::error::Error>> {
-    let mut child_stdout = child.child_mut().stdout.take().ok_or("missing stdout")?;
-    let mut child_stderr = child.child_mut().stderr.take().ok_or("missing stderr")?;
+    let mut child_stdout = child.take_stdout().ok_or("missing stdout")?;
+    let mut child_stderr = child.take_stderr().ok_or("missing stderr")?;
     let stdout_thread = std::thread::spawn(move || -> Result<Vec<u8>, std::io::Error> {
         let mut stdout = Vec::new();
         child_stdout.read_to_end(&mut stdout)?;
@@ -652,7 +655,7 @@ fn stream_json_input_reads_prompt_from_stdin() -> Result<(), Box<dyn std::error:
         .stderr(Stdio::piped());
     let mut child = spawn_managed_mock_child(&mut command)?;
 
-    let mut stdin = child.child_mut().stdin.take().ok_or("missing stdin")?;
+    let mut stdin = child.take_stdin().ok_or("missing stdin")?;
     stdin.write_all(stream_json_user_frame("printf stdin-ok").as_bytes())?;
     drop(stdin);
 

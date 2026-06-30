@@ -666,11 +666,11 @@ fn capture_shell_output(prompt: &str) -> CapturedShellOutput {
         Err(_) => return CapturedShellOutput::failed(),
     };
 
-    let Some(stdout) = child.child_mut().stdout.take() else {
+    let Some(stdout) = child.take_stdout() else {
         child.terminate();
         return CapturedShellOutput::failed();
     };
-    let Some(stderr) = child.child_mut().stderr.take() else {
+    let Some(stderr) = child.take_stderr() else {
         child.terminate();
         return CapturedShellOutput::failed();
     };

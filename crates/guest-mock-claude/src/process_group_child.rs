@@ -1,7 +1,7 @@
 use std::io;
 #[cfg(unix)]
 use std::io::ErrorKind;
-use std::process::{Child, Command, ExitStatus};
+use std::process::{Child, ChildStderr, ChildStdin, ChildStdout, Command, ExitStatus};
 
 #[cfg(unix)]
 use std::os::unix::process::CommandExt;
@@ -29,9 +29,19 @@ impl ProcessGroupChild {
         self.child_pid
     }
 
-    /// Borrow the underlying child so callers can take configured stdio pipes.
-    pub fn child_mut(&mut self) -> &mut Child {
-        &mut self.child
+    /// Take the configured stdin pipe from the direct child.
+    pub fn take_stdin(&mut self) -> Option<ChildStdin> {
+        self.child.stdin.take()
+    }
+
+    /// Take the configured stdout pipe from the direct child.
+    pub fn take_stdout(&mut self) -> Option<ChildStdout> {
+        self.child.stdout.take()
+    }
+
+    /// Take the configured stderr pipe from the direct child.
+    pub fn take_stderr(&mut self) -> Option<ChildStderr> {
+        self.child.stderr.take()
     }
 
     /// Wait for the direct child, then clean up the process group.
@@ -40,6 +50,8 @@ impl ProcessGroupChild {
     }
 
     /// Wait for only the direct child.
+    ///
+    /// Callers must handle process-group cleanup before using this.
     pub fn wait_direct_child(mut self) -> io::Result<ExitStatus> {
         self.child.wait()
     }
@@ -99,7 +111,7 @@ pub fn terminate_process_group(child_pid: u32) {
 
 #[cfg(unix)]
 fn terminate_direct_child_by_pid(child_pid: u32) {
-    if let Ok(pid) = libc::pid_t::try_from(child_pid) {
+    if let Some(pid) = signalable_child_pid(child_pid) {
         unsafe {
             libc::kill(pid, libc::SIGKILL);
         }
@@ -108,6 +120,12 @@ fn terminate_direct_child_by_pid(child_pid: u32) {
 
 #[cfg(not(unix))]
 fn terminate_direct_child_by_pid(_child_pid: u32) {}
+
+#[cfg(unix)]
+fn signalable_child_pid(child_pid: u32) -> Option<libc::pid_t> {
+    let pid = libc::pid_t::try_from(child_pid).ok()?;
+    (pid > 1 && pid != current_process_id()).then_some(pid)
+}
 
 #[cfg(unix)]
 pub fn observe_child_exit_without_reaping(child_pid: u32) -> io::Result<()> {
@@ -169,6 +187,11 @@ fn current_process_group() -> libc::pid_t {
     unsafe { libc::getpgrp() }
 }
 
+#[cfg(unix)]
+fn current_process_id() -> libc::pid_t {
+    unsafe { libc::getpid() }
+}
+
 #[cfg(all(test, unix))]
 mod tests {
     use super::ChildProcessGroup;
@@ -202,5 +225,22 @@ mod tests {
             ChildProcessGroup::from_raw_pgid(child_id).expect("signalable process group");
 
         assert_eq!(process_group.pgid, child_id);
+    }
+
+    #[test]
+    fn signalable_child_pid_rejects_dangerous_values() {
+        assert_eq!(super::signalable_child_pid(0), None);
+        assert_eq!(super::signalable_child_pid(1), None);
+        assert_eq!(
+            super::signalable_child_pid(super::current_process_id() as u32),
+            None
+        );
+    }
+
+    #[test]
+    fn signalable_child_pid_rejects_overflow() {
+        let overflowing_child_id = (libc::pid_t::MAX as u32).saturating_add(1);
+
+        assert_eq!(super::signalable_child_pid(overflowing_child_id), None);
     }
 }
