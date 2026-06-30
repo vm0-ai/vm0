@@ -446,10 +446,12 @@ describe("connectors page", () => {
       expect(screen.getByText("Asana")).toBeInTheDocument();
     });
 
-    const connectionFilter = screen.getByRole("group", {
-      name: "Connector connection filter",
+    const filterTrigger = screen.getByRole("button", {
+      name: "Filter connectors",
     });
-    click(buttonByText("Connected", connectionFilter));
+
+    click(filterTrigger);
+    click(menuItemByText("Connected"));
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
@@ -457,12 +459,60 @@ describe("connectors page", () => {
     });
     expect(search()).toBe("?connection=connected");
 
-    click(buttonByText("All", connectionFilter));
+    click(filterTrigger);
+    click(menuItemByText("Not connected"));
 
     await waitFor(() => {
       expect(screen.getByText("Asana")).toBeInTheDocument();
+      expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
+    });
+    expect(search()).toBe("?connection=not-connected");
+
+    click(filterTrigger);
+    click(menuItemByText("All"));
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Asana")).toBeInTheDocument();
     });
     expect(search()).toBe("");
+  });
+
+  it("filters connectors by agent when access management is enabled", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000010";
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+      return respond(200, {
+        enabledTypes: params.id === agentId ? ["github"] : [],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccessManagement]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Asana")).toBeInTheDocument();
+    });
+
+    const filterTrigger = screen.getByRole("button", {
+      name: "Filter connectors",
+    });
+    click(filterTrigger);
+    click(menuItemByText("Research Agent"));
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.queryByText("Asana")).not.toBeInTheDocument();
+    });
+    expect(search()).toContain("connection=agent");
+    expect(search()).toContain(agentId);
   });
 
   it("hydrates connector search from URL keywords", async () => {
@@ -527,9 +577,7 @@ describe("connectors page", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(
-      screen.queryByRole("group", {
-        name: "Connector connection filter",
-      }),
+      screen.queryByRole("button", { name: "Filter connectors" }),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText("Manage GitHub access"),

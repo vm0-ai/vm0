@@ -45,6 +45,7 @@ import {
   reloadConnectors$,
 } from "../../external/connectors.ts";
 import { replaceSearchParams$, searchParams$ } from "../../route.ts";
+import { connectorAgentAuthorizations$ } from "./connector-access-management.ts";
 import { zeroClient$, type ZeroClientFactory } from "../../api-client.ts";
 import {
   jsonParseOr,
@@ -388,14 +389,32 @@ const hiddenConnectorTypes$ = computed((get): Set<ConnectorType> => {
 
 const CONNECTORS_SEARCH_PARAM = "keywords";
 const CONNECTORS_CONNECTION_FILTER_PARAM = "connection";
-export type ConnectorsConnectionFilter = "all" | "connected";
+const CONNECTORS_AGENT_FILTER_PREFIX = "agent:";
+
+// A single, mutually-exclusive connector filter: all connectors, a connection
+// status, or the connectors a given agent is authorized to use.
+export type ConnectorsConnectionFilter =
+  | { readonly kind: "all" }
+  | { readonly kind: "connected" }
+  | { readonly kind: "not-connected" }
+  | { readonly kind: "agent"; readonly agentId: string };
 
 export const connectorsConnectionFilter$ = computed(
   (get): ConnectorsConnectionFilter => {
-    return get(searchParams$).get(CONNECTORS_CONNECTION_FILTER_PARAM) ===
-      "connected"
-      ? "connected"
-      : "all";
+    const raw = get(searchParams$).get(CONNECTORS_CONNECTION_FILTER_PARAM);
+    if (raw === "connected") {
+      return { kind: "connected" };
+    }
+    if (raw === "not-connected") {
+      return { kind: "not-connected" };
+    }
+    if (raw?.startsWith(CONNECTORS_AGENT_FILTER_PREFIX)) {
+      const agentId = raw.slice(CONNECTORS_AGENT_FILTER_PREFIX.length);
+      if (agentId) {
+        return { kind: "agent", agentId };
+      }
+    }
+    return { kind: "all" };
   },
 );
 
@@ -405,17 +424,39 @@ export const connectorsSearch$ = computed((get) => {
 
 export const filteredConnectorTypes$ = computed(async (get) => {
   const keyword = get(connectorsSearch$);
-  const connectionFilter = get(connectorsConnectionFilter$);
+  const filter = get(connectorsConnectionFilter$);
   const features = get(featureSwitch$);
-  const shouldFilterConnected =
-    connectionFilter === "connected" &&
-    (features[FeatureSwitchKey.ConnectorAccessManagement] ?? false);
+  const accessManagementEnabled =
+    features[FeatureSwitchKey.ConnectorAccessManagement] ?? false;
+  // The status/agent filter only applies when access management is enabled.
+  const effectiveFilter: ConnectorsConnectionFilter = accessManagementEnabled
+    ? filter
+    : { kind: "all" };
+
+  const agentEnabledTypes =
+    effectiveFilter.kind === "agent"
+      ? new Set(
+          (await get(connectorAgentAuthorizations$)).find((row) => {
+            return row.agent.id === effectiveFilter.agentId;
+          })?.enabledTypes ?? [],
+        )
+      : null;
+
   const allConnectorTypes = await get(allConnectorTypes$);
   return allConnectorTypes.filter((connector) => {
     if (!matchesConnectorSearch(keyword, connector)) {
       return false;
     }
-    return !shouldFilterConnected || connector.connected;
+    if (effectiveFilter.kind === "connected") {
+      return connector.connected;
+    }
+    if (effectiveFilter.kind === "not-connected") {
+      return !connector.connected;
+    }
+    if (effectiveFilter.kind === "agent") {
+      return agentEnabledTypes?.has(connector.type) ?? false;
+    }
+    return true;
   });
 });
 
@@ -432,10 +473,15 @@ export const setConnectorsSearch$ = command(({ get, set }, value: string) => {
 export const setConnectorsConnectionFilter$ = command(
   ({ get, set }, value: ConnectorsConnectionFilter) => {
     const params = new URLSearchParams(get(searchParams$));
-    if (value === "connected") {
-      params.set(CONNECTORS_CONNECTION_FILTER_PARAM, value);
-    } else {
+    if (value.kind === "all") {
       params.delete(CONNECTORS_CONNECTION_FILTER_PARAM);
+    } else if (value.kind === "agent") {
+      params.set(
+        CONNECTORS_CONNECTION_FILTER_PARAM,
+        `${CONNECTORS_AGENT_FILTER_PREFIX}${value.agentId}`,
+      );
+    } else {
+      params.set(CONNECTORS_CONNECTION_FILTER_PARAM, value.kind);
     }
     set(replaceSearchParams$, params);
   },
