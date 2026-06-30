@@ -454,13 +454,16 @@ impl CowLayer {
     }
 
     fn read_file_span(&self, source: FileReadSource, offset: u64, dest: &mut [u8]) -> Result<()> {
-        self.record_file_read(source);
         match source {
-            FileReadSource::Base => self.base_fd.read_exact_at(dest, offset)?,
+            FileReadSource::Base => {
+                self.record_file_read(source);
+                self.base_fd.read_exact_at(dest, offset)?;
+            }
             FileReadSource::Cow => {
                 let cow_fd = self.cow_fd.as_ref().ok_or_else(|| {
                     NbdCowError::Io(std::io::Error::other("dirty bit set but COW file not open"))
                 })?;
+                self.record_file_read(source);
                 cow_fd.read_exact_at(dest, offset)?;
             }
         }
