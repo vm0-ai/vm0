@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.193.0](https://github.com/vm0-ai/vm0/compare/api-v1.192.0...api-v1.193.0) (2026-06-30)
+
+
+### Features
+
+* suggest workflow automation in chat followups ([#19456](https://github.com/vm0-ai/vm0/issues/19456)) ([42eba73](https://github.com/vm0-ai/vm0/commit/42eba737749a1e0e2439ca6cf6c0a6e301ca3742))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.129.1
+    * @vm0/connectors bumped to 1.116.0
+    * @vm0/core bumped to 8.378.0
+    * @vm0/db bumped to 1.78.6
+
 ## [1.192.0](https://github.com/vm0-ai/vm0/compare/api-v1.191.0...api-v1.192.0) (2026-06-30)
 
 
