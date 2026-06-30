@@ -19,6 +19,7 @@ import {
 import {
   getAvailableConnectorAuthMethodIds,
   getConnectorAuthMethod,
+  getConnectorPrivateNames,
   getConnectorGenerationTypes,
   getConnectorTags,
   type ApiAuthMethodPolicy,
@@ -71,136 +72,6 @@ function permissionSummaryForCatalog(
     hasCategories: summary?.hasCategories ?? false,
     hasDefaultPolicyOverrides: summary?.hasDefaultPolicyOverrides ?? false,
   };
-}
-
-function addValueRefName(valueRef: string, privateNames: Set<string>): void {
-  const match = /^\$(?:secrets|vars)\.(.+)$/.exec(valueRef);
-  if (match?.[1]) {
-    privateNames.add(match[1]);
-  }
-}
-
-function addStoragePrivateNames(
-  method: ConnectorAuthMethodConfig,
-  privateNames: Set<string>,
-): void {
-  for (const secret of method.storage.secrets) {
-    privateNames.add(secret);
-  }
-  for (const variable of method.storage.variables) {
-    privateNames.add(variable);
-  }
-}
-
-function addGrantPrivateNames(
-  method: ConnectorAuthMethodConfig,
-  privateNames: Set<string>,
-): void {
-  if (method.grant.kind === "manual") {
-    for (const fieldName of Object.keys(method.grant.fields)) {
-      privateNames.add(fieldName);
-    }
-  }
-
-  if ("outputs" in method.grant) {
-    for (const valueRef of Object.values(method.grant.outputs)) {
-      addValueRefName(valueRef, privateNames);
-    }
-  }
-}
-
-function addAccessPrivateNames(
-  method: ConnectorAuthMethodConfig,
-  privateNames: Set<string>,
-): void {
-  if (method.access.kind === "none") {
-    return;
-  }
-
-  for (const [envName, binding] of Object.entries(method.access.envBindings)) {
-    privateNames.add(envName);
-    addValueRefName(
-      typeof binding === "string" ? binding : binding.valueRef,
-      privateNames,
-    );
-  }
-  for (const platformSecret of method.access.platformSecrets ?? []) {
-    privateNames.add(platformSecret);
-  }
-}
-
-function addRefreshPrivateNames(
-  method: ConnectorAuthMethodConfig,
-  privateNames: Set<string>,
-): void {
-  if (method.access.kind !== "refresh-token") {
-    return;
-  }
-
-  for (const valueRef of Object.values(method.access.inputs)) {
-    addValueRefName(valueRef, privateNames);
-  }
-  for (const valueRef of Object.values(method.access.outputs)) {
-    addValueRefName(valueRef, privateNames);
-  }
-  for (const refreshableSecret of method.access.refreshableSecrets) {
-    privateNames.add(refreshableSecret);
-  }
-}
-
-function addRevokePrivateNames(
-  method: ConnectorAuthMethodConfig,
-  privateNames: Set<string>,
-): void {
-  if (method.revoke.kind !== "token-revoke") {
-    return;
-  }
-
-  for (const valueRef of Object.values(method.revoke.inputs)) {
-    addValueRefName(valueRef, privateNames);
-  }
-}
-
-function addClientPrivateNames(
-  method: ConnectorAuthMethodConfig,
-  privateNames: Set<string>,
-): void {
-  if (!("client" in method) || !method.client) {
-    return;
-  }
-
-  if ("clientIdEnv" in method.client) {
-    privateNames.add(method.client.clientIdEnv);
-  }
-  if ("clientSecretEnv" in method.client) {
-    privateNames.add(method.client.clientSecretEnv);
-  }
-}
-
-function addPrivateNamesForAuthMethod(
-  method: ConnectorAuthMethodConfig,
-  privateNames: Set<string>,
-): void {
-  addStoragePrivateNames(method, privateNames);
-  addGrantPrivateNames(method, privateNames);
-  addAccessPrivateNames(method, privateNames);
-  addRefreshPrivateNames(method, privateNames);
-  addRevokePrivateNames(method, privateNames);
-  addClientPrivateNames(method, privateNames);
-}
-
-function privateNamesForConnector(
-  type: ConnectorType,
-  authMethods: readonly ConnectorAuthMethodId[],
-): ReadonlySet<string> {
-  const privateNames = new Set<string>();
-  for (const authMethod of authMethods) {
-    const method = getConnectorAuthMethod(type, authMethod);
-    if (method) {
-      addPrivateNamesForAuthMethod(method, privateNames);
-    }
-  }
-  return privateNames;
 }
 
 function normalizePublicText(value: string): string {
@@ -316,7 +187,7 @@ function connectorCatalogItem(
   authMethods: readonly ConnectorAuthMethodId[],
 ): PublicConnectorCatalogItem {
   const config = CONNECTOR_TYPES[type];
-  const privateNames = privateNamesForConnector(type, authMethods);
+  const privateNames = new Set(getConnectorPrivateNames(type, authMethods));
   return {
     connectorRef: type,
     label: config.label,
@@ -339,7 +210,7 @@ function connectorCatalogDetail(
   authMethods: readonly ConnectorAuthMethodId[],
 ): PublicConnectorCatalogDetail {
   const item = connectorCatalogItem(type, authMethods);
-  const privateNames = privateNamesForConnector(type, authMethods);
+  const privateNames = new Set(getConnectorPrivateNames(type, authMethods));
   return {
     ...item,
     authMethods: authMethods.flatMap((authMethod) => {
