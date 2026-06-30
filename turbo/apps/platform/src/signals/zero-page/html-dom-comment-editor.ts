@@ -11,7 +11,14 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../lib/accept.ts";
 import { now } from "../../lib/time.ts";
 import { zeroClient$, type ZeroClientFactory } from "../api-client.ts";
-import { onRef, resetSignal, settle, tapError, withCleanup } from "../utils.ts";
+import {
+  createDeferredPromise,
+  onRef,
+  resetSignal,
+  settle,
+  tapError,
+  withCleanup,
+} from "../utils.ts";
 import {
   createHtmlDomEditPayload,
   HTML_DOM_EDIT_HOVER_ATTR,
@@ -51,6 +58,16 @@ interface FrameCleanup {
 }
 
 export type HtmlDomStyleProperty = "backgroundColor" | "color";
+export type HtmlDomImageLayout = "contain" | "cover" | "fill";
+
+type HtmlDomInlineStyleProperty = HtmlDomStyleProperty | "objectFit";
+
+export interface HtmlDomSelectedImage {
+  readonly layout: HtmlDomImageLayout;
+  readonly renderedSize: string | null;
+  readonly resolvedSrc: string;
+  readonly src: string;
+}
 
 export interface HtmlDomSelectedStyle {
   readonly backgroundColor: string;
@@ -62,12 +79,16 @@ export interface HtmlDomColorPopoverOffset {
   readonly top: number;
 }
 
-type HtmlDomStyleEdits = Partial<Record<HtmlDomStyleProperty, string>>;
+type HtmlDomStyleEdits = Partial<Record<HtmlDomInlineStyleProperty, string>>;
 
 type HtmlDomOriginalInlineStyles = Partial<
-  Record<HtmlDomStyleProperty, string>
+  Record<HtmlDomInlineStyleProperty, string>
 >;
 type FrameStyleElement = HTMLElement | SVGElement;
+
+interface HtmlDomImageEdits {
+  readonly src?: string;
+}
 
 export interface HtmlDomCommentEditorModel {
   readonly activeColorPanelProperty: HtmlDomStyleProperty | null;
@@ -83,9 +104,11 @@ export interface HtmlDomCommentEditorModel {
   readonly currentComment: HtmlDomEditComment | null;
   readonly editableStyleProperties: readonly HtmlDomStyleProperty[];
   readonly editingCommentId: string | null;
+  readonly imageBusy: boolean;
   readonly loadState: EditorLoadState;
   readonly popoverTextAreaKey: string;
   readonly prepared: boolean;
+  readonly selectedImage: HtmlDomSelectedImage | null;
   readonly selectedStyle: HtmlDomSelectedStyle;
   readonly submitting: boolean;
 }
@@ -161,6 +184,25 @@ const FRAME_NAVIGATION_CURSOR_SVG = renderToStaticMarkup(
 const FRAME_NAVIGATION_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
   FRAME_NAVIGATION_CURSOR_SVG,
 )}") 3 3, pointer`;
+const IMAGE_LINK_LOAD_TIMEOUT_MS = 8_000;
+const IMAGE_UPLOAD_CONTENT_TYPE_BY_EXTENSION: Readonly<Record<string, string>> =
+  {
+    avif: "image/avif",
+    bmp: "image/bmp",
+    gif: "image/gif",
+    jpeg: "image/jpeg",
+    jpg: "image/jpeg",
+    png: "image/png",
+    webp: "image/webp",
+  };
+const SUPPORTED_IMAGE_UPLOAD_CONTENT_TYPES = [
+  "image/avif",
+  "image/bmp",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+] as const;
 const internalLoadState$ = state<EditorLoadState>({ status: "loading" });
 const internalStageElement$ = state<HTMLDivElement | null>(null);
 const internalIframeElement$ = state<HTMLIFrameElement | null>(null);
@@ -187,7 +229,12 @@ const internalStyleEditsByNodeId$ = state<
 const internalOriginalStylesByNodeId$ = state<
   Readonly<Record<string, HtmlDomOriginalInlineStyles>>
 >({});
+const internalImageEditsByNodeId$ = state<
+  Readonly<Record<string, HtmlDomImageEdits>>
+>({});
+const internalImageBusy$ = state(false);
 const resetHtmlDomEditRequestSignal$ = resetSignal();
+const resetHtmlDomImageEditSignal$ = resetSignal();
 
 async function uploadHtmlDomEditSnapshot(
   params: UploadHtmlSnapshotParams,
@@ -207,6 +254,115 @@ async function uploadHtmlDomEditSnapshot(
   params.signal.throwIfAborted();
 
   return uploaded.body.url;
+}
+
+function inferImageUploadContentType(file: File): string | null {
+  const explicitType = file.type.split(";")[0]?.trim().toLowerCase();
+  if (
+    SUPPORTED_IMAGE_UPLOAD_CONTENT_TYPES.includes(
+      explicitType as (typeof SUPPORTED_IMAGE_UPLOAD_CONTENT_TYPES)[number],
+    )
+  ) {
+    return explicitType;
+  }
+  const extension = file.name.split(".").pop()?.toLowerCase();
+  return extension
+    ? (IMAGE_UPLOAD_CONTENT_TYPE_BY_EXTENSION[extension] ?? null)
+    : null;
+}
+
+async function uploadHtmlDomImage(params: {
+  readonly createClient: ZeroClientFactory;
+  readonly file: File;
+  readonly signal: AbortSignal;
+}): Promise<string> {
+  const contentType = inferImageUploadContentType(params.file);
+  if (!contentType) {
+    throw new Error("Choose a PNG, JPEG, GIF, WebP, AVIF, or BMP image");
+  }
+
+  const client = params.createClient(zeroUploadsContract);
+  const prepared = await accept(
+    client.prepare({
+      body: {
+        filename: params.file.name,
+        contentType,
+        size: params.file.size,
+      },
+      fetchOptions: { signal: params.signal },
+    }),
+    [200],
+  );
+  params.signal.throwIfAborted();
+
+  const putResponse = await fetch(prepared.body.uploadUrl, {
+    method: "PUT",
+    body: params.file,
+    headers: { "content-type": prepared.body.contentType },
+    signal: params.signal,
+  });
+  params.signal.throwIfAborted();
+
+  if (!putResponse.ok) {
+    throw new Error(
+      `storage returned ${putResponse.status} ${putResponse.statusText}`,
+    );
+  }
+
+  return prepared.body.url;
+}
+
+function normalizeImageLinkUrl(value: string): string | null {
+  const trimmed = value.trim();
+  if (!trimmed) {
+    return null;
+  }
+
+  if (!URL.canParse(trimmed)) {
+    return null;
+  }
+
+  const parsed = new URL(trimmed);
+  return parsed.protocol === "http:" || parsed.protocol === "https:"
+    ? parsed.toString()
+    : null;
+}
+
+async function ensureImageUrlLoads(
+  url: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const ImageConstructor = globalThis.Image;
+  if (!ImageConstructor) {
+    throw new Error("Image loading is not available in this browser");
+  }
+
+  const deferred = createDeferredPromise<void>(signal);
+  const image = new ImageConstructor();
+  const timeout = setTimeout(() => {
+    if (!deferred.settled()) {
+      deferred.reject(new Error("Image did not load in time"));
+    }
+  }, IMAGE_LINK_LOAD_TIMEOUT_MS);
+  const cleanup = () => {
+    image.onload = null;
+    image.onerror = null;
+    clearTimeout(timeout);
+  };
+
+  image.onload = () => {
+    if (!deferred.settled()) {
+      deferred.resolve();
+    }
+  };
+  image.onerror = () => {
+    if (!deferred.settled()) {
+      deferred.reject(new Error("Image could not be loaded"));
+    }
+  };
+  image.src = url;
+
+  await withCleanup(deferred.promise, cleanup);
 }
 
 async function requestHtmlEditDraft(params: {
@@ -347,6 +503,74 @@ function isFrameStyleElement(
   element: Element | null | undefined,
 ): element is FrameStyleElement {
   return isFrameHtmlElement(element) || isFrameSvgElement(element);
+}
+
+function isFrameImageElement(
+  element: Element | null | undefined,
+): element is HTMLImageElement {
+  if (!element) {
+    return false;
+  }
+  const FrameHTMLImageElement =
+    element.ownerDocument.defaultView?.HTMLImageElement;
+  return FrameHTMLImageElement
+    ? element instanceof FrameHTMLImageElement
+    : element instanceof HTMLImageElement;
+}
+
+function selectedImageElementForNodes(params: {
+  readonly doc: Document | null;
+  readonly selectedNodeIds: readonly string[];
+}): { readonly element: HTMLImageElement; readonly nodeId: string } | null {
+  const nodeId = params.selectedNodeIds[0];
+  if (!nodeId) {
+    return null;
+  }
+  const element = params.doc?.querySelector(nodeSelector(nodeId));
+  return isFrameImageElement(element) ? { element, nodeId } : null;
+}
+
+function imageLayoutForElement(element: HTMLImageElement): HtmlDomImageLayout {
+  const view = element.ownerDocument.defaultView;
+  const objectFit =
+    element.style.getPropertyValue("object-fit") ||
+    view?.getComputedStyle(element).getPropertyValue("object-fit");
+  switch (objectFit?.trim()) {
+    case "contain":
+    case "cover":
+    case "fill": {
+      return objectFit.trim() as HtmlDomImageLayout;
+    }
+    default: {
+      return "fill";
+    }
+  }
+}
+
+function imageRenderedSize(element: HTMLImageElement): string | null {
+  const rect = element.getBoundingClientRect();
+  const width = Math.round(rect.width || element.width || element.naturalWidth);
+  const height = Math.round(
+    rect.height || element.height || element.naturalHeight,
+  );
+  return width > 0 && height > 0 ? `${width} x ${height}` : null;
+}
+
+function selectedImageForNodes(params: {
+  readonly doc: Document | null;
+  readonly selectedNodeIds: readonly string[];
+}): HtmlDomSelectedImage | null {
+  const selected = selectedImageElementForNodes(params);
+  if (!selected) {
+    return null;
+  }
+  const src = selected.element.getAttribute("src") ?? "";
+  return {
+    layout: imageLayoutForElement(selected.element),
+    renderedSize: imageRenderedSize(selected.element),
+    resolvedSrc: selected.element.currentSrc || selected.element.src || src,
+    src,
+  };
 }
 
 function smallestCommentNodeAtPoint(event: MouseEvent): Element | null {
@@ -505,7 +729,17 @@ function hasStyleEdits(
   styleEditsByNodeId: Readonly<Record<string, HtmlDomStyleEdits>>,
 ): boolean {
   return Object.values(styleEditsByNodeId).some((edits) => {
-    return edits.backgroundColor !== undefined || edits.color !== undefined;
+    return Object.values(edits).some((value) => {
+      return value !== undefined;
+    });
+  });
+}
+
+function hasImageEdits(
+  imageEditsByNodeId: Readonly<Record<string, HtmlDomImageEdits>>,
+): boolean {
+  return Object.values(imageEditsByNodeId).some((edits) => {
+    return edits.src !== undefined;
   });
 }
 
@@ -695,12 +929,18 @@ function elementBackgroundColor(element: FrameStyleElement): string {
 
 function stylePropertyNameForElement(
   element: FrameStyleElement,
-  property: HtmlDomStyleProperty,
+  property: HtmlDomInlineStyleProperty,
 ): string {
   if (property === "color" && isFrameSvgElement(element)) {
     return "fill";
   }
-  return property === "backgroundColor" ? "background-color" : "color";
+  if (property === "backgroundColor") {
+    return "background-color";
+  }
+  if (property === "objectFit") {
+    return "object-fit";
+  }
+  return "color";
 }
 
 function cssColorToHex(
@@ -1543,7 +1783,7 @@ const restoreOriginalStylesForNodes$ = command(
       if (isFrameStyleElement(element)) {
         for (const property of Object.keys(
           originalStyles,
-        ) as HtmlDomStyleProperty[]) {
+        ) as HtmlDomInlineStyleProperty[]) {
           const styleProperty = stylePropertyNameForElement(element, property);
           const originalValue = originalStyles[property];
           if (originalValue) {
@@ -1672,6 +1912,7 @@ const cleanupCurrentFrameBinding$ = command(({ get, set }) => {
 
 const resetHtmlDomCommentEditor$ = command(({ set }) => {
   set(cleanupCurrentFrameBinding$);
+  set(resetHtmlDomImageEditSignal$);
   set(internalLoadState$, { status: "loading" });
   set(internalStageElement$, null);
   set(internalIframeElement$, null);
@@ -1688,6 +1929,8 @@ const resetHtmlDomCommentEditor$ = command(({ set }) => {
   set(internalColorPopoverOffset$, { left: 0, top: 0 });
   set(internalStyleEditsByNodeId$, {});
   set(internalOriginalStylesByNodeId$, {});
+  set(internalImageEditsByNodeId$, {});
+  set(internalImageBusy$, false);
 });
 
 export const setHtmlDomCommentStageRef$ = onRef(
@@ -1962,7 +2205,7 @@ export const bindHtmlDomCommentFrame$ = command(
         return get(internalComments$);
       },
       getDisabled: () => {
-        return get(internalSubmitting$);
+        return get(internalSubmitting$) || get(internalImageBusy$);
       },
       getEditingCommentId: () => {
         return get(internalEditingCommentId$);
@@ -2095,6 +2338,193 @@ export const closeHtmlDomColorPanel$ = command(({ set }) => {
   set(internalActiveColorPanelProperty$, null);
   set(internalColorPopoverOffset$, { left: 0, top: 0 });
 });
+
+function imageSourceEditState(params: {
+  readonly imageEditsByNodeId: Readonly<Record<string, HtmlDomImageEdits>>;
+  readonly nodeId: string;
+  readonly url: string;
+}): Readonly<Record<string, HtmlDomImageEdits>> {
+  return {
+    ...params.imageEditsByNodeId,
+    [params.nodeId]: {
+      ...params.imageEditsByNodeId[params.nodeId],
+      src: params.url,
+    },
+  };
+}
+
+function setImageElementSource(element: HTMLImageElement, url: string): void {
+  element.setAttribute("src", url);
+  element.removeAttribute("srcset");
+  element.removeAttribute("sizes");
+}
+
+export const uploadSelectedHtmlDomImage$ = command(
+  async ({ get, set }, file: File, parentSignal: AbortSignal) => {
+    const doc = currentFrameDocument(get(internalIframeElement$));
+    const selected = selectedImageElementForNodes({
+      doc,
+      selectedNodeIds: get(internalSelectedNodeIds$),
+    });
+    if (!selected) {
+      toast.error("Select an image first");
+      return false;
+    }
+    if (!inferImageUploadContentType(file)) {
+      toast.error("Choose a PNG, JPEG, GIF, WebP, AVIF, or BMP image");
+      return false;
+    }
+
+    const signal = set(resetHtmlDomImageEditSignal$, parentSignal);
+    set(internalImageBusy$, true);
+    set(internalPreparedPayload$, null);
+
+    const replaced = await withCleanup(
+      tapError(
+        (async () => {
+          const url = await uploadHtmlDomImage({
+            createClient: get(zeroClient$),
+            file,
+            signal,
+          });
+          signal.throwIfAborted();
+          const nextDoc = currentFrameDocument(get(internalIframeElement$));
+          const nextElement = nextDoc?.querySelector(
+            nodeSelector(selected.nodeId),
+          );
+          if (!isFrameImageElement(nextElement)) {
+            throw new Error("Selected image is no longer available");
+          }
+
+          const nextState = imageSourceEditState({
+            imageEditsByNodeId: get(internalImageEditsByNodeId$),
+            nodeId: selected.nodeId,
+            url,
+          });
+          setImageElementSource(nextElement, url);
+          set(internalImageEditsByNodeId$, nextState);
+          set(internalPreparedPayload$, null);
+          toast.success("Image replaced");
+          return true;
+        })(),
+        (error) => {
+          toast.error(
+            htmlDomEditErrorMessage(error, "Failed to replace image"),
+          );
+        },
+      ),
+      () => {
+        if (!signal.aborted) {
+          set(internalImageBusy$, false);
+        }
+      },
+    );
+
+    return replaced ?? false;
+  },
+);
+
+export const replaceSelectedHtmlDomImageUrl$ = command(
+  async ({ get, set }, value: string, parentSignal: AbortSignal) => {
+    const url = normalizeImageLinkUrl(value);
+    if (!url) {
+      toast.error("Enter a valid image URL");
+      return false;
+    }
+
+    const doc = currentFrameDocument(get(internalIframeElement$));
+    const selected = selectedImageElementForNodes({
+      doc,
+      selectedNodeIds: get(internalSelectedNodeIds$),
+    });
+    if (!selected) {
+      toast.error("Select an image first");
+      return false;
+    }
+
+    const signal = set(resetHtmlDomImageEditSignal$, parentSignal);
+    set(internalImageBusy$, true);
+    set(internalPreparedPayload$, null);
+
+    const replaced = await withCleanup(
+      tapError(
+        (async () => {
+          await ensureImageUrlLoads(url, signal);
+          signal.throwIfAborted();
+          const nextDoc = currentFrameDocument(get(internalIframeElement$));
+          const nextElement = nextDoc?.querySelector(
+            nodeSelector(selected.nodeId),
+          );
+          if (!isFrameImageElement(nextElement)) {
+            throw new Error("Selected image is no longer available");
+          }
+
+          const nextState = imageSourceEditState({
+            imageEditsByNodeId: get(internalImageEditsByNodeId$),
+            nodeId: selected.nodeId,
+            url,
+          });
+          setImageElementSource(nextElement, url);
+          set(internalImageEditsByNodeId$, nextState);
+          set(internalPreparedPayload$, null);
+          toast.success("Image replaced");
+          return true;
+        })(),
+        (error) => {
+          toast.error(
+            htmlDomEditErrorMessage(error, "Image could not be loaded"),
+          );
+        },
+      ),
+      () => {
+        if (!signal.aborted) {
+          set(internalImageBusy$, false);
+        }
+      },
+    );
+
+    return replaced ?? false;
+  },
+);
+
+export const applySelectedHtmlDomImageLayout$ = command(
+  ({ get, set }, layout: HtmlDomImageLayout) => {
+    const doc = currentFrameDocument(get(internalIframeElement$));
+    const selected = selectedImageElementForNodes({
+      doc,
+      selectedNodeIds: get(internalSelectedNodeIds$),
+    });
+    if (!selected) {
+      return;
+    }
+    if (imageLayoutForElement(selected.element) === layout) {
+      return;
+    }
+
+    const styleEditsByNodeId = { ...get(internalStyleEditsByNodeId$) };
+    const originalStylesByNodeId = { ...get(internalOriginalStylesByNodeId$) };
+    const styleProperty = stylePropertyNameForElement(
+      selected.element,
+      "objectFit",
+    );
+
+    originalStylesByNodeId[selected.nodeId] = {
+      ...originalStylesByNodeId[selected.nodeId],
+      objectFit:
+        originalStylesByNodeId[selected.nodeId]?.objectFit ??
+        selected.element.style.getPropertyValue(styleProperty),
+    };
+    selected.element.style.setProperty(styleProperty, layout);
+    styleEditsByNodeId[selected.nodeId] = {
+      ...styleEditsByNodeId[selected.nodeId],
+      objectFit: layout,
+    };
+
+    set(internalOriginalStylesByNodeId$, originalStylesByNodeId);
+    set(internalStyleEditsByNodeId$, styleEditsByNodeId);
+    set(internalPreparedPayload$, null);
+  },
+);
 
 export const setHtmlDomColorPopoverOffset$ = command(
   ({ set }, offset: HtmlDomColorPopoverOffset) => {
@@ -2255,12 +2685,15 @@ export const discardHtmlDomComments$ = command(({ get, set }) => {
   const readyLoadState = get(internalLoadState$);
   const doc = currentFrameDocument(get(internalIframeElement$));
 
+  set(resetHtmlDomImageEditSignal$);
   set(internalComments$, []);
   set(internalCommentsOpen$, false);
   set(internalActiveColorPanelProperty$, null);
   set(internalColorPopoverOffset$, { left: 0, top: 0 });
   set(internalStyleEditsByNodeId$, {});
   set(internalOriginalStylesByNodeId$, {});
+  set(internalImageEditsByNodeId$, {});
+  set(internalImageBusy$, false);
   if (readyLoadState.status === "ready" && doc) {
     restoreFrameDocumentHtml({
       doc,
@@ -2374,10 +2807,13 @@ export const applyHtmlDomStyleEdits$ = command(
     _parentSignal: AbortSignal,
   ) => {
     const readyLoadState = get(internalLoadState$);
+    const hasPendingDomEdits =
+      hasStyleEdits(get(internalStyleEditsByNodeId$)) ||
+      hasImageEdits(get(internalImageEditsByNodeId$));
     if (
       readyLoadState.status !== "ready" ||
       get(internalComments$).length > 0 ||
-      !hasStyleEdits(get(internalStyleEditsByNodeId$)) ||
+      !hasPendingDomEdits ||
       get(internalSubmitting$)
     ) {
       return;
@@ -2429,6 +2865,8 @@ export const htmlDomCommentEditorModel$ = computed(
     const loadState = get(internalLoadState$);
     const submitting = get(internalSubmitting$);
     const styleEditsByNodeId = get(internalStyleEditsByNodeId$);
+    const imageEditsByNodeId = get(internalImageEditsByNodeId$);
+    const imageBusy = get(internalImageBusy$);
     const doc = currentFrameDocument(get(internalIframeElement$));
     const editableStyleProperties = editableStylePropertiesForSelectedNodes({
       doc,
@@ -2444,16 +2882,22 @@ export const htmlDomCommentEditorModel$ = computed(
       canApplyStyleEdits:
         loadState.status === "ready" &&
         comments.length === 0 &&
-        hasStyleEdits(styleEditsByNodeId) &&
-        !submitting,
+        (hasStyleEdits(styleEditsByNodeId) ||
+          hasImageEdits(imageEditsByNodeId)) &&
+        !submitting &&
+        !imageBusy,
       canAddComment: editingCommentId
-        ? commentText.trim() !== ""
+        ? commentText.trim() !== "" && !imageBusy
         : selectedNodeIds.length > 0 &&
           commentText.trim() !== "" &&
-          !hasCommentForSelectedNodes({ comments, selectedNodeIds }),
+          !hasCommentForSelectedNodes({ comments, selectedNodeIds }) &&
+          !imageBusy,
       canEditSelectedStyle: editableStyleProperties.length > 0,
       canSend:
-        loadState.status === "ready" && comments.length > 0 && !submitting,
+        loadState.status === "ready" &&
+        comments.length > 0 &&
+        !submitting &&
+        !imageBusy,
       colorPopoverOffset: get(internalColorPopoverOffset$),
       commentsOpen: get(internalCommentsOpen$),
       commentText,
@@ -2462,6 +2906,7 @@ export const htmlDomCommentEditorModel$ = computed(
       currentComment,
       editableStyleProperties,
       editingCommentId,
+      imageBusy,
       loadState,
       popoverTextAreaKey: [
         selectedNodeIds.join(":"),
@@ -2469,6 +2914,7 @@ export const htmlDomCommentEditorModel$ = computed(
         currentComment?.id ?? "draft",
       ].join("|"),
       prepared: get(internalPreparedPayload$) !== null,
+      selectedImage: selectedImageForNodes({ doc, selectedNodeIds }),
       selectedStyle: selectedStyleForNodes({ doc, selectedNodeIds }),
       submitting,
     };

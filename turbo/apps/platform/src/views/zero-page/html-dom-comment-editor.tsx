@@ -1,16 +1,29 @@
-import type { KeyboardEvent, PointerEvent } from "react";
+import {
+  useRef,
+  useState,
+  type ChangeEvent,
+  type FormEvent,
+  type KeyboardEvent,
+  type PointerEvent,
+  type ReactNode,
+} from "react";
 import {
   IconArrowUp,
+  IconCheck,
   IconColorPicker,
+  IconLink,
   IconLoader2,
   IconMessageCircle,
+  IconPhoto,
   IconSend,
   IconTrash,
+  IconUpload,
 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import { detach, Reason, tapError } from "../../signals/utils.ts";
 import {
   addHtmlDomComment$,
+  applySelectedHtmlDomImageLayout$,
   applyHtmlDomColorStyle$,
   applyHtmlDomStyleEdits$,
   beginEditingCurrentHtmlDomComment$,
@@ -25,8 +38,11 @@ import {
   setHtmlDomCommentStageRef$,
   setHtmlDomCommentTextareaRef$,
   setHtmlDomCommentText$,
+  replaceSelectedHtmlDomImageUrl$,
   toggleHtmlDomColorPanel$,
   toggleHtmlDomCommentsOpen$,
+  uploadSelectedHtmlDomImage$,
+  type HtmlDomImageLayout,
   type HtmlDomStyleProperty,
   type HtmlDomCommentEditorModel,
 } from "../../signals/zero-page/html-dom-comment-editor.ts";
@@ -108,7 +124,9 @@ function HtmlDomCommentStage({
           }}
         />
       )}
-      {!working && <HtmlDomCommentPopover model={model} />}
+      {!working && (
+        <HtmlDomCommentPopover model={model} pageSignal={pageSignal} />
+      )}
       {!working && <HtmlDomFloatingColorPopover model={model} />}
       <HtmlDomCommentToolbar
         disabled={working}
@@ -877,10 +895,268 @@ function HtmlDomFloatingColorPopover({
   );
 }
 
-function HtmlDomCommentPopover({
+const IMAGE_UPLOAD_ACCEPT = [
+  "image/avif",
+  "image/bmp",
+  "image/gif",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  ".avif",
+  ".bmp",
+  ".gif",
+  ".jpeg",
+  ".jpg",
+  ".png",
+  ".webp",
+].join(",");
+
+const IMAGE_LAYOUT_OPTIONS: readonly {
+  readonly label: string;
+  readonly value: HtmlDomImageLayout;
+}[] = [
+  { label: "Cover", value: "cover" },
+  { label: "Contain", value: "contain" },
+  { label: "Fill", value: "fill" },
+];
+
+function HtmlDomImageGroupButton({
+  active = false,
+  children,
+  disabled,
+  onClick,
+  testId,
+  title,
+}: {
+  readonly active?: boolean;
+  readonly children: ReactNode;
+  readonly disabled?: boolean;
+  readonly onClick: () => void;
+  readonly testId: string;
+  readonly title: string;
+}) {
+  return (
+    <button
+      type="button"
+      aria-pressed={active}
+      title={title}
+      disabled={disabled}
+      onClick={onClick}
+      className={`inline-flex h-8 items-center justify-center gap-1.5 px-3 text-xs font-medium transition-colors first:rounded-l-full last:rounded-r-full disabled:cursor-not-allowed disabled:opacity-45 ${
+        active
+          ? "bg-foreground text-background"
+          : "text-muted-foreground hover:bg-muted hover:text-foreground"
+      }`}
+      data-testid={testId}
+    >
+      {children}
+    </button>
+  );
+}
+
+function HtmlDomImageTools({
   model,
+  pageSignal,
 }: {
   readonly model: HtmlDomCommentEditorModel;
+  readonly pageSignal: AbortSignal;
+}) {
+  const image = model.selectedImage;
+  const uploadImage = useSet(uploadSelectedHtmlDomImage$);
+  const replaceImageUrl = useSet(replaceSelectedHtmlDomImageUrl$);
+  const applyImageLayout = useSet(applySelectedHtmlDomImageLayout$);
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [linkOpen, setLinkOpen] = useState(false);
+  const [linkValue, setLinkValue] = useState("");
+  const [pendingAction, setPendingAction] = useState<"link" | "upload" | null>(
+    null,
+  );
+
+  if (!image) {
+    return null;
+  }
+
+  const runPendingAction = (
+    action: "link" | "upload",
+    promise: Promise<boolean>,
+    description: string,
+  ): void => {
+    setPendingAction(action);
+    detach(
+      promise.finally(() => {
+        setPendingAction((current) => {
+          return current === action ? null : current;
+        });
+      }),
+      Reason.DomCallback,
+      description,
+    );
+  };
+
+  const handleUploadChange = (event: ChangeEvent<HTMLInputElement>): void => {
+    const file = event.currentTarget.files?.[0];
+    event.currentTarget.value = "";
+    if (!file) {
+      return;
+    }
+    runPendingAction(
+      "upload",
+      uploadImage(file, pageSignal),
+      "uploadSelectedHtmlDomImage",
+    );
+  };
+
+  const handleLinkSubmit = (event: FormEvent<HTMLFormElement>): void => {
+    event.preventDefault();
+    const replace = async (): Promise<boolean> => {
+      const replaced = await replaceImageUrl(linkValue, pageSignal);
+      if (replaced) {
+        setLinkOpen(false);
+        setLinkValue("");
+      }
+      return replaced;
+    };
+    runPendingAction("link", replace(), "replaceSelectedHtmlDomImageUrl");
+  };
+
+  return (
+    <div className="mb-2 space-y-2" data-testid="html-dom-image-tools">
+      <div className="flex min-w-0 items-center gap-2 rounded-2xl bg-muted/35 px-2.5 py-2">
+        <div className="flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden rounded-xl bg-background text-muted-foreground">
+          {image.resolvedSrc ? (
+            <img
+              src={image.resolvedSrc}
+              alt=""
+              className="h-full w-full object-cover"
+              draggable={false}
+            />
+          ) : (
+            <IconPhoto size={17} stroke={1.7} />
+          )}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="truncate text-sm font-medium text-foreground">
+            Image
+          </div>
+          <div className="truncate text-xs text-muted-foreground">
+            {[image.renderedSize, image.layout].filter(Boolean).join(" · ")}
+          </div>
+        </div>
+      </div>
+
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-medium text-muted-foreground">Source</div>
+        <div className="inline-flex overflow-hidden rounded-full border border-border/70 bg-background">
+          <HtmlDomImageGroupButton
+            disabled={model.imageBusy}
+            onClick={() => {
+              fileInputRef.current?.click();
+            }}
+            testId="html-dom-image-source-upload"
+            title="Upload image"
+          >
+            {pendingAction === "upload" ? (
+              <IconLoader2 size={14} className="animate-spin" />
+            ) : (
+              <IconUpload size={14} stroke={1.9} />
+            )}
+            Upload
+          </HtmlDomImageGroupButton>
+          <HtmlDomImageGroupButton
+            active={linkOpen}
+            disabled={model.imageBusy}
+            onClick={() => {
+              setLinkOpen((open) => {
+                return !open;
+              });
+            }}
+            testId="html-dom-image-source-link"
+            title="Use image URL"
+          >
+            {pendingAction === "link" ? (
+              <IconLoader2 size={14} className="animate-spin" />
+            ) : (
+              <IconLink size={14} stroke={1.9} />
+            )}
+            Link
+          </HtmlDomImageGroupButton>
+        </div>
+        <input
+          ref={fileInputRef}
+          type="file"
+          accept={IMAGE_UPLOAD_ACCEPT}
+          className="hidden"
+          data-testid="html-dom-image-upload-input"
+          onChange={handleUploadChange}
+        />
+      </div>
+
+      {linkOpen && (
+        <form
+          className="flex h-9 items-center gap-1 rounded-full border border-border/70 bg-muted/25 px-2 focus-within:border-blue-500 focus-within:bg-background focus-within:ring-2 focus-within:ring-blue-500/15"
+          onSubmit={handleLinkSubmit}
+          data-testid="html-dom-image-link-form"
+        >
+          <IconLink size={14} className="shrink-0 text-muted-foreground" />
+          <input
+            autoFocus
+            type="url"
+            value={linkValue}
+            disabled={model.imageBusy}
+            placeholder="Paste image URL"
+            className="min-w-0 flex-1 border-0 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+            data-testid="html-dom-image-link-input"
+            onChange={(event) => {
+              setLinkValue(event.currentTarget.value);
+            }}
+          />
+          <button
+            type="submit"
+            disabled={model.imageBusy || linkValue.trim() === ""}
+            aria-label="Replace image from URL"
+            className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-full bg-blue-600 text-white transition-colors hover:bg-blue-500 disabled:cursor-not-allowed disabled:opacity-45"
+            data-testid="html-dom-image-link-submit"
+          >
+            {pendingAction === "link" ? (
+              <IconLoader2 size={14} className="animate-spin" />
+            ) : (
+              <IconCheck size={15} stroke={2.2} />
+            )}
+          </button>
+        </form>
+      )}
+
+      <div className="flex items-center justify-between gap-2">
+        <div className="text-xs font-medium text-muted-foreground">Layout</div>
+        <div className="inline-flex overflow-hidden rounded-full border border-border/70 bg-background">
+          {IMAGE_LAYOUT_OPTIONS.map((option) => {
+            return (
+              <HtmlDomImageGroupButton
+                key={option.value}
+                active={image.layout === option.value}
+                disabled={model.imageBusy}
+                onClick={() => {
+                  applyImageLayout(option.value);
+                }}
+                testId={`html-dom-image-layout-${option.value}`}
+                title={`${option.label} image`}
+              >
+                {option.label}
+              </HtmlDomImageGroupButton>
+            );
+          })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function HtmlDomCommentPopover({
+  model,
+  pageSignal,
+}: {
+  readonly model: HtmlDomCommentEditorModel;
+  readonly pageSignal: AbortSignal;
 }) {
   const addComment = useSet(addHtmlDomComment$);
   const beginEditingCurrentComment = useSet(beginEditingCurrentHtmlDomComment$);
@@ -915,20 +1191,21 @@ function HtmlDomCommentPopover({
 
   return (
     <div
-      className="absolute z-30 w-[min(380px,calc(100%-24px))] -translate-x-1/2 rounded-[28px] border border-border/60 bg-background p-2.5 shadow-lg"
+      className="absolute z-30 w-[min(400px,calc(100%-24px))] -translate-x-1/2 rounded-[28px] border border-border/60 bg-background p-2.5 shadow-lg"
       style={{
         left: model.commentPopoverAnchor.left,
         top: model.commentPopoverAnchor.top,
       }}
       data-testid="html-dom-comment-popover"
     >
+      <HtmlDomImageTools model={model} pageSignal={pageSignal} />
       <div className="flex items-end gap-2">
         <textarea
           key={model.popoverTextAreaKey}
           ref={setTextAreaRef}
           rows={1}
           value={visibleCommentText}
-          readOnly={isShowingExistingComment}
+          readOnly={isShowingExistingComment || model.imageBusy}
           onClick={() => {
             if (isShowingExistingComment) {
               beginEditingCurrentComment();
@@ -946,7 +1223,11 @@ function HtmlDomCommentPopover({
             setCommentText(event.currentTarget.value);
           }}
           onKeyDown={handleTextAreaKeyDown}
-          placeholder="Describe the change you want"
+          placeholder={
+            model.selectedImage
+              ? "Ask Zero to adjust this image"
+              : "Describe the change you want"
+          }
           className="max-h-32 min-h-9 min-w-0 flex-1 resize-none overflow-y-auto border-0 bg-transparent px-1 py-2 text-sm leading-5 outline-none [field-sizing:content] placeholder:text-muted-foreground"
           data-testid="html-dom-comment-textarea"
         />
