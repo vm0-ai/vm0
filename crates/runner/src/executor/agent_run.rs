@@ -798,7 +798,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         let materialization_wait = materialization_wait_started.elapsed();
         let downloaded_resume_session = match materialization {
             SessionHistoryMaterialization::Missing => None,
-            SessionHistoryMaterialization::Ready => None,
+            SessionHistoryMaterialization::NoDownloadNeeded => None,
             SessionHistoryMaterialization::Downloaded { session, elapsed } => {
                 if should_record_materialization_wait {
                     telemetry.record(
