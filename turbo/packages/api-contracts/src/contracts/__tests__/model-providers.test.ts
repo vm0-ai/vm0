@@ -922,6 +922,8 @@ describe("codex-oauth-token codex provider", () => {
     expect(config.apis[0]!.permissions).toEqual([
       {
         name: "codex:api",
+        description:
+          "Access the ChatGPT Codex backend with GET and POST requests.",
         rules: ["GET /{path*}", "POST /{path*}"],
       },
     ]);
@@ -955,15 +957,12 @@ describe("codex-oauth-token codex provider", () => {
     },
   );
 
-  it("firewall denies auth.openai.com via defaultPolicies + permission rule", () => {
+  it("firewall denies auth.openai.com via unknown endpoint policy", () => {
     const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
     expect(config.defaultPolicies).toEqual({
-      deny: ["denied"],
       unknownPolicy: "deny",
     });
-    expect(config.apis[1]!.permissions).toEqual([
-      { name: "denied", rules: ["ANY /*"] },
-    ]);
+    expect(config.apis[1]!.permissions).toEqual([]);
   });
 
   it.each([
@@ -973,13 +972,12 @@ describe("codex-oauth-token codex provider", () => {
   ] as const)(
     "auth.openai.com matches no allow permission for %s %s",
     (method, path) => {
-      // The `ANY /*` rule on apis[1] is a literal-segment match on "*" and
-      // never matches real traffic — that's intentional. The deny is
-      // delivered by defaultPolicies.unknownPolicy: "deny" (asserted just
-      // above), so traffic to auth.openai.com must NOT resolve to any
-      // permission name on apis[1]. This pins behavior so a future edit
-      // to `apis[1].permissions` (e.g. adding an allow rule) breaks the
-      // test rather than silently widening auth.openai.com.
+      // auth.openai.com intentionally exposes no grantable permissions. The
+      // deny is delivered by defaultPolicies.unknownPolicy: "deny" (asserted
+      // just above), so traffic to auth.openai.com must NOT resolve to any
+      // permission name on apis[1]. This pins behavior so a future edit to
+      // `apis[1].permissions` breaks the test rather than silently widening
+      // auth.openai.com.
       const config = MODEL_PROVIDER_FIREWALL_CONFIGS["codex-oauth-token"];
       const fwConfig = { name: config.name, apis: [config.apis[1]!] };
       expect(findMatchingPermissions(method, path, fwConfig)).toEqual([]);
