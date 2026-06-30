@@ -17,6 +17,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { secrets } from "@vm0/db/schema/secret";
 import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
 import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
+import { storageVersions, storages } from "@vm0/db/schema/storage";
 import { variables } from "@vm0/db/schema/variable";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -497,6 +498,7 @@ async function slackInstallation(db: ReadonlyDb, teamId: string) {
           slackWorkspaceName: slackOrgInstallations.slackWorkspaceName,
           orgId: slackOrgInstallations.orgId,
           botUserId: slackOrgInstallations.botUserId,
+          botScopes: slackOrgInstallations.botScopes,
           installedByUserId: slackOrgInstallations.installedByUserId,
           createdAt: slackOrgInstallations.createdAt,
         })
@@ -558,6 +560,45 @@ async function orgMetaFor(db: ReadonlyDb, orgId: string | null | undefined) {
         })
         .from(orgMetadata)
         .where(eq(orgMetadata.orgId, orgId))
+        .limit(1)
+    )[0] ?? null
+  );
+}
+
+async function artifactStorageFor(
+  db: ReadonlyDb,
+  args: {
+    readonly orgId: string | null | undefined;
+    readonly userId: string | null | undefined;
+  },
+) {
+  if (!args.orgId || !args.userId) {
+    return null;
+  }
+
+  return (
+    (
+      await db
+        .select({
+          id: storages.id,
+          headVersionId: storages.headVersionId,
+          s3Prefix: storages.s3Prefix,
+          versionId: storageVersions.id,
+          versionS3Key: storageVersions.s3Key,
+        })
+        .from(storages)
+        .leftJoin(
+          storageVersions,
+          eq(storages.headVersionId, storageVersions.id),
+        )
+        .where(
+          and(
+            eq(storages.orgId, args.orgId),
+            eq(storages.userId, args.userId),
+            eq(storages.name, "artifact"),
+            eq(storages.type, "artifact"),
+          ),
+        )
         .limit(1)
     )[0] ?? null
   );
@@ -736,19 +777,26 @@ const getSlackState$ = computed(async (get) => {
   }
 
   const query = get(queryOf(testSlackStateContract.get));
-  if (!query.team_id) {
+  if (!query.team_id && !query.org_id) {
     return {
       status: 400 as const,
-      body: { error: "team_id query param is required" },
+      body: { error: "team_id or org_id query param is required" },
     };
   }
 
   const db = get(db$);
-  const teamId = query.team_id;
-  const installationRow = await slackInstallation(db, teamId);
-  const connections = await slackConnections(db, teamId);
-  const recentRuns = await recentSlackRuns(db, installationRow?.orgId);
-  const orgMeta = await orgMetaFor(db, installationRow?.orgId);
+  const teamId = query.team_id ?? "";
+  const installationRow = query.team_id
+    ? await slackInstallation(db, teamId)
+    : null;
+  const connections = query.team_id ? await slackConnections(db, teamId) : [];
+  const stateOrgId = query.org_id ?? installationRow?.orgId;
+  const recentRuns = await recentSlackRuns(db, stateOrgId);
+  const artifactStorage = await artifactStorageFor(db, {
+    orgId: stateOrgId,
+    userId: query.user_id,
+  });
+  const orgMeta = await orgMetaFor(db, stateOrgId);
   const defaultAgent = await defaultAgentFor(db, orgMeta?.defaultAgentId);
   const compose = await defaultComposeFor(db, orgMeta?.defaultAgentId);
   const composeVersion = await defaultComposeVersionFor(
@@ -778,6 +826,7 @@ const getSlackState$ = computed(async (get) => {
           createdAt: isoString(run.createdAt),
         };
       }),
+      artifact_storage: artifactStorage,
       org_metadata: orgMeta,
       default_agent: defaultAgent,
       default_compose: compose,
@@ -840,7 +889,10 @@ async function maybeUpsertSlackInstallationForPost(
   await upsertSlackInstallation(db, {
     slackWorkspaceId: body.team_id!,
     slackWorkspaceName: body.workspace_name ?? DEFAULT_WORKSPACE_NAME,
-    orgId: actor.orgId,
+    orgId:
+      body.installation_org_id === undefined
+        ? actor.orgId
+        : body.installation_org_id,
     botUserId: body.bot_user_id ?? SLACK_E2E_FIXTURES.botUserId,
     botToken: body.bot_token ?? SLACK_E2E_FIXTURES.botToken,
     botScopes:
@@ -856,7 +908,7 @@ function shouldUpsertSlackInstallationForPost(
     return false;
   }
 
-  if (!body.seed_connection && !body.delete_connection) {
+  if (body.seed_connection || !body.delete_connection) {
     return true;
   }
 
@@ -1013,6 +1065,186 @@ const postSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   };
 });
 
+interface SlackStateDeleteQuery {
+  readonly team_id?: string;
+  readonly org_id?: string;
+}
+
+interface SlackInstallationDeleteRow {
+  readonly slackWorkspaceId: string;
+  readonly orgId: string | null;
+}
+
+async function slackInstallationRowsForDelete(
+  db: Db,
+  query: SlackStateDeleteQuery,
+): Promise<readonly SlackInstallationDeleteRow[]> {
+  if (query.team_id) {
+    return await db
+      .select({
+        slackWorkspaceId: slackOrgInstallations.slackWorkspaceId,
+        orgId: slackOrgInstallations.orgId,
+      })
+      .from(slackOrgInstallations)
+      .where(eq(slackOrgInstallations.slackWorkspaceId, query.team_id));
+  }
+  if (query.org_id) {
+    return await db
+      .select({
+        slackWorkspaceId: slackOrgInstallations.slackWorkspaceId,
+        orgId: slackOrgInstallations.orgId,
+      })
+      .from(slackOrgInstallations)
+      .where(eq(slackOrgInstallations.orgId, query.org_id));
+  }
+  return [];
+}
+
+function orgIdsForSlackStateDelete(
+  rows: readonly SlackInstallationDeleteRow[],
+  orgId: string | undefined,
+): Set<string> {
+  const orgIds = new Set(
+    rows.flatMap((row) => {
+      return row.orgId ? [row.orgId] : [];
+    }),
+  );
+  if (orgId) {
+    orgIds.add(orgId);
+  }
+  return orgIds;
+}
+
+function teamIdsForSlackStateDelete(
+  rows: readonly SlackInstallationDeleteRow[],
+  teamId: string | undefined,
+): string[] {
+  const teamIds = rows.map((row) => {
+    return row.slackWorkspaceId;
+  });
+  if (teamId && !teamIds.includes(teamId)) {
+    teamIds.push(teamId);
+  }
+  return teamIds;
+}
+
+async function deleteSlackTeamsForState(
+  db: Db,
+  teamIds: readonly string[],
+  signal: AbortSignal,
+): Promise<void> {
+  if (teamIds.length === 0) {
+    return;
+  }
+  await db
+    .delete(slackOrgConnections)
+    .where(inArray(slackOrgConnections.slackWorkspaceId, teamIds));
+  signal.throwIfAborted();
+
+  await db
+    .delete(slackOrgInstallations)
+    .where(inArray(slackOrgInstallations.slackWorkspaceId, teamIds));
+  signal.throwIfAborted();
+}
+
+async function deleteSlackRunsForOrg(
+  db: Db,
+  orgId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const slackAgentRuns = await db
+    .select({ id: agentRuns.id })
+    .from(agentRuns)
+    .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(
+      and(eq(agentRuns.orgId, orgId), eq(zeroRuns.triggerSource, "slack")),
+    );
+  signal.throwIfAborted();
+
+  const runIds = slackAgentRuns.map((run) => {
+    return run.id;
+  });
+  if (runIds.length === 0) {
+    return;
+  }
+  await db.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
+  signal.throwIfAborted();
+  await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
+  signal.throwIfAborted();
+}
+
+async function deleteSlackComposesForOrg(
+  db: Db,
+  orgId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const composeRows = await db
+    .select({ id: agentComposes.id })
+    .from(agentComposes)
+    .where(eq(agentComposes.orgId, orgId));
+  signal.throwIfAborted();
+  const composeIds = composeRows.map((row) => {
+    return row.id;
+  });
+  if (composeIds.length === 0) {
+    return;
+  }
+  await db.delete(zeroAgents).where(inArray(zeroAgents.id, composeIds));
+  signal.throwIfAborted();
+  await db
+    .delete(agentComposeVersions)
+    .where(inArray(agentComposeVersions.composeId, composeIds));
+  signal.throwIfAborted();
+  await db.delete(agentComposes).where(inArray(agentComposes.id, composeIds));
+  signal.throwIfAborted();
+}
+
+async function deleteSlackStoragesForOrg(
+  db: Db,
+  orgId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const storageRows = await db
+    .select({ id: storages.id })
+    .from(storages)
+    .where(eq(storages.orgId, orgId));
+  signal.throwIfAborted();
+  const storageIds = storageRows.map((storage) => {
+    return storage.id;
+  });
+  if (storageIds.length === 0) {
+    return;
+  }
+  await db
+    .update(storages)
+    .set({ headVersionId: null })
+    .where(inArray(storages.id, storageIds));
+  signal.throwIfAborted();
+  await db
+    .delete(storageVersions)
+    .where(inArray(storageVersions.storageId, storageIds));
+  signal.throwIfAborted();
+  await db.delete(storages).where(inArray(storages.id, storageIds));
+  signal.throwIfAborted();
+}
+
+async function deleteSlackOrgState(
+  db: Db,
+  orgId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  await db.delete(secrets).where(eq(secrets.orgId, orgId));
+  signal.throwIfAborted();
+  await db.delete(variables).where(eq(variables.orgId, orgId));
+  signal.throwIfAborted();
+  await db.delete(orgCache).where(eq(orgCache.orgId, orgId));
+  signal.throwIfAborted();
+  await deleteSlackComposesForOrg(db, orgId, signal);
+  await deleteSlackStoragesForOrg(db, orgId, signal);
+  await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
+  signal.throwIfAborted();
+}
+
 const deleteSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   const request = get(request$);
   if (!isTestEndpointAllowed(request)) {
@@ -1030,112 +1262,26 @@ const deleteSlackState$ = command(async ({ get, set }, signal: AbortSignal) => {
   const db = set(writeDb$);
   const teamId = query.team_id;
   const orgId = query.org_id;
-  const installationRows = teamId
-    ? await db
-        .select({
-          slackWorkspaceId: slackOrgInstallations.slackWorkspaceId,
-          orgId: slackOrgInstallations.orgId,
-        })
-        .from(slackOrgInstallations)
-        .where(eq(slackOrgInstallations.slackWorkspaceId, teamId))
-    : orgId
-      ? await db
-          .select({
-            slackWorkspaceId: slackOrgInstallations.slackWorkspaceId,
-            orgId: slackOrgInstallations.orgId,
-          })
-          .from(slackOrgInstallations)
-          .where(eq(slackOrgInstallations.orgId, orgId))
-      : [];
+  const installationRows = await slackInstallationRowsForDelete(db, query);
   signal.throwIfAborted();
-
-  const orgIds = new Set(
-    installationRows.flatMap((row) => {
-      return row.orgId ? [row.orgId] : [];
-    }),
-  );
-  if (orgId) {
-    orgIds.add(orgId);
-  }
+  const orgIds = orgIdsForSlackStateDelete(installationRows, orgId);
   for (const seededOrgId of orgIds) {
     await deleteVm0ManagedKeysForSeededDefaultAgent(db, seededOrgId);
     signal.throwIfAborted();
   }
 
-  const teamIds = installationRows.map((row) => {
-    return row.slackWorkspaceId;
-  });
-  if (teamId && !teamIds.includes(teamId)) {
-    teamIds.push(teamId);
-  }
-
-  if (teamIds.length > 0) {
-    await db
-      .delete(slackOrgConnections)
-      .where(inArray(slackOrgConnections.slackWorkspaceId, teamIds));
-    signal.throwIfAborted();
-
-    await db
-      .delete(slackOrgInstallations)
-      .where(inArray(slackOrgInstallations.slackWorkspaceId, teamIds));
-    signal.throwIfAborted();
-  }
+  await deleteSlackTeamsForState(
+    db,
+    teamIdsForSlackStateDelete(installationRows, teamId),
+    signal,
+  );
 
   for (const seededOrgId of orgIds) {
-    const slackAgentRuns = await db
-      .select({ id: agentRuns.id })
-      .from(agentRuns)
-      .innerJoin(zeroRuns, eq(agentRuns.id, zeroRuns.id))
-      .where(
-        and(
-          eq(agentRuns.orgId, seededOrgId),
-          eq(zeroRuns.triggerSource, "slack"),
-        ),
-      );
-    signal.throwIfAborted();
-
-    const runIds = slackAgentRuns.map((run) => {
-      return run.id;
-    });
-    if (runIds.length > 0) {
-      await db.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
-      signal.throwIfAborted();
-      await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
-      signal.throwIfAborted();
-    }
+    await deleteSlackRunsForOrg(db, seededOrgId, signal);
   }
 
   if (orgId) {
-    await db.delete(secrets).where(eq(secrets.orgId, orgId));
-    signal.throwIfAborted();
-    await db.delete(variables).where(eq(variables.orgId, orgId));
-    signal.throwIfAborted();
-    await db.delete(orgCache).where(eq(orgCache.orgId, orgId));
-    signal.throwIfAborted();
-
-    const composeRows = await db
-      .select({ id: agentComposes.id })
-      .from(agentComposes)
-      .where(eq(agentComposes.orgId, orgId));
-    signal.throwIfAborted();
-    const composeIds = composeRows.map((row) => {
-      return row.id;
-    });
-    if (composeIds.length > 0) {
-      await db.delete(zeroAgents).where(inArray(zeroAgents.id, composeIds));
-      signal.throwIfAborted();
-      await db
-        .delete(agentComposeVersions)
-        .where(inArray(agentComposeVersions.composeId, composeIds));
-      signal.throwIfAborted();
-      await db
-        .delete(agentComposes)
-        .where(inArray(agentComposes.id, composeIds));
-      signal.throwIfAborted();
-    }
-
-    await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
-    signal.throwIfAborted();
+    await deleteSlackOrgState(db, orgId, signal);
   }
 
   return {

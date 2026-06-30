@@ -21,6 +21,7 @@ export const testSlackStatePostBodySchema = z.object({
   bot_user_id: z.string().optional(),
   bot_scopes: z.string().nullable().optional(),
   bot_token: z.string().optional(),
+  installation_org_id: z.string().nullable().optional(),
   email: z.string().optional(),
   seed_connection: z.boolean().optional(),
   delete_connection: z.boolean().optional(),
@@ -52,6 +53,7 @@ export const testSlackStateResponseSchema = z.object({
       slackWorkspaceName: z.string().nullable(),
       orgId: z.string().nullable(),
       botUserId: z.string(),
+      botScopes: z.string().nullable(),
       installedByUserId: z.string().nullable(),
       createdAt: z.string(),
     })
@@ -76,6 +78,15 @@ export const testSlackStateResponseSchema = z.object({
       promptPreview: z.string().nullable(),
     }),
   ),
+  artifact_storage: z
+    .object({
+      id: z.string(),
+      headVersionId: z.string().nullable(),
+      s3Prefix: z.string(),
+      versionId: z.string().nullable(),
+      versionS3Key: z.string().nullable(),
+    })
+    .nullable(),
   org_metadata: z
     .object({
       orgId: z.string(),
@@ -122,6 +133,8 @@ export const testSlackStateContract = c.router({
     path: "/api/test/slack-state",
     query: z.object({
       team_id: z.string().optional(),
+      org_id: z.string().optional(),
+      user_id: z.string().optional(),
     }),
     responses: {
       200: testSlackStateResponseSchema,

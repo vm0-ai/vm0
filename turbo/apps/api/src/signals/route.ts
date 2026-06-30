@@ -182,10 +182,12 @@ import { testSlackMockRoutes } from "./routes/test-slack-mock";
 import { testSlackStateRoutes } from "./routes/test-slack-state";
 import { testEmailStateRoutes } from "./routes/test-email-state";
 import { testBillingRedeemStateRoutes } from "./routes/test-billing-redeem-state";
+import { testBillingStatusStateRoutes } from "./routes/test-billing-status-state";
 import { testTelegramDispatchProbeRoutes } from "./routes/test-telegram-dispatch-probe";
 import { testTelegramMockRoutes } from "./routes/test-telegram-mock";
 import { testTelegramStateRoutes } from "./routes/test-telegram-state";
 import { testGenerationStateRoutes } from "./routes/test-generation-state";
+import { testOnboardingStatusStateRoutes } from "./routes/test-onboarding-status-state";
 import { testUsageInsightStateRoutes } from "./routes/test-usage-insight-state";
 import { testUsageStateRoutes } from "./routes/test-usage-state";
 import { testWorkflowTriggerStateRoutes } from "./routes/test-workflow-trigger-state";
@@ -376,10 +378,12 @@ export const ROUTES: readonly RouteEntry[] = [
   ...testSlackStateRoutes,
   ...testEmailStateRoutes,
   ...testBillingRedeemStateRoutes,
+  ...testBillingStatusStateRoutes,
   ...testTelegramDispatchProbeRoutes,
   ...testTelegramMockRoutes,
   ...testTelegramStateRoutes,
   ...testGenerationStateRoutes,
+  ...testOnboardingStatusStateRoutes,
   ...testUsageInsightStateRoutes,
   ...testUsageStateRoutes,
   ...testWorkflowTriggerStateRoutes,

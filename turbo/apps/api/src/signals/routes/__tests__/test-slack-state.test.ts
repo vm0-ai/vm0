@@ -176,7 +176,7 @@ function mockTelegramTyping(): void {
       () => {
         return HttpResponse.json({
           ok: true,
-          result: { message_id: 1, chat: { id: 900100200 } },
+          result: { message_id: 1, chat: { id: 900_100_200 } },
         });
       },
     ),
@@ -385,7 +385,7 @@ describe("GET /api/test/slack-state", () => {
 
     expect(response.status).toBe(400);
     await expect(readJson(response)).resolves.toStrictEqual({
-      error: "team_id query param is required",
+      error: "team_id or org_id query param is required",
     });
   });
 
@@ -457,7 +457,7 @@ describe("GET /api/test/slack-state", () => {
       installedByUserId: fixture.userId,
     });
     expect(typeof body.installation?.createdAt).toBe("string");
-    expect(body.connections).toEqual(
+    expect(body.connections).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: fixture.connectionId,
@@ -467,7 +467,7 @@ describe("GET /api/test/slack-state", () => {
         }),
       ]),
     );
-    expect(body.recent_runs).toEqual(
+    expect(body.recent_runs).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           status: "pending",
@@ -496,7 +496,7 @@ describe("GET /api/test/slack-state", () => {
     expect(body.default_compose_version).toMatchObject({
       content_keys: expect.arrayContaining(["version", "agents"]),
     });
-    expect(body.mock_calls).toEqual(
+    expect(body.mock_calls).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           method: "chat.postMessage",
@@ -531,11 +531,14 @@ describe("POST /api/test/slack-state", () => {
   it("requires team_id and slack_user_id", async () => {
     mockEnv("ENV", "development");
 
-    const response = await postSlackState({ team_id: "T_MISSING_USER" });
+    const response = await postSlackState({
+      team_id: "T_MISSING_USER",
+      seed_connection: true,
+    });
 
     expect(response.status).toBe(400);
     await expect(readJson(response)).resolves.toStrictEqual({
-      error: "team_id and slack_user_id are required",
+      error: "team_id and slack_user_id are required to seed a connection",
     });
   });
 
@@ -686,7 +689,7 @@ describe("DELETE /api/test/slack-state", () => {
 
     expect(response.status).toBe(400);
     await expect(readJson(response)).resolves.toStrictEqual({
-      error: "team_id query param is required",
+      error: "team_id or org_id query param is required",
     });
   });
 
@@ -731,7 +734,7 @@ describe("DELETE /api/test/slack-state", () => {
     expect(deletedSlack.installation).toBeNull();
     expect(deletedSlack.connections).toStrictEqual([]);
     expect(deletedSlack.recent_runs).toStrictEqual([]);
-    expect(deletedSlack.mock_calls).toEqual(
+    expect(deletedSlack.mock_calls).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           method: "chat.postMessage",
@@ -743,7 +746,7 @@ describe("DELETE /api/test/slack-state", () => {
     );
 
     const telegramState = await readTelegramState(telegram.botId);
-    expect(telegramState.recent_runs).toEqual(
+    expect(telegramState.recent_runs).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           triggerSource: "telegram",
@@ -751,7 +754,7 @@ describe("DELETE /api/test/slack-state", () => {
         }),
       ]),
     );
-    expect(telegramState.recent_runs).not.toEqual(
+    expect(telegramState.recent_runs).not.toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           triggerSource: "slack",
