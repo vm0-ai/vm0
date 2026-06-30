@@ -57,6 +57,35 @@ export const openRenameChatThreadDialog$ = command(
 );
 
 // ---------------------------------------------------------------------------
+// Emoji picker dialog state (RecentChatList)
+// ---------------------------------------------------------------------------
+const internalEmojiDialogThreadId$ = state<string | null>(null);
+export const emojiDialogThreadId$ = computed((get) => {
+  return get(internalEmojiDialogThreadId$);
+});
+export const setEmojiDialogThreadId$ = command(({ set }, id: string | null) => {
+  set(internalEmojiDialogThreadId$, id);
+});
+
+const internalEmojiDialogTitle$ = state<string | null>(null);
+export const emojiDialogTitle$ = computed((get) => {
+  return get(internalEmojiDialogTitle$);
+});
+export const setEmojiDialogTitle$ = command(({ set }, title: string | null) => {
+  set(internalEmojiDialogTitle$, title);
+});
+
+export const openChatThreadEmojiDialog$ = command(
+  (
+    { set },
+    { threadId, title }: { threadId: string; title: string | null | undefined },
+  ) => {
+    set(internalEmojiDialogTitle$, title?.trim() || null);
+    set(internalEmojiDialogThreadId$, threadId);
+  },
+);
+
+// ---------------------------------------------------------------------------
 // Session list collapse state (RecentChatSection) — persisted in localStorage
 // ---------------------------------------------------------------------------
 const {

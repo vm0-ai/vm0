@@ -6,10 +6,14 @@ import {
   loadLeftThread$,
   loadRightThread$,
 } from "./chat-thread-panes.ts";
+import { sidebarChatThreads$ } from "./optimistic-chat-thread-page.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onDomEventFn, onRef } from "../utils.ts";
-import { openRenameChatThreadDialog$ } from "../zero-page/zero-sidebar-state.ts";
+import {
+  openChatThreadEmojiDialog$,
+  openRenameChatThreadDialog$,
+} from "../zero-page/zero-sidebar-state.ts";
 
 /**
  * Snapshot row shape consumed by `navigateToAdjacentThread$`. The caller
@@ -72,6 +76,21 @@ function hasOpenDialog(doc: Document): boolean {
   return doc.querySelector('[role="dialog"]') !== null;
 }
 
+function resolveChatThreadShortcutTitle(
+  threadId: string,
+  threadDataTitle: string | null | undefined,
+  sidebarThreads: readonly { id: string; title: string | null }[],
+): string | null | undefined {
+  if (threadDataTitle?.trim()) {
+    return threadDataTitle;
+  }
+  return (
+    sidebarThreads.find((thread) => {
+      return thread.id === threadId;
+    })?.title ?? threadDataTitle
+  );
+}
+
 function isKeyboardScrollAllowedTarget(
   root: HTMLElement,
   target: EventTarget | null,
@@ -129,7 +148,7 @@ export const setChatKeyboardScrollRoot$ = onRef(
     const onGlobalChatKeyDown = onDomEventFn(async (event: KeyboardEvent) => {
       if (
         event.defaultPrevented ||
-        !matchShortcut("f2", event) ||
+        (!matchShortcut("f2", event) && !matchShortcut("shift+f2", event)) ||
         hasOpenDialog(el.ownerDocument) ||
         !isChatShortcutTarget(el, event.target)
       ) {
@@ -142,11 +161,21 @@ export const setChatKeyboardScrollRoot$ = onRef(
 
       event.preventDefault();
       const threadData = await get(mainThread.threadData$);
+      const sidebarThreads = await get(sidebarChatThreads$);
       signal.throwIfAborted();
-      set(openRenameChatThreadDialog$, {
+      const dialogPayload = {
         threadId: mainThread.threadId,
-        title: threadData?.title,
-      });
+        title: resolveChatThreadShortcutTitle(
+          mainThread.threadId,
+          threadData?.title,
+          sidebarThreads,
+        ),
+      };
+      if (matchShortcut("shift+f2", event)) {
+        set(openChatThreadEmojiDialog$, dialogPayload);
+      } else {
+        set(openRenameChatThreadDialog$, dialogPayload);
+      }
     });
 
     el.addEventListener("focusin", markActiveThread, { signal });

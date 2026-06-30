@@ -261,21 +261,30 @@ function makeMessage(id: string, text: string): PagedChatMessage {
   };
 }
 
-function mockKeyboardNavigationThreads(): void {
+function mockKeyboardNavigationThreads({
+  currentTitle = "Current keyboard thread",
+  currentDetailTitle = currentTitle,
+}: {
+  currentTitle?: string;
+  currentDetailTitle?: string | null;
+} = {}): void {
   const threadFixtures = [
     {
       id: "keyboard-prev-thread",
       title: "Previous keyboard thread",
+      detailTitle: "Previous keyboard thread",
       message: "Previous thread launch note",
     },
     {
       id: "keyboard-current-thread",
-      title: "Current keyboard thread",
+      title: currentTitle,
+      detailTitle: currentDetailTitle,
       message: "Current thread launch note",
     },
     {
       id: "keyboard-next-thread",
       title: "Next keyboard thread",
+      detailTitle: "Next keyboard thread",
       message: "Next thread launch note",
     },
   ];
@@ -312,7 +321,7 @@ function mockKeyboardNavigationThreads(): void {
     }
     return respond(200, {
       id: thread.id,
-      title: thread.title,
+      title: thread.detailTitle,
       agentId: AGENT_ID,
       activeRunIds: [],
       createdAt: "2026-06-01T00:00:00Z",
@@ -2837,7 +2846,9 @@ describe("chat lifecycle", () => {
       expect(screen.getByText("Previous thread")).toBeInTheDocument();
       expect(screen.getByText("Next thread")).toBeInTheDocument();
       expect(screen.getByText("Rename chat")).toBeInTheDocument();
-      expect(screen.getByText("F2")).toBeInTheDocument();
+      expect(screen.getByText("Change emoji")).toBeInTheDocument();
+      expect(screen.getAllByText("F2")).toHaveLength(2);
+      expect(screen.getAllByText("Shift").length).toBeGreaterThan(0);
     });
   });
 
@@ -2984,6 +2995,87 @@ describe("chat lifecycle", () => {
     expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
       "Current keyboard thread",
     );
+  });
+
+  it("adds an emoji to the current chat with Shift+F2", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({ currentDetailTitle: null });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Current keyboard thread")).toBeInTheDocument();
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
+
+    const dialog = await screen.findByRole("dialog", { name: "Change emoji" });
+    expect(dialog).toBeInTheDocument();
+    click(buttonByLabel("Done ✅"));
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        "keyboard-current-thread",
+        "✅ Current keyboard thread",
+      );
+    });
+  });
+
+  it("replaces the current chat emoji from the Shift+F2 picker", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({
+      currentTitle: "🔥   Current keyboard thread",
+    });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(document.title).toBe("🔥   Current keyboard thread | VM0");
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
+
+    const dialog = await screen.findByRole("dialog", { name: "Change emoji" });
+    fireEvent.keyDown(dialog, { key: "@", code: "Digit2", shiftKey: true });
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        "keyboard-current-thread",
+        "👀 Current keyboard thread",
+      );
+    });
   });
 
   it("opens run logs from assistant message actions", async () => {

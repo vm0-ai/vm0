@@ -230,7 +230,10 @@ import {
 } from "../../signals/zero-page/zero-automations.ts";
 import { openQueueDrawer$ } from "../../signals/queue-page/queue-drawer-state.ts";
 import { ShortcutHelpDialog } from "../components/shortcut-help-dialog.tsx";
-import { openRenameChatThreadDialog$ } from "../../signals/zero-page/zero-sidebar-state.ts";
+import {
+  openChatThreadEmojiDialog$,
+  openRenameChatThreadDialog$,
+} from "../../signals/zero-page/zero-sidebar-state.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
@@ -346,6 +349,7 @@ const CHAT_SHORTCUT_SECTIONS = [
       { key: "mod+b", label: "Toggle sidebar" },
       { key: "mod+shift+o", label: "New chat" },
       { key: "f2", label: "Rename chat" },
+      { key: "shift+f2", label: "Change emoji" },
     ],
   },
   {
@@ -2876,8 +2880,14 @@ function ChatThread({
   onFocusFallbackRef?: (el: HTMLElement | null) => void;
 }) {
   const openRenameDialog = useOpenCurrentChatThreadRenameDialog(thread);
+  const openEmojiDialog = useOpenCurrentChatThreadEmojiDialog(thread);
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.defaultPrevented) {
+      return;
+    }
+    if (matchShortcut("shift+f2", event)) {
+      event.preventDefault();
+      openEmojiDialog();
       return;
     }
     if (matchShortcut("f2", event)) {
@@ -2904,13 +2914,39 @@ function ChatThread({
 
 function useOpenCurrentChatThreadRenameDialog(thread: ChatThreadSignals) {
   const openRenameChatThreadDialog = useSet(openRenameChatThreadDialog$);
-  const threadData = useLastResolved(thread.threadData$);
+  const title = useCurrentChatThreadDialogTitle(thread);
   return () => {
     openRenameChatThreadDialog({
       threadId: thread.threadId,
-      title: threadData?.title,
+      title,
     });
   };
+}
+
+function useOpenCurrentChatThreadEmojiDialog(thread: ChatThreadSignals) {
+  const openChatThreadEmojiDialog = useSet(openChatThreadEmojiDialog$);
+  const title = useCurrentChatThreadDialogTitle(thread);
+  return () => {
+    openChatThreadEmojiDialog({
+      threadId: thread.threadId,
+      title,
+    });
+  };
+}
+
+function useCurrentChatThreadDialogTitle(
+  thread: ChatThreadSignals,
+): string | null | undefined {
+  const threadData = useLastResolved(thread.threadData$);
+  const sidebarThreads = useLastResolved(sidebarChatThreads$) ?? [];
+  if (threadData?.title?.trim()) {
+    return threadData.title;
+  }
+  return (
+    sidebarThreads.find((sidebarThread) => {
+      return sidebarThread.id === thread.threadId;
+    })?.title ?? threadData?.title
+  );
 }
 
 // Drag the divider to resize the artifact preview against the chat thread.

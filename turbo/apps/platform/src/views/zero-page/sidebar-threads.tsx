@@ -15,6 +15,7 @@ import {
   IconLoader2,
   IconPin,
   IconPinnedOff,
+  IconMoodSmile,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
@@ -92,11 +93,16 @@ import {
   setChatThreadOnlyUnread$,
 } from "../../signals/chat-page/chat-thread-only-unread.ts";
 import {
+  emojiDialogThreadId$,
+  emojiDialogTitle$,
+  openChatThreadEmojiDialog$,
   openRenameChatThreadDialog$,
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
   renameDialogThreadId$,
   renameDialogInput$,
+  setEmojiDialogThreadId$,
+  setEmojiDialogTitle$,
   setRenameDialogThreadId$,
   setRenameDialogInput$,
   sessionListCollapsed$,
@@ -106,6 +112,50 @@ import { Link } from "../router/link.tsx";
 
 type IndicatorState = "running" | "unread" | "draft";
 type ChatThreadPaneIndicator = "main" | "sidebar";
+
+const PRIMARY_CHAT_THREAD_EMOJI_OPTIONS = [
+  { emoji: "✅", label: "Done" },
+  { emoji: "🔥", label: "Urgent" },
+  { emoji: "❌", label: "No" },
+  { emoji: "⚠️", label: "Risk" },
+  { emoji: "💡", label: "Idea" },
+  { emoji: "❓", label: "Question" },
+  { emoji: "⏳", label: "Waiting" },
+] as const;
+
+const SECONDARY_CHAT_THREAD_EMOJI_OPTIONS = [
+  { emoji: "📌", label: "Important" },
+  { emoji: "👀", label: "Review" },
+  { emoji: "🧪", label: "Test" },
+  { emoji: "📝", label: "Notes" },
+  { emoji: "🚧", label: "Building" },
+  { emoji: "📣", label: "Announcement" },
+  { emoji: "🔒", label: "Private" },
+] as const;
+
+const CHAT_THREAD_EMOJI_PATTERN =
+  /(?:[\u{1f1e6}-\u{1f1ff}]{2}|[#*0-9]\ufe0f?\u20e3|\p{Extended_Pictographic}(?:\ufe0f|\ufe0e)?(?:[\u{1f3fb}-\u{1f3ff}])?(?:\u200d\p{Extended_Pictographic}(?:\ufe0f|\ufe0e)?(?:[\u{1f3fb}-\u{1f3ff}])?)*)/u;
+
+function applyChatThreadEmoji(
+  title: string | null | undefined,
+  emoji: string,
+): string {
+  const trimmedTitle = title?.trim() ?? "";
+  if (!trimmedTitle) {
+    return emoji;
+  }
+  const match = trimmedTitle.match(CHAT_THREAD_EMOJI_PATTERN);
+  if (!match || match.index === undefined) {
+    return `${emoji} ${trimmedTitle}`;
+  }
+  const beforeEmoji = trimmedTitle.slice(0, match.index);
+  const afterEmoji = trimmedTitle
+    .slice(match.index + match[0].length)
+    .trimStart();
+  return afterEmoji
+    ? `${beforeEmoji}${emoji} ${afterEmoji}`
+    : `${beforeEmoji}${emoji}`;
+}
 
 function SessionStateIndicator({ state }: { state: IndicatorState }) {
   if (state === "running") {
@@ -265,6 +315,7 @@ function ChatThreadMenu({
   const pinChatThread = useSet(pinChatThread$);
   const unpinChatThread = useSet(unpinChatThread$);
   const openRenameChatThreadDialog = useSet(openRenameChatThreadDialog$);
+  const openChatThreadEmojiDialog = useSet(openChatThreadEmojiDialog$);
   const pageSignal = useGet(pageSignal$);
 
   function handleTogglePin() {
@@ -282,6 +333,10 @@ function ChatThreadMenu({
 
   function openRenameDialog() {
     openRenameChatThreadDialog({ threadId, title });
+  }
+
+  function openEmojiDialog() {
+    openChatThreadEmojiDialog({ threadId, title });
   }
 
   const showMobileTrigger = !hasOtherIndicator || usePinnedIndicatorTrigger;
@@ -351,6 +406,10 @@ function ChatThreadMenu({
           <DropdownMenuItem onSelect={openRenameDialog}>
             <IconPencil size={16} stroke={2} className="mr-2" />
             Rename chat
+          </DropdownMenuItem>
+          <DropdownMenuItem onSelect={openEmojiDialog}>
+            <IconMoodSmile size={16} stroke={2} className="mr-2" />
+            Change emoji
           </DropdownMenuItem>
           <DropdownMenuItem
             onSelect={() => {
@@ -559,6 +618,20 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
   );
 }
 
+function chatThreadContainer(threadId: string) {
+  return (
+    Array.from(
+      document.querySelectorAll<HTMLElement>("[data-chat-thread-container-id]"),
+    ).find((candidate) => {
+      return candidate.dataset.chatThreadContainerId === threadId;
+    }) ?? null
+  );
+}
+
+function focusChatThreadContainer(threadId: string) {
+  chatThreadContainer(threadId)?.focus({ preventScroll: true });
+}
+
 function ChatThreadRenameDialog() {
   const renameDialogThreadId = useGet(renameDialogThreadId$);
   const renameDialogInput = useGet(renameDialogInput$);
@@ -566,22 +639,6 @@ function ChatThreadRenameDialog() {
   const setRenameDialogThreadId = useSet(setRenameDialogThreadId$);
   const renameChatThread = useSet(renameChatThread$);
   const pageSignal = useGet(pageSignal$);
-
-  function chatThreadContainer(threadId: string) {
-    return (
-      Array.from(
-        document.querySelectorAll<HTMLElement>(
-          "[data-chat-thread-container-id]",
-        ),
-      ).find((candidate) => {
-        return candidate.dataset.chatThreadContainerId === threadId;
-      }) ?? null
-    );
-  }
-
-  function focusChatThreadContainer(threadId: string) {
-    chatThreadContainer(threadId)?.focus({ preventScroll: true });
-  }
 
   function closeRenameDialog() {
     const threadId = renameDialogThreadId;
@@ -665,6 +722,156 @@ function ChatThreadRenameDialog() {
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+function emojiShortcutIndex(event: {
+  key: string;
+  code?: string;
+}): number | null {
+  const codeMatch = event.code?.match(/^(?:Digit|Numpad)([1-7])$/);
+  const key = codeMatch?.[1] ?? event.key;
+  const fallbackShiftedKeys: Record<string, string> = {
+    "!": "1",
+    "@": "2",
+    "#": "3",
+    $: "4",
+    "%": "5",
+    "^": "6",
+    "&": "7",
+  };
+  const digit = fallbackShiftedKeys[key] ?? key;
+  if (!/^[1-7]$/.test(digit)) {
+    return null;
+  }
+  return Number(digit) - 1;
+}
+
+function ChatThreadEmojiDialog() {
+  const emojiDialogThreadId = useGet(emojiDialogThreadId$);
+  const emojiDialogTitle = useGet(emojiDialogTitle$);
+  const setEmojiDialogThreadId = useSet(setEmojiDialogThreadId$);
+  const setEmojiDialogTitle = useSet(setEmojiDialogTitle$);
+  const renameChatThread = useSet(renameChatThread$);
+  const pageSignal = useGet(pageSignal$);
+
+  function closeEmojiDialog() {
+    const threadId = emojiDialogThreadId;
+    setEmojiDialogThreadId(null);
+    setEmojiDialogTitle(null);
+    if (threadId) {
+      queueMicrotask(() => {
+        focusChatThreadContainer(threadId);
+      });
+    }
+  }
+
+  function selectEmoji(emoji: string) {
+    if (!emojiDialogThreadId) {
+      return;
+    }
+    detach(
+      renameChatThread(
+        {
+          threadId: emojiDialogThreadId,
+          title: applyChatThreadEmoji(emojiDialogTitle, emoji),
+        },
+        pageSignal,
+      ),
+      Reason.DomCallback,
+    );
+    closeEmojiDialog();
+  }
+
+  return (
+    <Dialog
+      open={emojiDialogThreadId !== null}
+      onOpenChange={(open) => {
+        if (!open) {
+          closeEmojiDialog();
+        }
+      }}
+    >
+      <DialogContent
+        className="max-w-sm"
+        onCloseAutoFocus={(event) => {
+          const threadContainer = emojiDialogThreadId
+            ? chatThreadContainer(emojiDialogThreadId)
+            : null;
+          if (threadContainer) {
+            event.preventDefault();
+            threadContainer.focus({ preventScroll: true });
+          }
+        }}
+        onKeyDown={(event) => {
+          const index = emojiShortcutIndex(event);
+          if (index === null) {
+            return;
+          }
+          event.preventDefault();
+          const options = event.shiftKey
+            ? SECONDARY_CHAT_THREAD_EMOJI_OPTIONS
+            : PRIMARY_CHAT_THREAD_EMOJI_OPTIONS;
+          const option = options[index];
+          if (option) {
+            selectEmoji(option.emoji);
+          }
+        }}
+      >
+        <DialogHeader>
+          <DialogTitle>Change emoji</DialogTitle>
+          <DialogDescription className="sr-only">
+            Choose an emoji for this chat.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <EmojiOptionGrid
+            options={PRIMARY_CHAT_THREAD_EMOJI_OPTIONS}
+            shortcutPrefix=""
+            onSelect={selectEmoji}
+          />
+          <EmojiOptionGrid
+            options={SECONDARY_CHAT_THREAD_EMOJI_OPTIONS}
+            shortcutPrefix="Shift+"
+            onSelect={selectEmoji}
+          />
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+function EmojiOptionGrid({
+  onSelect,
+  options,
+  shortcutPrefix,
+}: {
+  onSelect: (emoji: string) => void;
+  options: readonly { emoji: string; label: string }[];
+  shortcutPrefix: string;
+}) {
+  return (
+    <div className="grid grid-cols-7 gap-1.5">
+      {options.map((option, index) => {
+        const shortcut = `${shortcutPrefix}${index + 1}`;
+        return (
+          <button
+            key={option.emoji}
+            type="button"
+            aria-label={`${option.label} ${option.emoji}`}
+            onClick={() => {
+              onSelect(option.emoji);
+            }}
+            className="flex h-14 min-w-0 flex-col items-center justify-center rounded-lg border border-border bg-background text-2xl leading-none transition-colors hover:bg-gray-50 hover:text-foreground"
+          >
+            <span aria-hidden="true">{option.emoji}</span>
+            <span className="mt-1 text-[9px] leading-none text-muted-foreground">
+              {shortcut}
+            </span>
+          </button>
+        );
+      })}
+    </div>
   );
 }
 
@@ -825,6 +1032,7 @@ function ChatThreads() {
             : "Start a conversation and it'll show up here"}
         </p>
         <ChatThreadRenameDialog />
+        <ChatThreadEmojiDialog />
         <DeleteChatThreadDialog />
       </>
     );
@@ -841,6 +1049,7 @@ function ChatThreads() {
         />
       )}
       <ChatThreadRenameDialog />
+      <ChatThreadEmojiDialog />
       <DeleteChatThreadDialog />
     </>
   );
