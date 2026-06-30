@@ -1,4 +1,4 @@
-//! Failure-path integration coverage for the disabled Codex app-server backend.
+//! Failure-path integration coverage for the experimental Codex app-server backend.
 //!
 //! This test lives in its own binary because `guest_agent::env` caches values
 //! in process-wide `LazyLock`s.

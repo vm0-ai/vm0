@@ -42,6 +42,7 @@ enum Scenario {
     RuntimeTurnComplete,
     RuntimeTurnCompleteAfterSteer,
     RuntimeTurnCompleteBeforeSteerResponse,
+    RuntimeTurnStartedBeforeSteer,
     RuntimeTurnCompleteWithoutThreadStarted,
     ResumeDifferentThreadId,
     ResumeRpcErrorWithThreadId,
@@ -86,6 +87,7 @@ impl Scenario {
                 "runtime-turn-complete-before-steer-response" => {
                     Ok(Self::RuntimeTurnCompleteBeforeSteerResponse)
                 }
+                "runtime-turn-started-before-steer" => Ok(Self::RuntimeTurnStartedBeforeSteer),
                 "runtime-turn-complete-without-thread-started" => {
                     Ok(Self::RuntimeTurnCompleteWithoutThreadStarted)
                 }
@@ -101,6 +103,17 @@ impl Scenario {
             Err(_) => Ok(Self::Success),
         }
     }
+}
+
+fn writes_turn_started_before_steer(scenario: Scenario) -> bool {
+    matches!(
+        scenario,
+        Scenario::ExitOnTurnSteer
+            | Scenario::NoActiveTurn
+            | Scenario::RuntimeTurnCompleteBeforeSteerResponse
+            | Scenario::RuntimeTurnStartedBeforeSteer
+            | Scenario::StaleTurn
+    )
 }
 
 pub fn run_app_server(listen: &str) -> io::Result<()> {
@@ -422,8 +435,10 @@ impl AppServerState {
                 };
 
                 let turn_id = Uuid::now_v7().to_string();
-                if self.scenario != Scenario::NoActiveTurn
-                    && let Some(current_thread) = &mut self.current_thread
+                if !matches!(
+                    self.scenario,
+                    Scenario::NoActiveTurn | Scenario::RuntimeTurnStartedBeforeSteer
+                ) && let Some(current_thread) = &mut self.current_thread
                 {
                     current_thread.active_turn_id = Some(turn_id.clone());
                 }
@@ -444,6 +459,14 @@ impl AppServerState {
                         &turn_completed_notification("unexpected-thread-id", &turn_id),
                     )?;
                     return Ok(ServerAction::Stop);
+                }
+                if writes_turn_started_before_steer(self.scenario) {
+                    if let Some(current_thread) = &mut self.current_thread
+                        && self.scenario == Scenario::RuntimeTurnStartedBeforeSteer
+                    {
+                        current_thread.active_turn_id = Some(turn_id.clone());
+                    }
+                    write_json_line(output, &turn_started_notification(&thread_id, &turn_id))?;
                 }
                 if matches!(
                     self.scenario,
@@ -517,11 +540,14 @@ impl AppServerState {
                     params,
                 )?;
                 if self.scenario == Scenario::RuntimeTurnCompleteBeforeSteerResponse {
-                    write_turn_notifications(output, &thread_id, &active_turn_id)?;
+                    write_turn_completion_notifications(output, &thread_id, &active_turn_id)?;
                 }
                 write_success(output, id, json!({ "turnId": active_turn_id }))?;
                 if self.scenario == Scenario::RuntimeTurnCompleteAfterSteer {
                     write_turn_notifications(output, &thread_id, &active_turn_id)?;
+                }
+                if self.scenario == Scenario::RuntimeTurnStartedBeforeSteer {
+                    write_turn_completion_notifications(output, &thread_id, &active_turn_id)?;
                 }
                 Ok(ServerAction::Continue)
             }
@@ -792,6 +818,14 @@ fn write_turn_notifications<W: Write>(
     turn_id: &str,
 ) -> io::Result<()> {
     write_json_line(output, &turn_started_notification(thread_id, turn_id))?;
+    write_turn_completion_notifications(output, thread_id, turn_id)
+}
+
+fn write_turn_completion_notifications<W: Write>(
+    output: &mut W,
+    thread_id: &str,
+    turn_id: &str,
+) -> io::Result<()> {
     write_json_line(
         output,
         &assistant_item_completed_notification(thread_id, turn_id),

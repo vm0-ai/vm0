@@ -1,4 +1,4 @@
-//! Active-input success coverage for the disabled Codex app-server backend.
+//! Active-input success coverage for the experimental Codex app-server backend.
 //!
 //! This test lives in its own binary because `guest_agent::env` caches values
 //! in process-wide `LazyLock`s.
@@ -23,7 +23,7 @@ async fn codex_app_server_backend_steers_active_input_into_active_turn()
             tmp.path(),
             "codex-app-server-backend-active-input-test",
             "drive the app-server backend with active input",
-            "runtime-turn-complete-after-steer",
+            "runtime-turn-started-before-steer",
         )?;
     }
     let _run_files = common::RunFilesGuard::new();
