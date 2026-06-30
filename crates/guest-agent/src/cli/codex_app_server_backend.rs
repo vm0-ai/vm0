@@ -798,12 +798,26 @@ async fn ingest_event(event: Value, sink: &mut EventIngestSink<'_>) -> Result<()
         .await?
     {
         ParsedEventAction::Forward => {
+            if let Some(text) = codex_agent_message_text(&event) {
+                println!("{}", sink.masker.mask_string(text));
+            }
             sink.ingestor
                 .enqueue_event(event, sink.masker, sink.should_send_events, sink.event_tx);
         }
         ParsedEventAction::Skip => {}
     }
     Ok(())
+}
+
+fn codex_agent_message_text(event: &Value) -> Option<&str> {
+    if event.get("type").and_then(Value::as_str) != Some("item.completed") {
+        return None;
+    }
+    let item = event.get("item")?;
+    if item.get("type").and_then(Value::as_str) != Some("agent_message") {
+        return None;
+    }
+    item.get("text").and_then(Value::as_str)
 }
 
 fn is_duplicate_thread_started(
@@ -996,5 +1010,34 @@ mod tests {
             &thread_started_notification,
             "turn-1"
         ));
+    }
+
+    #[test]
+    fn codex_agent_message_text_reads_completed_agent_message_only() {
+        let agent_message = json!({
+            "type": "item.completed",
+            "item": {
+                "type": "agent_message",
+                "text": "RESULT=ok"
+            }
+        });
+        let plan_message = json!({
+            "type": "item.completed",
+            "item": {
+                "type": "plan",
+                "text": "not final output"
+            }
+        });
+        let started_agent_message = json!({
+            "type": "item.started",
+            "item": {
+                "type": "agent_message",
+                "text": "not completed"
+            }
+        });
+
+        assert_eq!(codex_agent_message_text(&agent_message), Some("RESULT=ok"));
+        assert_eq!(codex_agent_message_text(&plan_message), None);
+        assert_eq!(codex_agent_message_text(&started_agent_message), None);
     }
 }
