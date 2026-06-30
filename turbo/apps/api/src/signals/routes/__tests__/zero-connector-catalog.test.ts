@@ -275,6 +275,32 @@ describe("GET /api/zero/connector-catalog", () => {
     ]);
   });
 
+  it("returns every visible connector detail without private metadata", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    await enablePublicCatalog(orgId, userId, {
+      [FeatureSwitchKey.NeonConnector]: true,
+    });
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const listResponse = await accept(
+      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    for (const connector of listResponse.body.connectors) {
+      const detailResponse = await accept(
+        client.get({
+          params: { connectorRef: connector.connectorRef },
+          headers: { authorization: "Bearer clerk-session" },
+        }),
+        [200],
+      );
+      assertPublicConnectorCatalogHasNoPrivateFields(detailResponse.body);
+    }
+  });
+
   it("returns 404 for hidden connector catalog refs", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
