@@ -1,3 +1,20 @@
+//! Resume-session history materialization for runner execution.
+//!
+//! Resume sessions can arrive with no history, inline history, or a hash-backed
+//! history reference. This module owns the hash-backed materializer lifecycle:
+//! no resume session, no download needed, or an in-flight download task. Inline
+//! history stays on the original `ResumeSession`; `agent_run` restores it after
+//! `finish` reports that no download was needed.
+//!
+//! Hash-backed downloads can be started before the final restore point so the
+//! network fetch overlaps sandbox preparation and reuse checks. `finish` is the
+//! single point that consumes the task result, and cancellation takes priority
+//! over a completed download so cancelled runs do not proceed into restore.
+//!
+//! Download diagnostics must not expose presigned URL query strings, and the
+//! downloaded bytes must satisfy the declared size, byte cap, and hash contract
+//! before they are restored into the sandbox.
+
 use std::time::{Duration, Instant};
 
 use sha2::{Digest, Sha256};
@@ -19,7 +36,7 @@ pub(crate) struct SessionHistoryMaterializer {
 
 enum SessionHistoryMaterializerState {
     Missing,
-    Ready,
+    NoDownloadNeeded,
     Downloading {
         started_at: Instant,
         task: Option<JoinHandle<SessionHistoryDownloadTaskResult>>,
@@ -28,7 +45,7 @@ enum SessionHistoryMaterializerState {
 
 pub(super) enum SessionHistoryMaterialization {
     Missing,
-    Ready,
+    NoDownloadNeeded,
     Downloaded {
         session: MaterializedResumeSession<'static>,
         elapsed: Duration,
@@ -57,13 +74,15 @@ impl SessionHistoryMaterializer {
         };
         if session.history_ref().is_none() {
             return Self {
-                state: SessionHistoryMaterializerState::Ready,
+                state: SessionHistoryMaterializerState::NoDownloadNeeded,
             };
         }
 
         let http = http.clone();
         let session = session.clone();
         let started_at = Instant::now();
+        // The spawned task observes cancellation even before `finish` runs, so
+        // prestarted downloads do not need to wait for final materialization.
         Self {
             state: SessionHistoryMaterializerState::Downloading {
                 started_at,
@@ -91,9 +110,13 @@ impl SessionHistoryMaterializer {
         mut self,
         cancel: &CancellationToken,
     ) -> SessionHistoryMaterialization {
+        // `finish` transfers ownership of the background task into final
+        // materialization. Cancellation wins over any completed task result.
         match &mut self.state {
             SessionHistoryMaterializerState::Missing => SessionHistoryMaterialization::Missing,
-            SessionHistoryMaterializerState::Ready => SessionHistoryMaterialization::Ready,
+            SessionHistoryMaterializerState::NoDownloadNeeded => {
+                SessionHistoryMaterialization::NoDownloadNeeded
+            }
             SessionHistoryMaterializerState::Downloading { started_at, task } => {
                 let started_at = *started_at;
                 if cancel.is_cancelled() {
@@ -130,6 +153,8 @@ impl SessionHistoryMaterializer {
                         })
                     }
                 };
+                // Re-check after joining because the task itself can observe
+                // cancellation while still producing a successful result.
                 if cancel.is_cancelled() {
                     return SessionHistoryDownloadTaskResult::cancelled(started_at)
                         .into_materialization();
@@ -170,6 +195,8 @@ impl Drop for SessionHistoryMaterializer {
             task: Some(task), ..
         } = &mut self.state
         {
+            // Dropping means no owner will call `finish`. Abort the task so an
+            // abandoned prestarted download does not continue in the background.
             task.abort();
         }
     }
@@ -191,6 +218,11 @@ async fn download_resume_session_history(
     http: HttpClient,
     session: ResumeSession,
 ) -> RunnerResult<MaterializedResumeSession<'static>> {
+    // The history ref is treated as untrusted input. The request timeout and
+    // 128 MiB cap bound resource use; declared size, HTTP content-length, final
+    // byte count, and SHA-256 must all agree before the bytes become sandbox
+    // session history. URL diagnostics redact query strings because the ref URL
+    // can be presigned.
     let history_ref = session
         .history_ref()
         .ok_or_else(|| RunnerError::Internal("resume session history ref is missing".into()))?
