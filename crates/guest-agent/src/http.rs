@@ -133,6 +133,23 @@ impl HttpClient {
         Self::build(Some(api), DEFAULT_RETRY_DELAY)
     }
 
+    /// Build the HTTP client from an owned guest-agent config.
+    pub fn for_config(config: &env::GuestConfig) -> Result<Self, AgentError> {
+        let Some(api) = Self::api_config_from_values(
+            &config.api_url,
+            &config.api_token,
+            &config.vercel_bypass,
+        )?
+        else {
+            return Ok(Self {
+                inner: None,
+                retry_delay: DEFAULT_RETRY_DELAY,
+                api: None,
+            });
+        };
+        Self::build(Some(api), DEFAULT_RETRY_DELAY)
+    }
+
     pub fn has_api(&self) -> bool {
         self.api.is_some()
     }
@@ -157,15 +174,22 @@ impl HttpClient {
     }
 
     fn api_config_from_current_env() -> Result<Option<ApiHttpConfig>, AgentError> {
-        let token = env::api_token();
+        Self::api_config_from_values(env::api_url(), env::api_token(), env::vercel_bypass())
+    }
+
+    fn api_config_from_values(
+        base_url: &str,
+        token: &str,
+        vercel_bypass: &str,
+    ) -> Result<Option<ApiHttpConfig>, AgentError> {
         if token.is_empty() {
             return Ok(None);
         }
 
         Ok(Some(ApiHttpConfig::new(
-            env::api_url().to_string(),
+            base_url.to_string(),
             token.to_string(),
-            env::vercel_bypass().to_string(),
+            vercel_bypass.to_string(),
         )?))
     }
 

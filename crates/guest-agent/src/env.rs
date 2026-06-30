@@ -1,8 +1,8 @@
-//! Environment variable accessors — each value is read once via `LazyLock`.
+//! Environment variable accessors — each value is read once via process globals.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::LazyLock;
+use std::sync::{LazyLock, OnceLock};
 use std::time::Duration;
 
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
@@ -100,8 +100,7 @@ static MOCK_CLAUDE_PATH: LazyLock<String> = LazyLock::new(|| {
 
 static CLI_AGENT_TYPE: LazyLock<String> =
     LazyLock::new(|| env_or_empty(guest_contracts::env::CLI_AGENT_TYPE_ENV));
-static USER_ENV: LazyLock<Result<HashMap<String, String>, String>> =
-    LazyLock::new(load_user_env_from_process);
+static USER_ENV: OnceLock<Result<HashMap<String, String>, String>> = OnceLock::new();
 
 /// `USE_MOCK_CODEX` accepts both `"true"` and `"1"` (matches the Codex
 /// epic's documented invocation shape `USE_MOCK_CODEX=1`). The
@@ -299,6 +298,7 @@ pub struct GuestConfigRaw {
     pub use_codex_app_server_backend: String,
     pub mock_codex_path: Option<String>,
     pub home: Option<String>,
+    pub runtime_home: Option<PathBuf>,
     pub guest_runtime_dir: Option<PathBuf>,
     pub artifacts: String,
     pub stuck_tool_timeout_secs: String,
@@ -340,6 +340,7 @@ impl GuestConfigRaw {
             ),
             mock_codex_path: std::env::var(guest_contracts::env::MOCK_CODEX_PATH_ENV).ok(),
             home: std::env::var("HOME").ok(),
+            runtime_home: std::env::var_os("HOME").map(PathBuf::from),
             guest_runtime_dir,
             artifacts: env_or_empty(guest_contracts::env::ARTIFACTS_ENV),
             stuck_tool_timeout_secs: env_or_empty(
@@ -399,7 +400,7 @@ impl GuestConfig {
     /// existing accessors without racing on the private user-env file.
     pub fn from_process_env() -> Result<Self, String> {
         let raw = GuestConfigRaw::from_process_env();
-        let user_env = user_env_map_result()?.clone();
+        let user_env = init_user_env_from_raw(&raw)?.clone();
         Self::from_raw_with_user_env(raw, user_env)
     }
 
@@ -409,7 +410,7 @@ impl GuestConfig {
         Self::from_raw_with_user_env(raw, user_env)
     }
 
-    fn from_raw_with_user_env(
+    pub(crate) fn from_raw_with_user_env(
         raw: GuestConfigRaw,
         user_env: HashMap<String, String>,
     ) -> Result<Self, String> {
@@ -704,7 +705,13 @@ fn user_env_map() -> &'static HashMap<String, String> {
 }
 
 fn user_env_map_result() -> Result<&'static HashMap<String, String>, String> {
-    match &*USER_ENV {
+    user_env_result(USER_ENV.get_or_init(load_user_env_from_process))
+}
+
+fn user_env_result(
+    result: &'static Result<HashMap<String, String>, String>,
+) -> Result<&'static HashMap<String, String>, String> {
+    match result {
         Ok(user_env) => Ok(user_env),
         Err(message) => Err(message.clone()),
     }
@@ -782,10 +789,15 @@ pub fn settings() -> &'static str {
 }
 /// Load and validate the runner-provided user env payload once at startup.
 pub fn init_user_env() -> Result<(), AgentError> {
-    match &*USER_ENV {
-        Ok(_) => Ok(()),
-        Err(message) => Err(AgentError::Execution(message.clone())),
-    }
+    user_env_map_result()
+        .map(|_| ())
+        .map_err(AgentError::Execution)
+}
+
+pub(crate) fn init_user_env_from_raw(
+    raw: &GuestConfigRaw,
+) -> Result<&'static HashMap<String, String>, String> {
+    user_env_result(USER_ENV.get_or_init(|| load_user_env_from_raw(raw)))
 }
 /// User/model/connector environment loaded from `VM0_USER_ENV_FILE`.
 pub fn user_env() -> &'static HashMap<String, String> {

@@ -88,7 +88,21 @@ impl GuestPaths {
     pub fn from_process_env(
         run_id: &str,
     ) -> Result<Self, guest_contracts::runtime_paths::RuntimePathError> {
-        guest_contracts::runtime_paths::run_dir_from_env(run_id).map(Self::from_runtime_dir)
+        let runtime_dir = std::env::var_os(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
+            .filter(|value| !value.is_empty())
+            .map(PathBuf::from);
+        let home = std::env::var_os("HOME").map(PathBuf::from);
+        Self::from_captured_env(run_id, runtime_dir.as_deref(), home.as_deref())
+    }
+
+    /// Build paths from values captured during bootstrap without rereading env.
+    pub fn from_captured_env(
+        run_id: &str,
+        runtime_dir: Option<&Path>,
+        process_home: Option<&Path>,
+    ) -> Result<Self, guest_contracts::runtime_paths::RuntimePathError> {
+        resolve_run_dir_from_captured_env(run_id, runtime_dir, process_home)
+            .map(Self::from_runtime_dir)
     }
 
     /// Build paths from a guest home and run id using the default layout.
@@ -162,6 +176,24 @@ fn default_run_dir() -> PathBuf {
     let run_id = std::env::var(guest_contracts::env::RUN_ID_ENV).unwrap_or_default();
     guest_contracts::runtime_paths::run_dir_from_env(&run_id)
         .unwrap_or_else(|error| panic!("failed to resolve guest runtime directory: {error}"))
+}
+
+fn resolve_run_dir_from_captured_env(
+    run_id: &str,
+    runtime_dir: Option<&Path>,
+    process_home: Option<&Path>,
+) -> Result<PathBuf, guest_contracts::runtime_paths::RuntimePathError> {
+    if let Some(runtime_dir) = runtime_dir {
+        if !runtime_dir.is_absolute() {
+            return Err(guest_contracts::runtime_paths::RuntimePathError::InvalidRuntimeDir);
+        }
+        return Ok(runtime_dir.to_path_buf());
+    }
+
+    let home = process_home
+        .filter(|value| !value.as_os_str().is_empty())
+        .ok_or(guest_contracts::runtime_paths::RuntimePathError::MissingHome)?;
+    guest_contracts::runtime_paths::run_dir_for_home(home, run_id)
 }
 
 pub fn runtime_dir() -> &'static Path {
@@ -316,6 +348,50 @@ mod tests {
         assert_eq!(
             paths.agent_log_file(),
             guest_contracts::runtime_paths::agent_log_file(&expected_runtime).to_string_lossy()
+        );
+    }
+
+    #[test]
+    fn guest_paths_from_captured_env_uses_absolute_runtime_dir() {
+        let runtime_dir = PathBuf::from("/tmp/vm0-runtime");
+        let paths = GuestPaths::from_captured_env("ignored/for-override", Some(&runtime_dir), None)
+            .unwrap();
+
+        assert_eq!(paths.runtime_dir(), runtime_dir.as_path());
+    }
+
+    #[test]
+    fn guest_paths_from_captured_env_rejects_relative_runtime_dir() {
+        let err = GuestPaths::from_captured_env(
+            "run-123",
+            Some(Path::new("relative-runtime")),
+            Some(Path::new("/home/vm0")),
+        )
+        .unwrap_err();
+
+        assert_eq!(
+            err,
+            guest_contracts::runtime_paths::RuntimePathError::InvalidRuntimeDir
+        );
+    }
+
+    #[test]
+    fn guest_paths_from_captured_env_falls_back_to_process_home() {
+        let paths =
+            GuestPaths::from_captured_env("run-123", None, Some(Path::new("/home/vm0"))).unwrap();
+        let expected_runtime =
+            guest_contracts::runtime_paths::run_dir_for_home("/home/vm0", "run-123").unwrap();
+
+        assert_eq!(paths.runtime_dir(), expected_runtime.as_path());
+    }
+
+    #[test]
+    fn guest_paths_from_captured_env_rejects_missing_process_home() {
+        let err = GuestPaths::from_captured_env("run-123", None, Some(Path::new(""))).unwrap_err();
+
+        assert_eq!(
+            err,
+            guest_contracts::runtime_paths::RuntimePathError::MissingHome
         );
     }
 }

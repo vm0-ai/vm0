@@ -4,6 +4,7 @@ use crate::log;
 use serde::Serialize;
 use std::fs::File;
 use std::io::{self, Write};
+use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
@@ -23,6 +24,7 @@ static SANDBOX_OPS_LOG: LazyLock<String> = LazyLock::new(|| {
 });
 
 static SANDBOX_OPS_APPEND_LOCK: Mutex<()> = Mutex::new(());
+static SANDBOX_OPS_LOG_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
 /// Path to the sandbox operations log file in JSONL format.
 ///
@@ -31,6 +33,39 @@ static SANDBOX_OPS_APPEND_LOCK: Mutex<()> = Mutex::new(());
 /// path could not be resolved and sandbox operation logging is unavailable.
 pub fn sandbox_ops_log() -> &'static str {
     &SANDBOX_OPS_LOG
+}
+
+/// Set the sandbox operations log path explicitly for the current process.
+pub fn set_sandbox_ops_log_file(path: impl AsRef<Path>) {
+    let mut state = SANDBOX_OPS_LOG_OVERRIDE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    *state = Some(path.as_ref().to_path_buf());
+}
+
+/// Clear the explicit sandbox operations log path.
+pub fn clear_sandbox_ops_log_file() {
+    let mut state = SANDBOX_OPS_LOG_OVERRIDE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner());
+    *state = None;
+}
+
+fn configured_sandbox_ops_log() -> Option<PathBuf> {
+    if let Some(path) = SANDBOX_OPS_LOG_OVERRIDE
+        .lock()
+        .unwrap_or_else(|e| e.into_inner())
+        .clone()
+    {
+        return Some(path);
+    }
+
+    let path = sandbox_ops_log();
+    if path.is_empty() {
+        None
+    } else {
+        Some(PathBuf::from(path))
+    }
 }
 
 #[cfg(unix)]
@@ -117,24 +152,23 @@ pub fn record_sandbox_op(
         error: error.map(String::from),
     };
 
-    let path = sandbox_ops_log();
-    if path.is_empty() {
+    let Some(path) = configured_sandbox_ops_log() else {
         return;
-    }
+    };
 
     let Ok(mut record) = serde_json::to_vec(&entry) else {
         return;
     };
     record.push(b'\n');
 
-    let _ = append_sandbox_op_record(path, &record);
+    let _ = append_sandbox_op_record(&path, &record);
 }
 
 fn duration_ms(duration: Duration) -> u64 {
     u64::try_from(duration.as_millis()).unwrap_or(u64::MAX)
 }
 
-fn append_sandbox_op_record(path: &str, record: &[u8]) -> io::Result<()> {
+fn append_sandbox_op_record(path: impl AsRef<Path>, record: &[u8]) -> io::Result<()> {
     let mut file = guest_contracts::runtime_paths::open_private_append(path)?;
     let _append_guard = SANDBOX_OPS_APPEND_LOCK
         .lock()
@@ -148,11 +182,37 @@ fn append_sandbox_op_record(path: &str, record: &[u8]) -> io::Result<()> {
 mod tests {
     use super::*;
     use std::collections::HashSet;
+    use std::sync::{Mutex, MutexGuard};
     use std::time::Duration;
+
+    static TELEMETRY_TEST_LOCK: Mutex<()> = Mutex::new(());
+
+    fn lock_test_state() -> MutexGuard<'static, ()> {
+        TELEMETRY_TEST_LOCK
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
+    }
+
+    struct SandboxOpsOverrideGuard;
+
+    impl SandboxOpsOverrideGuard {
+        fn set(path: impl AsRef<Path>) -> Self {
+            set_sandbox_ops_log_file(path);
+            Self
+        }
+    }
+
+    impl Drop for SandboxOpsOverrideGuard {
+        fn drop(&mut self) {
+            clear_sandbox_ops_log_file();
+        }
+    }
 
     #[test]
     fn record_sandbox_op_writes_and_appends_jsonl() {
+        let _guard = lock_test_state();
         // Single test because all calls share the same static log path.
+        clear_sandbox_ops_log_file();
         let dir = tempfile::tempdir().unwrap();
         let runtime_dir = dir.path().join("runtime");
         unsafe {
@@ -228,5 +288,22 @@ mod tests {
         unsafe {
             std::env::remove_var(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
         }
+    }
+
+    #[test]
+    fn record_sandbox_op_uses_explicit_log_path_override() {
+        let _guard = lock_test_state();
+        let dir = tempfile::tempdir().unwrap();
+        let log_path = dir.path().join("runtime").join("logs").join("ops.jsonl");
+        let _override_guard = SandboxOpsOverrideGuard::set(&log_path);
+
+        record_sandbox_op("op_override", Duration::from_millis(12), true, None);
+
+        let content = std::fs::read_to_string(&log_path).unwrap();
+        let lines: Vec<&str> = content.lines().collect();
+        assert_eq!(lines.len(), 1);
+        let entry: serde_json::Value = serde_json::from_str(lines[0]).unwrap();
+        assert_eq!(entry["action_type"], "op_override");
+        assert_eq!(entry["duration_ms"], 12);
     }
 }
