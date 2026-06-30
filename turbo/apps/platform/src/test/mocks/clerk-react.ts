@@ -22,10 +22,17 @@ interface ClerkAuthComponentProps {
   routing?: string;
 }
 
-export function SignIn({ path, routing }: ClerkAuthComponentProps) {
+export function SignIn({
+  fallbackRedirectUrl,
+  forceRedirectUrl,
+  path,
+  routing,
+}: ClerkAuthComponentProps) {
   return createElement(
     "div",
     {
+      "data-clerk-fallback-redirect-url": fallbackRedirectUrl,
+      "data-clerk-force-redirect-url": forceRedirectUrl,
       "data-clerk-routing": routing,
       "data-testid": "clerk-sign-in",
     },

@@ -500,6 +500,20 @@ export function buildSignupRedirectUrl(
   return buildVm0OnboardingEntryUrl(redirectParams);
 }
 
+export function buildSignInRedirectUrl(
+  signInSearch: string,
+  allowedRedirectOrigins: readonly string[] = getAllowedAuthRedirectOriginsForCurrentPage(),
+): string {
+  const params = new URLSearchParams(signInSearch);
+  const redirectUrl = readAllowedRedirectUrl(
+    params,
+    allowedRedirectOrigins,
+    paidOnboardingUrl(),
+  );
+
+  return redirectUrl ?? resolveAppUrl();
+}
+
 /**
  * Clerk instance signal.
  *

@@ -1,6 +1,9 @@
 import { SignIn, SignUp } from "@clerk/clerk-react";
 import { useGet } from "ccstate-react";
-import { buildSignupRedirectUrl } from "../../signals/auth.ts";
+import {
+  buildSignInRedirectUrl,
+  buildSignupRedirectUrl,
+} from "../../signals/auth.ts";
 import { theme$ } from "../../signals/theme.ts";
 import { AuthLayout } from "./auth-layout.tsx";
 import { getClerkAppearance } from "./auth-clerk-appearance.ts";
@@ -15,6 +18,8 @@ export function AuthPage({ mode }: AuthPageProps) {
   const theme = useGet(theme$);
 
   if (mode === "sign-in") {
+    const redirectUrl = buildSignInRedirectUrl(location.search);
+
     return (
       <AuthLayout>
         <div
@@ -23,6 +28,8 @@ export function AuthPage({ mode }: AuthPageProps) {
         >
           <SignIn
             appearance={getClerkAppearance(theme)}
+            fallbackRedirectUrl={redirectUrl}
+            forceRedirectUrl={redirectUrl}
             path="/sign-in"
             routing="path"
           />

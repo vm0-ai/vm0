@@ -1190,6 +1190,7 @@ jobs:
         env:
           VM0_API_URL: ${{ needs.deploy-api.outputs.preview-url }}
           VM0_AUTH_URL: ${{ needs.deploy-app.outputs.preview-url }}
+          VM0_AUTH_REDIRECT_URL: ${{ needs.deploy-app.outputs.preview-url }}/_/skeleton
           VM0_AUTH_DOMAIN: ${{ startsWith(needs.prepare.outputs.job-ref, 'pr-') && needs.prepare.outputs.api-preview-url != '' && format('{0}-api.{1}', needs.prepare.outputs.job-ref, vars.PREVIEW_DOMAIN || 'vm6.ai') || '' }}
           JOB_REF: ${{ needs.prepare.outputs.job-ref }}
           CLERK_SECRET_KEY: ${{ secrets.CLERK_SECRET_KEY }}
