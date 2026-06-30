@@ -272,7 +272,6 @@ import {
   applyChatThreadEmoji,
   chatThreadEmojiShortcutIndex,
   CHAT_THREAD_EMOJI_OPTIONS,
-  getChatThreadTitleParts,
 } from "../../signals/chat-page/chat-thread-title.ts";
 import type { ChatThread } from "../../signals/agent-chat.ts";
 import { ATTACH_ONLY_PLACEHOLDER } from "../../signals/chat-page/resolve-draft-attachments.ts";
@@ -1148,12 +1147,8 @@ function focusChatThreadContainer(threadId: string) {
 
 function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   const threadDataLoadable = useLastLoadable(thread.threadData$);
-  const fallbackTitle = useCurrentChatThreadDialogTitle(thread)?.trim() ?? "";
-  const fallbackTitleParts = getChatThreadTitleParts(fallbackTitle);
-  const threadTitleEmoji =
-    useLastResolved(thread.threadTitleEmoji$) ?? fallbackTitleParts.emoji;
-  const threadTitleText =
-    useLastResolved(thread.threadTitleText$) || fallbackTitleParts.text;
+  const threadTitleEmoji = useLastResolved(thread.threadTitleEmoji$);
+  const threadTitleText = useLastResolved(thread.threadTitleText$) ?? "";
   const features = useLastResolved(featureSwitch$);
   const githubPrTrackingEnabled =
     features?.[FeatureSwitchKey.ChatGithubPrTracking] ?? false;
@@ -1164,7 +1159,9 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
       ? (threadDataLoadable.data?.agentId ?? null)
       : null;
   const threadTitle =
-    threadDataLoadable.state === "hasData" ? fallbackTitle : "";
+    threadDataLoadable.state === "hasData"
+      ? (threadDataLoadable.data?.title?.trim() ?? "")
+      : "";
   const displayTitle = chatThreadEmojiEnabled ? threadTitleText : threadTitle;
 
   return (
@@ -3095,15 +3092,7 @@ function useCurrentChatThreadDialogTitle(
   thread: ChatThreadSignals,
 ): string | null | undefined {
   const threadData = useLastResolved(thread.threadData$);
-  const sidebarThreads = useLastResolved(sidebarChatThreads$) ?? [];
-  if (threadData?.title?.trim()) {
-    return threadData.title;
-  }
-  return (
-    sidebarThreads.find((sidebarThread) => {
-      return sidebarThread.id === thread.threadId;
-    })?.title ?? threadData?.title
-  );
+  return threadData?.title;
 }
 
 // Drag the divider to resize the artifact preview against the chat thread.

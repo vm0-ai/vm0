@@ -7,7 +7,6 @@ import {
   loadLeftThread$,
   loadRightThread$,
 } from "./chat-thread-panes.ts";
-import { sidebarChatThreads$ } from "./optimistic-chat-thread-page.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onDomEventFn, onRef } from "../utils.ts";
@@ -76,21 +75,6 @@ function isChatShortcutTarget(root: HTMLElement, target: EventTarget | null) {
 
 function hasOpenDialog(doc: Document): boolean {
   return doc.querySelector('[role="dialog"]') !== null;
-}
-
-function resolveChatThreadShortcutTitle(
-  threadId: string,
-  threadDataTitle: string | null | undefined,
-  sidebarThreads: readonly { id: string; title: string | null }[],
-): string | null | undefined {
-  if (threadDataTitle?.trim()) {
-    return threadDataTitle;
-  }
-  return (
-    sidebarThreads.find((thread) => {
-      return thread.id === threadId;
-    })?.title ?? threadDataTitle
-  );
 }
 
 function isKeyboardScrollAllowedTarget(
@@ -169,15 +153,10 @@ export const setChatKeyboardScrollRoot$ = onRef(
 
       event.preventDefault();
       const threadData = await get(mainThread.threadData$);
-      const sidebarThreads = await get(sidebarChatThreads$);
       signal.throwIfAborted();
       const dialogPayload = {
         threadId: mainThread.threadId,
-        title: resolveChatThreadShortcutTitle(
-          mainThread.threadId,
-          threadData?.title,
-          sidebarThreads,
-        ),
+        title: threadData?.title,
       };
       if (emojiShortcut) {
         set(openChatThreadEmojiMenu$, dialogPayload);

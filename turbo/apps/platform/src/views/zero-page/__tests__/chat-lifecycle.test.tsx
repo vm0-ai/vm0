@@ -3078,7 +3078,7 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
         "keyboard-current-thread",
-        "✅ Current keyboard thread",
+        "✅",
       );
     });
   });
