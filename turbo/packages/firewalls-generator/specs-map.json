@@ -547,6 +547,6 @@
     "https://raw.githubusercontent.com/XeroAPI/Xero-OpenAPI/master/xero-projects.yaml": "28f51686f7b03425ad1a35234283be840f7efed8e071b29600bc45e52e1ac692"
   },
   "youtube": {
-    "https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest": "9fdbf618dfb9a7adcd9637a0b4dd33b14a1df0321dec1501ba784928aba38b66"
+    "https://www.googleapis.com/discovery/v1/apis/youtube/v3/rest": "30975b62658c66390c93942b269705a959137f4b931fe1b061a7b7a065610db4"
   }
 }
