@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.190.0](https://github.com/vm0-ai/vm0/compare/api-v1.189.2...api-v1.190.0) (2026-06-30)
+
+
+### Features
+
+* add agent unread indicators ([#19374](https://github.com/vm0-ai/vm0/issues/19374)) ([d04cfbc](https://github.com/vm0-ai/vm0/commit/d04cfbc55ea55235ac77321760a3dedc29dd7a87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.127.0
+    * @vm0/connectors bumped to 1.115.0
+    * @vm0/core bumped to 8.377.0
+    * @vm0/db bumped to 1.78.3
+
 ## [1.189.2](https://github.com/vm0-ai/vm0/compare/api-v1.189.1...api-v1.189.2) (2026-06-29)
 
 

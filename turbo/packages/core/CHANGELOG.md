@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.377.0](https://github.com/vm0-ai/vm0/compare/core-v8.376.2...core-v8.377.0) (2026-06-30)
+
+
+### Features
+
+* add agent unread indicators ([#19374](https://github.com/vm0-ai/vm0/issues/19374)) ([d04cfbc](https://github.com/vm0-ai/vm0/commit/d04cfbc55ea55235ac77321760a3dedc29dd7a87))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.127.0
+    * @vm0/connectors bumped to 1.115.0
+
 ## [8.376.2](https://github.com/vm0-ai/vm0/compare/core-v8.376.1...core-v8.376.2) (2026-06-29)
 
 

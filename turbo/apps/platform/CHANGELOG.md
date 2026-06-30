@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.508.0](https://github.com/vm0-ai/vm0/compare/app-v0.507.2...app-v0.508.0) (2026-06-30)
+
+
+### Features
+
+* add agent unread indicators ([#19374](https://github.com/vm0-ai/vm0/issues/19374)) ([d04cfbc](https://github.com/vm0-ai/vm0/commit/d04cfbc55ea55235ac77321760a3dedc29dd7a87))
+* show connector access agent avatars ([#19366](https://github.com/vm0-ai/vm0/issues/19366)) ([05cd341](https://github.com/vm0-ai/vm0/commit/05cd341796142bcf4bb7be0fda2f09a898044d79))
+
+
+### Bug Fixes
+
+* separate permission status from action buttons ([#19363](https://github.com/vm0-ai/vm0/issues/19363)) ([b36b9aa](https://github.com/vm0-ai/vm0/commit/b36b9aa387a031dbe3c78de8a0340ccd5c224cf4))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.127.0
+    * @vm0/connectors bumped to 1.115.0
+    * @vm0/core bumped to 8.377.0
+
 ## [0.507.2](https://github.com/vm0-ai/vm0/compare/app-v0.507.1...app-v0.507.2) (2026-06-29)
 
 
