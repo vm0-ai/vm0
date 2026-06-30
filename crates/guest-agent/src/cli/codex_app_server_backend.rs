@@ -26,11 +26,17 @@ use super::{
     ParsedEventAction, codex_app_server_events::IGNORED_NOTIFICATION_METHODS, command,
     notification_to_codex_event,
 };
+use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
 use guest_common::{log_info, log_warn};
 
 const TURN_NOTIFICATION_LABEL: &str = "turn notification";
 
 struct NotificationIngestResult {
+    emitted_thread_started: bool,
+}
+
+struct PreparedNotificationIngest {
+    event: Option<Value>,
     emitted_thread_started: bool,
     terminal_exit_code: Option<i32>,
 }
@@ -48,10 +54,21 @@ struct EventIngestSink<'a> {
     event_tx: &'a tokio::sync::mpsc::UnboundedSender<PreparedEvent>,
 }
 
+struct CodexTurnScope<'a> {
+    thread_id: &'a str,
+    turn_id: &'a str,
+}
+
+enum CodexRunEvent {
+    Notification(ServerNotification),
+    ActiveInput(Option<ActiveInputFrame>),
+}
+
 pub(super) async fn execute_codex_app_server(
     masker: &SecretMasker,
     mut heartbeat_monitor: HeartbeatMonitor,
     http: HttpClient,
+    active_input: ActiveInputWriter,
 ) -> Result<CliExecutionResult, AgentError> {
     masker.add_sensitive_value(env::resume_session_id());
     log_info!(LOG_TAG, "Starting codex app-server execution...");
@@ -84,6 +101,7 @@ pub(super) async fn execute_codex_app_server(
         &mut heartbeat_monitor,
         should_send_events,
         &event_tx,
+        active_input,
     )
     .await;
 
@@ -114,6 +132,7 @@ async fn run_codex_app_server(
     heartbeat_monitor: &mut HeartbeatMonitor,
     should_send_events: bool,
     event_tx: &tokio::sync::mpsc::UnboundedSender<PreparedEvent>,
+    mut active_input: ActiveInputWriter,
 ) -> Result<CliExecutionResult, AgentError> {
     let log_file = guest_contracts::runtime_paths::create_private(paths::agent_log_file())?;
     let mut log_file = tokio::fs::File::from_std(log_file);
@@ -159,6 +178,7 @@ async fn run_codex_app_server(
                 thread_started_emitted,
                 &thread_identity.canonical_id,
                 "",
+                None,
             )
             .await?;
             thread_started_emitted = thread_started_emitted || ingest_result.emitted_thread_started;
@@ -188,33 +208,86 @@ async fn run_codex_app_server(
         )
         .await?;
         let turn_id = turn_id_from_response(&turn_response)?;
+        let mut active_input_open = active_input.is_enabled();
 
         let exit_code = loop {
-            let notification = next_notification_or_heartbeat(
+            let event = next_codex_run_event(
                 &mut client,
+                &mut active_input,
+                active_input_open,
                 heartbeat_monitor,
                 &mut heartbeat_done,
                 masker,
             )
             .await?;
-            let mut sink = EventIngestSink {
-                ingestor: &mut ingestor,
-                log_file: &mut log_file,
-                masker,
-                should_send_events,
-                event_tx,
-            };
-            let ingest_result = ingest_notification(
-                notification,
-                &mut sink,
-                thread_started_emitted,
-                &thread_identity.canonical_id,
-                &turn_id,
-            )
-            .await?;
-            thread_started_emitted = thread_started_emitted || ingest_result.emitted_thread_started;
-            if let Some(exit_code) = ingest_result.terminal_exit_code {
-                break exit_code;
+            match event {
+                CodexRunEvent::Notification(notification) => {
+                    let mut sink = EventIngestSink {
+                        ingestor: &mut ingestor,
+                        log_file: &mut log_file,
+                        masker,
+                        should_send_events,
+                        event_tx,
+                    };
+                    let notification_scope = CodexTurnScope {
+                        thread_id: &thread_identity.canonical_id,
+                        turn_id: &turn_id,
+                    };
+                    let terminal_exit_code = ingest_run_notification(
+                        notification,
+                        &mut sink,
+                        &active_input,
+                        &mut thread_started_emitted,
+                        &notification_scope,
+                    )
+                    .await?;
+                    if let Some(exit_code) = terminal_exit_code {
+                        active_input.close_terminal();
+                        break exit_code;
+                    }
+                }
+                CodexRunEvent::ActiveInput(Some(frame)) => {
+                    let steer_scope = CodexTurnScope {
+                        thread_id: &thread_identity.wire_id,
+                        turn_id: &turn_id,
+                    };
+                    steer_active_input(
+                        &mut client,
+                        &active_input,
+                        frame,
+                        &steer_scope,
+                        heartbeat_monitor,
+                        &mut heartbeat_done,
+                        masker,
+                    )
+                    .await?;
+                    let mut sink = EventIngestSink {
+                        ingestor: &mut ingestor,
+                        log_file: &mut log_file,
+                        masker,
+                        should_send_events,
+                        event_tx,
+                    };
+                    let notification_scope = CodexTurnScope {
+                        thread_id: &thread_identity.canonical_id,
+                        turn_id: &turn_id,
+                    };
+                    if let Some(exit_code) = drain_queued_notifications(
+                        &mut client,
+                        &mut sink,
+                        &active_input,
+                        &mut thread_started_emitted,
+                        &notification_scope,
+                    )
+                    .await?
+                    {
+                        active_input.close_terminal();
+                        break exit_code;
+                    }
+                }
+                CodexRunEvent::ActiveInput(None) => {
+                    active_input_open = false;
+                }
             }
         };
 
@@ -230,6 +303,7 @@ async fn run_codex_app_server(
         })
     }
     .await;
+    active_input.close_terminal();
 
     let shutdown_result = if run_result.is_ok() {
         client.shutdown().await
@@ -385,19 +459,101 @@ fn turn_start_params(thread_id: &str) -> Value {
     Value::Object(params)
 }
 
-async fn next_notification_or_heartbeat(
+async fn next_codex_run_event(
     client: &mut CodexAppServerClient,
+    active_input: &mut ActiveInputWriter,
+    active_input_open: bool,
     heartbeat_monitor: &mut HeartbeatMonitor,
     heartbeat_done: &mut bool,
     masker: &SecretMasker,
-) -> Result<ServerNotification, AgentError> {
-    race_with_heartbeat(
-        client.next_notification(TURN_NOTIFICATION_LABEL),
+) -> Result<CodexRunEvent, AgentError> {
+    // Do not let buffered terminal notifications overtake input the control
+    // path already accepted.
+    if active_input_open && let Some(frame) = active_input.try_next_frame() {
+        return Ok(CodexRunEvent::ActiveInput(Some(frame)));
+    }
+    if let Some(notification) = client.pop_notification() {
+        return Ok(CodexRunEvent::Notification(notification));
+    }
+
+    tokio::select! {
+        biased;
+        frame = active_input.next_frame(), if active_input_open => {
+            Ok(CodexRunEvent::ActiveInput(frame))
+        }
+        notification = client.next_notification(TURN_NOTIFICATION_LABEL) => {
+            notification
+                .map(CodexRunEvent::Notification)
+                .map_err(|error| app_server_error(masker, error))
+        }
+        heartbeat_result = wait_for_heartbeat(heartbeat_monitor), if !*heartbeat_done => {
+            *heartbeat_done = true;
+            Err(heartbeat_error(heartbeat_result))
+        }
+    }
+}
+
+async fn steer_active_input(
+    client: &mut CodexAppServerClient,
+    active_input: &ActiveInputWriter,
+    frame: ActiveInputFrame,
+    target: &CodexTurnScope<'_>,
+    heartbeat_monitor: &mut HeartbeatMonitor,
+    heartbeat_done: &mut bool,
+    masker: &SecretMasker,
+) -> Result<(), AgentError> {
+    let thread_id = target.thread_id;
+    let turn_id = target.turn_id;
+    let params = turn_steer_params(thread_id, turn_id, &frame);
+    log_info!(
+        LOG_TAG,
+        "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} message_id={} outcome=attempt",
+        frame.message_id
+    );
+    active_input.mark_writing(&frame.uuid);
+    let result = race_with_heartbeat(
+        client.request_value("turn/steer", params),
         heartbeat_monitor,
         heartbeat_done,
         masker,
     )
-    .await
+    .await;
+    match result {
+        Ok(_) => {
+            active_input.mark_written_without_replay(&frame.uuid);
+            log_info!(
+                LOG_TAG,
+                "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} message_id={} outcome=active_turn_advanced",
+                frame.message_id
+            );
+            Ok(())
+        }
+        Err(error) => {
+            active_input.close_terminal();
+            log_warn!(
+                LOG_TAG,
+                "Codex active input steer: target_thread_id={thread_id} captured_active_turn_id={turn_id} expected_turn_id={turn_id} message_id={} outcome=failed error={error}",
+                frame.message_id
+            );
+            Err(AgentError::Execution(format!(
+                "codex app-server active input steer failed for message {}: {error}",
+                frame.message_id
+            )))
+        }
+    }
+}
+
+fn turn_steer_params(thread_id: &str, turn_id: &str, frame: &ActiveInputFrame) -> Value {
+    json!({
+        "threadId": thread_id,
+        "expectedTurnId": turn_id,
+        "clientUserMessageId": frame.message_id.as_str(),
+        "input": [{
+            "type": "text",
+            "text": frame.text.as_str(),
+            "text_elements": [],
+        }],
+    })
 }
 
 async fn race_with_heartbeat<T>(
@@ -416,6 +572,69 @@ async fn race_with_heartbeat<T>(
             Err(heartbeat_error(heartbeat_result))
         }
     }
+}
+
+async fn drain_queued_notifications(
+    client: &mut CodexAppServerClient,
+    sink: &mut EventIngestSink<'_>,
+    active_input: &ActiveInputWriter,
+    thread_started_emitted: &mut bool,
+    scope: &CodexTurnScope<'_>,
+) -> Result<Option<i32>, AgentError> {
+    let mut prepared_notifications = Vec::new();
+    let mut prepared_thread_started_emitted = *thread_started_emitted;
+    while let Some(notification) = client.pop_notification() {
+        let prepared = prepare_notification_ingest(
+            notification,
+            prepared_thread_started_emitted,
+            scope.thread_id,
+            scope.turn_id,
+        )?;
+        prepared_thread_started_emitted =
+            prepared_thread_started_emitted || prepared.emitted_thread_started;
+        let is_terminal = prepared.terminal_exit_code.is_some();
+        prepared_notifications.push(prepared);
+        if is_terminal {
+            active_input.close_terminal();
+            break;
+        }
+    }
+    for prepared in prepared_notifications {
+        if let Some(event) = prepared.event {
+            ingest_event(event, sink).await?;
+        }
+        *thread_started_emitted = *thread_started_emitted || prepared.emitted_thread_started;
+        if let Some(exit_code) = prepared.terminal_exit_code {
+            return Ok(Some(exit_code));
+        }
+    }
+    Ok(None)
+}
+
+async fn ingest_run_notification(
+    notification: ServerNotification,
+    sink: &mut EventIngestSink<'_>,
+    active_input: &ActiveInputWriter,
+    thread_started_emitted: &mut bool,
+    scope: &CodexTurnScope<'_>,
+) -> Result<Option<i32>, AgentError> {
+    let prepared = prepare_notification_ingest(
+        notification,
+        *thread_started_emitted,
+        scope.thread_id,
+        scope.turn_id,
+    )?;
+    // Close before any ingest await so the control path cannot accept input
+    // after this run has already observed a terminal turn event.
+    if prepared.terminal_exit_code.is_some() {
+        active_input.close_terminal();
+    }
+    let terminal_exit_code = prepared.terminal_exit_code;
+    if let Some(event) = prepared.event {
+        ingest_event(event, sink).await?;
+    }
+    *thread_started_emitted = *thread_started_emitted || prepared.emitted_thread_started;
+    Ok(terminal_exit_code)
 }
 
 fn app_server_error(masker: &SecretMasker, error: impl std::fmt::Display) -> AgentError {
@@ -452,26 +671,54 @@ async fn ingest_notification(
     thread_started_emitted: bool,
     expected_thread_id: &str,
     active_turn_id: &str,
+    terminal_active_input: Option<&ActiveInputWriter>,
 ) -> Result<NotificationIngestResult, AgentError> {
+    let prepared = prepare_notification_ingest(
+        notification,
+        thread_started_emitted,
+        expected_thread_id,
+        active_turn_id,
+    )?;
+    if prepared.terminal_exit_code.is_some()
+        && let Some(active_input) = terminal_active_input
+    {
+        active_input.close_terminal();
+    }
+    if let Some(event) = prepared.event {
+        ingest_event(event, sink).await?;
+    }
+    Ok(NotificationIngestResult {
+        emitted_thread_started: prepared.emitted_thread_started,
+    })
+}
+
+fn prepare_notification_ingest(
+    notification: ServerNotification,
+    thread_started_emitted: bool,
+    expected_thread_id: &str,
+    active_turn_id: &str,
+) -> Result<PreparedNotificationIngest, AgentError> {
     let Some(event) = notification_to_codex_event(&notification)
         .map_err(|error| AgentError::Execution(error.to_string()))?
     else {
-        return Ok(NotificationIngestResult {
+        return Ok(PreparedNotificationIngest {
+            event: None,
             emitted_thread_started: false,
             terminal_exit_code: None,
         });
     };
     validate_event_scope(&event, expected_thread_id, active_turn_id)?;
     if is_duplicate_thread_started(&event, thread_started_emitted, expected_thread_id) {
-        return Ok(NotificationIngestResult {
+        return Ok(PreparedNotificationIngest {
+            event: None,
             emitted_thread_started: false,
             terminal_exit_code: None,
         });
     }
     let emitted_thread_started = is_thread_started_event(&event, expected_thread_id);
     let terminal_exit_code = terminal_exit_code(&event, expected_thread_id, active_turn_id);
-    ingest_event(event, sink).await?;
-    Ok(NotificationIngestResult {
+    Ok(PreparedNotificationIngest {
+        event: Some(event),
         emitted_thread_started,
         terminal_exit_code,
     })

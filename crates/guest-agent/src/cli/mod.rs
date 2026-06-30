@@ -395,16 +395,20 @@ pub async fn execute_cli(
 ///
 /// This is the active-input variant of [`execute_cli`]. Use it when the caller
 /// has already created an active-input runtime for the run and needs the
-/// process-control side to feed accepted follow-up user input into CLI stdin.
+/// process-control side to feed accepted follow-up user input into the CLI
+/// execution path.
 /// The provided [`ActiveInputWriter`] is consumed for this single CLI
 /// execution.
 ///
 /// For Claude stream-json stdin, the initial prompt frame is written first. If
 /// active input is enabled, accepted follow-up user frames are written after the
-/// initial prompt until the active-input terminal closes. If active input is
-/// disabled, the writer closes after the initial prompt. When active input is
+/// initial prompt until the active-input terminal closes. When active input is
 /// enabled, internally replayed initial-prompt and follow-up user events are
 /// filtered from outbound API event delivery.
+///
+/// For the disabled Codex app-server backend, active input is delivered through
+/// `turn/steer` for the active turn. Ordinary Codex execution still uses
+/// `codex exec --json` and does not consume active input.
 ///
 /// Result collection, event-drain watermarking, heartbeat handling, shutdown,
 /// process-group termination, and error semantics otherwise match
@@ -427,13 +431,13 @@ async fn execute_cli_inner(
     active_input: ActiveInputWriter,
 ) -> Result<CliExecutionResult, AgentError> {
     if matches!(framework, env::Framework::Codex) && env::use_codex_app_server_backend() {
-        if active_input.is_enabled() {
-            return Err(AgentError::Execution(
-                "codex app-server backend does not support active input".to_string(),
-            ));
-        }
-        return codex_app_server_backend::execute_codex_app_server(masker, heartbeat_monitor, http)
-            .await;
+        return codex_app_server_backend::execute_codex_app_server(
+            masker,
+            heartbeat_monitor,
+            http,
+            active_input,
+        )
+        .await;
     }
 
     let behavior = CliFrameworkBehavior::new(framework);

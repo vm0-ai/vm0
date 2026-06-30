@@ -34,10 +34,14 @@ enum Scenario {
     OversizedStdout,
     ServerRequestBeforeResponse,
     StderrHolderOnStdinEof,
+    SplitNotificationAfterThreadStart,
     UnknownResponseBeforeResponse,
     StaleTurn,
     NoActiveTurn,
+    ExitOnTurnSteer,
     RuntimeTurnComplete,
+    RuntimeTurnCompleteAfterSteer,
+    RuntimeTurnCompleteBeforeSteerResponse,
     RuntimeTurnCompleteWithoutThreadStarted,
     ResumeDifferentThreadId,
     ResumeRpcErrorWithThreadId,
@@ -70,10 +74,18 @@ impl Scenario {
                 "oversized-stdout" => Ok(Self::OversizedStdout),
                 "server-request-before-response" => Ok(Self::ServerRequestBeforeResponse),
                 "stderr-holder-on-stdin-eof" => Ok(Self::StderrHolderOnStdinEof),
+                "split-notification-after-thread-start" => {
+                    Ok(Self::SplitNotificationAfterThreadStart)
+                }
                 "unknown-response-before-response" => Ok(Self::UnknownResponseBeforeResponse),
                 "stale-turn" => Ok(Self::StaleTurn),
                 "no-active-turn" => Ok(Self::NoActiveTurn),
+                "exit-on-turn-steer" => Ok(Self::ExitOnTurnSteer),
                 "runtime-turn-complete" => Ok(Self::RuntimeTurnComplete),
+                "runtime-turn-complete-after-steer" => Ok(Self::RuntimeTurnCompleteAfterSteer),
+                "runtime-turn-complete-before-steer-response" => {
+                    Ok(Self::RuntimeTurnCompleteBeforeSteerResponse)
+                }
                 "runtime-turn-complete-without-thread-started" => {
                     Ok(Self::RuntimeTurnCompleteWithoutThreadStarted)
                 }
@@ -119,6 +131,7 @@ struct AppServerState {
     initialized_notification_received: bool,
     opt_out_notification_methods: Vec<String>,
     pending_response: Option<PendingResponse>,
+    pending_split_stdout_suffix: Option<String>,
     server_request_responses: Vec<Value>,
     scenario: Scenario,
 }
@@ -148,6 +161,7 @@ impl AppServerState {
             initialized_notification_received: false,
             opt_out_notification_methods: Vec::new(),
             pending_response: None,
+            pending_split_stdout_suffix: None,
             server_request_responses: Vec::new(),
             scenario,
         }
@@ -327,6 +341,13 @@ impl AppServerState {
                         write_json_line(output, &thread_started_notification(&thread_id))?;
                         write_success(output, id, result)?;
                     }
+                    Scenario::SplitNotificationAfterThreadStart => {
+                        write_success(output, id, result)?;
+                        self.pending_split_stdout_suffix = Some(write_split_json_line_prefix(
+                            output,
+                            &server_notification(),
+                        )?);
+                    }
                     _ => {
                         write_success(output, id, result)?;
                     }
@@ -438,6 +459,9 @@ impl AppServerState {
                     write_error(output, id, INVALID_REQUEST, "app server is not initialized")?;
                     return Ok(ServerAction::Continue);
                 }
+                if self.scenario == Scenario::ExitOnTurnSteer {
+                    return Ok(ServerAction::Stop);
+                }
                 let Some(expected_turn_id) = string_param(params, "expectedTurnId") else {
                     write_error(output, id, INVALID_REQUEST, "missing expectedTurnId")?;
                     return Ok(ServerAction::Continue);
@@ -492,7 +516,13 @@ impl AppServerState {
                     thread_request_has_runtime_workspace_roots,
                     params,
                 )?;
+                if self.scenario == Scenario::RuntimeTurnCompleteBeforeSteerResponse {
+                    write_turn_notifications(output, &thread_id, &active_turn_id)?;
+                }
                 write_success(output, id, json!({ "turnId": active_turn_id }))?;
+                if self.scenario == Scenario::RuntimeTurnCompleteAfterSteer {
+                    write_turn_notifications(output, &thread_id, &active_turn_id)?;
+                }
                 Ok(ServerAction::Continue)
             }
             "mock/inputs" => {
@@ -517,6 +547,16 @@ impl AppServerState {
                         "hasPendingResponse": self.pending_response.is_some(),
                     }),
                 )?;
+                Ok(ServerAction::Continue)
+            }
+            "mock/complete-split-notification" => {
+                let Some(suffix) = self.pending_split_stdout_suffix.take() else {
+                    write_error(output, id, INVALID_REQUEST, "missing split notification")?;
+                    return Ok(ServerAction::Continue);
+                };
+                write!(output, "{suffix}")?;
+                output.flush()?;
+                write_success(output, id, json!({ "completed": true }))?;
                 Ok(ServerAction::Continue)
             }
             _ => {
@@ -888,6 +928,7 @@ fn persist_input_events(
                 "turn_request_approval_policy": turn_params.get("approvalPolicy"),
                 "turn_request_approvals_reviewer": turn_params.get("approvalsReviewer"),
                 "turn_request_sandbox_policy": turn_params.get("sandboxPolicy"),
+                "turn_request_client_user_message_id": turn_params.get("clientUserMessageId"),
             })
         })
         .collect::<Vec<_>>();
@@ -923,6 +964,16 @@ fn write_json_line<W: Write>(output: &mut W, value: &Value) -> io::Result<()> {
     serde_json::to_writer(&mut *output, value).map_err(io::Error::other)?;
     writeln!(output)?;
     output.flush()
+}
+
+fn write_split_json_line_prefix<W: Write>(output: &mut W, value: &Value) -> io::Result<String> {
+    const SPLIT_AT: usize = 24;
+    let mut line = serde_json::to_string(value).map_err(io::Error::other)?;
+    line.push('\n');
+    let suffix = line.split_off(SPLIT_AT.min(line.len()));
+    write!(output, "{line}")?;
+    output.flush()?;
+    Ok(suffix)
 }
 
 #[cfg(unix)]

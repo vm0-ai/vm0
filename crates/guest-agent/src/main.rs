@@ -143,13 +143,17 @@ async fn run() -> i32 {
 
     let masker = Arc::new(masker::SecretMasker::from_env());
     let shutdown = CancellationToken::new();
+    let framework_supports_active_input = framework_supports_active_input(
+        env::Framework::from_env(),
+        env::use_codex_app_server_backend(),
+    );
+    let has_process_control_endpoint = matches!(
+        std::env::var(process_control_ipc::BOOTSTRAP_ENV),
+        Ok(endpoint) if !endpoint.is_empty()
+    );
     let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
         env::run_id(),
-        matches!(env::Framework::from_env(), env::Framework::ClaudeCode)
-            && matches!(
-                std::env::var(process_control_ipc::BOOTSTRAP_ENV),
-                Ok(endpoint) if !endpoint.is_empty()
-            ),
+        framework_supports_active_input && has_process_control_endpoint,
         env::prompt(),
     );
     let control_handle = control::ControlHandle::spawn(shutdown.clone(), active_input.controller());
@@ -211,6 +215,14 @@ async fn run() -> i32 {
     }
 
     exit_code
+}
+
+fn framework_supports_active_input(
+    framework: env::Framework,
+    use_codex_app_server_backend: bool,
+) -> bool {
+    matches!(framework, env::Framework::ClaudeCode)
+        || (matches!(framework, env::Framework::Codex) && use_codex_app_server_backend)
 }
 
 /// Main execution logic: working dir, CLI, checkpoint/recovery, and `/complete`.
@@ -1150,6 +1162,23 @@ mod tests {
         std::env::temp_dir()
             .join(format!("vm0-guest-agent-main-tests-{}", std::process::id()))
             .join("main-recovery-checkpoint")
+    }
+
+    #[test]
+    fn framework_supports_active_input_for_claude_and_codex_app_server_only() {
+        assert!(framework_supports_active_input(
+            env::Framework::ClaudeCode,
+            false
+        ));
+        assert!(framework_supports_active_input(
+            env::Framework::ClaudeCode,
+            true
+        ));
+        assert!(!framework_supports_active_input(
+            env::Framework::Codex,
+            false
+        ));
+        assert!(framework_supports_active_input(env::Framework::Codex, true));
     }
 
     unsafe fn set_test_env(server: &MockServer, prompt: Option<&str>) {
