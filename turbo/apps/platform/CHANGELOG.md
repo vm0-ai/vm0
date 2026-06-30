@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.512.0](https://github.com/vm0-ai/vm0/compare/app-v0.511.2...app-v0.512.0) (2026-06-30)
+
+
+### Features
+
+* add connected connectors filter ([#19460](https://github.com/vm0-ai/vm0/issues/19460)) ([e7f098b](https://github.com/vm0-ai/vm0/commit/e7f098b13f4ba7c56cfb8e01bbe7ca5b42a57908))
+
 ## [0.511.2](https://github.com/vm0-ai/vm0/compare/app-v0.511.1...app-v0.511.2) (2026-06-30)
 
 
