@@ -846,6 +846,39 @@ async fn create_transaction_rollback_unsafe_cow_cleanup_marks_leaked_workspace_p
 }
 
 #[tokio::test]
+async fn create_transaction_rollback_safe_cow_cleanup_marks_leaked_workspace_deletable() {
+    let fixture = WorkspaceSockFixture::new().await;
+
+    let (leak_tx, mut leak_rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
+    fixture.track_on(&mut tx);
+    tx.track_network(test_network());
+    tx.track_test_cow_device_for_test();
+    let cleanup = CowOutcomeCreateRollbackCleanup::failing_network(
+        CowCleanupOutcome::BackingFilesSafeToDelete,
+    );
+
+    tx.rollback(&cleanup).await;
+
+    assert!(fixture.workspace.exists());
+    assert!(fixture.sock_dir.exists());
+    assert_eq!(
+        cleanup.events(),
+        vec!["destroy_cow_device", "release_network:test-ns"]
+    );
+
+    drop(tx);
+    let mut leaked = leak_rx.recv().await.unwrap();
+    assert!(leaked.cow_device.is_none());
+    assert!(leaked.delete_workspace);
+    let network = leaked.network.take().unwrap();
+    assert_eq!(network.name(), "test-ns");
+    let _ = network.into_info_for_test();
+    assert_eq!(leaked.sock_dir, fixture.sock_dir);
+    assert_eq!(leaked.workspace, fixture.workspace);
+}
+
+#[tokio::test]
 async fn create_transaction_rollback_cancellation_during_cow_cleanup_preserves_workspace() {
     let fixture = WorkspaceSockFixture::new().await;
 
