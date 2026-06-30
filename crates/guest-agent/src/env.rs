@@ -273,7 +273,8 @@ pub struct ArtifactEnv {
 /// Raw startup values used to build an owned guest-agent run config.
 ///
 /// Empty strings represent unset runner bootstrap values, matching the legacy
-/// `env::*` facade.
+/// `env::*` facade. Optional override fields preserve the difference between
+/// an unset variable and an explicitly empty variable.
 #[derive(Clone, Default)]
 pub struct GuestConfigRaw {
     pub run_id: String,
@@ -291,12 +292,12 @@ pub struct GuestConfigRaw {
     pub tools: String,
     pub settings: String,
     pub use_mock_claude: String,
-    pub mock_claude_path: String,
+    pub mock_claude_path: Option<String>,
     pub cli_agent_type: String,
     pub user_env_file: String,
     pub use_mock_codex: String,
     pub use_codex_app_server_backend: String,
-    pub mock_codex_path: String,
+    pub mock_codex_path: Option<String>,
     pub home: Option<String>,
     pub guest_runtime_dir: Option<PathBuf>,
     pub artifacts: String,
@@ -330,16 +331,14 @@ impl GuestConfigRaw {
             tools: env_or_empty(guest_contracts::env::TOOLS_ENV),
             settings: env_or_empty(guest_contracts::env::SETTINGS_ENV),
             use_mock_claude: env_or_empty(guest_contracts::env::USE_MOCK_CLAUDE_ENV),
-            mock_claude_path: std::env::var(guest_contracts::env::MOCK_CLAUDE_PATH_ENV)
-                .unwrap_or_else(|_| DEFAULT_MOCK_CLAUDE_PATH.to_string()),
+            mock_claude_path: std::env::var(guest_contracts::env::MOCK_CLAUDE_PATH_ENV).ok(),
             cli_agent_type: env_or_empty(guest_contracts::env::CLI_AGENT_TYPE_ENV),
             user_env_file: env_or_empty(USER_ENV_FILE_ENV_KEY),
             use_mock_codex: env_or_empty(guest_contracts::env::USE_MOCK_CODEX_ENV),
             use_codex_app_server_backend: env_or_empty(
                 guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV,
             ),
-            mock_codex_path: std::env::var(guest_contracts::env::MOCK_CODEX_PATH_ENV)
-                .unwrap_or_else(|_| DEFAULT_MOCK_CODEX_PATH.to_string()),
+            mock_codex_path: std::env::var(guest_contracts::env::MOCK_CODEX_PATH_ENV).ok(),
             home: std::env::var("HOME").ok(),
             guest_runtime_dir,
             artifacts: env_or_empty(guest_contracts::env::ARTIFACTS_ENV),
@@ -421,7 +420,10 @@ impl GuestConfig {
             tools: raw.tools,
             settings: raw.settings,
             use_mock_claude: bool_true_value(Some(&raw.use_mock_claude)),
-            mock_claude_path: default_mock_path(&raw.mock_claude_path, DEFAULT_MOCK_CLAUDE_PATH),
+            mock_claude_path: default_mock_path(
+                raw.mock_claude_path.as_deref(),
+                DEFAULT_MOCK_CLAUDE_PATH,
+            ),
             framework: framework_from_cli_agent_type(&raw.cli_agent_type),
             cli_agent_type: raw.cli_agent_type,
             user_env,
@@ -429,7 +431,10 @@ impl GuestConfig {
             use_codex_app_server_backend: bool_true_or_one_value(Some(
                 &raw.use_codex_app_server_backend,
             )),
-            mock_codex_path: default_mock_path(&raw.mock_codex_path, DEFAULT_MOCK_CODEX_PATH),
+            mock_codex_path: default_mock_path(
+                raw.mock_codex_path.as_deref(),
+                DEFAULT_MOCK_CODEX_PATH,
+            ),
             home_dir,
             artifacts,
             stuck_tool_timeout_secs: u64_value_or(
@@ -510,12 +515,8 @@ fn bool_true_or_one_value(value: Option<&str>) -> bool {
     matches!(value, Some("true" | "1"))
 }
 
-fn default_mock_path(value: &str, default: &str) -> String {
-    if value.is_empty() {
-        default.to_string()
-    } else {
-        value.to_string()
-    }
+fn default_mock_path(value: Option<&str>, default: &str) -> String {
+    value.map_or_else(|| default.to_string(), str::to_string)
 }
 
 fn parse_artifacts_value(raw: &str) -> Result<Vec<ArtifactEnv>, serde_json::Error> {
@@ -1086,6 +1087,20 @@ mod tests {
         let config = GuestConfig::from_raw(raw).unwrap();
 
         assert_eq!(config.home_dir, "");
+    }
+
+    #[test]
+    fn guest_config_from_raw_preserves_explicit_empty_mock_paths() {
+        let raw = GuestConfigRaw {
+            mock_claude_path: Some(String::new()),
+            mock_codex_path: Some(String::new()),
+            ..raw_config_fixture()
+        };
+
+        let config = GuestConfig::from_raw(raw).unwrap();
+
+        assert_eq!(config.mock_claude_path, "");
+        assert_eq!(config.mock_codex_path, "");
     }
 
     #[test]
