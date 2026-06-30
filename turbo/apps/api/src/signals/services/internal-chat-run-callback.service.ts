@@ -1703,6 +1703,16 @@ async function claimQueuedUserMessage(args: {
       return [];
     }
 
+    const threadRows = await tx.execute<{ readonly id: string }>(sql`
+      SELECT ${chatThreads.id} AS "id"
+      FROM ${chatThreads}
+      WHERE ${chatThreads.id} = ${args.threadId}
+      FOR KEY SHARE
+    `);
+    if (!threadRows.rows[0]) {
+      return [];
+    }
+
     return await tx
       .insert(chatMessages)
       .values({
