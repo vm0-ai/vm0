@@ -1,25 +1,31 @@
 import { Buffer } from "node:buffer";
 import { randomUUID } from "node:crypto";
 
-import { createAppWithRoutes } from "../../../app-factory-core";
-import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usagePricing } from "@vm0/db/schema/usage-pricing";
-import { userBehaviorCount } from "@vm0/db/schema/user-behavior-count";
-import { HttpResponse, http } from "msw";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
+import { HttpResponse, http } from "msw";
+import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
+
+import { createAppWithRoutes } from "../../../app-factory-core";
 
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import { zeroVoiceIoSpeechRoutes } from "../zero-voice-io-speech";
 import { zeroVoiceIoSttRoutes } from "../zero-voice-io-stt";
+import {
+  deleteGenerationFixture,
+  deleteGenerationPricingRows,
+  ensureGenerationPricingRow,
+  readGenerationBehaviorCount,
+  readGenerationBehaviorCounts,
+  readGenerationOrgCredits,
+  readGenerationUploadedFiles,
+  readGenerationUsageEvents,
+  seedGenerationBehaviorCount,
+  seedGenerationFixture,
+  type GenerationFixture,
+} from "./helpers/zero-generation-state";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteUsageInsightFixture$,
@@ -53,9 +59,7 @@ interface SpeechPricing {
   readonly unitSize: number;
 }
 
-interface VoiceFixture {
-  readonly orgId: string;
-  readonly userId: string;
+interface VoiceFixture extends GenerationFixture {
   readonly pricingInserted: boolean;
 }
 
@@ -225,46 +229,28 @@ async function ensureSpeechPricing(): Promise<{
   readonly pricing: SpeechPricing;
   readonly inserted: boolean;
 }> {
-  const writeDb = store.set(writeDb$);
-  const [existing] = await writeDb
-    .select({
-      unitPrice: usagePricing.unitPrice,
-      unitSize: usagePricing.unitSize,
-    })
-    .from(usagePricing)
-    .where(
-      and(
-        eq(usagePricing.kind, "audio"),
-        eq(usagePricing.provider, VOICE_IO_TTS_MODEL),
-        eq(usagePricing.category, "output_audio_seconds"),
-      ),
-    )
-    .limit(1);
-  if (existing) {
-    return { pricing: existing, inserted: false };
-  }
-
-  const pricing = { unitPrice: 5, unitSize: 1 };
-  await writeDb.insert(usagePricing).values({
+  const result = await ensureGenerationPricingRow(context.signal, {
     kind: "audio",
     provider: VOICE_IO_TTS_MODEL,
     category: "output_audio_seconds",
-    ...pricing,
+    unitPrice: 5,
+    unitSize: 1,
   });
-  return { pricing, inserted: true };
+  return {
+    pricing: {
+      unitPrice: result.pricing.unitPrice,
+      unitSize: result.pricing.unitSize,
+    },
+    inserted: result.inserted,
+  };
 }
 
 async function deleteSpeechPricing(): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .delete(usagePricing)
-    .where(
-      and(
-        eq(usagePricing.kind, "audio"),
-        eq(usagePricing.provider, VOICE_IO_TTS_MODEL),
-        eq(usagePricing.category, "output_audio_seconds"),
-      ),
-    );
+  await deleteGenerationPricingRows(context.signal, {
+    kind: "audio",
+    provider: VOICE_IO_TTS_MODEL,
+    categories: ["output_audio_seconds"],
+  });
 }
 
 async function seedVoiceFixture(options: {
@@ -272,71 +258,30 @@ async function seedVoiceFixture(options: {
   readonly tier?: OrgTier;
   readonly withPricing?: boolean;
 }): Promise<VoiceFixture> {
-  const orgId = `org_${randomUUID()}`;
-  const userId = `user_${randomUUID()}`;
-  const writeDb = store.set(writeDb$);
+  const fixture = await seedGenerationFixture(context.signal, {
+    credits: options.credits,
+    tier: options.tier,
+  });
 
   await store.set(
     seedOrgMembership$,
-    { orgId, userId, role: "admin" },
+    { orgId: fixture.orgId, userId: fixture.userId, role: "admin" },
     context.signal,
   );
-  await writeDb.insert(orgMetadata).values({
-    orgId,
-    tier: options.tier ?? "free",
-    credits: options.credits ?? 10_000,
-  });
-  await writeDb.insert(orgMembersMetadata).values({
-    orgId,
-    userId,
-  });
 
   const pricingResult = options.withPricing
     ? await ensureSpeechPricing()
     : { pricing: null, inserted: false };
   void pricingResult.pricing;
 
-  return { orgId, userId, pricingInserted: pricingResult.inserted };
+  return { ...fixture, pricingInserted: pricingResult.inserted };
 }
 
 async function deleteVoiceFixture(fixture: VoiceFixture): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .delete(runUploadedFiles)
-    .where(
-      and(
-        eq(runUploadedFiles.orgId, fixture.orgId),
-        eq(runUploadedFiles.userId, fixture.userId),
-      ),
-    );
-  await writeDb
-    .delete(userBehaviorCount)
-    .where(
-      and(
-        eq(userBehaviorCount.orgId, fixture.orgId),
-        eq(userBehaviorCount.userId, fixture.userId),
-      ),
-    );
-  await writeDb
-    .delete(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, fixture.orgId),
-        eq(orgMembersMetadata.userId, fixture.userId),
-      ),
-    );
+  await deleteGenerationFixture(context.signal, fixture);
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
-  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
   if (fixture.pricingInserted) {
-    await writeDb
-      .delete(usagePricing)
-      .where(
-        and(
-          eq(usagePricing.kind, "audio"),
-          eq(usagePricing.provider, VOICE_IO_TTS_MODEL),
-          eq(usagePricing.category, "output_audio_seconds"),
-        ),
-      );
+    await deleteSpeechPricing();
   }
 }
 
@@ -367,20 +312,11 @@ async function readBehaviorCount(
   fixture: Pick<VoiceFixture, "orgId" | "userId">,
   behaviorKey: string,
 ): Promise<number> {
-  const [row] = await store
-    .set(writeDb$)
-    .select({ count: userBehaviorCount.count })
-    .from(userBehaviorCount)
-    .where(
-      and(
-        eq(userBehaviorCount.orgId, fixture.orgId),
-        eq(userBehaviorCount.userId, fixture.userId),
-        eq(userBehaviorCount.behaviorKey, behaviorKey),
-      ),
-    )
-    .limit(1);
-
-  return row?.count ?? 0;
+  return await readGenerationBehaviorCount(
+    context.signal,
+    fixture,
+    behaviorKey,
+  );
 }
 
 async function seedBehaviorCount(
@@ -388,12 +324,12 @@ async function seedBehaviorCount(
   behaviorKey: string,
   count: number,
 ): Promise<void> {
-  await store.set(writeDb$).insert(userBehaviorCount).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
+  await seedGenerationBehaviorCount(
+    context.signal,
+    fixture,
     behaviorKey,
     count,
-  });
+  );
 }
 
 describe("POST /api/zero/voice-io/*", () => {
@@ -589,22 +525,10 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(observedModel).toBe(VOICE_IO_STT_VERBOSE_MODEL);
     expect(observedResponseFormat).toBe("verbose_json");
 
-    const rows = await store
-      .set(writeDb$)
-      .select({
-        key: userBehaviorCount.behaviorKey,
-        count: userBehaviorCount.count,
-      })
-      .from(userBehaviorCount)
-      .where(
-        and(
-          eq(userBehaviorCount.orgId, fixture.orgId),
-          eq(userBehaviorCount.userId, fixture.userId),
-        ),
-      );
+    const rows = await readGenerationBehaviorCounts(context.signal, fixture);
     const counts = new Map(
       rows.map((row): readonly [string, number] => {
-        return [row.key, row.count];
+        return [row.behaviorKey, row.count];
       }),
     );
     expect(counts.get(AUDIO_INPUT_BEHAVIOR_KEY)).toBe(1);
@@ -1176,11 +1100,9 @@ describe("POST /api/zero/voice-io/*", () => {
     }
     expect(new Uint8Array(putBody)).toStrictEqual(wav);
 
-    const uploadRows = await store
-      .set(writeDb$)
-      .select()
-      .from(runUploadedFiles)
-      .where(eq(runUploadedFiles.externalId, fileId));
+    const uploadRows = await readGenerationUploadedFiles(context.signal, {
+      externalId: fileId,
+    });
     expect(uploadRows).toHaveLength(1);
     expect(uploadRows[0]).toMatchObject({
       runId,
@@ -1200,19 +1122,13 @@ describe("POST /api/zero/voice-io/*", () => {
       s3Key: `artifacts/${fixture.userId}/${fileId}/${filename}`,
     });
 
-    const usageRows = await store
-      .set(writeDb$)
-      .select()
-      .from(usageEvent)
-      .where(
-        and(
-          eq(usageEvent.orgId, fixture.orgId),
-          eq(usageEvent.userId, fixture.userId),
-          eq(usageEvent.kind, "audio"),
-          eq(usageEvent.provider, VOICE_IO_TTS_MODEL),
-          eq(usageEvent.category, "output_audio_seconds"),
-        ),
-      );
+    const usageRows = await readGenerationUsageEvents(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      kind: "audio",
+      provider: VOICE_IO_TTS_MODEL,
+      category: "output_audio_seconds",
+    });
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
       runId,
@@ -1273,11 +1189,9 @@ describe("POST /api/zero/voice-io/*", () => {
       voice: "nova",
     });
 
-    const usageRows = await store
-      .set(writeDb$)
-      .select()
-      .from(usageEvent)
-      .where(eq(usageEvent.runId, runId));
+    const usageRows = await readGenerationUsageEvents(context.signal, {
+      runId,
+    });
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
       runId,
@@ -1318,38 +1232,23 @@ describe("POST /api/zero/voice-io/*", () => {
     });
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
 
-    const uploadRows = await store
-      .set(writeDb$)
-      .select()
-      .from(runUploadedFiles)
-      .where(
-        and(
-          eq(runUploadedFiles.orgId, fixture.orgId),
-          eq(runUploadedFiles.userId, fixture.userId),
-        ),
-      );
+    const uploadRows = await readGenerationUploadedFiles(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+    });
     expect(uploadRows).toHaveLength(0);
 
-    const usageRows = await store
-      .set(writeDb$)
-      .select()
-      .from(usageEvent)
-      .where(
-        and(
-          eq(usageEvent.orgId, fixture.orgId),
-          eq(usageEvent.userId, fixture.userId),
-          eq(usageEvent.kind, "audio"),
-          eq(usageEvent.provider, VOICE_IO_TTS_MODEL),
-          eq(usageEvent.category, "output_audio_seconds"),
-        ),
-      );
+    const usageRows = await readGenerationUsageEvents(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      kind: "audio",
+      provider: VOICE_IO_TTS_MODEL,
+      category: "output_audio_seconds",
+    });
     expect(usageRows).toHaveLength(0);
 
-    const [metadata] = await store
-      .set(writeDb$)
-      .select({ credits: orgMetadata.credits })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId));
-    expect(metadata?.credits).toBe(1000);
+    await expect(
+      readGenerationOrgCredits(context.signal, fixture.orgId),
+    ).resolves.toBe(1000);
   });
 });

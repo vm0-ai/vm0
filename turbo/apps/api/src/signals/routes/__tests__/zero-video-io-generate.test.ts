@@ -1,28 +1,29 @@
 import { Buffer } from "node:buffer";
-import { randomUUID } from "node:crypto";
-
 import { createStore } from "ccstate";
-import { and, eq, inArray, sql } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import type { OrgTier } from "@vm0/api-contracts/contracts/orgs";
 import { v5 as uuidv5 } from "uuid";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
-import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
 import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
 import { zeroVideoIoGenerateRoutes } from "../zero-video-io-generate";
+import {
+  deleteGenerationFixture,
+  deleteGenerationPricingRows,
+  readGenerationJobs,
+  readGenerationUploadedFiles,
+  readGenerationUsageEvents,
+  restoreGenerationPricingRows,
+  seedGenerationFixture,
+  type GenerationPricingRow,
+  upsertGenerationPricingRows,
+} from "./helpers/zero-generation-state";
 import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteUsageInsightFixture$,
@@ -161,20 +162,8 @@ function builtInGenerationUsageIdempotencyKey(parts: {
   );
 }
 
-type VideoPricingDefault = (typeof VIDEO_PRICING_DEFAULTS)[number];
-type VideoPricingCategory = VideoPricingDefault["category"];
-
-interface VideoFixture {
-  readonly orgId: string;
-  readonly userId: string;
-}
-
-interface PricingSnapshot {
-  readonly provider: string;
-  readonly category: VideoPricingCategory;
-  readonly unitPrice: number;
-  readonly unitSize: number;
-}
+type VideoFixture = Awaited<ReturnType<typeof seedGenerationFixture>>;
+type PricingSnapshot = GenerationPricingRow;
 
 function authHeaders() {
   return { authorization: "Bearer clerk-session" };
@@ -320,105 +309,39 @@ function zeroToken(args: {
 }
 
 async function upsertDefaultVideoPricingRows(): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  for (const row of VIDEO_PRICING_DEFAULTS) {
-    await writeDb
-      .insert(usagePricing)
-      .values({
+  await upsertGenerationPricingRows(
+    context.signal,
+    VIDEO_PRICING_DEFAULTS.map((row) => {
+      return {
         kind: "video",
         provider: row.provider,
         category: row.category,
         unitPrice: row.unitPrice,
         unitSize: row.unitSize,
-      })
-      .onConflictDoUpdate({
-        target: [
-          usagePricing.kind,
-          usagePricing.provider,
-          usagePricing.category,
-        ],
-        set: {
-          unitPrice: row.unitPrice,
-          unitSize: row.unitSize,
-          updatedAt: sql`now()`,
-        },
-      });
-  }
+      };
+    }),
+  );
 }
 
 async function deleteDefaultModelPricingRows(): Promise<
   readonly PricingSnapshot[]
 > {
-  const writeDb = store.set(writeDb$);
   const categories = VIDEO_PRICING_DEFAULTS.filter((row) => {
     return row.provider === VIDEO_IO_MODEL;
   }).map((row) => {
     return row.category;
   });
-  const rows = await writeDb
-    .select({
-      provider: usagePricing.provider,
-      category: usagePricing.category,
-      unitPrice: usagePricing.unitPrice,
-      unitSize: usagePricing.unitSize,
-    })
-    .from(usagePricing)
-    .where(
-      and(
-        eq(usagePricing.kind, "video"),
-        eq(usagePricing.provider, VIDEO_IO_MODEL),
-        inArray(usagePricing.category, categories),
-      ),
-    );
-
-  await writeDb
-    .delete(usagePricing)
-    .where(
-      and(
-        eq(usagePricing.kind, "video"),
-        eq(usagePricing.provider, VIDEO_IO_MODEL),
-        inArray(usagePricing.category, categories),
-      ),
-    );
-
-  return rows.map((row) => {
-    return {
-      provider: row.provider,
-      category: row.category as VideoPricingCategory,
-      unitPrice: row.unitPrice,
-      unitSize: row.unitSize,
-    };
+  return await deleteGenerationPricingRows(context.signal, {
+    kind: "video",
+    provider: VIDEO_IO_MODEL,
+    categories,
   });
 }
 
 async function restoreVideoPricingRows(
   rows: readonly PricingSnapshot[],
 ): Promise<void> {
-  if (rows.length === 0) {
-    return;
-  }
-  await store
-    .set(writeDb$)
-    .insert(usagePricing)
-    .values(
-      rows.map((row) => {
-        return {
-          kind: "video",
-          provider: row.provider,
-          category: row.category,
-          unitPrice: row.unitPrice,
-          unitSize: row.unitSize,
-        };
-      }),
-    )
-    .onConflictDoUpdate({
-      target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
-      set: {
-        unitPrice: sql`excluded.unit_price`,
-        unitSize: sql`excluded.unit_size`,
-        updatedAt: sql`now()`,
-      },
-    });
+  await restoreGenerationPricingRows(context.signal, rows);
 }
 
 async function seedVideoFixture(options: {
@@ -426,55 +349,27 @@ async function seedVideoFixture(options: {
   readonly tier?: OrgTier;
   readonly withPricing?: boolean;
 }): Promise<VideoFixture> {
-  const orgId = `org_${randomUUID()}`;
-  const userId = `user_${randomUUID()}`;
-  const writeDb = store.set(writeDb$);
+  const fixture = await seedGenerationFixture(context.signal, {
+    credits: options.credits,
+    tier: options.tier,
+  });
 
   await store.set(
     seedOrgMembership$,
-    { orgId, userId, role: "admin" },
+    { orgId: fixture.orgId, userId: fixture.userId, role: "admin" },
     context.signal,
   );
-  await writeDb.insert(orgMetadata).values({
-    orgId,
-    tier: options.tier ?? "free",
-    credits: options.credits ?? 10_000,
-  });
-  await writeDb.execute(sql`
-    INSERT INTO org_members_metadata (org_id, user_id)
-    VALUES (${orgId}, ${userId})
-  `);
 
   if (options.withPricing) {
     await upsertDefaultVideoPricingRows();
   }
 
-  return { orgId, userId };
+  return fixture;
 }
 
 async function deleteVideoFixture(fixture: VideoFixture): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .delete(builtInGenerationJobs)
-    .where(eq(builtInGenerationJobs.orgId, fixture.orgId));
-  await writeDb
-    .delete(runUploadedFiles)
-    .where(
-      and(
-        eq(runUploadedFiles.orgId, fixture.orgId),
-        eq(runUploadedFiles.userId, fixture.userId),
-      ),
-    );
-  await writeDb
-    .delete(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, fixture.orgId),
-        eq(orgMembersMetadata.userId, fixture.userId),
-      ),
-    );
+  await deleteGenerationFixture(context.signal, fixture);
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
-  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
 }
 
 describe("POST /api/zero/video-io/generate", () => {
@@ -824,11 +719,9 @@ describe("POST /api/zero/video-io/generate", () => {
     }
     expect(putBody).toStrictEqual(VIDEO_BYTES);
 
-    const uploadRows = await store
-      .set(writeDb$)
-      .select()
-      .from(runUploadedFiles)
-      .where(eq(runUploadedFiles.externalId, fileId));
+    const uploadRows = await readGenerationUploadedFiles(context.signal, {
+      externalId: fileId,
+    });
     expect(uploadRows).toHaveLength(1);
     expect(uploadRows[0]).toMatchObject({
       runId,
@@ -855,18 +748,12 @@ describe("POST /api/zero/video-io/generate", () => {
       s3Key: `artifacts/${fixture.userId}/${fileId}/${filename}`,
     });
 
-    const usageRows = await store
-      .set(writeDb$)
-      .select()
-      .from(usageEvent)
-      .where(
-        and(
-          eq(usageEvent.orgId, fixture.orgId),
-          eq(usageEvent.userId, fixture.userId),
-          eq(usageEvent.kind, "video"),
-          eq(usageEvent.provider, VIDEO_IO_MODEL),
-        ),
-      );
+    const usageRows = await readGenerationUsageEvents(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      kind: "video",
+      provider: VIDEO_IO_MODEL,
+    });
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
       runId,
@@ -1114,18 +1001,12 @@ describe("POST /api/zero/video-io/generate", () => {
       requestId: "dreamina-video-task",
     });
 
-    const usageRows = await store
-      .set(writeDb$)
-      .select()
-      .from(usageEvent)
-      .where(
-        and(
-          eq(usageEvent.orgId, fixture.orgId),
-          eq(usageEvent.userId, fixture.userId),
-          eq(usageEvent.kind, "video"),
-          eq(usageEvent.provider, "dreamina-seedance-2-0-260128"),
-        ),
-      );
+    const usageRows = await readGenerationUsageEvents(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      kind: "video",
+      provider: "dreamina-seedance-2-0-260128",
+    });
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
       category: "output_video_tokens.1080p.with_video",
@@ -1246,18 +1127,12 @@ describe("POST /api/zero/video-io/generate", () => {
       requestId: "video-request",
     });
 
-    const usageRows = await store
-      .set(writeDb$)
-      .select()
-      .from(usageEvent)
-      .where(
-        and(
-          eq(usageEvent.orgId, fixture.orgId),
-          eq(usageEvent.userId, fixture.userId),
-          eq(usageEvent.kind, "video"),
-          eq(usageEvent.provider, FAL_VEO_FAST_MODEL),
-        ),
-      );
+    const usageRows = await readGenerationUsageEvents(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      kind: "video",
+      provider: FAL_VEO_FAST_MODEL,
+    });
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
       category: "output_video_seconds.audio",
@@ -1361,18 +1236,12 @@ describe("POST /api/zero/video-io/generate", () => {
       requestId: "kling-video-request",
     });
 
-    const usageRows = await store
-      .set(writeDb$)
-      .select()
-      .from(usageEvent)
-      .where(
-        and(
-          eq(usageEvent.orgId, fixture.orgId),
-          eq(usageEvent.userId, fixture.userId),
-          eq(usageEvent.kind, "video"),
-          eq(usageEvent.provider, KLING_V3_4K_MODEL),
-        ),
-      );
+    const usageRows = await readGenerationUsageEvents(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+      kind: "video",
+      provider: KLING_V3_4K_MODEL,
+    });
     expect(usageRows).toHaveLength(1);
     expect(usageRows[0]).toMatchObject({
       category: "output_video_seconds.audio.4k",
@@ -1420,11 +1289,10 @@ describe("POST /api/zero/video-io/generate", () => {
         code: "BYTEPLUS_INVALID_PARAMETER",
       },
     });
-    const jobRows = await store
-      .set(writeDb$)
-      .select()
-      .from(builtInGenerationJobs)
-      .where(eq(builtInGenerationJobs.orgId, fixture.orgId));
+    const jobRows = await readGenerationJobs(context.signal, {
+      orgId: fixture.orgId,
+      userId: fixture.userId,
+    });
     expect(jobRows).toHaveLength(1);
     expect(jobRows[0]).toMatchObject({
       type: "video",
@@ -1505,11 +1373,9 @@ describe("POST /api/zero/video-io/generate", () => {
       },
     });
 
-    const jobRows = await store
-      .set(writeDb$)
-      .select()
-      .from(builtInGenerationJobs)
-      .where(eq(builtInGenerationJobs.id, generationId));
+    const jobRows = await readGenerationJobs(context.signal, {
+      id: generationId,
+    });
     expect(jobRows[0]).toMatchObject({
       type: "video",
       status: "failed",

@@ -184,6 +184,7 @@ import { testEmailStateRoutes } from "./routes/test-email-state";
 import { testTelegramDispatchProbeRoutes } from "./routes/test-telegram-dispatch-probe";
 import { testTelegramMockRoutes } from "./routes/test-telegram-mock";
 import { testTelegramStateRoutes } from "./routes/test-telegram-state";
+import { testGenerationStateRoutes } from "./routes/test-generation-state";
 import { testUsageInsightStateRoutes } from "./routes/test-usage-insight-state";
 import { testUsageStateRoutes } from "./routes/test-usage-state";
 import { testWorkflowTriggerStateRoutes } from "./routes/test-workflow-trigger-state";
@@ -376,6 +377,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...testTelegramDispatchProbeRoutes,
   ...testTelegramMockRoutes,
   ...testTelegramStateRoutes,
+  ...testGenerationStateRoutes,
   ...testUsageInsightStateRoutes,
   ...testUsageStateRoutes,
   ...testWorkflowTriggerStateRoutes,
