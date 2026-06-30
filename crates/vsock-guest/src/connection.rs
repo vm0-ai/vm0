@@ -730,6 +730,7 @@ mod tests {
             MSG_EXEC_CANCEL,
             MSG_EXEC_CONTROL,
             MSG_WRITE_FILE,
+            MSG_WRITE_FILES,
             MSG_QUIESCE_OPERATIONS,
             MSG_RESUME_OPERATIONS,
         ] {
