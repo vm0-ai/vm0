@@ -15,7 +15,7 @@ import type {
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";
@@ -959,6 +959,95 @@ describe("CHAT-02: completed chat callback", () => {
 
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
+  }, 90_000);
+
+  it("marks an auto-sent follow-up when org concurrency queues the new run", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "2");
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish before auto-send queues",
+    });
+    const blocker = await startChatRun(actor, {
+      agentId,
+      prompt: "hold org concurrency open",
+    });
+    await waitForRunStatus(actor, first.runId, "pending");
+    await waitForRunStatus(actor, blocker.runId, "pending");
+
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "queued while org cap is full",
+    });
+    const queuedBeforeComplete = await chat.listThreadMessages(
+      actor,
+      first.threadId,
+    );
+    const queued = userMessages(queuedBeforeComplete.messages).find(
+      (message) => {
+        return message.content === "queued while org cap is full";
+      },
+    );
+    if (!queued) {
+      throw new Error("Expected the queued user message to be listed");
+    }
+
+    mockEnv("CONCURRENT_RUN_LIMIT_CAP", "1");
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([assistantEvent(0, "anchor completed")]);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const afterAutoSend = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        const claimed = userMessages(messages).find((message) => {
+          return (
+            message.revokesMessageId === queued.id &&
+            message.runId !== undefined
+          );
+        });
+        return (
+          claimed !== undefined &&
+          assistantMessages(messages).some((message) => {
+            return (
+              message.runId === claimed.runId &&
+              message.runEventId === "queue:queued"
+            );
+          })
+        );
+      },
+    );
+    const claimed = userMessages(afterAutoSend.messages).find((message) => {
+      return message.revokesMessageId === queued.id;
+    });
+    if (!claimed?.runId) {
+      throw new Error("Expected the queued message to auto-send");
+    }
+    const marker = assistantMessages(afterAutoSend.messages).find((message) => {
+      return (
+        message.runId === claimed.runId && message.runEventId === "queue:queued"
+      );
+    });
+    if (!marker) {
+      throw new Error("Expected an assistant queue marker");
+    }
+    expect(marker).toMatchObject({
+      content: "Waiting in queue...",
+      runId: claimed.runId,
+    });
+
+    await api.requestCancelRun(actor, blocker.runId, [200]);
+    await waitForRunStatus(actor, blocker.runId, "cancelled");
+    await waitForRunStatus(actor, claimed.runId, "pending");
+    await api.requestCancelRun(actor, claimed.runId, [200]);
+    await waitForRunStatus(actor, claimed.runId, "cancelled");
+    await flushWaitUntilForTest();
   }, 90_000);
 
   it("excludes pre-dispatch cancelled rows without chat messages from later context", async () => {

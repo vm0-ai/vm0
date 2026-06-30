@@ -57,6 +57,7 @@ import {
   touchChatThreadLastMessageAt,
   visibleChatMessageCondition,
 } from "./zero-chat-message-shared.service";
+import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import { sendUserPushNotifications } from "./zero-push-notifications.service";
 import {
   type ChatCompletionContextMessage,
@@ -210,11 +211,16 @@ type ResolveAttachFiles = (
   fileIds: readonly string[],
 ) => Promise<readonly ResolvedAttachFile[]>;
 
+type CreatedQueuedRun = {
+  readonly runId: string;
+  readonly status: "queued" | "pending" | "running";
+};
+
 type CreateQueuedRun = (
   input: CreateQueuedChatRunInput,
   apiStartTime: number,
   signal: AbortSignal,
-) => Promise<{ readonly runId: string } | null>;
+) => Promise<CreatedQueuedRun | null>;
 
 interface ChatCallbackDependencies {
   readonly insertAssistantItems: (
@@ -292,6 +298,12 @@ interface TerminalChatCallbackWork {
 type AutoSendOutcome =
   | { readonly ok: true }
   | { readonly ok: false; readonly error: unknown };
+
+function isCreatedQueuedRunStatus(
+  status: string,
+): status is CreatedQueuedRun["status"] {
+  return status === "queued" || status === "pending" || status === "running";
+}
 
 function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
@@ -1738,7 +1750,7 @@ async function claimQueuedUserMessage(args: {
       return [];
     }
 
-    return await tx
+    const [message] = await tx
       .insert(chatMessages)
       .values({
         chatThreadId: args.threadId,
@@ -1756,16 +1768,48 @@ async function claimQueuedUserMessage(args: {
       })
       .onConflictDoNothing({ target: chatMessages.revokesMessageId })
       .returning({ id: chatMessages.id });
+    return message ? [message] : [];
   });
 
   return claimed.length > 0;
+}
+
+async function appendAutoSentQueuedRunMarker(args: {
+  readonly db: Db;
+  readonly queuedMessageId: string;
+  readonly runId: string;
+  readonly threadId: string;
+}): Promise<void> {
+  await args.db.transaction(async (tx) => {
+    const [message] = await tx
+      .select({ createdAt: chatMessages.createdAt })
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.chatThreadId, args.threadId),
+          eq(chatMessages.runId, args.runId),
+          eq(chatMessages.role, "user"),
+          eq(chatMessages.revokesMessageId, args.queuedMessageId),
+        ),
+      )
+      .limit(1);
+    if (!message) {
+      return;
+    }
+
+    await appendQueuedRunAssistantMarker(tx, {
+      chatThreadId: args.threadId,
+      runId: args.runId,
+      createdAfter: message.createdAt,
+    });
+  });
 }
 
 async function autoSendQueuedMessageOnRunComplete(args: {
   readonly getResolvedAttachFiles: ResolveAttachFiles;
   readonly createRun: (
     input: CreateQueuedChatRunInput,
-  ) => Promise<{ readonly runId: string } | null>;
+  ) => Promise<CreatedQueuedRun | null>;
   readonly db: Db;
   readonly runId: string;
   readonly agentId: string;
@@ -1834,6 +1878,14 @@ async function autoSendQueuedMessageOnRunComplete(args: {
   if (!run) {
     return;
   }
+  if (run.status === "queued") {
+    await appendAutoSentQueuedRunMarker({
+      db: args.db,
+      queuedMessageId: queuedMessage.id,
+      runId: run.runId,
+      threadId,
+    });
+  }
 
   await publishUserSignal([userId], `chatThreadMessageCreated:${threadId}`);
   await publishUserSignal([userId], `chatThreadRunCreated:${threadId}`);
@@ -1846,8 +1898,8 @@ async function createQueuedChatRun(args: {
   readonly signal: AbortSignal;
   readonly createRun: (
     input: CreateQueuedChatRunInput,
-  ) => Promise<{ readonly runId: string } | null>;
-}): Promise<{ readonly runId: string } | null> {
+  ) => Promise<CreatedQueuedRun | null>;
+}): Promise<CreatedQueuedRun | null> {
   const created = await args.createRun(args.input);
   args.signal.throwIfAborted();
   if (!created) {
@@ -2365,7 +2417,18 @@ export const handleChatInternalCallback$ = command(
           });
           return null;
         }
-        return { runId: runResult.body.runId };
+        if (!isCreatedQueuedRunStatus(runResult.body.status)) {
+          log.warn("Auto-send created run with unexpected status", {
+            threadId: runInput.threadId,
+            runId: runResult.body.runId,
+            status: runResult.body.status,
+          });
+          return null;
+        }
+        return {
+          runId: runResult.body.runId,
+          status: runResult.body.status,
+        };
       },
     };
     return await handleChatInternalCallback({
