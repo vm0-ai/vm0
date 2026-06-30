@@ -1,4 +1,17 @@
-"""Track trusted upstream destinations selected before credential injection."""
+"""Bind trusted authorities to concrete upstream destinations.
+
+This module records the upstream endpoint selected before VM0 API allow traffic
+or connector credential injection can proceed. Bindings are keyed by mitmproxy
+server connection id and associated with client connection id so connection
+reuse can fall back to earlier bindings from the same client.
+
+Direct server bindings take precedence over client-associated fallback
+bindings. Connected flows must be proven by authoritative endpoint evidence
+from the live connection; fresh DNS is not proof that a connected upstream is
+still the trusted destination. Callers must discard bindings when mitmproxy
+reports disconnects, connect errors, local responses, request errors, or
+header-phase termination.
+"""
 
 import ipaddress
 from dataclasses import dataclass
@@ -9,15 +22,44 @@ from mitmproxy import http
 import flow_metadata_keys as metadata_keys
 from url_utils import normalize_trusted_hostname
 
+# Public API used by mitm_addon hooks and tests. Private helpers encode the
+# endpoint matching details and are intentionally not exported.
+__all__ = (
+    "BindingKind",
+    "UpstreamDestinationBinding",
+    "add_server_binding_kind_if_matching",
+    "binding_snapshot_for_tests",
+    "bound_destination_endpoint_for_flow",
+    "diagnostic_snapshot_for_flow",
+    "flow_matches_bound_destination",
+    "forget_client_bindings",
+    "forget_server_binding",
+    "has_server_binding",
+    "record_server_binding",
+    "refresh_server_binding_connected_address_if_matching",
+    "reset_for_tests",
+    "server_binding_original_address",
+)
+
+# `api_allow` authorizes VM0 API traffic. `connector_auth` authorizes ordinary
+# upstream credential injection for connector firewalls.
 BindingKind = Literal["api_allow", "connector_auth"]
 _ADDRESS_PAIR_LENGTH = 2
 
 
 @dataclass(frozen=True)
 class UpstreamDestinationBinding:
+    """Trusted destination state recorded for one mitmproxy server connection."""
+
+    # Normalized trusted authority host and request port that future flows must
+    # match before this binding can be reused.
     host: str
     port: int
+    # Binding purposes that have already passed their caller-specific safety
+    # gate for this connection.
     kinds: frozenset[BindingKind]
+    # Concrete endpoint observed before retargeting, or a verified endpoint for
+    # an already-connected flow. This is not a DNS cache entry.
     original_address: tuple[str, int] | None
 
 
@@ -109,6 +151,7 @@ def record_server_binding(
     kinds: frozenset[BindingKind],
     original_address: tuple[str, int] | None,
 ) -> None:
+    """Record a destination after the caller retargeted or verified upstream."""
     server_id = _connection_id(server)
     if server_id is None:
         return
@@ -129,6 +172,7 @@ def add_server_binding_kind_if_matching(
     port: int,
     kind: BindingKind,
 ) -> bool:
+    """Add a binding kind only if the current server destination still matches."""
     server_id = _connection_id(server)
     if server_id is None:
         return False
@@ -160,6 +204,7 @@ def refresh_server_binding_connected_address_if_matching(
     kind: BindingKind,
     connected_address: tuple[str, int],
 ) -> bool:
+    """Replace original_address with a verified connected endpoint if safe."""
     server_id = _connection_id(server)
     if server_id is None:
         return False
@@ -185,6 +230,7 @@ def refresh_server_binding_connected_address_if_matching(
 
 
 def forget_server_binding(server: object) -> None:
+    """Discard all binding state owned by one mitmproxy server connection."""
     server_id = _connection_id(server)
     if server_id is not None:
         _bindings_by_server_id.pop(server_id, None)
@@ -198,6 +244,7 @@ def forget_server_binding(server: object) -> None:
 
 
 def forget_client_bindings(client: object) -> None:
+    """Discard bindings associated with a disconnected client connection."""
     client_id = _connection_id(client)
     if client_id is None:
         return
@@ -208,11 +255,13 @@ def forget_client_bindings(client: object) -> None:
 
 
 def has_server_binding(server: object) -> bool:
+    """Return whether the server connection has a direct binding."""
     server_id = _connection_id(server)
     return server_id is not None and server_id in _bindings_by_server_id
 
 
 def server_binding_original_address(server: object) -> tuple[str, int] | None:
+    """Return the original endpoint only while the server address still matches."""
     server_id = _connection_id(server)
     if server_id is None:
         return None
@@ -343,6 +392,13 @@ def diagnostic_snapshot_for_flow(
     *,
     allowed_kinds: frozenset[BindingKind],
 ) -> dict[str, object]:
+    """Return binding state for blocked-request logs, not authorization.
+
+    The snapshot reports whether the current server connection has a direct
+    binding, how many bindings are associated with the client, whether any
+    client binding matches host/port/kind, and whether a connected endpoint
+    matches those client bindings. The host list is diagnostic context only.
+    """
     server = flow.server_conn
     server_id = _connection_id(server)
     direct_binding = _bindings_by_server_id.get(server_id) if server_id is not None else None
@@ -403,6 +459,12 @@ def flow_matches_bound_destination(
     *,
     allowed_kinds: frozenset[BindingKind],
 ) -> bool:
+    """Return whether a flow is bound to its authority for an allowed kind.
+
+    A direct server binding is checked first. Without one, a prior binding from
+    the same client may be used as fallback, but connected flows still require
+    authoritative endpoint evidence matching the bound concrete endpoint.
+    """
     trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
     if not isinstance(trusted_host, str) or not trusted_host:
         return False
@@ -444,6 +506,11 @@ def bound_destination_endpoint_for_flow(
     *,
     allowed_kinds: frozenset[BindingKind],
 ) -> tuple[str, int] | None:
+    """Return the concrete endpoint proven by a matching binding, if any.
+
+    Host-policy checks use this endpoint as connection evidence. A connected
+    fallback match returns the live authoritative endpoint, not a DNS result.
+    """
     trusted_host = flow.metadata.get(metadata_keys.TRUSTED_AUTHORITY_HOST)
     if not isinstance(trusted_host, str) or not trusted_host:
         return None
@@ -484,10 +551,12 @@ def bound_destination_endpoint_for_flow(
 
 
 def binding_snapshot_for_tests() -> dict[str, UpstreamDestinationBinding]:
+    """Return a shallow copy of server bindings for hook-level tests."""
     return dict(_bindings_by_server_id)
 
 
 def reset_for_tests() -> None:
+    """Clear module state between mitm-addon tests."""
     _bindings_by_server_id.clear()
     _server_ids_by_client_id.clear()
     _client_id_by_server_id.clear()
