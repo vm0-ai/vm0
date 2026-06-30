@@ -11,9 +11,9 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconPlus,
   IconChevronRight,
-  IconX,
   IconDots,
   IconPinnedOff,
+  IconChecks,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
@@ -50,56 +50,16 @@ import {
   updatePinnedAgentIds$,
   pinnedAgents$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
-import { unreadAgentIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
+import {
+  markAgentThreadsRead$,
+  unreadAgentIds$,
+} from "../../signals/chat-page/sidebar-unread-threads.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { AgentListDialog } from "./zero-sidebar-dialogs.tsx";
-
-function UnpinButton({
-  agentId,
-  isPrimarySelected,
-}: {
-  agentId: string;
-  isPrimarySelected: boolean;
-}) {
-  const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
-  const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
-  const savingPinned = pinLoadable.state === "loading";
-  const pageSignal = useGet(pageSignal$);
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              const next = pinnedIds.filter((id): id is string => {
-                return id !== null && id !== agentId;
-              });
-              detach(savePinnedIds(next, pageSignal), Reason.DomCallback);
-            }}
-            disabled={savingPinned}
-            className={`flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
-              isPrimarySelected
-                ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
-            }`}
-            aria-label="Unpin"
-          >
-            <IconX size={12} stroke={2} />
-          </button>
-        </TooltipTrigger>
-        <TooltipContent side="right">
-          <p className="text-xs">Unpin</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
 
 function AgentUnreadIndicator() {
   return (
@@ -110,13 +70,19 @@ function AgentUnreadIndicator() {
 function PinnedAgentMenu({
   agentId,
   isPrimarySelected,
+  hasUnread,
 }: {
   agentId: string;
   isPrimarySelected: boolean;
+  hasUnread: boolean;
 }) {
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
   const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
+  const [markReadLoadable, markAgentThreadsRead] = useLoadableSet(
+    markAgentThreadsRead$,
+  );
   const savingPinned = pinLoadable.state === "loading";
+  const markingRead = markReadLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
 
   function unpinAgent() {
@@ -124,6 +90,14 @@ function PinnedAgentMenu({
       return id !== null && id !== agentId;
     });
     detach(savePinnedIds(next, pageSignal), Reason.DomCallback);
+  }
+
+  function markAllRead() {
+    detach(
+      markAgentThreadsRead(agentId, pageSignal),
+      Reason.DomCallback,
+      "markAgentThreadsRead",
+    );
   }
 
   function handleMenuTriggerClick(e: MouseEvent) {
@@ -138,8 +112,8 @@ function PinnedAgentMenu({
           <button
             type="button"
             onClick={handleMenuTriggerClick}
-            disabled={savingPinned}
-            className={`peer pointer-events-auto absolute left-1 top-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible data-[state=open]:visible transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
+            disabled={savingPinned || markingRead}
+            className={`peer pointer-events-auto absolute left-1 top-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md opacity-0 transition-all duration-150 group-[:hover]:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100 disabled:cursor-not-allowed disabled:opacity-50 ${
               isPrimarySelected
                 ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
                 : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
@@ -159,6 +133,12 @@ function PinnedAgentMenu({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
+          {hasUnread && (
+            <DropdownMenuItem onSelect={markAllRead} disabled={markingRead}>
+              <IconChecks size={16} stroke={2} className="mr-2" />
+              Mark all read
+            </DropdownMenuItem>
+          )}
           <DropdownMenuItem onSelect={unpinAgent} disabled={savingPinned}>
             <IconPinnedOff size={16} stroke={2} className="mr-2" />
             Unpin
@@ -190,10 +170,17 @@ function PinnedAgentSideDecorator({
         <PinnedAgentMenu
           agentId={agentId}
           isPrimarySelected={isPrimarySelected}
+          hasUnread={hasUnread}
         />
       )}
       {hasUnread && (
-        <span className="flex items-center justify-center group-hover:hidden group-focus-within:hidden peer-data-[state=open]:hidden">
+        <span
+          className={
+            isDefaultAgent
+              ? "flex items-center justify-center"
+              : "flex items-center justify-center opacity-100 transition-opacity duration-150 group-[:hover]:opacity-0 group-focus-within:opacity-0 peer-data-[state=open]:opacity-0"
+          }
+        >
           <AgentUnreadIndicator />
         </span>
       )}
@@ -328,7 +315,9 @@ export function PinnedAgentListSection() {
                     pathname="/agents/:agentId/chat"
                     options={{ pathParams: { agentId: agent.id } }}
                     className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg text-left text-sm leading-5 no-underline transition-colors duration-200 ${
-                      agentUnreadIndicatorsEnabled ? "pl-2 pr-8" : "px-2"
+                      agentUnreadIndicatorsEnabled || !isDefaultAgent
+                        ? "pl-2 pr-8"
+                        : "px-2"
                     } ${
                       isPrimarySelected
                         ? "bg-gray-200 text-foreground font-medium"
@@ -346,21 +335,12 @@ export function PinnedAgentListSection() {
                       {agent.displayName ?? agent.id}
                     </span>
                   </Link>
-                  {agentUnreadIndicatorsEnabled ? (
-                    <PinnedAgentSideDecorator
-                      agentId={agent.id}
-                      isDefaultAgent={isDefaultAgent}
-                      isPrimarySelected={isPrimarySelected}
-                      hasUnread={hasUnread}
-                    />
-                  ) : agent.id !== defaultAgentId ? (
-                    <div className="absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-                      <UnpinButton
-                        agentId={agent.id}
-                        isPrimarySelected={isPrimarySelected}
-                      />
-                    </div>
-                  ) : null}
+                  <PinnedAgentSideDecorator
+                    agentId={agent.id}
+                    isDefaultAgent={isDefaultAgent}
+                    isPrimarySelected={isPrimarySelected}
+                    hasUnread={agentUnreadIndicatorsEnabled && hasUnread}
+                  />
                 </div>
               );
             })}

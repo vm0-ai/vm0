@@ -1106,6 +1106,67 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
   }, 60_000);
 
+  it("marks all unread chat threads for one agent behind the agent unread feature switch", async () => {
+    const owner = bdd.user();
+    bdd.acceptAgentStorageWrites();
+    const agentA = await bdd.createAgent(owner, {
+      displayName: "Mark-read agent A",
+    });
+    const agentB = await bdd.createAgent(owner, {
+      displayName: "Mark-read agent B",
+    });
+
+    const disabled = await chat.requestMarkAgentThreadsRead(
+      owner,
+      agentA.agentId,
+      [403],
+    );
+    expectApiError(disabled.body);
+    expect(disabled.body.error.code).toBe("FORBIDDEN");
+
+    await connectorsApi.updateFeatureSwitches(owner, {
+      [FeatureSwitchKey.AgentUnreadIndicators]: true,
+    });
+
+    const firstThreadA = await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      prompt: "mark all read A one",
+    });
+    const secondThreadA = await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      prompt: "mark all read A two",
+    });
+    const threadB = await sendNoCreditMessage(owner, {
+      agentId: agentB.agentId,
+      prompt: "mark all read B",
+    });
+
+    expect(
+      new Set(
+        (await chat.listThreadUnreads(owner, agentA.agentId)).map((unread) => {
+          return unread.threadId;
+        }),
+      ),
+    ).toStrictEqual(new Set([firstThreadA, secondThreadA]));
+    expect(new Set(await chat.listUnreadAgents(owner))).toStrictEqual(
+      new Set([agentA.agentId, agentB.agentId]),
+    );
+
+    await chat.markAgentThreadsRead(owner, agentA.agentId);
+
+    await expect(
+      chat.listThreadUnreads(owner, agentA.agentId),
+    ).resolves.toStrictEqual([]);
+    await expect(
+      chat.listThreadUnreads(owner, agentB.agentId),
+    ).resolves.toStrictEqual(
+      expect.arrayContaining([expect.objectContaining({ threadId: threadB })]),
+    );
+    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([
+      agentB.agentId,
+    ]);
+  }, 60_000);
+
   it("pages thread messages with since and before cursors", async () => {
     const owner = bdd.user();
     bdd.acceptAgentStorageWrites();

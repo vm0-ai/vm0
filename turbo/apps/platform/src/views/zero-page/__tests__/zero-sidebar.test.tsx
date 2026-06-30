@@ -4,6 +4,7 @@ import { describe, expect, it } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
+  chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
   chatThreadMessagesContract,
   chatThreadPinContract,
@@ -1124,6 +1125,60 @@ describe("zero sidebar", () => {
       expect(
         within(supportDialogRow).getByLabelText("Unread"),
       ).toBeInTheDocument();
+    });
+  });
+
+  it("marks all pinned agent chats read from the agent menu", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID],
+    });
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
+    const markedAgentIds: string[] = [];
+    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
+      return respond(200, { agentIds: unreadAgentIds });
+    });
+    context.mocks.api(
+      chatThreadMarkAgentReadContract.markAgentRead,
+      ({ body, respond }) => {
+        markedAgentIds.push(body.agentId);
+        unreadAgentIds = unreadAgentIds.filter((id) => {
+          return id !== body.agentId;
+        });
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
+    });
+
+    const nav = await waitFor(() => {
+      const current = sidebar();
+      expect(within(current).getByText("Research Agent")).toBeInTheDocument();
+      return current;
+    });
+    const researchSidebarRow = agentRowByName(nav, "Research Agent");
+    await waitFor(() => {
+      expect(
+        within(researchSidebarRow).getByLabelText("Unread"),
+      ).toBeInTheDocument();
+    });
+
+    click(within(researchSidebarRow).getByLabelText("Open agent menu"));
+    click(menuItemByText("Mark all read"));
+
+    await waitFor(() => {
+      expect(markedAgentIds).toStrictEqual([RESEARCH_AGENT_ID]);
+      expect(
+        within(researchSidebarRow).queryByLabelText("Unread"),
+      ).not.toBeInTheDocument();
     });
   });
 
