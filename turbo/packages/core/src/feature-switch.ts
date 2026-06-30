@@ -160,6 +160,11 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Resend email service connector",
     enabled: false,
   },
+  [FeatureSwitchKey.PexelsConnector]: {
+    maintainer: "bingjie@vm0.ai",
+    description: "Enable the Pexels stock photo and video connector",
+    enabled: false,
+  },
   [FeatureSwitchKey.SpotifyConnector]: {
     maintainer: "yuma@vm0.ai",
     description: "Enable the Spotify connector integration",
