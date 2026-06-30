@@ -9,11 +9,14 @@ import {
   zeroWorkflowsDetailContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { describe, expect, it, onTestFinished } from "vitest";
 
 import { createApp } from "../../../app-factory";
@@ -79,6 +82,12 @@ const routeMocks = createZeroRouteMocks(context);
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
 type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
 type RunnerClaim = Awaited<ReturnType<typeof api.claimRunnerJob>>;
+type SeededRunStatus =
+  | "cancelled"
+  | "completed"
+  | "failed"
+  | "pending"
+  | "running";
 
 const seedUsagePricing$ = command(
   async (
@@ -168,6 +177,85 @@ const usageMessagesForRun$ = command(
     return rows.filter((row) => {
       return row.usagePayload !== null;
     });
+  },
+);
+
+const seedChatThreadRun$ = command(
+  async (
+    { set },
+    args: {
+      readonly userId: string;
+      readonly orgId: string;
+      readonly agentId: string;
+      readonly threadId: string;
+      readonly status: SeededRunStatus;
+    },
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const db = set(writeDb$);
+    const [session] = await db
+      .insert(agentSessions)
+      .values({
+        userId: args.userId,
+        orgId: args.orgId,
+        agentComposeId: args.agentId,
+      })
+      .returning({ id: agentSessions.id });
+    signal.throwIfAborted();
+    if (!session) {
+      throw new Error("Expected chat-thread run seed to create a session");
+    }
+
+    const [run] = await db
+      .insert(agentRuns)
+      .values({
+        userId: args.userId,
+        orgId: args.orgId,
+        sessionId: session.id,
+        status: args.status,
+        prompt: "bdd active unread aggregate",
+        completedAt:
+          args.status === "pending" || args.status === "running"
+            ? null
+            : nowDate(),
+      })
+      .returning({ id: agentRuns.id });
+    signal.throwIfAborted();
+    if (!run) {
+      throw new Error("Expected chat-thread run seed to create a run");
+    }
+
+    await db.insert(zeroRuns).values({
+      id: run.id,
+      triggerSource: "cli",
+      chatThreadId: args.threadId,
+    });
+    signal.throwIfAborted();
+    return run.id;
+  },
+);
+
+const updateRunStatus$ = command(
+  async (
+    { set },
+    args: {
+      readonly runId: string;
+      readonly status: SeededRunStatus;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    const db = set(writeDb$);
+    await db
+      .update(agentRuns)
+      .set({
+        status: args.status,
+        completedAt:
+          args.status === "pending" || args.status === "running"
+            ? null
+            : nowDate(),
+      })
+      .where(eq(agentRuns.id, args.runId));
+    signal.throwIfAborted();
   },
 );
 
@@ -1081,6 +1169,37 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
     await connectorsApi.updateFeatureSwitches(owner, {
       [FeatureSwitchKey.AgentUnreadIndicators]: true,
     });
+    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
+
+    const activeUnreadThread = await sendNoCreditMessage(owner, {
+      agentId: agentA.agentId,
+      prompt: "unread aggregate with active run",
+    });
+    if (!owner.orgId) {
+      throw new Error("Expected owner to belong to an org");
+    }
+    const activeRunId = await store.set(
+      seedChatThreadRun$,
+      {
+        userId: owner.userId,
+        orgId: owner.orgId,
+        agentId: agentA.agentId,
+        threadId: activeUnreadThread,
+        status: "running",
+      },
+      context.signal,
+    );
+    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
+
+    await store.set(
+      updateRunStatus$,
+      { runId: activeRunId, status: "completed" },
+      context.signal,
+    );
+    await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([
+      agentA.agentId,
+    ]);
+    await chat.markThreadRead(owner, activeUnreadThread);
     await expect(chat.listUnreadAgents(owner)).resolves.toStrictEqual([]);
 
     const threadA = await sendNoCreditMessage(owner, {

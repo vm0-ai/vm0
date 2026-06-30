@@ -655,8 +655,29 @@ function toPagedMessage(
 // Single zero_runs JOIN agent_runs scan used to derive activeRunIds in JS,
 // paying the join cost once on the hot chat-thread detail path. Rows are
 // ordered newest-first.
+const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
+
 function isActiveRunStatus(status: string): boolean {
-  return status === "queued" || status === "pending" || status === "running";
+  return (ACTIVE_RUN_STATUSES as readonly string[]).includes(status);
+}
+
+function activeRunStatusSqlList() {
+  return sql.join(
+    ACTIVE_RUN_STATUSES.map((status) => {
+      return sql`${status}`;
+    }),
+    sql.raw(", "),
+  );
+}
+
+function noActiveRunsForCurrentThreadCondition() {
+  return sql<boolean>`NOT EXISTS (
+    SELECT 1
+    FROM ${zeroRuns}
+    INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
+    WHERE ${zeroRuns.chatThreadId} = ${chatThreads.id}
+      AND ${agentRuns.status} IN (${activeRunStatusSqlList()})
+  )`;
 }
 
 interface ThreadRunSummaryRow {
@@ -817,7 +838,7 @@ function chatThreadListProjection() {
       FROM ${zeroRuns}
       INNER JOIN ${agentRuns} ON ${agentRuns.id} = ${zeroRuns.id}
       WHERE ${zeroRuns.chatThreadId} = ${chatThreads.id}
-        AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+        AND ${agentRuns.status} IN (${activeRunStatusSqlList()})
     )`,
   } as const;
 }
@@ -1038,6 +1059,7 @@ export function zeroChatThreadUnreadAgentIds(args: {
             isNull(chatThreads.lastReadMessageId),
             sql`${chatThreads.lastReadMessageId} <> ${lastMessage.id}`,
           ),
+          noActiveRunsForCurrentThreadCondition(),
         ),
       );
     return rows.map((row) => {
@@ -1459,8 +1481,6 @@ export function chatThreadForRun(
     return { chatThreadId: row.chatThreadId, userId: row.userId };
   });
 }
-
-const ACTIVE_RUN_STATUSES = ["queued", "pending", "running"] as const;
 
 /**
  * Delete a chat thread after winding down everything attached to it. Deleting a
