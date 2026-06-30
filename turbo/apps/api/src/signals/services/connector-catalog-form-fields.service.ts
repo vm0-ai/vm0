@@ -23,7 +23,6 @@ type ManualGrantSubmittedValuesNormalizationResult =
   | {
       readonly ok: true;
       readonly values: Readonly<Record<string, string>>;
-      readonly usesPublicIds: boolean;
       readonly errorNamesByPrivateName: Readonly<Record<string, string>>;
     }
   | { readonly ok: false; readonly message: string };
@@ -161,7 +160,6 @@ export function normalizeManualGrantSubmittedValues(args: {
   return {
     ok: true,
     values: normalizedValues,
-    usesPublicIds,
     errorNamesByPrivateName: Object.fromEntries(
       descriptors.map((descriptor) => {
         return [
