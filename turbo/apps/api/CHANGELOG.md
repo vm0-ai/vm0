@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.189.2](https://github.com/vm0-ai/vm0/compare/api-v1.189.1...api-v1.189.2) (2026-06-29)
+
+
+### Bug Fixes
+
+* **cli:** make permission-deny base-aware ([#19330](https://github.com/vm0-ai/vm0/issues/19330)) ([3e2c7f6](https://github.com/vm0-ai/vm0/commit/3e2c7f64f81518f36df41d81521201dc8bff51ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.126.2
+    * @vm0/connectors bumped to 1.114.1
+    * @vm0/core bumped to 8.376.2
+    * @vm0/db bumped to 1.78.2
+
 ## [1.189.1](https://github.com/vm0-ai/vm0/compare/api-v1.189.0...api-v1.189.1) (2026-06-29)
 
 
