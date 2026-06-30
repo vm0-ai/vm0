@@ -8,8 +8,9 @@
 //! direct-queue fallback request immediate poll wakeups so the server remains
 //! the source of truth for job selection. Ably cancel notifications bypass
 //! discovery and only signal local cancellation handles. Invalid job
-//! notifications and unsupported profiles are ignored without mutating
-//! discovery wakeup state.
+//! notifications are ignored. Profile support is checked only after target
+//! routing, so target-other notifications defer even when their profile is
+//! missing or unsupported.
 //!
 //! The direct candidate queues are an optimization, not the only delivery path:
 //! target-other deferrals, non-target-other incomplete notifications, full or
@@ -1845,6 +1846,50 @@ mod tests {
         assert!(direct_rx.broadcast.try_recv().is_err());
         assert!(!snapshot.poll_now);
         assert!(snapshot.deferred_poll_at.is_some());
+    }
+
+    #[tokio::test]
+    async fn target_other_runner_job_notification_defers_before_profile_routing() {
+        for data in [
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000001",
+                "profile": "vm0/large",
+                "targetRunnerId": "runner-2"
+            }),
+            serde_json::json!({
+                "runId": "00000000-0000-0000-0000-000000000001",
+                "targetRunnerId": "runner-2"
+            }),
+        ] {
+            let tokens = Mutex::new(HashMap::new());
+            let wakeups = PollWakeups::new(true);
+            let (direct_senders, mut direct_rx) = direct_candidate_channels();
+            let profiles = default_profiles();
+            let _ = wakeups
+                .wait_for_poll_due(
+                    &CancellationToken::new(),
+                    Duration::from_secs(30),
+                    Duration::from_secs(5),
+                )
+                .await;
+            let msg = make_message(Some("job"), data);
+
+            handle_ably_message(
+                &msg,
+                "runner-1",
+                &profiles,
+                &wakeups,
+                &direct_senders,
+                &tokens,
+            )
+            .await;
+
+            let snapshot = wakeups.snapshot().await;
+            assert!(direct_rx.targeted.try_recv().is_err());
+            assert!(direct_rx.broadcast.try_recv().is_err());
+            assert!(!snapshot.poll_now);
+            assert!(snapshot.deferred_poll_at.is_some());
+        }
     }
 
     #[tokio::test]
