@@ -31,6 +31,7 @@ import {
   mockChatLifecycle,
   PLACEHOLDER,
 } from "../../zero-page/__tests__/chat-test-helpers.ts";
+import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../../zero-page/workflow-trigger-automations-page.tsx";
 
 const context = testContext();
 const CURRENT_USER_ID = "test-user-123";
@@ -738,6 +739,7 @@ describe("agent workflows tab", () => {
 
   it("shows all visible workflows on the workspace workflows page", async () => {
     mockAgentPageApis();
+    mockChatLifecycle(context);
     mockWorkflowApis([
       salesResearch(),
       opsPlaybook(),
@@ -776,6 +778,14 @@ describe("agent workflows tab", () => {
     expect(dialog).toBeInTheDocument();
     expect(within(dialog).getByText("Research Bot")).toBeInTheDocument();
     expect(within(dialog).getByText("Support Bot")).toBeInTheDocument();
+
+    click(buttonByText("Research Bot", dialog));
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${AGENT_ID}/chat`);
+    });
+    await expect(
+      screen.findByDisplayValue(CREATE_WORKFLOW_WITH_CHAT_PROMPT),
+    ).resolves.toBeInTheDocument();
   });
 
   it("shows the agent's workflows and links into the detail page", async () => {

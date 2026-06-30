@@ -105,6 +105,9 @@ interface WorkflowAutomationOption {
   readonly prompt: string;
 }
 
+export const CREATE_WORKFLOW_WITH_CHAT_PROMPT =
+  "Help me create a Zero workflow for this agent. Use the workflow-setup skill, then ask me for the automation goal, trigger, action, and allowed side effects before creating the workflow and trigger.";
+
 const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
   {
     kind: "manual",
@@ -772,8 +775,20 @@ export function CreateWorkflowAutomationDialog() {
     agents.find((agent) => {
       return agent.id === selectedAgentId;
     }) ?? null;
+  const creatingWorkflow = intent === "workflow" || intent === "workflow-chat";
+  const creatingWorkflowWithChat = intent === "workflow-chat";
 
   const selectAgent = (agentId: string) => {
+    if (creatingWorkflowWithChat) {
+      setOpen(false);
+      navigate(ROUTES.agentChat, {
+        pathParams: { agentId },
+        searchParams: new URLSearchParams({
+          prompt: CREATE_WORKFLOW_WITH_CHAT_PROMPT,
+        }),
+      });
+      return;
+    }
     setSelectedAgentId(agentId);
     setStep(2);
   };
@@ -798,8 +813,6 @@ export function CreateWorkflowAutomationDialog() {
       }),
     });
   };
-
-  const creatingWorkflow = intent === "workflow";
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
