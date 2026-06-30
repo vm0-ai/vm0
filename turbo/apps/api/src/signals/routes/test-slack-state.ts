@@ -886,6 +886,12 @@ async function maybeUpsertSlackInstallationForPost(
   if (!shouldUpsertSlackInstallationForPost(body)) {
     return;
   }
+  if (body.seed_connection && !hasExplicitSlackInstallationFields(body)) {
+    const existing = await slackInstallation(db, body.team_id!);
+    if (existing) {
+      return;
+    }
+  }
   await upsertSlackInstallation(db, {
     slackWorkspaceId: body.team_id!,
     slackWorkspaceName: body.workspace_name ?? DEFAULT_WORKSPACE_NAME,
@@ -901,6 +907,16 @@ async function maybeUpsertSlackInstallationForPost(
   });
 }
 
+function hasExplicitSlackInstallationFields(body: TestSlackStatePostBody) {
+  return (
+    body.workspace_name !== undefined ||
+    body.bot_user_id !== undefined ||
+    body.bot_scopes !== undefined ||
+    body.bot_token !== undefined ||
+    body.installation_org_id !== undefined
+  );
+}
+
 function shouldUpsertSlackInstallationForPost(
   body: TestSlackStatePostBody,
 ): boolean {
@@ -912,12 +928,7 @@ function shouldUpsertSlackInstallationForPost(
     return true;
   }
 
-  return (
-    body.workspace_name !== undefined ||
-    body.bot_user_id !== undefined ||
-    body.bot_scopes !== undefined ||
-    body.bot_token !== undefined
-  );
+  return hasExplicitSlackInstallationFields(body);
 }
 
 async function maybeDeleteSlackConnectionForPost(
