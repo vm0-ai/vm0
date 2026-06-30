@@ -1504,19 +1504,23 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             }
             // Heartbeat: report runner state to the server
             _ = heartbeat_tick.tick() => {
-                send_heartbeat(&hb_ctx, current_mode).await;
+                let live_mode = *mode_rx.borrow();
+                send_heartbeat(&hb_ctx, live_mode).await;
             }
             // Immediate heartbeat after session affinity state changes —
             // eliminates the up-to-10s blind spot for affinity routing.
             _ = park_notify.notified(), if matches!(mode, RunnerMode::Running | RunnerMode::Draining) => {
-                let source = match mode {
+                let live_mode = *mode_rx.borrow();
+                let source = match live_mode {
                     RunnerMode::Running if can_discover => "main",
                     RunnerMode::Running => "budget_exhausted",
                     RunnerMode::Draining => "draining",
                     RunnerMode::Stopping | RunnerMode::Stopped => "inactive",
                 };
-                info!(source, "session affinity state triggered immediate heartbeat");
-                send_heartbeat(&hb_ctx, current_mode).await;
+                if matches!(live_mode, RunnerMode::Running | RunnerMode::Draining) {
+                    info!(source, "session affinity state triggered immediate heartbeat");
+                    send_heartbeat(&hb_ctx, live_mode).await;
+                }
             }
         }
     }
