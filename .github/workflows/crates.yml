@@ -735,7 +735,7 @@ jobs:
             --config "$RUNNER_DIR/runner.yaml" \
             --local
 
-          PROMPT='This is a CI smoke test for Claude Code active input. The initial prompt token is ci-initial-5k2. Run Bash command `sleep 3` before your final answer. During that sleep, two follow-up user messages will arrive, each containing one token. After the sleep and after reading both follow-up messages, reply with exactly RESULT=ci-initial-5k2+FIRST+SECOND, replacing FIRST and SECOND with the exact text of the first and second follow-up messages. If either follow-up message is missing, reply exactly RESULT=missing. Do not include any other text.'
+          PROMPT='This is a CI smoke test for Claude Code active input. The initial prompt token is ci-initial-5k2. Before your final answer, run Bash command `sleep 1` so two follow-up user messages can arrive, each containing one token. After the command and after reading both follow-up messages, reply with exactly RESULT=ci-initial-5k2+FIRST+SECOND, replacing FIRST and SECOND with the exact text of the first and second follow-up messages. If either follow-up message is missing, reply exactly RESULT=missing. Do not include any other text.'
           EXPECTED_RESULT='RESULT=ci-initial-5k2+ci-active-one-7f3+ci-active-two-9q4'
 
           echo "--- Submitting active-input smoke job ---"
@@ -746,8 +746,8 @@ jobs:
             --env ANTHROPIC_MODEL=claude-haiku-4-5 \
             --secret-env ANTHROPIC_API_KEY="$ANTHROPIC_API_KEY" \
             --prompt "$PROMPT" \
-            --active-input 'after=1s,text=ci-active-one-7f3' \
-            --active-input 'after=2s,text=ci-active-two-9q4' 2>&1); then
+            --active-input 'after=100ms,text=ci-active-one-7f3' \
+            --active-input 'after=300ms,text=ci-active-two-9q4' 2>&1); then
             echo "$SUBMIT_OUTPUT"
             print_service_logs
             fail "real Claude Code active-input local submit smoke failed"
@@ -878,7 +878,7 @@ jobs:
             --config "$RUNNER_DIR/runner.yaml" \
             --local
 
-          PROMPT='This is a CI smoke test for Codex active input. The initial prompt token is codex-initial-8m6. Run shell command `sleep 3` before your final answer. During that sleep, two follow-up user messages will arrive, each containing one token. After the sleep and after reading both follow-up messages, reply with exactly RESULT=codex-initial-8m6+FIRST+SECOND, replacing FIRST and SECOND with the exact text of the first and second follow-up messages. If either follow-up message is missing, reply exactly RESULT=missing. Do not include any other text.'
+          PROMPT='This is a CI smoke test for Codex active input. The initial prompt token is codex-initial-8m6. Before your final answer, run shell command `sleep 1` so two follow-up user messages can arrive, each containing one token. After the command and after reading both follow-up messages, reply with exactly RESULT=codex-initial-8m6+FIRST+SECOND, replacing FIRST and SECOND with the exact text of the first and second follow-up messages. If either follow-up message is missing, reply exactly RESULT=missing. Do not include any other text.'
           EXPECTED_RESULT='RESULT=codex-initial-8m6+codex-active-one-2p9+codex-active-two-6v1'
 
           echo "--- Submitting Codex active-input smoke job ---"
@@ -889,8 +889,8 @@ jobs:
             --env OPENAI_MODEL=gpt-5.4-mini \
             --secret-env OPENAI_API_KEY="$OPENAI_API_KEY" \
             --prompt "$PROMPT" \
-            --active-input 'after=1s,text=codex-active-one-2p9' \
-            --active-input 'after=2s,text=codex-active-two-6v1' 2>&1); then
+            --active-input 'after=100ms,text=codex-active-one-2p9' \
+            --active-input 'after=300ms,text=codex-active-two-6v1' 2>&1); then
             echo "$SUBMIT_OUTPUT"
             print_service_logs
             fail "real Codex active-input local submit smoke failed"

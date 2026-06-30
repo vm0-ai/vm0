@@ -1414,13 +1414,13 @@ mod tests {
                 DelayedActiveInput {
                     sequence: 1,
                     message_id: "msg-1".to_string(),
-                    after: Duration::from_millis(1),
+                    after: Duration::ZERO,
                     text: "first".to_string(),
                 },
                 DelayedActiveInput {
                     sequence: 2,
                     message_id: "msg-2".to_string(),
-                    after: Duration::from_millis(1),
+                    after: Duration::ZERO,
                     text: "second".to_string(),
                 },
             ],
