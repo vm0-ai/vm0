@@ -15,6 +15,7 @@ import {
   type ApiTestUser,
   type ApiTestUserOptions,
 } from "./helpers/api-bdd";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createChatFilesBddApi } from "./helpers/api-bdd-chat-files";
 import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
@@ -24,6 +25,7 @@ const bdd = createBddApi(context);
 const chat = createChatFilesBddApi(context);
 createMiscRoutesApi(context);
 const mocks = createZeroRouteMocks(context);
+const api = createRunsAutomationsApi(context);
 
 function user(options: ApiTestUserOptions = {}): ApiTestUser {
   return bdd.user(options);
@@ -126,6 +128,36 @@ function names(workflows: readonly { readonly name: string }[]): string[] {
   });
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event) && event.run_id === runId;
+    });
+  });
+}
+
+function expectZeroPreCreateSource(runId: string, source: string): void {
+  expect(sandboxOperationEventsForRun(runId)).toStrictEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        op_type: "api_dispatch_pre_create_agent_run",
+        zero_pre_create_source: source,
+      }),
+    ]),
+  );
+}
+
 describe("zero workflows", () => {
   it("creates private workflows by default and hides them from other org members", async () => {
     const owner = user();
@@ -161,6 +193,36 @@ describe("zero workflows", () => {
       [200],
     );
     expect(names(memberList.body)).not.toContain(created.body.name);
+  });
+
+  it("runs a workflow slash command with workflow timing attribution", async () => {
+    const actor = user({ orgRole: "org:admin" });
+    await api.grantProEntitlement(actor);
+    await api.ensureOrgModelProvider(actor);
+    const agent = await createAgent(actor, {
+      displayName: "Workflow Runner Agent",
+      visibility: "private",
+    });
+    api.configureRunnerGroup();
+
+    const created = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: `run-attribution-workflow-${randomUUID().slice(0, 8)}`,
+      displayName: "Run Attribution Workflow",
+      instruction: "# run attribution workflow",
+    });
+
+    const run = await accept(
+      detailClient().run({
+        headers: authHeaders(actor),
+        params: { workflowId: created.body.id },
+      }),
+      [200],
+    );
+
+    expect(run.body.chatThreadId).toStrictEqual(expect.any(String));
+    expect(run.body.runId).toStrictEqual(expect.any(String));
+    expectZeroPreCreateSource(run.body.runId, "workflow_slash_command");
   });
 
   it("requires agent write-permission to create workflows under an agent", async () => {

@@ -8,6 +8,7 @@ import { notFound } from "../../lib/error";
 import type { AuthContext } from "../../types/auth";
 import { sendNormalMessage$ } from "../routes/zero-chat-messages";
 import { writeDb$ } from "../external/db";
+import { ApiDispatchTimingCollector } from "./api-dispatch-timing.service";
 
 export const sendChatThreadMessageV1$ = command(
   async (
@@ -41,6 +42,7 @@ export const sendChatThreadMessageV1$ = command(
     }
 
     const messageId = randomUUID();
+    const timing = new ApiDispatchTimingCollector();
     const result = await set(
       sendNormalMessage$,
       {
@@ -48,6 +50,8 @@ export const sendChatThreadMessageV1$ = command(
         userId: args.auth.userId,
         orgId: args.auth.orgId,
         apiStartTime: args.apiStartTime,
+        timing,
+        zeroPreCreateSource: "chat_thread_v1_send",
         body: {
           agentId: thread.agentComposeId,
           threadId: thread.id,

@@ -45,6 +45,10 @@ type ZeroRunOrigin =
   | "workflow_trigger"
   | "goal_continuation"
   | "zero_integration";
+export type ZeroPreCreateSource =
+  | "chat_callback_auto_send"
+  | "chat_thread_v1_send"
+  | "workflow_slash_command";
 
 const DISALLOWED_TOOLS = [
   "CronCreate",
@@ -151,6 +155,7 @@ interface CreateZeroRunCommandArgs {
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
   readonly timing?: ApiDispatchTimingCollector;
+  readonly zeroPreCreateSource?: ZeroPreCreateSource;
 }
 
 interface CreateZeroIntegrationRunCommandArgs {
@@ -428,10 +433,14 @@ function buildZeroRunExtraEnvironment(args: {
   };
 }
 
-function zeroRunTimingDimensions(
-  origin: ZeroRunOrigin,
-): ApiDispatchTimingDimensions {
-  return { zero_run_origin: origin };
+function zeroRunTimingDimensions(args: {
+  readonly origin: ZeroRunOrigin;
+  readonly source?: ZeroPreCreateSource;
+}): ApiDispatchTimingDimensions {
+  return {
+    zero_run_origin: args.origin,
+    ...(args.source ? { zero_pre_create_source: args.source } : {}),
+  };
 }
 
 function zeroRunOrigin(args: {
@@ -745,11 +754,12 @@ function buildZeroCreateAgentRunArgs(args: {
     },
     dispatchFailedCallbacks: command.dispatchFailedCallbacks,
     timing: args.timing,
-    timingDimensions: zeroRunTimingDimensions(
-      zeroRunOrigin({
+    timingDimensions: zeroRunTimingDimensions({
+      origin: zeroRunOrigin({
         command,
       }),
-    ),
+      source: command.zeroPreCreateSource,
+    }),
   };
 }
 
@@ -793,7 +803,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
     validateEnvironmentReferences: false,
     dispatchFailedCallbacks: command.dispatchFailedCallbacks,
     timing: args.timing,
-    timingDimensions: zeroRunTimingDimensions("zero_integration"),
+    timingDimensions: zeroRunTimingDimensions({ origin: "zero_integration" }),
   };
 }
 

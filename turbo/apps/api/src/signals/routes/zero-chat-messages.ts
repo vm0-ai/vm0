@@ -47,7 +47,10 @@ import {
 import { env } from "../../lib/env";
 import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
 import type { AuthContext } from "../../types/auth";
-import { createZeroRun$ } from "../services/zero-runs-create.service";
+import {
+  createZeroRun$,
+  type ZeroPreCreateSource,
+} from "../services/zero-runs-create.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
 import {
   ApiDispatchTimingCollector,
@@ -184,6 +187,7 @@ interface NormalSendArgs {
   readonly orgId: string;
   readonly apiStartTime: number;
   readonly timing?: ApiDispatchTimingCollector;
+  readonly zeroPreCreateSource?: ZeroPreCreateSource;
 }
 
 interface PreparedNormalSend {
@@ -2443,6 +2447,9 @@ function buildCreateZeroRunArgs(params: {
       prepared.computerUseHostGrant?.displayName ?? null,
     ),
     ...(args.timing ? { timing: args.timing } : {}),
+    ...(args.zeroPreCreateSource
+      ? { zeroPreCreateSource: args.zeroPreCreateSource }
+      : {}),
   };
 }
 

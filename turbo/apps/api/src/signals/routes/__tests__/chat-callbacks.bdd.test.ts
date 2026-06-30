@@ -345,6 +345,52 @@ function pushPayload(call: readonly unknown[] | undefined): unknown {
   return JSON.parse(typeof raw === "string" ? raw : "{}");
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event) && event.run_id === runId;
+    });
+  });
+}
+
+function expectZeroPreCreateSource(runId: string, source: string): void {
+  expect(sandboxOperationEventsForRun(runId)).toStrictEqual(
+    expect.arrayContaining([
+      expect.objectContaining({
+        op_type: "api_dispatch_pre_create_agent_run",
+        zero_pre_create_source: source,
+      }),
+    ]),
+  );
+}
+
+function deferredGate(): {
+  readonly wait: () => Promise<void>;
+  readonly release: () => void;
+} {
+  let releaseGate = (): void => {};
+  const promise = new Promise<void>((resolve) => {
+    releaseGate = resolve;
+  });
+  return {
+    wait: () => {
+      return promise;
+    },
+    release: releaseGate,
+  };
+}
+
 describe("CHAT-02: completed chat callback", () => {
   it("persists assistant output, reorders threads, titles the thread, recommends follow-ups, notifies, and auto-sends the queued template message", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
@@ -656,6 +702,7 @@ describe("CHAT-02: completed chat callback", () => {
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, "Daily support queue summary is ready."),
     ]);
+
     await completeChatRunOk(first.runId, sandboxHeaders, {
       lastEventSequence: 0,
     });
@@ -698,6 +745,122 @@ describe("CHAT-02: completed chat callback", () => {
       }),
     ).toHaveLength(2);
   });
+
+  it("auto-sends the queued message before completed-run LLM side effects finish", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "finish the current turn",
+    });
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "queued while side effects wait",
+    });
+
+    const queuedBeforeComplete = await chat.listThreadMessages(
+      actor,
+      first.threadId,
+    );
+    const queued = userMessages(queuedBeforeComplete.messages).find(
+      (message) => {
+        return message.content === "queued while side effects wait";
+      },
+    );
+    if (!queued) {
+      throw new Error("Expected the queued user message to be listed");
+    }
+
+    const openRouterGate = deferredGate();
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions(async (body) => {
+      await openRouterGate.wait();
+      const systemContent = body.messages[0]?.content ?? "";
+      if (
+        systemContent.includes("Generate up to three concise follow-up prompts")
+      ) {
+        return JSON.stringify([
+          { prompt: "Review the queued result", kind: "talk" },
+        ]);
+      }
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        return "Deferred Side Effects";
+      }
+      return "Deferred summary";
+    });
+
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([assistantEvent(0, "completed answer")]);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const afterAutoSend = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        return userMessages(messages).some((message) => {
+          return (
+            message.revokesMessageId === queued.id &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    const markerBeforeRelease = lifecycleMarkers(
+      afterAutoSend.messages,
+      first.runId,
+      "completed",
+    )[0];
+    if (!markerBeforeRelease) {
+      throw new Error(
+        "Expected completed marker before releasing side effects",
+      );
+    }
+    expect(markerBeforeRelease.recommendedFollowups).toBeUndefined();
+
+    const claimed = userMessages(afterAutoSend.messages).find((message) => {
+      return message.revokesMessageId === queued.id;
+    });
+    if (!claimed?.runId) {
+      throw new Error("Expected the queued message to auto-send");
+    }
+    expect(claimed.runId).not.toBe(first.runId);
+    expectZeroPreCreateSource(claimed.runId, "chat_callback_auto_send");
+
+    openRouterGate.release();
+    const afterFollowups = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        return lifecycleMarkers(messages, first.runId, "completed").some(
+          (message) => {
+            return (
+              message.id === markerBeforeRelease.id &&
+              (message.recommendedFollowups?.length ?? 0) === 1
+            );
+          },
+        );
+      },
+    );
+    expect(
+      lifecycleMarkers(afterFollowups.messages, first.runId, "completed"),
+    ).toHaveLength(1);
+    const markerAfterRelease = lifecycleMarkers(
+      afterFollowups.messages,
+      first.runId,
+      "completed",
+    )[0];
+    expect(markerAfterRelease?.id).toBe(markerBeforeRelease.id);
+    expect(markerAfterRelease?.recommendedFollowups).toStrictEqual([
+      { prompt: "Review the queued result", kind: "talk" },
+    ]);
+
+    await api.requestCancelRun(actor, claimed.runId, [200]);
+    await waitForRunStatus(actor, claimed.runId, "cancelled");
+  }, 90_000);
 });
 
 describe("CHAT-02: chat output extraction and progress callbacks", () => {
@@ -1178,6 +1341,13 @@ describe("CHAT-02: auto-send after failures", () => {
       ],
     });
 
+    await chatCallbacks.registerPushSubscription(actor);
+    chatCallbacks.enableVapid();
+    const pushGate = deferredGate();
+    context.mocks.webpush.sendNotification.mockImplementation(() => {
+      return pushGate.wait();
+    });
+
     context.mocks.ably.publish.mockClear();
     await failChatRun(second.runId, secondHeaders, "boom");
 
@@ -1204,6 +1374,7 @@ describe("CHAT-02: auto-send after failures", () => {
       );
     }
     expect(claimed.runId).not.toBe(second.runId);
+    expectZeroPreCreateSource(claimed.runId, "chat_callback_auto_send");
     expect(claimed.attachFiles).toHaveLength(1);
     expect(claimed.attachFiles?.[0]).toMatchObject({
       filename: "queued-notes.txt",
@@ -1234,6 +1405,13 @@ describe("CHAT-02: auto-send after failures", () => {
     expect(appended).toContain(`[Web file]\n   [ID] ${contextFile.id}`);
     expect(appended).not.toContain("# Web Chat Run Context");
     expect(autoContext.body.sessionId).toBe(`bdd-cli-${first.runId}`);
+
+    pushGate.release();
+    await expect
+      .poll(() => {
+        return context.mocks.webpush.sendNotification.mock.calls.length;
+      })
+      .toBe(1);
 
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
