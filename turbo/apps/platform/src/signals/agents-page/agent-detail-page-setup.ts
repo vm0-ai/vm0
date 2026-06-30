@@ -2,7 +2,6 @@ import { command } from "ccstate";
 import type { TeamComposeItem } from "@vm0/core";
 import { createElement } from "react";
 import { AgentDetailPage } from "../../views/team-page/zero-team-detail-page.tsx";
-import { activeRoute$ } from "../active-route.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detachedNavigateTo$, searchParams$ } from "../route.ts";
@@ -59,14 +58,9 @@ export const setupAgentDetailPage$ = command(
     set(rememberLastUsedAgentId$, agentId);
     const features = get(featureSwitch$);
     if (features[FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]) {
-      const route = get(activeRoute$);
       const params = get(searchParams$);
       const tab = params.get("tab");
-      if (
-        route === "agentWorkflows" ||
-        tab === "automations" ||
-        tab === "workflows"
-      ) {
+      if (tab === "automations" || tab === "workflows") {
         const nextParams = new URLSearchParams(params);
         nextParams.delete("tab");
         set(detachedNavigateTo$, ROUTES.agentDetail, {
