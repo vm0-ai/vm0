@@ -541,7 +541,7 @@ pub fn is_codex_oauth_mode() -> bool {
 pub fn use_mock_codex() -> bool {
     *USE_MOCK_CODEX
 }
-/// Whether the disabled Codex app-server backend is explicitly enabled.
+/// Whether the Codex app-server backend is explicitly enabled.
 pub fn use_codex_app_server_backend() -> bool {
     *USE_CODEX_APP_SERVER_BACKEND
 }
