@@ -26,16 +26,20 @@ static SANDBOX_OPS_LOG: LazyLock<String> = LazyLock::new(|| {
 static SANDBOX_OPS_APPEND_LOCK: Mutex<()> = Mutex::new(());
 static SANDBOX_OPS_LOG_OVERRIDE: Mutex<Option<PathBuf>> = Mutex::new(None);
 
-/// Path to the sandbox operations log file in JSONL format.
+/// Legacy process-env-derived sandbox operations log file in JSONL format.
 ///
 /// The path is resolved through the guest runtime path contract in
 /// `guest_contracts::runtime_paths`. An empty string means the guest runtime
 /// path could not be resolved and sandbox operation logging is unavailable.
+///
+/// This accessor does not report the explicit path installed through
+/// [`set_sandbox_ops_log_file`]; `record_sandbox_op` uses that override when it
+/// is present.
 pub fn sandbox_ops_log() -> &'static str {
     &SANDBOX_OPS_LOG
 }
 
-/// Set the sandbox operations log path explicitly for the current process.
+/// Set the sandbox operations log path used by future `record_sandbox_op` calls.
 pub fn set_sandbox_ops_log_file(path: impl AsRef<Path>) {
     let mut state = SANDBOX_OPS_LOG_OVERRIDE
         .lock()
@@ -130,10 +134,11 @@ struct SandboxOpEntry {
 
 /// Record a sandbox operation to the telemetry log on a best-effort basis.
 ///
-/// This helper is non-fatal: it no-ops when [`sandbox_ops_log`] is empty, and
-/// serialization or append/open/lock/write failures are not propagated to the
-/// caller. Guest operations should not treat a successful return from this
-/// function as proof that a telemetry entry was written.
+/// This helper is non-fatal: it no-ops when no explicit log path is configured
+/// and [`sandbox_ops_log`] is empty. Serialization or append/open/lock/write
+/// failures are not propagated to the caller. Guest operations should not treat
+/// a successful return from this function as proof that a telemetry entry was
+/// written.
 ///
 /// Each JSONL entry contains `ts`, `action_type`, `duration_ms`, `success`, and
 /// an optional `error` field. The format is compatible with the TypeScript
