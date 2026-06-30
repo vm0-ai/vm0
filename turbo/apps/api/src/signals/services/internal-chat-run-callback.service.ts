@@ -1712,13 +1712,26 @@ async function buildCreateQueuedChatRunInput(args: {
   };
 }
 
-async function claimQueuedUserMessage(args: {
+async function claimQueuedUserMessageForDispatch(args: {
   readonly db: Db;
   readonly queuedMessage: QueuedUserMessage;
   readonly runId: string;
   readonly threadId: string;
 }): Promise<boolean> {
   const claimed = await args.db.transaction(async (tx) => {
+    // Serialize auto-send dispatch decisions per thread. Otherwise two terminal
+    // callbacks can insert candidate runs, each see the other as active, and
+    // both cancel before either claims the queued message.
+    const threadRows = await tx.execute<{ readonly id: string }>(sql`
+      SELECT ${chatThreads.id} AS "id"
+      FROM ${chatThreads}
+      WHERE ${chatThreads.id} = ${args.threadId}
+      FOR UPDATE
+    `);
+    if (!threadRows.rows[0]) {
+      return [];
+    }
+
     const rows = await tx.execute<{
       readonly status: string;
       readonly chatThreadId: string | null;
@@ -1740,13 +1753,19 @@ async function claimQueuedUserMessage(args: {
       return [];
     }
 
-    const threadRows = await tx.execute<{ readonly id: string }>(sql`
-      SELECT ${chatThreads.id} AS "id"
-      FROM ${chatThreads}
-      WHERE ${chatThreads.id} = ${args.threadId}
-      FOR KEY SHARE
-    `);
-    if (!threadRows.rows[0]) {
+    const [competingRun] = await tx
+      .select({ id: zeroRuns.id })
+      .from(zeroRuns)
+      .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+      .where(
+        and(
+          eq(zeroRuns.chatThreadId, args.threadId),
+          ne(zeroRuns.id, args.runId),
+          inArray(agentRuns.status, ["queued", "pending", "running"]),
+        ),
+      )
+      .limit(1);
+    if (competingRun) {
       return [];
     }
 
@@ -1860,16 +1879,7 @@ async function autoSendQueuedMessageOnRunComplete(args: {
   const run = await args.createRun({
     ...runInput,
     beforeDispatch: async ({ runId }) => {
-      const competingRunExists = await activeChatRunExistsForThread(
-        args.db,
-        threadId,
-        { excludeRunId: runId },
-      );
-      if (competingRunExists) {
-        return false;
-      }
-
-      const claimed = await claimQueuedUserMessage({
+      const claimed = await claimQueuedUserMessageForDispatch({
         db: args.db,
         queuedMessage,
         runId,
