@@ -25,6 +25,7 @@ import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import {
   createAgentRun$,
+  type BeforeRunDispatch,
   type CreateAgentRunArgs,
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
@@ -154,6 +155,7 @@ interface CreateZeroRunCommandArgs {
   readonly selectedModelOverride?: string;
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
+  readonly beforeDispatch?: BeforeRunDispatch;
   readonly timing?: ApiDispatchTimingCollector;
   readonly zeroPreCreateSource?: ZeroPreCreateSource;
 }
@@ -753,6 +755,7 @@ function buildZeroCreateAgentRunArgs(args: {
       triggerAgentId: args.triggerAgentId,
     },
     dispatchFailedCallbacks: command.dispatchFailedCallbacks,
+    beforeDispatch: command.beforeDispatch,
     timing: args.timing,
     timingDimensions: zeroRunTimingDimensions({
       origin: zeroRunOrigin({

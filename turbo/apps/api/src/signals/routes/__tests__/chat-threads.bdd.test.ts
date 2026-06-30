@@ -102,15 +102,22 @@ function sandboxOperationEventsForRun(
   });
 }
 
-function expectZeroPreCreateSource(runId: string, source: string): void {
-  expect(sandboxOperationEventsForRun(runId)).toStrictEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        op_type: "api_dispatch_pre_create_agent_run",
-        zero_pre_create_source: source,
-      }),
-    ]),
-  );
+async function expectZeroPreCreateSource(
+  runId: string,
+  source: string,
+): Promise<void> {
+  await expect
+    .poll(() => {
+      return sandboxOperationEventsForRun(runId);
+    })
+    .toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_agent_run",
+          zero_pre_create_source: source,
+        }),
+      ]),
+    );
 }
 
 interface EntitledChatActor {
@@ -2556,7 +2563,7 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       throw new Error("Expected the second v1 send to create a run");
     }
     const run2Id = second.body.runId;
-    expectZeroPreCreateSource(run2Id, "chat_thread_v1_send");
+    await expectZeroPreCreateSource(run2Id, "chat_thread_v1_send");
     const run2 = await api.readRun(actor, run2Id);
     const appended = run2.appendSystemPrompt ?? "";
     expect(appended).toContain("# Web Chat Run Context");
@@ -2605,7 +2612,10 @@ describe("CHAT-01 v1 chat threads for personal access tokens", () => {
       throw new Error("Expected the queued v1 message to auto-send into a run");
     }
     expect(promoted.content).toBe("queued from v1");
-    expectZeroPreCreateSource(promoted.runId, "chat_callback_auto_send");
+    await expectZeroPreCreateSource(
+      promoted.runId,
+      "chat_callback_auto_send",
+    );
     await cancelChatRun(actor, promoted.runId);
 
     // Workflows still mount as SKILL.md-backed volumes in the runtime. Under

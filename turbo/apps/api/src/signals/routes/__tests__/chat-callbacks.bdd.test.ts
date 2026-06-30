@@ -365,15 +365,22 @@ function sandboxOperationEventsForRun(
   });
 }
 
-function expectZeroPreCreateSource(runId: string, source: string): void {
-  expect(sandboxOperationEventsForRun(runId)).toStrictEqual(
-    expect.arrayContaining([
-      expect.objectContaining({
-        op_type: "api_dispatch_pre_create_agent_run",
-        zero_pre_create_source: source,
-      }),
-    ]),
-  );
+async function expectZeroPreCreateSource(
+  runId: string,
+  source: string,
+): Promise<void> {
+  await expect
+    .poll(() => {
+      return sandboxOperationEventsForRun(runId);
+    })
+    .toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_agent_run",
+          zero_pre_create_source: source,
+        }),
+      ]),
+    );
 }
 
 function deferredGate(): {
@@ -837,7 +844,7 @@ describe("CHAT-02: completed chat callback", () => {
       throw new Error("Expected the queued message to auto-send");
     }
     expect(claimed.runId).not.toBe(first.runId);
-    expectZeroPreCreateSource(claimed.runId, "chat_callback_auto_send");
+    await expectZeroPreCreateSource(claimed.runId, "chat_callback_auto_send");
 
     openRouterGate.release();
     const afterFollowups = await waitForThreadMessages(
@@ -1425,7 +1432,7 @@ describe("CHAT-02: auto-send after failures", () => {
       );
     }
     expect(claimed.runId).not.toBe(second.runId);
-    expectZeroPreCreateSource(claimed.runId, "chat_callback_auto_send");
+    await expectZeroPreCreateSource(claimed.runId, "chat_callback_auto_send");
     expect(claimed.attachFiles).toHaveLength(1);
     expect(claimed.attachFiles?.[0]).toMatchObject({
       filename: "queued-notes.txt",

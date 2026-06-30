@@ -431,6 +431,11 @@ export type DispatchFailedRunCallbacks = (
   error: string,
 ) => Promise<void>;
 
+export type BeforeRunDispatch = (args: {
+  readonly runId: string;
+  readonly status: "queued" | "pending";
+}) => Promise<boolean>;
+
 export interface CreateAgentRunArgs {
   readonly userId: string;
   readonly orgId: string;
@@ -461,6 +466,7 @@ export interface CreateAgentRunArgs {
   readonly queueOnConcurrencyLimit?: boolean;
   readonly enforceVm0Credits?: boolean;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
+  readonly beforeDispatch?: BeforeRunDispatch;
   readonly timing?: ApiDispatchTimingCollector;
   readonly timingDimensions?: ApiDispatchTimingDimensions;
 }
@@ -5008,6 +5014,53 @@ function failedRunResponse(
   };
 }
 
+const BEFORE_DISPATCH_CANCELLED_ERROR =
+  "Run dispatch cancelled before runner queue persistence";
+
+function cancelledBeforeDispatchRunResponse(
+  run: RunRecord,
+): Extract<CreateRunRouteResult, { readonly status: 201 }> {
+  return {
+    status: 201,
+    body: {
+      runId: run.id,
+      status: "cancelled",
+      sessionId: run.sessionId,
+      error: BEFORE_DISPATCH_CANCELLED_ERROR,
+      createdAt: run.createdAt.toISOString(),
+    },
+  };
+}
+
+async function cancelRunBeforeDispatch(
+  db: Db,
+  runId: string,
+): Promise<boolean> {
+  const [updated] = await db
+    .update(agentRuns)
+    .set({
+      status: "cancelled",
+      completedAt: nowDate(),
+      error: BEFORE_DISPATCH_CANCELLED_ERROR,
+    })
+    .where(
+      and(
+        eq(agentRuns.id, runId),
+        inArray(agentRuns.status, ["queued", "pending"]),
+      ),
+    )
+    .returning({ userId: agentRuns.userId });
+
+  if (!updated) {
+    return false;
+  }
+
+  await publishRunChangedForUserSafely(updated.userId, runId, {
+    status: "cancelled",
+  });
+  return true;
+}
+
 interface PreparedRunContext {
   readonly body: CreateRunBody;
   readonly resolved: ResolvedCompose;
@@ -5937,6 +5990,53 @@ function completePendingRun(input: {
   );
 }
 
+async function beforeDispatchResponse(args: {
+  readonly db: Db;
+  readonly run: RunRecord;
+  readonly createArgs: CreateAgentRunArgs;
+  readonly signal: AbortSignal;
+  readonly drainOrgQueue: () => Promise<void>;
+}): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }> | null> {
+  const beforeDispatch = args.createArgs.beforeDispatch;
+  if (!beforeDispatch) {
+    return null;
+  }
+
+  const beforeDispatchResult = await settle(
+    beforeDispatch({
+      runId: args.run.id,
+      status: args.run.status,
+    }),
+    args.signal,
+  );
+  if (!beforeDispatchResult.ok) {
+    await markRunFailed(
+      args.db,
+      args.run.id,
+      beforeDispatchResult.error,
+      args.createArgs.dispatchFailedCallbacks,
+    );
+    args.signal.throwIfAborted();
+    return failedRunResponse(args.run, beforeDispatchResult.error);
+  }
+  if (beforeDispatchResult.value) {
+    return null;
+  }
+
+  const cancelled = await cancelRunBeforeDispatch(args.db, args.run.id);
+  args.signal.throwIfAborted();
+  if (cancelled && args.run.status === "pending") {
+    await tapError(args.drainOrgQueue(), (error) => {
+      L.error("Failed to drain org queue after run dispatch cancellation", {
+        runId: args.run.id,
+        error,
+      });
+    });
+    args.signal.throwIfAborted();
+  }
+  return cancelledBeforeDispatchRunResponse(args.run);
+}
+
 export const createAgentRun$ = command(
   async (
     { get, set },
@@ -6010,6 +6110,19 @@ export const createAgentRun$ = command(
 
     if (isRouteError(transactionResult)) {
       return transactionResult;
+    }
+
+    const beforeDispatch = await beforeDispatchResponse({
+      db,
+      run: transactionResult,
+      createArgs: args,
+      signal,
+      drainOrgQueue: async () => {
+        await set(drainOrgQueue$, { orgId: args.orgId }, signal);
+      },
+    });
+    if (beforeDispatch) {
+      return beforeDispatch;
     }
 
     if (transactionResult.status === "queued") {

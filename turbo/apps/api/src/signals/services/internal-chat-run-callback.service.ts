@@ -171,10 +171,6 @@ interface QueuedUserMessage {
   readonly selectedModel: string | null;
 }
 
-interface QueuedUserMessageClaimReservation {
-  readonly id: string;
-}
-
 interface AgentForAutoSend {
   readonly id: string;
   readonly orgId: string;
@@ -249,6 +245,10 @@ interface CreateQueuedChatRunInput {
   readonly appendSystemPrompt: string;
   readonly threadId: string;
   readonly queuedMessage: QueuedUserMessage;
+  readonly beforeDispatch?: (args: {
+    readonly runId: string;
+    readonly status: "queued" | "pending";
+  }) => Promise<boolean>;
 }
 
 type CompletedChatCallbackResult =
@@ -315,6 +315,7 @@ function buildQueuedCreateZeroRunArgs(
     triggerSource: "web" as const,
     zeroPreCreateSource: "chat_callback_auto_send" as const,
     appendSystemPrompt: input.appendSystemPrompt,
+    beforeDispatch: input.beforeDispatch,
     body: {
       prompt: input.prompt,
       agentId: input.agentId,
@@ -1657,18 +1658,19 @@ async function buildCreateQueuedChatRunInput(args: {
   };
 }
 
-async function reserveQueuedUserMessageClaim(args: {
+async function claimQueuedUserMessage(args: {
   readonly db: Db;
   readonly queuedMessage: QueuedUserMessage;
+  readonly runId: string;
   readonly threadId: string;
-}): Promise<QueuedUserMessageClaimReservation | null> {
-  const [reservation] = await args.db
+}): Promise<boolean> {
+  const claimed = await args.db
     .insert(chatMessages)
     .values({
       chatThreadId: args.threadId,
       role: "user",
       content: args.queuedMessage.content,
-      runId: null,
+      runId: args.runId,
       attachFiles: args.queuedMessage.attachFiles
         ? [...args.queuedMessage.attachFiles]
         : null,
@@ -1681,79 +1683,7 @@ async function reserveQueuedUserMessageClaim(args: {
     .onConflictDoNothing({ target: chatMessages.revokesMessageId })
     .returning({ id: chatMessages.id });
 
-  return reservation ?? null;
-}
-
-async function releaseQueuedUserMessageClaimReservation(args: {
-  readonly db: Db;
-  readonly reservation: QueuedUserMessageClaimReservation;
-}): Promise<void> {
-  await args.db
-    .delete(chatMessages)
-    .where(
-      and(eq(chatMessages.id, args.reservation.id), isNull(chatMessages.runId)),
-    );
-}
-
-async function finalizeQueuedUserMessageClaim(args: {
-  readonly db: Db;
-  readonly reservation: QueuedUserMessageClaimReservation;
-  readonly queuedMessage: QueuedUserMessage;
-  readonly runId: string;
-}): Promise<boolean> {
-  const finalized = await args.db
-    .update(chatMessages)
-    .set({
-      runId: args.runId,
-    })
-    .where(
-      and(
-        eq(chatMessages.id, args.reservation.id),
-        eq(chatMessages.revokesMessageId, args.queuedMessage.id),
-        isNull(chatMessages.runId),
-      ),
-    )
-    .returning({ id: chatMessages.id });
-
-  return finalized.length > 0;
-}
-
-async function cancelUnclaimedQueuedRun(args: {
-  readonly db: Db;
-  readonly runId: string;
-  readonly threadId: string;
-  readonly queuedMessage: QueuedUserMessage;
-}): Promise<void> {
-  const cancelledAt = nowDate();
-  const cancelled = await args.db
-    .update(agentRuns)
-    .set({
-      status: "cancelled",
-      completedAt: cancelledAt,
-      error: "Queued message claim was not finalized",
-    })
-    .where(
-      and(
-        eq(agentRuns.id, args.runId),
-        inArray(agentRuns.status, ["queued", "pending"]),
-      ),
-    )
-    .returning({ id: agentRuns.id });
-
-  if (cancelled.length === 0) {
-    log.warn("Auto-send run escaped queued-message claim cancellation", {
-      threadId: args.threadId,
-      runId: args.runId,
-      userMessageId: args.queuedMessage.id,
-    });
-    return;
-  }
-
-  log.warn("Auto-send cancelled a run without a finalized message claim", {
-    threadId: args.threadId,
-    runId: args.runId,
-    userMessageId: args.queuedMessage.id,
-  });
+  return claimed.length > 0;
 }
 
 async function autoSendQueuedMessageOnRunComplete(args: {
@@ -1793,74 +1723,31 @@ async function autoSendQueuedMessageOnRunComplete(args: {
     agent,
     queuedMessage,
   });
-  const reservation = await reserveQueuedUserMessageClaim({
-    db: args.db,
-    queuedMessage,
-    threadId,
-  });
-  if (!reservation) {
-    return;
-  }
-
   const activeRunExists = await activeChatRunExistsForThread(args.db, threadId);
   if (activeRunExists) {
-    await releaseQueuedUserMessageClaimReservation({
-      db: args.db,
-      reservation,
-    });
     return;
   }
 
-  const runResult = await settle(args.createRun(runInput));
-  if (!runResult.ok) {
-    await releaseQueuedUserMessageClaimReservation({
-      db: args.db,
-      reservation,
-    });
-    throw runResult.error;
-  }
-  const run = runResult.value;
+  const run = await args.createRun({
+    ...runInput,
+    beforeDispatch: async ({ runId }) => {
+      const claimed = await claimQueuedUserMessage({
+        db: args.db,
+        queuedMessage,
+        runId,
+        threadId,
+      });
+      if (!claimed) {
+        log.warn("Auto-send created a run for an already-claimed message", {
+          threadId,
+          runId,
+          userMessageId: queuedMessage.id,
+        });
+      }
+      return claimed;
+    },
+  });
   if (!run) {
-    await releaseQueuedUserMessageClaimReservation({
-      db: args.db,
-      reservation,
-    });
-    return;
-  }
-
-  const finalizeResult = await settle(
-    finalizeQueuedUserMessageClaim({
-      db: args.db,
-      reservation,
-      queuedMessage,
-      runId: run.runId,
-    }),
-  );
-  if (!finalizeResult.ok) {
-    await releaseQueuedUserMessageClaimReservation({
-      db: args.db,
-      reservation,
-    });
-    await cancelUnclaimedQueuedRun({
-      db: args.db,
-      runId: run.runId,
-      threadId,
-      queuedMessage,
-    });
-    throw finalizeResult.error;
-  }
-  const finalized = finalizeResult.value;
-  if (!finalized) {
-    await releaseQueuedUserMessageClaimReservation({
-      db: args.db,
-      reservation,
-    });
-    await cancelUnclaimedQueuedRun({
-      db: args.db,
-      runId: run.runId,
-      threadId,
-      queuedMessage,
-    });
     return;
   }
 
@@ -2302,7 +2189,11 @@ export const handleChatInternalCallback$ = command(
             buildQueuedCreateZeroRunArgs(runInput, apiStartTime),
             inputSignal,
           );
-          if (runResult.status !== 201 || runResult.body.status === "failed") {
+          if (
+            runResult.status !== 201 ||
+            runResult.body.status === "failed" ||
+            runResult.body.status === "cancelled"
+          ) {
             log.warn("Auto-send failed to create run", {
               threadId: runInput.threadId,
               status: runResult.status,
