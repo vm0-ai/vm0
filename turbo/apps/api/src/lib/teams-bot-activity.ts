@@ -20,6 +20,8 @@ type TeamsActivityNormalizationResult =
 interface ActivityBase {
   readonly activityId: string | null;
   readonly tenantId: string;
+  readonly tenantName: string | null;
+  readonly teamsAppId: string | null;
   readonly serviceUrl: string;
   readonly conversationId: string;
   readonly conversationType: string | null;
@@ -146,6 +148,8 @@ function activityBase(
   return {
     activityId,
     tenantId,
+    tenantName: tenant ? readString(tenant, "name") : null,
+    teamsAppId: channelData ? readString(channelData, "teamsAppId") : null,
     serviceUrl,
     conversationId,
     conversationType: conversation
@@ -209,6 +213,7 @@ function conversationUpdateActivity(
       ...base,
       kind: "bot_removed",
       reason: "members_removed",
+      recipient,
       membersRemoved,
     };
   }
@@ -224,6 +229,7 @@ function conversationUpdateActivity(
     ...base,
     kind: "conversation_update",
     action,
+    recipient,
     membersAdded,
     membersRemoved,
   };
@@ -239,14 +245,16 @@ function installationUpdateActivity(
       ...base,
       kind: "bot_removed",
       reason: "installation_remove",
+      recipient: activity.recipient ? normalizeActor(activity.recipient) : null,
       membersRemoved: [],
     };
   }
 
   return {
-    kind: "unsupported",
-    activityType: `installationUpdate:${action ?? "unknown"}`,
-    idempotencyKey: base.idempotencyKey,
+    ...base,
+    kind: "installation_update",
+    action: action === "add" ? "add" : "unknown",
+    recipient: activity.recipient ? normalizeActor(activity.recipient) : null,
   };
 }
 

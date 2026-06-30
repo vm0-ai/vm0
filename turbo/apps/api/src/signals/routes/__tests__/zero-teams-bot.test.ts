@@ -1,20 +1,28 @@
 import { createSign, generateKeyPairSync, type KeyObject } from "node:crypto";
 
+import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-teams-connect";
 import { HttpResponse, http } from "msw";
-import { beforeEach, describe, expect, it } from "vitest";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
-import { mockEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { testContext } from "../../../__tests__/test-context";
-import { clearTeamsBotAuthCacheForTest } from "../../../lib/teams-bot-auth";
+import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { zeroTeamsBotRoutes } from "../zero-teams-bot";
+import {
+  removeTeamsForTest,
+  setupTeamsConnectTestEnv,
+  teamsConnectFixture,
+  type TeamsConnectFixture,
+} from "./helpers/zero-teams-connect";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
+const mocks = createZeroRouteMocks(context);
 const TEAMS_BOT_PATH = "http://api.test/api/zero/teams/bot";
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
+const APP_ORIGIN = "https://app.vm0.test";
 const KEY_ID = "teams-test-key";
 const BOT_FRAMEWORK_METADATA_URL =
   "https://login.botframework.com/v1/.well-known/openidconfiguration";
@@ -23,6 +31,19 @@ const BOT_FRAMEWORK_KEYS_URL =
 
 const keyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const publicJwk = keyPair.publicKey.export({ format: "jwk" });
+
+function botFixture(): TeamsConnectFixture {
+  return teamsConnectFixture({
+    orgId: "org_teams_bot_test",
+    userId: "user_teams_bot_test",
+    teamsTenantId: "tenant-1",
+    teamsTenantName: "Tenant One",
+    teamsTeamId: "team-1",
+    teamsTeamName: "Team One",
+    teamsUserId: "29:user-1",
+    serviceUrl: SERVICE_URL,
+  });
+}
 
 function botFrameworkHandlers(): void {
   server.use(
@@ -103,9 +124,10 @@ function teamsMessageActivity(
       conversationType: "channel",
     },
     channelData: {
-      tenant: { id: "tenant-1" },
+      tenant: { id: "tenant-1", name: "Tenant One" },
       team: { id: "team-1", name: "Team One" },
       channel: { id: "19:channel@thread.tacv2", name: "General" },
+      teamsAppId: "teams-app-test",
     },
     from: {
       id: "29:user-1",
@@ -139,9 +161,10 @@ function teamsBotRemovedActivity(): Record<string, unknown> {
       conversationType: "channel",
     },
     channelData: {
-      tenant: { id: "tenant-1" },
+      tenant: { id: "tenant-1", name: "Tenant One" },
       team: { id: "team-1", name: "Team One" },
       channel: { id: "19:channel@thread.tacv2", name: "General" },
+      teamsAppId: "teams-app-test",
     },
     recipient: { id: "28:bot-1", name: "Zero" },
     membersRemoved: [{ id: "28:bot-1", name: "Zero" }],
@@ -171,8 +194,11 @@ async function postTeamsActivity(args: {
 
 describe("POST /api/zero/teams/bot", () => {
   beforeEach(() => {
-    clearTeamsBotAuthCacheForTest();
-    mockEnv("MICROSOFT_TEAMS_BOT_APP_ID", BOT_APP_ID);
+    setupTeamsConnectTestEnv(APP_ORIGIN);
+  });
+
+  afterEach(async () => {
+    await removeTeamsForTest(context.signal, botFixture());
   });
 
   it("rejects missing Teams authorization", async () => {
@@ -217,7 +243,8 @@ describe("POST /api/zero/teams/bot", () => {
     });
 
     expect(response.status).toBe(200);
-    await expect(response.json()).resolves.toMatchObject({
+    const body = await response.json();
+    expect(body).toMatchObject({
       ok: true,
       activity: {
         kind: "message",
@@ -246,6 +273,42 @@ describe("POST /api/zero/teams/bot", () => {
         text: "deploy the preview",
         idempotencyKey: "19:thread@thread.tacv2:message:activity-1",
       },
+    });
+    expect(body.connectUrl).toContain(`${APP_ORIGIN}/api/zero/teams/connect`);
+    expect(body.connectUrl).toContain("tenantId=tenant-1");
+    expect(body.connectUrl).toContain("teamsUserId=29%3Auser-1");
+
+    mocks.clerk.session(
+      "user_teams_bot_test",
+      "org_teams_bot_test",
+      "org:admin",
+    );
+    const client = setupApp({ context })(zeroTeamsConnectContract);
+    await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          tenantId: "tenant-1",
+          teamsUserId: "29:user-1",
+          teamsUserDisplayName: "Ada Lovelace",
+          teamsUserPrincipalName: "ada@example.com",
+        },
+      }),
+      [200],
+    );
+    const status = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(status.body).toMatchObject({
+      isInstalled: true,
+      isConnected: true,
+      tenantId: "tenant-1",
+      tenantName: "Tenant One",
+      teamId: "team-1",
+      teamName: "Team One",
     });
   });
 
@@ -277,6 +340,45 @@ describe("POST /api/zero/teams/bot", () => {
         idempotencyKey:
           "19:thread@thread.tacv2:conversationUpdate:activity-remove-1",
       },
+    });
+  });
+
+  it("cleans up installation and dependent connections on Teams bot removal", async () => {
+    const fixture = botFixture();
+    botFrameworkHandlers();
+    await postTeamsActivity({
+      activity: teamsMessageActivity(),
+      token: teamsToken(),
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const client = setupApp({ context })(zeroTeamsConnectContract);
+    await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          tenantId: fixture.teamsTenantId,
+          teamsUserId: fixture.teamsUserId,
+        },
+      }),
+      [200],
+    );
+
+    const response = await postTeamsActivity({
+      activity: teamsBotRemovedActivity(),
+      token: teamsToken(),
+    });
+
+    expect(response.status).toBe(200);
+    const status = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(status.body).toStrictEqual({
+      isInstalled: false,
+      isConnected: false,
+      isAdmin: true,
     });
   });
 });

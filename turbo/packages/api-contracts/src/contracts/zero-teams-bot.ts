@@ -15,6 +15,8 @@ const teamsActorSchema = z.object({
 const teamsActivityBaseSchema = z.object({
   activityId: z.string().nullable(),
   tenantId: z.string(),
+  tenantName: z.string().nullable(),
+  teamsAppId: z.string().nullable(),
   serviceUrl: z.string(),
   conversationId: z.string(),
   conversationType: z.string().nullable(),
@@ -40,6 +42,7 @@ export const teamsConversationUpdateActivitySchema =
   teamsActivityBaseSchema.extend({
     kind: z.literal("conversation_update"),
     action: z.enum(["members_added", "members_removed", "unknown"]),
+    recipient: teamsActorSchema,
     membersAdded: z.array(teamsActorSchema),
     membersRemoved: z.array(teamsActorSchema),
   });
@@ -47,8 +50,16 @@ export const teamsConversationUpdateActivitySchema =
 export const teamsBotRemovedActivitySchema = teamsActivityBaseSchema.extend({
   kind: z.literal("bot_removed"),
   reason: z.enum(["members_removed", "installation_remove"]),
+  recipient: teamsActorSchema.nullable(),
   membersRemoved: z.array(teamsActorSchema),
 });
+
+export const teamsInstallationUpdateActivitySchema =
+  teamsActivityBaseSchema.extend({
+    kind: z.literal("installation_update"),
+    action: z.enum(["add", "unknown"]),
+    recipient: teamsActorSchema.nullable(),
+  });
 
 export const teamsUnsupportedActivitySchema = z.object({
   kind: z.literal("unsupported"),
@@ -60,12 +71,14 @@ export const teamsInboundActivitySchema = z.discriminatedUnion("kind", [
   teamsInboundMessageActivitySchema,
   teamsConversationUpdateActivitySchema,
   teamsBotRemovedActivitySchema,
+  teamsInstallationUpdateActivitySchema,
   teamsUnsupportedActivitySchema,
 ]);
 
 export const teamsBotIngressResponseSchema = z.object({
   ok: z.literal(true),
   activity: teamsInboundActivitySchema,
+  connectUrl: z.string().nullable().optional(),
 });
 
 export const zeroTeamsBotContract = c.router({

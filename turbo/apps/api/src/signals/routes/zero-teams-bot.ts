@@ -8,6 +8,11 @@ import {
 } from "../../lib/teams-bot-activity";
 import { verifyTeamsBotAuthorization } from "../../lib/teams-bot-auth";
 import { authorization$, request$ } from "../context/hono";
+import {
+  buildTeamsConnectUrlForActivity,
+  publishTeamsChanged$,
+  recordTeamsInstallationActivity$,
+} from "../services/zero-teams-connect.service";
 import { safeJsonParse } from "../utils";
 import type { RouteEntry } from "../route-entry";
 
@@ -34,48 +39,77 @@ function authErrorCode(status: 401 | 403 | 503): string {
   return "UNAUTHORIZED";
 }
 
-const handleZeroTeamsBot$ = command(async ({ get }, signal: AbortSignal) => {
-  const request = get(request$);
-  const bodyText = await request.text();
-  signal.throwIfAborted();
+const handleZeroTeamsBot$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const request = get(request$);
+    const bodyText = await request.text();
+    signal.throwIfAborted();
 
-  const body = safeJsonParse(bodyText);
-  const normalized = normalizeTeamsActivity(body);
-  if (!normalized.ok) {
-    return errorResponse(400, normalized.error, "BAD_REQUEST");
-  }
+    const body = safeJsonParse(bodyText);
+    const normalized = normalizeTeamsActivity(body);
+    if (!normalized.ok) {
+      return errorResponse(400, normalized.error, "BAD_REQUEST");
+    }
 
-  const serviceUrl =
-    normalized.activity.kind === "unsupported"
-      ? readTeamsActivityServiceUrl(body)
-      : normalized.activity.serviceUrl;
-  if (!serviceUrl) {
-    return errorResponse(
-      400,
-      "Missing Teams activity serviceUrl",
-      "BAD_REQUEST",
+    const serviceUrl =
+      normalized.activity.kind === "unsupported"
+        ? readTeamsActivityServiceUrl(body)
+        : normalized.activity.serviceUrl;
+    if (!serviceUrl) {
+      return errorResponse(
+        400,
+        "Missing Teams activity serviceUrl",
+        "BAD_REQUEST",
+      );
+    }
+
+    const auth = await verifyTeamsBotAuthorization({
+      authorization: get(authorization$),
+      serviceUrl,
+      channelId: readTeamsActivityChannelId(body),
+    });
+    signal.throwIfAborted();
+
+    if (!auth.ok) {
+      return errorResponse(
+        auth.status,
+        auth.message,
+        authErrorCode(auth.status),
+      );
+    }
+
+    const activityResult = await set(
+      recordTeamsInstallationActivity$,
+      normalized.activity,
+      signal,
     );
-  }
+    signal.throwIfAborted();
 
-  const auth = await verifyTeamsBotAuthorization({
-    authorization: get(authorization$),
-    serviceUrl,
-    channelId: readTeamsActivityChannelId(body),
-  });
-  signal.throwIfAborted();
+    if (activityResult.kind === "removed" && activityResult.orgId) {
+      await set(
+        publishTeamsChanged$,
+        { orgId: activityResult.orgId, userIds: activityResult.userIds },
+        signal,
+      );
+      signal.throwIfAborted();
+    }
 
-  if (!auth.ok) {
-    return errorResponse(auth.status, auth.message, authErrorCode(auth.status));
-  }
+    const installation =
+      activityResult.kind === "upserted" ? activityResult.installation : null;
 
-  return {
-    status: 200 as const,
-    body: {
-      ok: true as const,
-      activity: normalized.activity,
-    },
-  };
-});
+    return {
+      status: 200 as const,
+      body: {
+        ok: true as const,
+        activity: normalized.activity,
+        connectUrl: buildTeamsConnectUrlForActivity({
+          activity: normalized.activity,
+          installation,
+        }),
+      },
+    };
+  },
+);
 
 export const zeroTeamsBotRoutes: readonly RouteEntry[] = [
   {

@@ -153,7 +153,9 @@ import { zeroSlackConnectRoutes } from "./routes/zero-slack-connect";
 import { zeroSlackEventsRoutes } from "./routes/zero-slack-events";
 import { zeroSlackInteractiveRoutes } from "./routes/zero-slack-interactive";
 import { zeroSlackOauthRoutes } from "./routes/zero-slack-oauth";
+import { zeroTeamsBrowserConnectRoutes } from "./routes/zero-teams-browser-connect";
 import { zeroTeamsBotRoutes } from "./routes/zero-teams-bot";
+import { zeroTeamsConnectRoutes } from "./routes/zero-teams-connect";
 import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
 import { zeroUploadsHtmlDomEditSnapshotRoutes } from "./routes/zero-uploads-html-dom-edit-snapshot";
@@ -339,7 +341,9 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroSlackCommandsRoutes,
   ...zeroSlackEventsRoutes,
   ...zeroSlackInteractiveRoutes,
+  ...zeroTeamsBrowserConnectRoutes,
   ...zeroTeamsBotRoutes,
+  ...zeroTeamsConnectRoutes,
   ...zeroIntegrationsAgentPhoneRoutes,
   ...zeroIntegrationsPhoneDownloadFileRoutes,
   ...zeroIntegrationsPhoneMessageRoutes,
