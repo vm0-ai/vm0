@@ -2,15 +2,6 @@ import { createHash, randomInt, randomUUID } from "node:crypto";
 
 import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
-import { automations, automationTriggers } from "@vm0/db/schema/automation";
-import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
-import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
-import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
-import { orgCache } from "@vm0/db/schema/org-cache";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it } from "vitest";
 
@@ -19,8 +10,8 @@ import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { writeDb$ } from "../../external/db";
 import { settle } from "../../utils";
+import { readAutomationsState } from "./helpers/automations";
 import {
   createBddApi,
   expectApiError,
@@ -35,42 +26,15 @@ import {
 } from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import {
+  expireAtomGrantState,
+  readOrgCleanupRows,
+  readWebhookBillingState,
+  seedOrgMemberCache,
+} from "./helpers/webhooks-state";
 
 const context = testContext();
 const api = createWebhookCallbackApi(context);
-const store = createStore();
-
-interface OrgCleanupRows {
-  readonly cache: readonly { readonly orgId: string }[];
-  readonly metadata: readonly {
-    readonly stripeCustomerId: string | null;
-    readonly stripeSubscriptionId: string | null;
-  }[];
-  readonly members: readonly { readonly userId: string }[];
-}
-
-async function readOrgCleanupRows(orgId: string): Promise<OrgCleanupRows> {
-  const db = store.set(writeDb$);
-  const [cache, metadata, members] = await Promise.all([
-    db
-      .select({ orgId: orgCache.orgId })
-      .from(orgCache)
-      .where(eq(orgCache.orgId, orgId)),
-    db
-      .select({
-        stripeCustomerId: orgMetadata.stripeCustomerId,
-        stripeSubscriptionId: orgMetadata.stripeSubscriptionId,
-      })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId)),
-    db
-      .select({ userId: orgMembersCache.userId })
-      .from(orgMembersCache)
-      .where(eq(orgMembersCache.orgId, orgId)),
-  ]);
-
-  return { cache, metadata, members };
-}
 
 function orgOf(actor: ApiTestUser): string {
   if (!actor.orgId) {
@@ -490,16 +454,13 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
       enabled: true,
     });
 
-    const db = store.set(writeDb$);
-    const [initialTrigger] = await db
-      .select({
-        enabled: automationTriggers.enabled,
-        nextRunAt: automationTriggers.nextRunAt,
-      })
-      .from(automationTriggers)
-      .where(eq(automationTriggers.automationId, created.automation.id));
+    const initialState = await readAutomationsState(context, {
+      automationId: created.automation.id,
+      automationIds: [created.automation.id],
+    });
+    const [initialTrigger] = initialState.triggers;
     expect(initialTrigger?.enabled).toBeTruthy();
-    expect(initialTrigger?.nextRunAt).not.toBeNull();
+    expect(initialTrigger?.next_run_at).not.toBeNull();
 
     api.verifyNextClerkWebhook({
       type: "organizationMembership.deleted",
@@ -513,22 +474,16 @@ describe("WHCB-01: third-party webhook verification boundaries", () => {
     expect(response.body).toBe("OK");
     await flushWaitUntilForTest();
 
-    const [storedAutomation] = await db
-      .select({ enabled: automations.enabled })
-      .from(automations)
-      .where(eq(automations.id, created.automation.id));
-    expect(storedAutomation?.enabled).toBeFalsy();
+    const storedState = await readAutomationsState(context, {
+      automationId: created.automation.id,
+      automationIds: [created.automation.id],
+    });
+    expect(storedState.automation?.enabled).toBeFalsy();
 
-    const [storedTrigger] = await db
-      .select({
-        enabled: automationTriggers.enabled,
-        nextRunAt: automationTriggers.nextRunAt,
-      })
-      .from(automationTriggers)
-      .where(eq(automationTriggers.automationId, created.automation.id));
-    expect(storedTrigger).toStrictEqual({
+    const [storedTrigger] = storedState.triggers;
+    expect(storedTrigger).toMatchObject({
       enabled: false,
-      nextRunAt: null,
+      next_run_at: null,
     });
   });
 
@@ -1791,16 +1746,8 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       ]),
     );
 
-    const db = store.set(writeDb$);
     const expiredAt = new Date(now() - 1000);
-    await db
-      .update(orgMetadata)
-      .set({ currentPeriodEnd: expiredAt, updatedAt: expiredAt })
-      .where(eq(orgMetadata.orgId, orgId));
-    await db
-      .update(creditExpiresRecord)
-      .set({ expiresAt: expiredAt })
-      .where(eq(creditExpiresRecord.orgId, orgId));
+    await expireAtomGrantState(context, orgId, expiredAt);
 
     await runs.reconcileBillingCron(true);
 
@@ -2507,13 +2454,8 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
     expect(upgraded.hasSubscription).toBeTruthy();
     expect(upgraded.scheduledChange).toBeNull();
 
-    const db = store.set(writeDb$);
-    const [org] = await db
-      .select({ stripeSubscriptionId: orgMetadata.stripeSubscriptionId })
-      .from(orgMetadata)
-      .where(eq(orgMetadata.orgId, orgId))
-      .limit(1);
-    expect(org?.stripeSubscriptionId).toBe(teamSubscriptionId);
+    const billingState = await readWebhookBillingState(context, { orgId });
+    expect(billingState.stripeSubscriptionId).toBe(teamSubscriptionId);
   });
 
   it("grants concurrency slots from invoice line quantity and drains the queue", async () => {
@@ -2589,42 +2531,26 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       [200],
     );
 
-    const db = store.set(writeDb$);
-    const entitlements = await db
-      .select({
-        stripeInvoiceLineId: orgConcurrencyEntitlements.stripeInvoiceLineId,
-        stripeSubscriptionId: orgConcurrencyEntitlements.stripeSubscriptionId,
-        slots: orgConcurrencyEntitlements.slots,
-        startsAt: orgConcurrencyEntitlements.startsAt,
-        expiresAt: orgConcurrencyEntitlements.expiresAt,
-      })
-      .from(orgConcurrencyEntitlements)
-      .where(eq(orgConcurrencyEntitlements.orgId, orgId));
-    expect(entitlements).toStrictEqual([
+    let billingState = await readWebhookBillingState(context, {
+      orgId,
+      stripeSubscriptionId: subscriptionId,
+    });
+    expect(billingState.concurrencyEntitlements).toStrictEqual([
       {
         stripeInvoiceLineId: lineId,
         stripeSubscriptionId: subscriptionId,
         slots: 2,
-        startsAt: new Date(periodStart * 1000),
-        expiresAt: new Date(periodEnd * 1000),
+        startsAt: isoOf(periodStart),
+        expiresAt: isoOf(periodEnd),
       },
     ]);
-    const [subscription] = await db
-      .select({
-        stripeSubscriptionId: orgConcurrencySubscriptions.stripeSubscriptionId,
-        slots: orgConcurrencySubscriptions.slots,
-        subscriptionStatus: orgConcurrencySubscriptions.subscriptionStatus,
-        currentPeriodEnd: orgConcurrencySubscriptions.currentPeriodEnd,
-      })
-      .from(orgConcurrencySubscriptions)
-      .where(
-        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
-      );
+    const [subscription] = billingState.concurrencySubscriptions;
     expect(subscription).toStrictEqual({
       stripeSubscriptionId: subscriptionId,
       slots: 2,
       subscriptionStatus: "active",
-      currentPeriodEnd: new Date(periodEnd * 1000),
+      currentPeriodEnd: isoOf(periodEnd),
+      cancelAtPeriodEnd: false,
     });
 
     const after = await runs.readRunQueue(actor);
@@ -2646,11 +2572,11 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       stripeEvent({ type: "invoice.paid", object: invoice }),
       [200],
     );
-    const afterReplay = await db
-      .select({ id: orgConcurrencyEntitlements.id })
-      .from(orgConcurrencyEntitlements)
-      .where(eq(orgConcurrencyEntitlements.orgId, orgId));
-    expect(afterReplay).toHaveLength(1);
+    billingState = await readWebhookBillingState(context, {
+      orgId,
+      stripeSubscriptionId: subscriptionId,
+    });
+    expect(billingState.concurrencyEntitlements).toHaveLength(1);
 
     await api.postStripeEvent(
       stripeEvent({
@@ -2672,20 +2598,14 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       }),
       [200],
     );
-    const [pastDueSubscription] = await db
-      .select({
-        subscriptionStatus: orgConcurrencySubscriptions.subscriptionStatus,
-        slots: orgConcurrencySubscriptions.slots,
-        currentPeriodEnd: orgConcurrencySubscriptions.currentPeriodEnd,
-      })
-      .from(orgConcurrencySubscriptions)
-      .where(
-        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
-      );
-    expect(pastDueSubscription).toStrictEqual({
+    billingState = await readWebhookBillingState(context, {
+      orgId,
+      stripeSubscriptionId: subscriptionId,
+    });
+    expect(billingState.concurrencySubscriptions[0]).toMatchObject({
       subscriptionStatus: "past_due",
       slots: 2,
-      currentPeriodEnd: new Date(periodEnd * 1000),
+      currentPeriodEnd: isoOf(periodEnd),
     });
     const afterPastDue = await runs.readRunQueue(actor);
     expect(afterPastDue.body.concurrency.limit).toBe(4);
@@ -2702,16 +2622,11 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       }),
       [200],
     );
-    const [cancelScheduledSubscription] = await db
-      .select({
-        subscriptionStatus: orgConcurrencySubscriptions.subscriptionStatus,
-        cancelAtPeriodEnd: orgConcurrencySubscriptions.cancelAtPeriodEnd,
-      })
-      .from(orgConcurrencySubscriptions)
-      .where(
-        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
-      );
-    expect(cancelScheduledSubscription).toStrictEqual({
+    billingState = await readWebhookBillingState(context, {
+      orgId,
+      stripeSubscriptionId: subscriptionId,
+    });
+    expect(billingState.concurrencySubscriptions[0]).toMatchObject({
       subscriptionStatus: "active",
       cancelAtPeriodEnd: true,
     });
@@ -2728,16 +2643,11 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       }),
       [200],
     );
-    const [restoredSubscription] = await db
-      .select({
-        subscriptionStatus: orgConcurrencySubscriptions.subscriptionStatus,
-        cancelAtPeriodEnd: orgConcurrencySubscriptions.cancelAtPeriodEnd,
-      })
-      .from(orgConcurrencySubscriptions)
-      .where(
-        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
-      );
-    expect(restoredSubscription).toStrictEqual({
+    billingState = await readWebhookBillingState(context, {
+      orgId,
+      stripeSubscriptionId: subscriptionId,
+    });
+    expect(billingState.concurrencySubscriptions[0]).toMatchObject({
       subscriptionStatus: "active",
       cancelAtPeriodEnd: false,
     });
@@ -2751,15 +2661,13 @@ describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
       }),
       [200],
     );
-    const [canceledSubscription] = await db
-      .select({
-        subscriptionStatus: orgConcurrencySubscriptions.subscriptionStatus,
-      })
-      .from(orgConcurrencySubscriptions)
-      .where(
-        eq(orgConcurrencySubscriptions.stripeSubscriptionId, subscriptionId),
-      );
-    expect(canceledSubscription?.subscriptionStatus).toBe("canceled");
+    billingState = await readWebhookBillingState(context, {
+      orgId,
+      stripeSubscriptionId: subscriptionId,
+    });
+    expect(billingState.concurrencySubscriptions[0]?.subscriptionStatus).toBe(
+      "canceled",
+    );
     const afterDeleted = await runs.readRunQueue(actor);
     expect(afterDeleted.body.concurrency.limit).toBe(2);
   });
@@ -3803,7 +3711,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     });
     await expect
       .poll(async () => {
-        const rows = await readOrgCleanupRows(orgId);
+        const rows = await readOrgCleanupRows(context, orgId);
         return [rows.cache.length, rows.metadata.length, rows.members.length];
       })
       .toStrictEqual([0, 0, 0]);
@@ -3841,7 +3749,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
 
     await expect
       .poll(async () => {
-        const rows = await readOrgCleanupRows(orgId);
+        const rows = await readOrgCleanupRows(context, orgId);
         return [rows.metadata.length, rows.members.length];
       })
       .toStrictEqual([1, 0]);
@@ -3855,7 +3763,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     expect(context.mocks.stripe.subscriptions.list).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
-    expect((await readOrgCleanupRows(orgId)).metadata).toStrictEqual([
+    expect((await readOrgCleanupRows(context, orgId)).metadata).toStrictEqual([
       {
         stripeCustomerId: granted.customerId,
         stripeSubscriptionId: granted.subscriptionId,
@@ -3905,7 +3813,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     });
     await expect
       .poll(async () => {
-        const rows = await readOrgCleanupRows(orgId);
+        const rows = await readOrgCleanupRows(context, orgId);
         return [rows.cache.length, rows.metadata.length, rows.members.length];
       })
       .toStrictEqual([0, 0, 0]);
@@ -3926,19 +3834,12 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     const granted = await runs.grantProEntitlement(doomed);
     await runs.ensureOrgModelProvider(doomed);
     const peer = bdd.user({ orgId: doomed.orgId, orgRole: "org:member" });
-    await store
-      .set(writeDb$)
-      .insert(orgMembersCache)
-      .values({
-        orgId: orgOf(peer),
-        userId: peer.userId,
-        role: "member",
-        cachedAt: nowDate(),
-      })
-      .onConflictDoUpdate({
-        target: [orgMembersCache.orgId, orgMembersCache.userId],
-        set: { role: "member", cachedAt: nowDate() },
-      });
+    await seedOrgMemberCache(context, {
+      orgId: orgOf(peer),
+      userId: peer.userId,
+      role: "member",
+      cachedAt: nowDate(),
+    });
     const sharedAgent = await bdd.createAgent(peer, {
       displayName: "BDD Shared Grant Agent",
       visibility: "public",
@@ -4049,7 +3950,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     expect(context.mocks.stripe.subscriptions.list).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.update).not.toHaveBeenCalled();
     expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
-    const rows = await readOrgCleanupRows(orgOf(doomed));
+    const rows = await readOrgCleanupRows(context, orgOf(doomed));
     expect(rows.metadata).toStrictEqual([
       {
         stripeCustomerId: granted.customerId,
@@ -4092,12 +3993,11 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
       timezone: "UTC",
       enabled: true,
     });
-    const db = store.set(writeDb$);
-    const [initialTrigger] = await db
-      .select({ nextRunAt: automationTriggers.nextRunAt })
-      .from(automationTriggers)
-      .where(eq(automationTriggers.automationId, created.automation.id));
-    expect(initialTrigger?.nextRunAt).not.toBeNull();
+    const initialState = await readAutomationsState(context, {
+      automationId: created.automation.id,
+      automationIds: [created.automation.id],
+    });
+    expect(initialState.triggers[0]?.next_run_at).not.toBeNull();
 
     context.mocks.stripe.subscriptions.list.mockResolvedValue({
       data: [],
@@ -4120,17 +4020,12 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     );
     expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
 
-    const [storedAutomation] = await db
-      .select({ enabled: automations.enabled })
-      .from(automations)
-      .where(eq(automations.id, created.automation.id));
-    expect(storedAutomation?.enabled).toBeFalsy();
-
-    const [storedTrigger] = await db
-      .select({ nextRunAt: automationTriggers.nextRunAt })
-      .from(automationTriggers)
-      .where(eq(automationTriggers.automationId, created.automation.id));
-    expect(storedTrigger?.nextRunAt).toBeNull();
+    const storedState = await readAutomationsState(context, {
+      automationId: created.automation.id,
+      automationIds: [created.automation.id],
+    });
+    expect(storedState.automation?.enabled).toBeFalsy();
+    expect(storedState.triggers[0]?.next_run_at).toBeNull();
 
     const queue = await runs.readRunQueue(banned);
     expect(queue.body.concurrency.active).toBe(0);

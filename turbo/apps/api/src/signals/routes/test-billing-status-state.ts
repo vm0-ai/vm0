@@ -33,6 +33,18 @@ function actionOk() {
   return { status: 200 as const, body: { ok: true as const } };
 }
 
+function valueOrDefault<T>(value: T | undefined, fallback: T): T {
+  return value === undefined ? fallback : value;
+}
+
+function dateValueOrDefault(
+  value: string | null | undefined,
+  fallback: string | null | undefined,
+): Date | null {
+  const selected = valueOrDefault(value, fallback);
+  return selected ? new Date(selected) : null;
+}
+
 function orgMetadataSeedValues(
   orgId: string,
   values: BillingStatusAction<"seed-org">,
@@ -42,19 +54,37 @@ function orgMetadataSeedValues(
     orgId,
     credits: values.credits ?? 0,
     onboardingPaymentPending: Boolean(values.onboarding_payment_pending),
-    tier: sub?.tier ?? "free",
-    stripeCustomerId: sub?.stripe_customer_id ?? null,
-    stripeSubscriptionId: sub?.stripe_subscription_id ?? null,
-    subscriptionStatus: sub?.status ?? null,
-    currentPeriodEnd: sub ? new Date(sub.current_period_end) : null,
-    cancelAtPeriodEnd: sub?.cancel_at_period_end ?? false,
-    pendingSubscriptionScheduleId:
+    tier: values.tier ?? sub?.tier ?? "free",
+    stripeCustomerId: valueOrDefault(
+      values.stripe_customer_id,
+      sub?.stripe_customer_id ?? null,
+    ),
+    stripeSubscriptionId: valueOrDefault(
+      values.stripe_subscription_id,
+      sub?.stripe_subscription_id ?? null,
+    ),
+    subscriptionStatus: valueOrDefault(
+      values.subscription_status,
+      sub?.status ?? null,
+    ),
+    currentPeriodEnd: dateValueOrDefault(
+      values.current_period_end,
+      sub?.current_period_end,
+    ),
+    cancelAtPeriodEnd:
+      values.cancel_at_period_end ?? sub?.cancel_at_period_end ?? false,
+    pendingSubscriptionScheduleId: valueOrDefault(
+      values.pending_subscription_schedule_id,
       sub?.pending_subscription_schedule_id ?? null,
-    pendingSubscriptionTargetTier:
+    ),
+    pendingSubscriptionTargetTier: valueOrDefault(
+      values.pending_subscription_target_tier,
       sub?.pending_subscription_target_tier ?? null,
-    pendingSubscriptionChangeAt: sub?.pending_subscription_change_at
-      ? new Date(sub.pending_subscription_change_at)
-      : null,
+    ),
+    pendingSubscriptionChangeAt: dateValueOrDefault(
+      values.pending_subscription_change_at,
+      sub?.pending_subscription_change_at,
+    ),
   };
 }
 

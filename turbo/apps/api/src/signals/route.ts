@@ -193,6 +193,7 @@ import { testUsageInsightStateRoutes } from "./routes/test-usage-insight-state";
 import { testUsageStateRoutes } from "./routes/test-usage-state";
 import { testWorkflowTriggerStateRoutes } from "./routes/test-workflow-trigger-state";
 import { testChatMessagesStateRoutes } from "./routes/test-chat-messages-state";
+import { testWebhooksStateRoutes } from "./routes/test-webhooks-state";
 
 export const ROUTES: readonly RouteEntry[] = [
   {
@@ -391,4 +392,5 @@ export const ROUTES: readonly RouteEntry[] = [
   ...testUsageStateRoutes,
   ...testWorkflowTriggerStateRoutes,
   ...testChatMessagesStateRoutes,
+  ...testWebhooksStateRoutes,
 ];
