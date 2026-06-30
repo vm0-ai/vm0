@@ -13,7 +13,7 @@ import { waitUntil } from "../context/wait-until";
 import { clerk$ } from "../external/clerk";
 import { writeDb$ } from "../external/db";
 import { now } from "../external/time";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { formatIntegrationRunError$ } from "../services/integration-run-errors.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
 import { createZeroRun$ } from "../services/zero-runs-create.service";

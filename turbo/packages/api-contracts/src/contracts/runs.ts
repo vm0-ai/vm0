@@ -748,6 +748,25 @@ const networkLogEntrySchema = z.object({
   firewall_params: z.record(z.string(), z.string()).optional(),
   firewall_billable: z.boolean().optional(),
   firewall_error: z.string().optional(),
+  upstream_binding_reason: z.string().optional(),
+  upstream_binding_trusted_host: z.string().optional(),
+  upstream_binding_request_host: z.string().optional(),
+  upstream_binding_request_port: z.number().optional(),
+  upstream_binding_server_connected: z.boolean().optional(),
+  upstream_binding_server_address: z.string().optional(),
+  upstream_binding_server_peername: z.string().optional(),
+  upstream_binding_server_sockname: z.string().optional(),
+  upstream_binding_client_sockname: z.string().optional(),
+  upstream_binding_server_id: z.string().optional(),
+  upstream_binding_client_id: z.string().optional(),
+  upstream_binding_direct_binding_present: z.boolean().optional(),
+  upstream_binding_direct_binding_host: z.string().optional(),
+  upstream_binding_direct_binding_port: z.number().optional(),
+  upstream_binding_direct_binding_kinds: z.string().optional(),
+  upstream_binding_client_binding_count: z.number().optional(),
+  upstream_binding_client_binding_match: z.boolean().optional(),
+  upstream_binding_client_binding_endpoint_match: z.boolean().optional(),
+  upstream_binding_client_binding_hosts: z.string().optional(),
   connector_diagnostic_type: z.string().optional(),
   connector_diagnostic_reason: z.string().optional(),
   connector_diagnostic_env_names: z.array(z.string()).optional(),
@@ -776,39 +795,6 @@ const networkLogsResponseSchema = z.object({
   networkLogs: z.array(networkLogEntrySchema),
   hasMore: z.boolean(),
   nextCursor: z.string().nullable().optional(),
-});
-
-/**
- * Telemetry response schema (legacy - combined format)
- */
-const telemetryResponseSchema = z.object({
-  systemLog: z.string(),
-  metrics: z.array(telemetryMetricSchema),
-});
-
-/**
- * Run telemetry route contract (/api/agent/runs/[id]/telemetry)
- * Legacy combined format
- */
-export const runTelemetryContract = c.router({
-  /**
-   * GET /api/agent/runs/:id/telemetry
-   * Get aggregated telemetry data for a run (legacy combined format)
-   */
-  getTelemetry: {
-    method: "GET",
-    path: "/api/agent/runs/:id/telemetry",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.uuid("Run ID must be a valid UUID"),
-    }),
-    responses: {
-      200: telemetryResponseSchema,
-      401: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get run telemetry data",
-  },
 });
 
 /**
@@ -919,7 +905,6 @@ export type RunsMainContract = typeof runsMainContract;
 export type RunsByIdContract = typeof runsByIdContract;
 export type RunsCancelContract = typeof runsCancelContract;
 export type RunEventsContract = typeof runEventsContract;
-export type RunTelemetryContract = typeof runTelemetryContract;
 export type RunSystemLogContract = typeof runSystemLogContract;
 export type RunMetricsContract = typeof runMetricsContract;
 export type RunAgentEventsContract = typeof runAgentEventsContract;
@@ -1068,7 +1053,6 @@ export {
   runStateSchema,
   eventsResponseSchema,
   telemetryMetricSchema,
-  telemetryResponseSchema,
   systemLogResponseSchema,
   metricsResponseSchema,
   agentEventsResponseSchema,
@@ -1096,7 +1080,6 @@ export type RunsListResponse = z.infer<typeof runsListResponseSchema>;
 export type CancelRunResponse = z.infer<typeof cancelRunResponseSchema>;
 export type EventsResponse = z.infer<typeof eventsResponseSchema>;
 export type TelemetryMetric = z.infer<typeof telemetryMetricSchema>;
-export type TelemetryResponse = z.infer<typeof telemetryResponseSchema>;
 export type SystemLogResponse = z.infer<typeof systemLogResponseSchema>;
 export type MetricsResponse = z.infer<typeof metricsResponseSchema>;
 export type AgentEventsResponse = z.infer<typeof agentEventsResponseSchema>;

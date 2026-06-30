@@ -1,5 +1,4 @@
 import { z } from "zod";
-import { firewallPolicyValueSchema } from "@vm0/connectors/firewall-types";
 import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 
@@ -99,7 +98,13 @@ export type ZeroWorkflowTriggerKind = z.infer<
   typeof zeroWorkflowTriggerKindSchema
 >;
 
-export const zeroWorkflowEventTypeSchema = z.enum(["gmail-new-message"]);
+export const zeroWorkflowEventTypeSchema = z.enum([
+  "gmail-new-message",
+  "gmail-label-applied",
+  "github-label-applied",
+  "google-calendar-event-created",
+  "webhook-received",
+]);
 export type ZeroWorkflowEventType = z.infer<typeof zeroWorkflowEventTypeSchema>;
 
 const gmailTextMatchSchema = z
@@ -142,6 +147,93 @@ export type GmailNewMessageEventConfig = z.infer<
   typeof gmailNewMessageEventConfigSchema
 >;
 
+export const gmailLabelAppliedEventConfigSchema = z
+  .object({
+    provider: z.literal("gmail"),
+    event: z.literal("label_applied"),
+    labelName: z.string().trim().min(1).max(225),
+    resolvedLabelId: z.string().min(1).max(128).optional(),
+  })
+  .strict();
+export type GmailLabelAppliedEventConfig = z.infer<
+  typeof gmailLabelAppliedEventConfigSchema
+>;
+
+export const gmailWorkflowEventConfigSchema = z.discriminatedUnion("event", [
+  gmailNewMessageEventConfigSchema,
+  gmailLabelAppliedEventConfigSchema,
+]);
+export type GmailWorkflowEventConfig = z.infer<
+  typeof gmailWorkflowEventConfigSchema
+>;
+
+export const webhookReceivedEventConfigSchema = z
+  .object({
+    provider: z.literal("webhook"),
+    event: z.literal("received"),
+    auth: z
+      .object({
+        mode: z.literal("hmac-sha256"),
+      })
+      .strict(),
+  })
+  .strict();
+export type WebhookReceivedEventConfig = z.infer<
+  typeof webhookReceivedEventConfigSchema
+>;
+
+export const githubLabelAppliedSubjectFilterSchema = z.enum([
+  "both",
+  "issues",
+  "pull_requests",
+]);
+export type GithubLabelAppliedSubjectFilter = z.infer<
+  typeof githubLabelAppliedSubjectFilterSchema
+>;
+
+export const githubLabelAppliedActorFilterSchema = z
+  .object({
+    type: z.enum(["me", "anyone"]),
+  })
+  .strict();
+export type GithubLabelAppliedActorFilter = z.infer<
+  typeof githubLabelAppliedActorFilterSchema
+>;
+
+export const githubLabelAppliedEventConfigSchema = z
+  .object({
+    provider: z.literal("github"),
+    event: z.literal("label_applied"),
+    labelName: z.string().trim().min(1).max(255),
+    filters: z
+      .object({
+        subject: githubLabelAppliedSubjectFilterSchema.default("both"),
+        actor: githubLabelAppliedActorFilterSchema.default({ type: "me" }),
+      })
+      .strict()
+      .default({ subject: "both", actor: { type: "me" } }),
+  })
+  .strict();
+export type GithubLabelAppliedEventConfig = z.infer<
+  typeof githubLabelAppliedEventConfigSchema
+>;
+
+export type GithubWorkflowEventConfig = GithubLabelAppliedEventConfig;
+
+export const googleCalendarEventCreatedEventConfigSchema = z
+  .object({
+    provider: z.literal("google-calendar"),
+    event: z.literal("event_created"),
+    calendarId: z.string().trim().min(1).max(1024).default("primary"),
+  })
+  .strict();
+export type GoogleCalendarEventCreatedEventConfig = z.infer<
+  typeof googleCalendarEventCreatedEventConfigSchema
+>;
+
+export type GoogleCalendarWorkflowEventConfig =
+  GoogleCalendarEventCreatedEventConfig;
+
 /**
  * Schedule configuration, discriminated by `type`. Aligned with Automation's
  * time-trigger model:
@@ -168,66 +260,6 @@ export const zeroWorkflowScheduleSchema = z.discriminatedUnion("type", [
 export type ZeroWorkflowSchedule = z.infer<typeof zeroWorkflowScheduleSchema>;
 
 /**
- * Unattended permission policy for a workflow trigger.
- *
- * A trigger fires its workflow unattended, so it carries its own permission
- * allowlist instead of inheriting interactive agent/user grants. Only `allow` /
- * `deny` are expressible: there is no human to answer an `ask`, and the runtime
- * enforces `ask` as `deny` anyway. The unknown-endpoint policy is not stored
- * here — trigger runs always fall back to the connector metadata default
- * (`deny` for every connector).
- *
- * The action enum is derived from the runtime `firewallPolicyValueSchema`
- * (minus `ask`) so it stays a provable subset of the policy the firewall
- * actually enforces — the eventual resolution path maps this onto a
- * `FirewallPolicies` value, and deriving here prevents the two from drifting.
- * The record keys reuse the same connectorRef/permission bounds as the sibling
- * user-permission-grants contract.
- */
-export const unattendedTriggerPermissionActionSchema =
-  firewallPolicyValueSchema.exclude(["ask"]);
-export type UnattendedTriggerPermissionAction = z.infer<
-  typeof unattendedTriggerPermissionActionSchema
->;
-
-const unattendedTriggerConnectorRefSchema = z.string().min(1).max(64);
-const unattendedTriggerPermissionKeySchema = z.string().min(1).max(128);
-
-export const unattendedTriggerConnectorRefsSchema = z.array(
-  unattendedTriggerConnectorRefSchema,
-);
-export type UnattendedTriggerConnectorRefs = z.infer<
-  typeof unattendedTriggerConnectorRefsSchema
->;
-
-export const unattendedTriggerPermissionPolicySchema = z.record(
-  unattendedTriggerConnectorRefSchema,
-  z.object({
-    policies: z.record(
-      unattendedTriggerPermissionKeySchema,
-      unattendedTriggerPermissionActionSchema,
-    ),
-  }),
-);
-export type UnattendedTriggerPermissionPolicy = z.infer<
-  typeof unattendedTriggerPermissionPolicySchema
->;
-
-/**
- * Full-replace request for a trigger's unattended connector access and
- * permission policy. `null` clears the policy back to connector metadata
- * defaults.
- */
-export const setUnattendedTriggerPermissionPolicyRequestSchema = z.object({
-  unattendedConnectorRefs: unattendedTriggerConnectorRefsSchema.optional(),
-  unattendedPermissionPolicy:
-    unattendedTriggerPermissionPolicySchema.nullable(),
-});
-export type SetUnattendedTriggerPermissionPolicyRequest = z.infer<
-  typeof setUnattendedTriggerPermissionPolicyRequestSchema
->;
-
-/**
  * Trigger summary. Under 1:N the agent is derived from the workflow, so triggers
  * no longer carry an agentId. Detail responses only ever list the caller's own
  * triggers.
@@ -239,9 +271,6 @@ const zeroWorkflowTriggerSummaryBaseSchema = z.object({
   chatThreadId: z.string().nullable(),
   nextRunAt: z.string().datetime().nullable(),
   lastRunAt: z.string().datetime().nullable(),
-  unattendedConnectorRefs: unattendedTriggerConnectorRefsSchema,
-  unattendedPermissionPolicy:
-    unattendedTriggerPermissionPolicySchema.nullable(),
 });
 
 export const zeroWorkflowScheduleTriggerSummarySchema =
@@ -260,30 +289,130 @@ export const zeroWorkflowGmailNewMessageTriggerSummarySchema =
     scheduleSummary: z.null(),
   });
 
-export const zeroWorkflowTriggerSummarySchema = z.discriminatedUnion("kind", [
+export const zeroWorkflowGmailLabelAppliedTriggerSummarySchema =
+  zeroWorkflowTriggerSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("gmail-label-applied"),
+    eventConfig: gmailLabelAppliedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const zeroWorkflowGithubLabelAppliedTriggerSummarySchema =
+  zeroWorkflowTriggerSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("github-label-applied"),
+    eventConfig: githubLabelAppliedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const zeroWorkflowGoogleCalendarEventCreatedTriggerSummarySchema =
+  zeroWorkflowTriggerSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("google-calendar-event-created"),
+    eventConfig: googleCalendarEventCreatedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const zeroWorkflowWebhookReceivedTriggerSummarySchema =
+  zeroWorkflowTriggerSummaryBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("webhook-received"),
+    eventConfig: webhookReceivedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+    webhookUrl: z.url(),
+    secretLastFour: z.string().length(4),
+    lastReceivedAt: z.string().datetime().nullable(),
+    webhookSecret: z.string().min(1).optional(),
+  });
+
+export const zeroWorkflowEventTriggerSummarySchema = z.discriminatedUnion(
+  "eventType",
+  [
+    zeroWorkflowGmailNewMessageTriggerSummarySchema,
+    zeroWorkflowGmailLabelAppliedTriggerSummarySchema,
+    zeroWorkflowGithubLabelAppliedTriggerSummarySchema,
+    zeroWorkflowGoogleCalendarEventCreatedTriggerSummarySchema,
+    zeroWorkflowWebhookReceivedTriggerSummarySchema,
+  ],
+);
+
+export const zeroWorkflowTriggerSummarySchema = z.union([
   zeroWorkflowScheduleTriggerSummarySchema,
-  zeroWorkflowGmailNewMessageTriggerSummarySchema,
+  zeroWorkflowEventTriggerSummarySchema,
 ]);
 export type ZeroWorkflowTriggerSummary = z.infer<
   typeof zeroWorkflowTriggerSummarySchema
 >;
 
-export const chatThreadWorkflowTriggerSchema = z.object({
+const chatThreadWorkflowSchema = z.object({
   id: z.string().uuid(),
-  kind: zeroWorkflowTriggerKindSchema,
-  scheduleSummary: z.string().nullable(),
-  eventType: zeroWorkflowEventTypeSchema.nullable(),
-  enabled: z.boolean(),
-  chatThreadId: z.string().min(1),
-  nextRunAt: z.string().nullable(),
-  lastRunAt: z.string().nullable(),
-  workflow: z.object({
-    id: z.string().uuid(),
-    name: zeroWorkflowNameSchema,
-    displayName: z.string().nullable(),
-    description: z.string().nullable(),
-  }),
+  agentId: z.string().uuid(),
+  name: zeroWorkflowNameSchema,
+  displayName: z.string().nullable(),
+  description: z.string().nullable(),
 });
+
+const chatThreadWorkflowTriggerBaseSchema =
+  zeroWorkflowTriggerSummaryBaseSchema.extend({
+    id: z.string().uuid(),
+    chatThreadId: z.string().min(1),
+    workflow: chatThreadWorkflowSchema,
+  });
+
+export const chatThreadWorkflowScheduleTriggerSchema =
+  chatThreadWorkflowTriggerBaseSchema.extend({
+    kind: z.literal("schedule"),
+    schedule: zeroWorkflowScheduleSchema,
+    scheduleSummary: z.string(),
+  });
+
+export const chatThreadWorkflowGmailNewMessageTriggerSchema =
+  chatThreadWorkflowTriggerBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("gmail-new-message"),
+    eventConfig: gmailNewMessageEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const chatThreadWorkflowGmailLabelAppliedTriggerSchema =
+  chatThreadWorkflowTriggerBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("gmail-label-applied"),
+    eventConfig: gmailLabelAppliedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const chatThreadWorkflowGithubLabelAppliedTriggerSchema =
+  chatThreadWorkflowTriggerBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("github-label-applied"),
+    eventConfig: githubLabelAppliedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const chatThreadWorkflowGoogleCalendarEventCreatedTriggerSchema =
+  chatThreadWorkflowTriggerBaseSchema.extend({
+    kind: z.literal("event"),
+    eventType: z.literal("google-calendar-event-created"),
+    eventConfig: googleCalendarEventCreatedEventConfigSchema,
+    schedule: z.null(),
+    scheduleSummary: z.null(),
+  });
+
+export const chatThreadWorkflowTriggerSchema = z.union([
+  chatThreadWorkflowScheduleTriggerSchema,
+  chatThreadWorkflowGmailNewMessageTriggerSchema,
+  chatThreadWorkflowGmailLabelAppliedTriggerSchema,
+  chatThreadWorkflowGithubLabelAppliedTriggerSchema,
+  chatThreadWorkflowGoogleCalendarEventCreatedTriggerSchema,
+]);
 export type ChatThreadWorkflowTrigger = z.infer<
   typeof chatThreadWorkflowTriggerSchema
 >;
@@ -301,9 +430,51 @@ export const zeroWorkflowGmailNewMessageTriggerCreateRequestSchema = z.object({
   enabled: z.boolean().optional(),
 });
 
+export const zeroWorkflowGmailLabelAppliedTriggerCreateRequestSchema = z.object(
+  {
+    kind: z.literal("event"),
+    eventType: z.literal("gmail-label-applied"),
+    eventConfig: gmailLabelAppliedEventConfigSchema,
+    enabled: z.boolean().optional(),
+  },
+);
+
+export const zeroWorkflowGithubLabelAppliedTriggerCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("github-label-applied"),
+    eventConfig: githubLabelAppliedEventConfigSchema,
+    enabled: z.boolean().optional(),
+  });
+
+export const zeroWorkflowGoogleCalendarEventCreatedTriggerCreateRequestSchema =
+  z.object({
+    kind: z.literal("event"),
+    eventType: z.literal("google-calendar-event-created"),
+    eventConfig: googleCalendarEventCreatedEventConfigSchema
+      .optional()
+      .default({
+        provider: "google-calendar",
+        event: "event_created",
+        calendarId: "primary",
+      }),
+    enabled: z.boolean().optional(),
+  });
+
+export const zeroWorkflowWebhookReceivedTriggerCreateRequestSchema = z.object({
+  kind: z.literal("event"),
+  eventType: z.literal("webhook-received"),
+  eventConfig: webhookReceivedEventConfigSchema.optional(),
+  enabled: z.boolean().optional(),
+});
+
 export const zeroWorkflowTriggerCreateRequestSchema = z.union([
   zeroWorkflowScheduleTriggerCreateRequestSchema,
   zeroWorkflowGmailNewMessageTriggerCreateRequestSchema,
+  zeroWorkflowGmailLabelAppliedTriggerCreateRequestSchema,
+  zeroWorkflowGithubLabelAppliedTriggerCreateRequestSchema,
+  zeroWorkflowGoogleCalendarEventCreatedTriggerCreateRequestSchema,
+  zeroWorkflowWebhookReceivedTriggerCreateRequestSchema,
 ]);
 export type ZeroWorkflowTriggerCreateRequest = z.infer<
   typeof zeroWorkflowTriggerCreateRequestSchema
@@ -313,13 +484,18 @@ export const zeroWorkflowScheduleTriggerUpdateRequestSchema = z.object({
   schedule: zeroWorkflowScheduleSchema,
 });
 
-export const zeroWorkflowGmailNewMessageTriggerUpdateRequestSchema = z.object({
-  eventConfig: gmailNewMessageEventConfigSchema,
+export const zeroWorkflowGmailEventTriggerUpdateRequestSchema = z.object({
+  eventConfig: gmailWorkflowEventConfigSchema,
+});
+
+export const zeroWorkflowGithubEventTriggerUpdateRequestSchema = z.object({
+  eventConfig: githubLabelAppliedEventConfigSchema,
 });
 
 export const zeroWorkflowTriggerUpdateRequestSchema = z.union([
   zeroWorkflowScheduleTriggerUpdateRequestSchema,
-  zeroWorkflowGmailNewMessageTriggerUpdateRequestSchema,
+  zeroWorkflowGmailEventTriggerUpdateRequestSchema,
+  zeroWorkflowGithubEventTriggerUpdateRequestSchema,
 ]);
 export type ZeroWorkflowTriggerUpdateRequest = z.infer<
   typeof zeroWorkflowTriggerUpdateRequestSchema
@@ -342,6 +518,8 @@ export const zeroWorkflowSummarySchema = z.object({
   visibility: zeroWorkflowVisibilitySchema,
   requestToPublish: z.boolean(),
   ownerUserId: z.string(),
+  ownerUserDisplayName: z.string().nullable().optional(),
+  ownerUserImageUrl: z.string().nullable().optional(),
   canManage: z.boolean(),
   shadowedBy: z
     .object({
@@ -355,6 +533,10 @@ export const zeroWorkflowSummarySchema = z.object({
 
 export const zeroWorkflowDetailResponseSchema =
   zeroWorkflowSummarySchema.extend({
+    createdByUserId: z.string(),
+    updatedByUserId: z.string(),
+    createdAt: z.string().datetime(),
+    updatedAt: z.string().datetime(),
     instruction: z.string().nullable(),
     files: z.array(workflowFileMetadataSchema).nullable(),
     fileContents: z.array(workflowFileEntrySchema).nullable(),
@@ -365,8 +547,17 @@ export const zeroWorkflowListResponseSchema = z.array(
   zeroWorkflowSummarySchema,
 );
 
+export const zeroWorkflowTriggerAutomationEntrySchema = z.object({
+  workflow: zeroWorkflowSummarySchema,
+  trigger: zeroWorkflowTriggerSummarySchema,
+});
+export const zeroWorkflowTriggerAutomationListResponseSchema = z.array(
+  zeroWorkflowTriggerAutomationEntrySchema,
+);
+
 export const zeroWorkflowCreateRequestSchema = z.object({
   agentId: z.string().uuid(),
+  chatThreadId: z.string().uuid().optional(),
   name: zeroWorkflowNameSchema,
   instruction: workflowInstructionSchema.optional(),
   files: workflowFilesSchema.optional(),
@@ -377,6 +568,7 @@ export const zeroWorkflowCreateRequestSchema = z.object({
 
 export const zeroWorkflowUpdateRequestSchema = z
   .object({
+    name: zeroWorkflowNameSchema.optional(),
     instruction: workflowInstructionSchema.nullable().optional(),
     files: workflowFilesSchema.optional(),
     displayName: z.string().max(256).nullable().optional(),
@@ -385,6 +577,7 @@ export const zeroWorkflowUpdateRequestSchema = z
   .refine(
     (body) => {
       return (
+        body.name !== undefined ||
         body.instruction !== undefined ||
         body.files !== undefined ||
         body.displayName !== undefined ||
@@ -401,6 +594,11 @@ export const zeroWorkflowCopyRequestSchema = z.object({
 export const zeroWorkflowRunResponseSchema = z.object({
   chatThreadId: z.string().uuid(),
   runId: z.string(),
+});
+
+export const zeroWorkflowChatThreadResponseSchema = z.object({
+  chatThreadId: z.string().uuid(),
+  prompt: z.string(),
 });
 
 const workflowIdParams = z.object({ workflowId: z.string().uuid() });
@@ -461,6 +659,7 @@ export const zeroWorkflowsDetailContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Update a workflow's instruction, files, or metadata",
   },
@@ -493,6 +692,20 @@ export const zeroWorkflowsDetailContract = c.router({
     },
     summary: "Copy (fork) a workflow onto another agent",
   },
+  chatThread: {
+    method: "POST",
+    path: "/api/zero/workflows/:workflowId/chat-thread",
+    headers: authHeadersSchema,
+    pathParams: workflowIdParams,
+    body: c.noBody(),
+    responses: {
+      200: zeroWorkflowChatThreadResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get or create the shared chat thread for a workflow",
+  },
   run: {
     method: "POST",
     path: "/api/zero/workflows/:workflowId/run",
@@ -506,7 +719,8 @@ export const zeroWorkflowsDetailContract = c.router({
       404: apiErrorSchema,
       409: apiErrorSchema,
     },
-    summary: "Run the workflow once in a new chat thread (equivalent to /slug)",
+    summary:
+      "Run the workflow once in its shared chat thread (equivalent to /slug)",
   },
 });
 
@@ -601,6 +815,17 @@ const triggerIdParams = z.object({ id: z.string().uuid() });
 const chatThreadIdParams = z.object({ threadId: z.string().min(1) });
 
 export const zeroWorkflowTriggersContract = c.router({
+  listWorkspace: {
+    method: "GET",
+    path: "/api/zero/workflow-triggers",
+    headers: authHeadersSchema,
+    responses: {
+      200: zeroWorkflowTriggerAutomationListResponseSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "List the caller's workflow triggers across visible workflows",
+  },
   listForChatThread: {
     method: "GET",
     path: "/api/zero/chat-threads/:threadId/workflow-triggers",
@@ -715,21 +940,21 @@ export const zeroWorkflowTriggersContract = c.router({
     },
     summary: "Disable a workflow trigger",
   },
-  setPermissionPolicy: {
-    method: "PUT",
-    path: "/api/zero/workflow-triggers/:id/permission-policy",
+  run: {
+    method: "POST",
+    path: "/api/zero/workflow-triggers/:id/run",
     headers: authHeadersSchema,
     pathParams: triggerIdParams,
-    body: setUnattendedTriggerPermissionPolicyRequestSchema,
+    body: c.noBody(),
     responses: {
-      200: zeroWorkflowTriggerSummarySchema,
+      201: zeroWorkflowRunResponseSchema,
       400: apiErrorSchema,
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
-    summary:
-      "Set a workflow trigger unattended permission policy (session/PAT only)",
+    summary: "Run a workflow trigger immediately in its bound chat thread",
   },
 });
 
@@ -748,8 +973,14 @@ export type ZeroWorkflowUpdateRequest = z.infer<
 export type ZeroWorkflowCopyRequest = z.infer<
   typeof zeroWorkflowCopyRequestSchema
 >;
+export type ZeroWorkflowChatThreadResponse = z.infer<
+  typeof zeroWorkflowChatThreadResponseSchema
+>;
 export type ZeroWorkflowRunResponse = z.infer<
   typeof zeroWorkflowRunResponseSchema
+>;
+export type ZeroWorkflowTriggerAutomationEntry = z.infer<
+  typeof zeroWorkflowTriggerAutomationEntrySchema
 >;
 export type ZeroWorkflowsCollectionContract =
   typeof zeroWorkflowsCollectionContract;

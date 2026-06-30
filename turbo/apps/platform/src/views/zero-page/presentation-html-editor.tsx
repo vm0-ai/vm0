@@ -10,7 +10,7 @@ import { cn } from "@vm0/ui";
 import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { useGet, useLoadable, useSet } from "ccstate-react";
-import { accept } from "../../lib/accept.ts";
+import { ApiError, accept } from "../../lib/accept.ts";
 import {
   zeroClient$,
   type ZeroClientFactory,
@@ -19,10 +19,7 @@ import { pageSignal$ } from "../../signals/page-signal.ts";
 import { refreshPresentationHtmlPreviews$ } from "../../signals/zero-page/presentation-html-cache-bust.ts";
 import { createPresentationDraftByUrlFactory } from "../../signals/zero-page/presentation-html-editor-draft.ts";
 import { detach, Reason, tapError } from "../../signals/utils.ts";
-import {
-  downloadPresentationHtmlStringPptx,
-  readablePresentationResourceUrl,
-} from "./presentation-html-pptx-download.ts";
+import { downloadPresentationHtmlStringPptx } from "./presentation-html-pptx-download.ts";
 import {
   applyPresentationSpeakerNotesPatch,
   parsePresentationEditDraft,
@@ -35,6 +32,7 @@ import {
 import {
   attachmentFilenameFromUrl,
   publicAttachmentUrl,
+  readableAttachmentResourceUrl,
 } from "./zero-attachment-url.ts";
 import { fallbackHtmlPreviewTitle } from "./zero-attachment-preview.tsx";
 
@@ -91,7 +89,7 @@ function createPresentationEditorSession(
 const presentationDraftByUrl = createPresentationDraftByUrlFactory<EditorDraft>(
   async (url, signal) => {
     const publicUrl = publicAttachmentUrl(url);
-    const response = await fetch(readablePresentationResourceUrl(publicUrl), {
+    const response = await fetch(readableAttachmentResourceUrl(publicUrl), {
       cache: "reload",
       mode: "cors",
       signal,
@@ -143,7 +141,6 @@ async function redeployPresentationHtml(params: {
       fetchOptions: { signal: params.signal },
     }),
     [200],
-    { toast: false },
   );
   return completed.body.url;
 }
@@ -164,7 +161,6 @@ async function generatePresentationSpeakerNotes(params: {
       fetchOptions: { signal: params.signal },
     }),
     [200],
-    { toast: false },
   );
   return completed.body;
 }
@@ -782,7 +778,7 @@ async function ensurePresentationRedeployed(params: {
       params.markDirty();
     }),
     (error) => {
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
+      if (!(error instanceof ApiError)) {
         toast.error(
           error instanceof Error ? error.message : "Presentation update failed",
         );
@@ -935,7 +931,7 @@ async function runFillEmptySpeakerNotes(ctx: {
       ctx.setPublishing(false);
     }),
     (error) => {
-      if (!(error instanceof DOMException && error.name === "AbortError")) {
+      if (!(error instanceof ApiError)) {
         toast.error(
           error instanceof Error
             ? error.message

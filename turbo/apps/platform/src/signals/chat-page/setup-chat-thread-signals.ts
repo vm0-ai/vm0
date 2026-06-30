@@ -1,6 +1,6 @@
 import { command } from "ccstate";
 import { animationFrame } from "signal-timers";
-import type { ChatThreadSignals } from "./create-chat-thread.ts";
+import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 
 export const setupChatThreadInitScroll$ = command(
   async ({ get, set }, thread: ChatThreadSignals, signal: AbortSignal) => {

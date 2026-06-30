@@ -4,30 +4,109 @@ import {
   zeroWorkflowsDetailContract,
   zeroWorkflowTriggersContract,
   zeroWorkflowVisibilityContract,
+  type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
+  type GoogleCalendarEventCreatedEventConfig,
+  type GithubLabelAppliedEventConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
-  type ZeroWorkflowScheduleType,
   type ZeroWorkflowSummary,
+  type ZeroWorkflowTriggerAutomationEntry,
+  type ZeroWorkflowTriggerSummary,
   type ZeroWorkflowUpdateRequest,
-  type UnattendedTriggerConnectorRefs,
-  type UnattendedTriggerPermissionPolicy,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
 import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { activeRoute$ } from "../active-route.ts";
 import {
+  detachedNavigateTo$,
   pathParams$,
   replaceSearchParams$,
   searchParams$,
-  updateSearchParams$,
 } from "../route.ts";
+import { ROUTES } from "../route-paths.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
+import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 
-type WorkflowDetailActionDialog = "edit" | "copy" | "delete" | null;
-const WORKFLOW_DETAIL_SIDEBAR_PARAM = "sidebar";
-const WORKFLOW_TRIGGER_SIDEBAR_VALUE = "triggers";
+type WorkflowDetailActionDialog = "copy" | "delete" | null;
+export type WorkflowDetailTab = "automations" | "instructions" | "info";
+export type WorkflowCopyDialogAgent = {
+  readonly id: string;
+  readonly displayName: string | null;
+  readonly visibility?: string | null;
+};
+export type WorkflowCopyDialogState =
+  | { readonly kind: "select" }
+  | { readonly kind: "copying"; readonly agent: WorkflowCopyDialogAgent }
+  | {
+      readonly kind: "copied";
+      readonly agent: WorkflowCopyDialogAgent;
+      readonly workflow: ZeroWorkflowSummary;
+      readonly sourceTriggersPaused: boolean;
+    };
+type WorkflowTriggerCreateDialog =
+  | "interval"
+  | "scheduled"
+  | "once"
+  | "gmail"
+  | "gmail-label"
+  | "github-label"
+  | "google-calendar"
+  | "webhook"
+  | null;
+type WorkflowWebhookTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { readonly kind: "event"; readonly eventType: "webhook-received" }
+>;
+type WorkflowGithubLabelActor =
+  GithubLabelAppliedEventConfig["filters"]["actor"]["type"];
+export type WorkflowTriggerAutomationEntry = ZeroWorkflowTriggerAutomationEntry;
+export const WORKFLOW_DETAIL_TAB_PARAM = "tab";
+export const WORKFLOW_DETAIL_FILE_PARAM = "file";
+
+function workflowDetailTabFromSearchParams(
+  params: URLSearchParams,
+): WorkflowDetailTab | null {
+  const value = params.get(WORKFLOW_DETAIL_TAB_PARAM);
+  switch (value) {
+    case "automations":
+    case "instructions":
+    case "info": {
+      return value;
+    }
+    default: {
+      return null;
+    }
+  }
+}
+
+export type WorkflowCronFrequency =
+  | "every_day"
+  | "every_weekday"
+  | "every_week"
+  | "every_month"
+  | "custom";
+
+export interface WorkflowCronFields {
+  readonly frequency: WorkflowCronFrequency;
+  readonly hour: number;
+  readonly minute: number;
+  readonly dayOfWeek: string;
+  readonly dayOfMonth: string;
+  readonly customCronExpression: string;
+}
+
+export function defaultWorkflowCronFields(): WorkflowCronFields {
+  return {
+    frequency: "every_day",
+    hour: 9,
+    minute: 0,
+    dayOfWeek: "1",
+    dayOfMonth: "1",
+    customCronExpression: "0 9 * * *",
+  };
+}
 
 interface WorkflowDetailFileDraft {
   readonly workflowId: string;
@@ -36,11 +115,19 @@ interface WorkflowDetailFileDraft {
   readonly content: string;
 }
 
+interface WorkflowMetadataPatch {
+  readonly workflowId: string;
+  readonly displayName?: string;
+  readonly name?: string;
+  readonly description?: string;
+}
+
 /**
  * The workflow uuid for the active detail route, or null elsewhere.
  */
 export const currentWorkflowId$ = computed((get): string | null => {
-  if (get(activeRoute$) !== "agentWorkflowDetail") {
+  const route = get(activeRoute$);
+  if (route !== "workflowDetail") {
     return null;
   }
   const workflowId = get(pathParams$)?.workflowId;
@@ -48,56 +135,54 @@ export const currentWorkflowId$ = computed((get): string | null => {
 });
 
 const internalWorkflowReload$ = state(0);
+const internalWorkflowDetailActiveTab$ =
+  state<WorkflowDetailTab>("automations");
 
 const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
-const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
-const internalEditingGmailTriggerId$ = state<string | null>(null);
-const internalWorkflowTriggerPermissionsDrawerTriggerId$ = state<string | null>(
-  null,
-);
-const internalWorkflowTriggerCreateDialog$ = state<"schedule" | "gmail" | null>(
-  null,
-);
-const internalScheduleTriggerType$ = state<ZeroWorkflowScheduleType>("cron");
-
-export const workflowDetailTriggerSidebarOpen$ = computed((get) => {
-  return (
-    get(searchParams$).get(WORKFLOW_DETAIL_SIDEBAR_PARAM) ===
-    WORKFLOW_TRIGGER_SIDEBAR_VALUE
-  );
+const internalWorkflowCopyDialogState$ = state<WorkflowCopyDialogState>({
+  kind: "select",
 });
-
-export const setWorkflowDetailTriggerSidebarOpen$ = command(
-  ({ get, set }, open: boolean) => {
-    const params = new URLSearchParams(get(searchParams$));
-    const currentlyOpen =
-      params.get(WORKFLOW_DETAIL_SIDEBAR_PARAM) ===
-      WORKFLOW_TRIGGER_SIDEBAR_VALUE;
-    if (open === currentlyOpen) {
-      return;
-    }
-    if (open) {
-      params.set(WORKFLOW_DETAIL_SIDEBAR_PARAM, WORKFLOW_TRIGGER_SIDEBAR_VALUE);
-      set(updateSearchParams$, params);
-      return;
-    }
-
-    params.delete(WORKFLOW_DETAIL_SIDEBAR_PARAM);
-    set(internalEditingGmailTriggerId$, null);
-    set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
-    set(internalWorkflowTriggerCreateDialog$, null);
-    set(replaceSearchParams$, params);
-  },
+const internalWorkflowFileDraft$ = state<WorkflowDetailFileDraft | null>(null);
+const internalEditingWorkflowTriggerId$ = state<string | null>(null);
+const internalWorkflowMetadataPatch$ = state<WorkflowMetadataPatch | null>(
+  null,
+);
+const internalWorkflowTriggerCreateDialog$ =
+  state<WorkflowTriggerCreateDialog>(null);
+const internalCreatedWorkflowWebhookTrigger$ =
+  state<WorkflowWebhookTriggerSummary | null>(null);
+const internalCreateGithubLabelActor$ = state<WorkflowGithubLabelActor>("me");
+const internalEditingGithubLabelActors$ = state<
+  Record<string, WorkflowGithubLabelActor>
+>({});
+const internalCreateScheduleCronFields$ = state<WorkflowCronFields>(
+  defaultWorkflowCronFields(),
+);
+const internalEditingScheduleCronFields$ = state<WorkflowCronFields>(
+  defaultWorkflowCronFields(),
 );
 
 export const workflowActionDialog$ = computed((get) => {
   return get(internalWorkflowActionDialog$);
 });
 
+export const workflowCopyDialogState$ = computed((get) => {
+  return get(internalWorkflowCopyDialogState$);
+});
+
 export const setWorkflowActionDialog$ = command(
   ({ set }, dialog: WorkflowDetailActionDialog) => {
     set(internalWorkflowActionDialog$, dialog);
+    if (dialog === "copy") {
+      set(internalWorkflowCopyDialogState$, { kind: "select" });
+    }
+  },
+);
+
+export const setWorkflowCopyDialogState$ = command(
+  ({ set }, copyState: WorkflowCopyDialogState) => {
+    set(internalWorkflowCopyDialogState$, copyState);
   },
 );
 
@@ -111,33 +196,73 @@ export const setWorkflowFileDraft$ = command(
   },
 );
 
-export const resetWorkflowDetailUiState$ = command(({ set }) => {
-  set(internalSelectedFilePath$, null);
-  set(internalWorkflowActionDialog$, null);
-  set(internalWorkflowFileDraft$, null);
-  set(internalEditingGmailTriggerId$, null);
-  set(internalWorkflowTriggerPermissionsDrawerTriggerId$, null);
-  set(internalWorkflowTriggerCreateDialog$, null);
-  set(internalScheduleTriggerType$, "cron");
+export const workflowMetadataPatch$ = computed((get) => {
+  return get(internalWorkflowMetadataPatch$);
 });
 
-export const editingGmailTriggerId$ = computed((get) => {
-  return get(internalEditingGmailTriggerId$);
-});
-
-export const workflowTriggerPermissionsDrawerTriggerId$ = computed((get) => {
-  return get(internalWorkflowTriggerPermissionsDrawerTriggerId$);
-});
-
-export const setEditingGmailTriggerId$ = command(
-  ({ set }, triggerId: string | null) => {
-    set(internalEditingGmailTriggerId$, triggerId);
+export const patchWorkflowMetadataForm$ = command(
+  (
+    { set },
+    input: {
+      readonly workflowId: string;
+      readonly patch: Omit<WorkflowMetadataPatch, "workflowId">;
+    },
+  ) => {
+    set(internalWorkflowMetadataPatch$, (patch) => {
+      if (!patch || patch.workflowId !== input.workflowId) {
+        return { workflowId: input.workflowId, ...input.patch };
+      }
+      return { ...patch, ...input.patch };
+    });
   },
 );
 
-export const setWorkflowTriggerPermissionsDrawerTriggerId$ = command(
+export const resetWorkflowMetadataForm$ = command(({ set }) => {
+  set(internalWorkflowMetadataPatch$, null);
+});
+
+export const resetWorkflowDetailUiState$ = command(({ set }) => {
+  set(internalWorkflowDetailActiveTab$, "automations");
+  set(internalSelectedFilePath$, null);
+  set(internalWorkflowActionDialog$, null);
+  set(internalWorkflowCopyDialogState$, { kind: "select" });
+  set(internalWorkflowFileDraft$, null);
+  set(internalEditingWorkflowTriggerId$, null);
+  set(internalWorkflowMetadataPatch$, null);
+  set(internalWorkflowTriggerCreateDialog$, null);
+  set(internalCreatedWorkflowWebhookTrigger$, null);
+  set(internalCreateGithubLabelActor$, "me");
+  set(internalEditingGithubLabelActors$, {});
+  set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
+  set(internalEditingScheduleCronFields$, defaultWorkflowCronFields());
+});
+
+export const workflowDetailActiveTab$ = computed((get) => {
+  return (
+    workflowDetailTabFromSearchParams(get(searchParams$)) ??
+    get(internalWorkflowDetailActiveTab$)
+  );
+});
+
+export const setWorkflowDetailActiveTab$ = command(
+  ({ get, set }, tab: WorkflowDetailTab) => {
+    set(internalWorkflowDetailActiveTab$, tab);
+    const params = new URLSearchParams(get(searchParams$));
+    params.set(WORKFLOW_DETAIL_TAB_PARAM, tab);
+    set(replaceSearchParams$, params);
+  },
+);
+
+export const editingWorkflowTriggerId$ = computed((get) => {
+  return get(internalEditingWorkflowTriggerId$);
+});
+
+export const setEditingWorkflowTriggerId$ = command(
   ({ set }, triggerId: string | null) => {
-    set(internalWorkflowTriggerPermissionsDrawerTriggerId$, triggerId);
+    set(internalEditingWorkflowTriggerId$, triggerId);
+    if (!triggerId) {
+      set(internalEditingGithubLabelActors$, {});
+    }
   },
 );
 
@@ -145,38 +270,103 @@ export const workflowTriggerCreateDialog$ = computed((get) => {
   return get(internalWorkflowTriggerCreateDialog$);
 });
 
+export const createdWorkflowWebhookTrigger$ = computed((get) => {
+  return get(internalCreatedWorkflowWebhookTrigger$);
+});
+
+export const setCreatedWorkflowWebhookTrigger$ = command(
+  ({ set }, trigger: WorkflowWebhookTriggerSummary | null) => {
+    set(internalCreatedWorkflowWebhookTrigger$, trigger);
+  },
+);
+
 export const setWorkflowTriggerCreateDialog$ = command(
-  ({ set }, dialog: "schedule" | "gmail" | null) => {
+  ({ set }, dialog: WorkflowTriggerCreateDialog) => {
     set(internalWorkflowTriggerCreateDialog$, dialog);
-    if (dialog === "schedule") {
-      set(internalScheduleTriggerType$, "cron");
+    if (dialog !== "webhook") {
+      set(internalCreatedWorkflowWebhookTrigger$, null);
+    }
+    if (dialog === "scheduled") {
+      set(internalCreateScheduleCronFields$, defaultWorkflowCronFields());
+    }
+    if (dialog === "github-label") {
+      set(internalCreateGithubLabelActor$, "me");
     }
   },
 );
 
-export const scheduleTriggerType$ = computed((get) => {
-  return get(internalScheduleTriggerType$);
+export const createGithubLabelActor$ = computed((get) => {
+  return get(internalCreateGithubLabelActor$);
 });
 
-export const setScheduleTriggerType$ = command(
-  ({ set }, scheduleType: ZeroWorkflowScheduleType) => {
-    set(internalScheduleTriggerType$, scheduleType);
+export const setCreateGithubLabelActor$ = command(
+  ({ set }, actor: WorkflowGithubLabelActor) => {
+    set(internalCreateGithubLabelActor$, actor);
+  },
+);
+
+export const editingGithubLabelActors$ = computed((get) => {
+  return get(internalEditingGithubLabelActors$);
+});
+
+export const setEditingGithubLabelActor$ = command(
+  (
+    { set },
+    input: {
+      readonly triggerId: string;
+      readonly actor: WorkflowGithubLabelActor;
+    },
+  ) => {
+    set(internalEditingGithubLabelActors$, (actors) => {
+      return { ...actors, [input.triggerId]: input.actor };
+    });
+  },
+);
+
+export const createScheduleCronFields$ = computed((get) => {
+  return get(internalCreateScheduleCronFields$);
+});
+
+export const setCreateScheduleCronFields$ = command(
+  ({ set }, fields: WorkflowCronFields) => {
+    set(internalCreateScheduleCronFields$, fields);
+  },
+);
+
+export const editingScheduleCronFields$ = computed((get) => {
+  return get(internalEditingScheduleCronFields$);
+});
+
+export const setEditingScheduleCronFields$ = command(
+  ({ set }, fields: WorkflowCronFields) => {
+    set(internalEditingScheduleCronFields$, fields);
   },
 );
 
 /** The supplementary file selected in the detail viewer, or null. */
 export const selectedWorkflowFilePath$ = computed((get) => {
-  return get(internalSelectedFilePath$);
+  return (
+    get(searchParams$).get(WORKFLOW_DETAIL_FILE_PARAM) ??
+    get(internalSelectedFilePath$)
+  );
 });
 
 export const setSelectedWorkflowFilePath$ = command(
-  ({ set }, path: string | null) => {
+  ({ get, set }, path: string | null) => {
     set(internalSelectedFilePath$, path);
+    const params = new URLSearchParams(get(searchParams$));
+    if (path) {
+      params.set(WORKFLOW_DETAIL_FILE_PARAM, path);
+    } else {
+      params.delete(WORKFLOW_DETAIL_FILE_PARAM);
+    }
+    params.set(WORKFLOW_DETAIL_TAB_PARAM, "instructions");
+    set(replaceSearchParams$, params);
   },
 );
 
 /** Bump to refetch every workflow list and detail. */
-const reloadWorkflows$ = command(({ set }) => {
+export const reloadWorkflows$ = command(({ set }) => {
   set(internalWorkflowReload$, (prev) => {
     return prev + 1;
   });
@@ -201,9 +391,7 @@ function createAgentWorkflowsFactory(): (
     const atom$ = computed(async (get) => {
       get(internalWorkflowReload$);
       const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
-      const result = await accept(client.list({ query: { agentId } }), [200], {
-        toast: false,
-      });
+      const result = await accept(client.list({ query: { agentId } }), [200]);
       return result.body;
     });
     cache.set(agentId, atom$);
@@ -228,6 +416,46 @@ export const composerWorkflows$ = computed(
   },
 );
 
+export const allVisibleWorkflows$ = computed(
+  async (get): Promise<readonly ZeroWorkflowSummary[]> => {
+    get(internalWorkflowReload$);
+    const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
+    const result = await accept(client.list({ query: {} }), [200]);
+    return [...result.body].sort((a, b) => {
+      if (a.visibility !== b.visibility) {
+        return a.visibility === "public" ? -1 : 1;
+      }
+      const aTitle = a.displayName ?? a.name;
+      const bTitle = b.displayName ?? b.name;
+      return aTitle.localeCompare(bTitle);
+    });
+  },
+);
+
+export const allWorkflowTriggerEntries$ = computed(
+  async (get): Promise<readonly WorkflowTriggerAutomationEntry[]> => {
+    get(internalWorkflowReload$);
+    const triggerClient = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const triggerResult = await accept(triggerClient.listWorkspace(), [200]);
+    return [...triggerResult.body].sort((a, b) => {
+      if (a.trigger.enabled !== b.trigger.enabled) {
+        return a.trigger.enabled ? -1 : 1;
+      }
+      const aNext = a.trigger.nextRunAt ?? "";
+      const bNext = b.trigger.nextRunAt ?? "";
+      if (aNext && bNext && aNext !== bNext) {
+        return aNext.localeCompare(bNext);
+      }
+      if (aNext !== bNext) {
+        return aNext ? -1 : 1;
+      }
+      const aTitle = a.workflow.displayName ?? a.workflow.name;
+      const bTitle = b.workflow.displayName ?? b.workflow.name;
+      return aTitle.localeCompare(bTitle);
+    });
+  },
+);
+
 /**
  * Factory for a single workflow's detail, addressed by its uuid.
  */
@@ -249,7 +477,6 @@ function createWorkflowDetailFactory(): (
       const result = await accept(
         client.get({ params: { workflowId } }),
         [200, 404],
-        { toast: false },
       );
       if (result.status === 404) {
         return null;
@@ -338,6 +565,26 @@ export const runWorkflow$ = command(
   },
 );
 
+export const openWorkflowChat$ = command(
+  async ({ get, set }, workflowId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroWorkflowsDetailContract);
+    const result = await accept(
+      client.chatThread({
+        params: { workflowId },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    const { draft } = set(ensureDraft$, result.body.chatThreadId);
+    set(draft.clear$);
+    set(draft.setInput$, result.body.prompt);
+    set(detachedNavigateTo$, ROUTES.chat, {
+      pathParams: { threadId: result.body.chatThreadId },
+    });
+  },
+);
+
 type WorkflowVisibilityAction =
   | "request-publish"
   | "cancel-publish-request"
@@ -417,6 +664,121 @@ export const createWorkflowGmailNewMessageTrigger$ = command(
   },
 );
 
+export const createWorkflowGmailLabelAppliedTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: GmailLabelAppliedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "gmail-label-applied",
+          eventConfig: input.eventConfig,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const createWorkflowGithubLabelAppliedTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: GithubLabelAppliedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "github-label-applied",
+          eventConfig: input.eventConfig,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const createWorkflowGoogleCalendarEventCreatedTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly workflowId: string;
+      readonly eventConfig: GoogleCalendarEventCreatedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-created",
+          eventConfig: input.eventConfig,
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const createWorkflowWebhookTrigger$ = command(
+  async (
+    { get },
+    input: { readonly workflowId: string },
+    signal: AbortSignal,
+  ): Promise<WorkflowWebhookTriggerSummary> => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const result = await accept(
+      client.create({
+        params: { workflowId: input.workflowId },
+        body: {
+          kind: "event",
+          eventType: "webhook-received",
+          eventConfig: {
+            provider: "webhook",
+            event: "received",
+            auth: { mode: "hmac-sha256" },
+          },
+        },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    if (
+      result.body.kind !== "event" ||
+      result.body.eventType !== "webhook-received"
+    ) {
+      throw new Error("Expected webhook workflow trigger summary");
+    }
+    return result.body;
+  },
+);
+
 export const updateWorkflowGmailNewMessageTrigger$ = command(
   async (
     { get, set },
@@ -431,6 +793,75 @@ export const updateWorkflowGmailNewMessageTrigger$ = command(
       client.update({
         params: { id: input.triggerId },
         body: { eventConfig: input.eventConfig },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const updateWorkflowGmailLabelAppliedTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly triggerId: string;
+      readonly eventConfig: GmailLabelAppliedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.update({
+        params: { id: input.triggerId },
+        body: { eventConfig: input.eventConfig },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const updateWorkflowGithubLabelAppliedTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly triggerId: string;
+      readonly eventConfig: GithubLabelAppliedEventConfig;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.update({
+        params: { id: input.triggerId },
+        body: { eventConfig: input.eventConfig },
+        fetchOptions: { signal },
+      }),
+      [200],
+    );
+    signal.throwIfAborted();
+    set(reloadWorkflows$);
+  },
+);
+
+export const updateWorkflowScheduleTrigger$ = command(
+  async (
+    { get, set },
+    input: {
+      readonly triggerId: string;
+      readonly schedule: ZeroWorkflowSchedule;
+    },
+    signal: AbortSignal,
+  ) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    await accept(
+      client.update({
+        params: { id: input.triggerId },
+        body: { schedule: input.schedule },
         fetchOptions: { signal },
       }),
       [200],
@@ -462,32 +893,48 @@ export const setWorkflowTriggerEnabled$ = command(
   },
 );
 
-export const setWorkflowTriggerPermissionPolicy$ = command(
+export const pauseWorkflowTriggers$ = command(
   async (
     { get, set },
-    input: {
-      triggerId: string;
-      unattendedConnectorRefs?: UnattendedTriggerConnectorRefs;
-      unattendedPermissionPolicy: UnattendedTriggerPermissionPolicy | null;
-    },
+    triggerIds: readonly string[],
     signal: AbortSignal,
-  ) => {
+  ): Promise<{ readonly pausedCount: number }> => {
+    if (triggerIds.length === 0) {
+      return { pausedCount: 0 };
+    }
+
     const client = get(zeroClient$)(zeroWorkflowTriggersContract);
-    await accept(
-      client.setPermissionPolicy({
-        params: { id: input.triggerId },
-        body: {
-          ...(input.unattendedConnectorRefs !== undefined
-            ? { unattendedConnectorRefs: input.unattendedConnectorRefs }
-            : {}),
-          unattendedPermissionPolicy: input.unattendedPermissionPolicy,
-        },
-        fetchOptions: { signal },
+    await Promise.all(
+      triggerIds.map((triggerId) => {
+        return accept(
+          client.disable({
+            params: { id: triggerId },
+            fetchOptions: { signal },
+          }),
+          [200],
+        );
       }),
-      [200],
     );
     signal.throwIfAborted();
     set(reloadWorkflows$);
+    return { pausedCount: triggerIds.length };
+  },
+);
+
+export const runWorkflowTriggerNow$ = command(
+  async ({ get, set }, triggerId: string, signal: AbortSignal) => {
+    const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const result = await accept(
+      client.run({
+        params: { id: triggerId },
+        fetchOptions: { signal },
+      }),
+      [201],
+    );
+    signal.throwIfAborted();
+    set(detachedNavigateTo$, ROUTES.chat, {
+      pathParams: { threadId: result.body.chatThreadId },
+    });
   },
 );
 

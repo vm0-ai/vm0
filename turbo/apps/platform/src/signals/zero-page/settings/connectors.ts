@@ -13,6 +13,7 @@ import {
   type ConnectorType,
   type ConnectorDisplayCategory,
 } from "@vm0/connectors/connectors";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethod,
@@ -386,15 +387,35 @@ const hiddenConnectorTypes$ = computed((get): Set<ConnectorType> => {
 // ---------------------------------------------------------------------------
 
 const CONNECTORS_SEARCH_PARAM = "keywords";
+const CONNECTORS_CONNECTION_FILTER_PARAM = "connection";
+export type ConnectorsConnectionFilter = "all" | "connected";
+
+export const connectorsConnectionFilter$ = computed(
+  (get): ConnectorsConnectionFilter => {
+    return get(searchParams$).get(CONNECTORS_CONNECTION_FILTER_PARAM) ===
+      "connected"
+      ? "connected"
+      : "all";
+  },
+);
+
 export const connectorsSearch$ = computed((get) => {
   return get(searchParams$).get(CONNECTORS_SEARCH_PARAM) ?? "";
 });
 
 export const filteredConnectorTypes$ = computed(async (get) => {
   const keyword = get(connectorsSearch$);
+  const connectionFilter = get(connectorsConnectionFilter$);
+  const features = get(featureSwitch$);
+  const shouldFilterConnected =
+    connectionFilter === "connected" &&
+    (features[FeatureSwitchKey.ConnectorAccessManagement] ?? false);
   const allConnectorTypes = await get(allConnectorTypes$);
   return allConnectorTypes.filter((connector) => {
-    return matchesConnectorSearch(keyword, connector);
+    if (!matchesConnectorSearch(keyword, connector)) {
+      return false;
+    }
+    return !shouldFilterConnected || connector.connected;
   });
 });
 
@@ -407,6 +428,18 @@ export const setConnectorsSearch$ = command(({ get, set }, value: string) => {
   }
   set(replaceSearchParams$, params);
 });
+
+export const setConnectorsConnectionFilter$ = command(
+  ({ get, set }, value: ConnectorsConnectionFilter) => {
+    const params = new URLSearchParams(get(searchParams$));
+    if (value === "connected") {
+      params.set(CONNECTORS_CONNECTION_FILTER_PARAM, value);
+    } else {
+      params.delete(CONNECTORS_CONNECTION_FILTER_PARAM);
+    }
+    set(replaceSearchParams$, params);
+  },
+);
 
 // ---------------------------------------------------------------------------
 // Selected connector for connect modal
@@ -1041,7 +1074,6 @@ const pollConnectorOAuthDeviceAuth$ = command(
               fetchOptions: { signal: sig },
             }),
             [200],
-            { toast: false },
           ),
           sig,
         );
@@ -1166,7 +1198,6 @@ const connectConnectorOAuthDeviceAuth$ = command(
               fetchOptions: { signal: flowSignal },
             }),
             [200],
-            { toast: false },
           ),
           flowSignal,
         );
@@ -1179,7 +1210,7 @@ const connectConnectorOAuthDeviceAuth$ = command(
             status: "error",
             connectorType: type,
             authMethod,
-            message: oauthDeviceAuthErrorMessage(startSettled.error),
+            message: "Connection failed. Start again to retry.",
           });
         }
         flowSignal.throwIfAborted();
@@ -1413,7 +1444,6 @@ export const connectConnectorExternalCode$ = command(
               fetchOptions: { signal: flowSignal },
             }),
             [200],
-            { toast: false },
           ),
           flowSignal,
         );
@@ -1426,7 +1456,7 @@ export const connectConnectorExternalCode$ = command(
             status: "error",
             connectorType: type,
             authMethod,
-            message: externalCodeErrorMessage(startSettled.error),
+            message: "Connection failed. Start again to retry.",
           });
         }
         flowSignal.throwIfAborted();

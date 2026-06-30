@@ -38,6 +38,21 @@ interface S3Credentials {
   readonly secretAccessKey: string;
 }
 
+interface DownloadS3BufferOptions {
+  readonly maxBytes?: number;
+}
+
+export class S3ObjectSizeLimitError extends Error {
+  constructor(
+    readonly key: string,
+    readonly size: number,
+    readonly maxBytes: number,
+  ) {
+    super(`S3 object is too large: ${size} bytes exceeds ${maxBytes} bytes`);
+    this.name = "S3ObjectSizeLimitError";
+  }
+}
+
 function createS3Client(
   endpoint: string,
   credentials: S3Credentials,
@@ -208,10 +223,33 @@ export function downloadS3Buffer(
   return downloadS3BufferWithClient(s3ClientForBucket(bucket), bucket, key);
 }
 
+export function downloadS3BufferWithMaxBytes(
+  bucket: string,
+  key: string,
+  maxBytes: number,
+): Computed<Promise<Buffer>> {
+  return downloadS3BufferWithClient(s3ClientForBucket(bucket), bucket, key, {
+    maxBytes,
+  });
+}
+
+function isAsyncIterableByteStream(
+  value: unknown,
+): value is AsyncIterable<Uint8Array> {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  const iterator = (value as { [Symbol.asyncIterator]?: unknown })[
+    Symbol.asyncIterator
+  ];
+  return typeof iterator === "function";
+}
+
 function downloadS3BufferWithClient(
   client$: Computed<S3Client>,
   bucket: string,
   key: string,
+  options: DownloadS3BufferOptions = {},
 ): Computed<Promise<Buffer>> {
   return computed(async (get): Promise<Buffer> => {
     const client = get(client$);
@@ -221,14 +259,32 @@ function downloadS3BufferWithClient(
     if (!response.Body) {
       throw new Error("S3 object body is empty");
     }
+    if (!isAsyncIterableByteStream(response.Body)) {
+      throw new Error("S3 object body is not an async byte stream");
+    }
+    if (
+      options.maxBytes !== undefined &&
+      response.ContentLength !== undefined &&
+      response.ContentLength > options.maxBytes
+    ) {
+      throw new S3ObjectSizeLimitError(
+        key,
+        response.ContentLength,
+        options.maxBytes,
+      );
+    }
     const chunks: Uint8Array[] = [];
-    const stream = response.Body as unknown as AsyncIterable<Uint8Array>;
-    for await (const chunk of stream) {
+    let totalLength = 0;
+    for await (const chunk of response.Body) {
+      if (!(chunk instanceof Uint8Array)) {
+        throw new Error("S3 object body yielded a non-byte chunk");
+      }
+      totalLength += chunk.length;
+      if (options.maxBytes !== undefined && totalLength > options.maxBytes) {
+        throw new S3ObjectSizeLimitError(key, totalLength, options.maxBytes);
+      }
       chunks.push(chunk);
     }
-    const totalLength = chunks.reduce((acc, c) => {
-      return acc + c.length;
-    }, 0);
     return Buffer.concat(
       chunks.map((c) => {
         return Buffer.from(c);

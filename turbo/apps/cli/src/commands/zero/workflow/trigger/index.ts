@@ -1,8 +1,10 @@
 import { Command } from "commander";
 import chalk from "chalk";
 import type {
+  GithubLabelAppliedSubjectFilter,
   ZeroWorkflowSchedule,
   ZeroWorkflowTriggerCreateRequest,
+  ZeroWorkflowTriggerSummary,
   ZeroWorkflowTriggerUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
@@ -22,7 +24,9 @@ import {
   printWorkflowTriggersTable,
 } from "./display";
 import {
+  buildGmailLabelAppliedEventConfig,
   buildGmailNewMessageEventConfig,
+  hasGmailLabelOption,
   hasGmailTriggerOptions,
   type GmailTriggerOptions,
 } from "./gmail-config";
@@ -33,6 +37,9 @@ interface AddOptions extends GmailTriggerOptions {
   readonly every?: string;
   readonly timezone?: string;
   readonly agent?: string;
+  readonly subject?: string;
+  readonly actor?: string;
+  readonly calendarId?: string;
 }
 
 interface UpdateOptions extends GmailTriggerOptions {
@@ -40,6 +47,8 @@ interface UpdateOptions extends GmailTriggerOptions {
   readonly at?: string;
   readonly every?: string;
   readonly timezone?: string;
+  readonly subject?: string;
+  readonly actor?: string;
 }
 
 interface WorkflowRefOptions {
@@ -49,10 +58,16 @@ interface WorkflowRefOptions {
 const UUID_RE =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SCHEDULE_KINDS = ["cron", "once", "loop"] as const;
-const EVENT_KINDS = ["gmail-new-message"] as const;
+const EVENT_KINDS = [
+  "gmail-new-message",
+  "gmail-label-applied",
+  "github-label-applied",
+  "google-calendar-event-created",
+  "webhook",
+] as const;
 const TRIGGER_KINDS = [...SCHEDULE_KINDS, ...EVENT_KINDS] as const;
 const EXACTLY_ONE_FLAG_MESSAGE =
-  "Provide exactly one of --expr (cron), --at (once), --every (loop), or provide Gmail match options";
+  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, or --actor";
 
 function addGmailTriggerOptions(command: Command): Command {
   return command
@@ -60,6 +75,7 @@ function addGmailTriggerOptions(command: Command): Command {
       "--config <path>",
       "Path to a Gmail new message trigger config JSON",
     )
+    .option("--label <name>", "Label name for label-applied triggers")
     .option("--from-contains <text>", "Require the From header to contain text")
     .option(
       "--from-not-contains <text>",
@@ -90,6 +106,18 @@ function addGmailTriggerOptions(command: Command): Command {
     .option(
       "--cc-not-contains <text>",
       "Require the Cc header not to contain text",
+    );
+}
+
+function addGithubTriggerOptions(command: Command): Command {
+  return command
+    .option(
+      "--subject <subject>",
+      "GitHub subject filter for github-label-applied: both | issues | pull-requests",
+    )
+    .option(
+      "--actor <actor>",
+      "GitHub actor filter for github-label-applied: me | anyone",
     );
 }
 
@@ -265,45 +293,299 @@ function hasScheduleAddOptions(options: AddOptions): boolean {
   );
 }
 
-function buildCreateRequest(
-  kind: string,
+function hasGithubTriggerOptions(options: AddOptions | UpdateOptions): boolean {
+  return options.subject !== undefined || options.actor !== undefined;
+}
+
+function hasCalendarTriggerOptions(options: AddOptions): boolean {
+  return options.calendarId !== undefined;
+}
+
+function hasEventAddOptions(options: AddOptions): boolean {
+  return (
+    hasGmailTriggerOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubTriggerOptions(options) ||
+    hasCalendarTriggerOptions(options)
+  );
+}
+
+function assertNoScheduleAddOptions(options: AddOptions): void {
+  if (hasScheduleAddOptions(options)) {
+    throw new Error(
+      "--expr, --at, --every, and --timezone only apply to schedule triggers",
+    );
+  }
+}
+
+function assertNoGithubTriggerOptions(
   options: AddOptions,
-): ZeroWorkflowTriggerCreateRequest {
-  if (kind === "gmail-new-message") {
-    if (hasScheduleAddOptions(options)) {
+  message = "GitHub trigger flags only apply to GitHub event triggers",
+): void {
+  if (hasGithubTriggerOptions(options)) {
+    throw new Error(message);
+  }
+}
+
+function assertNoCalendarTriggerOptions(options: AddOptions): void {
+  if (hasCalendarTriggerOptions(options)) {
+    throw new Error(
+      "Google Calendar trigger flags only apply to Google Calendar event triggers",
+    );
+  }
+}
+
+function scheduleUpdateFlagCount(options: UpdateOptions): number {
+  return [options.expr, options.at, options.every].filter((value) => {
+    return value !== undefined;
+  }).length;
+}
+
+function hasScheduleUpdateOptions(options: UpdateOptions): boolean {
+  return scheduleUpdateFlagCount(options) > 0 || options.timezone !== undefined;
+}
+
+function parseGithubSubject(
+  value: string | undefined,
+  fallback: GithubLabelAppliedSubjectFilter = "both",
+): GithubLabelAppliedSubjectFilter {
+  if (value === undefined) {
+    return fallback;
+  }
+  switch (value) {
+    case "both":
+    case "issues":
+      return value;
+    case "pull-requests":
+      return "pull_requests";
+    default:
       throw new Error(
-        "--expr, --at, --every, and --timezone only apply to schedule triggers",
+        `Invalid --subject "${value}". Use one of: both, issues, pull-requests`,
       );
-    }
-    return {
-      kind: "event",
-      eventType: "gmail-new-message",
-      eventConfig: buildGmailNewMessageEventConfig(options),
-    };
+  }
+}
+
+function parseGithubActor(
+  value: string | undefined,
+  fallback: "me" | "anyone" = "me",
+): "me" | "anyone" {
+  if (value === undefined) {
+    return fallback;
+  }
+  if (value === "me" || value === "anyone") {
+    return value;
+  }
+  throw new Error(`Invalid --actor "${value}". Use one of: me, anyone`);
+}
+
+function buildGithubLabelAppliedEventConfig(
+  options: AddOptions | UpdateOptions,
+  existing?: Extract<
+    ZeroWorkflowTriggerSummary,
+    { readonly kind: "event"; readonly eventType: "github-label-applied" }
+  >,
+) {
+  const labelName = options.label?.trim() ?? existing?.eventConfig.labelName;
+  if (!labelName) {
+    throw new Error(
+      'github-label-applied triggers require --label "Label name"',
+    );
   }
 
+  return {
+    provider: "github" as const,
+    event: "label_applied" as const,
+    labelName,
+    filters: {
+      subject: parseGithubSubject(
+        options.subject,
+        existing?.eventConfig.filters.subject ?? "both",
+      ),
+      actor: {
+        type: parseGithubActor(
+          options.actor,
+          existing?.eventConfig.filters.actor.type ?? "me",
+        ),
+      },
+    },
+  };
+}
+
+function buildGmailNewMessageCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowTriggerCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (hasGmailLabelOption(options)) {
+    throw new Error("--label only applies to label-applied event triggers");
+  }
+  assertNoGithubTriggerOptions(options);
+  assertNoCalendarTriggerOptions(options);
+  return {
+    kind: "event",
+    eventType: "gmail-new-message",
+    eventConfig: buildGmailNewMessageEventConfig(options),
+  };
+}
+
+function buildGmailLabelAppliedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowTriggerCreateRequest {
+  assertNoScheduleAddOptions(options);
   if (hasGmailTriggerOptions(options)) {
     throw new Error(
       "Gmail match flags and --config only apply to gmail-new-message triggers",
     );
   }
+  assertNoGithubTriggerOptions(options);
+  assertNoCalendarTriggerOptions(options);
+  return {
+    kind: "event",
+    eventType: "gmail-label-applied",
+    eventConfig: buildGmailLabelAppliedEventConfig(options),
+  };
+}
 
+function buildGithubLabelAppliedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowTriggerCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (hasGmailTriggerOptions(options)) {
+    throw new Error(
+      "Gmail match flags and --config only apply to Gmail event triggers",
+    );
+  }
+  assertNoCalendarTriggerOptions(options);
+  return {
+    kind: "event",
+    eventType: "github-label-applied",
+    eventConfig: buildGithubLabelAppliedEventConfig(options),
+  };
+}
+
+function buildGoogleCalendarEventCreatedCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowTriggerCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (
+    hasGmailTriggerOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubTriggerOptions(options)
+  ) {
+    throw new Error(
+      "Gmail and GitHub trigger flags only apply to their event triggers",
+    );
+  }
+  return {
+    kind: "event",
+    eventType: "google-calendar-event-created",
+    eventConfig: {
+      provider: "google-calendar",
+      event: "event_created",
+      calendarId: options.calendarId?.trim() || "primary",
+    },
+  };
+}
+
+function buildWebhookCreateRequest(
+  options: AddOptions,
+): ZeroWorkflowTriggerCreateRequest {
+  assertNoScheduleAddOptions(options);
+  if (hasEventAddOptions(options)) {
+    throw new Error("Event trigger flags only apply to event triggers");
+  }
+  return {
+    kind: "event",
+    eventType: "webhook-received",
+    eventConfig: {
+      provider: "webhook",
+      event: "received",
+      auth: { mode: "hmac-sha256" },
+    },
+  };
+}
+
+function buildScheduleCreateRequest(
+  kind: string,
+  options: AddOptions,
+): ZeroWorkflowTriggerCreateRequest {
+  if (hasEventAddOptions(options)) {
+    throw new Error("Event trigger flags only apply to event triggers");
+  }
   return { schedule: buildSchedule(kind, options) };
 }
 
-function buildUpdate(options: UpdateOptions): ZeroWorkflowTriggerUpdateRequest {
-  const flagCount = [options.expr, options.at, options.every].filter(
-    (value) => {
-      return value !== undefined;
-    },
-  ).length;
-  const hasGmailOptions = hasGmailTriggerOptions(options);
-  if (hasGmailOptions) {
-    if (flagCount > 0 || options.timezone !== undefined) {
-      throw new Error("Use either schedule flags or Gmail match options");
-    }
-    return { eventConfig: buildGmailNewMessageEventConfig(options) };
+function buildCreateRequest(
+  kind: string,
+  options: AddOptions,
+): ZeroWorkflowTriggerCreateRequest {
+  switch (kind) {
+    case "gmail-new-message":
+      return buildGmailNewMessageCreateRequest(options);
+    case "gmail-label-applied":
+      return buildGmailLabelAppliedCreateRequest(options);
+    case "github-label-applied":
+      return buildGithubLabelAppliedCreateRequest(options);
+    case "google-calendar-event-created":
+      return buildGoogleCalendarEventCreatedCreateRequest(options);
+    case "webhook":
+      return buildWebhookCreateRequest(options);
+    default:
+      return buildScheduleCreateRequest(kind, options);
   }
+}
+
+function buildEventUpdate(
+  options: UpdateOptions,
+  existing: Extract<ZeroWorkflowTriggerSummary, { readonly kind: "event" }>,
+): ZeroWorkflowTriggerUpdateRequest {
+  const hasGmailOptions = hasGmailTriggerOptions(options);
+  const hasLabelOption = hasGmailLabelOption(options);
+  const hasGithubOptions = hasGithubTriggerOptions(options);
+
+  if (existing.eventType === "google-calendar-event-created") {
+    throw new Error("Google Calendar event triggers cannot be updated");
+  }
+
+  if (existing.eventType === "github-label-applied") {
+    if (hasGmailOptions) {
+      throw new Error("Gmail match flags only apply to Gmail event triggers");
+    }
+    if (!hasLabelOption && !hasGithubOptions) {
+      throw new Error(
+        "Provide --label, --subject, or --actor for github-label-applied triggers",
+      );
+    }
+    return {
+      eventConfig: buildGithubLabelAppliedEventConfig(options, existing),
+    };
+  }
+
+  if (hasGithubOptions) {
+    throw new Error("GitHub trigger flags only apply to GitHub event triggers");
+  }
+
+  if (existing.eventType === "gmail-label-applied") {
+    if (!hasLabelOption || hasGmailOptions) {
+      throw new Error("Use --label for gmail-label-applied triggers");
+    }
+    return { eventConfig: buildGmailLabelAppliedEventConfig(options) };
+  }
+
+  if (!hasGmailOptions || hasLabelOption) {
+    throw new Error("Use Gmail match options for gmail-new-message triggers");
+  }
+  return { eventConfig: buildGmailNewMessageEventConfig(options) };
+}
+
+function buildScheduleUpdate(
+  options: UpdateOptions,
+): ZeroWorkflowTriggerUpdateRequest {
+  const hasGmailOptions = hasGmailTriggerOptions(options);
+  const hasLabelOption = hasGmailLabelOption(options);
+  if (hasGmailOptions || hasLabelOption) {
+    throw new Error("Gmail trigger flags only apply to Gmail event triggers");
+  }
+  const flagCount = scheduleUpdateFlagCount(options);
   if (flagCount !== 1) {
     throw new Error(EXACTLY_ONE_FLAG_MESSAGE);
   }
@@ -317,6 +599,34 @@ function buildUpdate(options: UpdateOptions): ZeroWorkflowTriggerUpdateRequest {
     return { schedule: buildSchedule("once", options) };
   }
   return { schedule: buildSchedule("loop", options) };
+}
+
+function buildUpdate(
+  options: UpdateOptions,
+  existing: ZeroWorkflowTriggerSummary,
+): ZeroWorkflowTriggerUpdateRequest {
+  const hasEventOptions =
+    hasGmailTriggerOptions(options) ||
+    hasGmailLabelOption(options) ||
+    hasGithubTriggerOptions(options);
+  if (hasScheduleUpdateOptions(options) && hasEventOptions) {
+    throw new Error("Use either schedule flags or event trigger options");
+  }
+  if (hasGmailTriggerOptions(options) && hasGmailLabelOption(options)) {
+    throw new Error("Use either Gmail match options or --label");
+  }
+
+  if (existing.kind === "event") {
+    if (hasScheduleUpdateOptions(options)) {
+      throw new Error("Schedule flags only apply to schedule triggers");
+    }
+    return buildEventUpdate(options, existing);
+  }
+
+  if (hasGithubTriggerOptions(options)) {
+    throw new Error("GitHub trigger flags only apply to GitHub event triggers");
+  }
+  return buildScheduleUpdate(options);
 }
 
 async function resolveWorkflowId(
@@ -346,23 +656,29 @@ async function resolveWorkflowId(
   return matches[0]!.id;
 }
 
-const addCommand = addGmailTriggerOptions(
-  new Command()
-    .name("add")
-    .description("Add a trigger to a workflow")
-    .argument("<workflow>", "Workflow ID or name")
-    .argument("<kind>", `Trigger type: ${TRIGGER_KINDS.join(" | ")}`)
-    .option("--expr <expression>", 'Cron expression for kind "cron"')
-    .option("--at <iso-time>", 'Fire time for kind "once"')
-    .option(
-      "--every <duration>",
-      'Interval for kind "loop" (e.g. 15m, 1h, 90s)',
-    )
-    .option(
-      "-z, --timezone <tz>",
-      "IANA timezone for cron/once (default: UTC)",
-    ),
+const addCommand = addGithubTriggerOptions(
+  addGmailTriggerOptions(
+    new Command()
+      .name("add")
+      .description("Add a trigger to a workflow")
+      .argument("<workflow>", "Workflow ID or name")
+      .argument("<kind>", `Trigger type: ${TRIGGER_KINDS.join(" | ")}`)
+      .option("--expr <expression>", 'Cron expression for kind "cron"')
+      .option("--at <iso-time>", 'Fire time for kind "once"')
+      .option(
+        "--every <duration>",
+        'Interval for kind "loop" (e.g. 15m, 1h, 90s)',
+      )
+      .option(
+        "-z, --timezone <tz>",
+        "IANA timezone for cron/once (default: UTC)",
+      ),
+  ),
 )
+  .option(
+    "--calendar-id <id>",
+    "Google Calendar ID for google-calendar-event-created (default: primary)",
+  )
   .option("--agent <id>", "Agent ID for resolving a workflow name")
   .addHelpText(
     "after",
@@ -373,10 +689,16 @@ Examples:
   zero workflow trigger add tell-a-joke loop --every 15m
   zero workflow trigger add triage gmail-new-message --from-contains "@example.com"
   zero workflow trigger add triage gmail-new-message --config ./gmail-trigger.json
+  zero workflow trigger add triage gmail-label-applied --label "Support"
+  zero workflow trigger add triage github-label-applied --label "triage" --subject both --actor me
+  zero workflow trigger add triage google-calendar-event-created
+  zero workflow trigger add triage webhook
 
 Notes:
   - Workflow names resolve under --agent, then ZERO_AGENT_ID, then all visible workflows
   - Gmail triggers match all inbound messages when no text match rules are provided
+  - GitHub label triggers require the GitHub App installation in the workspace
+  - Webhook triggers print the signing secret only once after creation
   - Use the workflow ID when a name is ambiguous`,
   )
   .action(
@@ -402,15 +724,19 @@ Notes:
     ),
   );
 
-const updateCommand = addGmailTriggerOptions(
-  new Command()
-    .name("update")
-    .description("Replace a workflow trigger's schedule or Gmail match config")
-    .argument("<trigger>", "Workflow trigger ID")
-    .option("--expr <expression>", 'New cron schedule (e.g. "0 9 * * *")')
-    .option("--at <iso-time>", 'New one-time fire (e.g. "2026-06-10T09:00")')
-    .option("--every <duration>", "New loop interval (e.g. 15m, 1h, 90s)")
-    .option("-z, --timezone <tz>", "IANA timezone for --expr / --at"),
+const updateCommand = addGithubTriggerOptions(
+  addGmailTriggerOptions(
+    new Command()
+      .name("update")
+      .description(
+        "Replace a workflow trigger's schedule or Gmail match config",
+      )
+      .argument("<trigger>", "Workflow trigger ID")
+      .option("--expr <expression>", 'New cron schedule (e.g. "0 9 * * *")')
+      .option("--at <iso-time>", 'New one-time fire (e.g. "2026-06-10T09:00")')
+      .option("--every <duration>", "New loop interval (e.g. 15m, 1h, 90s)")
+      .option("-z, --timezone <tz>", "IANA timezone for --expr / --at"),
+  ),
 )
   .addHelpText(
     "after",
@@ -420,11 +746,17 @@ Examples:
   zero workflow trigger update 22222222-2222-4222-8222-222222222222 --at "2026-06-10T09:00" -z UTC
   zero workflow trigger update 22222222-2222-4222-8222-222222222222 --every 10m
   zero workflow trigger update 22222222-2222-4222-8222-222222222222 --from-contains "@example.com"
-  zero workflow trigger update 22222222-2222-4222-8222-222222222222 --config ./gmail-trigger.json`,
+  zero workflow trigger update 22222222-2222-4222-8222-222222222222 --config ./gmail-trigger.json
+  zero workflow trigger update 22222222-2222-4222-8222-222222222222 --label "Support"
+  zero workflow trigger update 22222222-2222-4222-8222-222222222222 --actor anyone`,
   )
   .action(
     withErrorHandler(async (id: string, options: UpdateOptions) => {
-      const trigger = await updateWorkflowTrigger(id, buildUpdate(options));
+      const existing = await getWorkflowTrigger(id);
+      const trigger = await updateWorkflowTrigger(
+        id,
+        buildUpdate(options, existing),
+      );
 
       console.log(chalk.green(`✓ Trigger ${trigger.id} updated`));
       printWorkflowTriggerDetails(trigger);
@@ -525,6 +857,7 @@ export const triggerCommand = new Command()
     `
 Examples:
   Add a trigger:      zero workflow trigger add <workflow> cron --expr "0 9 * * *"
+  Add a webhook:      zero workflow trigger add <workflow> webhook
   Update a schedule:  zero workflow trigger update <trigger-id> --every 10m
   List triggers:      zero workflow trigger list <workflow>
   Inspect a trigger:  zero workflow trigger show <trigger-id>

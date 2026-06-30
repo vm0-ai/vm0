@@ -10,18 +10,20 @@ use std::path::{Path, PathBuf};
 #[derive(Debug, Eq, PartialEq)]
 struct Args {
     append: bool,
+    batch: bool,
     create_parents: bool,
     private: bool,
-    path: PathBuf,
+    path: Option<PathBuf>,
 }
 
-const USAGE: &str = "usage: guest-write-file [--private] [--append | --create-parents] [--] <path>";
+const USAGE: &str = "usage: guest-write-file [--private] [--append | --create-parents] [--] <path> | guest-write-file --batch";
 
 fn parse_args<I>(args: I) -> Result<Args, String>
 where
     I: IntoIterator<Item = String>,
 {
     let mut append = false;
+    let mut batch = false;
     let mut create_parents = false;
     let mut private = false;
     let mut path = None;
@@ -32,6 +34,10 @@ where
             match arg.as_str() {
                 "--append" => {
                     append = true;
+                    continue;
+                }
+                "--batch" => {
+                    batch = true;
                     continue;
                 }
                 "--create-parents" => {
@@ -58,6 +64,24 @@ where
         }
     }
 
+    if batch {
+        if append || create_parents || private {
+            return Err(
+                "--batch cannot be used with --append, --create-parents, or --private".to_string(),
+            );
+        }
+        if path.is_some() {
+            return Err("--batch does not accept a path".to_string());
+        }
+        return Ok(Args {
+            append: false,
+            batch: true,
+            create_parents: false,
+            private: false,
+            path: None,
+        });
+    }
+
     let path = path.ok_or_else(|| "missing path".to_string())?;
     if append && create_parents {
         return Err("--append and --create-parents cannot be used together".to_string());
@@ -68,27 +92,63 @@ where
 
     Ok(Args {
         append,
+        batch: false,
         create_parents,
         private,
-        path,
+        path: Some(path),
     })
 }
 
 fn run(args: Args, mut stdin: impl Read) -> io::Result<()> {
+    if args.batch {
+        return run_batch(stdin);
+    }
+    let Some(path) = args.path else {
+        return Err(io::Error::new(io::ErrorKind::InvalidInput, "missing path"));
+    };
+
     let mut file = if args.private {
-        open_private_output_file(&args.path, args.append)?
+        open_private_output_file(&path, args.append)?
     } else {
         if args.create_parents
-            && let Some(parent) = args.path.parent()
+            && let Some(parent) = path.parent()
             && !parent.as_os_str().is_empty()
         {
             fs::create_dir_all(parent)?;
         }
-        open_output_file(&args.path, args.append)?
+        open_output_file(&path, args.append)?
     };
 
     io::copy(&mut stdin, &mut file)?;
     file.flush()
+}
+
+fn run_batch(mut stdin: impl Read) -> io::Result<()> {
+    let mut payload = Vec::new();
+    let max_payload_size = vsock_proto::MAX_MESSAGE_SIZE - vsock_proto::MIN_BODY_SIZE;
+    let mut limited = stdin.by_ref().take(max_payload_size as u64 + 1);
+    limited.read_to_end(&mut payload)?;
+    if payload.len() > max_payload_size {
+        return Err(io::Error::new(
+            io::ErrorKind::InvalidData,
+            "write_files payload exceeds maximum protocol message size",
+        ));
+    }
+    let files = vsock_proto::decode_write_files(&payload)
+        .map_err(|error| io::Error::new(io::ErrorKind::InvalidData, error.to_string()))?;
+
+    for file in files {
+        let path = Path::new(file.path);
+        if let Some(parent) = path.parent()
+            && !parent.as_os_str().is_empty()
+        {
+            fs::create_dir_all(parent)?;
+        }
+        let mut output = open_output_file(path, false)?;
+        output.write_all(file.content)?;
+        output.flush()?;
+    }
+    Ok(())
 }
 
 fn open_private_output_file(path: &Path, append: bool) -> io::Result<File> {
@@ -176,6 +236,7 @@ fn prepare_output_file(_file: &File) -> io::Result<()> {
 ///
 /// ```text
 /// guest-write-file [--private] [--append | --create-parents] [--] <path>
+/// guest-write-file --batch
 /// ```
 ///
 /// Use `--` before `<path>` when the literal path begins with `-`. `stdin`
@@ -188,6 +249,9 @@ fn prepare_output_file(_file: &File) -> io::Result<()> {
 /// private file helpers, ensuring parent directories are private, creating
 /// missing parent directories even with `--append`, and rejecting symlinked
 /// parent components.
+///
+/// `--batch` reads a `vsock-proto` `write_files` payload from stdin and writes
+/// every ordinary file entry with create-parent and truncate semantics.
 ///
 /// Returns process-style exit codes: `0` for success, `1` for runtime or write
 /// failures, and `2` for usage or argument errors.
@@ -225,9 +289,10 @@ mod tests {
             args,
             Args {
                 append: false,
+                batch: false,
                 create_parents: true,
                 private: false,
-                path: PathBuf::from("/tmp/out.txt"),
+                path: Some(PathBuf::from("/tmp/out.txt")),
             }
         );
     }
@@ -245,9 +310,10 @@ mod tests {
             args,
             Args {
                 append: true,
+                batch: false,
                 create_parents: false,
                 private: false,
-                path: PathBuf::from("-literal"),
+                path: Some(PathBuf::from("-literal")),
             }
         );
     }
@@ -291,11 +357,42 @@ mod tests {
             args,
             Args {
                 append: true,
+                batch: false,
                 create_parents: false,
                 private: true,
-                path: PathBuf::from("/tmp/out.txt"),
+                path: Some(PathBuf::from("/tmp/out.txt")),
             }
         );
+    }
+
+    #[test]
+    fn parse_batch() {
+        let args = parse_args(["--batch".to_string()]).unwrap();
+
+        assert_eq!(
+            args,
+            Args {
+                append: false,
+                batch: true,
+                create_parents: false,
+                private: false,
+                path: None,
+            }
+        );
+    }
+
+    #[test]
+    fn rejects_batch_with_path() {
+        let err = parse_args(["--batch".to_string(), "/tmp/out.txt".to_string()]).unwrap_err();
+
+        assert!(err.contains("does not accept a path"));
+    }
+
+    #[test]
+    fn rejects_batch_with_single_file_flags() {
+        let err = parse_args(["--batch".to_string(), "--create-parents".to_string()]).unwrap_err();
+
+        assert!(err.contains("cannot be used"));
     }
 
     #[test]

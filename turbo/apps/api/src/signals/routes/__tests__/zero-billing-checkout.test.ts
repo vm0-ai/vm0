@@ -197,7 +197,7 @@ describe("POST /api/zero/billing/checkout", () => {
 
     const response = await client.create({
       body: {
-        // ts-rest contract z.enum(["pro","team"]) rejects this at parse time
+        // typed contract z.enum(["pro","team"]) rejects this at parse time
         tier: "enterprise" as "pro",
         successUrl: `${APP_ORIGIN}/billing?billing=success`,
         cancelUrl: `${APP_ORIGIN}/billing?billing=canceled`,
@@ -614,7 +614,7 @@ describe("POST /api/zero/billing/checkout", () => {
     });
   });
 
-  it("accepts successUrl on a first-party so.vm0.ai origin", async () => {
+  it("accepts successUrl on a first-party www.vm0.ai origin", async () => {
     const fixture = await trackedPendingSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
@@ -631,8 +631,8 @@ describe("POST /api/zero/billing/checkout", () => {
         body: {
           tier: "pro",
           trialDays: 7,
-          successUrl: "https://so.vm0.ai/onboarding?billing=pro",
-          cancelUrl: "https://so.vm0.ai/onboarding?billing=canceled",
+          successUrl: "https://www.vm0.ai/onboarding?billing=pro",
+          cancelUrl: "https://www.vm0.ai/onboarding?billing=canceled",
         },
         headers: { authorization: "Bearer clerk-session" },
       }),
@@ -644,8 +644,8 @@ describe("POST /api/zero/billing/checkout", () => {
     });
   });
 
-  it("accepts successUrl on the configured paid-onboarding origin", async () => {
-    mockEnv("PAID_ONBOARDING_URL", "https://so.vm7.ai:8443");
+  it("accepts successUrl on the configured onboarding origin", async () => {
+    mockEnv("ONBOARDING_URL", "https://www.vm7.ai:8443");
 
     const fixture = await trackedPendingSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
@@ -663,8 +663,8 @@ describe("POST /api/zero/billing/checkout", () => {
         body: {
           tier: "pro",
           trialDays: 7,
-          successUrl: "https://so.vm7.ai:8443/onboarding?billing=pro",
-          cancelUrl: "https://so.vm7.ai:8443/onboarding?billing=canceled",
+          successUrl: "https://www.vm7.ai:8443/onboarding?billing=pro",
+          cancelUrl: "https://www.vm7.ai:8443/onboarding?billing=canceled",
         },
         headers: { authorization: "Bearer clerk-session" },
       }),

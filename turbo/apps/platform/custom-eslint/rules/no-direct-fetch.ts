@@ -2,7 +2,7 @@
  * ESLint rule: no-direct-fetch
  *
  * Disallows direct usage of `fetch$`. All API calls should use `zeroClient$`
- * which provides type-safe request/response handling via ts-rest contracts.
+ * which provides type-safe request/response handling via typed contracts.
  *
  * Good:
  *   const client = get(zeroClient$)(someContract);

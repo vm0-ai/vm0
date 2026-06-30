@@ -268,9 +268,6 @@ const markRead$ = command(
     { threadId, latestMessageId }: MarkReadArgs,
     signal: AbortSignal,
   ): Promise<string | null> => {
-    // Optimistic: suppress this thread's sidebar unread dot immediately.
-    // The response's unread snapshot kicks the mark if a newer message
-    // already landed. Mark-read is not broadcast by the server.
     set(recordOptimisticReadMark$, threadId);
     const client = get(zeroClient$)(chatThreadMarkReadContract);
     const result = await accept(
@@ -333,7 +330,6 @@ export function createRemoteChatThreadDataSource(
     const threadResult = await accept(
       threadClient.get({ params: { id: threadId } }),
       [200, 404],
-      { toast: false },
     );
     if (threadResult.status === 404) {
       return null;
@@ -343,9 +339,12 @@ export function createRemoteChatThreadDataSource(
       id: threadId,
       title: body.title ?? null,
       agentId: body.agentId,
+      createdAt: body.createdAt,
+      updatedAt: body.updatedAt,
       lastReadMessageId: body.lastReadMessageId ?? null,
       lastReadAt: body.lastReadAt ?? null,
       lastMessageAt: body.lastMessageAt ?? body.updatedAt,
+      pinnedAt: body.pinnedAt ?? null,
       activeRunIds: body.activeRunIds,
       isLegacySession: false,
       draftContent: body.draftContent ?? null,

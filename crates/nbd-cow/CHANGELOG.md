@@ -1,5 +1,40 @@
 # Changelog
 
+## [0.4.52](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.51...nbd-cow-v0.4.52) (2026-06-30)
+
+
+### Bug Fixes
+
+* **nbd-cow:** coalesce contiguous cow reads ([#19380](https://github.com/vm0-ai/vm0/issues/19380)) ([6fbfef3](https://github.com/vm0-ai/vm0/commit/6fbfef39c78451fe52ec1fae80fdf8cd298305e5))
+
+## [0.4.51](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.50...nbd-cow-v0.4.51) (2026-06-29)
+
+
+### Bug Fixes
+
+* guard netlink errno parsing ([#19261](https://github.com/vm0-ai/vm0/issues/19261)) ([cca95ba](https://github.com/vm0-ai/vm0/commit/cca95baaa9ca97f50545f96c9620419fd1132325))
+
+## [0.4.50](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.49...nbd-cow-v0.4.50) (2026-06-27)
+
+
+### Performance Improvements
+
+* **nbd-cow:** avoid redundant pid stat during scans ([#19162](https://github.com/vm0-ai/vm0/issues/19162)) ([6b23b2b](https://github.com/vm0-ai/vm0/commit/6b23b2b4f836adcb34259ca95ac3bf21322d49be))
+
+## [0.4.49](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.48...nbd-cow-v0.4.49) (2026-06-26)
+
+
+### Refactoring
+
+* **nbd-cow:** simplify dispatch wire helpers ([#19124](https://github.com/vm0-ai/vm0/issues/19124)) ([34a778a](https://github.com/vm0-ai/vm0/commit/34a778a6f1b8df0be01ab049c8f82206d361aead))
+
+## [0.4.48](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.47...nbd-cow-v0.4.48) (2026-06-26)
+
+
+### Refactoring
+
+* **nbd-cow:** split create transaction phases ([#19071](https://github.com/vm0-ai/vm0/issues/19071)) ([1f75431](https://github.com/vm0-ai/vm0/commit/1f7543124e35e9c6acbbb6dcacaf01627f6a725a))
+
 ## [0.4.47](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.46...nbd-cow-v0.4.47) (2026-06-25)
 
 

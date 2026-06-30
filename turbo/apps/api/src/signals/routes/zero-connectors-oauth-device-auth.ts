@@ -4,7 +4,7 @@ import { command } from "ccstate";
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import {
   pollConnectorOauthDeviceAuthSession$,
   startConnectorOauthDeviceAuthSession$,

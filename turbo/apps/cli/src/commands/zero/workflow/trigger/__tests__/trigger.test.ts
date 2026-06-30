@@ -93,6 +93,71 @@ const gmailTrigger = {
   nextRunAt: null,
 };
 
+const gmailLabelTrigger = {
+  ...triggerBase,
+  kind: "event",
+  eventType: "gmail-label-applied",
+  eventConfig: {
+    provider: "gmail",
+    event: "label_applied",
+    labelName: "Support",
+    resolvedLabelId: "Label_support",
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+};
+
+const githubLabelTrigger = {
+  ...triggerBase,
+  kind: "event",
+  eventType: "github-label-applied",
+  eventConfig: {
+    provider: "github",
+    event: "label_applied",
+    labelName: "triage",
+    filters: {
+      subject: "both",
+      actor: { type: "me" },
+    },
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+};
+
+const googleCalendarTrigger = {
+  ...triggerBase,
+  kind: "event",
+  eventType: "google-calendar-event-created",
+  eventConfig: {
+    provider: "google-calendar",
+    event: "event_created",
+    calendarId: "primary",
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+};
+
+const webhookTrigger = {
+  ...triggerBase,
+  kind: "event",
+  eventType: "webhook-received",
+  eventConfig: {
+    provider: "webhook",
+    event: "received",
+    auth: { mode: "hmac-sha256" },
+  },
+  schedule: null,
+  scheduleSummary: null,
+  nextRunAt: null,
+  webhookUrl: "http://localhost:3000/api/webhooks/workflow-triggers/whk_test",
+  secretLastFour: "abcd",
+  lastReceivedAt: null,
+  webhookSecret: "webhook-secret-abcd",
+};
+
 describe("zero workflow trigger commands", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
     throw new Error("process.exit called");
@@ -325,6 +390,145 @@ describe("zero workflow trigger commands", () => {
       });
     });
 
+    it("should add a Gmail label applied trigger by label name", async () => {
+      const captured = captureCreateTrigger(gmailLabelTrigger);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "gmail-label-applied",
+        "--label",
+        "Support",
+      ]);
+
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "gmail-label-applied",
+        eventConfig: {
+          provider: "gmail",
+          event: "label_applied",
+          labelName: "Support",
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Gmail label applied");
+      expect(logCalls).toContain("Support");
+    });
+
+    it("should add a GitHub label applied trigger", async () => {
+      const captured = captureCreateTrigger({
+        ...githubLabelTrigger,
+        eventConfig: {
+          provider: "github",
+          event: "label_applied",
+          labelName: "triage",
+          filters: {
+            subject: "pull_requests",
+            actor: { type: "anyone" },
+          },
+        },
+      });
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "github-label-applied",
+        "--label",
+        "triage",
+        "--subject",
+        "pull-requests",
+        "--actor",
+        "anyone",
+      ]);
+
+      expect(captured.workflowId).toBe(WORKFLOW_ID);
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "github-label-applied",
+        eventConfig: {
+          provider: "github",
+          event: "label_applied",
+          labelName: "triage",
+          filters: {
+            subject: "pull_requests",
+            actor: { type: "anyone" },
+          },
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("GitHub label applied");
+      expect(logCalls).toContain("triage");
+      expect(logCalls).toContain("pull requests");
+      expect(logCalls).toContain("anyone");
+    });
+
+    it("should add a Google Calendar event-created trigger", async () => {
+      const captured = captureCreateTrigger({
+        ...googleCalendarTrigger,
+        eventConfig: {
+          provider: "google-calendar",
+          event: "event_created",
+          calendarId: "team@example.com",
+        },
+      });
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "google-calendar-event-created",
+        "--calendar-id",
+        "team@example.com",
+      ]);
+
+      expect(captured.workflowId).toBe(WORKFLOW_ID);
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "google-calendar-event-created",
+        eventConfig: {
+          provider: "google-calendar",
+          event: "event_created",
+          calendarId: "team@example.com",
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Google Calendar event created");
+      expect(logCalls).toContain("team@example.com");
+    });
+
+    it("should add a webhook trigger", async () => {
+      const captured = captureCreateTrigger(webhookTrigger);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "webhook",
+      ]);
+
+      expect(captured.workflowId).toBe(WORKFLOW_ID);
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "webhook-received",
+        eventConfig: {
+          provider: "webhook",
+          event: "received",
+          auth: { mode: "hmac-sha256" },
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Webhook");
+      expect(logCalls).toContain(webhookTrigger.webhookUrl);
+      expect(logCalls).toContain(webhookTrigger.webhookSecret);
+      expect(logCalls).toContain("X-VM0-Signature");
+    });
+
     it.each([
       {
         field: "hasAttachment",
@@ -371,12 +575,12 @@ describe("zero workflow trigger commands", () => {
           "cli",
           "add",
           WORKFLOW_ID,
-          "webhook",
+          "not-a-trigger",
         ]);
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining('Unknown trigger kind: "webhook"'),
+        expect.stringContaining('Unknown trigger kind: "not-a-trigger"'),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -397,7 +601,32 @@ describe("zero workflow trigger commands", () => {
       }).rejects.toThrow("process.exit called");
 
       expect(mockConsoleError).toHaveBeenCalledWith(
-        expect.stringContaining("only apply to gmail-new-message triggers"),
+        expect.stringContaining(
+          "Event trigger flags only apply to event triggers",
+        ),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
+    });
+
+    it("should reject label flags on schedule triggers", async () => {
+      await expect(async () => {
+        await triggerCommand.parseAsync([
+          "node",
+          "cli",
+          "add",
+          WORKFLOW_ID,
+          "cron",
+          "--expr",
+          "0 9 * * *",
+          "--label",
+          "Support",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining(
+          "Event trigger flags only apply to event triggers",
+        ),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
@@ -423,9 +652,28 @@ describe("zero workflow trigger commands", () => {
   });
 
   describe("update", () => {
-    function captureUpdateTrigger(response: object) {
+    function mockExistingTrigger(existing: object) {
+      server.use(
+        http.get(
+          "http://localhost:3000/api/zero/workflow-triggers/:id",
+          ({ params }) => {
+            expect(params.id).toBe(TRIGGER_ID);
+            return HttpResponse.json(existing);
+          },
+        ),
+      );
+    }
+
+    function captureUpdateTrigger(response: object, existing = response) {
       const captured: { id?: string; body?: Record<string, unknown> } = {};
       server.use(
+        http.get(
+          "http://localhost:3000/api/zero/workflow-triggers/:id",
+          ({ params }) => {
+            expect(params.id).toBe(TRIGGER_ID);
+            return HttpResponse.json(existing);
+          },
+        ),
         http.patch(
           "http://localhost:3000/api/zero/workflow-triggers/:id",
           async ({ request, params }) => {
@@ -506,6 +754,84 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain('subject does not contain "marketing"');
     });
 
+    it("should update a Gmail label applied trigger by label name", async () => {
+      const updated = {
+        ...gmailLabelTrigger,
+        eventConfig: {
+          provider: "gmail",
+          event: "label_applied",
+          labelName: "Escalated",
+          resolvedLabelId: "Label_escalated",
+        },
+      };
+      const captured = captureUpdateTrigger(updated);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "update",
+        TRIGGER_ID,
+        "--label",
+        "Escalated",
+      ]);
+
+      expect(captured.id).toBe(TRIGGER_ID);
+      expect(captured.body).toEqual({
+        eventConfig: {
+          provider: "gmail",
+          event: "label_applied",
+          labelName: "Escalated",
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Gmail label applied");
+      expect(logCalls).toContain("Escalated");
+    });
+
+    it("should update a GitHub label applied trigger", async () => {
+      const updated = {
+        ...githubLabelTrigger,
+        eventConfig: {
+          provider: "github",
+          event: "label_applied",
+          labelName: "triage",
+          filters: {
+            subject: "issues",
+            actor: { type: "anyone" },
+          },
+        },
+      };
+      const captured = captureUpdateTrigger(updated, githubLabelTrigger);
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "update",
+        TRIGGER_ID,
+        "--subject",
+        "issues",
+        "--actor",
+        "anyone",
+      ]);
+
+      expect(captured.id).toBe(TRIGGER_ID);
+      expect(captured.body).toEqual({
+        eventConfig: {
+          provider: "github",
+          event: "label_applied",
+          labelName: "triage",
+          filters: {
+            subject: "issues",
+            actor: { type: "anyone" },
+          },
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("GitHub label applied");
+      expect(logCalls).toContain("issues");
+      expect(logCalls).toContain("anyone");
+    });
+
     it("should update a Gmail new message trigger from a config file", async () => {
       const configPath = writeGmailConfig({
         match: {
@@ -544,6 +870,8 @@ describe("zero workflow trigger commands", () => {
     });
 
     it("should reject mixing schedule and Gmail match options", async () => {
+      mockExistingTrigger(cronTrigger);
+
       await expect(async () => {
         await triggerCommand.parseAsync([
           "node",
@@ -559,13 +887,15 @@ describe("zero workflow trigger commands", () => {
 
       expect(mockConsoleError).toHaveBeenCalledWith(
         expect.stringContaining(
-          "Use either schedule flags or Gmail match options",
+          "Use either schedule flags or event trigger options",
         ),
       );
       expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should reject more than one timing flag", async () => {
+      mockExistingTrigger(cronTrigger);
+
       await expect(async () => {
         await triggerCommand.parseAsync([
           "node",
@@ -593,7 +923,12 @@ describe("zero workflow trigger commands", () => {
           "http://localhost:3000/api/zero/workflows/:workflowId/triggers",
           ({ params }) => {
             expect(params.workflowId).toBe(WORKFLOW_ID);
-            return HttpResponse.json([cronTrigger, loopTrigger, gmailTrigger]);
+            return HttpResponse.json([
+              cronTrigger,
+              loopTrigger,
+              gmailTrigger,
+              githubLabelTrigger,
+            ]);
           },
         ),
       );
@@ -606,6 +941,8 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("every 15m");
       expect(logCalls).toContain("Gmail new message");
       expect(logCalls).toContain('from contains "@acme.com"');
+      expect(logCalls).toContain("GitHub label applied");
+      expect(logCalls).toContain("triage");
     });
 
     it("should display an empty state with an add hint", async () => {

@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Supadata firewall config...");
   const ts = generateTypeScript();
-  writeOutput("supadata", ts, import.meta.dirname);
+  writeOutput("supadata", ts);
 }

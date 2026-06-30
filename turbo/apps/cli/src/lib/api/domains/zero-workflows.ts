@@ -1,4 +1,4 @@
-import { initClient } from "@ts-rest/core";
+import { initClient } from "@vm0/api-contracts/contracts/trpc-contract";
 import {
   zeroWorkflowsCollectionContract,
   zeroWorkflowsDetailContract,
@@ -25,6 +25,7 @@ export async function listWorkflows(query: {
 
 export async function createWorkflow(body: {
   agentId: string;
+  chatThreadId?: string;
   name: string;
   instruction?: string;
   files?: WorkflowFileEntry[];

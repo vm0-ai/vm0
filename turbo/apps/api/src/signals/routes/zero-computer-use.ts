@@ -25,7 +25,7 @@ import {
   startComputerUseHost$,
   stopComputerUseHost$,
 } from "../services/zero-computer-use.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const computerUseHostNotAuthorized = Object.freeze({
   status: 403 as const,

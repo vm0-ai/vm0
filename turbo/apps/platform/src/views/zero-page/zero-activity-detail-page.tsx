@@ -47,6 +47,7 @@ import { StatusBadge } from "./components/log-views/status-badge.tsx";
 import {
   zeroActivityDetail$,
   zeroActivityEvents$,
+  zeroActivityVisibleMessages$,
   zeroActivityStepSearch$,
   setZeroActivityStepSearch$,
   formatLogTime,
@@ -54,7 +55,7 @@ import {
   currentRunId$,
 } from "../../signals/activity-page/activity-signals.ts";
 import {
-  groupEventsIntoMessages,
+  groupedMessageKey,
   groupedMessageMatchesSearch,
   type GroupedMessage,
 } from "./components/log-views/log-detail-utils.ts";
@@ -111,37 +112,6 @@ function RunErrorBanner({ error }: { error: string }) {
 // ---------------------------------------------------------------------------
 // Component
 // ---------------------------------------------------------------------------
-
-/**
- * Returns true if a grouped message should be shown.
- *
- * Claude Code emits a result event that repeats the final assistant text, so
- * text-only assistant messages immediately before a non-empty result are
- * hidden. Other frameworks keep the assistant message as-is.
- */
-export function isVisibleMessage(
-  message: GroupedMessage,
-  nextMessage: GroupedMessage | undefined,
-  framework?: string | null,
-): boolean {
-  if (message.type !== "assistant") {
-    return true;
-  }
-  if (!nextMessage || nextMessage.type !== "result") {
-    return true;
-  }
-  if (framework !== "claude-code") {
-    return true;
-  }
-  const result = (nextMessage.eventData as { result?: unknown }).result;
-  if (typeof result !== "string" || result.trim().length === 0) {
-    return true;
-  }
-  return (
-    (message.thinkingBlocks?.length ?? 0) > 0 ||
-    (message.toolOperations?.length ?? 0) > 0
-  );
-}
 
 function ActivityBreadcrumbLink() {
   return (
@@ -358,18 +328,8 @@ function prepareRenderData(
     appendSystemPrompt: string | null;
     framework: string | null;
   },
-  rawEvents: AgentEvent[] | null,
-  stepSearch: string,
   features: Record<FeatureSwitchKey, boolean> | undefined,
 ) {
-  const events: AgentEvent[] = rawEvents ?? [];
-  const allMessages = groupEventsIntoMessages(events);
-  const visibleMessages = allMessages.filter((message, index) => {
-    return isVisibleMessage(message, allMessages[index + 1], detail.framework);
-  });
-  const messages = visibleMessages.filter((m) => {
-    return groupedMessageMatchesSearch(m, stepSearch.trim());
-  });
   const showModelDetail = true;
   const prompt = detail.prompt ?? "";
   const appendSystemPrompt = detail.appendSystemPrompt ?? "";
@@ -377,9 +337,6 @@ function prepareRenderData(
     (features?.[FeatureSwitchKey.ZeroDebug] ?? false) &&
     appendSystemPrompt.trim().length > 0;
   return {
-    events,
-    visibleMessages,
-    messages,
     showModelDetail,
     prompt,
     appendSystemPrompt,
@@ -436,22 +393,33 @@ const SANDBOX_REUSE_LABELS = {
 
 function ActivityStepsContent({
   detail,
-  eventsData,
   features,
 }: {
   detail: LogDetail;
-  eventsData: AgentEvent[];
   features: Record<FeatureSwitchKey, boolean> | undefined;
 }) {
   const stepSearch = useGet(zeroActivityStepSearch$);
   const setStepSearch = useSet(setZeroActivityStepSearch$);
-  const {
-    visibleMessages,
-    messages,
-    prompt,
-    showSystemPrompt,
-    appendSystemPrompt,
-  } = prepareRenderData(detail, eventsData, stepSearch, features);
+  const visibleMessagesLoadable = useLastLoadable(zeroActivityVisibleMessages$);
+  const visibleMessagesData =
+    visibleMessagesLoadable.state === "hasData" &&
+    visibleMessagesLoadable.data.runId === detail.id
+      ? visibleMessagesLoadable.data
+      : null;
+  const visibleMessages =
+    visibleMessagesData === null ? [] : visibleMessagesData.messages;
+  const visibleMessagesLoading =
+    visibleMessagesLoadable.state === "loading" ||
+    (visibleMessagesLoadable.state === "hasData" &&
+      visibleMessagesLoadable.data.runId !== detail.id);
+  const { prompt, showSystemPrompt, appendSystemPrompt } = prepareRenderData(
+    detail,
+    features,
+  );
+  const searchTerm = stepSearch.trim();
+  const messages = visibleMessages.filter((message) => {
+    return groupedMessageMatchesSearch(message, searchTerm);
+  });
 
   return (
     <div className="flex flex-col gap-4 pb-8 min-w-0">
@@ -486,18 +454,20 @@ function ActivityStepsContent({
         appendSystemPrompt={showSystemPrompt ? appendSystemPrompt : ""}
         messages={messages}
         stepSearch={stepSearch}
-        isLoading={false}
+        isLoading={visibleMessagesLoading}
       />
     </div>
   );
 }
 
-function ActivityContextTab() {
+function ActivityContextTab({ detailId }: { detailId: string }) {
   const contextLoadable = useLastLoadable(zeroActivityContext$);
 
   if (
     contextLoadable.state === "loading" ||
-    contextLoadable.state === "hasError"
+    contextLoadable.state === "hasError" ||
+    (contextLoadable.state === "hasData" &&
+      contextLoadable.data?.runId !== detailId)
   ) {
     return (
       <div className="flex flex-col gap-2 py-4">
@@ -513,7 +483,7 @@ function ActivityContextTab() {
     );
   }
 
-  const context = contextLoadable.data;
+  const context = contextLoadable.data?.context ?? null;
   if (!context) {
     return (
       <div className="flex flex-col items-center justify-center gap-3 py-12">
@@ -531,12 +501,14 @@ function ActivityContextTab() {
   return <ContextContent context={context} />;
 }
 
-function ActivityRunnerTab() {
+function ActivityRunnerTab({ detailId }: { detailId: string }) {
   const runnerLoadable = useLastLoadable(zeroActivityRunner$);
 
   if (
     runnerLoadable.state === "loading" ||
-    runnerLoadable.state === "hasError"
+    runnerLoadable.state === "hasError" ||
+    (runnerLoadable.state === "hasData" &&
+      runnerLoadable.data?.runId !== detailId)
   ) {
     return (
       <div className="flex flex-col gap-2 py-4">
@@ -546,7 +518,7 @@ function ActivityRunnerTab() {
     );
   }
 
-  const runner = runnerLoadable.data;
+  const runner = runnerLoadable.data?.runner ?? null;
   const reuse = runner?.sandboxReuseResult ?? null;
   const info = reuse ? SANDBOX_REUSE_LABELS[reuse] : null;
 
@@ -574,12 +546,16 @@ function ActivityRunnerTab() {
   );
 }
 
-function ActivityNetworkTab() {
+function ActivityNetworkTab({ detailId }: { detailId: string }) {
   const logsLoadable = useLastLoadable(zeroActivityNetworkLogs$);
   const loadNextPage = useSet(loadNetworkLogsNextPage$);
   const pageSignal = useGet(pageSignal$);
 
-  if (logsLoadable.state === "loading" || logsLoadable.state === "hasError") {
+  if (
+    logsLoadable.state === "loading" ||
+    logsLoadable.state === "hasError" ||
+    (logsLoadable.state === "hasData" && logsLoadable.data.runId !== detailId)
+  ) {
     return (
       <div className="flex flex-col gap-2 py-4">
         {Array.from({ length: 5 }, (_, i) => {
@@ -625,30 +601,22 @@ function ActivityNetworkTab() {
 function ActivityTabContent({
   activeTab,
   detail,
-  eventsData,
   features,
 }: {
   activeTab: ActivityTab;
   detail: LogDetail;
-  eventsData: AgentEvent[];
   features: Record<FeatureSwitchKey, boolean> | undefined;
 }) {
   if (activeTab === "steps") {
-    return (
-      <ActivityStepsContent
-        detail={detail}
-        eventsData={eventsData}
-        features={features}
-      />
-    );
+    return <ActivityStepsContent detail={detail} features={features} />;
   }
   if (activeTab === "context") {
-    return <ActivityContextTab />;
+    return <ActivityContextTab detailId={detail.id} />;
   }
   if (activeTab === "runner") {
-    return <ActivityRunnerTab />;
+    return <ActivityRunnerTab detailId={detail.id} />;
   }
-  return <ActivityNetworkTab />;
+  return <ActivityNetworkTab detailId={detail.id} />;
 }
 
 function ActivityDetailContent({
@@ -664,9 +632,11 @@ function ActivityDetailContent({
 }) {
   const params = useGet(searchParams$);
   const updateParams = useSet(updateSearchParams$);
+  const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
   const rawTab = params.get("tab");
   const activeTab: ActivityTab =
-    rawTab === "context" || rawTab === "runner" || rawTab === "network"
+    showDebugTabs &&
+    (rawTab === "context" || rawTab === "runner" || rawTab === "network")
       ? rawTab
       : "steps";
   const setActiveTab = (tab: ActivityTab) => {
@@ -683,17 +653,10 @@ function ActivityDetailContent({
   const setScrollContainer = useSet(setActivityDetailScrollContainer$);
 
   const events: AgentEvent[] = eventsData;
-  const { showModelDetail } = prepareRenderData(
-    detail,
-    eventsData,
-    "",
-    features,
-  );
+  const { showModelDetail } = prepareRenderData(detail, features);
   const status: LogStatus = detail.status;
   const time = formatLogTime(detail.createdAt);
   const duration = formatDuration(detail.startedAt, detail.completedAt);
-
-  const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
 
   return (
     <div className="h-full flex flex-col min-h-0 overflow-hidden">
@@ -757,7 +720,6 @@ function ActivityDetailContent({
             <ActivityTabContent
               activeTab={activeTab}
               detail={detail}
-              eventsData={eventsData}
               features={features}
             />
           </div>
@@ -779,14 +741,17 @@ export function ZeroActivityDetailPage() {
   const displayName = resolveDisplayName(detail, isStale);
 
   const features = useLastResolved(featureSwitch$);
+  const eventsData =
+    eventsLoadable.state === "hasData" &&
+    eventsLoadable.data !== null &&
+    eventsLoadable.data.runId === currentRunId
+      ? eventsLoadable.data.events
+      : null;
 
-  // Skeleton until both detail and initial events are loaded.
-  // Events signal returns null when the run loop hasn't been set up yet;
-  // useLastLoadable would keep the stale null as "hasData" which correctly
-  // prevents the page from rendering with an empty steps list.
-  const eventsReady =
-    eventsLoadable.state === "hasData" && eventsLoadable.data !== null;
-  if (!detail || isStale || !eventsReady) {
+  // Skeleton until both detail and initial events are loaded for this run.
+  // useLastLoadable keeps stale data while refetching, so the events payload
+  // carries its run id and must match the current route before rendering.
+  if (!detail || isStale || eventsData === null) {
     if (detailLoadable.state === "hasError") {
       return <ActivityNotFound />;
     }
@@ -797,7 +762,7 @@ export function ZeroActivityDetailPage() {
     <ActivityDetailContent
       detail={detail}
       displayName={displayName}
-      eventsData={eventsLoadable.data ?? []}
+      eventsData={eventsData}
       features={features}
     />
   );
@@ -876,6 +841,7 @@ export function StepsList({
   stepSearch: string;
   isLoading: boolean;
 }) {
+  const normalizedStepSearch = stepSearch.trim();
   const hasSystemPrompt = appendSystemPrompt.trim().length > 0;
   const hasPrompt = prompt.trim().length > 0;
   const hasContent = hasSystemPrompt || hasPrompt || messages.length > 0;
@@ -911,9 +877,9 @@ export function StepsList({
         messages.map((message, index) => {
           return (
             <GroupedMessageCard
-              key={`${message.type}-${message.sequenceNumber}-${message.createdAt}`}
+              key={groupedMessageKey(message)}
               message={message}
-              searchTerm={stepSearch}
+              searchTerm={normalizedStepSearch}
               showConnector={index < messages.length - 1}
             />
           );

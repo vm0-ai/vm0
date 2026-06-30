@@ -4,25 +4,23 @@ import { describe, expect, it } from "vitest";
 
 import {
   generatedFirewallExportName,
-  generatedFirewallFileName,
+  generatedConnectorMetadataFileName,
   loadConnectorFirewallSourceSet,
+  loadGeneratedConnectorFirewallSource,
   type ConnectorFirewallSource,
 } from "../connector-firewall-sources";
+import { getGeneratedFirewallOutput, writeOutput } from "../codegen";
 import {
   BILLABLE_FIREWALL_CONNECTOR_TYPES,
   FIREWALL_CONNECTOR_TYPES,
   type FirewallConnectorType,
 } from "../connector-firewall-manifest";
 
-const FIREWALLS_DIR = path.resolve(
-  import.meta.dirname,
-  "../../../connectors/src/firewalls",
-);
 const CONNECTORS_DIR = path.resolve(
   import.meta.dirname,
   "../../../connectors/src/connectors",
 );
-const UNREGISTERED_GENERATED_FIREWALL_TYPES = ["daytona", "modal"] as const;
+const FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS = 60_000;
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
   "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
 const GENERATOR_SOURCE_BOUNDARY_FILES = [
@@ -35,6 +33,14 @@ const GENERATOR_SOURCE_BOUNDARY_FILES = [
 const GENERATOR_RENDERER_BOUNDARY_FILES = [
   "../python-builtin-firewall-catalog.ts",
 ] as const;
+const ALLOWED_GENERATOR_CONNECTOR_IMPORTS = new Set([
+  "@vm0/connectors/connectors",
+  "@vm0/connectors/firewall-expander",
+  "@vm0/connectors/firewall-metadata",
+  "@vm0/connectors/firewall-metadata/routing",
+  "@vm0/connectors/firewall-metadata/server",
+  "@vm0/connectors/firewall-types",
+]);
 
 function staticValueImportSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
@@ -53,6 +59,21 @@ function staticValueExportSpecifiers(source: string): string[] {
   const specifiers: string[] = [];
   for (const match of source.matchAll(
     /^\s*export(?:\s+\*|\s+\{[\s\S]*?\})\s+from\s+["']([^"']+)["'];?/gm,
+  )) {
+    specifiers.push(match[1]!);
+  }
+  return specifiers;
+}
+
+function staticTypeModuleSpecifiers(source: string): string[] {
+  const specifiers: string[] = [];
+  for (const match of source.matchAll(
+    /^\s*import\s+type\s+[\s\S]*?\sfrom\s+["']([^"']+)["'];?/gm,
+  )) {
+    specifiers.push(match[1]!);
+  }
+  for (const match of source.matchAll(
+    /^\s*export\s+type(?:\s+\*|\s+\{[\s\S]*?\})\s+from\s+["']([^"']+)["'];?/gm,
   )) {
     specifiers.push(match[1]!);
   }
@@ -141,13 +162,23 @@ describe("firewall metadata generator", () => {
         "../../connectors/src/connectors",
       );
       expect(staticValueModuleSpecifiers(source), file).not.toContain(
-        "../../connectors/src/firewalls",
+        "../../connectors/src" + "/firewalls",
       );
-      for (const specifier of staticValueModuleSpecifiers(source)) {
+      const specifiers = [
+        ...staticValueModuleSpecifiers(source),
+        ...staticTypeModuleSpecifiers(source),
+      ];
+      for (const specifier of specifiers) {
+        if (specifier.startsWith("@vm0/connectors")) {
+          expect(ALLOWED_GENERATOR_CONNECTOR_IMPORTS.has(specifier), file).toBe(
+            true,
+          );
+          continue;
+        }
         expect(specifier, file).not.toMatch(/^\.\.\/\.\.\/connectors\/src\//);
       }
       expect(dynamicImportSpecifiers(source), file).not.toContain(
-        "../../connectors/src/firewalls",
+        "../../connectors/src" + "/firewalls",
       );
       expect(source, file).not.toContain("@vm0/connectors/firewalls/all");
       expect(source, file).not.toMatch(/\bCONNECTOR_TYPES\b/);
@@ -155,6 +186,40 @@ describe("firewall metadata generator", () => {
       expect(source, file).not.toContain("BILLABLE_CONNECTORS");
       expect(source, file).not.toContain("firewallsIndexFile");
     }
+  });
+
+  it("keeps package generator scripts aligned with the firewall manifest", () => {
+    const packageJson = JSON.parse(
+      fs.readFileSync(
+        path.resolve(import.meta.dirname, "../../package.json"),
+        "utf-8",
+      ),
+    ) as { scripts: Record<string, string> };
+    const manifestTypes = new Set<string>(FIREWALL_CONNECTOR_TYPES);
+
+    for (const type of FIREWALL_CONNECTOR_TYPES) {
+      expect(packageJson.scripts[`generate:${type}`]).toBe(
+        `tsx src/index.ts ${type}`,
+      );
+    }
+
+    const unexpectedScripts = Object.entries(packageJson.scripts)
+      .filter(([name, command]) => {
+        if (!name.startsWith("generate:")) {
+          return false;
+        }
+        const target = name.slice("generate:".length);
+        if (target === "metadata") {
+          return command !== "tsx src/index.ts metadata";
+        }
+        return (
+          !manifestTypes.has(target) || command !== `tsx src/index.ts ${target}`
+        );
+      })
+      .map(([name]) => name)
+      .sort(compareStrings);
+
+    expect(unexpectedScripts).toStrictEqual([]);
   });
 
   it("keeps Python builtin firewall rendering detached from source composition", () => {
@@ -181,30 +246,262 @@ describe("firewall metadata generator", () => {
     }
   });
 
-  it("loads connector sources with sorted and registry order preserved", async () => {
-    const manifestTypes = [...FIREWALL_CONNECTOR_TYPES];
-    const sourceSet = await loadConnectorFirewallSourceSet({
-      firewallsDir: FIREWALLS_DIR,
-      connectorsDir: CONNECTORS_DIR,
-    });
+  it(
+    "loads connector sources with sorted and registry order preserved",
+    async () => {
+      const manifestTypes = [...FIREWALL_CONNECTOR_TYPES];
+      const sourceSet = await loadConnectorFirewallSourceSet({
+        connectorsDir: CONNECTORS_DIR,
+      });
 
-    expect(sourceSet.sources.map((source) => source.type)).toStrictEqual(
-      [...manifestTypes].sort(compareStrings),
-    );
-    expect(
-      sourceSet.registryOrderedSources.map((source) => source.type),
-    ).toStrictEqual(manifestTypes);
-    expect([...sourceSet.billableTypes].sort(compareStrings)).toStrictEqual(
-      [...BILLABLE_FIREWALL_CONNECTOR_TYPES].sort(compareStrings),
-    );
-    expect(
-      sourceSet.sources.find((source) => source.type === "slack")
-        ?.firewallExportName,
-    ).toBe(generatedFirewallExportName("slack"));
-    expect(
-      sourceSet.sources.find((source) => source.type === "slack")?.label,
-    ).toBe("Slack");
-  });
+      expect(sourceSet.sources.map((source) => source.type)).toStrictEqual(
+        [...manifestTypes].sort(compareStrings),
+      );
+      expect(
+        sourceSet.registryOrderedSources.map((source) => source.type),
+      ).toStrictEqual(manifestTypes);
+      expect([...sourceSet.billableTypes].sort(compareStrings)).toStrictEqual(
+        [...BILLABLE_FIREWALL_CONNECTOR_TYPES].sort(compareStrings),
+      );
+      expect(
+        sourceSet.sources.find((source) => source.type === "slack")
+          ?.firewallExportName,
+      ).toBe(generatedFirewallExportName("slack"));
+      expect(
+        sourceSet.sources.find((source) => source.type === "slack")?.label,
+      ).toBe("Slack");
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "validates generated firewall config shape before deriving metadata",
+    async () => {
+      await loadGeneratedConnectorFirewallSource("github", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const previousSource = getGeneratedFirewallOutput("github");
+      if (previousSource === null) {
+        throw new Error("missing generated github firewall source");
+      }
+
+      writeOutput(
+        "github",
+        [
+          "export const githubFirewall = {",
+          '  name: "github",',
+          "  apis: [",
+          "    {",
+          '      base: "https://api.github.com",',
+          "      auth: {",
+          '        header: { Authorization: "Bearer token" },',
+          "      },",
+          "      permissions: [],",
+          "    },",
+          "  ],",
+          "};",
+        ].join("\n"),
+      );
+
+      try {
+        await expect(
+          loadGeneratedConnectorFirewallSource("github", {
+            connectorsDir: CONNECTORS_DIR,
+          }),
+        ).rejects.toThrow(
+          "Generated firewall config contains unknown keys at github.apis[0].auth: header",
+        );
+      } finally {
+        writeOutput("github", previousSource);
+      }
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "requires host policy for credentialed whole-host dynamic bases",
+    async () => {
+      await loadGeneratedConnectorFirewallSource("github", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const previousSource = getGeneratedFirewallOutput("github");
+      if (previousSource === null) {
+        throw new Error("missing generated github firewall source");
+      }
+
+      writeOutput(
+        "github",
+        [
+          "export const githubFirewall = {",
+          '  name: "github",',
+          "  apis: [",
+          "    {",
+          '      base: "https://${{ vars.GITHUB_HOST }}",',
+          "      auth: {",
+          "        headers: {",
+          '          Authorization: "Bearer ${{ secrets.GITHUB_TOKEN }}",',
+          "        },",
+          "      },",
+          "      permissions: [],",
+          "    },",
+          "  ],",
+          "};",
+        ].join("\n"),
+      );
+
+      try {
+        await expect(
+          loadGeneratedConnectorFirewallSource("github", {
+            connectorsDir: CONNECTORS_DIR,
+          }),
+        ).rejects.toThrow(
+          "Credentialed dynamic base URL requires hostPolicy for github.apis[0]",
+        );
+      } finally {
+        writeOutput("github", previousSource);
+      }
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "rejects provider-owned host policies without fixed host ownership",
+    async () => {
+      await loadGeneratedConnectorFirewallSource("github", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const previousSource = getGeneratedFirewallOutput("github");
+      if (previousSource === null) {
+        throw new Error("missing generated github firewall source");
+      }
+      const invalidCases = [
+        {
+          hostPolicy:
+            '{ kind: "providerOwned", exactHosts: [".api.github.com"] }',
+          message:
+            "providerOwned host policy exactHosts must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", exactHosts: ["127.0.0.1"] }',
+          message:
+            "providerOwned host policy exactHosts must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", exactHosts: ["0177.0.0.1"] }',
+          message:
+            "providerOwned host policy exactHosts must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", exactHosts: ["api.例子.com"] }',
+          message:
+            "providerOwned host policy exactHosts must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", suffixes: ["*.github.com"] }',
+          message:
+            "providerOwned host policy suffixes must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", suffixes: ["..github.com"] }',
+          message:
+            "providerOwned host policy suffixes must be fixed hostnames with at least two labels",
+        },
+        {
+          hostPolicy: '{ kind: "providerOwned", suffixes: ["com"] }',
+          message:
+            "providerOwned host policy suffixes must be fixed hostnames with at least two labels",
+        },
+      ] as const;
+
+      try {
+        for (const invalidCase of invalidCases) {
+          writeOutput(
+            "github",
+            [
+              "export const githubFirewall = {",
+              '  name: "github",',
+              "  apis: [",
+              "    {",
+              '      base: "https://${{ vars.GITHUB_HOST }}",',
+              `      hostPolicy: ${invalidCase.hostPolicy},`,
+              "      auth: {",
+              "        headers: {",
+              '          Authorization: "Bearer ${{ secrets.GITHUB_TOKEN }}",',
+              "        },",
+              "      },",
+              "      permissions: [],",
+              "    },",
+              "  ],",
+              "};",
+            ].join("\n"),
+          );
+
+          await expect(
+            loadGeneratedConnectorFirewallSource("github", {
+              connectorsDir: CONNECTORS_DIR,
+            }),
+          ).rejects.toThrow(invalidCase.message);
+        }
+      } finally {
+        writeOutput("github", previousSource);
+      }
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "rejects generated optional metadata exports with the wrong connector prefix",
+    async () => {
+      await loadGeneratedConnectorFirewallSource("github", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const previousSource = getGeneratedFirewallOutput("github");
+      if (previousSource === null) {
+        throw new Error("missing generated github firewall source");
+      }
+
+      writeOutput(
+        "github",
+        [
+          "export const githubFirewall = {",
+          '  name: "github",',
+          "  apis: [",
+          "    {",
+          '      base: "https://api.github.com",',
+          "      auth: {",
+          "        headers: {",
+          '          Authorization: "Bearer token",',
+          "        },",
+          "      },",
+          "      permissions: [",
+          "        {",
+          '          name: "repo-read",',
+          '          rules: ["GET /repos/{owner}/{repo}"],',
+          "        },",
+          "      ],",
+          "    },",
+          "  ],",
+          "};",
+          "export const gitHubDefaultAllowed = [",
+          '  "repo-read",',
+          "];",
+        ].join("\n"),
+      );
+
+      try {
+        await expect(
+          loadGeneratedConnectorFirewallSource("github", {
+            connectorsDir: CONNECTORS_DIR,
+          }),
+        ).rejects.toThrow(
+          "Unexpected DefaultAllowed export names for firewall metadata: github: gitHubDefaultAllowed; expected githubDefaultAllowed",
+        );
+      } finally {
+        writeOutput("github", previousSource);
+      }
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
 
   it("derives generated firewall export names from connector types", () => {
     const examples: readonly (readonly [FirewallConnectorType, string])[] = [
@@ -216,18 +513,6 @@ describe("firewall metadata generator", () => {
 
     for (const [type, exportName] of examples) {
       expect(generatedFirewallExportName(type)).toBe(exportName);
-    }
-  });
-
-  it("keeps generated-only firewall files out of the runtime manifest", () => {
-    const runtimeTypes = new Set<string>(FIREWALL_CONNECTOR_TYPES);
-
-    for (const type of UNREGISTERED_GENERATED_FIREWALL_TYPES) {
-      expect(
-        fs.existsSync(path.join(FIREWALLS_DIR, `${type}.generated.ts`)),
-        type,
-      ).toBe(true);
-      expect(runtimeTypes.has(type), type).toBe(false);
     }
   });
 
@@ -275,16 +560,18 @@ describe("firewall metadata generator", () => {
     const loaderSource = fs.readFileSync(
       path.resolve(
         import.meta.dirname,
-        "../../../connectors/src/firewall-metadata/loader.generated.ts",
+        "../../../connectors/src/firewall-metadata/permission-detail-loader.generated.ts",
       ),
       "utf-8",
     );
     const dynamicSpecifiers = dynamicImportSpecifiers(loaderSource);
 
     expect(staticValueModuleSpecifiers(loaderSource)).toStrictEqual([]);
-    expect(dynamicSpecifiers).toContain("./details/slack.generated");
-    expect(dynamicSpecifiers).toContain("./details/github.generated");
-    expect(loaderSource).toContain("/firewall-metadata/v1/");
+    expect(dynamicSpecifiers).toContain("./permission-details/slack.generated");
+    expect(dynamicSpecifiers).toContain(
+      "./permission-details/github.generated",
+    );
+    expect(loaderSource).toContain("/firewall-metadata/permission-details/v1/");
     expect(loaderSource).toContain(
       "const FIREWALL_PERMISSION_METADATA_LOADERS",
     );
@@ -297,7 +584,9 @@ describe("firewall metadata generator", () => {
     expect(new Set(dynamicSpecifiers).size).toBe(dynamicSpecifiers.length);
     expect(dynamicSpecifiers.length).toBe(FIREWALL_CONNECTOR_TYPES.length);
     for (const specifier of dynamicSpecifiers) {
-      expect(specifier).toMatch(/^\.\/details\/[a-z0-9][a-z0-9-]*\.generated$/);
+      expect(specifier).toMatch(
+        /^\.\/permission-details\/[a-z0-9][a-z0-9-]*\.generated$/,
+      );
     }
   });
 
@@ -306,7 +595,8 @@ describe("firewall metadata generator", () => {
       fs.existsSync(
         path.resolve(
           import.meta.dirname,
-          "../../../connectors/src/firewalls/runtime-loader.generated.ts",
+          "../../../connectors/src",
+          "firewalls/runtime-loader.generated.ts",
         ),
       ),
     ).toBe(false);
@@ -327,8 +617,8 @@ describe("firewall metadata generator", () => {
     expect(source).toContain('"slack"');
     expect(source).toContain('"google-cloud"');
     expect(source).toContain('"stripe"');
-    expect(source).not.toContain('"daytona"');
-    expect(source).not.toContain('"modal"');
+    expect(source).toContain('"daytona"');
+    expect(source).toContain('"modal"');
     expect(sourceHasObjectKey(source, "base")).toBe(true);
     expect(sourceHasObjectKey(source, "routes")).toBe(false);
     expect(sourceHasObjectKey(source, "permissionName")).toBe(false);
@@ -390,28 +680,31 @@ describe("firewall metadata generator", () => {
     );
   });
 
-  it("projects all routing details from connector firewall route data", async () => {
-    const sourceSet = await loadConnectorFirewallSourceSet({
-      firewallsDir: FIREWALLS_DIR,
-      connectorsDir: CONNECTORS_DIR,
-    });
+  it(
+    "projects all routing details from connector firewall route data",
+    async () => {
+      const sourceSet = await loadConnectorFirewallSourceSet({
+        connectorsDir: CONNECTORS_DIR,
+      });
 
-    for (const source of sourceSet.sources) {
-      const filename = `routing-details/${generatedFirewallFileName(source.type)}`;
-      const detailSource = fs.readFileSync(
-        path.resolve(
-          import.meta.dirname,
-          "../../../connectors/src/firewall-metadata",
-          filename,
-        ),
-        "utf-8",
-      );
-      expect(detailSource, filename).toContain(
-        `export const firewallRoutingMetadata = ${stableJson(
-          routingMetadataFromSource(source),
-        )} as const satisfies FirewallRoutingMetadata;`,
-      );
-      assertRoutingMetadataSourceExcludesAuthData(detailSource, filename);
-    }
-  });
+      for (const source of sourceSet.sources) {
+        const filename = `routing-details/${generatedConnectorMetadataFileName(source.type)}`;
+        const detailSource = fs.readFileSync(
+          path.resolve(
+            import.meta.dirname,
+            "../../../connectors/src/firewall-metadata",
+            filename,
+          ),
+          "utf-8",
+        );
+        expect(detailSource, filename).toContain(
+          `export const firewallRoutingMetadata = ${stableJson(
+            routingMetadataFromSource(source),
+          )} as const satisfies FirewallRoutingMetadata;`,
+        );
+        assertRoutingMetadataSourceExcludesAuthData(detailSource, filename);
+      }
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
 });

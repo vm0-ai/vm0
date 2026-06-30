@@ -1,5 +1,47 @@
 # Changelog
 
+## [0.2.10](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.9...guest-contracts-v0.2.10) (2026-06-30)
+
+
+### Performance Improvements
+
+* verify large session histories in guest ([#19386](https://github.com/vm0-ai/vm0/issues/19386)) ([a3f62a1](https://github.com/vm0-ai/vm0/commit/a3f62a1bd2b649e6d5dfe0a694894d020d196925))
+
+## [0.2.9](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.8...guest-contracts-v0.2.9) (2026-06-29)
+
+
+### Refactoring
+
+* merge agent diagnostics into guest contracts ([#19317](https://github.com/vm0-ai/vm0/issues/19317)) ([e36a711](https://github.com/vm0-ai/vm0/commit/e36a71168939a1b692a1ab80005d984697a77fe4))
+
+## [0.2.8](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.7...guest-contracts-v0.2.8) (2026-06-29)
+
+
+### Bug Fixes
+
+* declare guest-contracts serde dependencies ([#19291](https://github.com/vm0-ai/vm0/issues/19291)) ([8e739bc](https://github.com/vm0-ai/vm0/commit/8e739bc813a2eaa5dbeabbf24616a5ff0a3a34c9))
+
+## [0.2.7](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.6...guest-contracts-v0.2.7) (2026-06-29)
+
+
+### Performance Improvements
+
+* park checkpointed session history identity ([#19270](https://github.com/vm0-ai/vm0/issues/19270)) ([e21745b](https://github.com/vm0-ai/vm0/commit/e21745be11c34b09052a27182971d4c48ab881c1))
+
+## [0.2.6](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.5...guest-contracts-v0.2.6) (2026-06-27)
+
+
+### Bug Fixes
+
+* guard post-result cleanup deadlines ([#19179](https://github.com/vm0-ai/vm0/issues/19179)) ([e1d2779](https://github.com/vm0-ai/vm0/commit/e1d2779ab9b32e0d195e1d5bf4d3ae7745022b5d))
+
+## [0.2.5](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.4...guest-contracts-v0.2.5) (2026-06-26)
+
+
+### Documentation
+
+* document guest contracts public api ([#19064](https://github.com/vm0-ai/vm0/issues/19064)) ([f3ba3d1](https://github.com/vm0-ai/vm0/commit/f3ba3d1dc215502eb38276246334d5260ac853ee))
+
 ## [0.2.4](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.3...guest-contracts-v0.2.4) (2026-06-25)
 
 

@@ -56,6 +56,8 @@ export const ZERO_CAPABILITIES = [
   "telegram:read",
   "telegram:write",
   "chat-message:read",
+  "chat-thread:read",
+  "chat-thread:write",
   "connector:read",
   "billing:read",
   "billing:write",
@@ -135,6 +137,14 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "chat-message:read": {
       group: "Integrations",
       label: "Read chat messages",
+    },
+    "chat-thread:read": {
+      group: "Chat Threads",
+      label: "Read chat thread metadata",
+    },
+    "chat-thread:write": {
+      group: "Chat Threads",
+      label: "Update chat thread metadata",
     },
     "connector:read": { group: "Connectors", label: "View connected services" },
     "billing:read": { group: "Billing", label: "View billing and credits" },
@@ -413,29 +423,6 @@ export const composesByIdContract = c.router({
     },
     summary: "Get agent compose by ID",
   },
-
-  /**
-   * DELETE /api/agent/composes/:id
-   * Delete agent compose and all associated resources (versions, automations, permissions, etc.)
-   * Returns 409 Conflict if agent has running or pending runs
-   */
-  delete: {
-    method: "DELETE",
-    path: "/api/agent/composes/:id",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.string().uuid("Compose ID is required"),
-    }),
-    body: c.noBody(),
-    responses: {
-      204: c.noBody(),
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-    },
-    summary: "Delete agent compose",
-  },
 });
 
 /**
@@ -481,108 +468,9 @@ const composeListItemSchema = z.object({
   updatedAt: z.string(),
 });
 
-/**
- * Composes list route contract (/api/agent/composes/list)
- */
-export const composesListContract = c.router({
-  /**
-   * GET /api/agent/composes/list
-   * List all agent composes for an org
-   * Uses the authenticated user's active org.
-   */
-  list: {
-    method: "GET",
-    path: "/api/agent/composes/list",
-    headers: authHeadersSchema,
-    query: z.object({}),
-    responses: {
-      200: z.object({
-        composes: z.array(composeListItemSchema),
-      }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-    },
-    summary: "List all agent composes for an org",
-  },
-});
-
-/**
- * Compose metadata update schema
- */
-const metadataUpdateSchema = z.object({
-  displayName: z.string().optional(),
-  description: z.string().optional(),
-  sound: z.string().optional(),
-});
-
-/**
- * Composes metadata route contract (/api/agent/composes/[id]/metadata)
- */
-export const composesMetadataContract = c.router({
-  /**
-   * PATCH /api/agent/composes/:id/metadata
-   * Update agent compose metadata (displayName, description, sound)
-   */
-  updateMetadata: {
-    method: "PATCH",
-    path: "/api/agent/composes/:id/metadata",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.string().min(1, "Compose ID is required"),
-    }),
-    body: metadataUpdateSchema,
-    responses: {
-      200: z.object({ ok: z.literal(true) }),
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Update agent compose metadata",
-  },
-});
-
-/**
- * Compose instructions response schema
- */
-const composeInstructionsResponseSchema = z.object({
-  content: z.string().nullable(),
-  filename: z.string().nullable(),
-});
-
-/**
- * Composes instructions route contract (/api/agent/composes/[id]/instructions)
- */
-export const composesInstructionsContract = c.router({
-  /**
-   * GET /api/agent/composes/:id/instructions
-   * Get the instructions content for an agent compose
-   */
-  getInstructions: {
-    method: "GET",
-    path: "/api/agent/composes/:id/instructions",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.string().uuid("Compose ID must be a valid UUID"),
-    }),
-    responses: {
-      200: composeInstructionsResponseSchema,
-      400: apiErrorSchema,
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-    },
-    summary: "Get agent compose instructions content",
-  },
-});
-
 export type ComposesMainContract = typeof composesMainContract;
 export type ComposesByIdContract = typeof composesByIdContract;
 export type ComposesVersionsContract = typeof composesVersionsContract;
-export type ComposesListContract = typeof composesListContract;
-export type ComposesMetadataContract = typeof composesMetadataContract;
-export type ComposesInstructionsContract = typeof composesInstructionsContract;
 
 // Export schemas for reuse
 export {
@@ -595,8 +483,6 @@ export {
   agentComposeApiContentSchema,
   composeResponseSchema,
   composeListItemSchema,
-  metadataUpdateSchema,
-  composeInstructionsResponseSchema,
 };
 
 // Export inferred types for consumers

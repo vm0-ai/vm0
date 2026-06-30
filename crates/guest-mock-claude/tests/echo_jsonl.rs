@@ -533,6 +533,17 @@ fn mock_stream_json_shell_output(
     wait_child_output(spawn_managed_mock_child(&mut command)?)
 }
 
+#[cfg(target_os = "linux")]
+fn kill_pid_file(pid_file: &std::path::Path) {
+    if let Ok(pid) = fs::read_to_string(pid_file).map(|value| value.trim().to_string())
+        && let Ok(pid) = pid.parse::<libc::pid_t>()
+    {
+        unsafe {
+            libc::kill(pid, libc::SIGKILL);
+        }
+    }
+}
+
 #[test]
 fn echo_jsonl_outputs_valid_payload_unchanged() -> Result<(), Box<dyn std::error::Error>> {
     let home = tempfile::tempdir()?;
@@ -645,6 +656,117 @@ fn stream_json_shell_writes_matching_session_history() -> Result<(), Box<dyn std
         events[4].get("is_error").and_then(Value::as_bool),
         Some(false)
     );
+    Ok(())
+}
+
+#[test]
+fn stream_json_shell_background_child_does_not_hold_output_open()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+
+    let output = mock_stream_json_shell_output(home.path(), "sleep 30 & echo done")?;
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        [
+            "system/init",
+            "assistant/text",
+            "assistant/tool_use",
+            "user/tool_result",
+            "result/success",
+        ]
+    );
+    assert!(tool_result_content(&events)?.contains("done"));
+    assert!(result_content(&events)?.contains("done"));
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn stream_json_shell_escaped_child_does_not_hold_output_open()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let ready = home.path().join("escaped-child-ready");
+    let pid_file = home.path().join("escaped-child-pid");
+    let ready_path = ready.to_string_lossy();
+    let pid_path = pid_file.to_string_lossy();
+    let prompt = format!(
+        "setsid sh -c 'echo $$ > \"{pid_path}\"; echo ready > \"{ready_path}\"; exec sleep 30' & \
+         while [ ! -f \"{ready_path}\" ]; do :; done; echo done"
+    );
+
+    let output = mock_stream_json_shell_output(home.path(), &prompt);
+    kill_pid_file(&pid_file);
+    let output = output?;
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        [
+            "system/init",
+            "assistant/text",
+            "assistant/tool_use",
+            "user/tool_result",
+            "result/success",
+        ]
+    );
+    assert!(tool_result_content(&events)?.contains("done"));
+    assert!(result_content(&events)?.contains("done"));
+    Ok(())
+}
+
+#[cfg(target_os = "linux")]
+#[test]
+fn stream_json_shell_truncated_escaped_stderr_writer_does_not_hold_output_open()
+-> Result<(), Box<dyn std::error::Error>> {
+    let home = tempfile::tempdir()?;
+    let ready = home.path().join("escaped-stderr-ready");
+    let pid_file = home.path().join("escaped-stderr-pid");
+    let ready_path = ready.to_string_lossy();
+    let pid_path = pid_file.to_string_lossy();
+    let prompt = format!(
+        "setsid sh -c 'echo $$ > \"{pid_path}\"; yes escaped-stderr | head -c {LARGE_MOCK_OUTPUT_BYTES} >&2; echo ready > \"{ready_path}\"; exec yes escaped-stderr >&2' & \
+         while [ ! -f \"{ready_path}\" ]; do :; done; echo done"
+    );
+
+    let output = mock_stream_json_shell_output(home.path(), &prompt);
+    kill_pid_file(&pid_file);
+    let output = output?;
+    assert!(
+        output.status.success(),
+        "expected success, stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    assert!(output.stderr.is_empty());
+
+    let events = parse_jsonl(&output.stdout)?;
+    assert_eq!(
+        events.iter().map(event_kind).collect::<Vec<_>>(),
+        [
+            "system/init",
+            "assistant/text",
+            "assistant/tool_use",
+            "user/tool_result",
+            "result/success",
+        ]
+    );
+    assert!(tool_result_content(&events)?.contains("done"));
+    assert!(result_content(&events)?.contains("done"));
+    assert!(!tool_result_content(&events)?.contains("escaped-stderr"));
+    assert!(!result_content(&events)?.contains("escaped-stderr"));
     Ok(())
 }
 

@@ -4,7 +4,7 @@ import { zeroBillingInvoicesContract } from "@vm0/api-contracts/contracts/zero-b
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { zeroOrgInvoices } from "../services/zero-billing-invoices.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
   status: 403 as const,

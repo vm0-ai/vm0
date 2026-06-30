@@ -25,6 +25,12 @@ function isTerminalStatus(status: string | null): boolean {
 interface PagedRunEvents {
   events: AgentEvent[];
   hasMore: boolean;
+  nextCursor: string | null;
+}
+
+interface EventPageRequest {
+  since?: number;
+  cursor?: string;
 }
 
 async function fetchEvents(
@@ -33,14 +39,22 @@ async function fetchEvents(
   options: {
     limit: number;
     since?: number;
+    cursor?: string;
     signal?: AbortSignal;
   },
 ): Promise<PagedRunEvents> {
-  const query: { limit: number; order: "asc"; since?: number } = {
+  const query: {
+    limit: number;
+    order: "asc";
+    since?: number;
+    cursor?: string;
+  } = {
     limit: options.limit,
     order: "asc",
   };
-  if (options.since !== undefined) {
+  if (options.cursor !== undefined) {
+    query.cursor = options.cursor;
+  } else if (options.since !== undefined) {
     query.since = options.since;
   }
   const result = await accept(
@@ -53,18 +67,21 @@ async function fetchEvents(
     }),
     [200],
   );
-  return { events: result.body.events, hasMore: result.body.hasMore };
+  return {
+    events: result.body.events,
+    hasMore: result.body.hasMore,
+    nextCursor: result.body.nextCursor ?? null,
+  };
 }
 
 function createEventPageComputed(
   runId: string,
   limit: number,
-  since?: number,
+  request: EventPageRequest = {},
 ): Computed<Promise<PagedRunEvents>> {
   return computed(async (get) => {
     const client = get(zeroClient$);
-    const options = since === undefined ? { limit } : { limit, since };
-    return await fetchEvents(client, runId, options);
+    return await fetchEvents(client, runId, { limit, ...request });
   });
 }
 
@@ -150,6 +167,28 @@ function findLastEventSequence(
   return undefined;
 }
 
+function nextEventPageRequest(
+  pages: readonly PagedRunEvents[],
+): EventPageRequest | null {
+  const lastPage = pages[pages.length - 1];
+  // Prefer the server-provided cursor over reconstructing a sequence cursor.
+  if (lastPage?.hasMore && lastPage.nextCursor) {
+    const repeatedCursor = pages.slice(0, -1).some((page) => {
+      return page.nextCursor === lastPage.nextCursor;
+    });
+    if (repeatedCursor) {
+      return null;
+    }
+    return { cursor: lastPage.nextCursor };
+  }
+
+  const since = findLastEventSequence(pages);
+  if (lastPage?.hasMore && since === undefined) {
+    return null;
+  }
+  return since === undefined ? {} : { since };
+}
+
 function createRunPagedEvents(runId: string) {
   const initialPagedEventsList$ = computed(async (get) => {
     const pages = [
@@ -167,9 +206,16 @@ function createRunPagedEvents(runId: string) {
           return get(page$);
         }),
       );
-      const since = findLastEventSequence(resolvedPages);
+      const request = nextEventPageRequest(resolvedPages);
+      if (!request) {
+        return pages;
+      }
       pages.push(
-        createEventPageComputed(runId, INITIAL_AGENT_EVENTS_PAGE_LIMIT, since),
+        createEventPageComputed(
+          runId,
+          INITIAL_AGENT_EVENTS_PAGE_LIMIT,
+          request,
+        ),
       );
     }
   });
@@ -227,21 +273,33 @@ export function createRunLoop(runId: string) {
       }),
     );
     signal.throwIfAborted();
-    const since = findLastEventSequence(resolvedPages);
+    const request = nextEventPageRequest(resolvedPages);
+    if (!request) {
+      set(reloadRunStatus$);
+      const finished = await get(finished$);
+      signal.throwIfAborted();
+      return finished;
+    }
 
     const nextPage$ = createEventPageComputed(
       runId,
       POLLED_AGENT_EVENTS_PAGE_LIMIT,
-      since,
+      request,
     );
-    set(internalLoopedPagedEvents$, (prev) => {
-      return [...prev, nextPage$];
-    });
-
     set(reloadRunStatus$);
 
     const lastPage = await get(nextPage$);
     signal.throwIfAborted();
+
+    if (
+      lastPage.events.length > 0 ||
+      lastPage.hasMore ||
+      lastPage.nextCursor !== null
+    ) {
+      set(internalLoopedPagedEvents$, (prev) => {
+        return [...prev, nextPage$];
+      });
+    }
 
     const finished = await get(finished$);
     signal.throwIfAborted();
@@ -261,6 +319,7 @@ export function createRunLoop(runId: string) {
   });
 
   return {
+    runId,
     pagedEventsList$,
     checkFinished$,
     cancel$,

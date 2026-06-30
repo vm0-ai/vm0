@@ -11,6 +11,17 @@ import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
 
+function computerUsePermissions() {
+  return {
+    accessibility: true,
+    screenRecording: true,
+    automation: {
+      chrome: { status: "unknown" as const, updatedAt: null, reason: null },
+      safari: { status: "unknown" as const, updatedAt: null, reason: null },
+    },
+  };
+}
+
 function computerUseHost(args: {
   readonly id: string;
   readonly displayName: string;
@@ -22,7 +33,7 @@ function computerUseHost(args: {
     appVersion: "1.0.0",
     osVersion: "macOS 15.0",
     supportedCapabilities: ["app.open"],
-    permissions: { accessibility: true, screenRecording: true },
+    permissions: computerUsePermissions(),
     status: args.status,
     lastSeenAt: "2026-06-10T12:00:00Z",
     createdAt: "2026-06-10T11:00:00Z",
@@ -33,6 +44,7 @@ describe("computer use authorization page", () => {
   it("shows only online hosts and applies the selected host", async () => {
     const user = userEvent.setup({ delay: null });
     let appliedHostId: string | null = null;
+    let completedHostId: string | null = null;
 
     context.mocks.api(
       zeroComputerUseAuthorizationRequestsContract.get,
@@ -40,11 +52,17 @@ describe("computer use authorization page", () => {
         return respond(200, {
           source: "chat",
           expiresAt: "2026-06-25T12:00:00Z",
-          completedAt: null,
+          completedAt: completedHostId ? "2026-06-25T11:00:00Z" : null,
+          computerUseHostId: completedHostId,
           hosts: [
             computerUseHost({
               id: "00000000-0000-4000-a000-000000000001",
               displayName: "Studio Mac",
+              status: "online",
+            }),
+            computerUseHost({
+              id: "00000000-0000-4000-a000-000000000004",
+              displayName: "Travel Mac",
               status: "online",
             }),
             computerUseHost({
@@ -60,6 +78,7 @@ describe("computer use authorization page", () => {
       zeroComputerUseAuthorizationRequestsContract.apply,
       ({ body, respond }) => {
         appliedHostId = body.computerUseHostId;
+        completedHostId = body.computerUseHostId;
         return respond(200, {
           ok: true,
           source: "chat",
@@ -82,6 +101,7 @@ describe("computer use authorization page", () => {
       ),
     ).toBeInTheDocument();
     await expect(screen.findByText("Studio Mac")).resolves.toBeInTheDocument();
+    expect(screen.getByText("Travel Mac")).toBeInTheDocument();
     expect(screen.queryByText("Offline Desktop")).not.toBeInTheDocument();
 
     const authorizeButton = queryAllByRoleFast("button").find((button) => {
@@ -93,6 +113,24 @@ describe("computer use authorization page", () => {
     await waitFor(() => {
       expect(appliedHostId).toBe("00000000-0000-4000-a000-000000000001");
     });
+    await waitFor(() => {
+      expect(
+        queryAllByRoleFast("button").filter((button) => {
+          return button.textContent === "Authorized";
+        }),
+      ).toHaveLength(1);
+    });
+    const authorizedButton = queryAllByRoleFast("button").find((button) => {
+      return button.textContent === "Authorized";
+    });
+    expect(authorizedButton).toBeDisabled();
+    const remainingAuthorizeButtons = queryAllByRoleFast("button").filter(
+      (button) => {
+        return button.textContent === "Authorize";
+      },
+    );
+    expect(remainingAuthorizeButtons).toHaveLength(1);
+    expect(remainingAuthorizeButtons[0]).toBeDisabled();
   });
 
   it("shows desktop guidance when there are no online hosts", async () => {
@@ -103,6 +141,7 @@ describe("computer use authorization page", () => {
           source: "slack",
           expiresAt: "2026-06-25T12:00:00Z",
           completedAt: null,
+          computerUseHostId: null,
           hosts: [
             computerUseHost({
               id: "00000000-0000-4000-a000-000000000003",

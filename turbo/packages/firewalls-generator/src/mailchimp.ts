@@ -59,5 +59,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Mailchimp firewall config...");
   const ts = generateTypeScript();
-  writeOutput("mailchimp", ts, import.meta.dirname);
+  writeOutput("mailchimp", ts);
 }

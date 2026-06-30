@@ -5,7 +5,7 @@ import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { writeDb$ } from "../../external/db";
 import {
   createAuthOrgAgentsBddApi,

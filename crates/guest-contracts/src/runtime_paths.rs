@@ -1,4 +1,8 @@
 //! Shared guest runtime path contract and private runtime file helpers.
+//!
+//! A guest runtime directory contains per-run files at its root plus `logs/`
+//! and `telemetry/` subdirectories. Runner and guest binaries use these helpers
+//! so both sides agree on the same filesystem layout.
 
 use std::env;
 use std::fs::File;
@@ -16,6 +20,10 @@ use std::os::fd::{AsRawFd, FromRawFd, OwnedFd};
 #[cfg(unix)]
 use std::os::unix::ffi::OsStrExt;
 
+/// Environment variable that overrides the complete guest runtime directory.
+///
+/// When set to a non-empty absolute path, this value is used as the run
+/// directory directly instead of deriving one from `HOME` and a run id.
 pub const GUEST_RUNTIME_DIR_ENV: &str = "VM0_GUEST_RUNTIME_DIR";
 const DEFAULT_RUNTIME_PARENT: &str = ".vm0/guest-agent/runs";
 #[cfg(unix)]
@@ -23,11 +31,16 @@ const PRIVATE_DIR_MODE: libc::mode_t = 0o700;
 #[cfg(unix)]
 const PRIVATE_FILE_MODE: libc::mode_t = 0o600;
 
+/// Error returned when resolving a guest runtime path contract.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum RuntimePathError {
+    /// The fallback runtime directory layout requires a non-empty run id.
     MissingRunId,
+    /// The run id is not a safe single path segment.
     InvalidRunId,
+    /// The fallback runtime directory layout requires a non-empty `HOME`.
     MissingHome,
+    /// `VM0_GUEST_RUNTIME_DIR` was set to a relative path.
     InvalidRuntimeDir,
 }
 
@@ -55,6 +68,10 @@ fn is_safe_run_id(run_id: &str) -> bool {
         && !run_id.contains('\0')
 }
 
+/// Validate that a run id is safe to use as one path segment.
+///
+/// Safe run ids are non-empty and are not `.`, `..`, slash-separated,
+/// backslash-separated, or NUL-containing.
 pub fn validate_run_id(run_id: &str) -> Result<(), RuntimePathError> {
     if run_id.is_empty() {
         return Err(RuntimePathError::MissingRunId);
@@ -65,6 +82,10 @@ pub fn validate_run_id(run_id: &str) -> Result<(), RuntimePathError> {
     Ok(())
 }
 
+/// Build the default runtime directory for a guest home and run id.
+///
+/// The returned path is `<guest_home>/.vm0/guest-agent/runs/<run_id>`.
+/// The run id is validated before it is appended.
 pub fn run_dir_for_home(
     guest_home: impl AsRef<Path>,
     run_id: &str,
@@ -76,6 +97,13 @@ pub fn run_dir_for_home(
         .join(run_id))
 }
 
+/// Resolve the runtime directory from process environment.
+///
+/// A non-empty absolute `VM0_GUEST_RUNTIME_DIR` wins and is returned as the
+/// complete runtime directory. In that override branch, `run_id` is not
+/// validated and is not appended. Empty overrides are ignored, relative
+/// overrides return [`RuntimePathError::InvalidRuntimeDir`], and fallback
+/// resolution uses `HOME` plus [`run_dir_for_home`].
 pub fn run_dir_from_env(run_id: &str) -> Result<PathBuf, RuntimePathError> {
     if let Some(path) = env::var_os(GUEST_RUNTIME_DIR_ENV)
         && !path.is_empty()
@@ -106,50 +134,67 @@ fn telemetry_file(run_dir: impl AsRef<Path>, name: &str) -> PathBuf {
     run_dir.as_ref().join("telemetry").join(name)
 }
 
+/// Return the run-root `session-id` file.
 pub fn session_id_file(run_dir: impl AsRef<Path>) -> PathBuf {
     file(run_dir, "session-id")
 }
 
+/// Return the run-root `session-history-marker` file.
 pub fn session_history_marker_file(run_dir: impl AsRef<Path>) -> PathBuf {
     file(run_dir, "session-history-marker")
 }
 
+/// Return the run-root `event-error` file.
 pub fn event_error_file(run_dir: impl AsRef<Path>) -> PathBuf {
     file(run_dir, "event-error")
 }
 
+/// Return the run-root `checkpoint-error` file.
 pub fn checkpoint_error_file(run_dir: impl AsRef<Path>) -> PathBuf {
     file(run_dir, "checkpoint-error")
 }
 
+/// Return the run-root `final-session-history-identity.json` file.
+pub fn final_session_history_identity_file(run_dir: impl AsRef<Path>) -> PathBuf {
+    file(run_dir, "final-session-history-identity.json")
+}
+
+/// Return the run-root `failure-diagnostic.json` file.
 pub fn failure_diagnostic_file(run_dir: impl AsRef<Path>) -> PathBuf {
     file(run_dir, "failure-diagnostic.json")
 }
 
+/// Return the `logs/system.log` file.
 pub fn system_log_file(run_dir: impl AsRef<Path>) -> PathBuf {
     log_file(run_dir, "system.log")
 }
 
+/// Return the `logs/agent.jsonl` file.
 pub fn agent_log_file(run_dir: impl AsRef<Path>) -> PathBuf {
     log_file(run_dir, "agent.jsonl")
 }
 
+/// Return the `logs/metrics.jsonl` file.
 pub fn metrics_log_file(run_dir: impl AsRef<Path>) -> PathBuf {
     log_file(run_dir, "metrics.jsonl")
 }
 
+/// Return the `logs/sandbox-ops.jsonl` file.
 pub fn sandbox_ops_log_file(run_dir: impl AsRef<Path>) -> PathBuf {
     log_file(run_dir, "sandbox-ops.jsonl")
 }
 
+/// Return the `telemetry/system-log.pos` offset file.
 pub fn telemetry_system_log_pos_file(run_dir: impl AsRef<Path>) -> PathBuf {
     telemetry_file(run_dir, "system-log.pos")
 }
 
+/// Return the `telemetry/metrics.pos` offset file.
 pub fn telemetry_metrics_pos_file(run_dir: impl AsRef<Path>) -> PathBuf {
     telemetry_file(run_dir, "metrics.pos")
 }
 
+/// Return the `telemetry/sandbox-ops.pos` offset file.
 pub fn telemetry_sandbox_ops_pos_file(run_dir: impl AsRef<Path>) -> PathBuf {
     telemetry_file(run_dir, "sandbox-ops.pos")
 }
@@ -568,6 +613,13 @@ fn set_dir_private(_path: &Path) -> io::Result<()> {
     Ok(())
 }
 
+/// Ensure a runtime-private directory exists.
+///
+/// On Unix, missing directories are created with `0700` permissions, the final
+/// directory is tightened to `0700` when it already exists, parent-directory
+/// components are rejected, and symlinked parent components are rejected. On
+/// non-Unix targets, this creates the directory path without claiming
+/// equivalent permission or symlink guarantees.
 pub fn ensure_dir(path: impl AsRef<Path>) -> io::Result<()> {
     let path = path.as_ref();
     #[cfg(unix)]
@@ -582,6 +634,10 @@ pub fn ensure_dir(path: impl AsRef<Path>) -> io::Result<()> {
     }
 }
 
+/// Ensure the parent directory for a runtime path exists.
+///
+/// This applies [`ensure_dir`] to the path's parent and returns
+/// [`io::ErrorKind::InvalidInput`] when the path has no parent.
 pub fn ensure_parent_dir(path: impl AsRef<Path>) -> io::Result<()> {
     let path = path.as_ref();
     let parent = path.parent().ok_or_else(|| {
@@ -734,6 +790,9 @@ pub fn create_private(path: impl AsRef<Path>) -> io::Result<File> {
 }
 
 #[cfg(not(unix))]
+/// Create or truncate a runtime-private file.
+///
+/// Missing parent directories are created before the file is opened.
 pub fn create_private(path: impl AsRef<Path>) -> io::Result<File> {
     let path = path.as_ref();
     ensure_parent_dir(path)?;
@@ -775,6 +834,9 @@ pub fn open_private_append(path: impl AsRef<Path>) -> io::Result<File> {
 }
 
 #[cfg(not(unix))]
+/// Open a runtime-private file for append.
+///
+/// Missing parent directories are created before the file is opened.
 pub fn open_private_append(path: impl AsRef<Path>) -> io::Result<File> {
     let path = path.as_ref();
     ensure_parent_dir(path)?;
@@ -817,6 +879,7 @@ mod tests {
             session_history_marker_file(&run_dir),
             event_error_file(&run_dir),
             checkpoint_error_file(&run_dir),
+            final_session_history_identity_file(&run_dir),
             failure_diagnostic_file(&run_dir),
             system_log_file(&run_dir),
             agent_log_file(&run_dir),

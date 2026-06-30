@@ -3894,6 +3894,13 @@ describe("connector OAuth lifecycle grant helpers", () => {
       getConnectorAuthMethodAuthCodeCallbackOrigin("cloudflare", "oauth"),
     ).toBe("api");
     expect(connectorAuthCodeCallbacksUseOnlyApiOrigin("cloudflare")).toBe(true);
+    expect(
+      getConnectorAuthMethodAuthCodeCallbackOrigin("test-oauth", "oauth"),
+    ).toBe("api");
+    expect(
+      getConnectorAuthMethodAuthCodeCallbackOrigin("test-oauth", "api"),
+    ).toBe("api");
+    expect(connectorAuthCodeCallbacksUseOnlyApiOrigin("test-oauth")).toBe(true);
   });
 
   it("declares Cloudflare OAuth as a refreshable API-origin auth-code grant", () => {

@@ -1,8 +1,16 @@
 import { computed } from "ccstate";
-import { zeroRunContextContract } from "@vm0/api-contracts/contracts/zero-runs";
+import {
+  zeroRunContextContract,
+  type RunContextResponse,
+} from "@vm0/api-contracts/contracts/zero-runs";
 import { zeroClient$ } from "../api-client.ts";
 import { currentRunId$ } from "./activity-signals.ts";
 import { accept } from "../../lib/accept.ts";
+
+interface ZeroActivityContext {
+  runId: string;
+  context: RunContextResponse | null;
+}
 
 /**
  * Run context snapshot fetched from Axiom via the context API.
@@ -17,7 +25,17 @@ export const zeroActivityContext$ = computed(async (get) => {
   const client = get(zeroClient$)(zeroRunContextContract);
   const result = await accept(
     client.getContext({ params: { id: runId } }),
-    [200],
+    [200, 404],
+    { toast: false },
   );
-  return result.body;
+  if (result.status === 404) {
+    return {
+      runId,
+      context: null,
+    } satisfies ZeroActivityContext;
+  }
+  return {
+    runId,
+    context: result.body,
+  } satisfies ZeroActivityContext;
 });

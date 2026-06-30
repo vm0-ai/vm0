@@ -1,5 +1,3 @@
-import * as path from "node:path";
-
 import {
   type BuiltinFirewallRuntimeApi,
   type BuiltinFirewallRuntimeFirewall,
@@ -8,10 +6,7 @@ import {
   type PythonBuiltinFirewallCatalogFile,
   renderPythonBuiltinFirewallCatalogFiles,
 } from "./python-builtin-firewall-catalog";
-import {
-  type ConnectorFirewallSourceSetOptions,
-  loadConnectorFirewallSourceSet,
-} from "./connector-firewall-sources";
+import { loadConnectorFirewallSourceSet } from "./connector-firewall-sources";
 
 export type { PythonBuiltinFirewallCatalogFile };
 
@@ -23,6 +18,7 @@ interface PythonBuiltinFirewallSourcePermission {
 
 interface PythonBuiltinFirewallSourceApi {
   readonly base: string;
+  readonly hostPolicy?: unknown;
   readonly auth: unknown;
   readonly permissions?: readonly PythonBuiltinFirewallSourcePermission[];
 }
@@ -45,19 +41,6 @@ interface RenderComposedPythonBuiltinFirewallCatalogOptions extends ComposePytho
   readonly maxJsonChunkLength?: number;
 }
 
-function defaultConnectorSourceSetOptions(): ConnectorFirewallSourceSetOptions {
-  return {
-    firewallsDir: path.resolve(
-      import.meta.dirname,
-      "../../connectors/src/firewalls",
-    ),
-    connectorsDir: path.resolve(
-      import.meta.dirname,
-      "../../connectors/src/connectors",
-    ),
-  };
-}
-
 function runtimePermission(
   permission: PythonBuiltinFirewallSourcePermission,
 ): BuiltinFirewallRuntimePermission {
@@ -75,6 +58,7 @@ function runtimeApi(
 ): BuiltinFirewallRuntimeApi {
   return {
     base: api.base,
+    ...(api.hostPolicy !== undefined ? { hostPolicy: api.hostPolicy } : {}),
     auth: api.auth,
     ...(api.permissions !== undefined
       ? { permissions: api.permissions.map(runtimePermission) }
@@ -94,9 +78,7 @@ function runtimeFirewall(
 async function connectorFirewallEntries(): Promise<
   readonly PythonBuiltinFirewallCatalogEntry[]
 > {
-  const { sources } = await loadConnectorFirewallSourceSet(
-    defaultConnectorSourceSetOptions(),
-  );
+  const { sources } = await loadConnectorFirewallSourceSet();
   return sources.map((source) => {
     return {
       firewall: runtimeFirewall(source.firewall),

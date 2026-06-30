@@ -51,6 +51,7 @@ const FORBIDDEN_EXECUTION_METADATA_KEYS = new Set([
 ]);
 const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
   "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe";
+const FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS = 60_000;
 type FirewallConnectorType =
   keyof typeof FIREWALL_PERMISSION_METADATA_SUMMARIES;
 let runtimeEntriesPromise: Promise<
@@ -95,26 +96,42 @@ function collectRuntimePermissions(
   });
 }
 
-function collectRuntimeBaseUrlTemplates(
-  firewall: FirewallConfig,
-): readonly { readonly base: string; readonly credentialed: boolean }[] {
-  const templates = new Map<string, boolean>();
+function collectRuntimeBaseUrlTemplates(firewall: FirewallConfig): readonly {
+  readonly base: string;
+  readonly credentialed: boolean;
+  readonly hostPolicy?: FirewallConfig["apis"][number]["hostPolicy"];
+}[] {
+  const templates = new Map<
+    string,
+    {
+      readonly credentialed: boolean;
+      readonly hostPolicy?: FirewallConfig["apis"][number]["hostPolicy"];
+    }
+  >();
   for (const api of firewall.apis) {
     if (!hasBaseUrlVars(api.base)) {
       continue;
     }
-    templates.set(
-      api.base,
-      (templates.get(api.base) ?? false) ||
+    const existing = templates.get(api.base);
+    templates.set(api.base, {
+      credentialed:
+        (existing?.credentialed ?? false) ||
         firewallAuthInjectsCredentials(api.auth),
-    );
+      ...(api.hostPolicy !== undefined ? { hostPolicy: api.hostPolicy } : {}),
+    });
   }
   return [...templates.entries()]
     .sort(([a], [b]) => {
       return compareStrings(a, b);
     })
-    .map(([base, credentialed]) => {
-      return { base, credentialed };
+    .map(([base, template]) => {
+      return {
+        base,
+        credentialed: template.credentialed,
+        ...(template.hostPolicy !== undefined
+          ? { hostPolicy: template.hostPolicy }
+          : {}),
+      };
     });
 }
 
@@ -313,9 +330,9 @@ describe("firewall metadata", () => {
 
     expect(staticImportSpecifiers(source).sort(compareStrings)).toStrictEqual([
       "../firewall-types",
-      "./loader.generated",
+      "./permission-detail-loader.generated",
+      "./permission-summaries.generated",
       "./policy-resolver",
-      "./summary.generated",
       "./types",
     ]);
     expect(exportFromSpecifiers(source).sort(compareStrings)).toStrictEqual([
@@ -328,24 +345,28 @@ describe("firewall metadata", () => {
   it("keeps permission detail metadata behind connector-specific dynamic imports", () => {
     const loader = path.resolve(
       import.meta.dirname,
-      "../firewall-metadata/loader.generated.ts",
+      "../firewall-metadata/permission-detail-loader.generated.ts",
     );
     const source = fs.readFileSync(loader, "utf-8");
     const dynamicSpecifiers = dynamicImportSpecifiers(source);
 
     expect(staticImportSpecifiers(source)).toStrictEqual(["./types"]);
-    expect(dynamicSpecifiers).toContain("./details/slack.generated");
-    expect(dynamicSpecifiers).toContain("./details/github.generated");
+    expect(dynamicSpecifiers).toContain("./permission-details/slack.generated");
+    expect(dynamicSpecifiers).toContain(
+      "./permission-details/github.generated",
+    );
     expect(new Set(dynamicSpecifiers).size).toBe(dynamicSpecifiers.length);
     for (const specifier of dynamicSpecifiers) {
-      expect(specifier).toMatch(/^\.\/details\/[a-z0-9][a-z0-9-]*\.generated$/);
+      expect(specifier).toMatch(
+        /^\.\/permission-details\/[a-z0-9][a-z0-9-]*\.generated$/,
+      );
     }
   });
 
   it("keeps generated permission detail modules runtime-free", () => {
     const detailsDir = path.resolve(
       import.meta.dirname,
-      "../firewall-metadata/details",
+      "../firewall-metadata/permission-details",
     );
     const files = listTsFiles(detailsDir);
 
@@ -514,54 +535,58 @@ describe("firewall metadata", () => {
     }
   });
 
-  it("keeps fixed builtin host owners synchronized with runtime hosts", async () => {
-    for (const [host, type] of await runtimeBuiltinConnectorHosts()) {
-      expect(getBuiltinConnectorHostOwner(host)).toStrictEqual({
-        type,
-        label: connectorLabel(type),
-      });
-    }
+  it(
+    "keeps fixed builtin host owners synchronized with runtime hosts",
+    async () => {
+      for (const [host, type] of await runtimeBuiltinConnectorHosts()) {
+        expect(getBuiltinConnectorHostOwner(host)).toStrictEqual({
+          type,
+          label: connectorLabel(type),
+        });
+      }
 
-    expect(getBuiltinConnectorHostOwner("api.github.com")).toStrictEqual({
-      type: "github",
-      label: "GitHub",
-    });
-    expect(getBuiltinConnectorHostOwner("API.GITHUB.COM")).toStrictEqual({
-      type: "github",
-      label: "GitHub",
-    });
-    expect(getBuiltinConnectorHostOwner(" api.github.com ")).toStrictEqual({
-      type: "github",
-      label: "GitHub",
-    });
-    expect(getBuiltinConnectorHostOwner("api.github.com:443")).toStrictEqual({
-      type: "github",
-      label: "GitHub",
-    });
-    expect(getBuiltinConnectorHostOwner("api.github.com.")).toStrictEqual({
-      type: "github",
-      label: "GitHub",
-    });
-    expect(getBuiltinConnectorHostOwner("api.github.com....")).toStrictEqual({
-      type: "github",
-      label: "GitHub",
-    });
-    expect(
-      getBuiltinConnectorHostOwner("https://api.github.com/repos"),
-    ).toStrictEqual({
-      type: "github",
-      label: "GitHub",
-    });
-    expect(getBuiltinConnectorHostOwner("slack.com")).toStrictEqual({
-      type: "slack",
-      label: "Slack",
-    });
-    expect(getBuiltinConnectorHostOwner("example.invalid")).toBeNull();
-    expect(getBuiltinConnectorHostOwner("")).toBeNull();
-    expect(getBuiltinConnectorHostOwner("api.github.com:80")).toBeNull();
-    expect(getBuiltinConnectorHostOwner("toString")).toBeNull();
-    expect(getBuiltinConnectorHostOwner("__proto__")).toBeNull();
-  });
+      expect(getBuiltinConnectorHostOwner("api.github.com")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner("API.GITHUB.COM")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner(" api.github.com ")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner("api.github.com:443")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner("api.github.com.")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner("api.github.com....")).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(
+        getBuiltinConnectorHostOwner("https://api.github.com/repos"),
+      ).toStrictEqual({
+        type: "github",
+        label: "GitHub",
+      });
+      expect(getBuiltinConnectorHostOwner("slack.com")).toStrictEqual({
+        type: "slack",
+        label: "Slack",
+      });
+      expect(getBuiltinConnectorHostOwner("example.invalid")).toBeNull();
+      expect(getBuiltinConnectorHostOwner("")).toBeNull();
+      expect(getBuiltinConnectorHostOwner("api.github.com:80")).toBeNull();
+      expect(getBuiltinConnectorHostOwner("toString")).toBeNull();
+      expect(getBuiltinConnectorHostOwner("__proto__")).toBeNull();
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
 
   it("loads memoized server permission indexes from lazy detail metadata", async () => {
     expect(isFirewallServerMetadataConnectorType("slack")).toBe(true);

@@ -50,6 +50,34 @@ async fn codex_app_server_initializes_and_sends_initialized_notification() -> Re
 
     let state = wait_result(client.request_value("mock/state", json!({})), "mock/state").await?;
     assert_eq!(state["initializedNotificationReceived"], true);
+    assert_eq!(state["optOutNotificationMethods"], json!([]));
+    assert_eq!(state["hasPendingResponse"], false);
+
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
+async fn codex_app_server_initialize_sends_configured_opt_out_notifications() -> Result<(), String>
+{
+    let codex_home = TempDir::new().map_err(|error| format!("create codex home: {error}"))?;
+    let config = CodexAppServerConfig::new(mock_codex_path()?, codex_home.path())
+        .with_opt_out_notification_methods([
+            "process/outputDelta",
+            "item/agentMessage/delta",
+            "item/reasoning/textDelta",
+        ]);
+    let mut client = CodexAppServerClient::spawn(config).map_err(|error| format!("{error:?}"))?;
+
+    wait_result(client.initialize(), "initialize").await?;
+
+    let state = wait_result(client.request_value("mock/state", json!({})), "mock/state").await?;
+    let opt_out_methods = state["optOutNotificationMethods"]
+        .as_array()
+        .ok_or_else(|| "missing opt-out notification methods".to_string())?;
+    assert!(opt_out_methods.contains(&json!("process/outputDelta")));
+    assert!(opt_out_methods.contains(&json!("item/agentMessage/delta")));
+    assert!(opt_out_methods.contains(&json!("item/reasoning/textDelta")));
+    assert!(!opt_out_methods.contains(&json!("thread/started")));
     assert_eq!(state["hasPendingResponse"], false);
 
     wait_result(client.shutdown(), "shutdown").await
@@ -134,6 +162,125 @@ async fn codex_app_server_buffers_interleaved_notifications() -> Result<(), Stri
         Some(&json!("guest-mock-codex notification"))
     );
     assert!(client.pop_notification().is_none());
+
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
+async fn codex_app_server_next_notification_returns_buffered_notification() -> Result<(), String> {
+    let mut client = spawn_client(Some("runtime-turn-complete"))?;
+    wait_result(client.initialize(), "initialize").await?;
+
+    let started = wait_result(
+        client.request_value("thread/start", json!({})),
+        "thread/start",
+    )
+    .await?;
+    let thread_id = started["thread"]["id"]
+        .as_str()
+        .ok_or_else(|| "missing thread id".to_string())?
+        .to_string();
+
+    let notification = wait_result(
+        client.next_notification("thread/started notification"),
+        "next notification",
+    )
+    .await?;
+    assert_eq!(notification.method, "thread/started");
+    assert_eq!(
+        notification
+            .params
+            .as_ref()
+            .and_then(|params| params.pointer("/thread/id"))
+            .and_then(Value::as_str),
+        Some(thread_id.as_str())
+    );
+
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
+async fn codex_app_server_next_notification_reads_after_response() -> Result<(), String> {
+    let mut client = spawn_client(Some("runtime-turn-complete-without-thread-started"))?;
+    wait_result(client.initialize(), "initialize").await?;
+
+    let started = wait_result(
+        client.request_value("thread/start", json!({})),
+        "thread/start",
+    )
+    .await?;
+    let thread_id = started["thread"]["id"]
+        .as_str()
+        .ok_or_else(|| "missing thread id".to_string())?
+        .to_string();
+    let turn_started = wait_result(
+        client.request_value(
+            "turn/start",
+            json!({
+                "threadId": thread_id,
+                "input": [text_input("initial prompt")]
+            }),
+        ),
+        "turn/start",
+    )
+    .await?;
+    assert!(turn_started["turn"]["id"].as_str().is_some());
+
+    let notification = wait_result(
+        client.next_notification("turn notification"),
+        "next notification",
+    )
+    .await?;
+    assert_eq!(notification.method, "turn/started");
+    assert_eq!(
+        notification
+            .params
+            .as_ref()
+            .and_then(|params| params.get("threadId"))
+            .and_then(Value::as_str),
+        Some(thread_id.as_str())
+    );
+
+    wait_result(client.shutdown(), "shutdown").await
+}
+
+#[tokio::test]
+async fn codex_app_server_preserves_partial_notification_after_cancelled_read() -> Result<(), String>
+{
+    let mut client = spawn_client(Some("split-notification-after-thread-start"))?;
+    wait_result(client.initialize(), "initialize").await?;
+
+    let started = wait_result(
+        client.request_value("thread/start", json!({})),
+        "thread/start",
+    )
+    .await?;
+    assert!(started["thread"]["id"].as_str().is_some());
+
+    cancel_after_first_pending(
+        client.next_notification("split notification"),
+        "split notification",
+    )
+    .await?;
+
+    let completed = wait_result(
+        client.request_value("mock/complete-split-notification", json!({})),
+        "mock/complete-split-notification",
+    )
+    .await?;
+    assert_eq!(completed["completed"], true);
+
+    let notification = client
+        .pop_notification()
+        .ok_or_else(|| "expected restored split notification".to_string())?;
+    assert_eq!(notification.method, "experimental/server-notification");
+    assert_eq!(
+        notification
+            .params
+            .as_ref()
+            .and_then(|params| params.get("message")),
+        Some(&json!("guest-mock-codex notification"))
+    );
 
     wait_result(client.shutdown(), "shutdown").await
 }
@@ -613,6 +760,54 @@ async fn codex_app_server_cancelled_shutdown_can_retry_and_reap_child() -> Resul
         Ok(Ok(())) => {}
         Ok(Err(error)) => return Err(format!("shutdown after cancellation failed: {error:?}")),
         Err(_) => return Err("shutdown after cancellation waited for grace".to_string()),
+    }
+    assert!(client.process_id().is_none());
+    assert_process_exited(pid)
+}
+
+#[tokio::test]
+async fn codex_app_server_shutdown_skips_stdin_eof_grace() -> Result<(), String> {
+    let mut client = spawn_client(Some("hang-on-stdin-eof"))?;
+    let pid = client
+        .process_id()
+        .ok_or_else(|| "app-server child missing pid".to_string())?;
+
+    match tokio::time::timeout(Duration::from_millis(1500), client.shutdown()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => return Err(format!("shutdown failed: {error:?}")),
+        Err(_) => return Err("shutdown waited for stdin EOF grace".to_string()),
+    }
+    assert!(client.process_id().is_none());
+    assert_process_exited(pid)
+}
+
+#[tokio::test]
+async fn codex_app_server_terminate_skips_stdin_eof_grace() -> Result<(), String> {
+    let mut client = spawn_client(Some("hang-on-stdin-eof"))?;
+    let pid = client
+        .process_id()
+        .ok_or_else(|| "app-server child missing pid".to_string())?;
+
+    match tokio::time::timeout(Duration::from_millis(1500), client.terminate()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => return Err(format!("terminate failed: {error:?}")),
+        Err(_) => return Err("terminate waited for stdin EOF grace".to_string()),
+    }
+    assert!(client.process_id().is_none());
+    assert_process_exited(pid)
+}
+
+#[tokio::test]
+async fn codex_app_server_terminate_sigkills_sigterm_deaf_child() -> Result<(), String> {
+    let mut client = spawn_client(Some("sigterm-deaf-on-stdin-eof"))?;
+    let pid = client
+        .process_id()
+        .ok_or_else(|| "app-server child missing pid".to_string())?;
+
+    match tokio::time::timeout(Duration::from_millis(1500), client.terminate()).await {
+        Ok(Ok(())) => {}
+        Ok(Err(error)) => return Err(format!("terminate failed: {error:?}")),
+        Err(_) => return Err("terminate waited for SIGTERM grace".to_string()),
     }
     assert!(client.process_id().is_none());
     assert_process_exited(pid)

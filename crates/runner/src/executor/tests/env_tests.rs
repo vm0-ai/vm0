@@ -195,10 +195,7 @@ fn execution_context_validation_rejects_bootstrap_env_nul_before_sandbox() {
 fn execution_context_validation_rejects_invalid_codex_resume_before_sandbox() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "not-a-thread-id".into(),
-        session_history: "{}".into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline("not-a-thread-id".into(), "{}".into()));
 
     let error = validate_context_for_test(&ctx).unwrap_err();
 
@@ -590,10 +587,7 @@ fn emitted_bootstrap_env_keys_classify_as_runner_owned() {
         ),
     ]));
     ctx.append_system_prompt = Some("Use terse answers.".into());
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "sess-123".into(),
-        session_history: "{}".into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline("sess-123".into(), "{}".into()));
     ctx.disallowed_tools = Some(vec!["CronCreate".into()]);
     ctx.tools = Some(vec!["Bash".into()]);
     ctx.settings = Some(r#"{"hooks":{}}"#.into());
@@ -661,10 +655,10 @@ fn build_env_json_codex_keeps_shared_runner_env() {
     let mut ctx = minimal_context();
     ctx.cli_agent_type = "codex".into();
     ctx.append_system_prompt = Some("Use terse answers.".into());
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "019E9154C30470F0ADDE36EFB1BE1701".into(),
-        session_history: "{}".into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline(
+        "019E9154C30470F0ADDE36EFB1BE1701".into(),
+        "{}".into(),
+    ));
 
     let env = build_env_for_test(&ctx, "http://localhost");
 
@@ -684,10 +678,7 @@ fn build_env_json_rejects_invalid_codex_resume_session_id() {
     for session_id in ["abc", "urn:uuid:019e9154-c304-70f0-adde-36efb1be1701"] {
         let mut ctx = minimal_context();
         ctx.cli_agent_type = "codex".into();
-        ctx.resume_session = Some(ResumeSession {
-            cli_agent_session_id: session_id.into(),
-            session_history: "{}".into(),
-        });
+        ctx.resume_session = Some(ResumeSession::inline(session_id.into(), "{}".into()));
 
         let error = build_env_for_test_result(&ctx, "http://localhost").unwrap_err();
         let message = error.to_string();
@@ -841,10 +832,7 @@ fn build_env_json_with_secrets() {
 #[test]
 fn build_env_json_with_resume_session() {
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "sess-123".into(),
-        session_history: "{}".into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline("sess-123".into(), "{}".into()));
 
     let env = build_env_for_test(&ctx, "http://localhost");
     assert_eq!(env.get("VM0_RESUME_SESSION_ID").unwrap(), "sess-123");

@@ -17,6 +17,7 @@ use tracing::{info, warn};
 
 use crate::config::{FirecrackerConfig, FirecrackerDeviceRateLimits};
 use crate::cow_cleanup::CowCleanupOutcome;
+use crate::duration::duration_ms;
 use crate::factory::cleanup_group::{FactoryCleanupGroup, FactoryCleanupTaskKind};
 use crate::factory::cow_cleanup::destroy_cow_device_with_retries;
 use crate::factory::create_timing::{SandboxCreateStage, SandboxCreateTiming};
@@ -91,7 +92,7 @@ impl FirecrackerFactory {
         })
         .await?;
         info!(
-            elapsed_ms = t.elapsed().as_millis() as u64,
+            elapsed_ms = duration_ms(t.elapsed()),
             "prerequisites checked"
         );
 
@@ -112,10 +113,7 @@ impl FirecrackerFactory {
                         phase: SandboxInitializationPhase::Factory,
                         message: format!("netns pool: {e}"),
                     })?;
-                info!(
-                    elapsed_ms = t.elapsed().as_millis() as u64,
-                    "netns pool created"
-                );
+                info!(elapsed_ms = duration_ms(t.elapsed()), "netns pool created");
                 (netns_pool, NetnsPoolOwnership::Owned)
             }
         };

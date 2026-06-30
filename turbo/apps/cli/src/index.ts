@@ -45,6 +45,6 @@ if (
   process.argv[1]?.endsWith("index.ts") ||
   process.argv[1]?.endsWith("vm0")
 ) {
-  configureGlobalProxyFromEnv();
+  await configureGlobalProxyFromEnv();
   program.parse();
 }

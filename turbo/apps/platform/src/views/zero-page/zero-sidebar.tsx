@@ -4,6 +4,7 @@ import {
   IconChartLine,
   IconLayoutGrid,
   IconCalendar,
+  IconRoute,
   IconUsers,
   IconEdit,
   IconChevronRight,
@@ -66,14 +67,7 @@ interface ManageNavItem {
 const MANAGE_NAV: readonly ManageNavItem[] = [
   {
     id: "agents",
-    activeKeys: [
-      "agents",
-      "agentDetail",
-      "agentPermissions",
-      "agentWorkflows",
-      "agentWorkflowDetail",
-      "agentWorkflowTriggerPermissions",
-    ],
+    activeKeys: ["agents", "agentDetail", "agentPermissions"],
     pathname: "/agents",
     label: "Agents",
     icon: IconUsers as NavIcon,
@@ -91,6 +85,14 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/automations",
     label: "Automations",
     icon: IconCalendar as NavIcon,
+  },
+  {
+    id: "workflows",
+    activeKeys: ["workflows", "workflowDetail"],
+    pathname: "/workflows",
+    label: "Workflows",
+    icon: IconRoute as NavIcon,
+    featureGate: FeatureSwitchKey.WorkflowsViewer,
   },
   {
     id: "activities",

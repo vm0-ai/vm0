@@ -6,6 +6,7 @@ import {
   type ChatThreadWorkflowTrigger,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
+  type ZeroWorkflowTriggerAutomationEntry,
   type ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 
@@ -37,6 +38,8 @@ function summary(workflow: ZeroWorkflowDetailResponse): ZeroWorkflowSummary {
     visibility: workflow.visibility,
     requestToPublish: workflow.requestToPublish,
     ownerUserId: workflow.ownerUserId,
+    ownerUserDisplayName: "Test User",
+    ownerUserImageUrl: null,
     canManage: workflow.canManage,
   };
 }
@@ -47,33 +50,79 @@ function triggerSummary(
   if (trigger.kind === "event" && trigger.eventType === "gmail-new-message") {
     return {
       id: trigger.id,
-      ownerUserId: "test-user-123",
+      ownerUserId: trigger.ownerUserId,
       enabled: trigger.enabled,
       chatThreadId: trigger.chatThreadId,
       nextRunAt: trigger.nextRunAt,
       lastRunAt: trigger.lastRunAt,
       kind: "event",
       eventType: "gmail-new-message",
-      eventConfig: { provider: "gmail", event: "new_message" },
+      eventConfig: trigger.eventConfig,
       schedule: null,
       scheduleSummary: null,
-      unattendedConnectorRefs: ["gmail"],
-      unattendedPermissionPolicy: null,
     };
   }
-
+  if (trigger.kind === "event" && trigger.eventType === "gmail-label-applied") {
+    return {
+      id: trigger.id,
+      ownerUserId: trigger.ownerUserId,
+      enabled: trigger.enabled,
+      chatThreadId: trigger.chatThreadId,
+      nextRunAt: trigger.nextRunAt,
+      lastRunAt: trigger.lastRunAt,
+      kind: "event",
+      eventType: "gmail-label-applied",
+      eventConfig: trigger.eventConfig,
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
+  if (
+    trigger.kind === "event" &&
+    trigger.eventType === "github-label-applied"
+  ) {
+    return {
+      id: trigger.id,
+      ownerUserId: trigger.ownerUserId,
+      enabled: trigger.enabled,
+      chatThreadId: trigger.chatThreadId,
+      nextRunAt: trigger.nextRunAt,
+      lastRunAt: trigger.lastRunAt,
+      kind: "event",
+      eventType: "github-label-applied",
+      eventConfig: trigger.eventConfig,
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
+  if (
+    trigger.kind === "event" &&
+    trigger.eventType === "google-calendar-event-created"
+  ) {
+    return {
+      id: trigger.id,
+      ownerUserId: trigger.ownerUserId,
+      enabled: trigger.enabled,
+      chatThreadId: trigger.chatThreadId,
+      nextRunAt: trigger.nextRunAt,
+      lastRunAt: trigger.lastRunAt,
+      kind: "event",
+      eventType: "google-calendar-event-created",
+      eventConfig: trigger.eventConfig,
+      schedule: null,
+      scheduleSummary: null,
+    };
+  }
   return {
     id: trigger.id,
-    ownerUserId: "test-user-123",
+    ownerUserId: trigger.ownerUserId,
     enabled: trigger.enabled,
     chatThreadId: trigger.chatThreadId,
     nextRunAt: trigger.nextRunAt,
     lastRunAt: trigger.lastRunAt,
     kind: "schedule",
-    schedule: { type: "loop", intervalSeconds: 60 },
-    scheduleSummary: trigger.scheduleSummary ?? "Every 60s",
-    unattendedConnectorRefs: [],
-    unattendedPermissionPolicy: null,
+    schedule: trigger.schedule,
+    scheduleSummary: trigger.scheduleSummary,
   };
 }
 
@@ -93,6 +142,7 @@ export const apiWorkflowsHandlers = [
   }),
 
   mockApi(zeroWorkflowsCollectionContract.create, ({ body, respond }) => {
+    const now = new Date().toISOString();
     const created: ZeroWorkflowDetailResponse = {
       id: crypto.randomUUID(),
       agentId: body.agentId,
@@ -105,6 +155,10 @@ export const apiWorkflowsHandlers = [
       requestToPublish: false,
       ownerUserId: "test-user-123",
       canManage: true,
+      createdByUserId: "test-user-123",
+      updatedByUserId: "test-user-123",
+      createdAt: now,
+      updatedAt: now,
       instruction: body.instruction ?? null,
       files: (body.files ?? []).map((file) => {
         return {
@@ -138,9 +192,13 @@ export const apiWorkflowsHandlers = [
     }
 
     const existing = mockWorkflows[index]!;
+    const now = new Date().toISOString();
     const files = body.files ?? existing.fileContents ?? [];
     const updated: ZeroWorkflowDetailResponse = {
       ...existing,
+      updatedByUserId: "test-user-123",
+      updatedAt: now,
+      name: body.name === undefined ? existing.name : body.name,
       instruction:
         body.instruction === undefined
           ? existing.instruction
@@ -185,13 +243,26 @@ export const apiWorkflowsHandlers = [
     if (!source) {
       return respond(404, notFound(params.workflowId));
     }
+    const now = new Date().toISOString();
     const copied: ZeroWorkflowDetailResponse = {
       ...source,
       id: crypto.randomUUID(),
       agentId: body.toAgentId,
       visibility: "private",
       requestToPublish: false,
-      triggers: [],
+      ownerUserId: "test-user-123",
+      createdByUserId: "test-user-123",
+      updatedByUserId: "test-user-123",
+      createdAt: now,
+      updatedAt: now,
+      triggers: source.triggers.map((trigger) => {
+        return {
+          ...trigger,
+          id: crypto.randomUUID(),
+          ownerUserId: "test-user-123",
+          lastRunAt: null,
+        };
+      }),
     };
     mockWorkflows = [...mockWorkflows, copied];
     return respond(201, summary(copied));
@@ -207,6 +278,19 @@ export const apiWorkflowsHandlers = [
     return respond(200, {
       chatThreadId: "00000000-0000-4000-a000-000000000fff",
       runId: `run-${workflow.id}`,
+    });
+  }),
+
+  mockApi(zeroWorkflowsDetailContract.chatThread, ({ params, respond }) => {
+    const workflow = mockWorkflows.find((item) => {
+      return item.id === params.workflowId;
+    });
+    if (!workflow) {
+      return respond(404, notFound(params.workflowId));
+    }
+    return respond(200, {
+      chatThreadId: "00000000-0000-4000-a000-000000000fff",
+      prompt: `/${workflow.name}`,
     });
   }),
 
@@ -226,8 +310,13 @@ function visibilityHandlers() {
       return null;
     }
     const updated = apply(mockWorkflows[index]!);
-    mockWorkflows[index] = updated;
-    return summary(updated);
+    const now = new Date().toISOString();
+    mockWorkflows[index] = {
+      ...updated,
+      updatedByUserId: "test-user-123",
+      updatedAt: now,
+    };
+    return summary(mockWorkflows[index]!);
   };
 
   return [
@@ -286,8 +375,95 @@ function visibilityHandlers() {
   ];
 }
 
-function workflowTriggerHandlers() {
+function updateDetailTrigger(
+  triggerId: string,
+  apply: (trigger: ZeroWorkflowTriggerSummary) => ZeroWorkflowTriggerSummary,
+): ZeroWorkflowTriggerSummary | null {
+  for (const workflow of mockWorkflows) {
+    const triggerIndex = workflow.triggers.findIndex((trigger) => {
+      return trigger.id === triggerId;
+    });
+    if (triggerIndex === -1) {
+      continue;
+    }
+    const updated = apply(workflow.triggers[triggerIndex]!);
+    workflow.triggers = workflow.triggers.map((trigger) => {
+      return trigger.id === triggerId ? updated : trigger;
+    });
+    return updated;
+  }
+  return null;
+}
+
+function updateChatThreadTrigger(
+  triggerId: string,
+  apply: (trigger: ChatThreadWorkflowTrigger) => ChatThreadWorkflowTrigger,
+): ZeroWorkflowTriggerSummary | null {
+  const triggers = getMockWorkflowTriggers();
+  const trigger = triggers.find((item) => {
+    return item.id === triggerId;
+  });
+  if (!trigger) {
+    return null;
+  }
+  const updated = apply(trigger);
+  setMockWorkflowTriggers(
+    triggers.map((item) => {
+      return item.id === triggerId ? updated : item;
+    }),
+  );
+  return triggerSummary(updated);
+}
+
+function notFoundTrigger() {
+  return {
+    error: {
+      message: "Workflow trigger not found",
+      code: "NOT_FOUND",
+    },
+  };
+}
+
+function mockWorkflowTriggerExists(triggerId: string): boolean {
+  return (
+    getMockWorkflowTriggers().some((trigger) => {
+      return trigger.id === triggerId;
+    }) ||
+    mockWorkflows.some((workflow) => {
+      return workflow.triggers.some((trigger) => {
+        return trigger.id === triggerId;
+      });
+    })
+  );
+}
+
+function mockScheduleSummary(
+  schedule: Extract<
+    ZeroWorkflowTriggerSummary,
+    { kind: "schedule" }
+  >["schedule"],
+): string {
+  if (schedule.type === "cron") {
+    return `${schedule.cronExpression} (${schedule.timezone})`;
+  }
+  if (schedule.type === "once") {
+    return `Once at ${schedule.atTime}`;
+  }
+  return `Every ${schedule.intervalSeconds}s`;
+}
+
+function workflowTriggerListHandlers() {
   return [
+    mockApi(zeroWorkflowTriggersContract.listWorkspace, ({ respond }) => {
+      const entries: ZeroWorkflowTriggerAutomationEntry[] =
+        mockWorkflows.flatMap((workflow) => {
+          return workflow.triggers.map((trigger) => {
+            return { workflow: summary(workflow), trigger };
+          });
+        });
+      return respond(200, entries);
+    }),
+
     mockApi(zeroWorkflowTriggersContract.list, ({ params, respond }) => {
       const workflow = mockWorkflows.find((item) => {
         return item.id === params.workflowId;
@@ -309,49 +485,190 @@ function workflowTriggerHandlers() {
         );
       },
     ),
+  ];
+}
 
+function workflowTriggerCreateHandlers() {
+  return [
+    mockApi(
+      zeroWorkflowTriggersContract.create,
+      ({ body, params, respond }) => {
+        const workflow = mockWorkflows.find((item) => {
+          return item.id === params.workflowId;
+        });
+        if (!workflow) {
+          return respond(404, notFound(params.workflowId));
+        }
+
+        const base = {
+          id: crypto.randomUUID(),
+          ownerUserId: "test-user-123",
+          enabled: body.enabled ?? true,
+          chatThreadId: "00000000-0000-4000-a000-000000000301",
+          nextRunAt: null,
+          lastRunAt: null,
+        };
+        let trigger: ZeroWorkflowTriggerSummary;
+        if ("schedule" in body) {
+          trigger = {
+            ...base,
+            kind: "schedule",
+            schedule: body.schedule,
+            scheduleSummary: mockScheduleSummary(body.schedule),
+          };
+        } else if (body.eventType === "webhook-received") {
+          trigger = {
+            ...base,
+            kind: "event",
+            eventType: "webhook-received",
+            eventConfig: body.eventConfig ?? {
+              provider: "webhook",
+              event: "received",
+              auth: { mode: "hmac-sha256" },
+            },
+            schedule: null,
+            scheduleSummary: null,
+            webhookUrl:
+              "http://localhost:3000/api/webhooks/workflow-triggers/mock",
+            secretLastFour: "mock",
+            lastReceivedAt: null,
+            webhookSecret: "mock-webhook-secret",
+          };
+        } else if (body.eventType === "gmail-new-message") {
+          trigger = {
+            ...base,
+            kind: "event",
+            eventType: "gmail-new-message",
+            eventConfig: body.eventConfig,
+            schedule: null,
+            scheduleSummary: null,
+          };
+        } else if (body.eventType === "gmail-label-applied") {
+          trigger = {
+            ...base,
+            kind: "event",
+            eventType: "gmail-label-applied",
+            eventConfig: body.eventConfig,
+            schedule: null,
+            scheduleSummary: null,
+          };
+        } else if (body.eventType === "github-label-applied") {
+          trigger = {
+            ...base,
+            kind: "event",
+            eventType: "github-label-applied",
+            eventConfig: body.eventConfig,
+            schedule: null,
+            scheduleSummary: null,
+          };
+        } else {
+          trigger = {
+            ...base,
+            kind: "event",
+            eventType: "google-calendar-event-created",
+            eventConfig: body.eventConfig,
+            schedule: null,
+            scheduleSummary: null,
+          };
+        }
+        workflow.triggers = [...workflow.triggers, trigger];
+        return respond(201, trigger);
+      },
+    ),
+  ];
+}
+
+function setMockWorkflowTriggerEnabled(triggerId: string, enabled: boolean) {
+  const triggers = getMockWorkflowTriggers();
+  const trigger = triggers.find((item) => {
+    return item.id === triggerId;
+  });
+  if (!trigger) {
+    return null;
+  }
+  const updated = { ...trigger, enabled };
+  setMockWorkflowTriggers(
+    triggers.map((item) => {
+      return item.id === triggerId ? updated : item;
+    }),
+  );
+  return triggerSummary(updated);
+}
+
+function workflowTriggerEnabledHandlers() {
+  return [
     mockApi(zeroWorkflowTriggersContract.enable, ({ params, respond }) => {
-      const triggers = getMockWorkflowTriggers();
-      const trigger = triggers.find((item) => {
-        return item.id === params.id;
-      });
-      if (!trigger) {
-        return respond(404, {
-          error: {
-            message: "Workflow trigger not found",
-            code: "NOT_FOUND",
-          },
-        });
-      }
-      const updated = { ...trigger, enabled: true };
-      setMockWorkflowTriggers(
-        triggers.map((item) => {
-          return item.id === params.id ? updated : item;
-        }),
-      );
-      return respond(200, triggerSummary(updated));
+      const updated = setMockWorkflowTriggerEnabled(params.id, true);
+      return updated ? respond(200, updated) : respond(404, notFoundTrigger());
     }),
-
     mockApi(zeroWorkflowTriggersContract.disable, ({ params, respond }) => {
-      const triggers = getMockWorkflowTriggers();
-      const trigger = triggers.find((item) => {
-        return item.id === params.id;
-      });
-      if (!trigger) {
-        return respond(404, {
-          error: {
-            message: "Workflow trigger not found",
-            code: "NOT_FOUND",
-          },
-        });
-      }
-      const updated = { ...trigger, enabled: false };
-      setMockWorkflowTriggers(
-        triggers.map((item) => {
-          return item.id === params.id ? updated : item;
-        }),
-      );
-      return respond(200, triggerSummary(updated));
+      const updated = setMockWorkflowTriggerEnabled(params.id, false);
+      return updated ? respond(200, updated) : respond(404, notFoundTrigger());
     }),
+  ];
+}
+
+function workflowTriggerRunHandlers() {
+  return [
+    mockApi(zeroWorkflowTriggersContract.run, ({ params, respond }) => {
+      if (!mockWorkflowTriggerExists(params.id)) {
+        return respond(404, notFoundTrigger());
+      }
+      return respond(201, {
+        runId: "mock-workflow-trigger-run",
+        chatThreadId: "00000000-0000-4000-a000-000000000301",
+      });
+    }),
+  ];
+}
+
+function workflowTriggerUpdateHandlers() {
+  return [
+    mockApi(
+      zeroWorkflowTriggersContract.update,
+      ({ body, params, respond }) => {
+        const updatedChatTrigger = updateChatThreadTrigger(
+          params.id,
+          (trigger) => {
+            if (trigger.kind !== "event" || !("eventConfig" in body)) {
+              return trigger;
+            }
+            return {
+              ...trigger,
+              eventConfig: body.eventConfig,
+            } as ChatThreadWorkflowTrigger;
+          },
+        );
+        if (updatedChatTrigger) {
+          return respond(200, updatedChatTrigger);
+        }
+
+        const updatedDetailTrigger = updateDetailTrigger(
+          params.id,
+          (trigger) => {
+            if (trigger.kind !== "event" || !("eventConfig" in body)) {
+              return trigger;
+            }
+            return {
+              ...trigger,
+              eventConfig: body.eventConfig,
+            } as ZeroWorkflowTriggerSummary;
+          },
+        );
+        return updatedDetailTrigger
+          ? respond(200, updatedDetailTrigger)
+          : respond(404, notFoundTrigger());
+      },
+    ),
+  ];
+}
+
+function workflowTriggerHandlers() {
+  return [
+    ...workflowTriggerListHandlers(),
+    ...workflowTriggerCreateHandlers(),
+    ...workflowTriggerEnabledHandlers(),
+    ...workflowTriggerRunHandlers(),
+    ...workflowTriggerUpdateHandlers(),
   ];
 }

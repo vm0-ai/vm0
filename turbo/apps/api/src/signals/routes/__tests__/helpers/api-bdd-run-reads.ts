@@ -9,7 +9,6 @@ import {
   runsMainContract,
   runsQueueContract,
   runSystemLogContract,
-  runTelemetryContract,
 } from "@vm0/api-contracts/contracts/runs";
 import {
   checkpointsByIdContract,
@@ -256,20 +255,6 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    async requestRunTelemetry<TStatus extends 200 | 401 | 404>(
-      actor: ApiTestUser | null,
-      runId: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        setupApp({ context })(runTelemetryContract).getTelemetry({
-          headers: authenticate(context, actor),
-          params: { id: runId },
-        }),
-        statuses,
-      );
-    },
-
     async requestRunAgentEvents<TStatus extends 200 | 400 | 401 | 404>(
       actor: ApiTestUser | null,
       runId: string,
@@ -442,7 +427,7 @@ export function createRunReadsApi(context: TestContext) {
       );
     },
 
-    // Raw GET for 400s the ts-rest contracts cannot express (queue-position
+    // Raw GET for 400s the typed contracts cannot express (queue-position
     // without runId, telemetry queries rejected by zod before the handler).
     // Modeled on rawSearchLogs in helpers/api-bdd-ops-logs.ts.
     async rawApiRequest(

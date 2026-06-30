@@ -214,7 +214,8 @@ JSON_PART = r"""{
           "description": "Send Gmail drafts.",
           "name": "drafts.send",
           "rules": [
-            "POST /v1/users/{userId}/drafts/send"
+            "POST /v1/users/{userId}/drafts/send",
+            "PUT /v1/users/{userId}/drafts/send"
           ]
         },
         {
@@ -222,6 +223,7 @@ JSON_PART = r"""{
           "name": "drafts.write",
           "rules": [
             "POST /v1/users/{userId}/drafts",
+            "PUT /v1/users/{userId}/drafts",
             "PUT /v1/users/{userId}/drafts/{id}"
           ]
         },
@@ -229,7 +231,8 @@ JSON_PART = r"""{
           "description": "Send Gmail messages directly.",
           "name": "messages.send",
           "rules": [
-            "POST /v1/users/{userId}/messages/send"
+            "POST /v1/users/{userId}/messages/send",
+            "PUT /v1/users/{userId}/messages/send"
           ]
         },
         {
@@ -237,7 +240,9 @@ JSON_PART = r"""{
           "name": "messages.write",
           "rules": [
             "POST /v1/users/{userId}/messages",
-            "POST /v1/users/{userId}/messages/import"
+            "PUT /v1/users/{userId}/messages",
+            "POST /v1/users/{userId}/messages/import",
+            "PUT /v1/users/{userId}/messages/import"
           ]
         }
       ]
@@ -254,7 +259,8 @@ JSON_PART = r"""{
           "description": "Send Gmail drafts.",
           "name": "drafts.send",
           "rules": [
-            "POST /v1/users/{userId}/drafts/send"
+            "POST /v1/users/{userId}/drafts/send",
+            "PUT /v1/users/{userId}/drafts/send"
           ]
         },
         {
@@ -262,6 +268,7 @@ JSON_PART = r"""{
           "name": "drafts.write",
           "rules": [
             "POST /v1/users/{userId}/drafts",
+            "PUT /v1/users/{userId}/drafts",
             "PUT /v1/users/{userId}/drafts/{id}"
           ]
         },
@@ -269,7 +276,8 @@ JSON_PART = r"""{
           "description": "Send Gmail messages directly.",
           "name": "messages.send",
           "rules": [
-            "POST /v1/users/{userId}/messages/send"
+            "POST /v1/users/{userId}/messages/send",
+            "PUT /v1/users/{userId}/messages/send"
           ]
         },
         {
@@ -277,7 +285,9 @@ JSON_PART = r"""{
           "name": "messages.write",
           "rules": [
             "POST /v1/users/{userId}/messages",
-            "POST /v1/users/{userId}/messages/import"
+            "PUT /v1/users/{userId}/messages",
+            "POST /v1/users/{userId}/messages/import",
+            "PUT /v1/users/{userId}/messages/import"
           ]
         }
       ]

@@ -7,6 +7,7 @@ const log = logger("zero-attachment-url");
 const LEGACY_FILE_PATH_PATTERN = /^\/f\/([^/]+)\/([^/]+)\/([^/]+)$/;
 const ARTIFACT_FILE_PATH_PATTERN = /^\/artifacts\/([^/]+)\/([^/]+)\/([^/]+)$/;
 const CLERK_USER_ID_PREFIX = "user_";
+const DEV_ARTIFACT_FETCH_PROXY_PATH = "/__vm0-dev-artifact-fetch";
 
 export function attachmentFilenameFromUrl(url: string): string {
   const path = url.split("?")[0].split("#")[0];
@@ -160,6 +161,38 @@ function normalizedArtifactFileUrl(url: string): string | null {
 
 export function publicAttachmentUrl(url: string): string {
   return normalizedLegacyFileUrl(url) ?? normalizedArtifactFileUrl(url) ?? url;
+}
+
+function canUseDevArtifactFetchProxy(): boolean {
+  if (!import.meta.env.DEV) {
+    return false;
+  }
+  return ["app.vm7.ai", "localhost", "127.0.0.1"].includes(
+    window.location.hostname,
+  );
+}
+
+function isDevArtifactFetchProxyTarget(url: URL): boolean {
+  if (url.protocol !== "https:") {
+    return false;
+  }
+  return (
+    url.hostname === "cdn.vm0.io" ||
+    url.hostname === "cdn.vm7.io" ||
+    url.hostname.endsWith(".sites.vm0.io") ||
+    url.hostname.endsWith(".sites.vm7.io")
+  );
+}
+
+export function readableAttachmentResourceUrl(url: string): string {
+  if (!canUseDevArtifactFetchProxy() || !URL.canParse(url)) {
+    return url;
+  }
+  const parsed = new URL(url);
+  if (!isDevArtifactFetchProxyTarget(parsed)) {
+    return url;
+  }
+  return `${DEV_ARTIFACT_FETCH_PROXY_PATH}?url=${encodeURIComponent(url)}`;
 }
 
 function triggerBlobDownload(blob: Blob, filename: string): void {

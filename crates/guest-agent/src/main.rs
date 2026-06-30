@@ -12,15 +12,21 @@ use guest_agent::http::HttpClient;
 use guest_agent::masker;
 use guest_agent::metrics;
 use guest_agent::paths;
+use guest_agent::session_history_identity;
 use guest_agent::session_metadata;
 use guest_agent::telemetry::{Telemetry, UploadMode};
 
-use agent_diagnostics::{
-    AgentFramework, CliTerminationDiagnostic, FailureClass, FailureDetailSource, FailureDiagnostic,
-    FailureReason, PromptMetadata, SessionHistoryStatus,
-};
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
+use guest_contracts::diagnostics::{
+    AgentFramework, CliTerminationDiagnostic, CliTerminationReason, FailureClass,
+    FailureDetailSource, FailureDiagnostic, FailureReason, PromptMetadata, SessionHistoryStatus,
+};
+use guest_contracts::session_history_identity::{
+    FinalSessionHistoryIdentityExpectation, SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS,
+    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS,
+};
 use serde_json::Value;
 use std::io::ErrorKind;
 use std::path::Path;
@@ -35,9 +41,87 @@ const CODEX_OAUTH_TOKEN_CONNECTOR: &str = "codex-oauth-token";
 
 #[tokio::main]
 async fn main() {
+    if let Some(exit_code) = helper_exit_code_from_args() {
+        std::process::exit(exit_code);
+    }
     guest_common::log::enable_system_log_file();
     let exit_code = run().await;
     std::process::exit(exit_code);
+}
+
+fn helper_exit_code_from_args() -> Option<i32> {
+    let mut args = std::env::args_os();
+    let _program = args.next()?;
+    let command = args.next()?;
+    if command != "verify-session-history-identity" {
+        return None;
+    }
+    let metadata_path = args
+        .next()
+        .unwrap_or_else(|| paths::final_session_history_identity_file().into());
+    let remaining = args.collect::<Vec<_>>();
+    let expected = match parse_session_history_identity_expectation(&remaining) {
+        Ok(expected) => expected,
+        Err(()) => return Some(SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS),
+    };
+    Some(
+        match session_history_identity::verify_final_session_history_identity_file(
+            metadata_path,
+            expected.as_ref(),
+        ) {
+            Ok(()) => SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS,
+            Err(error) => {
+                let exit_code = error.helper_exit_code();
+                if exit_code == SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS {
+                    SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE
+                } else {
+                    exit_code
+                }
+            }
+        },
+    )
+}
+
+fn parse_session_history_identity_expectation(
+    args: &[std::ffi::OsString],
+) -> Result<Option<FinalSessionHistoryIdentityExpectation>, ()> {
+    let [
+        framework,
+        session_id_hash,
+        history_ref_kind,
+        history_hash,
+        history_size_bytes,
+    ] = match args {
+        [] => return Ok(None),
+        [
+            framework,
+            session_id_hash,
+            history_ref_kind,
+            history_hash,
+            history_size_bytes,
+        ] => [
+            framework,
+            session_id_hash,
+            history_ref_kind,
+            history_hash,
+            history_size_bytes,
+        ],
+        _ => return Err(()),
+    };
+    let framework = framework.to_str().ok_or(())?;
+    let session_id_hash = session_id_hash.to_str().ok_or(())?;
+    let history_ref_kind = history_ref_kind.to_str().ok_or(())?;
+    let history_hash = history_hash.to_str().ok_or(())?;
+    let history_size_bytes = history_size_bytes.to_str().ok_or(())?;
+    FinalSessionHistoryIdentityExpectation::from_cli_args([
+        framework,
+        session_id_hash,
+        history_ref_kind,
+        history_hash,
+        history_size_bytes,
+    ])
+    .map(Some)
+    .map_err(|_| ())
 }
 
 /// Top-level orchestrator. Returns exit code directly (never panics/errors out).
@@ -70,13 +154,17 @@ async fn run() -> i32 {
 
     let masker = Arc::new(masker::SecretMasker::from_env());
     let shutdown = CancellationToken::new();
+    let framework_supports_active_input = framework_supports_active_input(
+        env::Framework::from_env(),
+        env::use_codex_app_server_backend(),
+    );
+    let has_process_control_endpoint = matches!(
+        std::env::var(process_control_ipc::BOOTSTRAP_ENV),
+        Ok(endpoint) if !endpoint.is_empty()
+    );
     let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
         env::run_id(),
-        matches!(env::Framework::from_env(), env::Framework::ClaudeCode)
-            && matches!(
-                std::env::var(process_control_ipc::BOOTSTRAP_ENV),
-                Ok(endpoint) if !endpoint.is_empty()
-            ),
+        framework_supports_active_input && has_process_control_endpoint,
         env::prompt(),
     );
     let control_handle = control::ControlHandle::spawn(shutdown.clone(), active_input.controller());
@@ -138,6 +226,14 @@ async fn run() -> i32 {
     }
 
     exit_code
+}
+
+fn framework_supports_active_input(
+    framework: env::Framework,
+    use_codex_app_server_backend: bool,
+) -> bool {
+    matches!(framework, env::Framework::ClaudeCode)
+        || (matches!(framework, env::Framework::Codex) && use_codex_app_server_backend)
 }
 
 /// Main execution logic: working dir, CLI, checkpoint/recovery, and `/complete`.
@@ -353,7 +449,7 @@ fn preserves_successful_post_result_cleanup(
             .cli_termination
             .as_ref()
             .is_some_and(|termination| {
-                termination.reason == agent_diagnostics::CliTerminationReason::PostResultReap
+                termination.reason == CliTerminationReason::PostResultReap
                     && termination.observed_exit_code == Some(cli_result.exit_code)
             })
 }
@@ -1055,6 +1151,7 @@ async fn final_telemetry(telemetry: Telemetry) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use guest_contracts::diagnostics::CliTerminationSignal;
     use httpmock::prelude::*;
     use serde_json::json;
     use std::sync::LazyLock;
@@ -1076,6 +1173,23 @@ mod tests {
         std::env::temp_dir()
             .join(format!("vm0-guest-agent-main-tests-{}", std::process::id()))
             .join("main-recovery-checkpoint")
+    }
+
+    #[test]
+    fn framework_supports_active_input_for_claude_and_codex_app_server_only() {
+        assert!(framework_supports_active_input(
+            env::Framework::ClaudeCode,
+            false
+        ));
+        assert!(framework_supports_active_input(
+            env::Framework::ClaudeCode,
+            true
+        ));
+        assert!(!framework_supports_active_input(
+            env::Framework::Codex,
+            false
+        ));
+        assert!(framework_supports_active_input(env::Framework::Codex, true));
     }
 
     unsafe fn set_test_env(server: &MockServer, prompt: Option<&str>) {
@@ -2217,14 +2331,9 @@ mod tests {
         )
         .with_cli_exit_code(143)
         .with_failure_reason(FailureReason::ProviderOverloaded);
-        let termination =
-            CliTerminationDiagnostic::new(agent_diagnostics::CliTerminationReason::PostResultReap)
-                .record_signal(
-                    agent_diagnostics::CliTerminationSignal::Sigterm,
-                    Some(1401),
-                    Some(10_000),
-                )
-                .with_observed_exit_code(143);
+        let termination = CliTerminationDiagnostic::new(CliTerminationReason::PostResultReap)
+            .record_signal(CliTerminationSignal::Sigterm, Some(1401), Some(10_000))
+            .with_observed_exit_code(143);
 
         let with_termination = with_cli_termination(diagnostic.clone(), Some(termination));
         let unchanged = with_cli_termination(diagnostic.clone(), None);
@@ -2321,32 +2430,27 @@ mod tests {
             num_turns: Some(1),
             status: cli::ClaudeResultStatus::Success,
         };
-        let make_result =
-            |claude_result: cli::ClaudeResultSummary,
-             cleanup_result: cli::ClaudeResultSummary,
-             termination_reason: agent_diagnostics::CliTerminationReason| {
-                let termination = CliTerminationDiagnostic::new(termination_reason)
-                    .record_signal(
-                        agent_diagnostics::CliTerminationSignal::Sigterm,
-                        Some(42),
-                        Some(1_000),
-                    )
-                    .with_observed_exit_code(143);
-                cli::CliExecutionResult {
-                    exit_code: 143,
-                    stderr_lines: Vec::new(),
-                    last_event_sequence: None,
-                    claude_result: Some(claude_result),
-                    post_result_cleanup_result: Some(cleanup_result),
-                    failure_diagnostic: None,
-                    control_error: None,
-                    cli_termination: Some(termination),
-                }
-            };
+        let make_result = |claude_result: cli::ClaudeResultSummary,
+                           cleanup_result: cli::ClaudeResultSummary,
+                           termination_reason: CliTerminationReason| {
+            let termination = CliTerminationDiagnostic::new(termination_reason)
+                .record_signal(CliTerminationSignal::Sigterm, Some(42), Some(1_000))
+                .with_observed_exit_code(143);
+            cli::CliExecutionResult {
+                exit_code: 143,
+                stderr_lines: Vec::new(),
+                last_event_sequence: None,
+                claude_result: Some(claude_result),
+                post_result_cleanup_result: Some(cleanup_result),
+                failure_diagnostic: None,
+                control_error: None,
+                cli_termination: Some(termination),
+            }
+        };
         let successful_cleanup = make_result(
             success_result,
             success_result,
-            agent_diagnostics::CliTerminationReason::PostResultReap,
+            CliTerminationReason::PostResultReap,
         );
 
         assert!(preserves_successful_post_result_cleanup(
@@ -2364,7 +2468,7 @@ mod tests {
                 status: cli::ClaudeResultStatus::Error,
             },
             success_result,
-            agent_diagnostics::CliTerminationReason::PostResultReap,
+            CliTerminationReason::PostResultReap,
         );
         assert!(preserves_successful_post_result_cleanup(
             env::Framework::ClaudeCode,
@@ -2377,7 +2481,7 @@ mod tests {
                 num_turns: Some(1),
                 status: cli::ClaudeResultStatus::Error,
             },
-            agent_diagnostics::CliTerminationReason::PostResultReap,
+            CliTerminationReason::PostResultReap,
         );
         assert!(!preserves_successful_post_result_cleanup(
             env::Framework::ClaudeCode,
@@ -2387,7 +2491,7 @@ mod tests {
         let stronger_termination = make_result(
             success_result,
             success_result,
-            agent_diagnostics::CliTerminationReason::StuckToolWatchdog,
+            CliTerminationReason::StuckToolWatchdog,
         );
         assert!(!preserves_successful_post_result_cleanup(
             env::Framework::ClaudeCode,

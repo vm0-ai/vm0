@@ -5,30 +5,35 @@ import { apiErrorSchema } from "./errors";
 import { zeroBuiltInGenerationAcceptedResponseSchema } from "./zero-built-in-generation";
 
 const c = initContract();
+const stringOrStringArraySchema = z.union([
+  z.string(),
+  z.array(z.string()).readonly(),
+]);
+const numberOrStringSchema = z.union([z.number(), z.string()]);
 
 export const zeroImageIoGenerateRequestSchema = z
   .object({
-    prompt: z.unknown().optional(),
-    model: z.unknown().optional(),
-    size: z.unknown().optional(),
-    quality: z.unknown().optional(),
-    background: z.unknown().optional(),
-    outputFormat: z.unknown().optional(),
-    outputCompression: z.unknown().optional(),
-    moderation: z.unknown().optional(),
-    seed: z.unknown().optional(),
-    safetyTolerance: z.unknown().optional(),
-    enhancePrompt: z.unknown().optional(),
-    imageUrl: z.unknown().optional(),
-    image_url: z.unknown().optional(),
-    imageUrls: z.unknown().optional(),
-    image_urls: z.unknown().optional(),
-    maskImageUrl: z.unknown().optional(),
-    mask_image_url: z.unknown().optional(),
-    inputFidelity: z.unknown().optional(),
-    input_fidelity: z.unknown().optional(),
-    imagePromptStrength: z.unknown().optional(),
-    image_prompt_strength: z.unknown().optional(),
+    prompt: z.string().optional(),
+    model: z.string().optional(),
+    size: z.string().optional(),
+    quality: z.string().optional(),
+    background: z.string().optional(),
+    outputFormat: z.string().optional(),
+    outputCompression: numberOrStringSchema.optional(),
+    moderation: z.string().optional(),
+    seed: numberOrStringSchema.optional(),
+    safetyTolerance: z.string().optional(),
+    enhancePrompt: z.boolean().optional(),
+    imageUrl: stringOrStringArraySchema.optional(),
+    image_url: stringOrStringArraySchema.optional(),
+    imageUrls: stringOrStringArraySchema.optional(),
+    image_urls: stringOrStringArraySchema.optional(),
+    maskImageUrl: z.string().optional(),
+    mask_image_url: z.string().optional(),
+    inputFidelity: z.string().optional(),
+    input_fidelity: z.string().optional(),
+    imagePromptStrength: numberOrStringSchema.optional(),
+    image_prompt_strength: numberOrStringSchema.optional(),
   })
   .passthrough();
 

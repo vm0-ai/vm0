@@ -1,7 +1,9 @@
 import { createHash, randomInt, randomUUID } from "node:crypto";
 
+import { RESUME_SESSION_HISTORY_MAX_BYTES } from "@vm0/api-contracts/contracts/runners";
 import { MAX_FILE_SIZE_BYTES } from "@vm0/api-contracts/contracts/storages";
 import { automations, automationTriggers } from "@vm0/db/schema/automation";
+import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { orgConcurrencyEntitlements } from "@vm0/db/schema/org-concurrency-entitlement";
 import { orgConcurrencySubscriptions } from "@vm0/db/schema/org-concurrency-subscription";
 import { orgCache } from "@vm0/db/schema/org-cache";
@@ -15,7 +17,7 @@ import { describe, expect, it } from "vitest";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now, nowDate } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
 import { writeDb$ } from "../../external/db";
 import { settle } from "../../utils";
@@ -1350,6 +1352,19 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
     expectApiError(malformedCheckpoint.body);
     expect(malformedCheckpoint.body.error.code).toBe("BAD_REQUEST");
 
+    const uppercaseCheckpointHash = await api.requestAgentCheckpointUnchecked(
+      {
+        runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: "session-bdd",
+        cliAgentSessionHistoryHash: "A".repeat(64),
+      },
+      headers,
+      [400],
+    );
+    expectApiError(uppercaseCheckpointHash.body);
+    expect(uppercaseCheckpointHash.body.error.code).toBe("BAD_REQUEST");
+
     const missingCheckpointRun = await api.requestAgentCheckpoint(
       {
         runId,
@@ -1393,6 +1408,24 @@ describe("WHCB-06: sandbox agent artifact webhook boundaries", () => {
       );
     expectApiError(malformedHistoryPrepare.body);
     expect(malformedHistoryPrepare.body.error.code).toBe("BAD_REQUEST");
+
+    const uppercaseHistoryPrepare =
+      await api.requestAgentCheckpointPrepareHistoryUnchecked(
+        { runId, hash: "A".repeat(64), size: 128 },
+        headers,
+        [400],
+      );
+    expectApiError(uppercaseHistoryPrepare.body);
+    expect(uppercaseHistoryPrepare.body.error.code).toBe("BAD_REQUEST");
+
+    const oversizedHistoryPrepare =
+      await api.requestAgentCheckpointPrepareHistoryUnchecked(
+        { runId, hash, size: RESUME_SESSION_HISTORY_MAX_BYTES + 1 },
+        headers,
+        [400],
+      );
+    expectApiError(oversizedHistoryPrepare.body);
+    expect(oversizedHistoryPrepare.body.error.code).toBe("BAD_REQUEST");
 
     const mismatchedStoragePrepare = await api.requestAgentStoragePrepare(
       {
@@ -1643,6 +1676,231 @@ describe("WHCB-09: sandbox storage writes and checkpoint history blobs land in t
 });
 
 describe("WHCB-07: Stripe billing lifecycle webhooks", () => {
+  it("grants Atom invoice-backed Team entitlements and cron-downgrades them at expiry", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const orgId = orgOf(actor);
+    const grantExpiresAtUnix = epochSeconds(7);
+    const renewedGrantExpiresAtUnix = epochSeconds(14);
+    const suffix = randomUUID().slice(0, 8);
+    api.configureStripeBillingEnv();
+    await bdd.setupOnboarding(actor, { displayName: "BDD Atom Grant" });
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_atom_grant_${suffix}`,
+          customer: `cus_bdd_atom_${suffix}`,
+          metadata: {
+            type: "atom_grant",
+            purpose: "atom_grant",
+            source: "atom_entitlement",
+            orgId,
+            tier: "team",
+            duration: "7d",
+            atomGrantExpiresAt: isoOf(grantExpiresAtUnix),
+          },
+          parent: null,
+          lines: {
+            data: [
+              {
+                id: `il_bdd_atom_grant_${suffix}`,
+                quantity: 1,
+                price: { id: "price_bdd_atom_grant" },
+                period: {
+                  start: epochSeconds(0),
+                  end: grantExpiresAtUnix,
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    const granted = await billing.readBillingStatus(actor);
+    expect(granted.tier).toBe("team");
+    expect(granted.credits).toBe(120_000);
+    expect(granted.hasSubscription).toBeFalsy();
+    expect(granted.currentPeriodEnd).toBe(isoOf(grantExpiresAtUnix));
+    expect(granted.creditGrants).toStrictEqual([
+      expect.objectContaining({
+        amount: 120_000,
+        expiresAt: isoOf(grantExpiresAtUnix),
+        source: "subscription_renewal",
+      }),
+    ]);
+
+    await api.postStripeEvent(
+      stripeEvent({
+        type: "invoice.paid",
+        object: {
+          id: `in_bdd_atom_grant_renewed_${suffix}`,
+          customer: `cus_bdd_atom_${suffix}`,
+          metadata: {
+            type: "atom_grant",
+            purpose: "atom_grant",
+            source: "atom_entitlement",
+            orgId,
+            tier: "team",
+            duration: "7d",
+            atomGrantExpiresAt: isoOf(renewedGrantExpiresAtUnix),
+          },
+          parent: null,
+          lines: {
+            data: [
+              {
+                id: `il_bdd_atom_grant_renewed_${suffix}`,
+                quantity: 1,
+                price: { id: "price_bdd_atom_grant" },
+                period: {
+                  start: grantExpiresAtUnix,
+                  end: renewedGrantExpiresAtUnix,
+                },
+                parent: { type: "invoice_item_details" },
+              },
+            ],
+          },
+        },
+      }),
+      [200],
+    );
+
+    const renewed = await billing.readBillingStatus(actor);
+    expect(renewed.tier).toBe("team");
+    expect(renewed.credits).toBe(240_000);
+    expect(renewed.hasSubscription).toBeFalsy();
+    expect(renewed.currentPeriodEnd).toBe(isoOf(renewedGrantExpiresAtUnix));
+    expect(renewed.creditGrants).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          amount: 120_000,
+          expiresAt: isoOf(grantExpiresAtUnix),
+          source: "subscription_renewal",
+        }),
+        expect.objectContaining({
+          amount: 120_000,
+          expiresAt: isoOf(renewedGrantExpiresAtUnix),
+          source: "subscription_renewal",
+        }),
+      ]),
+    );
+
+    const db = store.set(writeDb$);
+    const expiredAt = new Date(now() - 1000);
+    await db
+      .update(orgMetadata)
+      .set({ currentPeriodEnd: expiredAt, updatedAt: expiredAt })
+      .where(eq(orgMetadata.orgId, orgId));
+    await db
+      .update(creditExpiresRecord)
+      .set({ expiresAt: expiredAt })
+      .where(eq(creditExpiresRecord.orgId, orgId));
+
+    await runs.reconcileBillingCron(true);
+
+    const downgraded = await billing.readBillingStatus(actor);
+    expect(downgraded.tier).toBe("pro-suspend");
+    expect(downgraded.credits).toBe(0);
+    expect(downgraded.hasSubscription).toBeFalsy();
+    expect(downgraded.creditGrants).toHaveLength(0);
+  });
+
+  it("expires Atom day-grant subscription credits at the Atom grant end", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const grantExpiresAtUnix = epochSeconds(7);
+
+    await runs.grantProEntitlement(actor, {
+      periodEndUnix: epochSeconds(30),
+      cancelAtUnix: grantExpiresAtUnix,
+      subscriptionMetadata: {
+        source: "atom_entitlement",
+        duration: "7d",
+        atomGrantExpiresAt: isoOf(grantExpiresAtUnix),
+      },
+    });
+
+    const status = await billing.readBillingStatus(actor);
+    expect(status.tier).toBe("pro");
+    expect(status.currentPeriodEnd).toBe(isoOf(grantExpiresAtUnix));
+    expect(status.creditGrants).toStrictEqual([
+      expect.objectContaining({
+        amount: 20_000,
+        expiresAt: isoOf(grantExpiresAtUnix),
+        source: "subscription_renewal",
+      }),
+    ]);
+  });
+
+  it("expires Atom redeem-code day-grant subscription credits at the grant end", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const grantExpiresAtUnix = epochSeconds(7);
+
+    await runs.grantProEntitlement(actor, {
+      periodEndUnix: epochSeconds(30),
+      cancelAtUnix: grantExpiresAtUnix,
+      subscriptionMetadata: {
+        source: "atom_redeem_code",
+        duration: "7d",
+        atomGrantExpiresAt: isoOf(grantExpiresAtUnix),
+      },
+    });
+
+    const status = await billing.readBillingStatus(actor);
+    expect(status.tier).toBe("pro");
+    expect(status.currentPeriodEnd).toBe(isoOf(grantExpiresAtUnix));
+    expect(status.creditGrants).toStrictEqual([
+      expect.objectContaining({
+        amount: 20_000,
+        expiresAt: isoOf(grantExpiresAtUnix),
+        source: "subscription_renewal",
+      }),
+    ]);
+  });
+
+  it("uses the normal renewal credit window when an Atom day-grant cancel_at is cleared", async () => {
+    const bdd = createBddApi(context);
+    const runs = createRunsAutomationsApi(context);
+    const billing = createBillingMediaApi(context);
+    const actor = bdd.user();
+    const grantExpiresAtUnix = epochSeconds(7);
+    const periodEndUnix = epochSeconds(30);
+    const renewalExpiresAt = new Date(periodEndUnix * 1000);
+    renewalExpiresAt.setMonth(renewalExpiresAt.getMonth() + 1);
+
+    await runs.grantProEntitlement(actor, {
+      periodEndUnix,
+      cancelAtUnix: null,
+      subscriptionMetadata: {
+        source: "atom_entitlement",
+        duration: "7d",
+        atomGrantExpiresAt: isoOf(grantExpiresAtUnix),
+      },
+    });
+
+    const status = await billing.readBillingStatus(actor);
+    expect(status.tier).toBe("pro");
+    expect(status.currentPeriodEnd).toBe(isoOf(periodEndUnix));
+    expect(status.creditGrants).toStrictEqual([
+      expect.objectContaining({
+        amount: 20_000,
+        expiresAt: renewalExpiresAt.toISOString(),
+        source: "subscription_renewal",
+      }),
+    ]);
+  });
+
   it("replays, expires, and auto-recharges subscription invoice credits", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsAutomationsApi(context);
@@ -3460,7 +3718,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
     );
   });
 
-  it("marks every Stripe subscription non-renewing and deletes an empty org after a verified user.deleted event", async () => {
+  it("cancels trialing Stripe subscriptions and deletes an empty org after a verified user.deleted event", async () => {
     const bdd = createBddApi(context);
     const runs = createRunsAutomationsApi(context);
     api.configureClerkWebhookSecret();
@@ -3495,7 +3753,7 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
           {
             id: extraSubscriptionId,
             status: "trialing",
-            cancel_at_period_end: false,
+            cancel_at_period_end: true,
           },
         ],
         has_more: false,
@@ -3529,19 +3787,19 @@ describe("WHCB-08: Clerk deletion webhooks tear down account state", () => {
         },
       );
       expect(context.mocks.stripe.subscriptions.update).toHaveBeenCalledTimes(
-        2,
+        1,
       );
       expect(context.mocks.stripe.subscriptions.update).toHaveBeenNthCalledWith(
         1,
         granted.subscriptionId,
         { cancel_at_period_end: true },
       );
-      expect(context.mocks.stripe.subscriptions.update).toHaveBeenNthCalledWith(
-        2,
-        extraSubscriptionId,
-        { cancel_at_period_end: true },
+      expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledTimes(
+        1,
       );
-      expect(context.mocks.stripe.subscriptions.cancel).not.toHaveBeenCalled();
+      expect(context.mocks.stripe.subscriptions.cancel).toHaveBeenCalledWith(
+        extraSubscriptionId,
+      );
     });
     await expect
       .poll(async () => {

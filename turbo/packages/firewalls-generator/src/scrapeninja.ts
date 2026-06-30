@@ -26,6 +26,7 @@ function generateTypeScript(): string {
     "      auth: {",
     "        headers: {",
     '          "X-RapidAPI-Key": "${{ secrets.SCRAPENINJA_TOKEN }}",',
+    '          "X-RapidAPI-Host": "scrapeninja.p.rapidapi.com",',
     "        },",
     "      },",
     "      permissions: [],",
@@ -40,5 +41,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating ScrapeNinja firewall config...");
   const ts = generateTypeScript();
-  writeOutput("scrapeninja", ts, import.meta.dirname);
+  writeOutput("scrapeninja", ts);
 }

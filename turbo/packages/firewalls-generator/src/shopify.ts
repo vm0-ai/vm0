@@ -58,5 +58,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Shopify firewall config...");
   const ts = generateTypeScript();
-  writeOutput("shopify", ts, import.meta.dirname);
+  writeOutput("shopify", ts);
 }

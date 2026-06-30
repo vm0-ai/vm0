@@ -4852,7 +4852,9 @@ JSON_PART = r"""{
             "POST /bigquery/v2/projects/{projectsId}/jobs",
             "POST /bigquery/v2/projects/{projectsId}/queries",
             "POST /resumable/upload/bigquery/v2/projects/{projectsId}/jobs",
-            "POST /upload/bigquery/v2/projects/{projectsId}/jobs"
+            "PUT /resumable/upload/bigquery/v2/projects/{projectsId}/jobs",
+            "POST /upload/bigquery/v2/projects/{projectsId}/jobs",
+            "PUT /upload/bigquery/v2/projects/{projectsId}/jobs"
           ]
         },
         {
@@ -5234,11 +5236,13 @@ JSON_PART = r"""{
           "name": "storage.objects.create",
           "rules": [
             "POST /resumable/upload/storage/v1/b/{bucket}/o",
+            "PUT /resumable/upload/storage/v1/b/{bucket}/o",
             "POST /storage/v1/b/{bucket}/o",
             "POST /storage/v1/b/{destinationBucket}/o/{destinationObject}/compose",
             "POST /storage/v1/b/{sourceBucket}/o/{sourceObject}/copyTo/b/{destinationBucket}/o/{destinationObject}",
             "POST /storage/v1/b/{sourceBucket}/o/{sourceObject}/rewriteTo/b/{destinationBucket}/o/{destinationObject}",
-            "POST /upload/storage/v1/b/{bucket}/o"
+            "POST /upload/storage/v1/b/{bucket}/o",
+            "PUT /upload/storage/v1/b/{bucket}/o"
           ]
         },
         {
@@ -5687,19 +5691,13 @@ JSON_PART = r"""{
           "name": "artifactregistry.files.upload",
           "rules": [
             "POST /resumable/upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files:upload",
+            "PUT /resumable/upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files:upload",
             "POST /resumable/upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/genericArtifacts:create",
+            "PUT /resumable/upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/genericArtifacts:create",
             "POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files:upload",
+            "PUT /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files:upload",
             "POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/genericArtifacts:create",
+            "PUT /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/genericArtifacts:create",
             "POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/goModules:create",
             "POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/googetArtifacts:create",
-            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/files:upload",
-            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/genericArtifacts:create",
-            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/goModules:create",
-            "POST /v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/googetArtifacts:create"
-          ]
-        },
-        {
-          "name": "artifactregistry.kfpartifacts.create",
-          "rules": [
-            "POST /upload/v1/projects/{projectsId}/locations/{locationsId}/repositories/{repositoriesId}/kfpArtifacts:create",
 """

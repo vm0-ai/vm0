@@ -15,17 +15,28 @@ import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 
 type UserPermissionGrantRow = typeof userPermissionGrants.$inferSelect;
+type StoredPermissionGrantRow = UserPermissionGrantRow;
 type UserPermissionGrantAction = UserPermissionGrantResponse["action"];
 
-interface UserPermissionGrantScope {
+interface UserPermissionGrantBaseScope {
   readonly orgId: string;
   readonly userId: string;
-  readonly agentId: string;
+  readonly role?: string;
 }
+
+type UserPermissionGrantScope = UserPermissionGrantBaseScope & {
+  readonly agentId: string;
+};
+
+type ApplyUserPermissionGrantsAgentRequest =
+  ApplyUserPermissionGrantsRequest & {
+    readonly agentId: string;
+  };
 
 interface ApplyUserPermissionGrantsArgs {
   readonly orgId: string;
   readonly userId: string;
+  readonly role?: string;
   readonly apply: ApplyUserPermissionGrantsRequest;
 }
 
@@ -75,9 +86,18 @@ function visibleZeroAgentCondition(userId: string) {
   return or(eq(zeroAgents.visibility, "public"), eq(zeroAgents.owner, userId));
 }
 
+function requireAgentGrantApply(
+  apply: ApplyUserPermissionGrantsRequest,
+): ApplyUserPermissionGrantsAgentRequest {
+  if (apply.agentId === undefined) {
+    throw new Error("Expected agent permission grant scope");
+  }
+  return apply as ApplyUserPermissionGrantsAgentRequest;
+}
+
 async function findVisibleAgent(
   db: ReadonlyDb,
-  scope: UserPermissionGrantScope,
+  scope: UserPermissionGrantBaseScope & { readonly agentId: string },
 ): Promise<{ readonly id: string } | null> {
   const [agent] = await db
     .select({ id: zeroAgents.id })
@@ -154,7 +174,7 @@ function resolvedExpiresAt({
 }: {
   readonly action: UserPermissionGrantAction;
   readonly expiresIn: UserPermissionGrantExpiresIn | undefined;
-  readonly existing: UserPermissionGrantRow | undefined;
+  readonly existing: StoredPermissionGrantRow | undefined;
   readonly timestamp: Date;
 }): Date | null {
   if (action !== "allow") {
@@ -171,8 +191,7 @@ function resolvedExpiresAt({
 
 function formatUserPermissionGrant(
   row: Pick<
-    UserPermissionGrantRow,
-    | "agentId"
+    StoredPermissionGrantRow,
     | "connectorRef"
     | "permission"
     | "action"
@@ -180,9 +199,10 @@ function formatUserPermissionGrant(
     | "createdAt"
     | "updatedAt"
   >,
+  scope: { readonly agentId: string },
 ): UserPermissionGrantResponse {
   return {
-    agentId: row.agentId,
+    ...scope,
     connectorRef: row.connectorRef,
     permission: row.permission,
     action: row.action,
@@ -196,7 +216,7 @@ export async function loadActiveUserPermissionGrants(
   db: ReadonlyDb,
   scope: UserPermissionGrantScope,
   checkedAt: Date = nowDate(),
-): Promise<readonly UserPermissionGrantRow[]> {
+): Promise<readonly StoredPermissionGrantRow[]> {
   return await db
     .select()
     .from(userPermissionGrants)
@@ -216,7 +236,7 @@ export async function loadActiveUserPermissionGrants(
 
 async function visibleAgentOrNotFound(
   db: ReadonlyDb,
-  scope: UserPermissionGrantScope,
+  scope: UserPermissionGrantBaseScope & { readonly agentId: string },
 ): Promise<NotFoundResponse | null> {
   return (await findVisibleAgent(db, scope))
     ? null
@@ -225,7 +245,7 @@ async function visibleAgentOrNotFound(
 
 async function lockVisibleAgentForUpdate(
   db: Pick<Db, "select">,
-  scope: UserPermissionGrantScope,
+  scope: UserPermissionGrantBaseScope & { readonly agentId: string },
 ): Promise<{ readonly id: string } | null> {
   const [agent] = await db
     .select({ id: zeroAgents.id })
@@ -277,22 +297,35 @@ async function validateApplyUserPermissionGrants(
 async function applyVisibleGrantRows(
   db: Db,
   args: ApplyUserPermissionGrantsArgs,
+): Promise<readonly StoredPermissionGrantRow[] | NotFoundResponse> {
+  return await applyVisibleAgentGrantRows(
+    db,
+    args,
+    requireAgentGrantApply(args.apply).agentId,
+  );
+}
+
+async function applyVisibleAgentGrantRows(
+  db: Db,
+  args: ApplyUserPermissionGrantsArgs,
+  agentId: string,
 ): Promise<readonly UserPermissionGrantRow[] | NotFoundResponse> {
   return await db.transaction(async (tx) => {
     const visibleAgent = await lockVisibleAgentForUpdate(tx, {
       orgId: args.orgId,
       userId: args.userId,
-      agentId: args.apply.agentId,
+      role: args.role,
+      agentId,
     });
     if (!visibleAgent) {
-      return notFound(`Agent not found: ${args.apply.agentId}`);
+      return notFound(`Agent not found: ${agentId}`);
     }
 
     const timestamp = nowDate();
     const connectorScopeCondition = and(
       eq(userPermissionGrants.orgId, args.orgId),
       eq(userPermissionGrants.userId, args.userId),
-      eq(userPermissionGrants.agentId, args.apply.agentId),
+      eq(userPermissionGrants.agentId, agentId),
       eq(userPermissionGrants.connectorRef, args.apply.connectorRef),
     );
 
@@ -338,7 +371,7 @@ async function applyVisibleGrantRows(
               and(
                 eq(userPermissionGrants.orgId, args.orgId),
                 eq(userPermissionGrants.userId, args.userId),
-                eq(userPermissionGrants.agentId, args.apply.agentId),
+                eq(userPermissionGrants.agentId, agentId),
                 eq(userPermissionGrants.connectorRef, args.apply.connectorRef),
                 eq(userPermissionGrants.permission, grant.permission),
               ),
@@ -349,7 +382,7 @@ async function applyVisibleGrantRows(
             .values({
               orgId: args.orgId,
               userId: args.userId,
-              agentId: args.apply.agentId,
+              agentId,
               connectorRef: args.apply.connectorRef,
               permission: grant.permission,
               action: grant.action,
@@ -367,6 +400,18 @@ async function applyVisibleGrantRows(
   });
 }
 
+function permissionGrantResponseScope(scope: UserPermissionGrantScope): {
+  readonly agentId: string;
+} {
+  return { agentId: scope.agentId };
+}
+
+function applyPermissionGrantResponseScope(
+  args: ApplyUserPermissionGrantsArgs,
+): { readonly agentId: string } {
+  return { agentId: requireAgentGrantApply(args.apply).agentId };
+}
+
 export const listUserPermissionGrants$ = command(
   async (
     { get },
@@ -374,7 +419,12 @@ export const listUserPermissionGrants$ = command(
     signal: AbortSignal,
   ): Promise<ListUserPermissionGrantsResult> => {
     const db = get(db$);
-    const visibleError = await visibleAgentOrNotFound(db, scope);
+    const visibleError = await visibleAgentOrNotFound(db, {
+      orgId: scope.orgId,
+      userId: scope.userId,
+      role: scope.role,
+      agentId: scope.agentId,
+    });
     signal.throwIfAborted();
     if (visibleError) {
       return visibleError;
@@ -382,10 +432,13 @@ export const listUserPermissionGrants$ = command(
 
     const grants = await loadActiveUserPermissionGrants(db, scope);
     signal.throwIfAborted();
+    const responseScope = permissionGrantResponseScope(scope);
 
     return {
       kind: "ok" as const,
-      grants: grants.map(formatUserPermissionGrant),
+      grants: grants.map((grant) => {
+        return formatUserPermissionGrant(grant, responseScope);
+      }),
     };
   },
 );
@@ -409,10 +462,13 @@ export const applyUserPermissionGrants$ = command(
     if ("status" in rows) {
       return rows;
     }
+    const responseScope = applyPermissionGrantResponseScope(args);
 
     return {
       kind: "ok" as const,
-      grants: rows.map(formatUserPermissionGrant),
+      grants: rows.map((grant) => {
+        return formatUserPermissionGrant(grant, responseScope);
+      }),
     };
   },
 );

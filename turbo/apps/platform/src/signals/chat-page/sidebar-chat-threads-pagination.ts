@@ -7,7 +7,7 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import { reloadChatThreadsCounter$ } from "../chat-thread-list-reload.ts";
-import { settle } from "../utils.ts";
+import { chatThreadOnlyUnread$ } from "./chat-thread-only-unread.ts";
 
 interface ExtraPage {
   readonly threads: readonly ChatThreadListItem[];
@@ -17,48 +17,33 @@ interface ExtraPage {
 
 interface PaginationState {
   readonly agentId: string;
+  readonly onlyUnread: boolean;
   readonly reloadKey: number;
   readonly pages: readonly ExtraPage[];
 }
 
 interface PaginationKey {
   readonly agentId: string;
+  readonly onlyUnread: boolean;
   readonly reloadKey: number;
 }
 
-interface LoadMoreErrorState extends PaginationKey {
-  readonly message: string;
-}
-
 const extraPagesState$ = state<PaginationState | null>(null);
-const loadingMoreState$ = state<PaginationKey | null>(null);
-const loadMoreErrorState$ = state<LoadMoreErrorState | null>(null);
 
 function matchesKey<T extends PaginationKey>(
   state: T | null,
   agentId: string | null,
+  onlyUnread: boolean,
   reloadKey: number,
 ): state is T {
   return (
     !!state &&
     !!agentId &&
     state.agentId === agentId &&
+    state.onlyUnread === onlyUnread &&
     state.reloadKey === reloadKey
   );
 }
-
-export const sidebarChatThreadsLoadingMore$ = computed(async (get) => {
-  const agentId = await get(currentChatAgentId$);
-  const reloadKey = get(reloadChatThreadsCounter$);
-  return matchesKey(get(loadingMoreState$), agentId, reloadKey);
-});
-
-export const sidebarChatThreadsLoadMoreError$ = computed(async (get) => {
-  const agentId = await get(currentChatAgentId$);
-  const reloadKey = get(reloadChatThreadsCounter$);
-  const error = get(loadMoreErrorState$);
-  return matchesKey(error, agentId, reloadKey) ? error.message : null;
-});
 
 export const loadMoreSidebarChatThreads$ = command(
   async ({ get, set }, cursor: string, signal: AbortSignal): Promise<void> => {
@@ -68,58 +53,48 @@ export const loadMoreSidebarChatThreads$ = command(
     if (!agentId) {
       return;
     }
-    if (matchesKey(get(loadingMoreState$), agentId, reloadKey)) {
-      return;
-    }
+    const onlyUnread = get(chatThreadOnlyUnread$);
 
-    const key = { agentId, reloadKey };
-    set(loadingMoreState$, key);
-    set(loadMoreErrorState$, null);
+    const key = { agentId, onlyUnread, reloadKey };
 
     const client = get(zeroClient$)(chatThreadsContract);
-    const settled = await settle(
-      accept(
-        client.list({
-          query: { agentId, cursor },
-          fetchOptions: { signal },
-        }),
-        [200],
-      ),
-      signal,
+    const result = await accept(
+      client.list({
+        query: {
+          agentId,
+          cursor,
+          ...(onlyUnread ? { filter: "unread" as const } : {}),
+        },
+        fetchOptions: { signal },
+      }),
+      [200],
     );
-
-    set(loadingMoreState$, (current) => {
-      return matchesKey(current, agentId, reloadKey) ? null : current;
-    });
-
-    if (!settled.ok) {
-      set(loadMoreErrorState$, {
-        ...key,
-        message:
-          settled.error instanceof Error
-            ? settled.error.message
-            : "Failed to load more chats",
-      });
-      return;
-    }
+    signal.throwIfAborted();
 
     const latestAgentId = await get(currentChatAgentId$);
     signal.throwIfAborted();
+    const latestOnlyUnread = get(chatThreadOnlyUnread$);
     const latestReloadKey = get(reloadChatThreadsCounter$);
-    if (latestAgentId !== agentId || latestReloadKey !== reloadKey) {
+    if (
+      latestAgentId !== agentId ||
+      latestOnlyUnread !== onlyUnread ||
+      latestReloadKey !== reloadKey
+    ) {
       return;
     }
 
     set(extraPagesState$, (prev) => {
-      const pages = matchesKey(prev, agentId, reloadKey) ? prev.pages : [];
+      const pages = matchesKey(prev, agentId, onlyUnread, reloadKey)
+        ? prev.pages
+        : [];
       return {
         ...key,
         pages: [
           ...pages,
           {
-            threads: settled.value.body.threads,
-            hasMore: settled.value.body.hasMore,
-            nextCursor: settled.value.body.nextCursor,
+            threads: result.body.threads,
+            hasMore: result.body.hasMore,
+            nextCursor: result.body.nextCursor,
           },
         ],
       };
@@ -129,9 +104,10 @@ export const loadMoreSidebarChatThreads$ = command(
 
 export const sidebarChatThreadsExtraThreads$ = computed(async (get) => {
   const agentId = await get(currentChatAgentId$);
+  const onlyUnread = get(chatThreadOnlyUnread$);
   const reloadKey = get(reloadChatThreadsCounter$);
   const state = get(extraPagesState$);
-  if (!matchesKey(state, agentId, reloadKey)) {
+  if (!matchesKey(state, agentId, onlyUnread, reloadKey)) {
     return [];
   }
   return state.pages.flatMap((p) => {
@@ -141,16 +117,23 @@ export const sidebarChatThreadsExtraThreads$ = computed(async (get) => {
 
 export const sidebarChatThreadsHasLoadedExtraPages$ = computed(async (get) => {
   const agentId = await get(currentChatAgentId$);
+  const onlyUnread = get(chatThreadOnlyUnread$);
   const reloadKey = get(reloadChatThreadsCounter$);
   const state = get(extraPagesState$);
-  return matchesKey(state, agentId, reloadKey) && state.pages.length > 0;
+  return (
+    matchesKey(state, agentId, onlyUnread, reloadKey) && state.pages.length > 0
+  );
 });
 
 export const sidebarChatThreadsLatestCursor$ = computed(async (get) => {
   const agentId = await get(currentChatAgentId$);
+  const onlyUnread = get(chatThreadOnlyUnread$);
   const reloadKey = get(reloadChatThreadsCounter$);
   const state = get(extraPagesState$);
-  if (!matchesKey(state, agentId, reloadKey) || state.pages.length === 0) {
+  if (
+    !matchesKey(state, agentId, onlyUnread, reloadKey) ||
+    state.pages.length === 0
+  ) {
     return null;
   }
   return state.pages[state.pages.length - 1]!.nextCursor;
@@ -158,9 +141,13 @@ export const sidebarChatThreadsLatestCursor$ = computed(async (get) => {
 
 export const sidebarChatThreadsExtraHasMore$ = computed(async (get) => {
   const agentId = await get(currentChatAgentId$);
+  const onlyUnread = get(chatThreadOnlyUnread$);
   const reloadKey = get(reloadChatThreadsCounter$);
   const state = get(extraPagesState$);
-  if (!matchesKey(state, agentId, reloadKey) || state.pages.length === 0) {
+  if (
+    !matchesKey(state, agentId, onlyUnread, reloadKey) ||
+    state.pages.length === 0
+  ) {
     return false;
   }
   return state.pages[state.pages.length - 1]!.hasMore;

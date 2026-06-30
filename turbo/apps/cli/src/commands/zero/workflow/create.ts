@@ -4,6 +4,7 @@ import { readFileSync } from "node:fs";
 import { createWorkflow } from "../../../lib/api";
 import { withErrorHandler } from "../../../lib/command";
 import { readSupplementaryFiles } from "../../../lib/skill-directory";
+import { formatWorkflowAgentName } from "./format";
 
 export const createCommand = new Command()
   .name("create")
@@ -84,6 +85,7 @@ Notes:
 
         const workflow = await createWorkflow({
           agentId,
+          chatThreadId: process.env.ZERO_CHAT_THREAD_ID || undefined,
           name,
           instruction,
           files,
@@ -95,9 +97,8 @@ Notes:
         console.log(chalk.green(`✓ Workflow "${workflow.name}" created`));
         console.log(`  ID:           ${workflow.id}`);
         console.log(`  Name:         ${workflow.name}`);
-        console.log(
-          `  Agent:        ${workflow.agentName ?? workflow.agentId}`,
-        );
+        console.log(`  Agent Name:   ${formatWorkflowAgentName(workflow)}`);
+        console.log(`  Agent ID:     ${workflow.agentId}`);
         console.log(`  Visibility:   ${workflow.visibility}`);
         if (files) {
           console.log(`  Files:        ${files.length} file(s)`);

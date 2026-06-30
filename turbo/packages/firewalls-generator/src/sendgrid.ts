@@ -53,5 +53,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating SendGrid firewall config...");
   const ts = generateTypeScript();
-  writeOutput("sendgrid", ts, import.meta.dirname);
+  writeOutput("sendgrid", ts);
 }

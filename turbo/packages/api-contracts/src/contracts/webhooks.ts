@@ -3,6 +3,7 @@ import { authHeadersSchema, initContract } from "./base";
 import { apiErrorSchema } from "./errors";
 import {
   artifactMissingRootPolicySchema,
+  RESUME_SESSION_HISTORY_MAX_BYTES,
   secretConnectorMetadataMapSchema,
 } from "./runners";
 import { eventSequenceNumberSchema, networkLogEntrySchema } from "./runs";
@@ -14,6 +15,15 @@ import {
 } from "./storages";
 
 const c = initContract();
+
+// Hash-backed resume history is keyed and verified as lowercase SHA-256 hex.
+// Accepting other 64-character strings would defer bad input until runner claim.
+const sha256HexSchema = z
+  .string()
+  .regex(
+    /^[a-f0-9]{64}$/,
+    "hash must be a lowercase 64-character SHA-256 hex string",
+  );
 
 const thirdPartyWebhookErrorSchema = z.object({ error: z.string() });
 const thirdPartyWebhookOkSchema = z.union([
@@ -79,6 +89,19 @@ const gmailWebhookResponseSchema = z.object({
   duplicates: z.number(),
 });
 
+const googleCalendarWebhookResponseSchema = z.object({
+  success: z.literal(true),
+  watchStates: z.number(),
+  dispatched: z.number(),
+  duplicates: z.number(),
+});
+
+const workflowTriggerWebhookResponseSchema = z.object({
+  success: z.literal(true),
+  duplicate: z.boolean(),
+  runId: z.string().uuid().optional(),
+});
+
 /**
  * Gmail Pub/Sub push webhook contract for /api/webhooks/gmail.
  */
@@ -95,6 +118,50 @@ export const webhookGmailContract = c.router({
       503: thirdPartyWebhookErrorSchema,
     },
     summary: "Handle Gmail Pub/Sub push notifications",
+  },
+});
+
+/**
+ * Google Calendar push webhook contract for /api/webhooks/google-calendar.
+ */
+export const webhookGoogleCalendarContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/google-calendar",
+    body: c.type<string>(),
+    responses: {
+      200: googleCalendarWebhookResponseSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      429: thirdPartyWebhookErrorSchema,
+      503: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle Google Calendar push notifications",
+  },
+});
+
+/**
+ * Workflow trigger inbound webhook contract for
+ * /api/webhooks/workflow-triggers/:token.
+ */
+export const webhookWorkflowTriggerContract = c.router({
+  post: {
+    method: "POST",
+    path: "/api/webhooks/workflow-triggers/:token",
+    pathParams: z.object({
+      token: z.string().min(1),
+    }),
+    body: c.type<string>(),
+    responses: {
+      200: workflowTriggerWebhookResponseSchema,
+      400: thirdPartyWebhookErrorSchema,
+      401: thirdPartyWebhookErrorSchema,
+      404: thirdPartyWebhookErrorSchema,
+      413: thirdPartyWebhookErrorSchema,
+      429: thirdPartyWebhookErrorSchema,
+      500: thirdPartyWebhookErrorSchema,
+    },
+    summary: "Handle inbound workflow trigger webhooks",
   },
 });
 
@@ -364,12 +431,7 @@ export const webhookCheckpointsContract = c.router({
         runId: z.string().min(1, "runId is required"),
         cliAgentType: z.string().min(1, "cliAgentType is required"),
         cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
-        cliAgentSessionHistoryHash: z
-          .string()
-          .length(
-            64,
-            "cliAgentSessionHistoryHash must be a 64-character SHA-256 hex string",
-          ),
+        cliAgentSessionHistoryHash: sha256HexSchema,
         // Multi-artifact snapshot payload. Canonical
         // `Array<{name, version, mountPath}>` form persisted verbatim to
         // checkpoints.artifact_snapshots.
@@ -406,10 +468,12 @@ export const webhookCheckpointsPrepareHistoryContract = c.router({
     headers: authHeadersSchema,
     body: z.object({
       runId: z.string().min(1, "runId is required"),
-      hash: z
-        .string()
-        .length(64, "hash must be a 64-character SHA-256 hex string"),
-      size: z.number().int().positive("size must be a positive integer"),
+      hash: sha256HexSchema,
+      size: z
+        .number()
+        .int()
+        .positive("size must be a positive integer")
+        .max(RESUME_SESSION_HISTORY_MAX_BYTES),
     }),
     responses: {
       200: z.object({
@@ -684,7 +748,12 @@ export const webhookStoragesCommitContract = c.router({
 export type WebhookEventsContract = typeof webhookEventsContract;
 export type WebhookClerkContract = typeof webhookClerkContract;
 export type WebhookGithubContract = typeof webhookGithubContract;
+export type WebhookGmailContract = typeof webhookGmailContract;
+export type WebhookGoogleCalendarContract =
+  typeof webhookGoogleCalendarContract;
 export type WebhookStripeContract = typeof webhookStripeContract;
+export type WebhookWorkflowTriggerContract =
+  typeof webhookWorkflowTriggerContract;
 export type WebhookBuiltInGenerationFalContract =
   typeof webhookBuiltInGenerationFalContract;
 export type WebhookBuiltInGenerationBytePlusContract =

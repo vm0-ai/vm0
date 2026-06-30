@@ -3,11 +3,12 @@ use shell_quote::quote_shell_arg;
 use tracing::info;
 
 use super::{
-    SessionRestoreDiagnostics, redact_session_restore_diagnostic, write_session_history_file,
+    MaterializedResumeSession, SessionRestoreDiagnostics, redact_session_restore_diagnostic,
+    write_session_history_file,
 };
 use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 use crate::paths::diagnostic_session_fingerprint;
-use crate::types::{ExecutionContext, ResumeSession};
+use crate::types::ExecutionContext;
 
 use super::super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
 use guest_contracts::codex_thread_id::CodexThreadId;
@@ -18,10 +19,12 @@ const CODEX_SESSION_CLEANUP_SCRIPT: &str =
 
 fn codex_restore_rollout_path(
     session_id: &str,
-    session_history: &str,
+    session_history: Option<&str>,
     fallback_timestamp: chrono::DateTime<chrono::Utc>,
 ) -> String {
-    let timestamp = codex_session_meta_timestamp(session_history).unwrap_or(fallback_timestamp);
+    let timestamp = session_history
+        .and_then(codex_session_meta_timestamp)
+        .unwrap_or(fallback_timestamp);
     format!(
         "{CODEX_HOME}/sessions/{}/{}/{}/rollout-{}-{session_id}.jsonl",
         timestamp.format("%Y"),
@@ -90,15 +93,17 @@ fn parse_codex_rollout_timestamp(raw: &str) -> Option<chrono::DateTime<chrono::U
 pub(super) async fn restore_codex_session(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    session: &ResumeSession,
+    session: &MaterializedResumeSession<'_>,
 ) -> RunnerResult<SessionRestoreDiagnostics> {
-    let thread_id = CodexThreadId::parse(&session.cli_agent_session_id)
+    let session_history = session.history_bytes();
+    let original_session_id = session.cli_agent_session_id();
+    let thread_id = CodexThreadId::parse(original_session_id)
         .ok_or_else(|| RunnerError::Internal("invalid codex session_id".into()))?;
     let session_id = thread_id.as_str();
     let session_filename_key = thread_id.filename_key();
 
     let session_path =
-        codex_restore_rollout_path(session_id, &session.session_history, chrono::Utc::now());
+        codex_restore_rollout_path(session_id, session.history_text(), chrono::Utc::now());
 
     cleanup_existing_codex_session_files(
         sandbox,
@@ -112,15 +117,15 @@ pub(super) async fn restore_codex_session(
     write_session_history_file(
         sandbox,
         &session_path,
-        &[session_id, &session.cli_agent_session_id],
-        &session.session_history,
+        &[session_id, original_session_id],
+        session_history,
     )
     .await?;
 
     let diagnostics = SessionRestoreDiagnostics {
         framework: "codex",
         session_fingerprint: diagnostic_session_fingerprint(session_id),
-        bytes_in: session.session_history.len(),
+        bytes_in: session_history.len(),
     };
     info!(
         run_id = %context.run_id,
@@ -186,7 +191,7 @@ mod tests {
     use super::*;
 
     use std::fs;
-    use std::os::unix::fs::symlink;
+    use std::os::unix::fs::{PermissionsExt, symlink};
     use std::path::{Path, PathBuf};
     use std::process::{Command, Output};
 
@@ -228,7 +233,26 @@ mod tests {
         session_id: &str,
         session_filename_key: &str,
     ) -> Output {
-        Command::new("sh")
+        cleanup_command(codex_home, restore_path, session_id, session_filename_key)
+            .output()
+            .unwrap()
+    }
+
+    fn run_cleanup_with_budget(codex_home: &Path, restore_path: &Path, budget: &str) -> Output {
+        cleanup_command(codex_home, restore_path, SESSION_ID, SESSION_ID_NO_DASHES)
+            .env("VM0_CODEX_SESSION_CLEANUP_SCAN_BUDGET", budget)
+            .output()
+            .unwrap()
+    }
+
+    fn cleanup_command(
+        codex_home: &Path,
+        restore_path: &Path,
+        session_id: &str,
+        session_filename_key: &str,
+    ) -> Command {
+        let mut command = Command::new("sh");
+        command
             .arg("-c")
             .arg(codex_session_cleanup_command(
                 codex_home.to_str().expect("test path should be utf-8"),
@@ -241,9 +265,8 @@ mod tests {
             .env(
                 "VM0_CODEX_RESTORE_SESSION_PATH",
                 restore_path.to_str().expect("test path should be utf-8"),
-            )
-            .output()
-            .unwrap()
+            );
+        command
     }
 
     fn assert_success(output: &Output) {
@@ -275,7 +298,13 @@ mod tests {
 
         assert!(command.contains("codex_home='/home/user/.codex'"));
         assert!(command.contains("root=\"$codex_home/sessions\""));
-        assert!(command.contains("find \"$root\" \\( -type f -o -type l \\)"));
+        assert!(command.contains("scan_budget="));
+        assert!(command.contains("collect_matching_session_entries"));
+        assert!(command.contains("find \"$root\" -mindepth 1 -print0"));
+        assert!(command.contains("delete_matching_session_entries"));
+        assert!(command.contains("xargs -0"));
+        assert!(!command.contains("-delete"));
+        assert!(!command.contains("for path in \"$dir\"/*"));
     }
 
     #[test]
@@ -292,6 +321,10 @@ mod tests {
         let matching_no_dash = codex_home.join("sessions/2026/06/05").join(format!(
             "rollout-b-{SESSION_ID_NO_DASHES}.jsonl.zst.vm0tmp-456"
         ));
+        let matching_newline = restore_dir.join(format!("rollout-line\nbreak-{SESSION_ID}.jsonl"));
+        let matching_non_layout = codex_home
+            .join("sessions/not-layout/deep")
+            .join(format!("rollout-c-{SESSION_ID}.jsonl"));
         let matching_symlink = restore_dir.join(format!("rollout-link-{SESSION_ID}.jsonl"));
         let matching_directory = restore_dir.join(format!("rollout-dir-{SESSION_ID}.jsonl"));
         let unrelated = restore_dir.join("rollout-other-session.jsonl");
@@ -300,6 +333,8 @@ mod tests {
         create_file(&matching_zst);
         create_file(&matching_tmp);
         create_file(&matching_no_dash);
+        create_file(&matching_newline);
+        create_file(&matching_non_layout);
         create_file(&unrelated);
         fs::create_dir(&matching_directory).unwrap();
         symlink(&unrelated, &matching_symlink).unwrap();
@@ -311,9 +346,45 @@ mod tests {
         assert!(!matching_zst.exists());
         assert!(!matching_tmp.exists());
         assert!(!matching_no_dash.exists());
+        assert!(!matching_newline.exists());
+        assert!(!matching_non_layout.exists());
         assert!(!matching_symlink.exists());
         assert!(matching_directory.exists());
         assert!(unrelated.exists());
+    }
+
+    #[test]
+    fn cleanup_script_fails_when_scan_budget_exceeded_without_deleting_sessions() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let restore_path = restore_path(&codex_home);
+        let restore_dir = restore_path.parent().unwrap();
+        fs::create_dir_all(restore_dir).unwrap();
+        let matching_jsonl = restore_dir.join(format!("rollout-a-{SESSION_ID}.jsonl"));
+        create_file(&matching_jsonl);
+
+        let output = run_cleanup_with_budget(&codex_home, &restore_path, "1");
+
+        assert_failure_contains(&output, "codex session cleanup exceeded scan budget");
+        assert!(matching_jsonl.exists());
+    }
+
+    #[test]
+    fn cleanup_script_rejects_invalid_scan_budget_without_deleting_sessions() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let restore_path = restore_path(&codex_home);
+        let restore_dir = restore_path.parent().unwrap();
+        fs::create_dir_all(restore_dir).unwrap();
+        let matching_jsonl = restore_dir.join(format!("rollout-a-{SESSION_ID}.jsonl"));
+        create_file(&matching_jsonl);
+
+        for budget in ["0", "1000000", "not-a-number"] {
+            let output = run_cleanup_with_budget(&codex_home, &restore_path, budget);
+
+            assert_failure_contains(&output, "invalid codex session cleanup scan budget");
+            assert!(matching_jsonl.exists());
+        }
     }
 
     #[test]
@@ -334,6 +405,34 @@ mod tests {
 
         assert_success(&output);
         assert!(!matching_jsonl.exists());
+    }
+
+    #[test]
+    fn cleanup_script_rejects_failed_session_id_normalization_without_deleting_sessions() {
+        let temp = tempfile::tempdir().unwrap();
+        let codex_home = temp.path().join(".codex");
+        let restore_path = restore_path(&codex_home);
+        let restore_dir = restore_path.parent().unwrap();
+        fs::create_dir_all(restore_dir).unwrap();
+        let matching_jsonl = restore_dir.join(format!("rollout-a-{SESSION_ID}.jsonl"));
+        create_file(&matching_jsonl);
+
+        let fake_bin = temp.path().join("fake-bin");
+        fs::create_dir(&fake_bin).unwrap();
+        symlink("/bin/sh", fake_bin.join("sh")).unwrap();
+        let fake_tr = fake_bin.join("tr");
+        fs::write(&fake_tr, "#!/bin/sh\nexit 1\n").unwrap();
+        let mut permissions = fs::metadata(&fake_tr).unwrap().permissions();
+        permissions.set_mode(0o755);
+        fs::set_permissions(&fake_tr, permissions).unwrap();
+
+        let output = cleanup_command(&codex_home, &restore_path, SESSION_ID, SESSION_ID_NO_DASHES)
+            .env("PATH", &fake_bin)
+            .output()
+            .unwrap();
+
+        assert_failure_contains(&output, "failed to normalize codex restore session id");
+        assert!(matching_jsonl.exists());
     }
 
     #[test]
@@ -385,7 +484,10 @@ mod tests {
         fs::create_dir_all(&codex_home).unwrap();
         let restore_path = restore_path(&codex_home);
 
-        let output = run_cleanup(&codex_home, &restore_path);
+        let output = cleanup_command(&codex_home, &restore_path, SESSION_ID, SESSION_ID_NO_DASHES)
+            .env("TMPDIR", temp.path().join("missing-tmp"))
+            .output()
+            .unwrap();
 
         assert_success(&output);
     }

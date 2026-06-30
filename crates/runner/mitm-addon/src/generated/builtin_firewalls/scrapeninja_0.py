@@ -8,6 +8,7 @@ JSON_PART = r"""{
     {
       "auth": {
         "headers": {
+          "X-RapidAPI-Host": "scrapeninja.p.rapidapi.com",
           "X-RapidAPI-Key": "${{ secrets.SCRAPENINJA_TOKEN }}"
         }
       },

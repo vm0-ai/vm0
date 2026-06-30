@@ -1,4 +1,7 @@
-import type { InitClientArgs, InitClientReturn } from "@ts-rest/core";
+import type {
+  InitClientArgs,
+  InitClientReturn,
+} from "@vm0/api-contracts/contracts/trpc-contract";
 import type { AuthOptions } from "ably";
 import type { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { detach, Reason, throwIfAbort } from "../signals/utils.ts";

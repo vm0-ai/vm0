@@ -14,12 +14,12 @@ export const testTelegramStateErrorSchema = z.object({
 
 export const testTelegramStateSeedBodySchema = z
   .object({
-    bot_id: z.unknown().optional(),
-    telegram_user_id: z.unknown().optional(),
-    bot_username: z.unknown().optional(),
-    webhook_secret: z.unknown().optional(),
-    email: z.unknown().optional(),
-    seed_link: z.unknown().optional(),
+    bot_id: z.string().optional(),
+    telegram_user_id: z.string().optional(),
+    bot_username: z.string().optional(),
+    webhook_secret: z.string().optional(),
+    email: z.string().optional(),
+    seed_link: z.boolean().optional(),
   })
   .passthrough();
 

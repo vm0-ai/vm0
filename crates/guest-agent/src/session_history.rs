@@ -33,12 +33,13 @@ use crate::error::AgentError;
 #[cfg(target_os = "linux")]
 use crate::nofollow_fs::Dir;
 use guest_contracts::codex_thread_id::codex_thread_id_filename_key;
+use sha2::{Digest, Sha256};
 use std::ffi::OsStr;
-use std::io;
+use std::io::{self, Read};
 use std::path::{Path, PathBuf};
 
 #[cfg(target_os = "linux")]
-use std::{fs::File, io::Read};
+use std::fs::File;
 
 const CODEX_MARKER_PREFIX: &str = "CODEX_SEARCH:";
 // Checkpoint must resolve Codex history from user-controlled guest-home state.
@@ -79,13 +80,62 @@ pub fn read_session_history(path_file: &str) -> Result<Vec<u8>, AgentError> {
 /// The payload is either a literal path (Claude) or a
 /// codex marker.
 pub(crate) fn read_session_history_from_payload(payload: &str) -> Result<Vec<u8>, AgentError> {
+    read_session_history_from_payload_impl(payload, None)
+}
+
+pub(crate) struct SessionHistoryDigest {
+    pub(crate) size_bytes: u64,
+    pub(crate) sha256_hex: String,
+}
+
+#[derive(Debug)]
+pub(crate) enum SessionHistoryDigestError {
+    Read(AgentError),
+    ExceedsMaxBytes,
+}
+
+impl From<AgentError> for SessionHistoryDigestError {
+    fn from(error: AgentError) -> Self {
+        Self::Read(error)
+    }
+}
+
+/// Compute decoded session-history size and hash without returning the bytes.
+pub(crate) fn digest_session_history_from_payload_bounded(
+    payload: &str,
+    max_bytes: u64,
+) -> Result<SessionHistoryDigest, SessionHistoryDigestError> {
+    if is_codex_marker(payload) {
+        let Some((sessions_dir, thread_id)) = decode_marker(payload) else {
+            return Err(SessionHistoryDigestError::Read(AgentError::Checkpoint(
+                "Invalid Codex session history marker".to_string(),
+            )));
+        };
+        return digest_codex_session_history(&sessions_dir, thread_id, max_bytes)?.ok_or_else(
+            || {
+                SessionHistoryDigestError::Read(AgentError::Checkpoint(format!(
+                    "Codex session file not found under {}",
+                    sessions_dir.display()
+                )))
+            },
+        );
+    }
+
+    let session_path = PathBuf::from(payload);
+    digest_history_bytes(&session_path, max_bytes)
+}
+
+fn read_session_history_from_payload_impl(
+    payload: &str,
+    max_bytes: Option<u64>,
+) -> Result<Vec<u8>, AgentError> {
     if is_codex_marker(payload) {
         let Some((sessions_dir, thread_id)) = decode_marker(payload) else {
             return Err(AgentError::Checkpoint(
                 "Invalid Codex session history marker".to_string(),
             ));
         };
-        return read_codex_session_history(&sessions_dir, thread_id)?.ok_or_else(|| {
+        return read_codex_session_history(&sessions_dir, thread_id, max_bytes)?.ok_or_else(|| {
             AgentError::Checkpoint(format!(
                 "Codex session file not found under {}",
                 sessions_dir.display()
@@ -94,7 +144,7 @@ pub(crate) fn read_session_history_from_payload(payload: &str) -> Result<Vec<u8>
     }
 
     let session_path = PathBuf::from(payload);
-    read_history_bytes(&session_path)
+    read_history_bytes(&session_path, max_bytes)
 }
 
 /// Parse a Codex marker into `(dir, thread_id)`. Markers are length-prefixed so
@@ -125,6 +175,7 @@ fn decode_len_prefixed_marker(rest: &str) -> Option<(PathBuf, &str)> {
 fn read_codex_session_history(
     sessions_dir: &Path,
     thread_id: &str,
+    max_bytes: Option<u64>,
 ) -> Result<Option<Vec<u8>>, AgentError> {
     let Some(id_norm) = codex_thread_id_filename_key(thread_id) else {
         return Ok(None);
@@ -132,7 +183,21 @@ fn read_codex_session_history(
     if !codex_sessions_parent_is_usable(sessions_dir)? {
         return Ok(None);
     }
-    read_codex_session_history_impl(sessions_dir, &id_norm)
+    read_codex_session_history_impl(sessions_dir, &id_norm, max_bytes)
+}
+
+fn digest_codex_session_history(
+    sessions_dir: &Path,
+    thread_id: &str,
+    max_bytes: u64,
+) -> Result<Option<SessionHistoryDigest>, SessionHistoryDigestError> {
+    let Some(id_norm) = codex_thread_id_filename_key(thread_id) else {
+        return Ok(None);
+    };
+    if !codex_sessions_parent_is_usable(sessions_dir)? {
+        return Ok(None);
+    }
+    digest_codex_session_history_impl(sessions_dir, &id_norm, max_bytes)
 }
 
 fn codex_sessions_parent_is_usable(sessions_dir: &Path) -> Result<bool, AgentError> {
@@ -152,6 +217,7 @@ fn codex_sessions_parent_is_usable(sessions_dir: &Path) -> Result<bool, AgentErr
 fn read_codex_session_history_impl(
     sessions_dir: &Path,
     id_norm: &str,
+    max_bytes: Option<u64>,
 ) -> Result<Option<Vec<u8>>, AgentError> {
     let Some(root) = CodexSessionDir::open_root(sessions_dir)? else {
         return Ok(None);
@@ -166,7 +232,28 @@ fn read_codex_session_history_impl(
         &mut found,
         &mut budget,
     )?;
-    found.map(ResolvedCodexSession::read).transpose()
+    found.map(|session| session.read(max_bytes)).transpose()
+}
+
+fn digest_codex_session_history_impl(
+    sessions_dir: &Path,
+    id_norm: &str,
+    max_bytes: u64,
+) -> Result<Option<SessionHistoryDigest>, SessionHistoryDigestError> {
+    let Some(root) = CodexSessionDir::open_root(sessions_dir)? else {
+        return Ok(None);
+    };
+    let mut found = None;
+    let mut budget = CodexSessionLookupBudget::new();
+    scan_codex_session_dirs(
+        &root,
+        root.path(),
+        CodexSessionDateLevel::Year,
+        id_norm,
+        &mut found,
+        &mut budget,
+    )?;
+    found.map(|session| session.digest(max_bytes)).transpose()
 }
 
 fn scan_codex_session_dirs(
@@ -389,15 +476,27 @@ struct ResolvedCodexSession {
 }
 
 impl ResolvedCodexSession {
-    fn read(self) -> Result<Vec<u8>, AgentError> {
+    fn read(self, max_bytes: Option<u64>) -> Result<Vec<u8>, AgentError> {
         #[cfg(target_os = "linux")]
         {
-            read_history_bytes_from_file(&self.path, self.file)
+            read_history_bytes_from_file(&self.path, self.file, max_bytes)
         }
 
         #[cfg(not(target_os = "linux"))]
         {
-            read_history_bytes(&self.path)
+            read_history_bytes(&self.path, max_bytes)
+        }
+    }
+
+    fn digest(self, max_bytes: u64) -> Result<SessionHistoryDigest, SessionHistoryDigestError> {
+        #[cfg(target_os = "linux")]
+        {
+            digest_history_bytes_from_file(&self.path, self.file, max_bytes)
+        }
+
+        #[cfg(not(target_os = "linux"))]
+        {
+            digest_history_bytes(&self.path, max_bytes)
         }
     }
 }
@@ -487,34 +586,157 @@ fn is_filesystem_loop_error(_: &io::Error) -> bool {
 }
 
 /// Read the bytes at `path`, decompressing legacy zstd files if the extension is `.zst`.
-fn read_history_bytes(path: &Path) -> Result<Vec<u8>, AgentError> {
-    let raw = std::fs::read(path).map_err(|e| read_history_error(path, e))?;
-    decode_history_bytes(path, raw)
+fn read_history_bytes(path: &Path, max_bytes: Option<u64>) -> Result<Vec<u8>, AgentError> {
+    let file = std::fs::File::open(path).map_err(|e| read_history_error(path, e))?;
+    read_history_bytes_from_reader(path, file, max_bytes)
+}
+
+fn digest_history_bytes(
+    path: &Path,
+    max_bytes: u64,
+) -> Result<SessionHistoryDigest, SessionHistoryDigestError> {
+    let file = std::fs::File::open(path).map_err(|e| read_history_error(path, e))?;
+    digest_history_bytes_from_reader(path, file, max_bytes)
 }
 
 #[cfg(target_os = "linux")]
-fn read_history_bytes_from_file(path: &Path, mut file: File) -> Result<Vec<u8>, AgentError> {
-    let mut raw = Vec::new();
-    file.read_to_end(&mut raw)
-        .map_err(|e| read_history_error(path, e))?;
-    decode_history_bytes(path, raw)
+fn read_history_bytes_from_file(
+    path: &Path,
+    file: File,
+    max_bytes: Option<u64>,
+) -> Result<Vec<u8>, AgentError> {
+    read_history_bytes_from_reader(path, file, max_bytes)
+}
+
+#[cfg(target_os = "linux")]
+fn digest_history_bytes_from_file(
+    path: &Path,
+    file: File,
+    max_bytes: u64,
+) -> Result<SessionHistoryDigest, SessionHistoryDigestError> {
+    digest_history_bytes_from_reader(path, file, max_bytes)
 }
 
 fn read_history_error(_path: &Path, source: io::Error) -> AgentError {
     AgentError::Checkpoint(format!("Failed to read session history: {source}"))
 }
 
-fn decode_history_bytes(path: &Path, raw: Vec<u8>) -> Result<Vec<u8>, AgentError> {
+fn read_history_bytes_from_reader(
+    path: &Path,
+    reader: impl Read,
+    max_bytes: Option<u64>,
+) -> Result<Vec<u8>, AgentError> {
     if path
         .extension()
         .is_some_and(|ext| ext.eq_ignore_ascii_case("zst"))
     {
-        zstd::decode_all(raw.as_slice()).map_err(|e| {
+        let decoder = zstd::stream::read::Decoder::new(reader).map_err(|e| {
             AgentError::Checkpoint(format!("Failed to decompress zstd session history: {e}"))
-        })
-    } else {
-        Ok(raw)
+        })?;
+        return read_zstd_history_reader(decoder, max_bytes);
     }
+    read_history_reader(path, reader, max_bytes)
+}
+
+fn digest_history_bytes_from_reader(
+    path: &Path,
+    reader: impl Read,
+    max_bytes: u64,
+) -> Result<SessionHistoryDigest, SessionHistoryDigestError> {
+    if path
+        .extension()
+        .is_some_and(|ext| ext.eq_ignore_ascii_case("zst"))
+    {
+        let decoder = zstd::stream::read::Decoder::new(reader).map_err(|e| {
+            SessionHistoryDigestError::Read(AgentError::Checkpoint(format!(
+                "Failed to decompress zstd session history: {e}"
+            )))
+        })?;
+        return digest_history_reader(decoder, max_bytes, |e| {
+            AgentError::Checkpoint(format!("Failed to decompress zstd session history: {e}"))
+        });
+    }
+    digest_history_reader(reader, max_bytes, |e| read_history_error(path, e))
+}
+
+fn read_zstd_history_reader(
+    mut reader: impl Read,
+    max_bytes: Option<u64>,
+) -> Result<Vec<u8>, AgentError> {
+    let mut bytes = Vec::new();
+    match max_bytes {
+        Some(max_bytes) => {
+            let limit = max_bytes.checked_add(1).ok_or_else(|| {
+                AgentError::Checkpoint("Session history read limit overflowed".to_string())
+            })?;
+            reader.by_ref().take(limit).read_to_end(&mut bytes)
+        }
+        None => reader.read_to_end(&mut bytes),
+    }
+    .map_err(|e| {
+        AgentError::Checkpoint(format!("Failed to decompress zstd session history: {e}"))
+    })?;
+    Ok(bytes)
+}
+
+fn read_history_reader(
+    path: &Path,
+    mut reader: impl Read,
+    max_bytes: Option<u64>,
+) -> Result<Vec<u8>, AgentError> {
+    let mut bytes = Vec::new();
+    match max_bytes {
+        Some(max_bytes) => {
+            let limit = max_bytes.checked_add(1).ok_or_else(|| {
+                AgentError::Checkpoint("Session history read limit overflowed".to_string())
+            })?;
+            reader
+                .by_ref()
+                .take(limit)
+                .read_to_end(&mut bytes)
+                .map_err(|e| read_history_error(path, e))?;
+        }
+        None => {
+            reader
+                .read_to_end(&mut bytes)
+                .map_err(|e| read_history_error(path, e))?;
+        }
+    }
+    Ok(bytes)
+}
+
+fn digest_history_reader(
+    mut reader: impl Read,
+    max_bytes: u64,
+    map_error: impl Fn(io::Error) -> AgentError,
+) -> Result<SessionHistoryDigest, SessionHistoryDigestError> {
+    let mut hasher = Sha256::new();
+    let mut size_bytes = 0u64;
+    let mut buffer = [0u8; 8192];
+
+    loop {
+        let bytes_read = reader
+            .read(&mut buffer)
+            .map_err(|error| SessionHistoryDigestError::Read(map_error(error)))?;
+        if bytes_read == 0 {
+            break;
+        }
+        size_bytes = size_bytes
+            .checked_add(bytes_read as u64)
+            .ok_or(SessionHistoryDigestError::ExceedsMaxBytes)?;
+        if size_bytes > max_bytes {
+            return Err(SessionHistoryDigestError::ExceedsMaxBytes);
+        }
+        let chunk = buffer
+            .get(..bytes_read)
+            .ok_or(SessionHistoryDigestError::ExceedsMaxBytes)?;
+        hasher.update(chunk);
+    }
+
+    Ok(SessionHistoryDigest {
+        size_bytes,
+        sha256_hex: hex::encode(hasher.finalize()),
+    })
 }
 
 // Note: integration coverage for the public `read_session_history` entry

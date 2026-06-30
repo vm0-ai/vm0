@@ -32,7 +32,7 @@ describe("zero onboarding", () => {
 
     await waitFor(() => {
       const url = new URL(window.location.href);
-      expect(url.origin).toBe("https://so.vm7.ai:8443");
+      expect(url.origin).toBe("https://www.vm7.ai:8443");
       expect(url.pathname).toBe("/onboarding/2afcf6");
       expect(url.searchParams.get("prompt")).toBe("hello world");
       expect(url.searchParams.get("connector")).toBe("github");
@@ -49,7 +49,7 @@ describe("zero onboarding", () => {
 
     await waitFor(() => {
       const url = new URL(window.location.href);
-      expect(url.origin).toBe("https://so.vm7.ai:8443");
+      expect(url.origin).toBe("https://www.vm7.ai:8443");
       expect(url.pathname).toBe("/onboarding/2afcf6");
       expect(url.searchParams.get("prompt")).toBe("hello world");
       expect(url.searchParams.get("connector")).toBe("github");
@@ -75,7 +75,7 @@ describe("zero onboarding", () => {
 
     await waitFor(() => {
       const url = new URL(window.location.href);
-      expect(url.origin).toBe("https://so.vm7.ai:8443");
+      expect(url.origin).toBe("https://www.vm7.ai:8443");
       expect(url.pathname).toBe("/onboarding/2afcf6");
       expect(url.searchParams.get("prompt")).toBe("hello world");
       expect(url.searchParams.get("connector")).toBe("github");

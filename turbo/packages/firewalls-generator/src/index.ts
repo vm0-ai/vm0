@@ -147,8 +147,8 @@ import { generate as generateMicrosoft365 } from "./microsoft-365";
 import { generate as generateMinimax } from "./minimax";
 import { generate as generateMiro } from "./miro";
 import { generate as generateMixpanel } from "./mixpanel";
-import { generate as generateMonday } from "./monday";
 import { generate as generateModal } from "./modal";
+import { generate as generateMonday } from "./monday";
 import { generate as generateMoss } from "./moss";
 import { generate as generateMsg9 } from "./msg9";
 import { generate as generateN8n } from "./n8n";
@@ -275,6 +275,20 @@ import { createGoogleGenerator, googleServiceNames } from "./google";
 import { generate as generateGoogleDrive } from "./google-drive";
 import { generateFirewallMetadata } from "./metadata";
 import { generatePythonBuiltinFirewallCatalogPackage } from "./python-builtin-firewall-catalog-package";
+import {
+  FIREWALL_CONNECTOR_TYPES,
+  type FirewallConnectorType,
+} from "./connector-firewall-manifest";
+
+const FIREWALL_CONNECTOR_TYPE_SET: ReadonlySet<string> = new Set(
+  FIREWALL_CONNECTOR_TYPES,
+);
+
+function isFirewallConnectorType(
+  target: string,
+): target is FirewallConnectorType {
+  return FIREWALL_CONNECTOR_TYPE_SET.has(target);
+}
 
 const GENERATORS: Record<string, () => Promise<void>> = {
   agentmail: generateAgentmail,
@@ -411,8 +425,8 @@ const GENERATORS: Record<string, () => Promise<void>> = {
   minimax: generateMinimax,
   miro: generateMiro,
   mixpanel: generateMixpanel,
-  monday: generateMonday,
   modal: generateModal,
+  monday: generateMonday,
   moss: generateMoss,
   msg9: generateMsg9,
   n8n: generateN8n,
@@ -566,6 +580,10 @@ async function main(): Promise<void> {
       process.exit(1);
     }
     await gen();
+    if (isFirewallConnectorType(target)) {
+      await generateFirewallMetadata();
+      await generatePythonBuiltinFirewallCatalogPackage();
+    }
   } else {
     // Run all generators
     for (const [name, gen] of Object.entries(GENERATORS)) {

@@ -15,7 +15,7 @@ import { describe, expect, it } from "vitest";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { writeDb$ } from "../../external/db";
 import { MODEL_FIRST_SELECTION_PROVIDER_ID } from "../../services/zero-model-selection.service";
 import { createBddApi, type ApiTestUser } from "./helpers/api-bdd";

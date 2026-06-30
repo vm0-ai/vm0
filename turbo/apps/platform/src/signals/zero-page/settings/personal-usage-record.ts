@@ -73,7 +73,6 @@ export const myUsageRecordAsync$ = computed(async (get) => {
       },
     }),
     [200],
-    { toast: false },
   );
   return result.body;
 });
@@ -90,7 +89,6 @@ export const teamMemberUsageAsync$ = computed(async (get) => {
       },
     }),
     [200],
-    { toast: false },
   );
   return result.body;
 });

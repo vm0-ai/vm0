@@ -194,5 +194,5 @@ function generateTypeScript(): string {
 
 export async function generate(): Promise<void> {
   const ts = generateTypeScript();
-  writeOutput("github", ts, import.meta.dirname);
+  writeOutput("github", ts);
 }

@@ -64,7 +64,9 @@ Configure these in your GitHub repository settings (Settings → Secrets and var
 
 - `VERCEL_TEAM_ID`: Your Vercel team/organization ID
   - Find in Vercel project settings → General → Team ID
-- `VERCEL_PROJECT_ID_WEB`: Your Vercel project ID for web app
+- `VERCEL_PROJECT_ID_API`: Your Vercel project ID for the API app
+  - Find in Vercel project settings → General → Project ID
+- `VERCEL_PROJECT_ID_APP`: Your Vercel project ID for the platform app
   - Find in Vercel project settings → General → Project ID
 - `NEON_PROJECT_ID`: Your Neon project ID (Optional but Recommended)
   - Find in Neon console → Project Settings → General
@@ -78,10 +80,9 @@ Configure these in your GitHub repository settings (Settings → Secrets and var
 
 ## Initial Setup
 
-1. **Configure Vercel Project Settings**:
-   - Go to your Vercel project settings: https://vercel.com/[your-team]/vm0/settings
-   - Under "General" → "Root Directory", set it to: `turbo/apps/web`
-   - Save the changes
+1. **Configure Vercel Project Settings** for the API and app projects:
+   - API root directory: `turbo/apps/api`
+   - App root directory: `turbo/apps/platform`
 
 2. Set up your production database in Neon
 
@@ -89,7 +90,7 @@ Configure these in your GitHub repository settings (Settings → Secrets and var
 
 4. The workflow will automatically handle preview deployments for PRs
 
-**Important**: The Vercel project must be configured with the correct root directory (`turbo/apps/web`) for the monorepo structure to work properly.
+**Important**: Each Vercel project must be configured with the correct root directory for the monorepo structure to work properly.
 
 ## Database Schema Push
 

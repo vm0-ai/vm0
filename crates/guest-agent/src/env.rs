@@ -3,6 +3,7 @@
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::LazyLock;
+use std::time::Duration;
 
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 
@@ -14,6 +15,7 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 const USER_ENV_FILE_ENV_KEY: &str = guest_contracts::env::USER_ENV_FILE_ENV;
 const USER_ENV_PRIVATE_DIR_NAME: &str = "user-env";
 const USER_ENV_FILENAME: &str = "env.json";
+const POST_RESULT_CLEANUP_MAX_SECS: u64 = 60 * 60;
 
 fn env_or_empty(name: &str) -> String {
     std::env::var(name).unwrap_or_default()
@@ -122,6 +124,11 @@ static USE_MOCK_CODEX: LazyLock<bool> = LazyLock::new(|| {
         .map(|v| v == "true" || v == "1")
         .unwrap_or(false)
 });
+static USE_CODEX_APP_SERVER_BACKEND: LazyLock<bool> = LazyLock::new(|| {
+    std::env::var(guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV)
+        .map(|v| v == "true" || v == "1")
+        .unwrap_or(false)
+});
 
 /// Production install location for the mock-codex binary, mirroring
 /// `DEFAULT_MOCK_CLAUDE_PATH`.
@@ -168,6 +175,43 @@ fn u64_env_or(name: &str, default: u64) -> u64 {
     }
 }
 
+/// Read an optional bounded seconds env var as `Duration`, falling back to
+/// `default_secs` when unset, unparseable, or outside the supported range.
+fn bounded_duration_secs_env_or(name: &str, default_secs: u64, max_secs: u64) -> Duration {
+    match std::env::var(name) {
+        Ok(v) => bounded_duration_secs_value_or(name, Some(&v), default_secs, max_secs),
+        Err(_) => Duration::from_secs(default_secs),
+    }
+}
+
+fn bounded_duration_secs_value_or(
+    name: &str,
+    value: Option<&str>,
+    default_secs: u64,
+    max_secs: u64,
+) -> Duration {
+    match value {
+        Some(v) => match v.parse::<u64>() {
+            Ok(secs) if secs <= max_secs => Duration::from_secs(secs),
+            Ok(secs) => {
+                log_warn!(
+                    LOG_TAG,
+                    "{name}={secs}s exceeds maximum {max_secs}s, using default {default_secs}s"
+                );
+                Duration::from_secs(default_secs)
+            }
+            Err(_) => {
+                log_warn!(
+                    LOG_TAG,
+                    "{name}={v:?} is not a valid u64, using default {default_secs}s"
+                );
+                Duration::from_secs(default_secs)
+            }
+        },
+        None => Duration::from_secs(default_secs),
+    }
+}
+
 /// Workaround for Claude Code bug: WebSearch/WebFetch can hang indefinitely.
 /// See: https://github.com/anthropics/claude-code/issues/11650
 static STUCK_TOOL_TIMEOUT: LazyLock<u64> = LazyLock::new(|| {
@@ -181,28 +225,31 @@ static STUCK_TOOL_TIMEOUT: LazyLock<u64> = LazyLock::new(|| {
 /// Shortened in integration tests via env override so runs converge
 /// within a test-sized window instead of the prod default.
 /// See: https://github.com/vm0-ai/vm0/issues/10879
-static POST_RESULT_SIGTERM_GRACE: LazyLock<u64> = LazyLock::new(|| {
-    u64_env_or(
+static POST_RESULT_SIGTERM_GRACE: LazyLock<Duration> = LazyLock::new(|| {
+    bounded_duration_secs_env_or(
         guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
         constants::POST_RESULT_SIGTERM_GRACE_SECS,
+        POST_RESULT_CLEANUP_MAX_SECS,
     )
 });
 
 /// Absolute post-result cap. Unlike the quiet grace, this is fixed from the
 /// terminal result time and does not refresh on later stdout events.
-static POST_RESULT_TOTAL_CAP: LazyLock<u64> = LazyLock::new(|| {
-    u64_env_or(
+static POST_RESULT_TOTAL_CAP: LazyLock<Duration> = LazyLock::new(|| {
+    bounded_duration_secs_env_or(
         guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
         constants::POST_RESULT_TOTAL_CAP_SECS,
+        POST_RESULT_CLEANUP_MAX_SECS,
     )
 });
 
 /// Follow-up grace after SIGTERM before escalating to SIGKILL. Same
 /// override rationale as `POST_RESULT_SIGTERM_GRACE`.
-static POST_RESULT_SIGKILL_GRACE: LazyLock<u64> = LazyLock::new(|| {
-    u64_env_or(
+static POST_RESULT_SIGKILL_GRACE: LazyLock<Duration> = LazyLock::new(|| {
+    bounded_duration_secs_env_or(
         guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
         constants::POST_RESULT_SIGKILL_GRACE_SECS,
+        POST_RESULT_CLEANUP_MAX_SECS,
     )
 });
 
@@ -494,6 +541,10 @@ pub fn is_codex_oauth_mode() -> bool {
 pub fn use_mock_codex() -> bool {
     *USE_MOCK_CODEX
 }
+/// Whether the disabled Codex app-server backend is explicitly enabled.
+pub fn use_codex_app_server_backend() -> bool {
+    *USE_CODEX_APP_SERVER_BACKEND
+}
 /// Mock Codex binary path from `VM0_MOCK_CODEX_PATH`, or
 /// `DEFAULT_MOCK_CODEX_PATH` when unset.
 pub fn mock_codex_path() -> String {
@@ -526,24 +577,24 @@ pub fn stuck_tool_timeout_secs() -> u64 {
 /// Grace period before SIGTERM after `type=result`, from
 /// `VM0_POST_RESULT_SIGTERM_GRACE_SECS`.
 ///
-/// Unset or unparseable values use the compiled default; unparseable values
-/// also log a warning.
-pub fn post_result_sigterm_grace_secs() -> u64 {
+/// Unset, unparseable, or out-of-range values use the compiled default;
+/// invalid values also log a warning.
+pub fn post_result_sigterm_grace() -> Duration {
     *POST_RESULT_SIGTERM_GRACE
 }
 /// Absolute cap after `type=result`, from `VM0_POST_RESULT_TOTAL_CAP_SECS`.
 ///
-/// Unset or unparseable values use the compiled default; unparseable values
-/// also log a warning.
-pub fn post_result_total_cap_secs() -> u64 {
+/// Unset, unparseable, or out-of-range values use the compiled default;
+/// invalid values also log a warning.
+pub fn post_result_total_cap() -> Duration {
     *POST_RESULT_TOTAL_CAP
 }
 /// Grace period before SIGKILL after SIGTERM, from
 /// `VM0_POST_RESULT_SIGKILL_GRACE_SECS`.
 ///
-/// Unset or unparseable values use the compiled default; unparseable values
-/// also log a warning.
-pub fn post_result_sigkill_grace_secs() -> u64 {
+/// Unset, unparseable, or out-of-range values use the compiled default;
+/// invalid values also log a warning.
+pub fn post_result_sigkill_grace() -> Duration {
     *POST_RESULT_SIGKILL_GRACE
 }
 
@@ -559,6 +610,9 @@ pub fn has_api() -> bool {
 mod tests {
     use super::*;
 
+    const TEST_DEFAULT_SECS: u64 = 10;
+    const TEST_MAX_SECS: u64 = 60;
+
     fn write_user_env_fixture(json: &str) -> (tempfile::TempDir, std::path::PathBuf) {
         let tmp = tempfile::tempdir().unwrap();
         let dir = tmp.path().join(USER_ENV_PRIVATE_DIR_NAME);
@@ -566,6 +620,66 @@ mod tests {
         let path = dir.join(USER_ENV_FILENAME);
         std::fs::write(&path, json).unwrap();
         (tmp, path)
+    }
+
+    #[test]
+    fn bounded_duration_secs_value_defaults_when_unset() {
+        assert_eq!(
+            bounded_duration_secs_value_or("TEST_TIMEOUT", None, TEST_DEFAULT_SECS, TEST_MAX_SECS),
+            Duration::from_secs(TEST_DEFAULT_SECS)
+        );
+    }
+
+    #[test]
+    fn bounded_duration_secs_value_defaults_when_invalid() {
+        assert_eq!(
+            bounded_duration_secs_value_or(
+                "TEST_TIMEOUT",
+                Some("not-a-number"),
+                TEST_DEFAULT_SECS,
+                TEST_MAX_SECS,
+            ),
+            Duration::from_secs(TEST_DEFAULT_SECS)
+        );
+    }
+
+    #[test]
+    fn bounded_duration_secs_value_defaults_when_above_max() {
+        assert_eq!(
+            bounded_duration_secs_value_or(
+                "TEST_TIMEOUT",
+                Some("61"),
+                TEST_DEFAULT_SECS,
+                TEST_MAX_SECS,
+            ),
+            Duration::from_secs(TEST_DEFAULT_SECS)
+        );
+    }
+
+    #[test]
+    fn bounded_duration_secs_value_accepts_zero() {
+        assert_eq!(
+            bounded_duration_secs_value_or(
+                "TEST_TIMEOUT",
+                Some("0"),
+                TEST_DEFAULT_SECS,
+                TEST_MAX_SECS,
+            ),
+            Duration::ZERO
+        );
+    }
+
+    #[test]
+    fn bounded_duration_secs_value_accepts_value_at_max() {
+        assert_eq!(
+            bounded_duration_secs_value_or(
+                "TEST_TIMEOUT",
+                Some("60"),
+                TEST_DEFAULT_SECS,
+                TEST_MAX_SECS,
+            ),
+            Duration::from_secs(TEST_MAX_SECS)
+        );
     }
 
     #[test]

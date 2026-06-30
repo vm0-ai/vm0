@@ -34,6 +34,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "https://${{ vars.INSFORGE_DOMAIN }}",',
+    '      hostPolicy: { kind: "publicDestination" },',
     "      auth: {",
     "        headers: {",
     '          "X-API-Key": "${{ secrets.INSFORGE_API_KEY }}",',
@@ -52,5 +53,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating InsForge firewall config...");
   const ts = generateTypeScript();
-  writeOutput("insforge", ts, import.meta.dirname);
+  writeOutput("insforge", ts);
 }

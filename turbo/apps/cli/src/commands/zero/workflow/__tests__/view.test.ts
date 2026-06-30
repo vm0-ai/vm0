@@ -70,7 +70,8 @@ describe("zero workflow view command", () => {
       expect(logCalls).toContain("my-workflow");
       expect(logCalls).toContain("My Workflow");
       expect(logCalls).toContain("A helpful workflow");
-      expect(logCalls).toContain("my-agent");
+      expect(logCalls).toContain("Agent Name:   My Agent");
+      expect(logCalls).toContain(`Agent ID:     ${AGENT_ID}`);
       expect(logCalls).toContain("Do helpful things.");
     });
   });

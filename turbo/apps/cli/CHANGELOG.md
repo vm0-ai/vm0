@@ -1,5 +1,342 @@
 # Changelog
 
+## [9.217.0](https://github.com/vm0-ai/vm0/compare/cli-v9.216.0...cli-v9.217.0) (2026-06-30)
+
+
+### Features
+
+* add zero chat get command ([#19405](https://github.com/vm0-ai/vm0/issues/19405)) ([3a90d8f](https://github.com/vm0-ai/vm0/commit/3a90d8f6fd3d575359569843da81b34d2c1a0604))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.129.0
+    * @vm0/core bumped to 8.377.2
+
+## [9.216.0](https://github.com/vm0-ai/vm0/compare/cli-v9.215.3...cli-v9.216.0) (2026-06-30)
+
+
+### Features
+
+* add zero chat rename command ([#19381](https://github.com/vm0-ai/vm0/issues/19381)) ([dd04ffb](https://github.com/vm0-ai/vm0/commit/dd04ffb0651ed7083bdb2831e9775315180d8ecd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.128.0
+    * @vm0/core bumped to 8.377.1
+
+## [9.215.3](https://github.com/vm0-ai/vm0/compare/cli-v9.215.2...cli-v9.215.3) (2026-06-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.127.0
+    * @vm0/connectors bumped to 1.115.0
+    * @vm0/core bumped to 8.377.0
+
+## [9.215.2](https://github.com/vm0-ai/vm0/compare/cli-v9.215.1...cli-v9.215.2) (2026-06-29)
+
+
+### Bug Fixes
+
+* **cli:** make permission-deny base-aware ([#19330](https://github.com/vm0-ai/vm0/issues/19330)) ([3e2c7f6](https://github.com/vm0-ai/vm0/commit/3e2c7f64f81518f36df41d81521201dc8bff51ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.126.2
+    * @vm0/connectors bumped to 1.114.1
+    * @vm0/core bumped to 8.376.2
+
+## [9.215.1](https://github.com/vm0-ai/vm0/compare/cli-v9.215.0...cli-v9.215.1) (2026-06-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.126.1
+    * @vm0/core bumped to 8.376.1
+
+## [9.215.0](https://github.com/vm0-ai/vm0/compare/cli-v9.214.0...cli-v9.215.0) (2026-06-29)
+
+
+### Features
+
+* add Google Calendar event-created workflow trigger ([#19345](https://github.com/vm0-ai/vm0/issues/19345)) ([8219bad](https://github.com/vm0-ai/vm0/commit/8219bad3a8ebd3cc0ae373e0546e99118b866466))
+* add presentation template runbook generation switch ([#19341](https://github.com/vm0-ai/vm0/issues/19341)) ([a933ab7](https://github.com/vm0-ai/vm0/commit/a933ab7626d0e5f5f73868f23b21622911afb5b1))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.126.0
+    * @vm0/connectors bumped to 1.114.0
+    * @vm0/core bumped to 8.376.0
+
+## [9.214.0](https://github.com/vm0-ai/vm0/compare/cli-v9.213.7...cli-v9.214.0) (2026-06-29)
+
+
+### Features
+
+* add GitHub label workflow triggers ([#19322](https://github.com/vm0-ai/vm0/issues/19322)) ([245be48](https://github.com/vm0-ai/vm0/commit/245be48e4eab3b4644e00fe9480213c327dda1b9))
+* replace model coefficients with price tiers ([#19298](https://github.com/vm0-ai/vm0/issues/19298)) ([bde94cd](https://github.com/vm0-ai/vm0/commit/bde94cdfc2ee5c8bf0e4bf4da048be72ff3f3411))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.125.0
+    * @vm0/connectors bumped to 1.113.0
+    * @vm0/core bumped to 8.375.0
+
+## [9.213.7](https://github.com/vm0-ai/vm0/compare/cli-v9.213.6...cli-v9.213.7) (2026-06-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.124.6
+    * @vm0/connectors bumped to 1.112.1
+    * @vm0/core bumped to 8.374.6
+
+## [9.213.6](https://github.com/vm0-ai/vm0/compare/cli-v9.213.5...cli-v9.213.6) (2026-06-29)
+
+
+### Refactoring
+
+* remove workflow permission grants ([#19271](https://github.com/vm0-ai/vm0/issues/19271)) ([07e590a](https://github.com/vm0-ai/vm0/commit/07e590af6b59fd53a565a7be9341d685f0321299))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.124.5
+    * @vm0/core bumped to 8.374.5
+
+## [9.213.5](https://github.com/vm0-ai/vm0/compare/cli-v9.213.4...cli-v9.213.5) (2026-06-29)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.124.4
+    * @vm0/connectors bumped to 1.112.0
+    * @vm0/core bumped to 8.374.4
+
+## [9.213.4](https://github.com/vm0-ai/vm0/compare/cli-v9.213.3...cli-v9.213.4) (2026-06-28)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.124.3
+    * @vm0/core bumped to 8.374.3
+
+## [9.213.3](https://github.com/vm0-ai/vm0/compare/cli-v9.213.2...cli-v9.213.3) (2026-06-28)
+
+
+### Bug Fixes
+
+* bind workflow creation to current chat thread ([#19247](https://github.com/vm0-ai/vm0/issues/19247)) ([e656035](https://github.com/vm0-ai/vm0/commit/e6560354593174dcb2389013b3afe29cd31ffabc))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.124.2
+    * @vm0/core bumped to 8.374.2
+
+## [9.213.2](https://github.com/vm0-ai/vm0/compare/cli-v9.213.1...cli-v9.213.2) (2026-06-28)
+
+
+### Performance Improvements
+
+* speed up zero cli startup ([#19241](https://github.com/vm0-ai/vm0/issues/19241)) ([2f921c1](https://github.com/vm0-ai/vm0/commit/2f921c183cbe70fce86e332209e167335fb0002f))
+
+## [9.213.1](https://github.com/vm0-ai/vm0/compare/cli-v9.213.0...cli-v9.213.1) (2026-06-28)
+
+
+### Bug Fixes
+
+* check workflow connector authorization in doctor ([#19238](https://github.com/vm0-ai/vm0/issues/19238)) ([d3833ad](https://github.com/vm0-ai/vm0/commit/d3833ad53ea475f884d01695b413d38af8af7434))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.124.1
+    * @vm0/core bumped to 8.374.1
+
+## [9.213.0](https://github.com/vm0-ai/vm0/compare/cli-v9.212.4...cli-v9.213.0) (2026-06-28)
+
+
+### Features
+
+* add workflow permission request cards ([#19224](https://github.com/vm0-ai/vm0/issues/19224)) ([7e4907c](https://github.com/vm0-ai/vm0/commit/7e4907c3bb7e7d0a9043686a3cd56f5fc38fa799))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.124.0
+    * @vm0/connectors bumped to 1.111.0
+    * @vm0/core bumped to 8.374.0
+
+## [9.212.4](https://github.com/vm0-ai/vm0/compare/cli-v9.212.3...cli-v9.212.4) (2026-06-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.123.0
+    * @vm0/core bumped to 8.373.4
+
+## [9.212.3](https://github.com/vm0-ai/vm0/compare/cli-v9.212.2...cli-v9.212.3) (2026-06-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.122.0
+    * @vm0/connectors bumped to 1.110.4
+    * @vm0/core bumped to 8.373.3
+
+## [9.212.2](https://github.com/vm0-ai/vm0/compare/cli-v9.212.1...cli-v9.212.2) (2026-06-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.121.2
+    * @vm0/connectors bumped to 1.110.3
+    * @vm0/core bumped to 8.373.2
+
+## [9.212.1](https://github.com/vm0-ai/vm0/compare/cli-v9.212.0...cli-v9.212.1) (2026-06-27)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.121.1
+    * @vm0/connectors bumped to 1.110.2
+    * @vm0/core bumped to 8.373.1
+
+## [9.212.0](https://github.com/vm0-ai/vm0/compare/cli-v9.211.5...cli-v9.212.0) (2026-06-27)
+
+
+### Features
+
+* add workflow-scoped authorization ([#19147](https://github.com/vm0-ai/vm0/issues/19147)) ([b17dcd9](https://github.com/vm0-ai/vm0/commit/b17dcd9d1b4499321bf6f5f8760ab6f43d9285d5))
+
+
+### Bug Fixes
+
+* restrict credentialed dynamic firewall hosts ([#19137](https://github.com/vm0-ai/vm0/issues/19137)) ([9801134](https://github.com/vm0-ai/vm0/commit/9801134aede293f0fd3c1f11c386bf4483fff78d))
+
+
+### Refactoring
+
+* replace ts-rest contracts with trpc-backed contracts ([#19150](https://github.com/vm0-ai/vm0/issues/19150)) ([100ff36](https://github.com/vm0-ai/vm0/commit/100ff36c7a8abb9a0506c1183596680b1e0c8199))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.121.0
+    * @vm0/connectors bumped to 1.110.1
+    * @vm0/core bumped to 8.373.0
+
+## [9.211.5](https://github.com/vm0-ai/vm0/compare/cli-v9.211.4...cli-v9.211.5) (2026-06-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.120.0
+    * @vm0/core bumped to 8.372.2
+
+## [9.211.4](https://github.com/vm0-ai/vm0/compare/cli-v9.211.3...cli-v9.211.4) (2026-06-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.119.0
+    * @vm0/connectors bumped to 1.110.0
+    * @vm0/core bumped to 8.372.1
+
+## [9.211.3](https://github.com/vm0-ai/vm0/compare/cli-v9.211.2...cli-v9.211.3) (2026-06-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/core bumped to 8.372.0
+
+## [9.211.2](https://github.com/vm0-ai/vm0/compare/cli-v9.211.1...cli-v9.211.2) (2026-06-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.118.0
+    * @vm0/core bumped to 8.371.2
+
+## [9.211.1](https://github.com/vm0-ai/vm0/compare/cli-v9.211.0...cli-v9.211.1) (2026-06-26)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.117.0
+    * @vm0/connectors bumped to 1.109.1
+    * @vm0/core bumped to 8.371.1
+
+## [9.211.0](https://github.com/vm0-ai/vm0/compare/cli-v9.210.6...cli-v9.211.0) (2026-06-26)
+
+
+### Features
+
+* add Gmail label-applied workflow trigger ([#19045](https://github.com/vm0-ai/vm0/issues/19045)) ([6565e75](https://github.com/vm0-ai/vm0/commit/6565e75562c82e907449ffb8919011d680cdfd77))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.116.0
+    * @vm0/connectors bumped to 1.109.0
+    * @vm0/core bumped to 8.371.0
+
 ## [9.210.6](https://github.com/vm0-ai/vm0/compare/cli-v9.210.5...cli-v9.210.6) (2026-06-26)
 
 

@@ -32,6 +32,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "${{ vars.STRAPI_BASE_URL }}",',
+    '      hostPolicy: { kind: "publicDestination" },',
     "      auth: {",
     "        headers: {",
     '          Authorization: "Bearer ${{ secrets.STRAPI_TOKEN }}",',
@@ -50,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Strapi firewall config...");
   const ts = generateTypeScript();
-  writeOutput("strapi", ts, import.meta.dirname);
+  writeOutput("strapi", ts);
 }

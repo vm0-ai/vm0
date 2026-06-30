@@ -42,7 +42,10 @@ import {
 import { signSandboxJwtForTests } from "../../../auth/tokens";
 import { signGithubConnectParams } from "../../../services/github-oauth.service";
 import type { ApiTestUser } from "./api-bdd";
+import { mockClerkMembership } from "./api-bdd-clerk";
+import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import { createZeroRouteMocks } from "./zero-route-test";
+export { mockClerkMembership } from "./api-bdd-clerk";
 
 export const GITHUB_APP_SLUG = "vm0-test";
 export const GITHUB_APP_CLIENT_ID = "github-app-client-id";
@@ -166,10 +169,13 @@ export function acceptGithubRunObjectStorage(context: TestContext): void {
     const input = commandInput(command);
     const key = typeof input.Key === "string" ? input.Key : "";
     if (key.startsWith("blobs/") && key.endsWith(".blob")) {
+      const body = sessionHistoryBlobBodyForKey(context, key);
       return Promise.resolve({
         Body: {
           async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
-            yield Buffer.from(`bdd github session history ${key}`, "utf8");
+            if (body) {
+              yield body;
+            }
           },
         },
       });
@@ -222,38 +228,6 @@ export function mockGithubAppEnv(
 export function mockGithubUserOauthEnv(): void {
   mockOptionalEnv("GH_OAUTH_CLIENT_ID", GH_OAUTH_CLIENT_ID);
   mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", GH_OAUTH_CLIENT_SECRET);
-}
-
-/**
- * Membership reads for routes that resolve org roles outside the Clerk
- * session (the unauthenticated install/setup-callback admin check and
- * zero-token auth both fall back to `membershipsByUserId`). The role for a
- * given (user, org) pair is cached for 60 seconds after the first read, so
- * tests must use a distinct user per role scenario.
- */
-export function mockClerkMembership(
-  context: TestContext,
-  actor: ApiTestUser,
-  role: "org:admin" | "org:member",
-): void {
-  if (!actor.orgId) {
-    throw new Error("Cannot mock memberships for a no-org actor");
-  }
-  const memberships = {
-    data: [
-      {
-        role,
-        organization: { id: actor.orgId },
-        publicUserData: { userId: actor.userId },
-      },
-    ],
-  };
-  context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue(
-    memberships,
-  );
-  context.mocks.clerk.organizations.getOrganizationMembershipList.mockResolvedValue(
-    memberships,
-  );
 }
 
 export function mockGithubInstallationsList(

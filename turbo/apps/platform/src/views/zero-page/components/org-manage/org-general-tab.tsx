@@ -1,6 +1,7 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
 import { useLoadable, useGet, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { IconUpload } from "@tabler/icons-react";
 import {
   Input,
@@ -15,32 +16,16 @@ import {
   DialogTrigger,
 } from "@vm0/ui";
 import { toast } from "@vm0/ui/components/ui/sonner";
-import {
-  zeroOrgContract,
-  zeroOrgLeaveContract,
-  zeroOrgDeleteContract,
-} from "@vm0/api-contracts/contracts/zero-org";
 import type { OrgResponse } from "@vm0/api-contracts/contracts/orgs";
-import { org$, isOrgAdmin$, refreshOrg$ } from "../../../../signals/org.ts";
-import { clerk$, resolveWebOrigin } from "../../../../signals/auth.ts";
-import { zeroClient$ } from "../../../../signals/api-client.ts";
-import { fetch$ } from "../../../../signals/fetch.ts";
-import {
-  bestEffort,
-  detach,
-  onDomEventFn,
-  Reason,
-  settle,
-} from "../../../../signals/utils.ts";
+import { org$, isOrgAdmin$ } from "../../../../signals/org.ts";
+import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { detach, onDomEventFn, Reason } from "../../../../signals/utils.ts";
 import {
   profileName$,
   setProfileName$,
   profileSlug$,
   setProfileSlug$,
-  profileSaving$,
-  setProfileSaving$,
   profileLogoUrl$,
-  setProfileLogoUrl$,
   pendingLogoFile$,
   setPendingLogoFile$,
   pendingLogoPreview$,
@@ -49,14 +34,12 @@ import {
   setFileInputEl$,
   logoLoaded$,
   setLogoLoaded$,
-  leaving$,
-  setLeaving$,
-  deleting$,
-  setDeleting$,
   deleteConfirm$,
   setDeleteConfirm$,
-  saveError$,
-  setSaveError$,
+  loadOrgLogo$,
+  saveOrgProfile$,
+  leaveOrg$,
+  deleteOrg$,
 } from "../../../../signals/zero-page/settings/org-manage-tabs-state.ts";
 import { readImageDimensions } from "./read-image-dimensions.ts";
 
@@ -66,35 +49,6 @@ const sectionCardStyle = {
 
 const MIN_LOGO_DIMENSION = 100;
 const MAX_LOGO_DIMENSION = 4096;
-
-function extractErrorMessage(
-  result: { status: number; body: unknown },
-  fallback: string,
-): string {
-  const body = result.body as { error?: { message?: string } } | undefined;
-  return body?.error?.message ?? fallback;
-}
-
-async function uploadLogo(
-  fetchFn: typeof fetch,
-  file: File,
-): Promise<{ logoUrl: string | null } | null> {
-  const formData = new FormData();
-  formData.append("file", file);
-  const resp = await fetchFn("/api/zero/org/logo", {
-    method: "POST",
-    body: formData,
-  });
-  if (!resp.ok) {
-    const settled = await settle(resp.json());
-    const data = settled.ok
-      ? (settled.value as { error?: { message?: string } } | null)
-      : null;
-    toast.error(data?.error?.message ?? "Failed to upload logo");
-    return null;
-  }
-  return (await resp.json()) as { logoUrl: string | null };
-}
 
 function ProfileSection({
   org,
@@ -109,11 +63,10 @@ function ProfileSection({
   const slug = useGet(profileSlug$);
   const setSlug = useSet(setProfileSlug$);
 
-  const saving = useGet(profileSaving$);
-  const setSaving = useSet(setProfileSaving$);
+  const [saveLoadable, saveProfile] = useLoadableSet(saveOrgProfile$);
+  const saving = saveLoadable.state === "loading";
 
   const logoUrl = useGet(profileLogoUrl$);
-  const setLogoUrl = useSet(setProfileLogoUrl$);
 
   const pendingLogoFile = useGet(pendingLogoFile$);
   const setPendingLogoFile = useSet(setPendingLogoFile$);
@@ -124,19 +77,11 @@ function ProfileSection({
   const fileInputEl = useGet(fileInputEl$);
   const setFileInputEl = useSet(setFileInputEl$);
 
-  const fetchFn = useGet(fetch$);
-  const refreshOrg = useSet(refreshOrg$);
-  const clerkLoadable = useLoadable(clerk$);
-  const clerk =
-    clerkLoadable.state === "hasData" ? clerkLoadable.data : undefined;
+  const pageSignal = useGet(pageSignal$);
 
   const logoLoaded = useGet(logoLoaded$);
   const setLogoLoaded = useSet(setLogoLoaded$);
-
-  const saveError = useGet(saveError$);
-  const setSaveError = useSet(setSaveError$);
-
-  const createClient = useGet(zeroClient$);
+  const loadOrgLogo = useSet(loadOrgLogo$);
   const hasNameChange = name !== (org.name ?? "");
   const hasSlugChange = slug !== (org.slug ?? "");
   const hasChanges = hasNameChange || hasSlugChange || !!pendingLogoFile;
@@ -172,56 +117,20 @@ function ProfileSection({
     }
     setPendingLogoFile(null);
     setPendingLogoPreview(null);
-    setSaveError(null);
   };
 
   const handleSave = async () => {
     if (!hasChanges || saving) {
       return;
     }
-    setSaving(true);
-    setSaveError(null);
-    const doSave = async () => {
-      if (pendingLogoFile) {
-        const result = await uploadLogo(fetchFn, pendingLogoFile);
-        if (!result) {
-          return;
-        }
-        setLogoUrl(result.logoUrl);
-      }
-
-      if (hasNameChange || hasSlugChange) {
-        const client = createClient(zeroOrgContract);
-        const body: { name?: string; slug?: string; force?: boolean } = {};
-        if (hasNameChange) {
-          body.name = name;
-        }
-        if (hasSlugChange) {
-          body.slug = slug;
-          body.force = true;
-        }
-        const result = await client.update({ body });
-        if (result.status !== 200) {
-          const message = extractErrorMessage(
-            result,
-            `Failed to update (${result.status})`,
-          );
-          setSaveError(message);
-          return;
-        }
-      }
-
-      if (pendingLogoPreview) {
-        URL.revokeObjectURL(pendingLogoPreview);
-      }
-      setPendingLogoFile(null);
-      setPendingLogoPreview(null);
-      refreshOrg();
-      await clerk?.organization?.reload();
-      toast.success("Workspace updated");
-    };
-    await bestEffort(doSave());
-    setSaving(false);
+    await saveProfile(
+      {
+        name,
+        slug,
+        logoFile: pendingLogoFile,
+      },
+      pageSignal,
+    );
   };
 
   const handleLogoLoad = () => {
@@ -229,16 +138,7 @@ function ProfileSection({
       return;
     }
     setLogoLoaded(true);
-    detach(
-      (async () => {
-        const response = await fetchFn("/api/zero/org/logo");
-        const data = (await response.json()) as { logoUrl: string | null };
-        if (data.logoUrl) {
-          setLogoUrl(data.logoUrl);
-        }
-      })(),
-      Reason.DomCallback,
-    );
+    detach(loadOrgLogo(pageSignal), Reason.DomCallback);
   };
 
   return (
@@ -378,9 +278,6 @@ function ProfileSection({
               Discard
             </Button>
           </div>
-          {saveError && (
-            <p className="text-[13px] text-destructive">{saveError}</p>
-          )}
         </div>
       )}
     </section>
@@ -394,17 +291,12 @@ function DangerZoneSection({
   org: OrgResponse;
   isAdmin: boolean;
 }) {
-  const createClient = useGet(zeroClient$);
-  const clerkLoadable = useLoadable(clerk$);
-  const clerk =
-    clerkLoadable.state === "hasData" ? clerkLoadable.data : undefined;
   const canLeave = !isAdmin;
-
-  const leaving = useGet(leaving$);
-  const setLeaving = useSet(setLeaving$);
-
-  const deleting = useGet(deleting$);
-  const setDeleting = useSet(setDeleting$);
+  const pageSignal = useGet(pageSignal$);
+  const [leaveLoadable, leave] = useLoadableSet(leaveOrg$);
+  const [deleteLoadable, deleteWorkspace] = useLoadableSet(deleteOrg$);
+  const leaving = leaveLoadable.state === "loading";
+  const deleting = deleteLoadable.state === "loading";
 
   const deleteConfirm = useGet(deleteConfirm$);
   const setDeleteConfirm = useSet(setDeleteConfirm$);
@@ -413,52 +305,14 @@ function DangerZoneSection({
     if (leaving) {
       return;
     }
-    setLeaving(true);
-    const client = createClient(zeroOrgLeaveContract);
-    await bestEffort(
-      (async () => {
-        const result = await client.leave({ body: {} });
-        if (result.status === 200) {
-          // Clear the active organization before navigating so the session
-          // JWT no longer references an org the user is no longer a member
-          // of; otherwise Clerk may revoke the session and log the user out.
-          await clerk?.setActive({ organization: null });
-          toast.success("You have left the workspace");
-          window.location.href = `${resolveWebOrigin()}/sign-in/tasks/choose-organization`;
-        } else {
-          toast.error(
-            extractErrorMessage(result, `Failed to leave (${result.status})`),
-          );
-        }
-      })(),
-    );
-    setLeaving(false);
+    await leave(pageSignal);
   };
 
   const handleDelete = async () => {
     if (deleting || deleteConfirm !== org.slug) {
       return;
     }
-    setDeleting(true);
-    const client = createClient(zeroOrgDeleteContract);
-    await bestEffort(
-      (async () => {
-        const result = await client.delete({ body: { slug: org.slug } });
-        if (result.status === 200) {
-          // Clear the active organization before navigating so the session
-          // JWT no longer references the deleted org; otherwise Clerk may
-          // revoke the session and log the user out.
-          await clerk?.setActive({ organization: null });
-          toast.success("Workspace deleted");
-          window.location.href = `${resolveWebOrigin()}/sign-in/tasks/choose-organization`;
-        } else {
-          toast.error(
-            extractErrorMessage(result, `Failed to delete (${result.status})`),
-          );
-        }
-      })(),
-    );
-    setDeleting(false);
+    await deleteWorkspace(org.slug, pageSignal);
   };
 
   return (

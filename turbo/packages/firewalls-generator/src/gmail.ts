@@ -110,8 +110,10 @@ export const GMAIL_PERMISSION_MANIFEST: readonly GmailManifestPermission[] = [
       "base:POST /v1/users/{userId}/drafts",
       "base:PUT /v1/users/{userId}/drafts/{id}",
       "resumable-upload:POST /v1/users/{userId}/drafts",
+      "resumable-upload:PUT /v1/users/{userId}/drafts",
       "resumable-upload:PUT /v1/users/{userId}/drafts/{id}",
       "upload:POST /v1/users/{userId}/drafts",
+      "upload:PUT /v1/users/{userId}/drafts",
       "upload:PUT /v1/users/{userId}/drafts/{id}",
     ],
   },
@@ -122,7 +124,9 @@ export const GMAIL_PERMISSION_MANIFEST: readonly GmailManifestPermission[] = [
     routeKeys: [
       "base:POST /v1/users/{userId}/drafts/send",
       "resumable-upload:POST /v1/users/{userId}/drafts/send",
+      "resumable-upload:PUT /v1/users/{userId}/drafts/send",
       "upload:POST /v1/users/{userId}/drafts/send",
+      "upload:PUT /v1/users/{userId}/drafts/send",
     ],
   },
   {
@@ -168,8 +172,12 @@ export const GMAIL_PERMISSION_MANIFEST: readonly GmailManifestPermission[] = [
       "base:POST /v1/users/{userId}/messages/{id}/untrash",
       "resumable-upload:POST /v1/users/{userId}/messages",
       "resumable-upload:POST /v1/users/{userId}/messages/import",
+      "resumable-upload:PUT /v1/users/{userId}/messages",
+      "resumable-upload:PUT /v1/users/{userId}/messages/import",
       "upload:POST /v1/users/{userId}/messages",
       "upload:POST /v1/users/{userId}/messages/import",
+      "upload:PUT /v1/users/{userId}/messages",
+      "upload:PUT /v1/users/{userId}/messages/import",
     ],
   },
   {
@@ -179,7 +187,9 @@ export const GMAIL_PERMISSION_MANIFEST: readonly GmailManifestPermission[] = [
     routeKeys: [
       "base:POST /v1/users/{userId}/messages/send",
       "resumable-upload:POST /v1/users/{userId}/messages/send",
+      "resumable-upload:PUT /v1/users/{userId}/messages/send",
       "upload:POST /v1/users/{userId}/messages/send",
+      "upload:PUT /v1/users/{userId}/messages/send",
     ],
   },
   {
@@ -349,6 +359,27 @@ function uploadRuleForMethod(
   return `${httpMethod.toUpperCase()} /${protocol.path.slice(prefix.length)}`;
 }
 
+function mediaUploadPutRuleForMethod(
+  method: DiscoveryMethod,
+  kind: Exclude<GmailRouteKeyKind, "base">,
+): string | null {
+  const protocol =
+    kind === "upload"
+      ? method.mediaUpload?.protocols?.simple
+      : method.mediaUpload?.protocols?.resumable;
+  if (!protocol?.path) return null;
+
+  const prefix =
+    kind === "upload" ? "/upload/gmail/" : "/resumable/upload/gmail/";
+  if (!protocol.path.startsWith(prefix)) {
+    throw new Error(
+      `Unexpected Gmail ${kind} media upload path for ${method.id ?? "unknown"}: ${protocol.path}`,
+    );
+  }
+
+  return `PUT /${protocol.path.slice(prefix.length)}`;
+}
+
 export function buildGmailOfficialRouteKeys(
   discovery: GmailDiscoveryDocument,
 ): Set<string> {
@@ -376,6 +407,20 @@ export function buildGmailOfficialRouteKeys(
       if (resumableUploadRule) {
         uploadRouteCount += 1;
         routeKeys.add(`resumable-upload:${resumableUploadRule}`);
+      }
+      if (method.mediaUpload?.protocols?.resumable) {
+        const uploadMediaRule = mediaUploadPutRuleForMethod(method, "upload");
+        if (uploadMediaRule) {
+          routeKeys.add(`upload:${uploadMediaRule}`);
+        }
+
+        const resumableUploadMediaRule = mediaUploadPutRuleForMethod(
+          method,
+          "resumable-upload",
+        );
+        if (resumableUploadMediaRule) {
+          routeKeys.add(`resumable-upload:${resumableUploadMediaRule}`);
+        }
       }
     }
   }
@@ -466,5 +511,5 @@ export async function generate(): Promise<void> {
       return { ...permission, rules: [...permission.routeKeys] };
     }),
   );
-  writeOutput("gmail", ts, import.meta.dirname);
+  writeOutput("gmail", ts);
 }

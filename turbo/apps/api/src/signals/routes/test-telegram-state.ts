@@ -23,7 +23,7 @@ import { request$ } from "../context/hono";
 import { queryOf } from "../context/request";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { settle } from "../utils";
 import {

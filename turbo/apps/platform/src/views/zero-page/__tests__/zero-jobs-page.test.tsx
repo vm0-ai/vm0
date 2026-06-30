@@ -59,6 +59,9 @@ function mockAgentsPage(team: TeamComposeItem[]): void {
       displayName: agent.displayName,
       sound: agent.sound,
       avatarUrl: agent.avatarUrl,
+      modelProviderId: null,
+      selectedModel: null,
+      preferPersonalProvider: false,
       visibility: agent.visibility,
     });
   });
@@ -328,6 +331,9 @@ describe("zero jobs page", () => {
         displayName: agent.displayName,
         sound: agent.sound,
         avatarUrl: agent.avatarUrl,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
         visibility: agent.visibility,
       });
     });
@@ -344,6 +350,9 @@ describe("zero jobs page", () => {
           displayName: agent?.displayName ?? null,
           sound: agent?.sound ?? null,
           avatarUrl: agent?.avatarUrl ?? null,
+          modelProviderId: null,
+          selectedModel: null,
+          preferPersonalProvider: false,
           visibility: agent?.visibility ?? "public",
         });
       },

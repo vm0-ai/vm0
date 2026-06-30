@@ -1,6 +1,12 @@
 import { describe, expect, it } from "vitest";
 
-import { gmailNewMessageEventConfigSchema } from "../zero-workflows";
+import {
+  googleCalendarEventCreatedEventConfigSchema,
+  gmailLabelAppliedEventConfigSchema,
+  gmailNewMessageEventConfigSchema,
+  zeroWorkflowUpdateRequestSchema,
+  zeroWorkflowTriggerCreateRequestSchema,
+} from "../zero-workflows";
 
 describe("Gmail new message workflow trigger contract", () => {
   it("accepts only explicit text match fields", () => {
@@ -35,5 +41,84 @@ describe("Gmail new message workflow trigger contract", () => {
 
       expect(parsed.success).toBe(false);
     }
+  });
+});
+
+describe("Gmail label applied workflow trigger contract", () => {
+  it("accepts a label name and optional resolved label id", () => {
+    const parsed = gmailLabelAppliedEventConfigSchema.safeParse({
+      provider: "gmail",
+      event: "label_applied",
+      labelName: "Support",
+      resolvedLabelId: "Label_123",
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("accepts label applied trigger create requests", () => {
+    const parsed = zeroWorkflowTriggerCreateRequestSchema.safeParse({
+      kind: "event",
+      eventType: "gmail-label-applied",
+      eventConfig: {
+        provider: "gmail",
+        event: "label_applied",
+        labelName: "Support",
+      },
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+});
+
+describe("Google Calendar event-created workflow trigger contract", () => {
+  it("defaults to the primary calendar", () => {
+    const parsed = googleCalendarEventCreatedEventConfigSchema.parse({
+      provider: "google-calendar",
+      event: "event_created",
+    });
+
+    expect(parsed).toStrictEqual({
+      provider: "google-calendar",
+      event: "event_created",
+      calendarId: "primary",
+    });
+  });
+
+  it("accepts event-created trigger create requests without explicit config", () => {
+    const parsed = zeroWorkflowTriggerCreateRequestSchema.parse({
+      kind: "event",
+      eventType: "google-calendar-event-created",
+    });
+
+    expect(parsed).toStrictEqual({
+      kind: "event",
+      eventType: "google-calendar-event-created",
+      eventConfig: {
+        provider: "google-calendar",
+        event: "event_created",
+        calendarId: "primary",
+      },
+    });
+  });
+});
+
+describe("workflow update contract", () => {
+  it("accepts slug metadata updates", () => {
+    const parsed = zeroWorkflowUpdateRequestSchema.safeParse({
+      name: "follow-up",
+      displayName: "Follow up",
+      description: "Use when a prospect needs a next step.",
+    });
+
+    expect(parsed.success).toBe(true);
+  });
+
+  it("rejects invalid workflow slugs", () => {
+    const parsed = zeroWorkflowUpdateRequestSchema.safeParse({
+      name: "Follow Up",
+    });
+
+    expect(parsed.success).toBe(false);
   });
 });

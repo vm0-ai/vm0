@@ -8,7 +8,10 @@ use std::time::Duration;
 use nix::fcntl::{Flock, FlockArg};
 use tracing::{error, info, warn};
 
-use crate::command::{IgnoredCommandOutcome, exec_ignore_errors_with_timeout, exec_with_timeout};
+use crate::command::{
+    IgnoredCommandOutcome, exec_ignore_errors_with_timeout, exec_status_with_timeout,
+    exec_with_timeout,
+};
 use crate::paths::LockPaths;
 
 use super::super::error::{NetworkError, Result};
@@ -91,18 +94,18 @@ impl NamespaceDeleteOutcome {
 
 /// Shorthand: run `ip <args>`, discard stdout.
 async fn exec_ip(args: &[&str]) -> Result<()> {
-    exec_with_timeout("ip", args, NETNS_COMMAND_TIMEOUT).await?;
+    exec_status_with_timeout("ip", args, NETNS_COMMAND_TIMEOUT).await?;
     Ok(())
 }
 
 /// Shorthand: run `iptables <args>`, discard stdout.
 async fn exec_iptables(args: &[&str]) -> Result<()> {
-    exec_with_timeout("iptables", args, NETNS_COMMAND_TIMEOUT).await?;
+    exec_status_with_timeout("iptables", args, NETNS_COMMAND_TIMEOUT).await?;
     Ok(())
 }
 
 pub(super) async fn enable_host_ip_forwarding() -> Result<()> {
-    exec_with_timeout(
+    exec_status_with_timeout(
         "sysctl",
         &["-w", "net.ipv4.ip_forward=1"],
         NETNS_COMMAND_TIMEOUT,
@@ -900,6 +903,7 @@ mod tests {
             IgnoredCommandOutcome::SpawnError,
             IgnoredCommandOutcome::WaitError,
             IgnoredCommandOutcome::PipeError,
+            IgnoredCommandOutcome::OutputTooLarge,
         ] {
             assert!(
                 !conntrack_flush_is_trusted(outcome, IgnoredCommandOutcome::Success),

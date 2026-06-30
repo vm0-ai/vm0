@@ -1,11 +1,13 @@
 [package]
 name = "guest-contracts"
-version = "0.2.4"
+version = "0.2.10"
 edition.workspace = true
 description = "Shared contracts between runner and guest binaries"
 
 [dependencies]
 libc.workspace = true
+serde = { workspace = true, features = ["derive"] }
+serde_json.workspace = true
 uuid.workspace = true
 
 [dev-dependencies]

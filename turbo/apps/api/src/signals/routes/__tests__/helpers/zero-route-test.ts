@@ -1,6 +1,6 @@
 import { afterEach } from "vitest";
 
-import type { TestContext } from "../../../../__tests__/test-helpers";
+import type { TestContext } from "../../../../__tests__/test-context";
 
 type ClerkOrgRole = "org:admin" | "org:member";
 

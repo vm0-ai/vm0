@@ -1,5 +1,5 @@
 import { command, computed } from "ccstate";
-import { initContract } from "@ts-rest/core";
+import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import { z } from "zod";
 import { integrationsTelegramBotListContract } from "@vm0/api-contracts/contracts/integrations";
 import { zeroIntegrationsTelegramContract } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
@@ -40,7 +40,7 @@ import {
 } from "../services/zero-telegram-post.service";
 import { inferMimetype } from "../../lib/mimetype";
 import { settle } from "../utils";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const c = initContract();
 

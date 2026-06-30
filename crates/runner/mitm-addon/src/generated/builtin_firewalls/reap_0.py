@@ -13,6 +13,9 @@ JSON_PART = r"""{
         }
       },
       "base": "${{ vars.REAP_API_BASE_URL }}",
+      "hostPolicy": {
+        "kind": "publicDestination"
+      },
       "permissions": [
         {
           "description": "Read Reap resources",

@@ -86,6 +86,7 @@ import * as memoryChangeSummarySchema from "./schema/memory-change-summary";
 import * as memoryChangeItemSchema from "./schema/memory-change-item";
 import * as automationSchema from "./schema/automation";
 import * as gmailEventSchema from "./schema/gmail-event";
+import * as googleCalendarEventSchema from "./schema/google-calendar-event";
 
 export const schema = {
   ...userSchema,
@@ -176,4 +177,5 @@ export const schema = {
   ...memoryChangeItemSchema,
   ...automationSchema,
   ...gmailEventSchema,
+  ...googleCalendarEventSchema,
 };

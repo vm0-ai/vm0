@@ -17,12 +17,13 @@ import {
   enableWorkflowTrigger$,
   getWorkflowTrigger,
   listThreadBoundWorkflowTriggers,
+  listWorkspaceWorkflowTriggers,
   loadWorkflowTriggers,
-  setWorkflowTriggerPermissionPolicy$,
+  runOwnedWorkflowTriggerNow$,
   updateWorkflowTrigger$,
   type TriggerResult,
 } from "../services/zero-workflow-trigger.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const workflowReadAuth = {
   requireOrganization: true,
@@ -34,15 +35,6 @@ const workflowWriteAuth = {
   requireOrganization: true,
   missingOrganizationStatus: 401,
   requiredCapability: "agent:write",
-} as const;
-
-// The unattended permission policy is set only from a browser session or PAT,
-// never from an in-run agent token (sandbox/zero). This prevents an unattended
-// run from self-escalating the permissions of the trigger it runs under. See
-// issue #18789.
-const workflowPermissionPolicyWriteAuth = {
-  ...workflowWriteAuth,
-  accept: ["session", "pat"],
 } as const;
 
 function memberFromAuth(auth: {
@@ -84,9 +76,16 @@ function triggerErrorResponse(
 
 const createTriggerBody$ = bodyResultOf(zeroWorkflowTriggersContract.create);
 const updateTriggerBody$ = bodyResultOf(zeroWorkflowTriggersContract.update);
-const setTriggerPermissionPolicyBody$ = bodyResultOf(
-  zeroWorkflowTriggersContract.setPermissionPolicy,
-);
+
+const listWorkspaceTriggersInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const db = get(db$);
+  const triggers = await listWorkspaceWorkflowTriggers(db, {
+    orgId: auth.orgId,
+    member: memberFromAuth(auth),
+  });
+  return { status: 200 as const, body: [...triggers] };
+});
 
 const listChatThreadTriggersInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -132,26 +131,61 @@ const createTriggerInner$ = command(
       return bodyResult.response;
     }
 
-    const result = await set(
-      createWorkflowTrigger$,
+    const triggerInputBase = {
+      orgId: auth.orgId,
+      member: memberFromAuth(auth),
+      workflowId: params.workflowId,
+      enabled: bodyResult.data.enabled ?? true,
+    };
+    const result =
       "schedule" in bodyResult.data
-        ? {
-            orgId: auth.orgId,
-            member: memberFromAuth(auth),
-            workflowId: params.workflowId,
-            schedule: bodyResult.data.schedule,
-            enabled: bodyResult.data.enabled ?? true,
-          }
-        : {
-            orgId: auth.orgId,
-            member: memberFromAuth(auth),
-            workflowId: params.workflowId,
-            eventType: bodyResult.data.eventType,
-            eventConfig: bodyResult.data.eventConfig,
-            enabled: bodyResult.data.enabled ?? true,
-          },
-      signal,
-    );
+        ? await set(
+            createWorkflowTrigger$,
+            {
+              ...triggerInputBase,
+              schedule: bodyResult.data.schedule,
+            },
+            signal,
+          )
+        : bodyResult.data.eventType === "webhook-received"
+          ? await set(
+              createWorkflowTrigger$,
+              {
+                ...triggerInputBase,
+                eventType: bodyResult.data.eventType,
+                eventConfig: bodyResult.data.eventConfig,
+              },
+              signal,
+            )
+          : bodyResult.data.eventType === "github-label-applied"
+            ? await set(
+                createWorkflowTrigger$,
+                {
+                  ...triggerInputBase,
+                  eventType: bodyResult.data.eventType,
+                  eventConfig: bodyResult.data.eventConfig,
+                },
+                signal,
+              )
+            : bodyResult.data.eventType === "google-calendar-event-created"
+              ? await set(
+                  createWorkflowTrigger$,
+                  {
+                    ...triggerInputBase,
+                    eventType: bodyResult.data.eventType,
+                    eventConfig: bodyResult.data.eventConfig,
+                  },
+                  signal,
+                )
+              : await set(
+                  createWorkflowTrigger$,
+                  {
+                    ...triggerInputBase,
+                    eventType: bodyResult.data.eventType,
+                    eventConfig: bodyResult.data.eventConfig,
+                  },
+                  signal,
+                );
     signal.throwIfAborted();
     if (result.kind === "ok") {
       return { status: 201 as const, body: result.summary };
@@ -203,36 +237,6 @@ const updateTriggerInner$ = command(
             triggerId: params.id,
             eventConfig: bodyResult.data.eventConfig,
           },
-      signal,
-    );
-    signal.throwIfAborted();
-    if (result.kind === "ok") {
-      return { status: 200 as const, body: result.summary };
-    }
-    return triggerErrorResponse(result);
-  },
-);
-
-const setTriggerPermissionPolicyInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(organizationAuthContext$);
-    const params = get(
-      pathParamsOf(zeroWorkflowTriggersContract.setPermissionPolicy),
-    );
-    const bodyResult = await get(setTriggerPermissionPolicyBody$);
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return bodyResult.response;
-    }
-    const result = await set(
-      setWorkflowTriggerPermissionPolicy$,
-      {
-        orgId: auth.orgId,
-        member: memberFromAuth(auth),
-        triggerId: params.id,
-        connectorRefs: bodyResult.data.unattendedConnectorRefs,
-        policy: bodyResult.data.unattendedPermissionPolicy,
-      },
       signal,
     );
     signal.throwIfAborted();
@@ -306,7 +310,39 @@ const disableTriggerInner$ = command(
   },
 );
 
+const runTriggerInner$ = command(async ({ get, set }, signal: AbortSignal) => {
+  const auth = get(organizationAuthContext$);
+  const params = get(pathParamsOf(zeroWorkflowTriggersContract.run));
+  const result = await set(
+    runOwnedWorkflowTriggerNow$,
+    {
+      orgId: auth.orgId,
+      member: memberFromAuth(auth),
+      triggerId: params.id,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  if (result.kind === "ok") {
+    return {
+      status: 201 as const,
+      body: {
+        runId: result.runId,
+        chatThreadId: result.chatThreadId,
+      },
+    };
+  }
+  if (result.kind === "run_error") {
+    return result.response;
+  }
+  return triggerErrorResponse(result);
+});
+
 export const zeroWorkflowTriggersRoutes: readonly RouteEntry[] = [
+  {
+    route: zeroWorkflowTriggersContract.listWorkspace,
+    handler: authRoute(workflowReadAuth, listWorkspaceTriggersInner$),
+  },
   {
     route: zeroWorkflowTriggersContract.listForChatThread,
     handler: authRoute(workflowReadAuth, listChatThreadTriggersInner$),
@@ -340,10 +376,7 @@ export const zeroWorkflowTriggersRoutes: readonly RouteEntry[] = [
     handler: authRoute(workflowWriteAuth, disableTriggerInner$),
   },
   {
-    route: zeroWorkflowTriggersContract.setPermissionPolicy,
-    handler: authRoute(
-      workflowPermissionPolicyWriteAuth,
-      setTriggerPermissionPolicyInner$,
-    ),
+    route: zeroWorkflowTriggersContract.run,
+    handler: authRoute(workflowWriteAuth, runTriggerInner$),
   },
 ];

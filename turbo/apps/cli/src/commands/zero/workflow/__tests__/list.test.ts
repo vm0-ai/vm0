@@ -75,7 +75,10 @@ describe("zero workflow list command", () => {
 
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("code-review");
-      expect(logCalls).toContain("my-agent");
+      expect(logCalls).toContain("AGENT NAME");
+      expect(logCalls).toContain("AGENT ID");
+      expect(logCalls).toContain("My Agent");
+      expect(logCalls).toContain(AGENT_ID);
       expect(logCalls).toContain("private");
       expect(logCalls).toContain("deploy");
     });

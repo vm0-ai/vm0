@@ -1,4 +1,5 @@
 import { useGet, useLastLoadable, useSet } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import { Button, Input } from "@vm0/ui";
 import {
   IconAlertTriangle,
@@ -9,9 +10,7 @@ import {
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import {
   reportErrorRun$,
-  reportState$,
   reportReference$,
-  reportErrorMessage$,
   reportTitle$,
   reportDescription$,
   setReportTitle$,
@@ -23,10 +22,8 @@ import { detach, Reason } from "../../signals/utils.ts";
 export function ReportErrorPage() {
   const pageSignal = useGet(pageSignal$);
   const runLoadable = useLastLoadable(reportErrorRun$);
-  const reportState = useGet(reportState$);
   const reference = useGet(reportReference$);
-  const errorMessage = useGet(reportErrorMessage$);
-  const doSubmit = useSet(submitErrorReport$);
+  const [submitLoadable, doSubmit] = useLoadableSet(submitErrorReport$);
 
   if (runLoadable.state === "hasError") {
     return <ErrorCard message="Failed to load run details" />;
@@ -42,24 +39,13 @@ export function ReportErrorPage() {
     return <ErrorCard message="This run did not fail and cannot be reported" />;
   }
 
-  if (reportState === "success" && reference) {
+  if (reference) {
     return <SuccessCard reference={reference} />;
-  }
-
-  if (reportState === "error") {
-    return (
-      <ErrorCard
-        message={errorMessage ?? "Failed to submit error report"}
-        onRetry={() => {
-          detach(doSubmit(pageSignal), Reason.DomCallback);
-        }}
-      />
-    );
   }
 
   return (
     <ConfirmCard
-      loading={reportState === "loading"}
+      loading={submitLoadable.state === "loading"}
       onSubmit={() => {
         detach(doSubmit(pageSignal), Reason.DomCallback);
       }}

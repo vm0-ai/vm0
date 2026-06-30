@@ -17,7 +17,10 @@ import body_decoding
 import flow_metadata_keys as metadata_keys
 import matching
 import request_streaming
-from body_limits import LARGE_RESPONSE_DECOMPRESS_LIMIT, STREAM_BUFFER_LIMIT
+from body_limits import (
+    LARGE_RESPONSE_DECOMPRESS_LIMIT,
+    REQUEST_BODY_BILLING_INSPECTION_LIMIT,
+)
 from logging_utils import log_proxy_entry
 from platform_api import get_api_url
 
@@ -96,7 +99,7 @@ def _strip_request_target_query(request_target: str) -> str:
 # exceeding it indicates malformed or hostile upstream data, so the parser
 # discards that row through its terminating newline to protect memory.
 _MAX_NDJSON_LINE_BYTES = LARGE_RESPONSE_DECOMPRESS_LIMIT
-_REQUEST_BODY_REFINEMENT_LIMIT = STREAM_BUFFER_LIMIT
+_REQUEST_BODY_REFINEMENT_LIMIT = REQUEST_BODY_BILLING_INSPECTION_LIMIT
 _REQUEST_QUERY_HINT_MAX_BYTES = 64 * 1024
 _REQUEST_QUERY_HINT_KEY_MAX_CHARS = 128
 _REQUEST_QUERY_HINT_VALUE_MAX_BYTES = 16 * 1024

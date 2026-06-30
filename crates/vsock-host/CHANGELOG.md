@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.17.46](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.45...vsock-host-v0.17.46) (2026-06-29)
+
+
+### Refactoring
+
+* share exec cancel sent wait helper ([#19260](https://github.com/vm0-ai/vm0/issues/19260)) ([95cabaf](https://github.com/vm0-ai/vm0/commit/95cabaf4798e9523e153033788db27da2b14258c))
+
+## [0.17.45](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.44...vsock-host-v0.17.45) (2026-06-26)
+
+
+### Performance Improvements
+
+* batch storage cache warm-hit staging ([#19077](https://github.com/vm0-ai/vm0/issues/19077)) ([3f6743f](https://github.com/vm0-ai/vm0/commit/3f6743f9fd4a6c8fa0cdc5e6c1e50ef2042c924c))
+
 ## [0.17.44](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.43...vsock-host-v0.17.44) (2026-06-26)
 
 ## [0.17.43](https://github.com/vm0-ai/vm0/compare/vsock-host-v0.17.42...vsock-host-v0.17.43) (2026-06-25)

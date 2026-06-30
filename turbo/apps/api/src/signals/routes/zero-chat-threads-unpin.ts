@@ -9,7 +9,7 @@ import { pathParamsOf } from "../context/request";
 import { writeDb$ } from "../external/db";
 import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const unpinInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(authContext$);

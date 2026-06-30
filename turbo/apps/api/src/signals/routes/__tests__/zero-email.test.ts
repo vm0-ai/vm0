@@ -26,8 +26,8 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, eq, inArray, or } from "drizzle-orm";
 
-import { createApp } from "../../../app-factory";
-import { testContext } from "../../../__tests__/test-helpers";
+import { createAppWithRoutes } from "../../../app-factory-core";
+import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
 import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
@@ -36,6 +36,8 @@ import { flushWaitUntilForTest } from "../../context/wait-until";
 import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import { generateReplyToken } from "../../services/zero-email-common.service";
+import { zeroEmailCallbackRoutes } from "../zero-email-callbacks";
+import { zeroEmailInboundRoutes } from "../zero-email-inbound";
 import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import {
   createFixtureTracker,
@@ -52,6 +54,10 @@ const INBOUND_SECRET = "whsec_test";
 const REPLY_PATH = "/api/zero/email/callbacks/reply";
 const TRIGGER_PATH = "/api/zero/email/callbacks/trigger";
 const INBOUND_PATH = "/api/zero/email/inbound";
+const emailRoutes = [
+  ...zeroEmailCallbackRoutes,
+  ...zeroEmailInboundRoutes,
+] as const;
 
 interface EmailFixture {
   readonly orgId: string;
@@ -374,11 +380,22 @@ async function postCallback(
   const rawBody = JSON.stringify(body);
   const headerOptions =
     typeof options === "string" ? { secret: options } : options;
-  return await createApp({ signal: context.signal }).request(path, {
+  return await requestEmailApp(path, {
     method: "POST",
     headers: signedCallbackHeaders(rawBody, headerOptions),
     body: rawBody,
   });
+}
+
+async function requestEmailApp(
+  path: string,
+  init: RequestInit,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: emailRoutes,
+  });
+  return await app.request(path, init);
 }
 
 function svixHeaders(rawBody: string): Record<string, string> {
@@ -394,7 +411,7 @@ function svixHeaders(rawBody: string): Record<string, string> {
 
 async function postInbound(event: WebhookEvent): Promise<Response> {
   const rawBody = JSON.stringify(event);
-  return await createApp({ signal: context.signal }).request(INBOUND_PATH, {
+  return await requestEmailApp(INBOUND_PATH, {
     method: "POST",
     headers: svixHeaders(rawBody),
     body: rawBody,
@@ -834,14 +851,11 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
   it("skips before callback verification when Resend is not configured", async () => {
     mockEnv("RESEND_API_KEY", undefined);
 
-    const response = await createApp({ signal: context.signal }).request(
-      TRIGGER_PATH,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ runId: randomUUID(), status: "completed" }),
-      },
-    );
+    const response = await requestEmailApp(TRIGGER_PATH, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ runId: randomUUID(), status: "completed" }),
+    });
 
     expect(response.status).toBe(200);
     await expect(response.json()).resolves.toStrictEqual({
@@ -1162,14 +1176,11 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
 
 describe("POST /api/zero/email/inbound", () => {
   it("rejects missing Svix headers", async () => {
-    const response = await createApp({ signal: context.signal }).request(
-      INBOUND_PATH,
-      {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type: "email.received" }),
-      },
-    );
+    const response = await requestEmailApp(INBOUND_PATH, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ type: "email.received" }),
+    });
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toStrictEqual({
@@ -1351,17 +1362,14 @@ describe("POST /api/zero/email/inbound", () => {
 
   it("rejects invalid Svix signatures", async () => {
     const rawBody = JSON.stringify({ type: "email.received" });
-    const response = await createApp({ signal: context.signal }).request(
-      INBOUND_PATH,
-      {
-        method: "POST",
-        headers: {
-          ...svixHeaders(rawBody),
-          "svix-signature": "v1,bad-signature",
-        },
-        body: rawBody,
+    const response = await requestEmailApp(INBOUND_PATH, {
+      method: "POST",
+      headers: {
+        ...svixHeaders(rawBody),
+        "svix-signature": "v1,bad-signature",
       },
-    );
+      body: rawBody,
+    });
 
     expect(response.status).toBe(401);
     await expect(response.json()).resolves.toStrictEqual({

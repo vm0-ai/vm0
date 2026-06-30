@@ -121,7 +121,6 @@ export const usageInsightAsync$ = computed(async (get) => {
       },
     }),
     [200],
-    { toast: false },
   );
   return {
     ...result.body,

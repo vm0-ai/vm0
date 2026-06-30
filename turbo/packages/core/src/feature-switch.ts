@@ -255,24 +255,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show GitHub PR tracking in chat thread headers when the current agent is connected to and authorized for GitHub. Individuals opt in via feature-switch overrides.",
     enabled: false,
   },
-  [FeatureSwitchKey.ChatRunGroupFolding]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Fold repeated automation, workflow trigger, and goal continuation chat runs by contiguous run-group sections in the chat thread UI.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.ChatTemplatePicker]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Show the Template picker in the Zero chat composer for per-message generation template selection.",
-    enabled: true,
-  },
-  [FeatureSwitchKey.VideoTemplatePicker]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Show the Video template picker tab in the Zero chat composer for AI video generation with curated templates.",
-    enabled: true,
-  },
   [FeatureSwitchKey.MemoryViewer]: {
     maintainer: "lancy@vm0.ai",
     description:
@@ -286,11 +268,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show the internal Memory page dev refresh action for staff prompt iteration.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.PresentationHtmlPptxDownload]: {
-    maintainer: "bingjie@vm0.ai",
-    description: "Show a PPTX download action for presentation HTML artifacts.",
-    enabled: true,
   },
   [FeatureSwitchKey.HtmlArtifactCommentEditing]: {
     maintainer: "bingjie@vm0.ai",
@@ -312,11 +289,40 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.WorkflowGithubLabelEventTriggers]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Allow GitHub label workflow event triggers. Matching GitHub issue and pull request label events run the linked workflow.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.WorkflowGoogleCalendarEventTriggers]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Allow Google Calendar event-created workflow triggers. Creating/enabling requires a connected Google Calendar connector and Calendar watch setup; newly observed calendar events run the linked workflow.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.WorkflowWebhookTriggers]: {
+    maintainer: "lancy@vm0.ai",
+    description:
+      "Allow signed inbound webhook workflow event triggers. Creating a trigger mints a workflow-native endpoint and signing secret; valid deliveries run the linked workflow.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Replace the /automations schedule list and calendar with a workflow-trigger surface and route new automation setup into triggered workflow creation.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.GoalWorkflows]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Enable persistent thread goals, the zero goal CLI, and run-terminal goal continuation. Individuals opt in via feature-switch overrides.",
+      "Enable persistent thread goals, the zero goal CLI, and run-terminal goal continuation for staff orgs.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: {
     maintainer: "lancy@vm0.ai",
@@ -328,8 +334,23 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ConnectorAccessManagement]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Show the Manage entry on connected connector cards for per-agent connector access and permission management.",
+      "Show connected connector filtering and per-agent connector access management on connected connector cards.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.PresentationTemplateRunbook]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Generate presentations from a selected template via its self-contained runbook package: the agent pulls one R2 archive, follows AGENT_RUNBOOK.md, and selects a color system at runtime. When off, presentation generation uses the legacy multi-resource selection flow.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.AgentUnreadIndicators]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
 };
 

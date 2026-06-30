@@ -53,6 +53,6 @@ export const apiOrgHandlers = [
   }),
 
   http.get("*/api/zero/org/logo", () => {
-    return HttpResponse.json({ logoUrl: mockLogoUrl });
+    return HttpResponse.json({ logoUrl: mockLogoUrl, hasImage: !!mockLogoUrl });
   }),
 ];

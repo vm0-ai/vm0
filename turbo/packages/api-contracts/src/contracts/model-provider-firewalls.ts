@@ -3,7 +3,7 @@ import type { ExpandedFirewallConfig } from "@vm0/connectors/firewall-types";
 import type {
   ModelProviderFramework,
   ModelProviderType,
-} from "./model-providers";
+} from "./model-provider-types";
 
 type FirewallSupportedProvider = Exclude<
   ModelProviderType,
@@ -37,7 +37,7 @@ export const MODEL_PROVIDER_ENV_PLACEHOLDERS = {
   // provider-specific secrets into ANTHROPIC_AUTH_TOKEN.
   ANTHROPIC_AUTH_TOKEN: "sk-CoffeeSafeLocalCoffeeSafeLocalCo",
   // Placeholder: sk-proj-{chars}T3BlbkFJ{chars} (typical project key shape)
-  // Source: matches turbo/packages/connectors/src/firewalls/openai.generated.ts
+  // Source: mirrors the OpenAI connector firewall placeholder shape.
   OPENAI_API_KEY:
     "sk-proj-CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocaT3BlbkFJCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLoca",
   // Opaque fake marker, not a JWT. Codex ChatGPT mode reads auth.json, while
@@ -229,7 +229,7 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS = {
     { name: "Authorization", valuePrefix: "Bearer" },
     MODEL_PROVIDER_ENV_PLACEHOLDERS.OPENAI_API_KEY,
   ),
-  // ChatGPT OAuth provider: multi-header injection plus auth.openai.com deny.
+  // ChatGPT OAuth provider: multi-header injection plus unknown-policy auth.openai.com deny.
   "codex-oauth-token": {
     name: "model-provider:codex-oauth-token",
     apis: [
@@ -244,6 +244,8 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS = {
         permissions: [
           {
             name: "codex:api",
+            description:
+              "Access the ChatGPT Codex backend with GET and POST requests.",
             rules: ["GET /{path*}", "POST /{path*}"],
           },
         ],
@@ -251,11 +253,10 @@ export const MODEL_PROVIDER_FIREWALL_CONFIGS = {
       {
         base: "https://auth.openai.com",
         auth: { headers: {} },
-        permissions: [{ name: "denied", rules: ["ANY /*"] }],
+        permissions: [],
       },
     ],
     defaultPolicies: {
-      deny: ["denied"],
       unknownPolicy: "deny",
     },
     placeholders: {

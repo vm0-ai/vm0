@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Garmin Connect firewall config...");
   const ts = generateTypeScript();
-  writeOutput("garmin-connect", ts, import.meta.dirname);
+  writeOutput("garmin-connect", ts);
 }

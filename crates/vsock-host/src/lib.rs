@@ -103,7 +103,7 @@ pub use exec_operation::{
     ExecOutputEvent, ExecOwnedCapturedOutput, ExecStreamRequest, SupervisedExecCancelHandle,
     SupervisedExecControl, SupervisedExecHandle, SupervisedExecRequest,
 };
-pub use file::{CopyFileOptions, CopyFileResult};
+pub use file::{CopyFileOptions, CopyFileResult, WriteFileEntry};
 
 const READ_BUF_SIZE: usize = 64 * 1024;
 

@@ -120,6 +120,13 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("maps:read");
   });
 
+  it("includes chat thread read and write capabilities in zero-scoped tokens", () => {
+    const token = generateZeroToken("user_zero", "run_zero", "org_zero");
+
+    expect(verifyZeroToken(token)?.capabilities).toContain("chat-thread:read");
+    expect(verifyZeroToken(token)?.capabilities).toContain("chat-thread:write");
+  });
+
   it("gates banking capability behind the banking feature switch", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
     const enabledToken = generateZeroToken(
@@ -139,6 +146,11 @@ describe("auth tokens", () => {
 
   it("gates goal capabilities behind the goal workflows feature switch", () => {
     const defaultToken = generateZeroToken("user_zero", "run_zero", "org_zero");
+    const staffOrgToken = generateZeroToken(
+      "user_zero",
+      "run_zero",
+      "org_3ANttyrbWYJk6JKRSTRLEsbsDLe",
+    );
     const enabledToken = generateZeroToken(
       "user_zero",
       "run_zero",
@@ -153,6 +165,13 @@ describe("auth tokens", () => {
       "goal:agent-result:write",
     );
     expect(verifyZeroToken(defaultToken)?.capabilities).not.toContain(
+      "goal:user-control:write",
+    );
+    expect(verifyZeroToken(staffOrgToken)?.capabilities).toContain("goal:read");
+    expect(verifyZeroToken(staffOrgToken)?.capabilities).toContain(
+      "goal:agent-result:write",
+    );
+    expect(verifyZeroToken(staffOrgToken)?.capabilities).toContain(
       "goal:user-control:write",
     );
     expect(verifyZeroToken(enabledToken)?.capabilities).toContain("goal:read");

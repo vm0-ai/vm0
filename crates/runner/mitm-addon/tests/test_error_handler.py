@@ -12,6 +12,7 @@ import auth_base_forwarder
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import request_streaming
+import upstream_destination_binding
 import usage
 from tests.flow_helpers import header_map, response_stream
 from tests.jsonl_log_helpers import (
@@ -40,6 +41,28 @@ def _prepare_legacy_connector_diagnostic_flow(tmp_path, flow, *, capture_body: b
 
 
 class TestErrorHandler:
+    def test_error_clears_upstream_binding(self, real_flow, mitm_ctx):
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="api.github.com",
+            path="/repos/octocat/hello",
+        )
+        upstream_destination_binding.record_server_binding(
+            flow.server_conn,
+            client=flow.client_conn,
+            host="api.github.com",
+            port=443,
+            kinds=frozenset(("connector_auth",)),
+            original_address=("api.github.com", 443),
+        )
+
+        with mitm_ctx():
+            flow.error = Error("connection reset by peer")
+            mitm_addon.error(flow)
+
+        assert upstream_destination_binding.binding_snapshot_for_tests() == {}
+
     def test_error_releases_header_phase_auth_base_admission(
         self, tmp_path, real_flow, mitm_ctx, headers
     ):
@@ -167,6 +190,46 @@ class TestErrorHandler:
         assert metadata_keys.REQUEST_STREAM_BUFFER not in flow.metadata
         assert metadata_keys.REQUEST_STREAM_BUFFER_STATE not in flow.metadata
         assert mitm_addon._REQUEST_CLASSIFICATION not in flow.metadata
+
+    def test_header_phase_connector_diagnostic_error_keeps_connection_error(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
+        flow = real_flow(
+            with_response=False,
+            client_ip="10.200.0.5",
+            host="fal.run",
+            path="/fal-ai/nano-banana-pro",
+            method="POST",
+        )
+        _prepare_legacy_connector_diagnostic_flow(tmp_path, flow)
+
+        with mitm_ctx():
+            flow.response = tutils.tresp(
+                status_code=401,
+                headers=header_map({"content-type": "text/plain"}),
+                content=b"upstream auth error",
+            )
+            mitm_addon.responseheaders(flow)
+            assert response_stream(flow)(b"partial upstream body") == ()
+            flow.response.trailers = header_map({"x-upstream-trailer": "discarded"})
+            flow.error = Error("connection reset by peer")
+            mitm_addon.error(flow)
+
+        assert flow.response is not None
+        assert flow.response.status_code == 401
+        assert flow.response.trailers is None
+        assert flow.response.stream is False
+        assert metadata_keys.STREAM_BUFFER not in flow.metadata
+        assert metadata_keys.STREAM_BUFFER_STATE not in flow.metadata
+
+        [entry] = read_jsonl_entries_after_flush(tmp_path / "net.jsonl")
+        assert entry["status"] == 0
+        assert entry["error"] == "connection reset by peer"
+        assert entry["firewall_error"] == "connector_not_configured_for_run"
+        assert entry["connector_diagnostic_type"] == "fal"
+
+        [proxy_entry] = read_jsonl_entries_after_flush(tmp_path / "proxy.jsonl")
+        assert proxy_entry["type"] == "connection_error"
 
     def test_streamed_authenticated_connector_candidate_error_keeps_original_error(
         self, tmp_path, real_flow, mitm_ctx, headers

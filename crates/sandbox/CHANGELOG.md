@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.19.14](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.13...sandbox-v0.19.14) (2026-06-26)
+
+
+### Performance Improvements
+
+* batch storage cache warm-hit staging ([#19077](https://github.com/vm0-ai/vm0/issues/19077)) ([3f6743f](https://github.com/vm0-ai/vm0/commit/3f6743f9fd4a6c8fa0cdc5e6c1e50ef2042c924c))
+
+## [0.19.13](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.12...sandbox-v0.19.13) (2026-06-26)
+
+
+### Bug Fixes
+
+* add agent exit 126 diagnostics ([#19032](https://github.com/vm0-ai/vm0/issues/19032)) ([b894039](https://github.com/vm0-ai/vm0/commit/b894039c617722da0ab4a9dd1fa2f188e552c7c7))
+
 ## [0.19.12](https://github.com/vm0-ai/vm0/compare/sandbox-v0.19.11...sandbox-v0.19.12) (2026-06-25)
 
 

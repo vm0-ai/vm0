@@ -1,5 +1,6 @@
 import { command, computed, state } from "ccstate";
 import { zeroInsightsContract } from "@vm0/api-contracts/contracts/zero-insights";
+import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import {
   setRange$,
@@ -41,10 +42,10 @@ export interface TopTask {
 }
 
 export interface MemberCredits {
-  userId: string;
+  userId?: string;
   name: string;
   credits: number;
-  agentNames: string[];
+  agentNames?: string[];
   agentCredits?: Record<string, number>;
 }
 
@@ -195,11 +196,8 @@ export const networkInsightsData$ = computed(
   async (get): Promise<NetworkInsightsData> => {
     get(internalReloadInsights$);
     const client = get(zeroClient$)(zeroInsightsContract);
-    const result = await client.get({ query: { days: 30 } });
-    if (result.status !== 200) {
-      throw new Error(`Failed to fetch insights: ${result.status}`);
-    }
-    return result.body as NetworkInsightsData;
+    const result = await accept(client.get({ query: { days: 30 } }), [200]);
+    return result.body;
   },
 );
 

@@ -1,23 +1,18 @@
 import { computed } from "ccstate";
 import {
-  composesInstructionsContract,
-  composesListContract,
   composesMainContract,
   composesVersionsContract,
 } from "@vm0/api-contracts/contracts/composes";
 
 import { authContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { pathParamsOf, queryOf } from "../context/request";
-import { badRequestMessage, notFound } from "../../lib/error";
+import { queryOf } from "../context/request";
+import { notFound } from "../../lib/error";
 import {
   agentComposeByName,
-  agentComposeInstructions,
-  agentComposeList,
-  agentComposeOrgId,
   agentComposeVersionResolution,
 } from "../services/agent-composes-read.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const getComposeByNameInner$ = computed(async (get) => {
   const auth = get(authContext$);
@@ -34,16 +29,6 @@ const getComposeByNameInner$ = computed(async (get) => {
   }
 
   return { status: 200 as const, body: compose };
-});
-
-const listComposesInner$ = computed(async (get) => {
-  const auth = get(authContext$);
-  if (!auth.orgId) {
-    return badRequestMessage("Invalid request");
-  }
-
-  const result = await get(agentComposeList(auth.orgId));
-  return { status: 200 as const, body: { composes: [...result.composes] } };
 });
 
 const resolveComposeVersionInner$ = computed(async (get) => {
@@ -64,34 +49,6 @@ const resolveComposeVersionInner$ = computed(async (get) => {
   return { status: 200 as const, body: result };
 });
 
-const getInstructionsInner$ = computed(async (get) => {
-  const auth = get(authContext$);
-  const params = get(
-    pathParamsOf(composesInstructionsContract.getInstructions),
-  );
-  const orgId =
-    auth.tokenType === "sandbox" || auth.tokenType === "zero"
-      ? await get(agentComposeOrgId(params.id))
-      : (auth.orgId ?? null);
-
-  if (!orgId) {
-    return notFound("Agent compose not found");
-  }
-
-  const result = await get(
-    agentComposeInstructions({
-      composeId: params.id,
-      userId: auth.userId,
-      orgId,
-    }),
-  );
-  if (!result) {
-    return notFound("Agent compose not found");
-  }
-
-  return { status: 200 as const, body: result };
-});
-
 const anySandboxAuth = {
   acceptAnySandboxCapability: true,
 } as const;
@@ -102,15 +59,7 @@ export const agentComposesReadRoutes: readonly RouteEntry[] = [
     handler: authRoute(anySandboxAuth, getComposeByNameInner$),
   },
   {
-    route: composesListContract.list,
-    handler: authRoute(anySandboxAuth, listComposesInner$),
-  },
-  {
     route: composesVersionsContract.resolveVersion,
     handler: authRoute(anySandboxAuth, resolveComposeVersionInner$),
-  },
-  {
-    route: composesInstructionsContract.getInstructions,
-    handler: authRoute(anySandboxAuth, getInstructionsInner$),
   },
 ];

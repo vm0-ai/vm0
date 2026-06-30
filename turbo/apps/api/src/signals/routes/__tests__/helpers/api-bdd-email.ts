@@ -4,15 +4,23 @@ import { cronDrainEmailOutboxContract } from "@vm0/api-contracts/contracts/cron"
 import { zeroEmailInboundContract } from "@vm0/api-contracts/contracts/zero-email";
 import { Webhook } from "svix";
 
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { now } from "../../../../lib/time";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
+import { cronDrainEmailOutboxRoutes } from "../../cron-drain-email-outbox";
+import { zeroEmailInboundRoutes } from "../../zero-email-inbound";
 
 const CRON_AUTHORIZATION = "Bearer test-cron-secret";
 const RESEND_WEBHOOK_SECRET = "whsec_test";
+
+const emailRoutes = [
+  ...zeroEmailInboundRoutes,
+  ...cronDrainEmailOutboxRoutes,
+] as const;
+
+function emailApp(context: TestContext) {
+  return setupAppWithRoutes({ context, routes: emailRoutes });
+}
 
 interface SvixHeaders {
   readonly "svix-id": string;
@@ -40,7 +48,7 @@ export function createEmailApi(context: TestContext) {
     statuses: readonly (200 | 401)[],
   ) {
     return await accept(
-      setupApp({ context })(zeroEmailInboundContract).post({
+      emailApp(context)(zeroEmailInboundContract).post({
         headers: resendSvixHeaders(JSON.stringify(event)),
         body: event,
       }),
@@ -94,7 +102,7 @@ export function createEmailApi(context: TestContext) {
 
     async drainEmailOutboxCron(validAuth: boolean) {
       return await accept(
-        setupApp({ context })(cronDrainEmailOutboxContract).drain({
+        emailApp(context)(cronDrainEmailOutboxContract).drain({
           headers: validAuth ? { authorization: CRON_AUTHORIZATION } : {},
         }),
         [200, 401],

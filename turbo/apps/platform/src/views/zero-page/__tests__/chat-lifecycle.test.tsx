@@ -32,6 +32,10 @@ import {
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
+  zeroWorkflowTriggersContract,
+  type ZeroWorkflowTriggerUpdateRequest,
+} from "@vm0/api-contracts/contracts/zero-workflows";
+import {
   createMockAutomationView,
   createMockWorkflowTrigger,
   setMockWorkflowTriggers,
@@ -61,6 +65,17 @@ const GITHUB_PR_THREAD_ID = "b0000000-0000-4000-a000-000000000702";
 const FOLLOWUP_THREAD_ID = "b0000000-0000-4000-a000-000000000704";
 const HISTORY_THREAD_ID = "b0000000-0000-4000-a000-000000000705";
 const AGENT_CHAT_PATH = `/agents/${AGENT_ID}/chat`;
+
+function computerUsePermissions() {
+  return {
+    accessibility: true,
+    screenRecording: true,
+    automation: {
+      chrome: { status: "unknown" as const, updatedAt: null, reason: null },
+      safari: { status: "unknown" as const, updatedAt: null, reason: null },
+    },
+  };
+}
 
 interface PushBrowserMock {
   readonly register: ReturnType<typeof vi.fn>;
@@ -388,6 +403,41 @@ function mockAutomationThread(): void {
   ]);
 }
 
+function mockWorkflowTriggerUpdate(
+  onUpdate: (triggerId: string, body: ZeroWorkflowTriggerUpdateRequest) => void,
+): void {
+  context.mocks.api(
+    zeroWorkflowTriggersContract.update,
+    ({ body, params, respond }) => {
+      onUpdate(params.id, body);
+      if ("schedule" in body) {
+        return respond(
+          200,
+          createMockWorkflowTrigger({
+            id: params.id,
+            chatThreadId: AUTOMATION_THREAD_ID,
+            kind: "schedule",
+            schedule: body.schedule,
+          }),
+        );
+      }
+      return respond(
+        200,
+        createMockWorkflowTrigger({
+          id: params.id,
+          chatThreadId: AUTOMATION_THREAD_ID,
+          kind: "event",
+          eventType:
+            body.eventConfig.event === "label_applied"
+              ? "gmail-label-applied"
+              : "gmail-new-message",
+          eventConfig: body.eventConfig,
+        }),
+      );
+    },
+  );
+}
+
 function mockServerQueuedThreadStories(): void {
   const threads = [
     {
@@ -697,14 +747,56 @@ function setupGithubPrTrackingPage(): void {
   });
 }
 
-function buttonByText(text: string): HTMLElement {
-  const button = queryAllByRoleFast("button").find((candidate) => {
+function buttonByText(text: string, container?: ParentNode): HTMLElement {
+  const button = queryAllByRoleFast("button", container).find((candidate) => {
     return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
   });
   if (!button) {
     throw new Error(`${text} button not found`);
   }
   return button;
+}
+
+function selectOptionByLabel(
+  label: string,
+  option: string | RegExp,
+  container: HTMLElement,
+): void {
+  const control =
+    within(container)
+      .getAllByLabelText(label)
+      .find((element) => {
+        return element.getAttribute("role") === "combobox";
+      }) ?? within(container).getByLabelText(label);
+  click(control);
+  click(screen.getByRole("option", { name: option }));
+}
+
+async function openAutomationSidebarWithWorkflowTrigger(
+  trigger: ReturnType<typeof createMockWorkflowTrigger>,
+): Promise<HTMLElement> {
+  mockAutomationThread();
+  setMockWorkflowTriggers([trigger]);
+  context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+    return respond(200, { runs: [] });
+  });
+
+  detachedSetupPage({
+    context,
+    path: `/chats/${AUTOMATION_THREAD_ID}`,
+  });
+
+  await waitFor(() => {
+    expect(buttonByLabel("Automations")).toBeInTheDocument();
+  });
+
+  click(buttonByLabel("Automations"));
+
+  await waitFor(() => {
+    expect(screen.getByTestId("automation-sidebar")).toBeInTheDocument();
+  });
+
+  return screen.getByTestId("automation-sidebar");
 }
 
 function buttonByLabel(label: string): HTMLElement {
@@ -749,6 +841,14 @@ function chatComposerTextarea(): HTMLTextAreaElement {
     throw new Error("Chat composer textarea not found");
   }
   return element;
+}
+
+function activeElementIsInside(element: HTMLElement): boolean {
+  return (
+    document.activeElement === element ||
+    (document.activeElement instanceof Node &&
+      element.contains(document.activeElement))
+  );
 }
 
 function setScrollMetrics(
@@ -2603,7 +2703,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
     });
 
     await waitFor(() => {
@@ -2647,7 +2746,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
     });
 
     await waitFor(() => {
@@ -2786,7 +2884,7 @@ describe("chat lifecycle", () => {
     );
   });
 
-  it("returns document focus to the main chat thread after rename", async () => {
+  it("keeps F2 rename available after renaming the current chat", async () => {
     const user = userEvent.setup({ delay: null });
     mockResizeObserver();
     mockKeyboardNavigationThreads();
@@ -2820,20 +2918,9 @@ describe("chat lifecycle", () => {
       ).not.toBeInTheDocument();
     });
 
-    const previousBodyTabIndex = document.body.getAttribute("tabindex");
-    try {
-      document.body.tabIndex = -1;
-      document.body.focus();
-      await waitFor(() => {
-        expect(document.activeElement).toBe(threadRegion);
-      });
-    } finally {
-      if (previousBodyTabIndex === null) {
-        document.body.removeAttribute("tabindex");
-      } else {
-        document.body.setAttribute("tabindex", previousBodyTabIndex);
-      }
-    }
+    await waitFor(() => {
+      expect(activeElementIsInside(threadRegion)).toBeTruthy();
+    });
 
     await user.keyboard("{F2}");
 
@@ -2843,6 +2930,60 @@ describe("chat lifecycle", () => {
     expect(
       within(reopenedDialog).getByPlaceholderText("Chat title"),
     ).toHaveValue("Current keyboard thread");
+  });
+
+  it("keeps F2 rename available after creating a chat from the agent composer", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockResizeObserver();
+    mockChatLifecycle(context);
+
+    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Name this thread from F2");
+
+    await waitFor(() => {
+      expect(screen.getByText("Name this thread from F2")).toBeInTheDocument();
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    expect(activeElementIsInside(threadRegion)).toBeTruthy();
+
+    await user.keyboard("{F2}");
+
+    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue("");
+  });
+
+  it("renames the main chat with F2 when a side chat is focused", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread?sidebar=keyboard-next-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
+    });
+
+    const threadRegions = screen.getAllByLabelText("Chat thread");
+    expect(threadRegions).toHaveLength(2);
+    threadRegions[1]?.focus();
+
+    await user.keyboard("{F2}");
+
+    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
+      "Current keyboard thread",
+    );
   });
 
   it("opens run logs from assistant message actions", async () => {
@@ -2943,7 +3084,9 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Scheduled launch review").length,
+      ).toBeGreaterThan(0);
       expect(buttonByLabel("Automations")).toBeInTheDocument();
     });
 
@@ -3015,7 +3158,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("lists workflow triggers in the sidebar", async () => {
+  it("lists workflow automations in the sidebar", async () => {
     mockAutomationThread();
     setMockWorkflowTriggers([
       createMockWorkflowTrigger({
@@ -3023,7 +3166,6 @@ describe("chat lifecycle", () => {
         chatThreadId: AUTOMATION_THREAD_ID,
         kind: "schedule",
         scheduleSummary: "Every 60s",
-        eventType: null,
         workflow: {
           id: "a0000001-0000-4000-a000-000000000002",
           name: "nightly-sync",
@@ -3052,11 +3194,170 @@ describe("chat lifecycle", () => {
     });
 
     const sidebar = screen.getByTestId("automation-sidebar");
-    // The workflow trigger card shows its name and description.
     expect(within(sidebar).getByText("Nightly sync")).toBeInTheDocument();
+    expect(within(sidebar).getByText("View")).toBeInTheDocument();
+    expect(within(sidebar).getAllByText("Schedule").length).toBeGreaterThan(0);
+    expect(within(sidebar).getByText("Every 1 minute")).toBeInTheDocument();
+    expect(within(sidebar).getByText("Last run")).toBeInTheDocument();
+    expect(within(sidebar).getByText("No runs yet")).toBeInTheDocument();
+    expect(within(sidebar).getAllByText("Next run").length).toBeGreaterThan(0);
     expect(
-      within(sidebar).getByText("Sync the changelog every night"),
-    ).toBeInTheDocument();
+      within(sidebar).getAllByText("No upcoming run").length,
+    ).toBeGreaterThan(0);
+    expect(
+      within(sidebar).queryByText("Authorization"),
+    ).not.toBeInTheDocument();
+
+    click(within(sidebar).getAllByText("Edit").at(-1)!);
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Edit automation" }),
+      ).toBeInTheDocument();
+    });
+    const editDialog = screen.getByRole("dialog", {
+      name: "Edit automation",
+    });
+    expect(
+      within(editDialog).getByRole("combobox", { name: "Every" }),
+    ).toHaveTextContent("1 minute");
+    expect(
+      within(editDialog).queryByLabelText("Interval seconds"),
+    ).not.toBeInTheDocument();
+  });
+
+  it("updates a schedule workflow automation from the sidebar", async () => {
+    const updateBodies: {
+      readonly triggerId: string;
+      readonly body: ZeroWorkflowTriggerUpdateRequest;
+    }[] = [];
+    const sidebar = await openAutomationSidebarWithWorkflowTrigger(
+      createMockWorkflowTrigger({
+        id: "e0000001-0000-4000-a000-000000000003",
+        chatThreadId: AUTOMATION_THREAD_ID,
+        kind: "schedule",
+        schedule: { type: "loop", intervalSeconds: 3600 },
+        scheduleSummary: "Every 3600s",
+      }),
+    );
+    mockWorkflowTriggerUpdate((triggerId, body) => {
+      updateBodies.push({ triggerId, body });
+    });
+
+    click(within(sidebar).getAllByText("Edit").at(-1)!);
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Edit automation",
+    });
+    selectOptionByLabel("Every", "30 minutes", dialog);
+    click(buttonByText("Save automation", dialog));
+
+    await waitFor(() => {
+      expect(updateBodies.at(-1)).toStrictEqual({
+        triggerId: "e0000001-0000-4000-a000-000000000003",
+        body: {
+          schedule: {
+            type: "loop",
+            intervalSeconds: 1800,
+          },
+        },
+      });
+    });
+  });
+
+  it("updates a Gmail workflow automation match from the sidebar", async () => {
+    const updateBodies: {
+      readonly triggerId: string;
+      readonly body: ZeroWorkflowTriggerUpdateRequest;
+    }[] = [];
+    const sidebar = await openAutomationSidebarWithWorkflowTrigger(
+      createMockWorkflowTrigger({
+        id: "e0000001-0000-4000-a000-000000000004",
+        chatThreadId: AUTOMATION_THREAD_ID,
+        kind: "event",
+        eventType: "gmail-new-message",
+        eventConfig: {
+          provider: "gmail",
+          event: "new_message",
+          match: {
+            subject: { doesNotContain: "newsletter" },
+          },
+        },
+      }),
+    );
+    mockWorkflowTriggerUpdate((triggerId, body) => {
+      updateBodies.push({ triggerId, body });
+    });
+
+    click(within(sidebar).getAllByText("Edit").at(-1)!);
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Edit automation",
+    });
+    await fill(within(dialog).getByLabelText("From contains"), "@acme.com");
+    await fill(within(dialog).getByLabelText("Body contains"), "invoice");
+    click(buttonByText("Save automation", dialog));
+
+    await waitFor(() => {
+      expect(updateBodies.at(-1)).toStrictEqual({
+        triggerId: "e0000001-0000-4000-a000-000000000004",
+        body: {
+          eventConfig: {
+            provider: "gmail",
+            event: "new_message",
+            match: {
+              from: { contains: "@acme.com" },
+              subject: { doesNotContain: "newsletter" },
+              body: { contains: "invoice" },
+            },
+          },
+        },
+      });
+    });
+  });
+
+  it("updates a Gmail label workflow automation from the sidebar", async () => {
+    const updateBodies: {
+      readonly triggerId: string;
+      readonly body: ZeroWorkflowTriggerUpdateRequest;
+    }[] = [];
+    const sidebar = await openAutomationSidebarWithWorkflowTrigger(
+      createMockWorkflowTrigger({
+        id: "e0000001-0000-4000-a000-000000000005",
+        chatThreadId: AUTOMATION_THREAD_ID,
+        kind: "event",
+        eventType: "gmail-label-applied",
+        eventConfig: {
+          provider: "gmail",
+          event: "label_applied",
+          labelName: "Support",
+        },
+      }),
+    );
+    mockWorkflowTriggerUpdate((triggerId, body) => {
+      updateBodies.push({ triggerId, body });
+    });
+
+    click(within(sidebar).getAllByText("Edit").at(-1)!);
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Edit automation",
+    });
+    await fill(within(dialog).getByLabelText("Label name"), "Escalated");
+    click(buttonByText("Save automation", dialog));
+
+    await waitFor(() => {
+      expect(updateBodies.at(-1)).toStrictEqual({
+        triggerId: "e0000001-0000-4000-a000-000000000005",
+        body: {
+          eventConfig: {
+            provider: "gmail",
+            event: "label_applied",
+            labelName: "Escalated",
+          },
+        },
+      });
+    });
   });
 
   it("folds goal-state markers into the goal row beneath the queued messages", async () => {
@@ -3143,6 +3444,67 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(pausedGoalThreadId).toBe(threadId);
     });
+  });
+
+  it("opens an active goal objective dialog from the goal row", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "thread-goal-dialog";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-goal-dialog-user",
+          role: "user",
+          content: "Start the active run",
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-goal-dialog-assistant",
+          role: "assistant",
+          content: null,
+          runId: "run-active",
+          createdAt: "2026-06-09T10:00:01Z",
+        },
+        {
+          id: "msg-goal-dialog-active",
+          runId: undefined,
+          role: "assistant",
+          content: null,
+          goalEvent: {
+            type: "state",
+            status: "active",
+            objectiveBrief: "Release brief",
+          },
+          createdAt: "2026-06-09T10:00:02Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+    let requestedThreadId: string | null = null;
+    context.mocks.api(
+      zeroGoalsContract.getForChatThread,
+      ({ params, respond }) => {
+        requestedThreadId = params.threadId;
+        return respond(200, {
+          objective: "# Full goal\n\n- Keep **shipping**\n- Review `objective`",
+          objectiveBrief: "Release brief",
+          status: "active",
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const goalRow = await screen.findByLabelText("Active goal");
+    await user.click(within(goalRow).getByLabelText("Open goal details"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Goal" });
+    expect(requestedThreadId).toBe(threadId);
+    expect(
+      within(dialog).getByRole("heading", { name: "Full goal" }),
+    ).toBeInTheDocument();
+    expect(dialog.querySelector(".wmde-markdown")).not.toBeNull();
   });
 
   it("hides the goal row once a completion marker folds in", async () => {
@@ -3352,7 +3714,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
     });
 
     await waitFor(() => {
@@ -3452,12 +3813,11 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
     });
 
     await waitFor(() => {
       expect(screen.getByText("Latest goal result")).toBeInTheDocument();
-      expect(screen.getByLabelText("Goal prompt")).toBeInTheDocument();
+      expect(screen.getByLabelText("Goal")).toBeInTheDocument();
       expect(screen.getByText(goalPrompt)).toBeInTheDocument();
       expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
         "3 mins for Keep the release moving",
@@ -3555,18 +3915,70 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: { [FeatureSwitchKey.ChatRunGroupFolding]: true },
     });
 
     await waitFor(() => {
       expect(screen.getByText("Latest workflow result")).toBeInTheDocument();
-      expect(screen.queryByLabelText("Goal prompt")).not.toBeInTheDocument();
+      expect(screen.queryByLabelText("Goal")).not.toBeInTheDocument();
       expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
         "1 run for Daily workflow summary",
       );
       expect(
         screen.queryByText("First workflow result"),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("renders workflow trigger user messages with the workflow title and brief", async () => {
+    const threadId = "thread-workflow-user-message-marker";
+    const workflowPrompt = "/daily-workflow";
+
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Workflow user message marker",
+      chatMessages: [
+        {
+          id: "msg-workflow-marker-user",
+          role: "user",
+          content: workflowPrompt,
+          runId: "f0000001-0000-4000-a000-00000000083c",
+          triggerSource: "workflow-event",
+          workflowSnapshot: {
+            id: "f0000001-0000-4000-a000-000000000831",
+            agentId: "c0000000-0000-4000-a000-000000000001",
+            name: "daily-workflow",
+            displayName: "Daily workflow",
+            description: "Daily workflow summary",
+            triggerId: "f0000001-0000-4000-a000-000000000832",
+            triggerBrief: "Gmail label applied",
+          },
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-workflow-marker-assistant",
+          role: "assistant",
+          content: "Workflow result",
+          runId: "f0000001-0000-4000-a000-00000000083c",
+          triggerSource: "workflow-event",
+          createdAt: "2026-06-09T10:00:30Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Workflow Daily workflow"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Gmail label applied")).toBeInTheDocument();
+      expect(
+        screen.queryByText("Daily workflow · Gmail label applied"),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText(workflowPrompt)).not.toBeInTheDocument();
     });
   });
 
@@ -3624,10 +4036,6 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: true,
-        [FeatureSwitchKey.VideoTemplatePicker]: true,
-      },
     });
 
     await waitFor(() => {
@@ -3643,7 +4051,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("hides historical template labels behind picker feature switches", async () => {
+  it("shows historical template labels after picker rollout", async () => {
     const threadId = "template-message-history-gated";
     const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
     const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
@@ -3685,23 +4093,16 @@ describe("chat lifecycle", () => {
     detachedSetupPage({
       context,
       path: `/chats/${threadId}`,
-      featureSwitches: {
-        [FeatureSwitchKey.ChatTemplatePicker]: false,
-      },
     });
 
     await waitFor(() => {
       expect(screen.getByText("Create the business review deck")).toBeVisible();
       expect(
-        screen.queryByLabelText(
-          `Message template ${presentationTemplate.title}`,
-        ),
-      ).not.toBeInTheDocument();
+        screen.getByLabelText(`Message template ${presentationTemplate.title}`),
+      ).toHaveTextContent("Presentation");
       expect(
-        screen.queryByLabelText(
-          `Message template ${illustrationTemplate.title}`,
-        ),
-      ).not.toBeInTheDocument();
+        screen.getByLabelText(`Message template ${illustrationTemplate.title}`),
+      ).toHaveTextContent("Illustration");
     });
   });
 
@@ -4161,39 +4562,52 @@ describe("chat lifecycle", () => {
   it("shows online computers in the chat composer", async () => {
     const user = userEvent.setup({ delay: null });
     const threadId = "computer-use-selection";
-    mockChatLifecycle(context, { threadId });
+    const lifecycle = mockChatLifecycle(context, {
+      threadId,
+      computerUseHostId: "22222222-2222-4222-8222-222222222222",
+    });
+    lifecycle.setThreadList([
+      {
+        id: threadId,
+        title: null,
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        running: false,
+      },
+    ]);
     context.mocks.api(zeroComputerUseHostsContract.list, ({ respond }) => {
       return respond(200, {
         hosts: [
           {
-            id: "host-online",
+            id: "11111111-1111-4111-8111-111111111111",
             displayName: "Studio Mac",
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
             supportedCapabilities: ["app.open"],
-            permissions: { accessibility: true, screenRecording: true },
+            permissions: computerUsePermissions(),
             status: "online",
             lastSeenAt: "2026-06-10T12:00:00Z",
             createdAt: "2026-06-10T11:00:00Z",
           },
           {
-            id: "host-online-2",
+            id: "22222222-2222-4222-8222-222222222222",
             displayName: "Office Mac",
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
             supportedCapabilities: ["app.open"],
-            permissions: { accessibility: true, screenRecording: true },
+            permissions: computerUsePermissions(),
             status: "online",
             lastSeenAt: "2026-06-10T12:01:00Z",
             createdAt: "2026-06-10T11:01:00Z",
           },
           {
-            id: "host-offline",
+            id: "33333333-3333-4333-8333-333333333333",
             displayName: "Offline Desktop",
             appVersion: "1.0.0",
             osVersion: "Windows 11",
             supportedCapabilities: ["app.open"],
-            permissions: { accessibility: true, screenRecording: true },
+            permissions: computerUsePermissions(),
             status: "offline",
             lastSeenAt: "2026-06-09T12:00:00Z",
             createdAt: "2026-06-09T11:00:00Z",
@@ -4218,9 +4632,20 @@ describe("chat lifecycle", () => {
         screen.getByRole("switch", { name: "Connect Studio Mac" }),
       ).toHaveAttribute("aria-checked", "false");
       expect(
-        screen.getByRole("switch", { name: "Connect Office Mac" }),
-      ).toHaveAttribute("aria-checked", "false");
+        screen.getByRole("switch", { name: "Disconnect Office Mac" }),
+      ).toHaveAttribute("aria-checked", "true");
     });
+
+    const hostsGroup = screen.getByRole("group", {
+      name: "Computer Use hosts",
+    });
+    expect(
+      within(hostsGroup)
+        .getAllByRole("switch")
+        .map((item) => {
+          return item.getAttribute("aria-label");
+        }),
+    ).toStrictEqual(["Connect Studio Mac", "Disconnect Office Mac"]);
   });
 
   it("opens the Computer Use download dialog from the chat composer", async () => {
@@ -4273,7 +4698,7 @@ describe("chat lifecycle", () => {
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
             supportedCapabilities: ["app.open"],
-            permissions: { accessibility: true, screenRecording: true },
+            permissions: computerUsePermissions(),
             status: "online",
             lastSeenAt: "2026-06-10T12:00:00Z",
             createdAt: "2026-06-10T11:00:00Z",
@@ -4321,7 +4746,7 @@ describe("chat lifecycle", () => {
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
             supportedCapabilities: ["app.open"],
-            permissions: { accessibility: true, screenRecording: true },
+            permissions: computerUsePermissions(),
             status: hostOnline ? "online" : "offline",
             lastSeenAt: "2026-06-10T12:00:00Z",
             createdAt: "2026-06-10T11:00:00Z",
@@ -4394,7 +4819,7 @@ describe("chat lifecycle", () => {
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
             supportedCapabilities: ["app.open"],
-            permissions: { accessibility: true, screenRecording: true },
+            permissions: computerUsePermissions(),
             status: "online",
             lastSeenAt: "2026-06-10T12:00:00Z",
             createdAt: "2026-06-10T11:00:00Z",
@@ -4409,9 +4834,10 @@ describe("chat lifecycle", () => {
     });
 
     await user.click(await screen.findByLabelText("Connectors"));
-    await user.click(
-      await screen.findByRole("switch", { name: "Connect Studio Mac" }),
-    );
+    const hostsGroup = await screen.findByRole("group", {
+      name: "Computer Use hosts",
+    });
+    await user.click(within(hostsGroup).getByText("Studio Mac"));
     await waitFor(() => {
       expect(updatedComputerUseHostId).toBe(hostId);
     });
@@ -4471,7 +4897,7 @@ describe("chat lifecycle", () => {
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
             supportedCapabilities: ["app.open"],
-            permissions: { accessibility: true, screenRecording: true },
+            permissions: computerUsePermissions(),
             status: "online",
             lastSeenAt: "2026-06-10T12:00:00Z",
             createdAt: "2026-06-10T11:00:00Z",
@@ -4525,7 +4951,7 @@ describe("chat lifecycle", () => {
             appVersion: "1.0.0",
             osVersion: "macOS 15.0",
             supportedCapabilities: ["app.open"],
-            permissions: { accessibility: true, screenRecording: true },
+            permissions: computerUsePermissions(),
             status: "offline",
             lastSeenAt: "2026-06-10T12:00:00Z",
             createdAt: "2026-06-10T11:00:00Z",

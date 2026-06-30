@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Kommo firewall config...");
   const ts = generateTypeScript();
-  writeOutput("kommo", ts, import.meta.dirname);
+  writeOutput("kommo", ts);
 }

@@ -6,7 +6,7 @@ import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { and, eq } from "drizzle-orm";
 import { describe, expect, it } from "vitest";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { writeDb$ } from "../../external/db";
 import {
   createAuthOrgAgentsBddApi,
@@ -194,7 +194,10 @@ describe("AUTH-01, ORG-03, AGENT-02, CHAIN-AGENT", () => {
     expectApiError(forgedLimitedFree.body);
     expect(forgedLimitedFree.body.error.code).toBe("BAD_REQUEST");
 
-    const completeLimitedFree = await api.completeLimitedFreeOnboarding(admin);
+    const completeLimitedFree = await api.completeLimitedFreeOnboarding(admin, {
+      credits: 1000,
+      expiresAt: null,
+    });
     expect(completeLimitedFree.status).toBe(200);
     expect(completeLimitedFree.body).toStrictEqual({
       agentId: defaultAgentId,
@@ -990,34 +993,12 @@ describe("COMPOSE-01", () => {
     const zeroByName = await api.readZeroComposeByName(admin, composeName);
     expect(zeroByName.id).toBe(created.composeId);
 
-    const listed = await api.listComposes(admin);
-    expect(
-      listed.some((compose) => {
-        return compose.id === created.composeId;
-      }),
-    ).toBeTruthy();
     const zeroListed = await api.listZeroComposes(admin);
     expect(
       zeroListed.some((compose) => {
         return compose.id === created.composeId;
       }),
     ).toBeTruthy();
-
-    await api.updateComposeMetadata(admin, created.composeId, {
-      displayName: "BDD Compose",
-      description: "Metadata through agent compose API",
-      sound: "focus",
-    });
-    const listedAfterMetadata = await api.listComposes(admin);
-    expect(
-      listedAfterMetadata.find((compose) => {
-        return compose.id === created.composeId;
-      }),
-    ).toMatchObject({
-      displayName: "BDD Compose",
-      description: "Metadata through agent compose API",
-      sound: "focus",
-    });
 
     await api.updateZeroComposeMetadata(admin, created.composeId, {
       displayName: "BDD Compose Zero",

@@ -5,6 +5,7 @@ import {
   useLastLoadable,
   useLoadable,
 } from "ccstate-react";
+import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconPlus,
   IconChevronRight,
@@ -15,6 +16,7 @@ import {
   IconPin,
   IconPinnedOff,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ChatThreadListItem } from "@vm0/api-contracts/contracts/chat-threads";
 import { useChatThreadsTitleLabels } from "./zero-sidebar-shared.tsx";
 import {
@@ -30,6 +32,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@vm0/ui";
+import { Switch } from "@vm0/ui/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -73,10 +76,9 @@ import {
   sidebarChatThreadsExtraHasMore$,
   sidebarChatThreadsHasLoadedExtraPages$,
   sidebarChatThreadsLatestCursor$,
-  sidebarChatThreadsLoadMoreError$,
-  sidebarChatThreadsLoadingMore$,
 } from "../../signals/chat-page/sidebar-chat-threads-pagination.ts";
 import { pathParams$, searchParams$ } from "../../signals/route.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { setSidebarExpanded$ } from "../../signals/zero-page/zero-nav.ts";
 import {
   headerAutomationMenu$,
@@ -85,6 +87,10 @@ import {
 } from "../../signals/chat-page/header-automation-menu.ts";
 import { sidebarDraftThreadIds$ } from "../../signals/chat-page/sidebar-draft-threads.ts";
 import { sidebarUnreadThreadIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
+import {
+  chatThreadOnlyUnread$,
+  setChatThreadOnlyUnread$,
+} from "../../signals/chat-page/chat-thread-only-unread.ts";
 import {
   openRenameChatThreadDialog$,
   pendingDeleteThreadId$,
@@ -561,6 +567,33 @@ function ChatThreadRenameDialog() {
   const renameChatThread = useSet(renameChatThread$);
   const pageSignal = useGet(pageSignal$);
 
+  function chatThreadContainer(threadId: string) {
+    return (
+      Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "[data-chat-thread-container-id]",
+        ),
+      ).find((candidate) => {
+        return candidate.dataset.chatThreadContainerId === threadId;
+      }) ?? null
+    );
+  }
+
+  function focusChatThreadContainer(threadId: string) {
+    chatThreadContainer(threadId)?.focus({ preventScroll: true });
+  }
+
+  function closeRenameDialog() {
+    const threadId = renameDialogThreadId;
+    setRenameDialogThreadId(null);
+    setRenameDialogInput("");
+    if (threadId) {
+      queueMicrotask(() => {
+        focusChatThreadContainer(threadId);
+      });
+    }
+  }
+
   function handleRename() {
     if (!renameDialogThreadId || !renameDialogInput.trim()) {
       return;
@@ -572,8 +605,7 @@ function ChatThreadRenameDialog() {
       ),
       Reason.DomCallback,
     );
-    setRenameDialogThreadId(null);
-    setRenameDialogInput("");
+    closeRenameDialog();
   }
 
   return (
@@ -581,12 +613,21 @@ function ChatThreadRenameDialog() {
       open={renameDialogThreadId !== null}
       onOpenChange={(open) => {
         if (!open) {
-          setRenameDialogThreadId(null);
-          setRenameDialogInput("");
+          closeRenameDialog();
         }
       }}
     >
-      <DialogContent>
+      <DialogContent
+        onCloseAutoFocus={(event) => {
+          const threadContainer = renameDialogThreadId
+            ? chatThreadContainer(renameDialogThreadId)
+            : null;
+          if (threadContainer) {
+            event.preventDefault();
+            threadContainer.focus({ preventScroll: true });
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Rename chat</DialogTitle>
           <DialogDescription>
@@ -613,8 +654,7 @@ function ChatThreadRenameDialog() {
           <Button
             variant="outline"
             onClick={() => {
-              setRenameDialogThreadId(null);
-              setRenameDialogInput("");
+              closeRenameDialog();
             }}
           >
             Cancel
@@ -630,30 +670,21 @@ function ChatThreadRenameDialog() {
 
 function LoadMoreThreadsButton({
   loadingMore,
-  loadMoreError,
   onLoadMore,
 }: {
   loadingMore: boolean;
-  loadMoreError: string | null;
   onLoadMore: () => void;
 }) {
   return (
-    <div className="flex flex-col gap-1">
-      <button
-        type="button"
-        onClick={onLoadMore}
-        disabled={loadingMore}
-        className="flex h-8 items-center justify-center rounded-lg px-2 text-[13px] leading-5 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors disabled:pointer-events-none disabled:opacity-50"
-        data-testid="sidebar-chat-threads-load-more"
-      >
-        {loadingMore ? "Loading…" : "Load more"}
-      </button>
-      {loadMoreError && (
-        <p className="px-2 text-xs leading-5 text-destructive">
-          {loadMoreError}
-        </p>
-      )}
-    </div>
+    <button
+      type="button"
+      onClick={onLoadMore}
+      disabled={loadingMore}
+      className="flex h-8 items-center justify-center rounded-lg px-2 text-[13px] leading-5 text-sidebar-foreground/70 hover:bg-sidebar-accent hover:text-sidebar-foreground transition-colors disabled:pointer-events-none disabled:opacity-50"
+      data-testid="sidebar-chat-threads-load-more"
+    >
+      {loadingMore ? "Loading…" : "Load more"}
+    </button>
   );
 }
 
@@ -761,6 +792,7 @@ function ChatThreads() {
   const pageSignal = useGet(pageSignal$);
 
   const chatThreads = useLastResolved(sidebarChatThreads$) ?? [];
+  const unreadOnly = useGet(chatThreadOnlyUnread$);
   const firstPageHasMore = useLastResolved(chatThreadsHasMore$) ?? false;
   const firstPageNextCursor = useLastResolved(chatThreadsNextCursor$);
   const hasLoadedExtraPages =
@@ -768,10 +800,10 @@ function ChatThreads() {
   const extraHasMore =
     useLastResolved(sidebarChatThreadsExtraHasMore$) ?? false;
   const extraLatestCursor = useLastResolved(sidebarChatThreadsLatestCursor$);
-  const loadingMore = useLastResolved(sidebarChatThreadsLoadingMore$) ?? false;
-  const loadMoreError =
-    useLastResolved(sidebarChatThreadsLoadMoreError$) ?? null;
-  const loadMore = useSet(loadMoreSidebarChatThreads$);
+  const [loadMoreLoadable, loadMore] = useLoadableSet(
+    loadMoreSidebarChatThreads$,
+  );
+  const loadingMore = loadMoreLoadable.state === "loading";
   const hasMore = hasLoadedExtraPages ? extraHasMore : firstPageHasMore;
   const cursorForLoadMore = hasLoadedExtraPages
     ? extraLatestCursor
@@ -786,9 +818,15 @@ function ChatThreads() {
 
   if (chatThreads.length === 0) {
     return (
-      <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
-        Start a conversation and it&apos;ll show up here
-      </p>
+      <>
+        <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
+          {unreadOnly
+            ? "No unread chats"
+            : "Start a conversation and it'll show up here"}
+        </p>
+        <ChatThreadRenameDialog />
+        <DeleteChatThreadDialog />
+      </>
     );
   }
   return (
@@ -799,7 +837,6 @@ function ChatThreads() {
       {hasMore && cursorForLoadMore && (
         <LoadMoreThreadsButton
           loadingMore={loadingMore}
-          loadMoreError={loadMoreError}
           onLoadMore={handleLoadMore}
         />
       )}
@@ -814,7 +851,7 @@ function ChatThreadsTitle() {
   const createNewChat = useSet(createNewChatThreadOptimistically$);
   const setExpanded = useSet(setSidebarExpanded$);
   const rootSignal = useGet(rootSignal$);
-  const { titleLabel, newChatAriaLabel } = useChatThreadsTitleLabels();
+  const { titleLabel } = useChatThreadsTitleLabels();
   const newChatDisabled = useGet(optimisticChatThread$) !== null;
   const onNewChat = (pane: OptimisticChatPane) => {
     if (!currentChatAgentId) {
@@ -828,6 +865,18 @@ function ChatThreadsTitle() {
   };
   const setCollapsed = useSet(setSessionListCollapsed$);
   const collapsed = useGet(sessionListCollapsed$);
+  const features = useGet(featureSwitch$);
+  const unreadFilterEnabled =
+    features[FeatureSwitchKey.AgentUnreadIndicators] ?? false;
+  const unreadOnly = useGet(chatThreadOnlyUnread$);
+  const setUnreadOnly = useSet(setChatThreadOnlyUnread$);
+
+  function toggleUnreadOnly(next: boolean) {
+    setUnreadOnly(next);
+    if (next) {
+      setCollapsed(false);
+    }
+  }
 
   return (
     <div
@@ -848,25 +897,56 @@ function ChatThreadsTitle() {
       </span>
       <div className="flex items-center gap-0.5">
         <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onNewChat(e.altKey ? "sidebar" : "main");
+                }}
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
+                aria-label="Open chat list menu"
+              >
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <IconDots size={16} stroke={2} />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">More</p>
+                  </TooltipContent>
+                </Tooltip>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-44"
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
+            >
+              <DropdownMenuItem
+                onSelect={() => {
+                  onNewChat("main");
                 }}
                 disabled={!currentChatAgentId || newChatDisabled}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors disabled:opacity-50"
-                aria-label={newChatAriaLabel}
               >
-                <IconPlus size={15} stroke={2.5} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">New chat</p>
-            </TooltipContent>
-          </Tooltip>
+                <IconPlus size={16} stroke={2} className="mr-2" />
+                New chat
+              </DropdownMenuItem>
+              {unreadFilterEnabled && (
+                <div className="flex h-9 items-center justify-between gap-3 px-2 text-sm text-popover-foreground">
+                  <span>Unread</span>
+                  <Switch
+                    checked={unreadOnly}
+                    onCheckedChange={toggleUnreadOnly}
+                    aria-label="Unread"
+                  />
+                </div>
+              )}
+            </DropdownMenuContent>
+          </DropdownMenu>
         </TooltipProvider>
       </div>
     </div>

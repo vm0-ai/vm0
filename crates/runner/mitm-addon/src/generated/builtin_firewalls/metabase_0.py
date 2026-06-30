@@ -12,6 +12,9 @@ JSON_PART = r"""{
         }
       },
       "base": "${{ vars.METABASE_BASE_URL }}",
+      "hostPolicy": {
+        "kind": "publicDestination"
+      },
       "permissions": []
     }
   ],

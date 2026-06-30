@@ -1,7 +1,7 @@
 /**
  * Contract-driven MSW helper.
  *
- * Wraps an MSW handler around a ts-rest contract route so that the path,
+ * Wraps an MSW handler around a typed contract route so that the path,
  * method, path params, query params, request body, and response shape are
  * all derived from the contract itself. Returning a body that doesn't match
  * the contract's declared response schema for the given status becomes a
@@ -18,7 +18,7 @@ import type {
   ServerInferRequest,
   ServerInferResponseBody,
   ServerInferResponses,
-} from "@ts-rest/core";
+} from "@vm0/api-contracts/contracts/trpc-contract";
 import { http, HttpResponse, type HttpHandler, type PathParams } from "msw";
 import { createDeferredPromise } from "../signals/utils.ts";
 

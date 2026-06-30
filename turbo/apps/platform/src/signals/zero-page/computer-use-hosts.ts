@@ -73,15 +73,9 @@ export function visibleComputerUseHosts<Host extends SelectableComputerUseHost>(
   selectedHostId: string | null | undefined,
 ): Host[] {
   const selected = selectedComputerUseHostId(hosts, selectedHostId);
-  const selectedHost = selected
-    ? hosts.find((host) => {
-        return host.id === selected;
-      })
-    : undefined;
-  const onlineHosts = hosts.filter((host) => {
-    return host.status === "online" && host.id !== selected;
+  return hosts.filter((host) => {
+    return host.status === "online" || host.id === selected;
   });
-  return selectedHost ? [selectedHost, ...onlineHosts] : onlineHosts;
 }
 
 export const computerUseHosts$ = computed(
@@ -89,9 +83,7 @@ export const computerUseHosts$ = computed(
     get(computerUseHostsReload$);
 
     const client = get(zeroClient$)(zeroComputerUseHostsContract);
-    const result = await accept(client.list({}), [200, 403], {
-      toast: false,
-    });
+    const result = await accept(client.list({}), [200, 403]);
     if (result.status !== 200) {
       return [];
     }

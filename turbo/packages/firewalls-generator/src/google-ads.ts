@@ -32,6 +32,15 @@ function generateTypeScript(): string {
     "      },",
     "      permissions: [],",
     "    },",
+    "    {",
+    '      base: "https://datamanager.googleapis.com",',
+    "      auth: {",
+    "        headers: {",
+    '          Authorization: "Bearer ${{ secrets.GOOGLE_ADS_TOKEN }}",',
+    "        },",
+    "      },",
+    "      permissions: [],",
+    "    },",
     "  ],",
     "} as const satisfies FirewallConfig;",
     "",
@@ -42,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Google Ads firewall config...");
   const ts = generateTypeScript();
-  writeOutput("google-ads", ts, import.meta.dirname);
+  writeOutput("google-ads", ts);
 }

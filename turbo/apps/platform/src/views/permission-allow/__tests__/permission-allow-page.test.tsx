@@ -9,6 +9,7 @@ import { UNKNOWN_PERMISSION_GRANT } from "@vm0/connectors/firewall-types";
 import { describe, expect, it } from "vitest";
 
 import { detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import { isoFromNowMs, mockNow } from "../../../__tests__/time.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -176,7 +177,8 @@ describe("permission allow page", () => {
     expect(screen.queryByText(/Expires in/u)).not.toBeInTheDocument();
   });
 
-  it("shows the completed state when the requested grant already applies", async () => {
+  it("shows already allowed when the permission is already granted with a different expiry", async () => {
+    mockNow();
     const agentId = "c0000000-0000-4000-a000-000000000003";
 
     context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
@@ -199,6 +201,57 @@ describe("permission allow page", () => {
           connectorRef: "slack",
           permission: "admin.analytics:read",
           action: "allow",
+          expiresAt: isoFromNowMs(7 * 24 * 60 * 60 * 1000),
+          createdAt: "2026-03-10T00:00:00Z",
+          updatedAt: "2026-03-10T00:01:00Z",
+        },
+      ]);
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      user: {
+        id: "test-user-123",
+        fullName: "Taylor Reviewer",
+        firstName: "Taylor",
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Already allowed")).toBeInTheDocument();
+      expect(
+        screen.queryByText(/Hey Taylor, you're updating your permissions/u),
+      ).not.toBeInTheDocument();
+      expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
+    });
+    expect(screen.getByText("Expires in 7 days")).toBeInTheDocument();
+    expect(screen.queryByText("Duration")).not.toBeInTheDocument();
+  });
+
+  it("shows already denied when the permission is already denied", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000006";
+
+    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        agentId,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: "Review Bot",
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, [
+        {
+          agentId,
+          connectorRef: "slack",
+          permission: "admin.analytics:read",
+          action: "deny",
           expiresAt: null,
           createdAt: "2026-03-10T00:00:00Z",
           updatedAt: "2026-03-10T00:01:00Z",
@@ -208,22 +261,23 @@ describe("permission allow page", () => {
 
     detachedSetupPage({
       context,
-      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=always`,
+      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=deny`,
       user: {
         id: "test-user-123",
-        fullName: "Taylor Reviewer",
-        firstName: "Taylor",
+        fullName: "Jordan Reviewer",
+        firstName: "Jordan",
       },
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+      expect(screen.getByText("Already denied")).toBeInTheDocument();
       expect(
-        screen.queryByText(/Hey Taylor, you're updating your permissions/u),
+        screen.queryByText(/Hey Jordan, you're updating your permissions/u),
       ).not.toBeInTheDocument();
       expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
     });
     expect(screen.queryByText(/Expires in/u)).not.toBeInTheDocument();
+    expect(screen.queryByText("Duration")).not.toBeInTheDocument();
   });
 
   it("lets a user grant unknown endpoints to an agent", async () => {
@@ -345,11 +399,117 @@ describe("permission allow page", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Permissions updated")).toBeInTheDocument();
+      expect(screen.getByText("Already allowed")).toBeInTheDocument();
       expect(
         screen.queryByText(/Hey Riley, you're updating your permissions/u),
       ).not.toBeInTheDocument();
       expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
     });
+  });
+
+  it("shows a load error without a confirm action", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000007";
+
+    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        agentId,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: "Load Error Bot",
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(403, {
+        error: {
+          code: "FORBIDDEN",
+          message: "Forbidden",
+        },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      user: {
+        id: "test-user-123",
+        fullName: "Avery Reviewer",
+        firstName: "Avery",
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Failed to load permission grants"),
+      ).toBeInTheDocument();
+    });
+    expect(screen.queryByText("Confirm")).not.toBeInTheDocument();
+  });
+
+  it("keeps the permission form visible after a save failure", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000008";
+
+    context.mocks.api(zeroAgentsByIdContract.get, ({ respond }) => {
+      return respond(200, {
+        agentId,
+        ownerId: "test-user-123",
+        description: null,
+        displayName: "Save Error Bot",
+        sound: null,
+        avatarUrl: null,
+        modelProviderId: null,
+        selectedModel: null,
+        preferPersonalProvider: false,
+      });
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.apply, ({ respond }) => {
+      return respond(403, {
+        error: {
+          code: "FORBIDDEN",
+          message: "Forbidden",
+        },
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${agentId}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`,
+      user: {
+        id: "test-user-123",
+        fullName: "Quinn Reviewer",
+        firstName: "Quinn",
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(
+          "Hey Quinn, you're updating your permissions for Save Error Bot.",
+        ),
+      ).toBeInTheDocument();
+    });
+
+    await user.click(screen.getByText("Confirm"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Couldn't update permissions"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText(
+        "Hey Quinn, you're updating your permissions for Save Error Bot.",
+      ),
+    ).toBeInTheDocument();
+    expect(screen.getByText("admin.analytics:read")).toBeInTheDocument();
+    expect(screen.getByText("Confirm")).toBeEnabled();
+    expect(screen.queryByText("Permissions updated")).not.toBeInTheDocument();
   });
 });

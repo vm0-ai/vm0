@@ -30,6 +30,7 @@ import { setupActivityDetailPage$ } from "./activity-page/activity-detail-page-s
 import { setupActivityInspectPage$ } from "./activity-page/activity-inspect-page-setup.ts";
 import { setupAgentsPage$ } from "./agents-page/agents-page-setup.ts";
 import { setupAgentDetailPage$ } from "./agents-page/agent-detail-page-setup.ts";
+import { setupWorkflowsPage$ } from "./workflows-page/workflows-page-setup.ts";
 import { setupWorkflowDetailPage$ } from "./workflows-page/workflow-detail-page-setup.ts";
 import { setupMemoryPage$ } from "./memory-page/memory-page-setup.ts";
 import { setupWorksPage$ } from "./works-page/works-page-setup.ts";
@@ -51,7 +52,6 @@ import { setupDirectedConnectPage$ } from "./connectors-page/directed-connect-pa
 import { setupDirectedAuthorizePage$ } from "./connectors-page/directed-authorize-page-setup.ts";
 import { setupSignInTokenPage$ } from "./sign-in-token-setup.ts";
 import { setupPermissionAllowPage$ } from "./permission-allow/permission-allow-page-setup.ts";
-import { setupTriggerPermissionsPage$ } from "./trigger-permissions/trigger-permissions-page-setup.ts";
 import { setupReportErrorPage$ } from "./report-error/report-error-page-setup.ts";
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
@@ -172,16 +172,12 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupReportErrorPage$),
   },
   {
-    path: ROUTES.agentWorkflowTriggerPermissions,
-    setup: setupAuthSidebarPageWrapper(setupTriggerPermissionsPage$),
-  },
-  {
-    path: ROUTES.agentWorkflowDetail,
+    path: ROUTES.workflowDetail,
     setup: setupAuthSidebarPageWrapper(setupWorkflowDetailPage$),
   },
   {
-    path: ROUTES.agentWorkflows,
-    setup: setupAuthSidebarPageWrapper(setupAgentDetailPage$),
+    path: ROUTES.workflows,
+    setup: setupAuthSidebarPageWrapper(setupWorkflowsPage$),
   },
   {
     path: ROUTES.agentDetail,

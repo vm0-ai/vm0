@@ -6,7 +6,8 @@ const c = initContract();
 
 /**
  * User connector enabled types schema
- * Sparse model: only connector types explicitly enabled by the user for this agent.
+ * Sparse model: only connector types explicitly enabled by the user for this
+ * agent.
  */
 export const userConnectorEnabledTypesSchema = z.object({
   enabledTypes: z.array(z.string()),

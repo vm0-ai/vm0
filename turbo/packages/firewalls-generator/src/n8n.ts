@@ -23,6 +23,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "${{ vars.N8N_BASE_URL }}/api/v1",',
+    '      hostPolicy: { kind: "publicDestination" },',
     "      auth: {",
     "        headers: {",
     '          "X-N8N-API-KEY": "${{ secrets.N8N_TOKEN }}",',
@@ -40,5 +41,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating n8n firewall config...");
   const ts = generateTypeScript();
-  writeOutput("n8n", ts, import.meta.dirname);
+  writeOutput("n8n", ts);
 }

@@ -17,8 +17,13 @@ export const userPermissionGrantExpiresInSchema = z.enum([
   "always",
 ]);
 
-export const userPermissionGrantResponseSchema = z.object({
+const agentPermissionGrantScopeSchema = z.object({
   agentId: agentIdSchema,
+});
+
+export const userPermissionGrantScopeSchema = agentPermissionGrantScopeSchema;
+
+const userPermissionGrantResponseBaseSchema = z.object({
   connectorRef: connectorRefSchema,
   permission: permissionSchema,
   action: userPermissionGrantActionSchema,
@@ -27,9 +32,12 @@ export const userPermissionGrantResponseSchema = z.object({
   updatedAt: z.string(),
 });
 
-export const listUserPermissionGrantsQuerySchema = z.object({
-  agentId: agentIdSchema,
-});
+export const userPermissionGrantResponseSchema =
+  userPermissionGrantResponseBaseSchema.extend({
+    agentId: agentIdSchema,
+  });
+
+const listUserPermissionGrantsQuerySchema = userPermissionGrantScopeSchema;
 
 const applyUserPermissionGrantBaseSchema = z.object({
   permission: permissionSchema,
@@ -46,12 +54,14 @@ export const applyUserPermissionGrantSchema = z.discriminatedUnion("action", [
   }),
 ]);
 
-export const applyUserPermissionGrantsRequestSchema = z.object({
-  agentId: agentIdSchema,
-  connectorRef: connectorRefSchema,
-  mode: userPermissionGrantApplyModeSchema,
-  grants: z.array(applyUserPermissionGrantSchema),
-});
+export const applyUserPermissionGrantsRequestSchema =
+  userPermissionGrantScopeSchema.and(
+    z.object({
+      connectorRef: connectorRefSchema,
+      mode: userPermissionGrantApplyModeSchema,
+      grants: z.array(applyUserPermissionGrantSchema),
+    }),
+  );
 
 export const zeroUserPermissionGrantsContract = c.router({
   list: {

@@ -26,7 +26,7 @@ function testRefreshSignal(): AbortSignal {
 
 describe("connector/providers/google-ads", () => {
   describe("googleAdsProvider", () => {
-    it("buildAuthUrl builds Google OAuth URL with Google Ads and userinfo scopes", () => {
+    it("buildAuthUrl builds Google OAuth URL with Google Ads, Data Manager, and userinfo scopes", () => {
       const url = googleAdsProvider.grant.buildAuthUrl({
         authCodeGrant: getConnectorAuthMethodAuthCodeGrantConfig(
           "google-ads",
@@ -52,6 +52,9 @@ describe("connector/providers/google-ads", () => {
       expect(url).toContain("prompt=consent");
       expect(url).toContain("accounts.google.com/o/oauth2/v2/auth");
       expect(scopes.has("https://www.googleapis.com/auth/adwords")).toBe(true);
+      expect(scopes.has("https://www.googleapis.com/auth/datamanager")).toBe(
+        true,
+      );
       expect(scopes.has("https://www.googleapis.com/auth/userinfo.email")).toBe(
         true,
       );
@@ -119,7 +122,7 @@ describe("connector/providers/google-ads", () => {
           refresh_token: "google-ads-refresh-token",
           expires_in: 3600,
           scope:
-            "https://www.googleapis.com/auth/adwords https://www.googleapis.com/auth/userinfo.email",
+            "https://www.googleapis.com/auth/adwords https://www.googleapis.com/auth/datamanager https://www.googleapis.com/auth/userinfo.email",
         });
       });
       const userInfoHandler = http.get(USER_INFO_URL, () => {
@@ -153,6 +156,7 @@ describe("connector/providers/google-ads", () => {
         expiresIn: 3600,
         scopes: [
           "https://www.googleapis.com/auth/adwords",
+          "https://www.googleapis.com/auth/datamanager",
           "https://www.googleapis.com/auth/userinfo.email",
         ],
         userInfo: {

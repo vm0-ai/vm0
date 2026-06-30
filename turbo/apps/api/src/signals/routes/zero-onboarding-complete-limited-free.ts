@@ -5,7 +5,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { completeLimitedFreeOnboarding$ } from "../services/onboarding.service";
 import { bodyResultOf } from "../context/request";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const completeBody$ = bodyResultOf(
   onboardingCompleteLimitedFreeContract.complete,
@@ -38,6 +38,8 @@ const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     completeLimitedFreeOnboarding$,
     {
       orgId: auth.orgId,
+      credits: body.data.credits,
+      expiresAt: body.data.expiresAt,
     },
     signal,
   );

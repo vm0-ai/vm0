@@ -6,27 +6,47 @@ import {
 } from "@aws-sdk/client-kms";
 
 import type { SecretKmsClient } from "../../../services/crypto.utils";
+import { onRejection } from "../../../utils";
 
 type MockKmsCommand = GenerateDataKeyCommand | DecryptCommand;
 type MockKmsResponse = GenerateDataKeyCommandOutput | DecryptCommandOutput;
 
 const dataKey = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
 
-export function fakeKmsClient(): {
+interface FakeKmsDecryptContext {
+  readonly command: DecryptCommand;
+  readonly inFlightDecrypts: number;
+}
+
+interface FakeKmsClientOptions {
+  readonly onDecrypt?: (context: FakeKmsDecryptContext) => void | Promise<void>;
+}
+
+async function runFakeKmsDecryptHook(
+  options: FakeKmsClientOptions,
+  context: FakeKmsDecryptContext,
+): Promise<void> {
+  await options.onDecrypt?.(context);
+}
+
+export function fakeKmsClient(options: FakeKmsClientOptions = {}): {
   readonly calls: readonly MockKmsCommand[];
   readonly client: SecretKmsClient;
+  readonly getMaxInFlightDecrypts: () => number;
 } {
   const calls: MockKmsCommand[] = [];
+  let inFlightDecrypts = 0;
+  let maxInFlightDecrypts = 0;
 
   function send(
     command: GenerateDataKeyCommand,
   ): Promise<GenerateDataKeyCommandOutput>;
   function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
-  function send(command: MockKmsCommand): Promise<MockKmsResponse> {
+  async function send(command: MockKmsCommand): Promise<MockKmsResponse> {
     calls.push(command);
 
     if (command instanceof GenerateDataKeyCommand) {
-      return Promise.resolve({
+      return {
         $metadata: {},
         KeyId: command.input.KeyId,
         CiphertextBlob: Buffer.from(
@@ -34,11 +54,26 @@ export function fakeKmsClient(): {
           "utf8",
         ),
         Plaintext: dataKey,
-      });
+      };
     }
 
-    return Promise.resolve({ $metadata: {}, Plaintext: dataKey });
+    inFlightDecrypts += 1;
+    maxInFlightDecrypts = Math.max(maxInFlightDecrypts, inFlightDecrypts);
+    await onRejection(
+      runFakeKmsDecryptHook(options, { command, inFlightDecrypts }),
+      () => {
+        inFlightDecrypts -= 1;
+      },
+    );
+    inFlightDecrypts -= 1;
+    return { $metadata: {}, Plaintext: dataKey };
   }
 
-  return { calls, client: { send } };
+  return {
+    calls,
+    client: { send },
+    getMaxInFlightDecrypts: () => {
+      return maxInFlightDecrypts;
+    },
+  };
 }

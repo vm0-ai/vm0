@@ -416,6 +416,10 @@ async function postWebhook(args: {
   );
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
 async function latestRunForFixture(fixture: TelegramPostFixture) {
   const db = store.set(writeDb$);
   const [run] = await db
@@ -430,6 +434,24 @@ async function latestRunForFixture(fixture: TelegramPostFixture) {
     .orderBy(desc(agentRuns.createdAt))
     .limit(1);
   return run;
+}
+
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      if (!isRecord(event)) {
+        return false;
+      }
+      return event.run_id === runId;
+    });
+  });
 }
 
 async function runForFixturePrompt(
@@ -1256,6 +1278,53 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       .where(eq(runnerJobQueue.runId, run!.id))
       .limit(1);
     expect(job).toBeDefined();
+    const timingEvents = sandboxOperationEventsForRun(run!.id).filter(
+      (event) => {
+        return (
+          typeof event.op_type === "string" &&
+          event.op_type.startsWith("api_dispatch_")
+        );
+      },
+    );
+    expect(timingEvents).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_agent_run",
+          span_kind: "top_level",
+          trigger_source: "telegram",
+          zero_run_origin: "zero_run",
+        }),
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_entrypoint_gap",
+          span_kind: "nested",
+          trigger_source: "telegram",
+        }),
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_load_agent",
+          span_kind: "nested",
+          trigger_source: "telegram",
+        }),
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_load_connector_scopes",
+          span_kind: "nested",
+          trigger_source: "telegram",
+        }),
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_build_create_run_args",
+          span_kind: "nested",
+          trigger_source: "telegram",
+        }),
+      ]),
+    );
+    const timingActionTypes = timingEvents.map((event) => {
+      return event.op_type;
+    });
+    expect(timingActionTypes).not.toContain(
+      "api_dispatch_pre_create_zero_parse_body",
+    );
+    expect(timingActionTypes).not.toContain(
+      "api_dispatch_pre_create_zero_prepare_args",
+    );
   });
 
   it("keeps Telegram callbacks typed when VM0_API_BACKEND_URL is set", async () => {

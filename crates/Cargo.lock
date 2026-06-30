@@ -40,14 +40,6 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "320119579fcad9c21884f5c4861d16174d0e06250625266f50fe6898340abefa"
 
 [[package]]
-name = "agent-diagnostics"
-version = "0.1.0"
-dependencies = [
- "serde",
- "serde_json",
-]
-
-[[package]]
 name = "aho-corasick"
 version = "1.1.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -131,9 +123,9 @@ dependencies = [
 
 [[package]]
 name = "arc-swap"
-version = "1.9.1"
+version = "1.9.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "6a3a1fd6f75306b68087b831f025c712524bcb19aad54e557b1129cfa0a2b207"
+checksum = "c049c0be4daef0b145cb3555416b3b8ef5b7888a38aea1a3a155801fe7b0810b"
 dependencies = [
  "rustversion",
 ]
@@ -1246,9 +1238,8 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.41.9"
+version = "0.42.1"
 dependencies = [
- "agent-diagnostics",
  "aho-corasick",
  "api-contracts",
  "base64",
@@ -1283,7 +1274,7 @@ dependencies = [
 
 [[package]]
 name = "guest-common"
-version = "0.2.17"
+version = "0.2.24"
 dependencies = [
  "chrono",
  "guest-contracts",
@@ -1295,16 +1286,18 @@ dependencies = [
 
 [[package]]
 name = "guest-contracts"
-version = "0.2.4"
+version = "0.2.10"
 dependencies = [
  "libc",
+ "serde",
+ "serde_json",
  "tempfile",
  "uuid",
 ]
 
 [[package]]
 name = "guest-download"
-version = "0.20.35"
+version = "0.20.42"
 dependencies = [
  "flate2",
  "guest-common",
@@ -1320,7 +1313,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.88"
+version = "0.16.95"
 dependencies = [
  "libc",
  "nix",
@@ -1329,7 +1322,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-claude"
-version = "0.21.2"
+version = "0.21.3"
 dependencies = [
  "api-contracts",
  "libc",
@@ -1340,7 +1333,7 @@ dependencies = [
 
 [[package]]
 name = "guest-mock-codex"
-version = "0.3.1"
+version = "0.5.0"
 dependencies = [
  "chrono",
  "clap",
@@ -1359,11 +1352,12 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.4"
+version = "0.1.11"
 dependencies = [
  "guest-contracts",
  "libc",
  "tempfile",
+ "vsock-proto",
 ]
 
 [[package]]
@@ -1580,9 +1574,9 @@ dependencies = [
 
 [[package]]
 name = "hybrid-array"
-version = "0.4.12"
+version = "0.4.13"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "9155a582abd142abc056962c29e3ce5ff2ad5469f4246b537ed42c5deba857da"
+checksum = "818356c5132c1fede50f837ca96afbe78ff42413047f4abb886217845e1b6c8c"
 dependencies = [
  "typenum",
 ]
@@ -2047,7 +2041,7 @@ dependencies = [
 
 [[package]]
 name = "nbd-cow"
-version = "0.4.47"
+version = "0.4.52"
 dependencies = [
  "bitvec",
  "libc",
@@ -2528,10 +2522,9 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.129.28"
+version = "0.130.11"
 dependencies = [
  "ably-subscriber",
- "agent-diagnostics",
  "api-contracts",
  "async-trait",
  "aws-sdk-s3",
@@ -2737,7 +2730,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox"
-version = "0.19.12"
+version = "0.19.14"
 dependencies = [
  "async-trait",
  "serde",
@@ -2749,7 +2742,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.64"
+version = "0.37.79"
 dependencies = [
  "async-trait",
  "base64",
@@ -2779,7 +2772,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-mock"
-version = "0.8.5"
+version = "0.8.14"
 dependencies = [
  "async-trait",
  "guest-contracts",
@@ -3672,7 +3665,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.8"
+version = "0.19.15"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3683,7 +3676,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.44"
+version = "0.17.46"
 dependencies = [
  "nix",
  "shell-quote",
@@ -3697,11 +3690,11 @@ dependencies = [
 
 [[package]]
 name = "vsock-proto"
-version = "0.18.18"
+version = "0.18.19"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.113"
+version = "0.9.121"
 dependencies = [
  "guest-write-file",
  "libc",

@@ -3,7 +3,7 @@ import { testOAuthProviderEchoContract } from "@vm0/api-contracts/contracts/test
 
 import { nowDate } from "../../lib/time";
 import { authorization$, request$ } from "../context/hono";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import {
   bearerTokenFrom,
   isTestEndpointAllowed,

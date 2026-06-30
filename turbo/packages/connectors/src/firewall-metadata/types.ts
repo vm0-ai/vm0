@@ -1,5 +1,8 @@
 import type { ConnectorType } from "../connectors";
-import type { FirewallPolicyValue } from "../firewall-types";
+import type {
+  FirewallBaseHostPolicy,
+  FirewallPolicyValue,
+} from "../firewall-types";
 
 export interface FirewallPermissionSummaryMetadata {
   readonly type: ConnectorType;
@@ -13,6 +16,7 @@ export interface FirewallPermissionSummaryMetadata {
 export interface FirewallExecutionBaseUrlTemplateMetadata {
   readonly base: string;
   readonly credentialed: boolean;
+  readonly hostPolicy?: FirewallBaseHostPolicy;
 }
 
 export interface FirewallExecutionMetadata {

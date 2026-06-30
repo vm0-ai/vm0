@@ -44,9 +44,7 @@ function createAgentByIdFactory(): (
       get(internalAgentByIdReload$);
       const client = get(zeroClient$)(zeroAgentsByIdContract);
       const result = await retryTransientLoad(() => {
-        return accept(client.get({ params: { id } }), [200], {
-          toast: false,
-        });
+        return accept(client.get({ params: { id } }), [200]);
       });
       return result.body;
     });
@@ -82,10 +80,7 @@ export const currentAgentId$ = computed((get) => {
     route !== "agentDetail" &&
     route !== "agentChat" &&
     route !== "agentIdeas" &&
-    route !== "agentPermissions" &&
-    route !== "agentWorkflows" &&
-    route !== "agentWorkflowDetail" &&
-    route !== "agentWorkflowTriggerPermissions"
+    route !== "agentPermissions"
   ) {
     return null;
   }

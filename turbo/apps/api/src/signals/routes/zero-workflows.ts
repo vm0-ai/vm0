@@ -11,7 +11,12 @@ import { getCustomSkillStorageName } from "@vm0/core/storage-names";
 import { synthesizeWorkflowSkillMd } from "@vm0/core/zero-workflow-skill";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+import {
+  workflowUserTriggerThreads,
+  zeroWorkflowTriggers,
+  zeroWorkflowWebhookTriggers,
+  zeroWorkflows,
+} from "@vm0/db/schema/zero-workflow";
 import { and, eq, ne } from "drizzle-orm";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -27,8 +32,16 @@ import { postAutomationUserMessage } from "../services/zero-chat-automation-mess
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { deleteZeroWorkflow$ } from "../services/zero-workflow-delete.service";
 import { zeroWorkflowDetail } from "../services/zero-workflow-detail.service";
+import { ensureWorkflowUserTriggerThread } from "../services/zero-workflow-user-trigger-thread.service";
 import { updateZeroWorkflow$ } from "../services/zero-workflow-update.service";
 import { loadWorkflowVolumeFiles } from "../services/zero-workflow-volume.service";
+import {
+  encryptWorkflowWebhookSecret,
+  encryptWorkflowWebhookToken,
+  hashWorkflowWebhookToken,
+  mintWorkflowWebhookSecret,
+  mintWorkflowWebhookToken,
+} from "../services/workflow-webhook-trigger.service";
 import {
   loadVisibleWorkflowById,
   requireWorkflowPermission,
@@ -38,7 +51,7 @@ import {
   type WorkflowMember,
   type WorkflowRow,
 } from "../services/zero-workflow-data.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const workflowReadAuth = {
   requireOrganization: true,
@@ -157,6 +170,30 @@ async function requirePublicWorkflowSlugAvailable(
     : null;
 }
 
+async function loadMatchingWorkflowCreationThreadId(
+  db: Db,
+  args: {
+    readonly userId: string;
+    readonly agentId: string;
+    readonly chatThreadId: string;
+  },
+): Promise<string | null> {
+  const [thread] = await db
+    .select({ id: chatThreads.id })
+    .from(chatThreads)
+    .where(
+      and(
+        eq(chatThreads.id, args.chatThreadId),
+        eq(chatThreads.userId, args.userId),
+        eq(chatThreads.agentComposeId, args.agentId),
+      ),
+    )
+    .limit(1)
+    .for("update");
+
+  return thread?.id ?? null;
+}
+
 const createWorkflowBody$ = bodyResultOf(
   zeroWorkflowsCollectionContract.create,
 );
@@ -226,20 +263,47 @@ const createWorkflowInner$ = command(
       }
     }
 
-    const [inserted] = await writeDb
-      .insert(zeroWorkflows)
-      .values({
-        orgId: auth.orgId,
-        agentId: agent.id,
-        name: body.name,
-        visibility,
-        instruction: body.instruction ?? null,
-        ownerUserId: auth.userId,
-        displayName: body.displayName ?? null,
-        description: body.description ?? null,
-        createdBy: auth.userId,
-      })
-      .returning({ id: zeroWorkflows.id });
+    const currentTime = nowDate();
+    const inserted = await writeDb.transaction(async (tx) => {
+      const [workflow] = await tx
+        .insert(zeroWorkflows)
+        .values({
+          orgId: auth.orgId,
+          agentId: agent.id,
+          name: body.name,
+          visibility,
+          instruction: body.instruction ?? null,
+          ownerUserId: auth.userId,
+          displayName: body.displayName ?? null,
+          description: body.description ?? null,
+          createdBy: auth.userId,
+          updatedBy: auth.userId,
+          createdAt: currentTime,
+          updatedAt: currentTime,
+        })
+        .returning({ id: zeroWorkflows.id });
+
+      if (workflow && body.chatThreadId) {
+        const chatThreadId = await loadMatchingWorkflowCreationThreadId(tx, {
+          userId: auth.userId,
+          agentId: agent.id,
+          chatThreadId: body.chatThreadId,
+        });
+
+        if (chatThreadId) {
+          await tx.insert(workflowUserTriggerThreads).values({
+            orgId: auth.orgId,
+            userId: auth.userId,
+            workflowId: workflow.id,
+            chatThreadId,
+            createdAt: currentTime,
+            updatedAt: currentTime,
+          });
+        }
+      }
+
+      return workflow;
+    });
     signal.throwIfAborted();
     if (!inserted) {
       throw new Error("Failed to create workflow");
@@ -333,9 +397,37 @@ const updateWorkflowInner$ = command(
       return permissionError;
     }
 
+    if (
+      bodyResult.data.name !== undefined &&
+      bodyResult.data.name !== visible.workflow.name
+    ) {
+      if (SEED_SKILLS.includes(bodyResult.data.name)) {
+        return conflict(
+          `Workflow name "${bodyResult.data.name}" conflicts with a built-in workflow`,
+        );
+      }
+
+      if (visible.workflow.visibility === "public") {
+        const slugConflict = await requirePublicWorkflowSlugAvailable(writeDb, {
+          orgId: auth.orgId,
+          agentId: visible.workflow.agentId,
+          name: bodyResult.data.name,
+          excludeWorkflowId: visible.workflow.id,
+        });
+        signal.throwIfAborted();
+        if (slugConflict) {
+          return slugConflict;
+        }
+      }
+    }
+
     await set(
       updateZeroWorkflow$,
-      { workflow: visible.workflow, body: bodyResult.data },
+      {
+        workflow: visible.workflow,
+        body: bodyResult.data,
+        updatedByUserId: auth.userId,
+      },
       signal,
     );
     signal.throwIfAborted();
@@ -397,6 +489,202 @@ const deleteWorkflowInner$ = command(
   },
 );
 
+type WorkflowCopyTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
+
+interface CopyWorkflowRuntimeArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly sourceWorkflow: WorkflowRow;
+  readonly targetAgentId: string;
+  readonly currentTime: Date;
+}
+
+interface CopyWorkflowScopedRowsArgs {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly sourceWorkflowId: string;
+  readonly targetWorkflowId: string;
+  readonly currentTime: Date;
+}
+
+interface CopyWorkflowTriggerRowsArgs extends CopyWorkflowScopedRowsArgs {
+  readonly targetAgentId: string;
+  readonly workflowTitle: string;
+}
+
+async function insertCopiedWorkflowRow(
+  tx: WorkflowCopyTransaction,
+  args: CopyWorkflowRuntimeArgs,
+): Promise<{ readonly id: string } | undefined> {
+  const [workflow] = await tx
+    .insert(zeroWorkflows)
+    .values({
+      orgId: args.orgId,
+      agentId: args.targetAgentId,
+      name: args.sourceWorkflow.name,
+      visibility: "private",
+      instruction: args.sourceWorkflow.instruction,
+      ownerUserId: args.userId,
+      displayName: args.sourceWorkflow.displayName,
+      description: args.sourceWorkflow.description,
+      createdBy: args.userId,
+      updatedBy: args.userId,
+      createdAt: args.currentTime,
+      updatedAt: args.currentTime,
+    })
+    .returning({ id: zeroWorkflows.id });
+  return workflow;
+}
+
+async function copyWorkflowWebhookTriggerConfig(
+  tx: WorkflowCopyTransaction,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly sourceTriggerId: string;
+    readonly targetTriggerId: string;
+    readonly currentTime: Date;
+  },
+): Promise<void> {
+  const [sourceWebhook] = await tx
+    .select({
+      encryptedSecret: zeroWorkflowWebhookTriggers.encryptedSecret,
+      secretLastFour: zeroWorkflowWebhookTriggers.secretLastFour,
+    })
+    .from(zeroWorkflowWebhookTriggers)
+    .where(eq(zeroWorkflowWebhookTriggers.triggerId, args.sourceTriggerId))
+    .limit(1);
+  const token = mintWorkflowWebhookToken();
+  let encryptedSecret: string;
+  let secretLastFour: string;
+  if (sourceWebhook) {
+    encryptedSecret = sourceWebhook.encryptedSecret;
+    secretLastFour = sourceWebhook.secretLastFour;
+  } else {
+    const secret = mintWorkflowWebhookSecret();
+    encryptedSecret = await encryptWorkflowWebhookSecret(secret, {
+      orgId: args.orgId,
+      userId: args.userId,
+    });
+    secretLastFour = secret.slice(-4);
+  }
+
+  await tx.insert(zeroWorkflowWebhookTriggers).values({
+    triggerId: args.targetTriggerId,
+    tokenHash: hashWorkflowWebhookToken(token),
+    encryptedToken: await encryptWorkflowWebhookToken(token, {
+      orgId: args.orgId,
+      userId: args.userId,
+    }),
+    encryptedSecret,
+    secretLastFour,
+    createdAt: args.currentTime,
+    updatedAt: args.currentTime,
+  });
+}
+
+async function copyWorkflowTriggerRow(
+  tx: WorkflowCopyTransaction,
+  args: CopyWorkflowScopedRowsArgs & {
+    readonly trigger: typeof zeroWorkflowTriggers.$inferSelect;
+  },
+): Promise<void> {
+  const [copiedTrigger] = await tx
+    .insert(zeroWorkflowTriggers)
+    .values({
+      orgId: args.orgId,
+      workflowId: args.targetWorkflowId,
+      ownerUserId: args.userId,
+      kind: args.trigger.kind,
+      eventType: args.trigger.eventType,
+      eventConfig: args.trigger.eventConfig,
+      scheduleType: args.trigger.scheduleType,
+      cronExpression: args.trigger.cronExpression,
+      intervalSeconds: args.trigger.intervalSeconds,
+      atTime: args.trigger.atTime,
+      timezone: args.trigger.timezone,
+      enabled: args.trigger.enabled,
+      nextRunAt: args.trigger.nextRunAt,
+      lastRunAt: null,
+      lastRunId: null,
+      consecutiveFailures: 0,
+      createdAt: args.currentTime,
+      updatedAt: args.currentTime,
+    })
+    .returning({ id: zeroWorkflowTriggers.id });
+  if (!copiedTrigger) {
+    throw new Error("Failed to copy workflow trigger");
+  }
+
+  if (
+    args.trigger.kind === "event" &&
+    args.trigger.eventType === "webhook-received"
+  ) {
+    await copyWorkflowWebhookTriggerConfig(tx, {
+      orgId: args.orgId,
+      userId: args.userId,
+      sourceTriggerId: args.trigger.id,
+      targetTriggerId: copiedTrigger.id,
+      currentTime: args.currentTime,
+    });
+  }
+}
+
+async function copyWorkflowUserTriggers(
+  tx: WorkflowCopyTransaction,
+  args: CopyWorkflowTriggerRowsArgs,
+): Promise<void> {
+  const rows = await tx
+    .select()
+    .from(zeroWorkflowTriggers)
+    .where(
+      and(
+        eq(zeroWorkflowTriggers.orgId, args.orgId),
+        eq(zeroWorkflowTriggers.ownerUserId, args.userId),
+        eq(zeroWorkflowTriggers.workflowId, args.sourceWorkflowId),
+      ),
+    );
+  if (rows.length === 0) {
+    return;
+  }
+
+  await ensureWorkflowUserTriggerThread(tx, {
+    orgId: args.orgId,
+    userId: args.userId,
+    workflowId: args.targetWorkflowId,
+    agentId: args.targetAgentId,
+    workflowTitle: args.workflowTitle,
+    currentTime: args.currentTime,
+  });
+  for (const trigger of rows) {
+    await copyWorkflowTriggerRow(tx, { ...args, trigger });
+  }
+}
+
+async function copyWorkflowRuntimeConfiguration(
+  tx: WorkflowCopyTransaction,
+  args: CopyWorkflowRuntimeArgs,
+): Promise<{ readonly id: string } | undefined> {
+  const workflow = await insertCopiedWorkflowRow(tx, args);
+  if (!workflow) {
+    return undefined;
+  }
+
+  const scopedRowsArgs = {
+    orgId: args.orgId,
+    userId: args.userId,
+    sourceWorkflowId: args.sourceWorkflow.id,
+    targetWorkflowId: workflow.id,
+    currentTime: args.currentTime,
+  };
+  await copyWorkflowUserTriggers(tx, {
+    ...scopedRowsArgs,
+    targetAgentId: args.targetAgentId,
+    workflowTitle: args.sourceWorkflow.displayName ?? args.sourceWorkflow.name,
+  });
+  return workflow;
+}
+
 const copyWorkflowInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -438,21 +726,18 @@ const copyWorkflowInner$ = command(
     }
 
     // A copy is a fork owned by the caller: a new private workflow under the
-    // target agent, carrying the source instruction/metadata and volume files.
-    const [inserted] = await writeDb
-      .insert(zeroWorkflows)
-      .values({
+    // target agent. User-scoped runtime configuration is cloned only for the
+    // caller so copies do not leak another user's triggers.
+    const currentTime = nowDate();
+    const inserted = await writeDb.transaction(async (tx) => {
+      return await copyWorkflowRuntimeConfiguration(tx, {
         orgId: auth.orgId,
-        agentId: targetAgent.id,
-        name: source.workflow.name,
-        visibility: "private",
-        instruction: source.workflow.instruction,
-        ownerUserId: auth.userId,
-        displayName: source.workflow.displayName,
-        description: source.workflow.description,
-        createdBy: auth.userId,
-      })
-      .returning({ id: zeroWorkflows.id });
+        userId: auth.userId,
+        sourceWorkflow: source.workflow,
+        targetAgentId: targetAgent.id,
+        currentTime,
+      });
+    });
     signal.throwIfAborted();
     if (!inserted) {
       throw new Error("Failed to copy workflow");
@@ -511,6 +796,55 @@ function generateCallbackSecret(): string {
   return randomBytes(32).toString("hex");
 }
 
+function workflowSlashPrompt(workflow: Pick<WorkflowRow, "name">): string {
+  return `/${workflow.name}`;
+}
+
+const prepareWorkflowChatThreadInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const member = memberFromAuth(auth);
+    const params = get(pathParamsOf(zeroWorkflowsDetailContract.chatThread));
+
+    const writeDb = set(writeDb$);
+    const visible = await loadVisibleWorkflowById(writeDb, {
+      orgId: auth.orgId,
+      member,
+      workflowId: params.workflowId,
+    });
+    signal.throwIfAborted();
+    if (!visible) {
+      return workflowNotFound(params.workflowId);
+    }
+    const { workflow, agent } = visible;
+
+    if (agent.visibility === "private" && agent.owner !== auth.userId) {
+      return forbidden("Only the private agent owner can chat with this agent");
+    }
+
+    const currentTime = nowDate();
+    const chatThreadId = await writeDb.transaction(async (tx) => {
+      return await ensureWorkflowUserTriggerThread(tx, {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        workflowId: workflow.id,
+        agentId: agent.id,
+        workflowTitle: workflow.displayName ?? workflow.name,
+        currentTime,
+      });
+    });
+    signal.throwIfAborted();
+
+    return {
+      status: 200 as const,
+      body: {
+        chatThreadId,
+        prompt: workflowSlashPrompt(workflow),
+      },
+    };
+  },
+);
+
 const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const member = memberFromAuth(auth);
@@ -536,24 +870,20 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   }
 
   const now = nowDate();
-  const [thread] = await writeDb
-    .insert(chatThreads)
-    .values({
+  const chatThreadId = await writeDb.transaction(async (tx) => {
+    return await ensureWorkflowUserTriggerThread(tx, {
+      orgId: auth.orgId,
       userId: auth.userId,
-      agentComposeId: agent.id,
-      title: workflow.displayName ?? workflow.name,
-      lastMessageAt: now,
-      createdAt: now,
-      updatedAt: now,
-    })
-    .returning({ id: chatThreads.id });
+      workflowId: workflow.id,
+      agentId: agent.id,
+      workflowTitle: workflow.displayName ?? workflow.name,
+      currentTime: now,
+    });
+  });
   signal.throwIfAborted();
-  if (!thread) {
-    throw new Error("Failed to create workflow run chat thread");
-  }
 
   // Invoking a workflow is exactly typing its slash command in chat.
-  const prompt = `/${workflow.name}`;
+  const prompt = workflowSlashPrompt(workflow);
   const result = await set(
     createZeroRun$,
     {
@@ -566,12 +896,12 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
       body: { prompt, agentId: agent.id },
       apiStartTime: now.getTime(),
       triggerSource: "web",
-      chatThreadId: thread.id,
+      chatThreadId,
       callbacks: [
         {
           internalKind: "chat",
           secret: generateCallbackSecret(),
-          payload: { threadId: thread.id, agentId: agent.id },
+          payload: { threadId: chatThreadId, agentId: agent.id },
         },
       ],
       dispatchFailedCallbacks: dispatchFailedRunCallbacks,
@@ -586,7 +916,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   await postAutomationUserMessage({
     db: writeDb,
-    threadId: thread.id,
+    threadId: chatThreadId,
     userId: auth.userId,
     runId: result.body.runId,
     prompt,
@@ -596,7 +926,7 @@ const runWorkflowInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   return {
     status: 200 as const,
-    body: { chatThreadId: thread.id, runId: result.body.runId },
+    body: { chatThreadId, runId: result.body.runId },
   };
 });
 
@@ -608,16 +938,23 @@ interface VisibilityTransition {
 
 async function applyVisibilityUpdate(
   db: Db,
-  workflowId: string,
-  patch: {
-    readonly visibility?: "public" | "private";
-    readonly requestToPublish?: boolean;
+  args: {
+    readonly workflowId: string;
+    readonly updatedByUserId: string;
+    readonly patch: {
+      readonly visibility?: "public" | "private";
+      readonly requestToPublish?: boolean;
+    };
   },
 ): Promise<void> {
   await db
     .update(zeroWorkflows)
-    .set({ ...patch, updatedAt: nowDate() })
-    .where(eq(zeroWorkflows.id, workflowId));
+    .set({
+      ...args.patch,
+      updatedBy: args.updatedByUserId,
+      updatedAt: nowDate(),
+    })
+    .where(eq(zeroWorkflows.id, args.workflowId));
 }
 
 function summaryFrom(
@@ -705,9 +1042,13 @@ const requestPublishInner$ = command(
         return slugError;
       }
 
-      await applyVisibilityUpdate(writeDb, workflow.id, {
-        visibility: "public",
-        requestToPublish: false,
+      await applyVisibilityUpdate(writeDb, {
+        workflowId: workflow.id,
+        updatedByUserId: auth.userId,
+        patch: {
+          visibility: "public",
+          requestToPublish: false,
+        },
       });
       signal.throwIfAborted();
       return {
@@ -719,8 +1060,12 @@ const requestPublishInner$ = command(
       };
     }
 
-    await applyVisibilityUpdate(writeDb, workflow.id, {
-      requestToPublish: true,
+    await applyVisibilityUpdate(writeDb, {
+      workflowId: workflow.id,
+      updatedByUserId: auth.userId,
+      patch: {
+        requestToPublish: true,
+      },
     });
     signal.throwIfAborted();
     return {
@@ -752,8 +1097,12 @@ const cancelPublishRequestInner$ = command(
       return forbidden("Only the workflow owner can cancel a publish request");
     }
 
-    await applyVisibilityUpdate(writeDb, loaded.workflow.id, {
-      requestToPublish: false,
+    await applyVisibilityUpdate(writeDb, {
+      workflowId: loaded.workflow.id,
+      updatedByUserId: auth.userId,
+      patch: {
+        requestToPublish: false,
+      },
     });
     signal.throwIfAborted();
     return {
@@ -801,9 +1150,13 @@ const approvePublishInner$ = command(
       return slugError;
     }
 
-    await applyVisibilityUpdate(writeDb, loaded.workflow.id, {
-      visibility: "public",
-      requestToPublish: false,
+    await applyVisibilityUpdate(writeDb, {
+      workflowId: loaded.workflow.id,
+      updatedByUserId: auth.userId,
+      patch: {
+        visibility: "public",
+        requestToPublish: false,
+      },
     });
     signal.throwIfAborted();
     return {
@@ -843,8 +1196,12 @@ const rejectPublishInner$ = command(
       return reviewError;
     }
 
-    await applyVisibilityUpdate(writeDb, loaded.workflow.id, {
-      requestToPublish: false,
+    await applyVisibilityUpdate(writeDb, {
+      workflowId: loaded.workflow.id,
+      updatedByUserId: auth.userId,
+      patch: {
+        requestToPublish: false,
+      },
     });
     signal.throwIfAborted();
     return {
@@ -878,9 +1235,13 @@ const demoteInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return reviewError;
   }
 
-  await applyVisibilityUpdate(writeDb, loaded.workflow.id, {
-    visibility: "private",
-    requestToPublish: false,
+  await applyVisibilityUpdate(writeDb, {
+    workflowId: loaded.workflow.id,
+    updatedByUserId: auth.userId,
+    patch: {
+      visibility: "private",
+      requestToPublish: false,
+    },
   });
   signal.throwIfAborted();
   return {
@@ -916,6 +1277,10 @@ export const zeroWorkflowsRoutes: readonly RouteEntry[] = [
   {
     route: zeroWorkflowsDetailContract.copy,
     handler: authRoute(workflowWriteAuth, copyWorkflowInner$),
+  },
+  {
+    route: zeroWorkflowsDetailContract.chatThread,
+    handler: authRoute(workflowReadAuth, prepareWorkflowChatThreadInner$),
   },
   {
     route: zeroWorkflowsDetailContract.run,

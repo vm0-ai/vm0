@@ -14,7 +14,6 @@ import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-bil
 import {
   zeroUserPermissionGrantsContract,
   type ApplyUserPermissionGrant,
-  type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
 } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import {
@@ -53,22 +52,47 @@ import {
 import type { AutomationView } from "@vm0/api-contracts/contracts/automation-view";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 
-import { createApp } from "../../../../app-factory";
+import { createAppWithRoutes } from "../../../../app-factory-core";
+import { setupAppWithRoutes } from "../../../../__tests__/test-app";
+import { accept, type TestContext } from "../../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../../lib/env";
 import { now } from "../../../../lib/time";
-import {
-  accept,
-  setupApp,
-  type TestContext,
-} from "../../../../__tests__/test-helpers";
 import { generateSandboxToken } from "../../../auth/tokens";
 import { mockStripeClient } from "../../../external/stripe-client";
+import { agentComposesReadRoutes } from "../../agent-composes-read";
+import { agentComposesRoutes } from "../../agent-composes";
+import { agentRunsCreateRoutes } from "../../agent-runs-create";
+import { agentRunsReadRoutes } from "../../agent-runs-read";
+import { automationsRoutes } from "../../automations";
+import { cronAggregateInsightsRoutes } from "../../cron-aggregate-insights";
+import { cronAggregateUsageRoutes } from "../../cron-aggregate-usage";
+import { cronExecuteAutomationsRoutes } from "../../cron-execute-automations";
+import { cronProcessUsageEventsRoutes } from "../../cron-process-usage-events";
+import { cronReconcileBillingEntitlementsRoutes } from "../../cron-reconcile-billing-entitlements";
+import { cronSummarizeMemoryRoutes } from "../../cron-summarize-memory";
+import { cronTelegramCleanupRoutes } from "../../cron-telegram-cleanup";
+import { runnersRoutes } from "../../runners";
+import { webhooksStripeRoutes } from "../../webhooks-stripe";
+import { zeroAgentsRoutes } from "../../zero-agents";
+import { zeroApiKeysDeleteRoutes } from "../../zero-api-keys-delete";
+import { zeroApiKeysRoutes } from "../../zero-api-keys";
+import { zeroBillingStatusRoutes } from "../../zero-billing-status";
+import { zeroModelPoliciesRoutes } from "../../zero-model-policies";
+import { zeroModelProvidersRoutes } from "../../zero-model-providers";
+import { zeroOnboardingSetupRoutes } from "../../zero-onboarding-setup";
+import { zeroRunDetailRoutes } from "../../zero-run-detail";
+import { zeroRunsCancelRoutes } from "../../zero-runs-cancel";
+import { zeroRunsRoutes } from "../../zero-runs";
+import { zeroUserPermissionGrantsRoutes } from "../../zero-user-permission-grants";
 import type { ApiTestUser } from "./api-bdd";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 type AuthHeaders = { readonly authorization?: string };
 type ZeroRunRequest = z.infer<(typeof zeroRunsMainContract.create)["body"]>;
 type DirectRunRequest = z.infer<(typeof runsMainContract.create)["body"]>;
+type RunnerJobClaimRequest = z.infer<
+  (typeof runnersJobClaimContract.claim)["body"]
+>;
 type ComposeContent = z.infer<
   (typeof composesMainContract.create)["body"]
 >["content"];
@@ -149,6 +173,38 @@ interface ClerkOrganizationMembership {
 const OFFICIAL_RUNNER_AUTHORIZATION =
   "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
 const CRON_AUTHORIZATION = "Bearer test-cron-secret";
+
+const runsAutomationRoutes = [
+  ...zeroApiKeysRoutes,
+  ...zeroApiKeysDeleteRoutes,
+  ...automationsRoutes,
+  ...agentComposesRoutes,
+  ...agentComposesReadRoutes,
+  ...cronAggregateInsightsRoutes,
+  ...cronAggregateUsageRoutes,
+  ...cronExecuteAutomationsRoutes,
+  ...cronProcessUsageEventsRoutes,
+  ...cronReconcileBillingEntitlementsRoutes,
+  ...cronSummarizeMemoryRoutes,
+  ...cronTelegramCleanupRoutes,
+  ...zeroOnboardingSetupRoutes,
+  ...runnersRoutes,
+  ...agentRunsCreateRoutes,
+  ...agentRunsReadRoutes,
+  ...webhooksStripeRoutes,
+  ...zeroBillingStatusRoutes,
+  ...zeroModelPoliciesRoutes,
+  ...zeroModelProvidersRoutes,
+  ...zeroRunDetailRoutes,
+  ...zeroRunsRoutes,
+  ...zeroRunsCancelRoutes,
+  ...zeroAgentsRoutes,
+  ...zeroUserPermissionGrantsRoutes,
+] as const;
+
+function runsAutomationApp(context: TestContext) {
+  return setupAppWithRoutes({ context, routes: runsAutomationRoutes });
+}
 
 function clerkUserProfile(actor: ApiTestUser): ClerkUserProfile {
   const emailId = `email_${actor.userId}`;
@@ -397,7 +453,11 @@ export function createRunsAutomationsApi(context: TestContext) {
     // an org whose entire credit balance is already expired.
     async grantProEntitlement(
       actor: ApiTestUser,
-      options: { readonly periodEndUnix?: number } = {},
+      options: {
+        readonly periodEndUnix?: number;
+        readonly subscriptionMetadata?: Record<string, string>;
+        readonly cancelAtUnix?: number | null;
+      } = {},
     ): Promise<{
       readonly customerId: string;
       readonly subscriptionId: string;
@@ -406,11 +466,12 @@ export function createRunsAutomationsApi(context: TestContext) {
       mockStripeClient(context.mocks.stripe as unknown as StripeSDK);
       mockEnv("ZERO_PRICE_PRO", "price_bdd_pro");
       mockEnv("ZERO_PRICE_TEAM", "price_bdd_team");
+      mockEnv("ATOM_GRANT_PRICE", "price_bdd_atom_grant");
       mockEnv("ZERO_PRICE_CONCURRENCY", "price_bdd_concurrency");
       mockOptionalEnv("STRIPE_WEBHOOK_SECRET", "whsec_bdd_stripe");
 
       await accept(
-        setupApp({ context })(onboardingSetupContract).setup({
+        runsAutomationApp(context)(onboardingSetupContract).setup({
           headers: authenticate(context, actor),
           body: { displayName: "BDD Entitled Agent" },
         }),
@@ -430,10 +491,10 @@ export function createRunsAutomationsApi(context: TestContext) {
         status: "active",
         customer: customerId,
         cancel_at_period_end: false,
-        cancel_at: null,
+        cancel_at: options.cancelAtUnix ?? null,
         schedule: null,
         trial_end: null,
-        metadata: {},
+        metadata: options.subscriptionMetadata ?? {},
         items: { data: [{ price: { id: "price_bdd_pro" } }] },
       });
       const invoicePaidEvent = {
@@ -463,7 +524,7 @@ export function createRunsAutomationsApi(context: TestContext) {
         invoicePaidEvent,
       );
       await accept(
-        setupApp({ context })(webhookStripeContract).post({
+        runsAutomationApp(context)(webhookStripeContract).post({
           body: JSON.stringify(invoicePaidEvent),
           extraHeaders: { "stripe-signature": "t=1,v1=bdd" },
         }),
@@ -471,7 +532,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
 
       const billingStatus = await accept(
-        setupApp({ context })(zeroBillingStatusContract).get({
+        runsAutomationApp(context)(zeroBillingStatusContract).get({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -486,7 +547,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async createRun(actor: ApiTestUser, body: ZeroRunRequest) {
       const response = await accept(
-        setupApp({ context })(zeroRunsMainContract).create({
+        runsAutomationApp(context)(zeroRunsMainContract).create({
           headers: authenticate(context, actor),
           body,
         }),
@@ -495,12 +556,12 @@ export function createRunsAutomationsApi(context: TestContext) {
       return response.body;
     },
 
-    async claimRunnerJob(runId: string) {
+    async claimRunnerJob(runId: string, body: RunnerJobClaimRequest = {}) {
       const response = await accept(
-        setupApp({ context })(runnersJobClaimContract).claim({
+        runsAutomationApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(true),
           params: { id: runId },
-          body: {},
+          body,
         }),
         [200],
       );
@@ -512,7 +573,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       readonly token: string;
     }> {
       const response = await accept(
-        setupApp({ context })(apiKeysContract).create({
+        runsAutomationApp(context)(apiKeysContract).create({
           headers: authenticate(context, actor),
           body: {
             name: `bdd-runner-key-${randomUUID().slice(0, 8)}`,
@@ -526,7 +587,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async revokeApiKey(actor: ApiTestUser, id: string): Promise<void> {
       await accept(
-        setupApp({ context })(apiKeysByIdContract).delete({
+        runsAutomationApp(context)(apiKeysByIdContract).delete({
           headers: authenticate(context, actor),
           params: { id },
         }),
@@ -540,7 +601,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(runnersPollContract).poll({
+        runsAutomationApp(context)(runnersPollContract).poll({
           headers: authorization === undefined ? {} : { authorization },
           body,
         }),
@@ -555,7 +616,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       body: z.infer<(typeof runnersJobClaimContract.claim)["body"]> = {},
     ) {
       return await accept(
-        setupApp({ context })(runnersJobClaimContract).claim({
+        runsAutomationApp(context)(runnersJobClaimContract).claim({
           headers: authorization === undefined ? {} : { authorization },
           params: { id: runId },
           body,
@@ -570,7 +631,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(runnerRealtimeTokenContract).create({
+        runsAutomationApp(context)(runnerRealtimeTokenContract).create({
           headers: authorization === undefined ? {} : { authorization },
           body,
         }),
@@ -595,7 +656,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       content: ComposeContent,
     ): Promise<{ readonly composeId: string; readonly name: string }> {
       const response = await accept(
-        setupApp({ context })(composesMainContract).create({
+        runsAutomationApp(context)(composesMainContract).create({
           headers: authenticate(context, actor),
           body: { content },
         }),
@@ -606,7 +667,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async createDirectRun(actor: ApiTestUser, body: DirectRunRequest) {
       const response = await accept(
-        setupApp({ context })(runsMainContract).create({
+        runsAutomationApp(context)(runsMainContract).create({
           headers: authenticate(context, actor),
           body,
         }),
@@ -615,13 +676,29 @@ export function createRunsAutomationsApi(context: TestContext) {
       return response.body;
     },
 
+    async requestDirectRun(
+      actor: ApiTestUser | null,
+      body: DirectRunRequest,
+      statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
+    ) {
+      return await accept(
+        runsAutomationApp(context)(runsMainContract).create({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
     async applyUserPermissionGrant(
       actor: ApiTestUser,
-      body: Pick<ApplyUserPermissionGrantsRequest, "agentId" | "connectorRef"> &
-        ApplyUserPermissionGrant,
+      body: {
+        readonly agentId: string;
+        readonly connectorRef: string;
+      } & ApplyUserPermissionGrant,
     ): Promise<UserPermissionGrantResponse> {
       const response = await accept(
-        setupApp({ context })(zeroUserPermissionGrantsContract).apply({
+        runsAutomationApp(context)(zeroUserPermissionGrantsContract).apply({
           headers: authenticate(context, actor),
           body: {
             agentId: body.agentId,
@@ -655,7 +732,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       agentId: string,
     ): Promise<readonly UserPermissionGrantResponse[]> {
       const response = await accept(
-        setupApp({ context })(zeroUserPermissionGrantsContract).list({
+        runsAutomationApp(context)(zeroUserPermissionGrantsContract).list({
           headers: authenticate(context, actor),
           query: { agentId },
         }),
@@ -681,7 +758,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       connectorTypes: readonly string[],
     ): Promise<readonly string[]> {
       const response = await accept(
-        setupApp({ context })(zeroUserConnectorsContract).update({
+        runsAutomationApp(context)(zeroUserConnectorsContract).update({
           headers: authenticate(context, actor),
           params: { id: agentId },
           body: { enabledTypes: [...connectorTypes] },
@@ -700,7 +777,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       body: OrgModelProviderUpsertRequest,
     ): Promise<{ readonly providerId: string }> {
       const response = await accept(
-        setupApp({ context })(zeroModelProvidersMainContract).upsert({
+        runsAutomationApp(context)(zeroModelProvidersMainContract).upsert({
           headers: authenticate(context, actor),
           body,
         }),
@@ -718,7 +795,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       policies: OrgModelPolicyRequest["policies"],
     ): Promise<void> {
       await accept(
-        setupApp({ context })(zeroModelPoliciesMainContract).update({
+        runsAutomationApp(context)(zeroModelPoliciesMainContract).update({
           headers: authenticate(context, actor),
           body: { policies },
         }),
@@ -730,7 +807,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       actor: ApiTestUser,
     ): Promise<{ readonly providerId: string }> {
       const providerResponse = await accept(
-        setupApp({ context })(zeroModelProvidersMainContract).upsert({
+        runsAutomationApp(context)(zeroModelProvidersMainContract).upsert({
           headers: authenticate(context, actor),
           body: {
             type: "anthropic-api-key",
@@ -752,7 +829,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       ];
 
       await accept(
-        setupApp({ context })(zeroModelPoliciesMainContract).update({
+        runsAutomationApp(context)(zeroModelPoliciesMainContract).update({
           headers: authenticate(context, actor),
           body: { policies },
         }),
@@ -768,7 +845,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroRunsMainContract).create({
+        runsAutomationApp(context)(zeroRunsMainContract).create({
           headers: authenticate(context, actor),
           body,
         }),
@@ -782,7 +859,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroRunsMainContract).create({
+        runsAutomationApp(context)(zeroRunsMainContract).create({
           headers: authenticate(context, actor),
           body: body as ZeroRunRequest,
         }),
@@ -800,7 +877,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 402 | 403 | 404 | 429 | 503)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroRunsMainContract).create({
+        runsAutomationApp(context)(zeroRunsMainContract).create({
           headers: { authorization },
           body,
         }),
@@ -810,7 +887,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async readRun(actor: ApiTestUser, runId: string) {
       const response = await accept(
-        setupApp({ context })(zeroRunsByIdContract).getById({
+        runsAutomationApp(context)(zeroRunsByIdContract).getById({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -825,7 +902,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroRunsByIdContract).getById({
+        runsAutomationApp(context)(zeroRunsByIdContract).getById({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -839,7 +916,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroRunContextContract).getContext({
+        runsAutomationApp(context)(zeroRunContextContract).getContext({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -853,7 +930,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroRunRunnerContract).getRunner({
+        runsAutomationApp(context)(zeroRunRunnerContract).getRunner({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -863,7 +940,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async readRunQueue(actor: ApiTestUser) {
       return await accept(
-        setupApp({ context })(zeroRunsQueueContract).getQueue({
+        runsAutomationApp(context)(zeroRunsQueueContract).getQueue({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -875,7 +952,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroRunsQueueContract).getQueue({
+        runsAutomationApp(context)(zeroRunsQueueContract).getQueue({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -888,7 +965,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(zeroRunsCancelContract).cancel({
+        runsAutomationApp(context)(zeroRunsCancelContract).cancel({
           headers: authenticate(context, actor),
           params: { id: runId },
         }),
@@ -898,7 +975,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async heartbeatRunner(group?: string) {
       return await accept(
-        setupApp({ context })(runnersHeartbeatContract).heartbeat({
+        runsAutomationApp(context)(runnersHeartbeatContract).heartbeat({
           headers: runnerHeaders(true),
           body: runnerHeartbeatBody({ group }),
         }),
@@ -915,7 +992,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       } = {},
     ) {
       return await accept(
-        setupApp({ context })(runnersHeartbeatContract).heartbeat({
+        runsAutomationApp(context)(runnersHeartbeatContract).heartbeat({
           headers: runnerHeaders(validAuth),
           body: runnerHeartbeatBody(args),
         }),
@@ -925,7 +1002,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async pollRunner(group?: string) {
       return await accept(
-        setupApp({ context })(runnersPollContract).poll({
+        runsAutomationApp(context)(runnersPollContract).poll({
           headers: runnerHeaders(true),
           body: { group: group ?? "vm0/test", profiles: ["vm0/default"] },
         }),
@@ -939,7 +1016,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(runnersPollContract).poll({
+        runsAutomationApp(context)(runnersPollContract).poll({
           headers: runnerHeaders(validAuth),
           body,
         }),
@@ -953,7 +1030,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404 | 409 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(runnersJobClaimContract).claim({
+        runsAutomationApp(context)(runnersJobClaimContract).claim({
           headers: runnerHeaders(validAuth),
           params: { id: runId },
           body: {},
@@ -968,7 +1045,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 500)[],
     ) {
       return await accept(
-        setupApp({ context })(runnerRealtimeTokenContract).create({
+        runsAutomationApp(context)(runnerRealtimeTokenContract).create({
           headers: runnerHeaders(validAuth),
           body,
         }),
@@ -981,7 +1058,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       body: CreateAutomationRequest,
     ): Promise<AutomationMutationResponse> {
       const response = await accept(
-        setupApp({ context })(automationsMainContract).create({
+        runsAutomationApp(context)(automationsMainContract).create({
           headers: authenticate(context, actor),
           body: contractCreateAutomationBody(body),
         }),
@@ -999,7 +1076,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsMainContract).create({
+        runsAutomationApp(context)(automationsMainContract).create({
           headers: authenticate(context, actor),
           body: contractCreateAutomationBodyUnchecked(body),
         }),
@@ -1009,7 +1086,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async listAutomations(actor: ApiTestUser): Promise<AutomationListResponse> {
       const response = await accept(
-        setupApp({ context })(automationsMainContract).list({
+        runsAutomationApp(context)(automationsMainContract).list({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -1026,7 +1103,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsMainContract).list({
+        runsAutomationApp(context)(automationsMainContract).list({
           headers: authenticate(context, actor),
         }),
         statuses,
@@ -1039,7 +1116,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       body: UpdateAutomationRequest,
     ): Promise<AutomationMutationResponse> {
       const updated = await accept(
-        setupApp({ context })(automationsByRefContract).update({
+        runsAutomationApp(context)(automationsByRefContract).update({
           headers: authenticate(context, actor),
           params: { ref: name },
           body: contractUpdateAutomationBody(body),
@@ -1050,7 +1127,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       const trigger = createTimeTriggerRequest(body);
       if (trigger !== null) {
         const shown = await accept(
-          setupApp({ context })(automationsByRefContract).show({
+          runsAutomationApp(context)(automationsByRefContract).show({
             headers: authenticate(context, actor),
             params: { ref: updated.body.id },
           }),
@@ -1058,7 +1135,7 @@ export function createRunsAutomationsApi(context: TestContext) {
         );
         const existing = timeTriggerFor(shown.body);
         await accept(
-          setupApp({ context })(automationTriggersContract).update({
+          runsAutomationApp(context)(automationTriggersContract).update({
             headers: authenticate(context, actor),
             params: { id: existing.id },
             body: trigger,
@@ -1068,7 +1145,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       }
 
       const shown = await accept(
-        setupApp({ context })(automationsByRefContract).show({
+        runsAutomationApp(context)(automationsByRefContract).show({
           headers: authenticate(context, actor),
           params: { ref: updated.body.id },
         }),
@@ -1085,7 +1162,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       automation: AutomationResourceRef,
     ): Promise<AutomationView> {
       const response = await accept(
-        setupApp({ context })(automationsByRefContract).enable({
+        runsAutomationApp(context)(automationsByRefContract).enable({
           headers: authenticate(context, actor),
           params: { ref: automationRef(automation) },
           body: {},
@@ -1100,7 +1177,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       automation: AutomationResourceRef,
     ): Promise<AutomationView> {
       const response = await accept(
-        setupApp({ context })(automationsByRefContract).disable({
+        runsAutomationApp(context)(automationsByRefContract).disable({
           headers: authenticate(context, actor),
           params: { ref: automationRef(automation) },
           body: {},
@@ -1126,7 +1203,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       )[],
     ) {
       return await accept(
-        setupApp({ context })(automationsByRefContract).run({
+        runsAutomationApp(context)(automationsByRefContract).run({
           headers: authenticate(context, actor),
           params: { ref: automationId },
           body: {},
@@ -1140,7 +1217,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       automation: AutomationResourceRef,
     ): Promise<void> {
       await accept(
-        setupApp({ context })(automationsByRefContract).delete({
+        runsAutomationApp(context)(automationsByRefContract).delete({
           headers: authenticate(context, actor),
           params: { ref: automationRef(automation) },
         }),
@@ -1154,7 +1231,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (204 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsByRefContract).delete({
+        runsAutomationApp(context)(automationsByRefContract).delete({
           headers: authenticate(context, actor),
           params: { ref: automationRef(automation) },
         }),
@@ -1169,7 +1246,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsByRefContract).update({
+        runsAutomationApp(context)(automationsByRefContract).update({
           headers: authenticate(context, actor),
           params: { ref: name },
           body: contractUpdateAutomationBody(body as UpdateAutomationRequest),
@@ -1184,7 +1261,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsByRefContract).enable({
+        runsAutomationApp(context)(automationsByRefContract).enable({
           headers: authenticate(context, actor),
           params: { ref: automationRef(automation) },
           body: {},
@@ -1199,7 +1276,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (200 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsByRefContract).disable({
+        runsAutomationApp(context)(automationsByRefContract).disable({
           headers: authenticate(context, actor),
           params: { ref: automationRef(automation) },
           body: {},
@@ -1209,14 +1286,17 @@ export function createRunsAutomationsApi(context: TestContext) {
     },
 
     // The automations list contract has no 404 response (the feature gate is
-    // meant to be indistinguishable from an unmounted route), so the ts-rest
+    // meant to be indistinguishable from an unmounted route), so the contract
     // client with throwOnUnknownStatus cannot express the gated case — read
     // the route through a raw app request instead.
     async requestListAutomationsRaw(
       actor: ApiTestUser,
     ): Promise<{ readonly status: number; readonly body: unknown }> {
       const { authorization } = authenticate(context, actor);
-      const app = createApp({ signal: context.signal });
+      const app = createAppWithRoutes({
+        signal: context.signal,
+        routes: runsAutomationRoutes,
+      });
       const response = await app.request("/api/automations", {
         method: "GET",
         headers: authorization === undefined ? {} : { authorization },
@@ -1230,7 +1310,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       body: DeployAutomationRequest,
     ): Promise<DeployAutomationResponse> {
       const existingList = await accept(
-        setupApp({ context })(automationsMainContract).list({
+        runsAutomationApp(context)(automationsMainContract).list({
           headers: authenticate(context, actor),
         }),
         [200],
@@ -1245,7 +1325,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
       if (existing !== undefined) {
         const updated = await accept(
-          setupApp({ context })(automationsByRefContract).update({
+          runsAutomationApp(context)(automationsByRefContract).update({
             headers: authenticate(context, actor),
             params: { ref: existing.id },
             body: contractUpdateAutomationBody(body),
@@ -1253,7 +1333,7 @@ export function createRunsAutomationsApi(context: TestContext) {
           [200],
         );
         const shownBeforeTriggerUpdate = await accept(
-          setupApp({ context })(automationsByRefContract).show({
+          runsAutomationApp(context)(automationsByRefContract).show({
             headers: authenticate(context, actor),
             params: { ref: updated.body.id },
           }),
@@ -1265,7 +1345,7 @@ export function createRunsAutomationsApi(context: TestContext) {
         }
         const existingTrigger = timeTriggerFor(shownBeforeTriggerUpdate.body);
         await accept(
-          setupApp({ context })(automationTriggersContract).update({
+          runsAutomationApp(context)(automationTriggersContract).update({
             headers: authenticate(context, actor),
             params: { id: existingTrigger.id },
             body: nextTrigger,
@@ -1274,7 +1354,7 @@ export function createRunsAutomationsApi(context: TestContext) {
         );
         if (body.enabled === true && !updated.body.enabled) {
           await accept(
-            setupApp({ context })(automationsByRefContract).enable({
+            runsAutomationApp(context)(automationsByRefContract).enable({
               headers: authenticate(context, actor),
               params: { ref: updated.body.id },
               body: {},
@@ -1284,7 +1364,7 @@ export function createRunsAutomationsApi(context: TestContext) {
         }
         if (body.enabled === false && updated.body.enabled) {
           await accept(
-            setupApp({ context })(automationsByRefContract).disable({
+            runsAutomationApp(context)(automationsByRefContract).disable({
               headers: authenticate(context, actor),
               params: { ref: updated.body.id },
               body: {},
@@ -1293,7 +1373,7 @@ export function createRunsAutomationsApi(context: TestContext) {
           );
         }
         const shown = await accept(
-          setupApp({ context })(automationsByRefContract).show({
+          runsAutomationApp(context)(automationsByRefContract).show({
             headers: authenticate(context, actor),
             params: { ref: updated.body.id },
           }),
@@ -1306,7 +1386,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       }
 
       const response = await accept(
-        setupApp({ context })(automationsMainContract).create({
+        runsAutomationApp(context)(automationsMainContract).create({
           headers: authenticate(context, actor),
           body: contractCreateAutomationBody(body),
         }),
@@ -1324,7 +1404,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (201 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsMainContract).create({
+        runsAutomationApp(context)(automationsMainContract).create({
           headers: authenticate(context, actor),
           body: contractCreateAutomationBodyUnchecked(body),
         }),
@@ -1338,7 +1418,7 @@ export function createRunsAutomationsApi(context: TestContext) {
       statuses: readonly (204 | 400 | 401 | 403 | 404)[],
     ) {
       return await accept(
-        setupApp({ context })(automationsByRefContract).delete({
+        runsAutomationApp(context)(automationsByRefContract).delete({
           headers: authorization === undefined ? {} : { authorization },
           params: { ref: automationRef(automation) },
         }),
@@ -1348,7 +1428,7 @@ export function createRunsAutomationsApi(context: TestContext) {
 
     async executeAutomationsCron(validAuth: boolean) {
       return await accept(
-        setupApp({ context })(cronExecuteAutomationsContract).execute({
+        runsAutomationApp(context)(cronExecuteAutomationsContract).execute({
           headers: cronHeaders(validAuth),
         }),
         [200, 401],
@@ -1361,31 +1441,31 @@ export function createRunsAutomationsApi(context: TestContext) {
     async requestSharedCronRoutesWithoutAuth() {
       const headers = cronHeaders(false);
       const aggregateUsage = await accept(
-        setupApp({ context })(cronAggregateUsageContract).aggregate({
+        runsAutomationApp(context)(cronAggregateUsageContract).aggregate({
           headers,
         }),
         [401],
       );
       const aggregateInsights = await accept(
-        setupApp({ context })(cronAggregateInsightsContract).aggregate({
+        runsAutomationApp(context)(cronAggregateInsightsContract).aggregate({
           headers,
         }),
         [401],
       );
       const processUsageEvents = await accept(
-        setupApp({ context })(cronProcessUsageEventsContract).process({
+        runsAutomationApp(context)(cronProcessUsageEventsContract).process({
           headers,
         }),
         [401],
       );
       const summarizeMemory = await accept(
-        setupApp({ context })(cronSummarizeMemoryContract).summarize({
+        runsAutomationApp(context)(cronSummarizeMemoryContract).summarize({
           headers,
         }),
         [401],
       );
       const telegramCleanup = await accept(
-        setupApp({ context })(cronTelegramCleanupContract).cleanup({
+        runsAutomationApp(context)(cronTelegramCleanupContract).cleanup({
           headers,
         }),
         [401],
@@ -1406,7 +1486,7 @@ export function createRunsAutomationsApi(context: TestContext) {
     // file's own Stripe mocks.
     async reconcileBillingCron(validAuth: boolean) {
       return await accept(
-        setupApp({ context })(
+        runsAutomationApp(context)(
           cronReconcileBillingEntitlementsContract,
         ).reconcile({
           headers: cronHeaders(validAuth),

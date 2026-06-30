@@ -1,14 +1,65 @@
-import type { RunContextResponse } from "@vm0/api-contracts/contracts/zero-runs";
-import type { NetworkLogEntry } from "@vm0/api-contracts/contracts/runs";
+import {
+  runContextResponseSchema,
+  type RunContextResponse,
+} from "@vm0/api-contracts/contracts/zero-runs";
+import {
+  networkLogEntrySchema,
+  type NetworkLogEntry,
+} from "@vm0/api-contracts/contracts/runs";
 import type { AgentEvent, LogDetail } from "../zero-page/log-types.ts";
+import { jsonParseOr } from "../utils.ts";
 
 export type InspectLogMeta = Partial<LogDetail>;
 
-interface InspectLogJson {
-  meta?: InspectLogMeta;
-  events?: AgentEvent[];
-  context?: RunContextResponse;
-  networkLogs?: NetworkLogEntry[];
+const INVALID_JSON = Symbol("invalid-json");
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function parseAgentEvent(value: unknown): AgentEvent | null {
+  if (!isRecord(value)) {
+    return null;
+  }
+  if (
+    typeof value.sequenceNumber !== "number" ||
+    !Number.isFinite(value.sequenceNumber) ||
+    typeof value.eventType !== "string" ||
+    typeof value.createdAt !== "string"
+  ) {
+    return null;
+  }
+  return {
+    sequenceNumber: value.sequenceNumber,
+    eventType: value.eventType,
+    eventData: value.eventData,
+    createdAt: value.createdAt,
+  };
+}
+
+function parseAgentEvents(value: unknown): AgentEvent[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.flatMap((item) => {
+    const event = parseAgentEvent(item);
+    return event ? [event] : [];
+  });
+}
+
+function parseRunContext(value: unknown): RunContextResponse | null {
+  const parsed = runContextResponseSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function parseNetworkLogs(value: unknown): NetworkLogEntry[] | null {
+  if (!Array.isArray(value)) {
+    return null;
+  }
+  return value.flatMap((item) => {
+    const parsed = networkLogEntrySchema.safeParse(item);
+    return parsed.success ? [parsed.data] : [];
+  });
 }
 
 export function parseInspectLog(jsonText: string): {
@@ -16,13 +67,22 @@ export function parseInspectLog(jsonText: string): {
   events: AgentEvent[];
   context: RunContextResponse | null;
   networkLogs: NetworkLogEntry[] | null;
-} {
-  const raw = JSON.parse(jsonText) as InspectLogJson;
+} | null {
+  const rawValue = jsonParseOr<unknown | typeof INVALID_JSON>(
+    jsonText,
+    INVALID_JSON,
+  );
+  if (rawValue === INVALID_JSON) {
+    return null;
+  }
+  if (!isRecord(rawValue)) {
+    return null;
+  }
 
   return {
-    meta: raw.meta ?? null,
-    events: raw.events ?? [],
-    context: raw.context ?? null,
-    networkLogs: raw.networkLogs ?? null,
+    meta: isRecord(rawValue.meta) ? rawValue.meta : null,
+    events: parseAgentEvents(rawValue.events),
+    context: parseRunContext(rawValue.context),
+    networkLogs: parseNetworkLogs(rawValue.networkLogs),
   };
 }

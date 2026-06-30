@@ -408,6 +408,7 @@ export const computerUseAuthorizationRequestResponseSchema = z.object({
   source: computerUseAuthorizationSourceSchema,
   expiresAt: z.string(),
   completedAt: z.string().nullable(),
+  computerUseHostId: z.string().uuid().nullable(),
   hosts: z.array(computerUseHostSchema),
 });
 
@@ -641,7 +642,7 @@ export const zeroComputerUseCommandContract = c.router({
     headers: authHeadersSchema,
     pathParams: commandIdPathParamsSchema,
     responses: {
-      200: c.noBody(),
+      200: c.type<Blob>(),
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,

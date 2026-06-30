@@ -8,7 +8,6 @@
     <a href="https://vm0.productlane.com"><img src="https://img.shields.io/badge/Productlane-Roadmap-blue" /></a>
     <a href="https://github.com/vm0-ai/vm0/actions/workflows/turbo.yml?query=event%3Apush+branch%3Amain"><img src="https://github.com/vm0-ai/vm0/actions/workflows/turbo.yml/badge.svg?event=push" alt="CI" /></a>
     <a href="https://codecov.io/gh/vm0-ai/vm0"><img src="https://codecov.io/gh/vm0-ai/vm0/branch/main/graph/badge.svg?token=UZSMUBBOUC"/></a>
-    <a href="https://discord.gg/WMpAmHFfp6"><img src="https://img.shields.io/discord/1234567890?label=Discord&logo=discord" alt="Discord" /></a>
   </p>
 </h2>
 

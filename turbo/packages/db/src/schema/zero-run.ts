@@ -85,6 +85,8 @@ export const zeroRuns = pgTable(
     ),
     // Brief AI-generated summary of what the run did (≤50 words)
     summary: text("summary"),
+    // Brief source context for trigger-fired workflow runs, shown in chat.
+    triggerBrief: text("trigger_brief"),
   },
   (table) => {
     return [

@@ -3,7 +3,7 @@ import { zeroVoiceIoQuotaContract } from "@vm0/api-contracts/contracts/zero-voic
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { audioInputQuota } from "../services/voice-io.service";
 
 const getVoiceIoQuotaInner$ = computed(async (get): Promise<unknown> => {

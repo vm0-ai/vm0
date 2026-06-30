@@ -641,6 +641,25 @@ class TestAuthBaseForwarderRequestBodyLimit:
 
 
 class TestAuthBaseForwarderResourceCleanup:
+    def test_duplicate_flow_admission_attach_does_not_overwrite_existing(self, real_flow):
+        flow = real_flow(with_response=False)
+        first = forwarder.reserve_forward_request_admission(7)
+        second = forwarder.reserve_forward_request_admission(11)
+
+        try:
+            forwarder.attach_forward_request_admission_to_flow(flow, first)
+
+            with pytest.raises(RuntimeError, match="already attached"):
+                forwarder.attach_forward_request_admission_to_flow(flow, second)
+
+            assert forwarder.forward_request_admission_state_for_tests() == (2, 18)
+        finally:
+            forwarder.release_forward_request_admission_from_flow(flow)
+            forwarder.release_forward_request_admission(first)
+            forwarder.release_forward_request_admission(second)
+
+        assert forwarder.forward_request_admission_state_for_tests() == (0, 0)
+
     async def test_closes_response_and_connection_on_success(self):
         with fake_forwarder_upstream(headers=[("Content-Type", "application/json")]) as upstream:
             status, body, _ = await forwarder.forward_request(

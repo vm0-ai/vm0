@@ -151,8 +151,9 @@ pub struct Firewall {
 /// A single firewall API entry with base URL and auth headers for proxy-side matching.
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct FirewallApi {
-    /// Unique identifier for cache keying in mitm-addon. Filled by the Python
-    /// registry loader after built-in refs and inline firewalls are resolved.
+    /// Stable API identifier used as one component of mitm-addon auth cache keys.
+    /// Filled by the Python registry loader after built-in refs and inline firewalls
+    /// are resolved.
     #[serde(default)]
     pub id: String,
     pub base: String,
@@ -280,12 +281,65 @@ impl From<&StorageManifest> for GuestDownloadManifest {
     }
 }
 
-#[derive(Debug, Deserialize)]
+#[derive(Clone, Debug, Deserialize)]
 #[serde(rename_all = "camelCase")]
 pub struct ResumeSession {
     #[serde(rename = "sessionId")]
     pub cli_agent_session_id: String,
-    pub session_history: String,
+    #[serde(flatten)]
+    pub history: ResumeSessionHistory,
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(untagged)]
+pub enum ResumeSessionHistory {
+    Inline {
+        #[serde(rename = "sessionHistory")]
+        session_history: String,
+    },
+    Ref {
+        #[serde(rename = "historyRef")]
+        history_ref: ResumeSessionHistoryRef,
+    },
+}
+
+#[derive(Clone, Debug, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ResumeSessionHistoryRef {
+    pub kind: ResumeSessionHistoryRefKind,
+    pub hash: String,
+    pub url: String,
+    #[serde(default)]
+    pub size: Option<u64>,
+}
+
+#[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq)]
+pub enum ResumeSessionHistoryRefKind {
+    #[serde(rename = "blob")]
+    Blob,
+}
+
+impl ResumeSession {
+    pub fn inline(cli_agent_session_id: String, session_history: String) -> Self {
+        Self {
+            cli_agent_session_id,
+            history: ResumeSessionHistory::Inline { session_history },
+        }
+    }
+
+    pub fn session_history(&self) -> Option<&str> {
+        match &self.history {
+            ResumeSessionHistory::Inline { session_history } => Some(session_history),
+            ResumeSessionHistory::Ref { .. } => None,
+        }
+    }
+
+    pub fn history_ref(&self) -> Option<&ResumeSessionHistoryRef> {
+        match &self.history {
+            ResumeSessionHistory::Inline { .. } => None,
+            ResumeSessionHistory::Ref { history_ref } => Some(history_ref),
+        }
+    }
 }
 
 impl ExecutionContext {
@@ -753,6 +807,37 @@ mod tests {
         });
         let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
         assert_eq!(ctx.cli_agent_session_id(), Some("sess-abc-123"));
+        assert_eq!(
+            ctx.resume_session.as_ref().unwrap().session_history(),
+            Some("{}")
+        );
+    }
+
+    #[test]
+    fn cli_agent_session_id_returns_id_from_resume_session_history_ref() {
+        let json = json!({
+            "runId": "550e8400-e29b-41d4-a716-446655440000",
+            "prompt": "hello",
+            "sandboxToken": "tok",
+            "cliAgentType": "claude_code",
+            "resumeSession": {
+                "sessionId": "sess-ref-123",
+                "historyRef": {
+                    "kind": "blob",
+                    "hash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+                    "url": "https://r2.example.com/blobs/a.blob?sig=secret",
+                    "size": 42
+                }
+            },
+            "billableFirewalls": []
+        });
+        let ctx: ExecutionContext = serde_json::from_value(json).unwrap();
+        let session = ctx.resume_session.as_ref().unwrap();
+        let history_ref = session.history_ref().unwrap();
+        assert_eq!(ctx.cli_agent_session_id(), Some("sess-ref-123"));
+        assert!(session.session_history().is_none());
+        assert_eq!(history_ref.kind, ResumeSessionHistoryRefKind::Blob);
+        assert_eq!(history_ref.size, Some(42));
     }
 
     #[test]

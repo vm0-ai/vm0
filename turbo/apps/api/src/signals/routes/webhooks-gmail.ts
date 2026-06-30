@@ -1,7 +1,7 @@
 import { command } from "ccstate";
 import { webhookGmailContract } from "@vm0/api-contracts/contracts/webhooks";
 
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { request$ } from "../context/hono";
 import { now } from "../external/time";
 import { dispatchGmailPubSubPush$ } from "../services/gmail-workflow-event.service";

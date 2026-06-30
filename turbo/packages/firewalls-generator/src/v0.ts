@@ -40,5 +40,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating v0 firewall config...");
   const ts = generateTypeScript();
-  writeOutput("v0", ts, import.meta.dirname);
+  writeOutput("v0", ts);
 }

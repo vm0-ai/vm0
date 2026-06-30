@@ -47,5 +47,5 @@ pub use types::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecOutputLimits, ExecRequest, ExecResult, ExecTermination,
     GuestProcessCancelHandle, GuestProcessControlHandle, GuestProcessHandle, GuestProcessWaiter,
     ProcessControlAck, ProcessControlMode, ProcessExit, ProcessOutputChunk, ProcessOutputMode,
-    ProcessOutputReceiver, StartProcessRequest,
+    ProcessOutputReceiver, StartProcessRequest, WriteFileEntry,
 };

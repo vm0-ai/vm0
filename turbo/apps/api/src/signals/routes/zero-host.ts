@@ -6,14 +6,16 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import {
   completeHostedSiteDeployment$,
+  createHtmlEditDraft$,
   generatePresentationSpeakerNotes$,
   getHostedSiteFiles$,
   prepareHostedSiteDeployment$,
+  redeployHtml$,
   redeployPresentationHtml$,
 } from "../services/zero-host.service";
 import { rejectSuspendedOrg$ } from "../services/zero-org-suspension.service";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 function internalError(message: string) {
   return {
@@ -69,8 +71,12 @@ const filesParams$ = pathParamsOf(zeroHostContract.files);
 const redeployPresentationHtmlBody$ = bodyResultOf(
   zeroHostContract.redeployPresentationHtml,
 );
+const redeployHtmlBody$ = bodyResultOf(zeroHostContract.redeployHtml);
 const generateSpeakerNotesBody$ = bodyResultOf(
   zeroHostContract.generatePresentationSpeakerNotes,
+);
+const createHtmlEditDraftBody$ = bodyResultOf(
+  zeroHostContract.createHtmlEditDraft,
 );
 const completeInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
@@ -177,6 +183,49 @@ const redeployPresentationHtmlInner$ = command(
   },
 );
 
+const redeployHtmlInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+
+    const bodyResult = await get(redeployHtmlBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const suspended = await set(rejectSuspendedOrg$, auth.orgId, signal);
+    if (suspended) {
+      return suspended;
+    }
+
+    const result = await set(
+      redeployHtml$,
+      {
+        orgId: auth.orgId,
+        userId: auth.userId,
+        body: bodyResult.data,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "bad_request") {
+      return badRequestMessage(result.message);
+    }
+    if (result.status === "conflict") {
+      return conflict(result.message);
+    }
+    if (result.status === "not_found") {
+      return notFound(result.message);
+    }
+    if (result.status === "config_error") {
+      return internalError(result.message);
+    }
+
+    return { status: 200 as const, body: result.body };
+  },
+);
+
 const generateSpeakerNotesInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
@@ -194,6 +243,39 @@ const generateSpeakerNotesInner$ = command(
 
     const result = await set(
       generatePresentationSpeakerNotes$,
+      { body: bodyResult.data },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (result.status === "bad_request") {
+      return badRequestMessage(result.message);
+    }
+    if (result.status === "config_error") {
+      return internalError(result.message);
+    }
+
+    return { status: 200 as const, body: result.body };
+  },
+);
+
+const createHtmlEditDraftInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+
+    const bodyResult = await get(createHtmlEditDraftBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const suspended = await set(rejectSuspendedOrg$, auth.orgId, signal);
+    if (suspended) {
+      return suspended;
+    }
+
+    const result = await set(
+      createHtmlEditDraft$,
       { body: bodyResult.data },
       signal,
     );
@@ -256,6 +338,17 @@ export const zeroHostRoutes: readonly RouteEntry[] = [
     ),
   },
   {
+    route: zeroHostContract.redeployHtml,
+    handler: authRoute(
+      {
+        requiredCapability: "host:write",
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+      },
+      redeployHtmlInner$,
+    ),
+  },
+  {
     route: zeroHostContract.generatePresentationSpeakerNotes,
     handler: authRoute(
       {
@@ -264,6 +357,17 @@ export const zeroHostRoutes: readonly RouteEntry[] = [
         missingOrganizationStatus: 401,
       },
       generateSpeakerNotesInner$,
+    ),
+  },
+  {
+    route: zeroHostContract.createHtmlEditDraft,
+    handler: authRoute(
+      {
+        requiredCapability: "host:write",
+        requireOrganization: true,
+        missingOrganizationStatus: 401,
+      },
+      createHtmlEditDraftInner$,
     ),
   },
 ];

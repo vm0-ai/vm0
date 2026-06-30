@@ -8,7 +8,7 @@ import {
   acceptMembershipRequest$,
   rejectMembershipRequest$,
 } from "../services/zero-org-membership-requests.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
   status: 403 as const,

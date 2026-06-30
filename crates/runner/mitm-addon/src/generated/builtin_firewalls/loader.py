@@ -233,6 +233,10 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import customer_io_0
 
         return (customer_io_0.JSON_PART,)
+    if name == "daytona":
+        from . import daytona_0
+
+        return (daytona_0.JSON_PART,)
     if name == "db9":
         from . import db9_0
 
@@ -625,6 +629,10 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import mixpanel_0
 
         return (mixpanel_0.JSON_PART,)
+    if name == "modal":
+        from . import modal_0
+
+        return (modal_0.JSON_PART,)
     if name == "model-provider:anthropic-api-key":
         from . import model_provider_anthropic_api_key_0
 

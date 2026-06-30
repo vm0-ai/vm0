@@ -1,7 +1,7 @@
 import { cronTelegramCleanupContract } from "@vm0/api-contracts/contracts/cron";
 import { command } from "ccstate";
 
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { cleanupTelegramMessages$ } from "../services/cron-telegram-cleanup.service";
 import { cronUnauthorized, hasValidCronSecret$ } from "./cron-auth";
 

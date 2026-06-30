@@ -34,6 +34,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "${{ vars.ALTIUM365_WORKSPACE_URL }}",',
+    '      hostPolicy: { kind: "publicDestination" },',
     "      auth: {",
     "        headers: {",
     '          Authorization: "Bearer ${{ secrets.ALTIUM365_TOKEN }}",',
@@ -52,5 +53,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Altium 365 firewall config...");
   const ts = generateTypeScript();
-  writeOutput("altium-365", ts, import.meta.dirname);
+  writeOutput("altium-365", ts);
 }

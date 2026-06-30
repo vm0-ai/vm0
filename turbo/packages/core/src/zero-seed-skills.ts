@@ -5,7 +5,7 @@ import {
 
 /**
  * Default skills always included in zero agent composes.
- * Source: https://github.com/vm0-ai/the-seed
+ * Source: https://github.com/vm0-ai/vm0-skills
  *
  * These live server-side only so the frontend never sends stale seed skills.
  */
@@ -45,6 +45,7 @@ export const SEED_SKILLS: readonly string[] = [
   "sql-cookbook",
   "stats-methods",
   "status-updates",
+  "workflow-setup",
 ] as const;
 
 /**

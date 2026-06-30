@@ -9,7 +9,6 @@ use vsock_proto::{
 
 use crate::{ConnectionState, Shared, normal_operation_transition_error};
 
-use super::diagnostics::exec_terminal_log_lifecycle;
 use super::state::{ExecCaptureState, ExecOperation, ExecOperationLifecycle};
 use super::types::{
     ExecControlAck, ExecControlGuestStatus, ExecControlOutcome, ExecOperationResult,
@@ -250,15 +249,7 @@ pub(in crate::exec_operation) fn dispatch_result(
     shared: &Arc<Shared>,
     msg: BorrowedRawMessage<'_>,
 ) -> io::Result<()> {
-    let Some((
-        diagnostic,
-        result_tx,
-        start_tx,
-        log_lifecycle,
-        stream_overflowed,
-        host_cancel_requested,
-        decoded,
-    )) = ({
+    let Some((terminal, decoded)) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
             ConnectionState::Connected { operations, .. } if operations.contains(msg.seq) => {
@@ -269,54 +260,24 @@ pub(in crate::exec_operation) fn dispatch_result(
                 };
                 operation.validates_result_before_start(&decoded)?;
                 validate_result(operation, &decoded)?;
-                let Some(operation) = operations.take(msg.seq) else {
-                    return Ok(());
-                };
-                let ExecOperation {
-                    normal_operation,
-                    mut lifecycle,
-                    diagnostic,
-                    result_tx,
-                    stream_overflowed,
-                    host_cancel_requested,
-                    ..
-                } = operation;
-                let log_lifecycle = exec_terminal_log_lifecycle(&lifecycle);
-                let start_tx = match &mut lifecycle {
-                    ExecOperationLifecycle::SupervisedAwaitingStart { start_tx, .. } => {
-                        start_tx.take()
-                    }
-                    ExecOperationLifecycle::OneShot
-                    | ExecOperationLifecycle::SupervisedStarted { .. } => None,
-                };
-                if let Some(normal_operation) = normal_operation {
-                    normal_operation.complete()?;
-                }
-                Some((
-                    diagnostic,
-                    result_tx,
-                    start_tx,
-                    log_lifecycle,
-                    stream_overflowed,
-                    host_cancel_requested,
-                    decoded,
-                ))
+                operations
+                    .take_terminal_exec_operation(msg.seq)?
+                    .map(|terminal| (terminal, decoded))
             }
             ConnectionState::Connected { .. } | ConnectionState::Closed => None,
         }
-    })
-    else {
+    }) else {
         return Ok(());
     };
 
-    diagnostic.log_terminal(
-        log_lifecycle,
+    terminal.diagnostic.log_terminal(
+        terminal.log_lifecycle,
         &decoded,
-        stream_overflowed,
-        host_cancel_requested,
+        terminal.stream_overflowed,
+        terminal.host_cancel_requested,
     );
-    let result = owned_result(decoded, stream_overflowed);
-    if let Some(start_tx) = start_tx {
+    let result = owned_result(decoded, terminal.stream_overflowed);
+    if let Some(start_tx) = terminal.start_tx {
         let message = if result.diagnostic.is_empty() {
             "supervised exec start failed".to_owned()
         } else {
@@ -324,7 +285,7 @@ pub(in crate::exec_operation) fn dispatch_result(
         };
         let _ = start_tx.send(Err(io::Error::other(message)));
     }
-    let _ = result_tx.send(Ok(result));
+    let _ = terminal.result_tx.send(Ok(result));
 
     Ok(())
 }
@@ -380,34 +341,16 @@ fn dispatch_control_result(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) ->
 }
 
 fn dispatch_error(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Result<bool> {
-    let Some((diagnostic, result_tx, start_tx, err)) = ({
+    let Some((terminal, err)) = ({
         let mut guard = shared.state.lock().unwrap_or_else(|e| e.into_inner());
         match &mut *guard {
             ConnectionState::Connected { operations, .. } if operations.contains(msg.seq) => {
                 let err = vsock_proto::decode_error(msg.payload)
                     .map(|message| exec_operation_guest_error(message.to_string()))
                     .map_err(exec_operation_protocol_error)?;
-                let Some(operation) = operations.take(msg.seq) else {
-                    return Ok(false);
-                };
-                let ExecOperation {
-                    normal_operation,
-                    mut lifecycle,
-                    diagnostic,
-                    result_tx,
-                    ..
-                } = operation;
-                let start_tx = match &mut lifecycle {
-                    ExecOperationLifecycle::SupervisedAwaitingStart { start_tx, .. } => {
-                        start_tx.take()
-                    }
-                    ExecOperationLifecycle::OneShot
-                    | ExecOperationLifecycle::SupervisedStarted { .. } => None,
-                };
-                if let Some(normal_operation) = normal_operation {
-                    normal_operation.complete()?;
-                }
-                Some((diagnostic, result_tx, start_tx, err))
+                operations
+                    .take_terminal_exec_operation(msg.seq)?
+                    .map(|terminal| (terminal, err))
             }
             ConnectionState::Connected { .. } | ConnectionState::Closed => None,
         }
@@ -415,11 +358,11 @@ fn dispatch_error(shared: &Arc<Shared>, msg: BorrowedRawMessage<'_>) -> io::Resu
         return dispatch_control_error(shared, msg);
     };
 
-    diagnostic.log_error_response(&err);
-    if let Some(start_tx) = start_tx {
+    terminal.diagnostic.log_error_response(&err);
+    if let Some(start_tx) = terminal.start_tx {
         let _ = start_tx.send(Err(io::Error::new(err.kind(), err.to_string())));
     }
-    let _ = result_tx.send(Err(err));
+    let _ = terminal.result_tx.send(Err(err));
     Ok(true)
 }
 

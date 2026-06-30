@@ -31,6 +31,7 @@ import builtin_connector_diagnostics
 import logging_utils
 import mitm_addon
 import registry
+import upstream_destination_binding
 import usage
 from tests.auth_state_helpers import clear_auth_state
 from tests.usage_helpers import UsageWebhookServer, fresh_usage_executor_context
@@ -52,6 +53,8 @@ def _reset_module_state() -> Iterator[None]:
     auth_base_forwarder.reset_forward_request_state_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
     registry.reset_cache_for_tests()
+    upstream_destination_binding.reset_for_tests()
+    mitm_addon.reset_upstream_destination_resolution_cache_for_tests()
     mitm_addon.reset_runner_usage_flush_state_for_tests()
     mitm_addon.reset_tls_admission_state_for_tests()
     clear_auth_state()
@@ -66,6 +69,8 @@ def _reset_module_state() -> Iterator[None]:
     logging_utils.reset_log_writer_for_tests()
     auth_base_forwarder.reset_forward_request_state_for_tests()
     builtin_connector_diagnostics.reset_cache_for_tests()
+    upstream_destination_binding.reset_for_tests()
+    mitm_addon.reset_upstream_destination_resolution_cache_for_tests()
     mitm_addon.reset_tls_admission_state_for_tests()
     usage.webhook.reset_delivery_capacity_for_tests()
     usage.counters.reset_for_tests()
@@ -156,6 +161,7 @@ def real_flow():
         flow = tflow.tflow(req=req, resp=resp)
         flow.client_conn.peername = (client_ip, 12345)
         flow.client_conn.sni = sni if sni is not None else (host if scheme == "https" else None)
+        flow.server_conn.address = (host, port)
         return flow
 
     return _build
@@ -167,7 +173,7 @@ class _StubTLSClient:
     def __init__(
         self,
         peername: tuple[str, int] | None,
-        sni: str,
+        sni: str | None,
         client_id: str | None,
     ) -> None:
         self.id = client_id or str(uuid.uuid4())
@@ -175,9 +181,32 @@ class _StubTLSClient:
         self.sni = sni
 
 
+class _StubTLSServer:
+    """Minimal stand-in for ``mitmproxy.connection.Server`` in TLS tests."""
+
+    def __init__(
+        self,
+        *,
+        address: tuple[str, int],
+        peername: tuple[str, int] | None,
+        connected: bool,
+        server_id: str | None,
+    ) -> None:
+        self.id = server_id or str(uuid.uuid4())
+        self.address = address
+        self.peername = peername
+        self.connected = connected
+
+
 class _StubTLSContext:
-    def __init__(self, client: _StubTLSClient) -> None:
+    def __init__(self, client: _StubTLSClient, server: _StubTLSServer) -> None:
         self.client = client
+        self.server = server
+
+
+class _StubClientHello:
+    def __init__(self, sni: str | None) -> None:
+        self.sni = sni
 
 
 class _StubClientHelloData:
@@ -185,19 +214,33 @@ class _StubClientHelloData:
 
     ``ClientHelloData`` is constructed inside mitmproxy's TLS layer from
     protocol state we don't have access to at test time, so we can't
-    build a real one.  The addon only reads
-    ``data.context.client.peername`` / ``data.context.client.sni`` and
-    writes ``data.ignore_connection``; a dataclass-shaped stub covers
-    that surface without pulling in MagicMock's attribute-proliferation.
+    build a real one.  The addon reads the context's client/server plus
+    ``data.client_hello.sni`` and writes ``data.ignore_connection``; a
+    dataclass-shaped stub covers that surface without pulling in
+    MagicMock's attribute-proliferation.
     """
 
     def __init__(
         self,
         peername: tuple[str, int] | None,
-        sni: str,
+        sni: str | None,
         client_id: str | None,
+        client_sni: str | None,
+        server_address: tuple[str, int],
+        server_peername: tuple[str, int] | None,
+        server_connected: bool,
+        server_id: str | None,
     ) -> None:
-        self.context = _StubTLSContext(_StubTLSClient(peername, sni, client_id))
+        self.context = _StubTLSContext(
+            _StubTLSClient(peername, client_sni, client_id),
+            _StubTLSServer(
+                address=server_address,
+                peername=server_peername,
+                connected=server_connected,
+                server_id=server_id,
+            ),
+        )
+        self.client_hello = _StubClientHello(sni)
         self.ignore_connection = False
 
 
@@ -208,8 +251,22 @@ def make_tls_data():
         client_ip: str = "10.200.0.1",
         sni: str = "example.com",
         client_id: str | None = None,
+        client_sni: str | None = None,
+        server_address: tuple[str, int] = ("203.0.113.10", 443),
+        server_peername: tuple[str, int] | None = None,
+        server_connected: bool = False,
+        server_id: str | None = None,
     ) -> _StubClientHelloData:
-        return _StubClientHelloData(peername=(client_ip, 12345), sni=sni, client_id=client_id)
+        return _StubClientHelloData(
+            peername=(client_ip, 12345),
+            sni=sni,
+            client_id=client_id,
+            client_sni=sni if client_sni is None else client_sni,
+            server_address=server_address,
+            server_peername=server_peername,
+            server_connected=server_connected,
+            server_id=server_id,
+        )
 
     return _make
 

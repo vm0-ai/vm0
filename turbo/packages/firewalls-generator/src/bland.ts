@@ -47,5 +47,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Bland firewall config...");
   const ts = generateTypeScript();
-  writeOutput("bland", ts, import.meta.dirname);
+  writeOutput("bland", ts);
 }

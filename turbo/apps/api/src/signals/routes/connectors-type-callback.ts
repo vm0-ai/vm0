@@ -31,7 +31,7 @@ import {
   loadActiveGithubInstallationForOrg,
 } from "../services/github-oauth.service";
 import { settle } from "../utils";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import {
   getConnectorOAuthCanonicalRedirectUrl,
   getConnectorOAuthOrigin,

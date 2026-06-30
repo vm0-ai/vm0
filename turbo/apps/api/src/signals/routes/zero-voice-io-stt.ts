@@ -5,7 +5,7 @@ import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { request$ } from "../context/hono";
 import { logger } from "../../lib/log";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { audioInputQuota } from "../services/voice-io.service";
 import {
   badRequest,

@@ -4,7 +4,7 @@ import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/z
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, queryOf } from "../context/request";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import {
   applyUserPermissionGrants$,
   listUserPermissionGrants$,
@@ -18,16 +18,27 @@ const userPermissionGrantAuthOptions = {
 const listQuery$ = queryOf(zeroUserPermissionGrantsContract.list);
 const applyBody$ = bodyResultOf(zeroUserPermissionGrantsContract.apply);
 
+function permissionGrantScopeFromQuery(query: { readonly agentId?: string }): {
+  readonly agentId: string;
+} {
+  if (query.agentId !== undefined) {
+    return { agentId: query.agentId };
+  }
+  throw new Error("Expected permission grant scope");
+}
+
 const listUserPermissionGrantsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const auth = get(organizationAuthContext$);
     const query = get(listQuery$);
+    const scope = permissionGrantScopeFromQuery(query);
     const result = await set(
       listUserPermissionGrants$,
       {
         orgId: auth.orgId,
         userId: auth.userId,
-        agentId: query.agentId,
+        role: auth.orgRole ?? "member",
+        ...scope,
       },
       signal,
     );
@@ -54,6 +65,7 @@ const applyUserPermissionGrantsInner$ = command(
       {
         orgId: auth.orgId,
         userId: auth.userId,
+        role: auth.orgRole ?? "member",
         apply: bodyResult.data,
       },
       signal,

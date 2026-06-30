@@ -1,51 +1,37 @@
-import { readdirSync, readFileSync } from "node:fs";
-import { dirname, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
-
 import { describe, expect, it } from "vitest";
 
-const PLATFORM_SRC_DIR = resolve(
-  dirname(fileURLToPath(import.meta.url)),
-  "../..",
-);
 const SERVER_FIREWALL_METADATA_SPECIFIER =
   "@vm0/connectors/firewall-metadata/server";
 const IMPORT_SPECIFIER_PATTERN =
   /\bfrom\s+["']([^"']+)["']|\bimport\s*\(\s*["']([^"']+)["']\s*\)|\bimport\s+["']([^"']+)["']|\brequire\s*\(\s*["']([^"']+)["']\s*\)/g;
 
-function isSkippedDirectory(name: string): boolean {
-  return name === "__tests__" || name === "mocks" || name === "test";
-}
+const PLATFORM_SRC_PREFIX = "../../";
+const productionSourceModules = import.meta.glob<string>(
+  "../../**/*.{ts,tsx}",
+  {
+    eager: true,
+    query: "?raw",
+    import: "default",
+  },
+);
 
-function isProductionSourceFile(name: string): boolean {
-  if (!name.endsWith(".ts") && !name.endsWith(".tsx")) {
-    return false;
-  }
-  if (name.endsWith(".d.ts")) {
-    return false;
-  }
+function isProductionSourcePath(path: string): boolean {
+  const segments = path.split("/");
   return !(
-    name.includes(".test.") ||
-    name.includes(".spec.") ||
-    name.includes(".stories.")
+    segments.includes("__tests__") ||
+    segments.includes("mocks") ||
+    segments.includes("test") ||
+    path.endsWith(".d.ts") ||
+    path.includes(".test.") ||
+    path.includes(".spec.") ||
+    path.includes(".stories.")
   );
 }
 
-function listProductionSourceFiles(dir: string): string[] {
-  const files: string[] = [];
-  for (const entry of readdirSync(dir, { withFileTypes: true })) {
-    const entryPath = resolve(dir, entry.name);
-    if (entry.isDirectory()) {
-      if (!isSkippedDirectory(entry.name)) {
-        files.push(...listProductionSourceFiles(entryPath));
-      }
-      continue;
-    }
-    if (entry.isFile() && isProductionSourceFile(entry.name)) {
-      files.push(entryPath);
-    }
-  }
-  return files;
+function sourcePathFromGlobKey(path: string): string {
+  return path.startsWith(PLATFORM_SRC_PREFIX)
+    ? path.slice(PLATFORM_SRC_PREFIX.length)
+    : path;
 }
 
 function importSpecifiers(source: string): readonly string[] {
@@ -65,18 +51,20 @@ function importsSpecifier(source: string, specifier: string): boolean {
 
 describe("firewall metadata import boundary", () => {
   it("keeps server-only firewall metadata out of platform production source", () => {
-    const offenders = listProductionSourceFiles(PLATFORM_SRC_DIR).filter(
-      (file) => {
-        return importsSpecifier(
-          readFileSync(file, "utf8"),
-          SERVER_FIREWALL_METADATA_SPECIFIER,
+    const offenders = Object.entries(productionSourceModules)
+      .map(([path, source]) => {
+        return { path: sourcePathFromGlobKey(path), source };
+      })
+      .filter(({ path, source }) => {
+        return (
+          isProductionSourcePath(path) &&
+          importsSpecifier(source, SERVER_FIREWALL_METADATA_SPECIFIER)
         );
-      },
-    );
+      });
 
     expect(
-      offenders.map((file) => {
-        return relative(PLATFORM_SRC_DIR, file);
+      offenders.map((offender) => {
+        return offender.path;
       }),
     ).toStrictEqual([]);
   });

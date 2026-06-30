@@ -6,20 +6,20 @@ import {
   zeroNeedsOnboarding$,
 } from "./zero-onboarding.ts";
 
-const PAID_ONBOARDING_PATH = "/onboarding/2afcf6";
+const ONBOARDING_PATH = "/onboarding/2afcf6";
 
-function paidOnboardingUrl(searchParams: URLSearchParams): string {
-  const configuredUrl = import.meta.env.VITE_PAID_ONBOARDING_URL as
+function onboardingUrl(searchParams: URLSearchParams): string {
+  const configuredUrl = import.meta.env.VITE_ONBOARDING_URL as
     | string
     | undefined;
-  const configuredDomain = import.meta.env.VITE_PAID_ONBOARDING_DOMAIN as
+  const configuredDomain = import.meta.env.VITE_ONBOARDING_DOMAIN as
     | string
     | undefined;
   if (!configuredUrl) {
-    throw new Error("Missing VITE_PAID_ONBOARDING_URL environment variable");
+    throw new Error("Missing VITE_ONBOARDING_URL environment variable");
   }
 
-  const url = new URL(PAID_ONBOARDING_PATH, configuredUrl);
+  const url = new URL(ONBOARDING_PATH, configuredUrl);
   const search = searchParams.toString();
   if (search) {
     url.search = search;
@@ -30,17 +30,15 @@ function paidOnboardingUrl(searchParams: URLSearchParams): string {
   return url.toString();
 }
 
-const redirectToPaidOnboarding$ = command(
+const redirectToOnboarding$ = command(
   ({ get }, searchParams?: URLSearchParams) => {
-    window.location.href = paidOnboardingUrl(
-      searchParams ?? get(searchParams$),
-    );
+    window.location.href = onboardingUrl(searchParams ?? get(searchParams$));
   },
 );
 
 export const redirectToConfiguredOnboarding$ = command(
   ({ set }, searchParams?: URLSearchParams) => {
-    set(redirectToPaidOnboarding$, searchParams);
+    set(redirectToOnboarding$, searchParams);
   },
 );
 

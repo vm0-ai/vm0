@@ -1,12 +1,17 @@
+import { isUtf8 } from "node:buffer";
+import { createHash } from "node:crypto";
+
 import { command } from "ccstate";
 import {
   elapsedSinceApiStartMs,
+  RESUME_SESSION_HISTORY_MAX_BYTES,
   runnersHeartbeatContract,
   runnersJobClaimContract,
   runnersPollContract,
   storedExecutionContextSchema,
   type ExecutionContext,
   type HeldSessionState,
+  type RunnerClaimCapability,
   type StoredExecutionContext,
 } from "@vm0/api-contracts/contracts/runners";
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
@@ -22,19 +27,25 @@ import { bodyResultOf, pathParamsOf } from "../context/request";
 import { waitUntil } from "../context/wait-until";
 import { writeDb$, type Db } from "../external/db";
 import {
+  downloadS3BufferWithMaxBytes,
+  generatePresignedGetUrl,
+  S3ObjectSizeLimitError,
+} from "../external/s3";
+import {
   createRunnerGroupRealtimeToken,
   publishRunChangedForUserSafely,
 } from "../external/realtime";
 import { recordSandboxOperations } from "../external/sandbox-op-log";
 import { now, nowDate } from "../external/time";
+import { env } from "../../lib/env";
 import { badRequestMessage, conflict, notFound } from "../../lib/error";
 import { logger } from "../../lib/log";
 import { generateSandboxToken } from "../auth/tokens";
 import { decryptPersistentSecretsMap } from "../services/crypto.utils";
 import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
-import type { RouteEntry } from "../route";
-import { tapError } from "../utils";
+import type { RouteEntry } from "../route-entry";
+import { settle, tapError } from "../utils";
 
 const L = logger("Runners");
 
@@ -46,6 +57,68 @@ const STALE_RUNNER_THRESHOLD_MS = 5 * 60 * 1000;
 const INVALID_EXECUTION_CONTEXT_ERROR =
   "Runner job missing valid execution context";
 const MAX_VALIDATION_ISSUES_TO_LOG = 10;
+const RESUME_SESSION_HISTORY_URL_TTL_SECONDS = 60 * 60;
+const RESUME_SESSION_HISTORY_REF_CAPABILITY =
+  "resumeSessionHistoryRef" satisfies RunnerClaimCapability;
+const RESUME_SESSION_HISTORY_LOAD_ERROR =
+  "Runner job missing resume session history";
+const RESUME_SESSION_HISTORY_INVALID_ERROR =
+  "Runner job has invalid resume session history";
+const EMPTY_S3_BODY_MESSAGE = "S3 object body is empty";
+
+interface ClaimFailedSideEffectArgs {
+  readonly runId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly error: string;
+}
+
+class ResumeSessionHistoryLoadError extends Error {
+  constructor(
+    readonly hash: string,
+    message: string,
+    readonly cause: unknown,
+  ) {
+    super(message);
+    this.name = "ResumeSessionHistoryLoadError";
+  }
+}
+
+function isResumeSessionHistoryLoadError(
+  error: unknown,
+): error is ResumeSessionHistoryLoadError {
+  return error instanceof ResumeSessionHistoryLoadError;
+}
+
+function errorField(error: unknown, field: string): unknown {
+  if (typeof error !== "object" || error === null) {
+    return undefined;
+  }
+  return Reflect.get(error, field);
+}
+
+function errorStringField(error: unknown, field: string): string | undefined {
+  const value = errorField(error, field);
+  return typeof value === "string" ? value : undefined;
+}
+
+function isMissingResumeSessionHistoryError(error: unknown): boolean {
+  const code =
+    errorStringField(error, "Code") ??
+    errorStringField(error, "code") ??
+    errorStringField(error, "name");
+  const metadata = errorField(error, "$metadata");
+  const status =
+    typeof metadata === "object" && metadata !== null
+      ? errorField(metadata, "httpStatusCode")
+      : undefined;
+  return (
+    code === "NoSuchKey" ||
+    code === "NotFound" ||
+    status === 404 ||
+    errorStringField(error, "message") === EMPTY_S3_BODY_MESSAGE
+  );
+}
 
 type ClaimRouteTimingSpanKind = "top_level" | "nested";
 type ClaimRouteTimingActionType =
@@ -579,10 +652,24 @@ type ClaimedTransitionResult = Extract<
   ClaimTransitionResult,
   { readonly status: "claimed" }
 >;
+type FailedClaimTransitionResult = Exclude<
+  ClaimTransitionResult,
+  { readonly status: "claimed" }
+>;
 
 interface LockedClaimRunRow extends Record<string, unknown> {
   readonly id: string;
   readonly status: string;
+}
+
+function claimTransitionErrorResponse(result: FailedClaimTransitionResult) {
+  if (result.status === "conflict") {
+    return conflict("Job was claimed by another runner");
+  }
+  if (result.status === "job-not-found") {
+    return notFound("Job not found in queue");
+  }
+  return notFound("Run not found");
 }
 
 interface LockedRunnerJobRow extends Record<string, unknown> {
@@ -708,6 +795,20 @@ type PoisonJobResult =
   | { readonly status: "conflict" }
   | { readonly status: "job-not-found" }
   | { readonly status: "run-not-found" };
+type FailedPoisonJobResult = Exclude<
+  PoisonJobResult,
+  { readonly status: "failed" }
+>;
+
+function poisonJobErrorResponse(result: FailedPoisonJobResult) {
+  if (result.status === "conflict") {
+    return conflict("Job was claimed by another runner");
+  }
+  if (result.status === "job-not-found") {
+    return notFound("Job not found in queue");
+  }
+  return notFound("Run not found");
+}
 
 async function failPoisonQueuedJob(
   db: Db,
@@ -778,12 +879,145 @@ async function secretValuesForRunner(
   });
 }
 
+type StoredResumeSessionWithHistoryRef = Extract<
+  NonNullable<StoredExecutionContext["resumeSession"]>,
+  { historyRef: { kind: "blob"; hash: string } }
+>;
+
+function hasResumeSessionHistoryRef(
+  resumeSession: StoredExecutionContext["resumeSession"],
+): resumeSession is StoredResumeSessionWithHistoryRef {
+  return resumeSession !== null && "historyRef" in resumeSession;
+}
+
+function runnerSupportsResumeSessionHistoryRef(
+  capabilities: readonly string[] | undefined,
+): boolean {
+  return capabilities?.includes(RESUME_SESSION_HISTORY_REF_CAPABILITY) ?? false;
+}
+
+function resumeSessionHistoryBlobKey(hash: string): string {
+  return `blobs/${hash}.blob`;
+}
+
+function invalidResumeSessionHistoryError(
+  hash: string,
+  cause: unknown,
+): ResumeSessionHistoryLoadError {
+  return new ResumeSessionHistoryLoadError(
+    hash,
+    RESUME_SESSION_HISTORY_INVALID_ERROR,
+    cause,
+  );
+}
+
+function decodeVerifiedResumeSessionHistory(
+  hash: string,
+  buffer: Buffer,
+): string {
+  const actualHash = createHash("sha256").update(buffer).digest("hex");
+  if (actualHash !== hash) {
+    throw invalidResumeSessionHistoryError(
+      hash,
+      new Error(`hash mismatch: expected ${hash}, got ${actualHash}`),
+    );
+  }
+  if (!isUtf8(buffer)) {
+    throw invalidResumeSessionHistoryError(
+      hash,
+      new Error("session history is not utf-8"),
+    );
+  }
+  return buffer.toString("utf8");
+}
+
+const generateResumeSessionHistoryUrl$ = command(
+  async ({ get }, hash: string): Promise<string> => {
+    return await get(
+      generatePresignedGetUrl(
+        env("R2_USER_STORAGES_BUCKET_NAME"),
+        resumeSessionHistoryBlobKey(hash),
+        RESUME_SESSION_HISTORY_URL_TTL_SECONDS,
+        undefined,
+        true,
+      ),
+    );
+  },
+);
+
+const loadResumeSessionHistory$ = command(
+  async ({ get }, hash: string): Promise<string> => {
+    const buffer = await get(
+      downloadS3BufferWithMaxBytes(
+        env("R2_USER_STORAGES_BUCKET_NAME"),
+        resumeSessionHistoryBlobKey(hash),
+        RESUME_SESSION_HISTORY_MAX_BYTES,
+      ),
+    );
+    return decodeVerifiedResumeSessionHistory(hash, buffer);
+  },
+);
+
+async function resolveResumeSessionForClaim(args: {
+  readonly resumeSession: StoredExecutionContext["resumeSession"];
+  readonly supportsResumeSessionHistoryRef: boolean;
+  readonly generateResumeSessionHistoryUrl: (hash: string) => Promise<string>;
+  readonly loadResumeSessionHistory: (hash: string) => Promise<string>;
+}): Promise<ExecutionContext["resumeSession"]> {
+  const resumeSession = args.resumeSession;
+  if (!hasResumeSessionHistoryRef(resumeSession)) {
+    return resumeSession;
+  }
+
+  const { sessionId, historyRef } = resumeSession;
+  if (!args.supportsResumeSessionHistoryRef) {
+    const sessionHistoryResult = await settle(
+      args.loadResumeSessionHistory(historyRef.hash),
+    );
+    if (!sessionHistoryResult.ok) {
+      if (isResumeSessionHistoryLoadError(sessionHistoryResult.error)) {
+        throw sessionHistoryResult.error;
+      }
+      if (sessionHistoryResult.error instanceof S3ObjectSizeLimitError) {
+        throw invalidResumeSessionHistoryError(
+          historyRef.hash,
+          sessionHistoryResult.error,
+        );
+      }
+      if (!isMissingResumeSessionHistoryError(sessionHistoryResult.error)) {
+        throw sessionHistoryResult.error;
+      }
+      throw new ResumeSessionHistoryLoadError(
+        historyRef.hash,
+        RESUME_SESSION_HISTORY_LOAD_ERROR,
+        sessionHistoryResult.error,
+      );
+    }
+    return {
+      sessionId,
+      sessionHistory: sessionHistoryResult.value,
+    };
+  }
+
+  const url = await args.generateResumeSessionHistoryUrl(historyRef.hash);
+  return {
+    sessionId,
+    historyRef: {
+      ...historyRef,
+      url,
+    },
+  };
+}
+
 async function buildClaimResponseBody(args: {
   readonly db: Db;
   readonly run: ClaimedRun;
   readonly storedContext: StoredExecutionContext;
   readonly timing: ClaimRouteTimingCollector;
   readonly signal: AbortSignal;
+  readonly supportsResumeSessionHistoryRef: boolean;
+  readonly generateResumeSessionHistoryUrl: (hash: string) => Promise<string>;
+  readonly loadResumeSessionHistory: (hash: string) => Promise<string>;
 }): Promise<ExecutionContext> {
   const featureSwitchContext = await args.timing.measure(
     "claim_route_feature_switch_context",
@@ -805,29 +1039,36 @@ async function buildClaimResponseBody(args: {
     },
   );
   args.signal.throwIfAborted();
-  const responseAssemblyStartedAt = now();
-  const sandboxToken = generateSandboxToken(
-    args.run.userId,
-    args.run.id,
-    args.run.orgId,
-  );
-  const responseBody = {
-    ...args.storedContext,
-    runId: args.run.id,
-    prompt: args.run.prompt,
-    appendSystemPrompt: args.run.appendSystemPrompt,
-    agentComposeVersionId: args.run.agentComposeVersionId,
-    vars: (args.run.vars as Record<string, string>) ?? null,
-    checkpointId: args.run.resumedFromCheckpointId ?? null,
-    sandboxToken,
-    secretValues,
-  };
-  args.timing.recordElapsed(
+  return await args.timing.measure(
     "claim_route_response_assembly",
     "top_level",
-    responseAssemblyStartedAt,
+    async () => {
+      const resumeSession = await resolveResumeSessionForClaim({
+        resumeSession: args.storedContext.resumeSession,
+        supportsResumeSessionHistoryRef: args.supportsResumeSessionHistoryRef,
+        generateResumeSessionHistoryUrl: args.generateResumeSessionHistoryUrl,
+        loadResumeSessionHistory: args.loadResumeSessionHistory,
+      });
+      args.signal.throwIfAborted();
+      const sandboxToken = generateSandboxToken(
+        args.run.userId,
+        args.run.id,
+        args.run.orgId,
+      );
+      return {
+        ...args.storedContext,
+        runId: args.run.id,
+        prompt: args.run.prompt,
+        appendSystemPrompt: args.run.appendSystemPrompt,
+        agentComposeVersionId: args.run.agentComposeVersionId,
+        vars: (args.run.vars as Record<string, string>) ?? null,
+        checkpointId: args.run.resumedFromCheckpointId ?? null,
+        resumeSession,
+        sandboxToken,
+        secretValues,
+      };
+    },
   );
-  return responseBody;
 }
 
 function scheduleSuccessfulClaimSideEffects(args: {
@@ -1040,15 +1281,7 @@ function claimTimingOperation(
 }
 
 const scheduleClaimFailedSideEffects$ = command(
-  (
-    { set },
-    args: {
-      readonly runId: string;
-      readonly userId: string;
-      readonly orgId: string;
-      readonly error: string;
-    },
-  ): void => {
+  ({ set }, args: ClaimFailedSideEffectArgs): void => {
     const backgroundSignal = new AbortController().signal;
     waitUntil(
       publishRunChangedForUserSafely(args.userId, args.runId, {
@@ -1078,6 +1311,91 @@ const scheduleClaimFailedSideEffects$ = command(
   },
 );
 
+async function failClaimForResumeSessionHistoryLoad(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly hash: string;
+  readonly errorMessage: string;
+  readonly cause: unknown;
+  readonly signal: AbortSignal;
+  readonly scheduleFailedSideEffects: (args: ClaimFailedSideEffectArgs) => void;
+}) {
+  L.warn("session history R2 object could not be loaded during claim", {
+    runId: args.runId,
+    hash: args.hash,
+    errorMessage: args.errorMessage,
+    error: args.cause,
+  });
+  const poisonResult = await failPoisonQueuedJob(
+    args.db,
+    args.runId,
+    args.errorMessage,
+    args.signal,
+  );
+  if (poisonResult.status !== "failed") {
+    return poisonJobErrorResponse(poisonResult);
+  }
+  args.scheduleFailedSideEffects({
+    runId: args.runId,
+    userId: args.userId,
+    orgId: args.orgId,
+    error: args.errorMessage,
+  });
+  return badRequestMessage(args.errorMessage);
+}
+
+async function failClaimForInvalidStoredExecutionContext(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly userId: string;
+  readonly orgId: string;
+  readonly signal: AbortSignal;
+  readonly scheduleFailedSideEffects: (args: ClaimFailedSideEffectArgs) => void;
+}) {
+  const poisonResult = await failPoisonQueuedJob(
+    args.db,
+    args.runId,
+    INVALID_EXECUTION_CONTEXT_ERROR,
+    args.signal,
+  );
+  if (poisonResult.status !== "failed") {
+    return poisonJobErrorResponse(poisonResult);
+  }
+  args.scheduleFailedSideEffects({
+    runId: args.runId,
+    userId: args.userId,
+    orgId: args.orgId,
+    error: INVALID_EXECUTION_CONTEXT_ERROR,
+  });
+  return badRequestMessage("Job missing execution context");
+}
+
+async function claimResponseBuildErrorResponse(args: {
+  readonly db: Db;
+  readonly run: ClaimedRun;
+  readonly runId: string;
+  readonly error: unknown;
+  readonly signal: AbortSignal;
+  readonly scheduleFailedSideEffects: (args: ClaimFailedSideEffectArgs) => void;
+}) {
+  if (!isResumeSessionHistoryLoadError(args.error)) {
+    throw args.error;
+  }
+  return await failClaimForResumeSessionHistoryLoad({
+    db: args.db,
+    runId: args.runId,
+    hash: args.error.hash,
+    userId: args.run.userId,
+    orgId: args.run.orgId,
+    errorMessage: args.error.message,
+    cause: args.error.cause,
+    signal: args.signal,
+    scheduleFailedSideEffects: args.scheduleFailedSideEffects,
+  });
+}
+
 const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const claimRequestStartedAtMs = now();
   const claimRouteTiming = new ClaimRouteTimingCollector();
@@ -1093,8 +1411,7 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     return body.response;
   }
 
-  const params = get(pathParamsOf(runnersJobClaimContract.claim));
-  const runId = params.id;
+  const runId = get(pathParamsOf(runnersJobClaimContract.claim)).id;
   const db = set(writeDb$);
   claimRouteTiming.recordElapsed(
     "claim_route_request_prepare",
@@ -1131,39 +1448,51 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   signal.throwIfAborted();
   if (!storedContextResult.success) {
     warnInvalidStoredExecutionContext(runId, storedContextResult.error.issues);
-    const poisonResult = await failPoisonQueuedJob(
+    return await failClaimForInvalidStoredExecutionContext({
       db,
-      runId,
-      INVALID_EXECUTION_CONTEXT_ERROR,
-      signal,
-    );
-    if (poisonResult.status === "conflict") {
-      return conflict("Job was claimed by another runner");
-    }
-    if (poisonResult.status === "job-not-found") {
-      return notFound("Job not found in queue");
-    }
-    if (poisonResult.status === "run-not-found") {
-      return notFound("Run not found");
-    }
-
-    set(scheduleClaimFailedSideEffects$, {
       runId,
       userId: run.userId,
       orgId: run.orgId,
-      error: INVALID_EXECUTION_CONTEXT_ERROR,
+      signal,
+      scheduleFailedSideEffects(args) {
+        set(scheduleClaimFailedSideEffects$, args);
+      },
     });
-    return badRequestMessage("Job missing execution context");
   }
   const storedContext = storedContextResult.data;
 
-  const responseBody = await buildClaimResponseBody({
-    db,
-    run,
-    storedContext,
-    timing: claimRouteTiming,
+  const responseBodyResult = await settle(
+    buildClaimResponseBody({
+      db,
+      run,
+      storedContext,
+      timing: claimRouteTiming,
+      signal,
+      supportsResumeSessionHistoryRef: runnerSupportsResumeSessionHistoryRef(
+        body.data.capabilities,
+      ),
+      generateResumeSessionHistoryUrl(hash: string) {
+        return set(generateResumeSessionHistoryUrl$, hash);
+      },
+      loadResumeSessionHistory(hash: string) {
+        return set(loadResumeSessionHistory$, hash);
+      },
+    }),
     signal,
-  });
+  );
+  if (!responseBodyResult.ok) {
+    return await claimResponseBuildErrorResponse({
+      db,
+      run,
+      runId,
+      error: responseBodyResult.error,
+      signal,
+      scheduleFailedSideEffects(args) {
+        set(scheduleClaimFailedSideEffects$, args);
+      },
+    });
+  }
+  const responseBody = responseBodyResult.value;
   signal.throwIfAborted();
 
   const claimResult = await claimRouteTiming.measure(
@@ -1179,14 +1508,8 @@ const claimInner$ = command(async ({ get, set }, signal: AbortSignal) => {
     },
   );
   signal.throwIfAborted();
-  if (claimResult.status === "conflict") {
-    return conflict("Job was claimed by another runner");
-  }
-  if (claimResult.status === "job-not-found") {
-    return notFound("Job not found in queue");
-  }
-  if (claimResult.status === "run-not-found") {
-    return notFound("Run not found");
+  if (claimResult.status !== "claimed") {
+    return claimTransitionErrorResponse(claimResult);
   }
 
   scheduleSuccessfulClaimSideEffects({

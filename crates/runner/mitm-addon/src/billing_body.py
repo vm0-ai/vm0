@@ -5,7 +5,7 @@ from typing import Literal
 
 from mitmproxy import http
 
-from body_limits import STREAM_BUFFER_LIMIT
+from body_limits import REQUEST_BODY_BILLING_INSPECTION_LIMIT
 
 
 def _decode_zlib_request_body_for_billing(
@@ -32,8 +32,8 @@ def decode_request_body_for_billing(
     raw_content: bytes | None,
     headers: http.Headers,
     *,
-    max_raw: int = STREAM_BUFFER_LIMIT,
-    max_decoded: int = STREAM_BUFFER_LIMIT,
+    max_raw: int = REQUEST_BODY_BILLING_INSPECTION_LIMIT,
+    max_decoded: int = REQUEST_BODY_BILLING_INSPECTION_LIMIT,
 ) -> bytes | None:
     """Decode a request body for conservative billing inspection.
 

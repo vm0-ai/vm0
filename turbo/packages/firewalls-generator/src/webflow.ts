@@ -52,5 +52,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Webflow firewall config...");
   const ts = generateTypeScript();
-  writeOutput("webflow", ts, import.meta.dirname);
+  writeOutput("webflow", ts);
 }

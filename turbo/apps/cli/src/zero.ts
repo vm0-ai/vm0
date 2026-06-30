@@ -3,40 +3,16 @@
 import "./instrument.js";
 import { Command } from "commander";
 import { configureGlobalProxyFromEnv } from "./lib/network/proxy.js";
-import { zeroOrgCommand } from "./commands/zero/org";
-import { zeroAgentCommand } from "./commands/zero/agent";
-import { zeroConnectorCommand } from "./commands/zero/connector";
-import { zeroCreditCommand } from "./commands/zero/credit";
-import { zeroDoctorCommand } from "./commands/zero/doctor";
-import { zeroPreferenceCommand } from "./commands/zero/preference";
-import { zeroScheduleCommand } from "./commands/zero/schedule";
-import { zeroAutomationCommand } from "./commands/zero/automation";
-import { zeroSecretCommand } from "./commands/zero/secret";
-import { zeroGithubCommand } from "./commands/zero/github";
-import { zeroSlackCommand } from "./commands/zero/slack";
-import { zeroTelegramCommand } from "./commands/zero/telegram";
-import { zeroPhoneCommand } from "./commands/zero/phone";
-import { zeroVariableCommand } from "./commands/zero/variable";
-import { zeroWhoamiCommand } from "./commands/zero/whoami";
-import { zeroWorkflowCommand } from "./commands/zero/workflow";
-import { zeroGoalCommand } from "./commands/zero/goal";
-import { zeroLogsCommand } from "./commands/zero/logs";
-import { zeroSearchCommand } from "./commands/zero/search";
-import { zeroDeveloperSupportCommand } from "./commands/zero/developer-support";
-import { zeroComputerUseCommand } from "./commands/zero/computer-use";
-import { generateCommand } from "./commands/zero/generate";
-import { zeroWebCommand } from "./commands/zero/web";
-import { zeroHostCommand } from "./commands/zero/host";
-import { zeroMapsCommand } from "./commands/zero/maps";
-import { zeroBankingCommand } from "./commands/zero/banking";
-import { zeroModelCommand } from "./commands/zero/model";
-import { zeroModelProviderCommand } from "./commands/zero/model-provider";
-import { zeroVideoCommand } from "./commands/zero/video";
-import { zeroResourceCommand } from "./commands/zero/resource";
 import {
   decodeZeroTokenPayload,
   type ZeroTokenPayload,
 } from "./lib/api/zero-token.js";
+
+interface ZeroCommandDefinition {
+  name: string;
+  description: string;
+  load: () => Promise<Command>;
+}
 
 /**
  * Map of command names to the capability required to see them.
@@ -62,6 +38,7 @@ const COMMAND_CAPABILITY_MAP: Record<
   "model-provider": null,
   logs: "agent-run:read",
   search: "chat-message:read",
+  chat: ["chat-thread:read", "chat-thread:write"],
   resource: null,
   github: ["github:read", "github:write"],
   slack: "slack:write",
@@ -78,38 +55,247 @@ const COMMAND_CAPABILITY_MAP: Record<
   banking: "banking:read",
 };
 
-const DEFAULT_COMMANDS: Command[] = [
-  zeroOrgCommand,
-  zeroModelCommand,
-  zeroModelProviderCommand,
-  zeroAgentCommand,
-  zeroConnectorCommand,
-  zeroCreditCommand,
-  zeroDoctorCommand,
-  zeroPreferenceCommand,
-  zeroScheduleCommand,
-  zeroAutomationCommand,
-  zeroSecretCommand,
-  zeroGithubCommand,
-  zeroSlackCommand,
-  zeroTelegramCommand,
-  zeroPhoneCommand,
-  zeroVariableCommand,
-  zeroLogsCommand,
-  zeroSearchCommand,
-  zeroResourceCommand,
-  zeroWhoamiCommand,
-  zeroWorkflowCommand,
-  zeroGoalCommand,
-  zeroDeveloperSupportCommand,
-  zeroComputerUseCommand,
-  generateCommand,
-  zeroWebCommand,
-  zeroVideoCommand,
-  zeroHostCommand,
-  zeroMapsCommand,
-  zeroBankingCommand,
+const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
+  {
+    name: "org",
+    description: "Manage organization settings, members, and providers",
+    load: async () => {
+      return (await import("./commands/zero/org")).zeroOrgCommand;
+    },
+  },
+  {
+    name: "model",
+    description: "List available models and model-switching guidance",
+    load: async () => {
+      return (await import("./commands/zero/model")).zeroModelCommand;
+    },
+  },
+  {
+    name: "model-provider",
+    description: "Inspect model provider routing",
+    load: async () => {
+      return (await import("./commands/zero/model-provider"))
+        .zeroModelProviderCommand;
+    },
+  },
+  {
+    name: "agent",
+    description: "View or manage zero agents",
+    load: async () => {
+      return (await import("./commands/zero/agent")).zeroAgentCommand;
+    },
+  },
+  {
+    name: "connector",
+    description: "Check third-party service connections (GitHub, Slack, etc.)",
+    load: async () => {
+      return (await import("./commands/zero/connector")).zeroConnectorCommand;
+    },
+  },
+  {
+    name: "credit",
+    description: "Create a Stripe checkout link to buy credits",
+    load: async () => {
+      return (await import("./commands/zero/credit")).zeroCreditCommand;
+    },
+  },
+  {
+    name: "doctor",
+    description:
+      "Diagnose runtime issues (connector health, permission denials)",
+    load: async () => {
+      return (await import("./commands/zero/doctor")).zeroDoctorCommand;
+    },
+  },
+  {
+    name: "preference",
+    description: "View or update user preferences (timezone, notifications)",
+    load: async () => {
+      return (await import("./commands/zero/preference")).zeroPreferenceCommand;
+    },
+  },
+  {
+    name: "schedule",
+    description:
+      "(removed: use `zero automation`) Schedules are Automations now",
+    load: async () => {
+      return (await import("./commands/zero/schedule")).zeroScheduleCommand;
+    },
+  },
+  {
+    name: "automation",
+    description: "Create or manage scheduled automations",
+    load: async () => {
+      return (await import("./commands/zero/automation")).zeroAutomationCommand;
+    },
+  },
+  {
+    name: "secret",
+    description: "Read or write secrets (API keys, tokens)",
+    load: async () => {
+      return (await import("./commands/zero/secret")).zeroSecretCommand;
+    },
+  },
+  {
+    name: "github",
+    description: "Manage GitHub integration files and label listeners",
+    load: async () => {
+      return (await import("./commands/zero/github")).zeroGithubCommand;
+    },
+  },
+  {
+    name: "slack",
+    description:
+      "Send messages, upload files, and download files from Slack as the bot",
+    load: async () => {
+      return (await import("./commands/zero/slack")).zeroSlackCommand;
+    },
+  },
+  {
+    name: "telegram",
+    description:
+      "Inspect bots, send messages, upload files, and download files from Telegram",
+    load: async () => {
+      return (await import("./commands/zero/telegram")).zeroTelegramCommand;
+    },
+  },
+  {
+    name: "phone",
+    description: "Send AgentPhone messages, upload files, and download media",
+    load: async () => {
+      return (await import("./commands/zero/phone")).zeroPhoneCommand;
+    },
+  },
+  {
+    name: "variable",
+    description: "Read or write non-sensitive configuration values",
+    load: async () => {
+      return (await import("./commands/zero/variable")).zeroVariableCommand;
+    },
+  },
+  {
+    name: "logs",
+    description: "View and search agent run logs",
+    load: async () => {
+      return (await import("./commands/zero/logs")).zeroLogsCommand;
+    },
+  },
+  {
+    name: "search",
+    description: "Search logs, chat, or get a recipe for external sources",
+    load: async () => {
+      return (await import("./commands/zero/search")).zeroSearchCommand;
+    },
+  },
+  {
+    name: "chat",
+    description: "Manage the current web chat thread",
+    load: async () => {
+      return (await import("./commands/zero/chat")).zeroChatCommand;
+    },
+  },
+  {
+    name: "resource",
+    description: "Pull registry resources from private R2-backed archives",
+    load: async () => {
+      return (await import("./commands/zero/resource")).zeroResourceCommand;
+    },
+  },
+  {
+    name: "whoami",
+    description: "Show agent identity, run ID, and capabilities",
+    load: async () => {
+      return (await import("./commands/zero/whoami")).zeroWhoamiCommand;
+    },
+  },
+  {
+    name: "workflow",
+    description: "Manage workflows",
+    load: async () => {
+      return (await import("./commands/zero/workflow")).zeroWorkflowCommand;
+    },
+  },
+  {
+    name: "goal",
+    description: "Manage the current thread goal",
+    load: async () => {
+      return (await import("./commands/zero/goal")).zeroGoalCommand;
+    },
+  },
+  {
+    name: "developer-support",
+    description: "Submit a diagnostic report to the dev team",
+    load: async () => {
+      return (await import("./commands/zero/developer-support"))
+        .zeroDeveloperSupportCommand;
+    },
+  },
+  {
+    name: "computer-use",
+    description: "Desktop app computer use through Zero CLI",
+    load: async () => {
+      return (await import("./commands/zero/computer-use"))
+        .zeroComputerUseCommand;
+    },
+  },
+  {
+    name: "generate",
+    description:
+      "Generate assets via vm0's built-in pipelines or get connector skill-invocation guidance",
+    load: async () => {
+      return (await import("./commands/zero/generate")).generateCommand;
+    },
+  },
+  {
+    name: "web",
+    description: "Upload and download files via the web chat endpoint",
+    load: async () => {
+      return (await import("./commands/zero/web")).zeroWebCommand;
+    },
+  },
+  {
+    name: "video",
+    description: "Video processing utilities",
+    load: async () => {
+      return (await import("./commands/zero/video")).zeroVideoCommand;
+    },
+  },
+  {
+    name: "host",
+    description: "Publish static sites and clone owned hosted site files",
+    load: async () => {
+      return (await import("./commands/zero/host")).zeroHostCommand;
+    },
+  },
+  {
+    name: "maps",
+    description: "Use managed zero maps services",
+    load: async () => {
+      return (await import("./commands/zero/maps")).zeroMapsCommand;
+    },
+  },
+  {
+    name: "banking",
+    description: "Use managed zero banking services",
+    load: async () => {
+      return (await import("./commands/zero/banking")).zeroBankingCommand;
+    },
+  },
 ];
+
+const ZERO_COMMAND_DEFINITION_BY_NAME = new Map(
+  ZERO_COMMAND_DEFINITIONS.map((definition) => {
+    return [definition.name, definition];
+  }),
+);
+
+function createZeroCommandStub(definition: ZeroCommandDefinition): Command {
+  return new Command(definition.name).description(definition.description);
+}
+
+function buildDefaultCommands(): Command[] {
+  return ZERO_COMMAND_DEFINITIONS.map(createZeroCommandStub);
+}
 
 function shouldHideCommand(
   name: string,
@@ -125,6 +311,55 @@ function shouldHideCommand(
     });
   }
   return !payload.capabilities.includes(requiredCap);
+}
+
+function addZeroCommand(
+  prog: Command,
+  cmd: Command,
+  payload: ZeroTokenPayload | undefined,
+): void {
+  const hidden = shouldHideCommand(cmd.name(), payload);
+  prog.addCommand(cmd, hidden ? { hidden: true } : {});
+}
+
+function getNonOptionArgs(argv: string[]): string[] {
+  const args: string[] = [];
+
+  for (const arg of argv.slice(2)) {
+    if (arg === "--") {
+      break;
+    }
+    if (arg.startsWith("-")) {
+      continue;
+    }
+    args.push(arg);
+  }
+
+  return args;
+}
+
+function getRequestedZeroCommandName(argv = process.argv): string | undefined {
+  const [firstArg, secondArg] = getNonOptionArgs(argv);
+
+  if (!firstArg) {
+    return undefined;
+  }
+
+  if (firstArg === "help") {
+    return secondArg;
+  }
+
+  return firstArg;
+}
+
+async function loadZeroCommand(
+  name: string | undefined,
+): Promise<Command | undefined> {
+  if (!name) {
+    return undefined;
+  }
+
+  return ZERO_COMMAND_DEFINITION_BY_NAME.get(name)?.load();
 }
 
 export function buildZeroHelpText(
@@ -155,6 +390,9 @@ export function buildZeroHelpText(
     "  Model routing?        zero model-provider ls",
     "  Update yourself?       zero agent --help",
     "  Manage workflows?     zero workflow --help",
+    ...(shouldHideCommand("chat", payload)
+      ? []
+      : ['  Rename this chat?     zero chat rename "New title"']),
     "  List generators?       zero generate --help",
     '  Generate image?        zero generate image --prompt "..."',
     '  Generate website?      zero generate website --prompt "..."',
@@ -194,9 +432,8 @@ export function registerZeroCommands(
   const token = process.env.ZERO_TOKEN;
   const payload = token ? decodeZeroTokenPayload(token) : undefined;
 
-  for (const cmd of commands ?? DEFAULT_COMMANDS) {
-    const hidden = shouldHideCommand(cmd.name(), payload);
-    prog.addCommand(cmd, hidden ? { hidden: true } : {});
+  for (const cmd of commands ?? buildDefaultCommands()) {
+    addZeroCommand(prog, cmd, payload);
   }
 }
 
@@ -221,7 +458,11 @@ if (
   process.argv[1]?.endsWith("zero.ts") ||
   process.argv[1]?.endsWith("zero")
 ) {
-  configureGlobalProxyFromEnv();
-  registerZeroCommands(program);
+  await configureGlobalProxyFromEnv();
+  const requestedCommand = await loadZeroCommand(getRequestedZeroCommandName());
+  registerZeroCommands(
+    program,
+    requestedCommand ? [requestedCommand] : undefined,
+  );
   program.parse();
 }

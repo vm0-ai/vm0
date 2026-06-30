@@ -2,8 +2,8 @@ import { randomUUID } from "node:crypto";
 import { describe, expect, it } from "vitest";
 import { command, createStore } from "ccstate";
 
-import { createApp } from "../../../app-factory";
-import { testContext } from "../../../__tests__/test-helpers";
+import { createAppWithRoutes } from "../../../app-factory-core";
+import { testContext } from "../../../__tests__/test-context";
 import { computeHmacSignature } from "../../event-consumer/hmac";
 import { now } from "../../time";
 import { seedAgentRunCallback$ } from "../../../signals/routes/__tests__/helpers/agent-run-callback";
@@ -11,7 +11,7 @@ import {
   seedCompose$,
   seedRun$,
 } from "../../../signals/routes/__tests__/helpers/zero-usage-insight";
-import type { RouteEntry } from "../../../signals/route";
+import type { RouteEntry } from "../../../signals/route-entry";
 
 import { callbackPayload$, callbackRoute } from "../callback-route";
 import { callbackTestProbeContract } from "./helpers";
@@ -91,7 +91,7 @@ async function seedCallback(): Promise<{
 
 describe("callbackRoute$ primitive", () => {
   it("returns 400 on invalid JSON body", async () => {
-    const app = createApp({
+    const app = createAppWithRoutes({
       signal: context.signal,
       routes: [probeRoute],
     });
@@ -110,7 +110,7 @@ describe("callbackRoute$ primitive", () => {
   });
 
   it("returns 400 on missing runId", async () => {
-    const app = createApp({
+    const app = createAppWithRoutes({
       signal: context.signal,
       routes: [probeRoute],
     });
@@ -129,7 +129,7 @@ describe("callbackRoute$ primitive", () => {
   });
 
   it("returns 404 on callback not found", async () => {
-    const app = createApp({
+    const app = createAppWithRoutes({
       signal: context.signal,
       routes: [probeRoute],
     });
@@ -153,7 +153,7 @@ describe("callbackRoute$ primitive", () => {
 
   it("returns 401 on invalid signature", async () => {
     const { runId } = await seedCallback();
-    const app = createApp({
+    const app = createAppWithRoutes({
       signal: context.signal,
       routes: [probeRoute],
     });
@@ -173,7 +173,7 @@ describe("callbackRoute$ primitive", () => {
 
   it("returns 401 on missing X-VM0-Signature header", async () => {
     const { runId } = await seedCallback();
-    const app = createApp({
+    const app = createAppWithRoutes({
       signal: context.signal,
       routes: [probeRoute],
     });
@@ -195,7 +195,7 @@ describe("callbackRoute$ primitive", () => {
 
   it("returns 401 on missing X-VM0-Timestamp header", async () => {
     const { runId } = await seedCallback();
-    const app = createApp({
+    const app = createAppWithRoutes({
       signal: context.signal,
       routes: [probeRoute],
     });
@@ -217,7 +217,7 @@ describe("callbackRoute$ primitive", () => {
 
   it("returns 401 on expired timestamp", async () => {
     const { runId } = await seedCallback();
-    const app = createApp({
+    const app = createAppWithRoutes({
       signal: context.signal,
       routes: [probeRoute],
     });
@@ -239,7 +239,7 @@ describe("callbackRoute$ primitive", () => {
 
   it("invokes the inner handler with the verified callback payload on success", async () => {
     const { runId, callbackId } = await seedCallback();
-    const app = createApp({
+    const app = createAppWithRoutes({
       signal: context.signal,
       routes: [probeRoute],
     });

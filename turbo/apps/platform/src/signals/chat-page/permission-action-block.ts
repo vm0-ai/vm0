@@ -9,6 +9,7 @@ type PermissionAction = "allow" | "deny";
 type PlatformHostTarget = "api" | "www" | "app" | "platform";
 
 export interface PermissionActionDescriptor {
+  scope: "agent";
   agentId: string;
   connectorRef: FirewallMetadataConnectorType;
   permission: string;
@@ -140,6 +141,25 @@ function isPermissionAction(value: string): value is PermissionAction {
   return value === "allow" || value === "deny";
 }
 
+type ParsedPermissionActionPath = {
+  scope: "agent";
+  agentId: string;
+};
+
+function parsePermissionActionPath(
+  pathname: string,
+): ParsedPermissionActionPath | null {
+  const agentMatch = pathname.match(/^\/agents\/([^/]+)\/permissions$/);
+  if (!agentMatch) {
+    return null;
+  }
+
+  return {
+    scope: "agent",
+    agentId: agentMatch[1] ?? "",
+  };
+}
+
 export function parsePermissionActionUrl(
   value: string,
 ): PermissionActionDescriptor | null {
@@ -152,13 +172,15 @@ export function parsePermissionActionUrl(
     return null;
   }
 
-  const match = url.pathname.match(/^\/agents\/([^/]+)\/permissions$/);
-  const agentId = match?.[1];
+  const path = parsePermissionActionPath(url.pathname);
+  if (!path) {
+    return null;
+  }
   const connectorRef = url.searchParams.get("ref");
   const permission = url.searchParams.get("permission");
   const action = url.searchParams.get("action") ?? "allow";
   const method = url.searchParams.get("method");
-  const path = url.searchParams.get("path");
+  const requestPath = url.searchParams.get("path");
   const reason = url.searchParams.get("reason");
   const expiresIn =
     action === "allow"
@@ -166,7 +188,7 @@ export function parsePermissionActionUrl(
       : null;
 
   if (
-    !agentId ||
+    !path.agentId ||
     !connectorRef ||
     !isFirewallMetadataConnectorType(connectorRef) ||
     !permission ||
@@ -176,12 +198,13 @@ export function parsePermissionActionUrl(
   }
 
   return {
-    agentId,
+    scope: path.scope,
+    agentId: path.agentId,
     connectorRef,
     permission,
     action,
     method,
-    path,
+    path: requestPath,
     reason,
     expiresIn,
     search: url.searchParams.toString(),

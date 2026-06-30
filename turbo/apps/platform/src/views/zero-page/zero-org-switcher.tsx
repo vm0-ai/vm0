@@ -96,7 +96,7 @@ function InvitationRow({
   });
 
   return (
-    <div className="flex items-center gap-3 px-3 py-2.5">
+    <div className="flex min-w-0 items-center gap-3 overflow-hidden px-3 py-2.5">
       <OrgAvatar
         name={invitation.publicOrganizationData.name}
         imageUrl={invitation.publicOrganizationData.imageUrl}
@@ -144,7 +144,7 @@ function CreateWorkspaceItem() {
       <DropdownMenuItem
         onClick={handleCreateOrg}
         disabled={clerk === null || creatingOrg}
-        className="gap-3 px-3 py-2.5 rounded-lg"
+        className="min-w-0 gap-3 px-3 py-2.5 rounded-lg"
       >
         <IconPlus
           size={18}
@@ -185,13 +185,13 @@ function OtherMembershipsList() {
             onClick={() => {
               handleSwitchOrg(membership.organization.id);
             }}
-            className="gap-3 px-3 py-2.5 rounded-lg"
+            className="min-w-0 gap-3 px-3 py-2.5 rounded-lg"
           >
             <OrgAvatar
               name={membership.organization.name}
               imageUrl={membership.organization.imageUrl}
             />
-            <span className="truncate flex-1">
+            <span className="min-w-0 flex-1 truncate">
               {membership.organization.name}
             </span>
           </DropdownMenuItem>
@@ -210,14 +210,25 @@ function OrgDropdownContent() {
   const clerk = clerkLoadable.state === "hasData" ? clerkLoadable.data : null;
   const orgName = currentOrg?.name ?? "Organization";
   const orgSlug = orgData?.slug;
+  const memberships = clerk?.user?.organizationMemberships ?? [];
+  const currentOrgId = clerk?.organization?.id;
 
   const hasPendingInvitations =
     pendingInvitations !== undefined && pendingInvitations.length > 0;
+  const hasOtherMemberships = memberships.some((membership) => {
+    return (
+      membership.organization && membership.organization.id !== currentOrgId
+    );
+  });
+  const hasOrgOptions = hasOtherMemberships || hasPendingInvitations;
   const canCreateOrg = clerk?.user?.createOrganizationEnabled ?? false;
 
   return (
-    <DropdownMenuContent align="start" className="w-72">
-      <div className="flex items-center gap-3 px-2 py-1.5">
+    <DropdownMenuContent
+      align="start"
+      className="flex max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] w-72 flex-col overflow-hidden"
+    >
+      <div className="flex min-w-0 shrink-0 items-center gap-3 px-2 py-1.5">
         <OrgAvatar name={orgName} imageUrl={currentOrg?.imageUrl} size="lg" />
         <div className="min-w-0 flex-1">
           <p className="text-sm font-semibold leading-tight truncate text-foreground">
@@ -231,21 +242,32 @@ function OrgDropdownContent() {
         </div>
       </div>
 
-      <OtherMembershipsList />
+      {hasOrgOptions && (
+        <div
+          data-testid="org-switcher-options-scroll"
+          className="min-h-0 max-h-72 flex-1 overflow-x-hidden overflow-y-auto [scrollbar-gutter:stable]"
+        >
+          <OtherMembershipsList />
 
-      {/* Pending invitations */}
-      {hasPendingInvitations && (
-        <>
-          <DropdownMenuSeparator />
-          {pendingInvitations.map((invitation) => {
-            return (
-              <InvitationRow key={invitation.id} invitation={invitation} />
-            );
-          })}
-        </>
+          {/* Pending invitations */}
+          {hasPendingInvitations && (
+            <>
+              <DropdownMenuSeparator />
+              {pendingInvitations.map((invitation) => {
+                return (
+                  <InvitationRow key={invitation.id} invitation={invitation} />
+                );
+              })}
+            </>
+          )}
+        </div>
       )}
 
-      {canCreateOrg && <CreateWorkspaceItem />}
+      {canCreateOrg && (
+        <div className="shrink-0">
+          <CreateWorkspaceItem />
+        </div>
+      )}
     </DropdownMenuContent>
   );
 }

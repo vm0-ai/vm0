@@ -1,5 +1,5 @@
 import { command } from "ccstate";
-import { initContract } from "@ts-rest/core";
+import { initContract } from "@vm0/api-contracts/contracts/trpc-contract";
 import { authHeadersSchema } from "@vm0/api-contracts/contracts/base";
 import { apiErrorSchema } from "@vm0/api-contracts/contracts/errors";
 import { z } from "zod";
@@ -7,7 +7,7 @@ import { z } from "zod";
 import { inferMimetype } from "../../lib/mimetype";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { settle } from "../utils";
 
 const c = initContract();

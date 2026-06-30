@@ -37,6 +37,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "${{ vars.BENTO_CLOUD_API_ENDPOINT }}",',
+    '      hostPolicy: { kind: "publicDestination" },',
     "      auth: {",
     "        headers: {",
     '          Authorization: "Bearer ${{ secrets.BENTO_CLOUD_API_KEY }}",',
@@ -73,5 +74,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating BentoML firewall config...");
   const ts = generateTypeScript();
-  writeOutput("bentoml", ts, import.meta.dirname);
+  writeOutput("bentoml", ts);
 }

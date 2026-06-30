@@ -62,6 +62,7 @@ type ReadComputerUseAuthorizationRequestResult =
       readonly source: ComputerUseAuthorizationSource;
       readonly expiresAt: string;
       readonly completedAt: string | null;
+      readonly computerUseHostId: string | null;
       readonly hosts: ComputerUseHostListResponse["hosts"];
     }
   | { readonly status: "not_found" }
@@ -233,6 +234,58 @@ async function onlineHostExists(args: {
   return host !== undefined && computerUseHostIsOnline(host, args.now);
 }
 
+async function loadAuthorizedComputerUseHostId(args: {
+  readonly db: Db;
+  readonly request: AuthorizationRequestRow;
+  readonly userId: string;
+}): Promise<string | null> {
+  if (!args.request.completedAt) {
+    return null;
+  }
+
+  if (args.request.source === "chat") {
+    const [thread] = await args.db
+      .select({ computerUseHostId: chatThreads.computerUseHostId })
+      .from(chatThreads)
+      .where(
+        and(
+          eq(chatThreads.id, args.request.chatThreadId ?? ""),
+          eq(chatThreads.userId, args.userId),
+        ),
+      )
+      .limit(1);
+    return thread?.computerUseHostId ?? null;
+  }
+
+  if (
+    args.request.source === "slack" &&
+    args.request.slackConnectionId &&
+    args.request.slackChannelId &&
+    args.request.slackThreadTs
+  ) {
+    const [threadSession] = await args.db
+      .select({ computerUseHostId: slackOrgThreadSessions.computerUseHostId })
+      .from(slackOrgThreadSessions)
+      .where(
+        and(
+          eq(
+            slackOrgThreadSessions.connectionId,
+            args.request.slackConnectionId,
+          ),
+          eq(
+            slackOrgThreadSessions.slackChannelId,
+            args.request.slackChannelId,
+          ),
+          eq(slackOrgThreadSessions.slackThreadTs, args.request.slackThreadTs),
+        ),
+      )
+      .limit(1);
+    return threadSession?.computerUseHostId ?? null;
+  }
+
+  return null;
+}
+
 async function slackScopeExists(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -337,6 +390,13 @@ export const readComputerUseAuthorizationRequest$ = command(
       return loaded;
     }
 
+    const computerUseHostId = await loadAuthorizedComputerUseHostId({
+      db,
+      request: loaded.request,
+      userId: args.userId,
+    });
+    signal.throwIfAborted();
+
     const hosts = await set(
       listComputerUseHosts$,
       { orgId: args.orgId, userId: args.userId },
@@ -349,6 +409,7 @@ export const readComputerUseAuthorizationRequest$ = command(
       source: loaded.request.source as ComputerUseAuthorizationSource,
       expiresAt: loaded.request.expiresAt.toISOString(),
       completedAt: loaded.request.completedAt?.toISOString() ?? null,
+      computerUseHostId,
       hosts: hosts.hosts.filter((host) => {
         return host.status === "online";
       }),

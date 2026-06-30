@@ -8,7 +8,7 @@ import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
 import { createChatThread$ } from "../services/zero-chat-thread.service";
 import { zeroComposeExists } from "../services/zero-compose-data.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const createBody$ = bodyResultOf(chatThreadsContract.create);
 

@@ -6,9 +6,10 @@ import {
   loadLeftThread$,
   loadRightThread$,
 } from "./chat-thread-panes.ts";
-import type { ChatThreadSignals } from "./create-chat-thread.ts";
+import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
-import { onRef } from "../utils.ts";
+import { onDomEventFn, onRef } from "../utils.ts";
+import { openRenameChatThreadDialog$ } from "../zero-page/zero-sidebar-state.ts";
 
 /**
  * Snapshot row shape consumed by `navigateToAdjacentThread$`. The caller
@@ -57,6 +58,13 @@ function isDocumentScrollTarget(root: HTMLElement, target: EventTarget | null) {
   const doc = root.ownerDocument;
   return (
     target === doc || target === doc.body || target === doc.documentElement
+  );
+}
+
+function isChatShortcutTarget(root: HTMLElement, target: EventTarget | null) {
+  return (
+    isDocumentScrollTarget(root, target) ||
+    (target instanceof Node && root.contains(target))
   );
 }
 
@@ -118,9 +126,36 @@ export const setChatKeyboardScrollRoot$ = onRef(
       }
     };
 
+    const onGlobalChatKeyDown = onDomEventFn(async (event: KeyboardEvent) => {
+      if (
+        event.defaultPrevented ||
+        !matchShortcut("f2", event) ||
+        hasOpenDialog(el.ownerDocument) ||
+        !isChatShortcutTarget(el, event.target)
+      ) {
+        return;
+      }
+      const mainThread = get(currentLeftThread$);
+      if (!mainThread) {
+        return;
+      }
+
+      event.preventDefault();
+      const threadData = await get(mainThread.threadData$);
+      signal.throwIfAborted();
+      set(openRenameChatThreadDialog$, {
+        threadId: mainThread.threadId,
+        title: threadData?.title,
+      });
+    });
+
     el.addEventListener("focusin", markActiveThread, { signal });
     el.addEventListener("pointerdown", markActiveThread, { signal });
     el.addEventListener("pointerover", markActiveThread, { signal });
+    document.addEventListener("keydown", onGlobalChatKeyDown, {
+      capture: true,
+      signal,
+    });
     document.addEventListener("keydown", onKeyDown, { signal });
   }),
 );

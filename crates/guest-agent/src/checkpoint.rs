@@ -8,6 +8,9 @@ use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::paths;
 use crate::session_history;
+use crate::session_history_identity::{
+    FinalSessionHistoryIdentityBuildError, build_final_session_history_identity,
+};
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 use bytes::Bytes;
 use guest_common::telemetry::record_sandbox_op;
@@ -15,6 +18,7 @@ use guest_common::{log_error, log_info, log_warn};
 use serde_json::json;
 use sha2::{Digest, Sha256};
 use std::io::ErrorKind;
+use std::time::Duration;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
@@ -517,6 +521,13 @@ async fn create_checkpoint_impl_with_artifacts(
         .and_then(|v| v.as_str());
 
     if let Some(id) = checkpoint_id {
+        write_final_session_history_identity(
+            mode,
+            &cli_agent_session_id,
+            &history_hash,
+            history_size,
+            &history_marker_payload,
+        );
         log_info!(LOG_TAG, "{} created successfully: {id}", mode.log_label());
         record_sandbox_op("checkpoint_api_call", api_start.elapsed(), true, None);
         Ok(())
@@ -527,6 +538,78 @@ async fn create_checkpoint_impl_with_artifacts(
             api_start,
             "Invalid checkpoint API response",
         ))
+    }
+}
+
+fn write_final_session_history_identity(
+    mode: CheckpointMode,
+    cli_agent_session_id: &str,
+    history_hash: &str,
+    history_size: u64,
+    history_marker_payload: &str,
+) {
+    if !matches!(mode, CheckpointMode::Success) {
+        return;
+    }
+    let identity = match build_final_session_history_identity(
+        env::Framework::from_env(),
+        cli_agent_session_id,
+        history_hash,
+        history_size,
+        history_marker_payload,
+    ) {
+        Ok(identity) => identity,
+        Err(error) => {
+            match error {
+                FinalSessionHistoryIdentityBuildError::InvalidSessionId => record_sandbox_op(
+                    "session_history_identity_write_skipped_invalid_session_id",
+                    Duration::ZERO,
+                    true,
+                    None,
+                ),
+                FinalSessionHistoryIdentityBuildError::InvalidMetadata(_) => record_sandbox_op(
+                    "session_history_identity_write_skipped_invalid_metadata",
+                    Duration::ZERO,
+                    true,
+                    None,
+                ),
+            }
+            log_info!(LOG_TAG, "Final session history identity skipped: {error}");
+            return;
+        }
+    };
+    let bytes = match identity.to_json_vec() {
+        Ok(bytes) => bytes,
+        Err(error) => {
+            record_sandbox_op(
+                "session_history_identity_write_skipped_invalid_metadata",
+                Duration::ZERO,
+                true,
+                None,
+            );
+            log_info!(LOG_TAG, "Final session history identity skipped: {error}");
+            return;
+        }
+    };
+    match paths::write_private(paths::final_session_history_identity_file(), bytes) {
+        Ok(()) => {
+            record_sandbox_op(
+                "session_history_identity_written",
+                Duration::ZERO,
+                true,
+                None,
+            );
+            log_info!(LOG_TAG, "Final session history identity written");
+        }
+        Err(_) => {
+            record_sandbox_op(
+                "session_history_identity_write_failed",
+                Duration::ZERO,
+                false,
+                None,
+            );
+            log_warn!(LOG_TAG, "Failed to write final session history identity");
+        }
     }
 }
 

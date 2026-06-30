@@ -4,7 +4,7 @@ import { zeroCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { zeroCustomConnectorList } from "../services/zero-catalog-data.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { zeroCustomConnectorsCreateRoutes } from "./zero-custom-connectors-create";
 import { zeroCustomConnectorsDeleteRoutes } from "./zero-custom-connectors-delete";
 import { zeroCustomConnectorsGetRoutes } from "./zero-custom-connectors-get";

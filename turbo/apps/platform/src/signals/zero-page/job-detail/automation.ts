@@ -20,7 +20,7 @@ import {
   setAutomationEnabled,
   deleteAutomation,
 } from "../automations-api.ts";
-import type { AutomationEntry } from "../../../views/zero-page/zero-automation-card.tsx";
+import type { AutomationEntry } from "../../../views/zero-page/automation-utils.ts";
 
 // ---------------------------------------------------------------------------
 // Agent automation — reactive async computed

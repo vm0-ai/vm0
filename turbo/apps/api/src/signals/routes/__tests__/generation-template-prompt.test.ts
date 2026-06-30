@@ -81,6 +81,87 @@ describe("buildGenerationTemplatePrompt", () => {
     );
   });
 
+  it("builds runbook presentation guidance when the switch is on", () => {
+    const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "presentation",
+        selection: {
+          colorSystemId: item.colorSystemId,
+          designSystemId: item.designSystemId,
+          templateId: item.templateId,
+        },
+      },
+      { presentationRunbookEnabled: true },
+    );
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain("# Artifact Template Context");
+    // Pull exactly one resource: the template's runbook package.
+    expect(result.prompt).toContain(
+      "zero resource pull template:html-ppt-playful-launch-runbook --dir ./generated/resources",
+    );
+    expect(result.prompt).toContain(
+      "./generated/resources/playful-launch/AGENT_RUNBOOK.md",
+    );
+    // Color system is a runtime token in the deck JSON.
+    expect(result.prompt).toContain('"colorSystem": "carnival"');
+    expect(result.prompt).toContain(
+      "zero host <output-dir> --site <slug> --artifact-kind presentation-html",
+    );
+    // The runbook flow has no design system and does not use `zero generate`.
+    expect(result.prompt).not.toContain("Design system:");
+    expect(result.prompt).not.toContain("zero generate presentation");
+  });
+
+  it("falls back to the default color token when none is selected (runbook on)", () => {
+    const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt(
+      {
+        type: "presentation",
+        selection: {
+          designSystemId: item.designSystemId,
+          templateId: item.templateId,
+        },
+      },
+      { presentationRunbookEnabled: true },
+    );
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    // playful-launch default color token.
+    expect(result.prompt).toContain('"colorSystem": "carnival"');
+  });
+
+  it("uses the legacy presentation flow when the switch is off", () => {
+    const item = PRESENTATION_TEMPLATE_PICKER_ITEMS[0]!;
+
+    const result = buildGenerationTemplatePrompt({
+      type: "presentation",
+      selection: {
+        colorSystemId: item.colorSystemId,
+        designSystemId: item.designSystemId,
+        templateId: item.templateId,
+      },
+    });
+
+    expect(result.status).toBe("resolved");
+    if (result.status !== "resolved") {
+      return;
+    }
+    expect(result.prompt).toContain(
+      `zero generate presentation --design-system ${item.designSystemId} --template ${item.templateId}`,
+    );
+    expect(result.prompt).not.toContain("zero resource pull");
+  });
+
   it("builds illustration template guidance", () => {
     const item = ILLUSTRATION_TEMPLATE_ITEMS[0]!;
 

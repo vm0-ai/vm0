@@ -50,7 +50,7 @@ describe("Google Drive permission manifest", () => {
   });
 
   it("matches the official Discovery route set exactly", () => {
-    expect(officialRouteKeys.size).toBe(141);
+    expect(officialRouteKeys.size).toBe(147);
 
     expect(() => {
       validateGoogleDrivePermissionManifest(
@@ -84,6 +84,48 @@ describe("Google Drive permission manifest", () => {
     }).toThrow("Missing Google Drive manifest route keys");
   });
 
+  it("uses media upload protocol paths for upload routes", () => {
+    expect(
+      buildGoogleDriveOfficialRouteKeys([
+        {
+          version: "v3",
+          servicePath: "drive/v3/",
+          resources: {
+            files: {
+              methods: {
+                create: {
+                  id: "drive.files.create",
+                  httpMethod: "POST",
+                  path: "files",
+                  flatPath: "files",
+                  supportsMediaUpload: true,
+                  mediaUpload: {
+                    protocols: {
+                      simple: {
+                        path: "/upload/drive/v3/files/media",
+                      },
+                      resumable: {
+                        path: "/resumable/upload/drive/v3/files/media",
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      ]),
+    ).toEqual(
+      new Set([
+        "base:POST /v3/files",
+        "resumable-upload:POST /v3/files/media",
+        "resumable-upload:PUT /v3/files/media",
+        "upload:POST /v3/files/media",
+        "upload:PUT /v3/files/media",
+      ]),
+    );
+  });
+
   it("fails duplicate route assignments", () => {
     const duplicateRoute = "base:GET /v2/about";
     const manifest = cloneManifest();
@@ -115,10 +157,16 @@ describe("Google Drive permission manifest", () => {
 
     expect(filesWrite.routeKeys).toContain("base:POST /v2/files");
     expect(filesWrite.routeKeys).toContain("upload:POST /v2/files");
+    expect(filesWrite.routeKeys).toContain("upload:PUT /v2/files");
     expect(filesWrite.routeKeys).toContain("resumable-upload:POST /v2/files");
+    expect(filesWrite.routeKeys).toContain("resumable-upload:PUT /v2/files");
     expect(filesWrite.routeKeys).toContain("upload:PATCH /v3/files/{fileId}");
+    expect(filesWrite.routeKeys).toContain("upload:PUT /v3/files/{fileId}");
     expect(filesWrite.routeKeys).toContain(
       "resumable-upload:PATCH /v3/files/{fileId}",
+    );
+    expect(filesWrite.routeKeys).toContain(
+      "resumable-upload:PUT /v3/files/{fileId}",
     );
   });
 

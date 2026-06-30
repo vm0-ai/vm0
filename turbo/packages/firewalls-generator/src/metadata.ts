@@ -1,24 +1,27 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
 
-import type { ConnectorType } from "../../connectors/src/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import type {
-  FirewallConfig,
-  FirewallPolicy,
-  FirewallPolicyValue,
-} from "../../connectors/src/firewall-types";
-import type {
-  FirewallExecutionMetadata,
   FirewallPermissionDefaultPolicyMetadata,
   FirewallPermissionDetailMetadata,
   FirewallPermissionMetadataPermission,
   FirewallPermissionSummaryMetadata,
+} from "@vm0/connectors/firewall-metadata";
+import type {
   FirewallRoutingIndexMetadata,
   FirewallRoutingMetadata,
-} from "../../connectors/src/firewall-metadata/types";
+} from "@vm0/connectors/firewall-metadata/routing";
+import type { FirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
+import type {
+  FirewallConfig,
+  FirewallBaseHostPolicy,
+  FirewallPolicy,
+  FirewallPolicyValue,
+} from "@vm0/connectors/firewall-types";
 import type { FirewallConnectorType } from "./connector-firewall-manifest";
 import {
-  generatedFirewallFileName,
+  generatedConnectorMetadataFileName,
   loadConnectorFirewallSourceSet,
   type ConnectorEnvBindingEntry,
   type ConnectorFirewallSource,
@@ -83,14 +86,16 @@ function writeGeneratedFile(filePath: string, content: string): void {
   }
 }
 
-function generatedDetailModuleSpecifier(type: FirewallConnectorType): string {
-  return `./details/${generatedFirewallFileName(type).replace(/\.ts$/, "")}`;
+function generatedPermissionDetailModuleSpecifier(
+  type: FirewallConnectorType,
+): string {
+  return `./permission-details/${generatedConnectorMetadataFileName(type).replace(/\.ts$/, "")}`;
 }
 
 function generatedRoutingDetailModuleSpecifier(
   type: FirewallConnectorType,
 ): string {
-  return `./routing-details/${generatedFirewallFileName(type).replace(/\.ts$/, "")}`;
+  return `./routing-details/${generatedConnectorMetadataFileName(type).replace(/\.ts$/, "")}`;
 }
 
 function replaceGeneratedPath(
@@ -416,26 +421,62 @@ function expandFirewallPlaceholders(
   return { ...firewall, placeholders: expanded };
 }
 
+interface ExecutionBaseUrlTemplateAccumulator {
+  readonly credentialed: boolean;
+  readonly hostPolicy?: FirewallBaseHostPolicy;
+}
+
+function hostPolicyKey(hostPolicy: FirewallBaseHostPolicy | undefined): string {
+  return stableJson(hostPolicy ?? null);
+}
+
+function mergeExecutionBaseUrlTemplate(
+  templates: Map<string, ExecutionBaseUrlTemplateAccumulator>,
+  api: FirewallConfig["apis"][number],
+): void {
+  const existing = templates.get(api.base);
+  if (!existing) {
+    templates.set(api.base, {
+      credentialed: firewallAuthInjectsCredentials(api.auth),
+      ...(api.hostPolicy !== undefined ? { hostPolicy: api.hostPolicy } : {}),
+    });
+    return;
+  }
+
+  if (hostPolicyKey(existing.hostPolicy) !== hostPolicyKey(api.hostPolicy)) {
+    throw new Error(
+      `Conflicting host policies for dynamic base URL template: ${api.base}`,
+    );
+  }
+  templates.set(api.base, {
+    ...existing,
+    credentialed:
+      existing.credentialed || firewallAuthInjectsCredentials(api.auth),
+  });
+}
+
 function buildExecutionBaseUrlTemplates(
   firewall: FirewallConfig,
 ): FirewallExecutionMetadata["baseUrlTemplates"] {
-  const templates = new Map<string, boolean>();
+  const templates = new Map<string, ExecutionBaseUrlTemplateAccumulator>();
   for (const api of firewall.apis) {
     if (!hasBaseUrlVars(api.base)) {
       continue;
     }
-    templates.set(
-      api.base,
-      (templates.get(api.base) ?? false) ||
-        firewallAuthInjectsCredentials(api.auth),
-    );
+    mergeExecutionBaseUrlTemplate(templates, api);
   }
   return [...templates.entries()]
     .sort(([a], [b]) => {
       return compareStrings(a, b);
     })
-    .map(([base, credentialed]) => {
-      return { base, credentialed };
+    .map(([base, template]) => {
+      return {
+        base,
+        credentialed: template.credentialed,
+        ...(template.hostPolicy !== undefined
+          ? { hostPolicy: template.hostPolicy }
+          : {}),
+      };
     });
 }
 
@@ -570,12 +611,12 @@ function renderLoaderFile(types: readonly FirewallConnectorType[]): string {
   const loaderEntries = types.map((type): LazyLoaderEntry => {
     return {
       key: type,
-      moduleSpecifier: generatedDetailModuleSpecifier(type),
+      moduleSpecifier: generatedPermissionDetailModuleSpecifier(type),
       exportName: "firewallPermissionMetadata",
     };
   });
 
-  return `${generatedHeader()}// The platform build serves these dynamic imports from /firewall-metadata/v1/.
+  return `${generatedHeader()}// The platform build serves these dynamic imports from /firewall-metadata/permission-details/v1/.
 // Bump that URL version before shipping an incompatible metadata module shape or import contract change.
 import type { FirewallPermissionDetailMetadata } from "./types";
 
@@ -631,10 +672,6 @@ export async function loadGeneratedFirewallRoutingMetadata(
 export async function generateFirewallMetadata(): Promise<void> {
   console.error("\n=== firewall metadata ===");
 
-  const firewallsDir = path.resolve(
-    import.meta.dirname,
-    "../../connectors/src/firewalls",
-  );
   const connectorsDir = path.resolve(
     import.meta.dirname,
     "../../connectors/src/connectors",
@@ -643,26 +680,30 @@ export async function generateFirewallMetadata(): Promise<void> {
     import.meta.dirname,
     "../../connectors/src/firewall-metadata",
   );
-  const summaryFile = path.join(outputDir, "summary.generated.ts");
-  const loaderFile = path.join(outputDir, "loader.generated.ts");
+  const permissionSummariesFile = path.join(
+    outputDir,
+    "permission-summaries.generated.ts",
+  );
+  const permissionDetailLoaderFile = path.join(
+    outputDir,
+    "permission-detail-loader.generated.ts",
+  );
   const routingIndexFile = path.join(outputDir, "routing-index.generated.ts");
   const routingLoaderFile = path.join(outputDir, "routing-loader.generated.ts");
   const obsoleteRoutingFile = path.join(outputDir, "routing.generated.ts");
+  const obsoleteSummaryFile = path.join(outputDir, "summary.generated.ts");
+  const obsoleteLoaderFile = path.join(outputDir, "loader.generated.ts");
+  const obsoleteDetailsDir = path.join(outputDir, "details");
   const serverFile = path.join(outputDir, "server.generated.ts");
   const serverExecutionFile = path.join(
     outputDir,
     "server-execution.generated.ts",
   );
-  const detailsDir = path.join(outputDir, "details");
+  const permissionDetailsDir = path.join(outputDir, "permission-details");
   const routingDetailsDir = path.join(outputDir, "routing-details");
-  const obsoleteRuntimeLoaderFile = path.join(
-    firewallsDir,
-    "runtime-loader.generated.ts",
-  );
 
   const { sources, registryOrderedSources, billableTypes } =
     await loadConnectorFirewallSourceSet({
-      firewallsDir,
       connectorsDir,
     });
   const summaries: Record<string, FirewallPermissionSummaryMetadata> = {};
@@ -694,23 +735,32 @@ export async function generateFirewallMetadata(): Promise<void> {
   }
 
   const nextOutputDir = fs.mkdtempSync(path.join(outputDir, ".metadata-"));
-  const nextDetailsDir = path.join(nextOutputDir, "details");
+  const nextPermissionDetailsDir = path.join(
+    nextOutputDir,
+    "permission-details",
+  );
   const nextRoutingDetailsDir = path.join(nextOutputDir, "routing-details");
 
   for (const detail of permissionDetails) {
     writeGeneratedFile(
-      path.join(nextDetailsDir, generatedFirewallFileName(detail.type)),
+      path.join(
+        nextPermissionDetailsDir,
+        generatedConnectorMetadataFileName(detail.type),
+      ),
       detail.content,
     );
   }
   for (const detail of routingDetails) {
     writeGeneratedFile(
-      path.join(nextRoutingDetailsDir, generatedFirewallFileName(detail.type)),
+      path.join(
+        nextRoutingDetailsDir,
+        generatedConnectorMetadataFileName(detail.type),
+      ),
       detail.content,
     );
   }
   writeGeneratedFile(
-    path.join(nextOutputDir, "summary.generated.ts"),
+    path.join(nextOutputDir, "permission-summaries.generated.ts"),
     renderSummaryFile(summaries),
   );
   writeGeneratedFile(
@@ -734,7 +784,7 @@ export async function generateFirewallMetadata(): Promise<void> {
     renderServerFile(buildFixedHostOwners(registryOrderedSources)),
   );
   writeGeneratedFile(
-    path.join(nextOutputDir, "loader.generated.ts"),
+    path.join(nextOutputDir, "permission-detail-loader.generated.ts"),
     renderLoaderFile(
       sources.map((source) => {
         return source.type;
@@ -743,20 +793,22 @@ export async function generateFirewallMetadata(): Promise<void> {
   );
   const replacements: GeneratedPathReplacement[] = [];
   try {
-    replacements.push(replaceGeneratedPath(detailsDir, nextDetailsDir));
+    replacements.push(
+      replaceGeneratedPath(permissionDetailsDir, nextPermissionDetailsDir),
+    );
     replacements.push(
       replaceGeneratedPath(routingDetailsDir, nextRoutingDetailsDir),
     );
     replacements.push(
       replaceGeneratedPath(
-        summaryFile,
-        path.join(nextOutputDir, "summary.generated.ts"),
+        permissionSummariesFile,
+        path.join(nextOutputDir, "permission-summaries.generated.ts"),
       ),
     );
     replacements.push(
       replaceGeneratedPath(
-        loaderFile,
-        path.join(nextOutputDir, "loader.generated.ts"),
+        permissionDetailLoaderFile,
+        path.join(nextOutputDir, "permission-detail-loader.generated.ts"),
       ),
     );
     replacements.push(
@@ -793,8 +845,10 @@ export async function generateFirewallMetadata(): Promise<void> {
   for (const replacement of replacements) {
     replacement.commit();
   }
+  fs.rmSync(obsoleteDetailsDir, { recursive: true, force: true });
+  fs.rmSync(obsoleteSummaryFile, { force: true });
+  fs.rmSync(obsoleteLoaderFile, { force: true });
   fs.rmSync(obsoleteRoutingFile, { force: true });
-  fs.rmSync(obsoleteRuntimeLoaderFile, { force: true });
 
   console.error(`  Written ${sources.length} metadata detail files`);
 }

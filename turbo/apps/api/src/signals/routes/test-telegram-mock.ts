@@ -7,7 +7,7 @@ import { now } from "../../lib/time";
 import { request$ } from "../context/hono";
 import { pathParamsOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { safeJsonParse, settle } from "../utils";
 import {
   isTestEndpointAllowed,

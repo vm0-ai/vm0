@@ -10,7 +10,7 @@ import {
   updateAutoRechargeConfig$,
 } from "../services/billing.service";
 import { triggerAutoRecharge$ } from "../services/zero-credit-recharge.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const adminRequired = Object.freeze({
   status: 403 as const,

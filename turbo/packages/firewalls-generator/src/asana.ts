@@ -49,5 +49,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Asana firewall config...");
   const ts = generateTypeScript();
-  writeOutput("asana", ts, import.meta.dirname);
+  writeOutput("asana", ts);
 }

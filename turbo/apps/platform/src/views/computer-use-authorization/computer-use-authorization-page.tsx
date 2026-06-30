@@ -141,7 +141,11 @@ export function ComputerUseAuthorizationPage() {
   const request =
     requestLoadable.state === "hasData" ? requestLoadable.data : null;
   const hosts = request?.hosts;
-  const visibleHosts = visibleComputerUseHosts(hosts ?? [], null);
+  const selectedHostId =
+    applyLoadable.state === "hasData"
+      ? applyLoadable.data.computerUseHostId
+      : (request?.computerUseHostId ?? null);
+  const visibleHosts = visibleComputerUseHosts(hosts ?? [], selectedHostId);
 
   if (requestLoadable.state === "loading") {
     return (
@@ -156,7 +160,7 @@ export function ComputerUseAuthorizationPage() {
   }
 
   const applying = applyLoadable.state === "loading";
-  const applied =
+  const completed =
     applyLoadable.state === "hasData" || Boolean(request.completedAt);
 
   return (
@@ -187,9 +191,9 @@ export function ComputerUseAuthorizationPage() {
                 <HostOption
                   key={host.id}
                   host={host}
-                  disabled={applying || applied}
+                  disabled={applying || completed}
                   applying={applying}
-                  applied={applied}
+                  applied={selectedHostId === host.id}
                   onAuthorize={() => {
                     detach(
                       applyAuthorization(host, pageSignal),

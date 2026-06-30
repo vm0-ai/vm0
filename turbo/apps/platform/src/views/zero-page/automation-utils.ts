@@ -33,6 +33,16 @@ export interface AutomationEntry {
   intervalSeconds?: number | null;
 }
 
+export type CombinedEntry = AutomationEntry & {
+  agentLabel: string;
+  agentId: string;
+  timezone: string;
+  nextRunAt: string | null;
+  lastRunAt: string | null;
+  chatThreadId: string;
+  triggerSummary: string;
+};
+
 // ---------------------------------------------------------------------------
 // Internal helpers
 // ---------------------------------------------------------------------------

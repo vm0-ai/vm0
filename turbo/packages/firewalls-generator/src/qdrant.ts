@@ -35,6 +35,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "${{ vars.QDRANT_BASE_URL }}",',
+    '      hostPolicy: { kind: "publicDestination" },',
     "      auth: {",
     "        headers: {",
     '          "api-key": "${{ secrets.QDRANT_TOKEN }}",',
@@ -53,5 +54,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Qdrant firewall config...");
   const ts = generateTypeScript();
-  writeOutput("qdrant", ts, import.meta.dirname);
+  writeOutput("qdrant", ts);
 }

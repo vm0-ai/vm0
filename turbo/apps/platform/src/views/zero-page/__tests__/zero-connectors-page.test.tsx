@@ -45,13 +45,22 @@ function buttonByText(
   text: string,
   container: ParentNode = document.body,
 ): HTMLElement {
-  const button = queryAllByRoleFast("button", container).find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
+  const button = queryButtonByText(text, container);
   if (!button) {
     throw new Error(`${text} button not found`);
   }
   return button;
+}
+
+function queryButtonByText(
+  text: string,
+  container: ParentNode = document.body,
+): HTMLElement | null {
+  return (
+    queryAllByRoleFast("button", container).find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+    }) ?? null
+  );
 }
 
 function queryMenuItemByText(text: string): HTMLElement | null {
@@ -93,14 +102,18 @@ function reconnectReasonHelpButton(container: ParentNode): HTMLElement | null {
   );
 }
 
-function teamAgent(id: string, displayName: string): TeamComposeItem {
+function teamAgent(
+  id: string,
+  displayName: string,
+  avatarUrl: string | null = null,
+): TeamComposeItem {
   return {
     id,
     ownerId: "test-user-123",
     displayName,
     description: null,
     sound: null,
-    avatarUrl: null,
+    avatarUrl,
     visibility: "public",
     headVersionId: "version_1",
     updatedAt: "2024-01-01T00:00:00Z",
@@ -417,6 +430,41 @@ describe("connectors page", () => {
     expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
   });
 
+  it("filters connectors by connected status when access management is enabled", async () => {
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccessManagement]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Asana")).toBeInTheDocument();
+    });
+
+    const connectionFilter = screen.getByRole("group", {
+      name: "Connector connection filter",
+    });
+    click(buttonByText("Connected", connectionFilter));
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.queryByText("Asana")).not.toBeInTheDocument();
+    });
+    expect(search()).toBe("?connection=connected");
+
+    click(buttonByText("All", connectionFilter));
+
+    await waitFor(() => {
+      expect(screen.getByText("Asana")).toBeInTheDocument();
+    });
+    expect(search()).toBe("");
+  });
+
   it("hydrates connector search from URL keywords", async () => {
     mockConnectors([
       { type: "github", externalUsername: "octocat" },
@@ -478,6 +526,14 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
+    expect(
+      screen.queryByRole("group", {
+        name: "Connector connection filter",
+      }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByLabelText("Manage GitHub access"),
+    ).not.toBeInTheDocument();
     click(
       within(connectorCardByLabel("GitHub")).getByLabelText("More options"),
     );
@@ -528,12 +584,10 @@ describe("connectors page", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     click(
-      within(connectorCardByLabel("GitHub")).getByLabelText("More options"),
+      within(connectorCardByLabel("GitHub")).getByLabelText(
+        "Manage GitHub access",
+      ),
     );
-    await waitFor(() => {
-      expect(menuItemByText("Manage")).toBeInTheDocument();
-    });
-    click(menuItemByText("Manage"));
 
     const dialog = await screen.findByRole("dialog", {
       name: "Manage GitHub access",
@@ -556,6 +610,148 @@ describe("connectors page", () => {
         within(dialog).getByLabelText("Revoke GitHub access for Support Agent"),
       ).toBeInTheDocument();
     });
+  });
+
+  it("shows up to three authorized agent avatars on connector cards", async () => {
+    const agentIds = [
+      "c0000000-0000-4000-a000-000000000001",
+      "c0000000-0000-4000-a000-000000000002",
+      "c0000000-0000-4000-a000-000000000003",
+      "c0000000-0000-4000-a000-000000000004",
+    ] as const;
+    const enabledByAgent = new Map<string, string[]>(
+      agentIds.map((agentId) => {
+        return [agentId, ["github"]];
+      }),
+    );
+
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    context.mocks.data.team([
+      teamAgent(agentIds[0], "Research Agent", "preset:0"),
+      teamAgent(agentIds[1], "Support Agent", "preset:1"),
+      teamAgent(agentIds[2], "Growth Agent"),
+      teamAgent(agentIds[3], "Ops Agent", "preset:3"),
+    ]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+      return respond(200, {
+        enabledTypes: enabledByAgent.get(params.id) ?? [],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccessManagement]: true,
+      },
+    });
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("GitHub");
+      const avatars = within(card).getAllByTestId(
+        "connector-card-agent-avatar",
+      );
+      expect(avatars).toHaveLength(3);
+      expect(avatars[2]).toHaveClass("block", "h-7", "w-7");
+    });
+
+    click(
+      within(connectorCardByLabel("GitHub")).getByLabelText(
+        "Manage GitHub access",
+      ),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub access",
+    });
+    expect(dialog).toBeInTheDocument();
+  });
+
+  it("shows a users icon when no agents are authorized", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000001";
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccessManagement]: true,
+      },
+    });
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("GitHub");
+      const placeholder = within(card).getByTestId(
+        "connector-card-agent-avatar-placeholder",
+      );
+      expect(placeholder).toHaveClass("flex", "h-7", "w-7");
+      expect(placeholder.querySelector(".tabler-icon-users")).not.toBeNull();
+    });
+
+    click(
+      within(connectorCardByLabel("GitHub")).getByLabelText(
+        "Manage GitHub access",
+      ),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage GitHub access",
+    });
+    expect(dialog).toBeInTheDocument();
+  });
+
+  it("hides permission controls for connectors without firewall rules", async () => {
+    const mediaAgentId = "c0000000-0000-4000-a000-000000000003";
+    mockConnectors([
+      {
+        type: "cloudinary",
+        authMethod: "api-token",
+        externalUsername: "demo-cloud",
+      },
+    ]);
+    context.mocks.data.team([teamAgent(mediaAgentId, "Media Agent")]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, {
+        enabledTypes: ["cloudinary"],
+      });
+    });
+    context.mocks.api(zeroUserPermissionGrantsContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccessManagement]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Cloudinary")).toBeInTheDocument();
+    });
+    click(
+      within(connectorCardByLabel("Cloudinary")).getByLabelText(
+        "Manage Cloudinary access",
+      ),
+    );
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Manage Cloudinary access",
+    });
+    expect(within(dialog).getByText("Media Agent")).toBeInTheDocument();
+    expect(
+      within(dialog).getByLabelText("Revoke Cloudinary access for Media Agent"),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText("Allowed")).not.toBeInTheDocument();
+    expect(
+      within(dialog).queryByText("No configurable permissions"),
+    ).not.toBeInTheDocument();
+    expect(queryButtonByText("Manage", dialog)).not.toBeInTheDocument();
   });
 
   it("shows Google Maps approval guidance before OAuth", async () => {

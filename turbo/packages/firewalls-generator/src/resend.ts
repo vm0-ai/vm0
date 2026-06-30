@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Resend firewall config...");
   const ts = generateTypeScript();
-  writeOutput("resend", ts, import.meta.dirname);
+  writeOutput("resend", ts);
 }

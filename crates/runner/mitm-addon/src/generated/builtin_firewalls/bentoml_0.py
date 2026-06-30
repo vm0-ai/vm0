@@ -12,6 +12,9 @@ JSON_PART = r"""{
         }
       },
       "base": "${{ vars.BENTO_CLOUD_API_ENDPOINT }}",
+      "hostPolicy": {
+        "kind": "publicDestination"
+      },
       "permissions": []
     },
     {

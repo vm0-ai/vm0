@@ -20,7 +20,7 @@ import {
   IconX,
   IconMessageCircle,
   IconWand,
-  IconGitBranch,
+  IconListCheck,
 } from "@tabler/icons-react";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type { ConnectorType } from "@vm0/connectors/connectors";
@@ -122,6 +122,12 @@ import {
 import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import { agentVisibleWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
 import { WorkflowListPanel } from "../workflows-page/workflows-page.tsx";
+import {
+  DetailPageBreadcrumbBar,
+  DetailPageHeader,
+  DetailPageMain,
+  DetailPageShell,
+} from "../components/detail-page-layout.tsx";
 
 // ---------------------------------------------------------------------------
 // Page shell: skeleton, error, header
@@ -147,10 +153,7 @@ function Breadcrumb({
   className?: string;
 }) {
   return (
-    <nav
-      aria-label="Breadcrumb"
-      className={`hidden md:flex shrink-0 items-center gap-1 px-4 pt-4 text-sm text-muted-foreground${className ? ` ${className}` : ""}`}
-    >
+    <DetailPageBreadcrumbBar className={className}>
       <Link
         pathname="/agents"
         className="inline-flex items-center gap-1 rounded-md px-1.5 py-0.5 hover:bg-muted hover:text-foreground transition-colors no-underline text-inherit"
@@ -162,24 +165,22 @@ function Breadcrumb({
       <span className="rounded-md px-1.5 py-0.5 text-foreground font-medium truncate">
         {currentName ?? "Agent"}
       </span>
-    </nav>
+    </DetailPageBreadcrumbBar>
   );
 }
 
 function DetailSkeleton() {
   return (
-    <div className="flex flex-1 flex-col min-h-0">
+    <DetailPageShell scroll={false}>
       <Breadcrumb />
-      <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-3">
-        <div className="mx-auto max-w-[900px]">
-          <div className="animate-pulse space-y-3">
-            <div className="h-5 w-48 rounded bg-muted" />
-            <div className="h-4 w-72 rounded bg-muted" />
-            <div className="h-9 w-80 rounded bg-muted mt-4" />
-          </div>
+      <DetailPageHeader className="pb-3">
+        <div className="animate-pulse space-y-3">
+          <div className="h-5 w-48 rounded bg-muted" />
+          <div className="h-4 w-72 rounded bg-muted" />
+          <div className="h-9 w-80 rounded bg-muted mt-4" />
         </div>
-      </header>
-    </div>
+      </DetailPageHeader>
+    </DetailPageShell>
   );
 }
 
@@ -190,7 +191,7 @@ function isNotFoundError(error: string): boolean {
 function DetailError({ error, agentId }: { error: string; agentId: string }) {
   if (isNotFoundError(error)) {
     return (
-      <div className="flex flex-1 flex-col min-h-0">
+      <DetailPageShell scroll={false}>
         <Breadcrumb />
         <main className="flex-1 flex items-center justify-center px-4 sm:px-6 pb-16">
           <div className="flex flex-col items-center text-center gap-4 max-w-sm">
@@ -212,12 +213,12 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
             </Link>
           </div>
         </main>
-      </div>
+      </DetailPageShell>
     );
   }
 
   return (
-    <div className="flex flex-1 flex-col min-h-0">
+    <DetailPageShell scroll={false}>
       <Breadcrumb />
       <main className="flex-1 px-4 sm:px-6 pt-4 pb-8">
         <div className="mx-auto max-w-[900px]">
@@ -235,19 +236,23 @@ function DetailError({ error, agentId }: { error: string; agentId: string }) {
           </Card>
         </div>
       </main>
-    </div>
+    </DetailPageShell>
   );
 }
 
 const TAB_TRIGGER_CLASS =
   "gap-1.5 text-sm data-[state=active]:bg-background px-3";
 
-/** Coerce hidden tabs back to "authorization" for non-admin default-agent view. */
+/** Coerce hidden tabs back to "authorization". */
 function resolveVisibleTab(
   rawTab: string,
   hideProfileAndInstructions: boolean,
+  showAutomations: boolean,
   showWorkflows: boolean,
 ): string {
+  if (!showAutomations && rawTab === "automations") {
+    return "authorization";
+  }
   if (!showWorkflows && rawTab === "workflows") {
     return "authorization";
   }
@@ -266,11 +271,13 @@ function AgentTabNav({
   activeTab,
   onTabChange,
   showProfileAndInstructions,
+  showAutomations,
   showWorkflows,
 }: {
   activeTab: string;
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
+  showAutomations: boolean;
   showWorkflows: boolean;
 }) {
   return (
@@ -287,7 +294,9 @@ function AgentTabNav({
           </SelectTrigger>
           <SelectContent>
             <SelectItem value="authorization">Authorization</SelectItem>
-            <SelectItem value="automations">Automations</SelectItem>
+            {showAutomations && (
+              <SelectItem value="automations">Automations</SelectItem>
+            )}
             {showWorkflows && (
               <SelectItem value="workflows">Workflows</SelectItem>
             )}
@@ -306,13 +315,15 @@ function AgentTabNav({
           <IconShield size={14} stroke={1.5} />
           Authorization
         </TabsTrigger>
-        <TabsTrigger value="automations" className={TAB_TRIGGER_CLASS}>
-          <IconCalendar size={14} stroke={1.5} />
-          Automations
-        </TabsTrigger>
+        {showAutomations && (
+          <TabsTrigger value="automations" className={TAB_TRIGGER_CLASS}>
+            <IconCalendar size={14} stroke={1.5} />
+            Automations
+          </TabsTrigger>
+        )}
         {showWorkflows && (
           <TabsTrigger value="workflows" className={TAB_TRIGGER_CLASS}>
-            <IconGitBranch size={14} stroke={1.5} />
+            <IconListCheck size={14} stroke={1.5} />
             Workflows
           </TabsTrigger>
         )}
@@ -431,7 +442,7 @@ function PermissionRow({
   );
 }
 
-function PermissionListSkeleton() {
+export function PermissionListSkeleton() {
   return (
     <div className="mx-auto max-w-[900px]">
       <div className="zero-card animate-pulse">
@@ -458,7 +469,7 @@ function PermissionListSkeleton() {
   );
 }
 
-function PermissionGrantsError() {
+export function PermissionGrantsError() {
   return (
     <div className="mx-auto max-w-[900px]">
       <div className="zero-card px-5 py-4 text-sm text-destructive">
@@ -468,7 +479,7 @@ function PermissionGrantsError() {
   );
 }
 
-function NoConnectedConnectors() {
+export function NoConnectedConnectors() {
   return (
     <>
       <div className="zero-card py-8 flex flex-col items-center gap-3">
@@ -493,7 +504,7 @@ function NoConnectedConnectors() {
   );
 }
 
-function ConnectedConnectorPermissions({
+export function ConnectedConnectorPermissions({
   filteredConnectors,
   authorizedSet,
   search,
@@ -614,22 +625,30 @@ function ConnectedConnectorPermissions({
   );
 }
 
-function AgentPermissionsDrawer({
-  agentId,
+export function AgentPermissionsDrawer({
+  targetId,
+  targetKind = "agent",
   connectorType,
   displayName,
   initialPolicies,
   initialGrants,
+  initialIntent,
+  initialSearch,
+  initialContextKey,
   resetEnabled,
   readOnly,
   onApply,
   onClose,
 }: {
-  agentId: string;
+  targetId: string;
+  targetKind?: "agent" | "workflow";
   connectorType: ConnectorType | null;
   displayName: string;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
+  initialIntent?: PermissionDraftIntent;
+  initialSearch?: string;
+  initialContextKey?: string;
   resetEnabled: boolean;
   readOnly: boolean;
   onApply: (
@@ -645,11 +664,15 @@ function AgentPermissionsDrawer({
   }
   return (
     <PermissionsDrawer
-      agentId={agentId}
+      agentId={targetId}
+      targetKind={targetKind}
       connectorType={connectorType}
       displayName={displayName}
       initialPolicies={initialPolicies}
       initialGrants={initialGrants}
+      initialIntent={initialIntent}
+      initialSearch={initialSearch}
+      initialContextKey={initialContextKey}
       resetEnabled={resetEnabled}
       readOnly={readOnly}
       onApply={onApply}
@@ -766,7 +789,7 @@ function JobPermissionsTab({
             onManage={setConnectorType}
           />
           <AgentPermissionsDrawer
-            agentId={agentId}
+            targetId={agentId}
             connectorType={connectorType}
             displayName={displayName}
             initialPolicies={drawerInitialPolicies}
@@ -778,7 +801,7 @@ function JobPermissionsTab({
                 throw new Error("Cannot save permissions without a connector");
               }
               await savePermissionDraftPolicies({
-                agentId,
+                scope: { agentId },
                 connectorType,
                 metadata,
                 initialPolicies: drawerInitialPolicies,
@@ -800,6 +823,15 @@ function JobPermissionsTab({
 }
 
 function JobAutomationsTab({ displayName }: { displayName: string }) {
+  const features = useLastResolved(featureSwitch$);
+  if (features?.[FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]) {
+    return null;
+  }
+
+  return <JobLegacyAutomationsTab displayName={displayName} />;
+}
+
+function JobLegacyAutomationsTab({ displayName }: { displayName: string }) {
   const automationLoadable = useLoadable(agentAutomationEntries$);
   const entries = useLastResolved(agentAutomationEntries$) ?? [];
   const loading = automationLoadable.state === "loading";
@@ -913,6 +945,7 @@ function AgentHeader({
   activeTab,
   onTabChange,
   showProfileAndInstructions,
+  showAutomations,
   showWorkflows,
 }: {
   displayName: string;
@@ -921,78 +954,78 @@ function AgentHeader({
   activeTab: string;
   onTabChange: (tab: string) => void;
   showProfileAndInstructions: boolean;
+  showAutomations: boolean;
   showWorkflows: boolean;
 }) {
   const nav = useSet(detachedNavigateTo$);
   const openMaker = useSet(openAvatarMaker$);
 
   return (
-    <header className="shrink-0 bg-transparent px-4 sm:px-6 pt-6 pb-0">
-      <div className="mx-auto max-w-[900px]">
-        <div className="flex items-center gap-4">
-          <div className="group relative shrink-0">
-            <AgentAvatarImg
-              name={agentId}
-              alt={displayName}
-              className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
-            />
-            {showProfileAndInstructions && (
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        onTabChange("profile");
-                        openMaker();
-                      }}
-                      className="absolute -right-0.5 -bottom-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
-                      aria-label="Customize avatar"
-                    >
-                      <IconWand size={12} stroke={1.5} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent side="bottom">
-                    <p className="text-xs">Customize avatar</p>
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            )}
-          </div>
-          <div className="min-w-0">
-            <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl truncate">
-              {displayName}
-            </h1>
-            <p className="text-sm text-muted-foreground mt-1.5 leading-tight line-clamp-2">
-              {description || "Your AI teammate, tuned to you"}
-            </p>
-          </div>
-        </div>
-
-        <div className="mt-4 sm:mt-6 flex items-center gap-2">
-          <AgentTabNav
-            activeTab={activeTab}
-            onTabChange={onTabChange}
-            showProfileAndInstructions={showProfileAndInstructions}
-            showWorkflows={showWorkflows}
+    <DetailPageHeader>
+      <div className="flex items-center gap-4">
+        <div className="group relative shrink-0">
+          <AgentAvatarImg
+            name={agentId}
+            alt={displayName}
+            className="h-14 w-14 shrink-0 rounded-full object-cover object-top sm:h-16 sm:w-16"
           />
-          <Button
-            variant="outline"
-            size="sm"
-            className="shrink-0 zero-btn-morandi gap-1.5"
-            onClick={() => {
-              nav("/agents/:agentId/chat", {
-                pathParams: { agentId: agentId },
-              });
-            }}
-            aria-label={`Chat with ${displayName}`}
-          >
-            <IconMessageCircle size={14} stroke={2} />
-            Chat with {displayName}
-          </Button>
+          {showProfileAndInstructions && (
+            <TooltipProvider delayDuration={200}>
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      onTabChange("profile");
+                      openMaker();
+                    }}
+                    className="absolute -right-0.5 -bottom-0.5 flex h-6 w-6 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border opacity-0 group-hover:opacity-100 hover:text-foreground transition-all"
+                    aria-label="Customize avatar"
+                  >
+                    <IconWand size={12} stroke={1.5} />
+                  </button>
+                </TooltipTrigger>
+                <TooltipContent side="bottom">
+                  <p className="text-xs">Customize avatar</p>
+                </TooltipContent>
+              </Tooltip>
+            </TooltipProvider>
+          )}
+        </div>
+        <div className="min-w-0">
+          <h1 className="text-lg font-semibold tracking-tight text-foreground sm:text-xl truncate">
+            {displayName}
+          </h1>
+          <p className="text-sm text-muted-foreground mt-1.5 leading-tight line-clamp-2">
+            {description || "Your AI teammate, tuned to you"}
+          </p>
         </div>
       </div>
-    </header>
+
+      <div className="mt-4 sm:mt-6 flex items-center gap-2">
+        <AgentTabNav
+          activeTab={activeTab}
+          onTabChange={onTabChange}
+          showProfileAndInstructions={showProfileAndInstructions}
+          showAutomations={showAutomations}
+          showWorkflows={showWorkflows}
+        />
+        <Button
+          variant="outline"
+          size="sm"
+          className="shrink-0 zero-btn-morandi gap-1.5"
+          onClick={() => {
+            nav("/agents/:agentId/chat", {
+              pathParams: { agentId: agentId },
+            });
+          }}
+          aria-label={`Chat with ${displayName}`}
+        >
+          <IconMessageCircle size={14} stroke={2} />
+          Chat with {displayName}
+        </Button>
+      </div>
+    </DetailPageHeader>
   );
 }
 
@@ -1108,11 +1141,17 @@ function useTabVisibility(agentId: string, ownerId: string) {
   const rawTab = useGet(agentActiveTab$);
   const setActiveTab = useSet(setAgentActiveTab$);
   const features = useLastResolved(featureSwitch$);
-  const showWorkflows = features?.[FeatureSwitchKey.WorkflowsViewer] ?? false;
+  const showAutomations = !(
+    features?.[FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger] ??
+    false
+  );
+  const showWorkflows =
+    showAutomations && (features?.[FeatureSwitchKey.WorkflowsViewer] ?? false);
   const hideProfileAndInstructions = !isAdmin && !isOwner;
   const activeTab = resolveVisibleTab(
     rawTab,
     hideProfileAndInstructions,
+    showAutomations,
     showWorkflows,
   );
 
@@ -1120,6 +1159,7 @@ function useTabVisibility(agentId: string, ownerId: string) {
     isDefaultAgent,
     hideProfileAndInstructions,
     isOwner,
+    showAutomations,
     showWorkflows,
     activeTab,
     setActiveTab,
@@ -1136,6 +1176,7 @@ export function ZeroJobDetailPage() {
     isDefaultAgent,
     hideProfileAndInstructions,
     isOwner,
+    showAutomations,
     showWorkflows,
     activeTab,
     setActiveTab,
@@ -1150,7 +1191,7 @@ export function ZeroJobDetailPage() {
   }
 
   return (
-    <div className="flex flex-1 flex-col min-h-0 overflow-auto [scrollbar-gutter:stable]">
+    <DetailPageShell>
       <Breadcrumb currentName={fields.displayName} />
       <AgentHeader
         displayName={fields.displayName}
@@ -1159,9 +1200,10 @@ export function ZeroJobDetailPage() {
         activeTab={activeTab}
         onTabChange={setActiveTab}
         showProfileAndInstructions={!hideProfileAndInstructions}
+        showAutomations={showAutomations}
         showWorkflows={showWorkflows}
       />
-      <main className="shrink-0 px-4 sm:px-6 pt-4 sm:pt-6 pb-16">
+      <DetailPageMain>
         <AgentTabContent
           activeTab={activeTab}
           agentId={fields.agentId}
@@ -1173,7 +1215,7 @@ export function ZeroJobDetailPage() {
           visibility={fields.visibility}
           canEditVisibility={isOwner}
         />
-      </main>
-    </div>
+      </DetailPageMain>
+    </DetailPageShell>
   );
 }

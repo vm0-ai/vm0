@@ -6,7 +6,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { isBadRequestResponse, isNotFoundResponse } from "../../lib/error";
 import { syncArtifactToGoogleDrive$ } from "../services/google-drive-artifact-sync.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const syncInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);

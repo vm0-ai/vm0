@@ -1,0 +1,28 @@
+{
+  "extends": "./tsconfig.json",
+  "compilerOptions": {
+    "incremental": false,
+    "types": ["node"]
+  },
+  "include": [
+    "src/signals/routes/zero-secrets*.ts",
+    "src/signals/routes/zero-slack*.ts",
+    "src/signals/routes/zero-team.ts",
+    "src/signals/routes/zero-uploads*.ts",
+    "src/signals/routes/zero-usage*.ts",
+    "src/signals/routes/zero-user*.ts",
+    "src/signals/routes/zero-variables-delete.ts",
+    "src/signals/routes/zero-video*.ts",
+    "src/signals/routes/zero-voice*.ts",
+    "src/signals/routes/zero-web-download.ts",
+    "src/signals/routes/zero-workflow*.ts",
+    "src/signals/routes/zero-workflows.ts"
+  ],
+  "exclude": [
+    "node_modules",
+    "dist",
+    "src/**/__tests__/**",
+    "src/**/*.test.ts",
+    "src/**/*.spec.ts"
+  ]
+}

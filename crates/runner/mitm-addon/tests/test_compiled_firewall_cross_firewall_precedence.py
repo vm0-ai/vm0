@@ -2,6 +2,7 @@
 
 import pytest
 
+import generated.builtin_firewalls as builtin_firewalls
 import matching
 from tests.firewall_helpers import compile_firewalls_or_fail, wrap_firewalls
 
@@ -117,6 +118,62 @@ def test_specific_permission_api_wins_after_earlier_unknown_same_firewall():
     assert result.name == "meta-ads"
     assert result.permission == "page-token-ads-posts"
     assert result.api_entry["auth"] == {}
+
+
+def test_cloudflare_upload_api_preserves_auth_without_shadowing_normal_api():
+    fws = [builtin_firewalls.BUILTIN_FIREWALLS["cloudflare"]]
+    policies = {
+        "cloudflare": {
+            "allow": ["page.write", "workers-scripts.write"],
+            "deny": [],
+            "unknownPolicy": "deny",
+        }
+    }
+    compiled = compile_firewalls_or_fail(fws)
+
+    normal_result = matching.match_compiled_firewall_request(
+        "https://api.cloudflare.com/client/v4/accounts/account-id/pages/projects/project-name/deployments",
+        "POST",
+        compiled,
+        policies,
+    )
+    assert isinstance(normal_result, matching.FirewallAllow)
+    assert normal_result.permission == "page.write"
+    assert normal_result.api_entry["auth"]["headers"]["Authorization"] == (
+        "Bearer ${{ secrets.CLOUDFLARE_TOKEN }}"
+    )
+
+    upload_token_result = matching.match_compiled_firewall_request(
+        "https://api.cloudflare.com/client/v4/accounts/account-id/pages/projects/project-name/upload-token",
+        "GET",
+        compiled,
+        policies,
+    )
+    assert isinstance(upload_token_result, matching.FirewallAllow)
+    assert upload_token_result.permission == "page.write"
+    assert upload_token_result.api_entry["auth"]["headers"]["Authorization"] == (
+        "Bearer ${{ secrets.CLOUDFLARE_TOKEN }}"
+    )
+
+    pages_upload_result = matching.match_compiled_firewall_request(
+        "https://api.cloudflare.com/client/v4/pages/assets/check-missing",
+        "POST",
+        compiled,
+        policies,
+    )
+    assert isinstance(pages_upload_result, matching.FirewallAllow)
+    assert pages_upload_result.permission == "page.write"
+    assert pages_upload_result.api_entry["auth"] == {}
+
+    workers_upload_result = matching.match_compiled_firewall_request(
+        "https://api.cloudflare.com/client/v4/accounts/account-id/workers/assets/upload?base64=true",
+        "POST",
+        compiled,
+        policies,
+    )
+    assert isinstance(workers_upload_result, matching.FirewallAllow)
+    assert workers_upload_result.permission == "workers-scripts.write"
+    assert workers_upload_result.api_entry["auth"] == {}
 
 
 def test_later_denied_firewall_wins_after_earlier_unknown_allow():

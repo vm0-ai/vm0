@@ -120,6 +120,11 @@ def _normalize_hostname(host: str) -> str:
     return normalize_idna_hostname(host)
 
 
+def normalize_trusted_hostname(host: str) -> str:
+    """Normalize a trusted authority hostname using request-authority rules."""
+    return _normalize_hostname(host)
+
+
 def _host_with_port(scheme: str, host: str, port: int) -> str:
     url_host = format_url_host(host)
     if scheme in ("http", "https") and not is_default_scheme_port(scheme, port):

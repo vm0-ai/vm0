@@ -53,5 +53,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Intercom firewall config...");
   const ts = generateTypeScript();
-  writeOutput("intercom", ts, import.meta.dirname);
+  writeOutput("intercom", ts);
 }

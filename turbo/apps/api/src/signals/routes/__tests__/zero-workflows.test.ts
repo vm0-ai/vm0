@@ -6,7 +6,13 @@ import {
   zeroWorkflowVisibilityContract,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { getCustomSkillStorageName } from "@vm0/core/storage-names";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import {
+  workflowUserTriggerThreads,
+  zeroWorkflowTriggers,
+  zeroWorkflowWebhookTriggers,
+  zeroWorkflows,
+} from "@vm0/db/schema/zero-workflow";
 import { createStore } from "ccstate";
 import { and, eq } from "drizzle-orm";
 
@@ -225,6 +231,137 @@ describe("zero workflows", () => {
     );
   });
 
+  it("binds a newly created workflow to the current matching agent chat thread", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Thread Agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+    const [thread] = await db
+      .insert(chatThreads)
+      .values({
+        userId: fixture.userId,
+        agentComposeId: agent.agentId,
+        title: "Current chat",
+      })
+      .returning({ id: chatThreads.id });
+    if (!thread) {
+      throw new Error("Failed to seed current chat thread");
+    }
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const created = await accept(
+      collectionClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: agent.agentId,
+          chatThreadId: thread.id,
+          name: "thread-workflow",
+          displayName: "Thread Workflow",
+          instruction: "# thread workflow",
+        },
+      }),
+      [201],
+    );
+
+    const [binding] = await db
+      .select({ chatThreadId: workflowUserTriggerThreads.chatThreadId })
+      .from(workflowUserTriggerThreads)
+      .where(
+        and(
+          eq(workflowUserTriggerThreads.orgId, fixture.orgId),
+          eq(workflowUserTriggerThreads.userId, fixture.userId),
+          eq(workflowUserTriggerThreads.workflowId, created.body.id),
+        ),
+      );
+    expect(binding?.chatThreadId).toBe(thread.id);
+
+    const prepared = await accept(
+      detailClient().chatThread({
+        headers: authHeaders(),
+        params: { workflowId: created.body.id },
+      }),
+      [200],
+    );
+    expect(prepared.body.chatThreadId).toBe(thread.id);
+  });
+
+  it("does not bind a newly created workflow to a chat thread from another agent", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const sourceAgent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Source Agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    const targetAgent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Target Agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+    const [thread] = await db
+      .insert(chatThreads)
+      .values({
+        userId: fixture.userId,
+        agentComposeId: sourceAgent.agentId,
+        title: "Source chat",
+      })
+      .returning({ id: chatThreads.id });
+    if (!thread) {
+      throw new Error("Failed to seed source chat thread");
+    }
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const created = await accept(
+      collectionClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: targetAgent.agentId,
+          chatThreadId: thread.id,
+          name: "target-workflow",
+          displayName: "Target Workflow",
+          instruction: "# target workflow",
+        },
+      }),
+      [201],
+    );
+
+    const bindings = await db
+      .select({ chatThreadId: workflowUserTriggerThreads.chatThreadId })
+      .from(workflowUserTriggerThreads)
+      .where(
+        and(
+          eq(workflowUserTriggerThreads.orgId, fixture.orgId),
+          eq(workflowUserTriggerThreads.userId, fixture.userId),
+          eq(workflowUserTriggerThreads.workflowId, created.body.id),
+        ),
+      );
+    expect(bindings).toStrictEqual([]);
+  });
+
   it("enforces public workflow slug uniqueness per agent while allowing private overrides", async () => {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),
@@ -306,6 +443,82 @@ describe("zero workflows", () => {
       error: {
         message:
           'A public workflow named "/shared-workflow" already exists on this agent. Rename this workflow or keep it private.',
+        code: "CONFLICT",
+      },
+    });
+  });
+
+  it("renames workflow slugs through metadata update and protects public slugs", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Rename Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: "existing-workflow",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    const workflowId = await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: "rename-source",
+        visibility: "public",
+        displayName: "Rename Source",
+        description: "Original description",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const renamed = await accept(
+      detailClient().update({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          name: "renamed-workflow",
+          displayName: "Renamed Workflow",
+          description: "Use when workflow metadata needs a new slug.",
+        },
+      }),
+      [200],
+    );
+    expect(renamed.body).toMatchObject({
+      name: "renamed-workflow",
+      displayName: "Renamed Workflow",
+      description: "Use when workflow metadata needs a new slug.",
+    });
+
+    const duplicate = await accept(
+      detailClient().update({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { name: "existing-workflow" },
+      }),
+      [409],
+    );
+    expect(duplicate.body).toStrictEqual({
+      error: {
+        message:
+          'A public workflow named "/existing-workflow" already exists on this agent. Rename this workflow or keep it private.',
         code: "CONFLICT",
       },
     });
@@ -611,6 +824,275 @@ describe("zero workflows", () => {
     );
   });
 
+  it("copies caller-owned workflow triggers", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const sourceAgent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Source Agent",
+        visibility: "private",
+      },
+      context.signal,
+    );
+    const targetAgent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Target Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    const db = store.set(writeDb$);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    context.mocks.s3.send.mockResolvedValue({});
+
+    const created = await accept(
+      collectionClient().create({
+        headers: authHeaders(),
+        body: {
+          agentId: sourceAgent.agentId,
+          name: "runtime-config-workflow",
+          displayName: "Runtime Config Workflow",
+          instruction: "# runtime config workflow",
+        },
+      }),
+      [201],
+    );
+    const workflowId = created.body.id;
+
+    const otherUserId = `user_${randomUUID()}`;
+    const nextRunAt = new Date("2099-01-01T09:00:00.000Z");
+
+    const [sourceScheduleTrigger] = await db
+      .insert(zeroWorkflowTriggers)
+      .values({
+        orgId: fixture.orgId,
+        workflowId,
+        ownerUserId: fixture.userId,
+        kind: "schedule",
+        eventType: null,
+        eventConfig: null,
+        scheduleType: "cron",
+        cronExpression: "0 9 * * *",
+        intervalSeconds: null,
+        atTime: null,
+        timezone: "Asia/Shanghai",
+        enabled: true,
+        nextRunAt,
+        lastRunAt: new Date("2026-01-01T00:00:00.000Z"),
+        lastRunId: randomUUID(),
+        consecutiveFailures: 2,
+      })
+      .returning({ id: zeroWorkflowTriggers.id });
+    const [sourceWebhookTrigger] = await db
+      .insert(zeroWorkflowTriggers)
+      .values({
+        orgId: fixture.orgId,
+        workflowId,
+        ownerUserId: fixture.userId,
+        kind: "event",
+        eventType: "webhook-received",
+        eventConfig: {
+          provider: "webhook",
+          event: "received",
+          auth: { mode: "hmac-sha256" },
+        },
+        scheduleType: null,
+        cronExpression: null,
+        intervalSeconds: null,
+        atTime: null,
+        timezone: "UTC",
+        enabled: false,
+        nextRunAt: null,
+      })
+      .returning({ id: zeroWorkflowTriggers.id });
+    if (!sourceScheduleTrigger || !sourceWebhookTrigger) {
+      throw new Error("Failed to seed source workflow triggers");
+    }
+    const sourceWebhookTokenHash = `source-${randomUUID()}`;
+    await db.insert(zeroWorkflowWebhookTriggers).values({
+      triggerId: sourceWebhookTrigger.id,
+      tokenHash: sourceWebhookTokenHash,
+      encryptedToken: "source-encrypted-token",
+      encryptedSecret: "source-encrypted-secret",
+      secretLastFour: "1234",
+    });
+    await db.insert(zeroWorkflowTriggers).values({
+      orgId: fixture.orgId,
+      workflowId,
+      ownerUserId: otherUserId,
+      kind: "schedule",
+      eventType: null,
+      eventConfig: null,
+      scheduleType: "loop",
+      cronExpression: null,
+      intervalSeconds: 300,
+      atTime: null,
+      timezone: "UTC",
+      enabled: true,
+      nextRunAt,
+    });
+
+    const copied = await accept(
+      detailClient().copy({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [201],
+    );
+
+    const copiedTriggers = await db
+      .select()
+      .from(zeroWorkflowTriggers)
+      .where(
+        and(
+          eq(zeroWorkflowTriggers.orgId, fixture.orgId),
+          eq(zeroWorkflowTriggers.ownerUserId, fixture.userId),
+          eq(zeroWorkflowTriggers.workflowId, copied.body.id),
+        ),
+      );
+    expect(copiedTriggers).toHaveLength(2);
+    const copiedScheduleTrigger = copiedTriggers.find((trigger) => {
+      return trigger.kind === "schedule";
+    });
+    const copiedWebhookTrigger = copiedTriggers.find((trigger) => {
+      return (
+        trigger.kind === "event" && trigger.eventType === "webhook-received"
+      );
+    });
+    if (!copiedScheduleTrigger || !copiedWebhookTrigger) {
+      throw new Error("Expected copied schedule and webhook triggers");
+    }
+    expect(copiedScheduleTrigger.id).not.toBe(sourceScheduleTrigger.id);
+    expect(copiedScheduleTrigger).toMatchObject({
+      scheduleType: "cron",
+      cronExpression: "0 9 * * *",
+      timezone: "Asia/Shanghai",
+      enabled: true,
+      lastRunAt: null,
+      lastRunId: null,
+      consecutiveFailures: 0,
+    });
+    expect(copiedScheduleTrigger.nextRunAt?.toISOString()).toBe(
+      nextRunAt.toISOString(),
+    );
+    expect(copiedWebhookTrigger.id).not.toBe(sourceWebhookTrigger.id);
+    expect(copiedWebhookTrigger).toMatchObject({
+      eventType: "webhook-received",
+      enabled: false,
+      nextRunAt: null,
+      lastRunAt: null,
+      lastRunId: null,
+      consecutiveFailures: 0,
+    });
+
+    const [copiedWebhookConfig] = await db
+      .select()
+      .from(zeroWorkflowWebhookTriggers)
+      .where(
+        eq(zeroWorkflowWebhookTriggers.triggerId, copiedWebhookTrigger.id),
+      );
+    expect(copiedWebhookConfig?.tokenHash).toBeDefined();
+    expect(copiedWebhookConfig?.tokenHash).not.toBe(sourceWebhookTokenHash);
+    expect(copiedWebhookConfig?.encryptedSecret).toBe(
+      "source-encrypted-secret",
+    );
+    expect(copiedWebhookConfig?.secretLastFour).toBe("1234");
+
+    const leakedTriggers = await db
+      .select()
+      .from(zeroWorkflowTriggers)
+      .where(
+        and(
+          eq(zeroWorkflowTriggers.orgId, fixture.orgId),
+          eq(zeroWorkflowTriggers.ownerUserId, otherUserId),
+          eq(zeroWorkflowTriggers.workflowId, copied.body.id),
+        ),
+      );
+    expect(leakedTriggers).toHaveLength(0);
+  });
+
+  it("gets or creates the shared workflow chat thread with a slash prompt", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Chat Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    const workflowId = await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: "chat-workflow",
+        displayName: "Chat Workflow",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const first = await accept(
+      detailClient().chatThread({
+        headers: authHeaders(),
+        params: { workflowId },
+      }),
+      [200],
+    );
+    const second = await accept(
+      detailClient().chatThread({
+        headers: authHeaders(),
+        params: { workflowId },
+      }),
+      [200],
+    );
+
+    expect(second.body).toStrictEqual(first.body);
+    expect(first.body.prompt).toBe("/chat-workflow");
+
+    const db = store.set(writeDb$);
+    const [binding] = await db
+      .select({ chatThreadId: workflowUserTriggerThreads.chatThreadId })
+      .from(workflowUserTriggerThreads)
+      .where(
+        and(
+          eq(workflowUserTriggerThreads.orgId, fixture.orgId),
+          eq(workflowUserTriggerThreads.userId, fixture.userId),
+          eq(workflowUserTriggerThreads.workflowId, workflowId),
+        ),
+      );
+    expect(binding?.chatThreadId).toBe(first.body.chatThreadId);
+
+    const [thread] = await db
+      .select({
+        userId: chatThreads.userId,
+        agentComposeId: chatThreads.agentComposeId,
+        title: chatThreads.title,
+      })
+      .from(chatThreads)
+      .where(eq(chatThreads.id, first.body.chatThreadId));
+    expect(thread).toStrictEqual({
+      userId: fixture.userId,
+      agentComposeId: agent.agentId,
+      title: "Chat Workflow",
+    });
+  });
+
   it("reads workflow content from the existing skill volume storage", async () => {
     const fixture = await track(
       store.set(seedWorkflowsFixture$, undefined, context.signal),
@@ -734,6 +1216,86 @@ describe("zero workflows", () => {
       files: null,
       fileContents: null,
     });
+  });
+
+  it("returns workflow audit metadata and records the last updating user", async () => {
+    const fixture = await track(
+      store.set(seedWorkflowsFixture$, undefined, context.signal),
+    );
+    const agent = await store.set(
+      seedAgentForInstructions$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        displayName: "Audit Agent",
+        visibility: "public",
+      },
+      context.signal,
+    );
+    const workflowId = await store.set(
+      seedWorkflow$,
+      {
+        orgId: fixture.orgId,
+        userId: fixture.userId,
+        agentId: agent.agentId,
+        name: "audit-workflow",
+        visibility: "public",
+        displayName: "Audit Workflow",
+      },
+      context.signal,
+    );
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+
+    const initial = await accept(
+      detailClient().get({
+        headers: authHeaders(),
+        params: { workflowId },
+      }),
+      [200],
+    );
+    expect(initial.body).toMatchObject({
+      createdByUserId: fixture.userId,
+      updatedByUserId: fixture.userId,
+      displayName: "Audit Workflow",
+    });
+    expect(typeof initial.body.createdAt).toBe("string");
+    expect(typeof initial.body.updatedAt).toBe("string");
+
+    const updaterId = `user_${randomUUID()}`;
+    mocks.clerk.session(updaterId, fixture.orgId, "org:admin");
+
+    const updated = await accept(
+      detailClient().update({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: { displayName: "Updated Audit Workflow" },
+      }),
+      [200],
+    );
+    expect(updated.body).toMatchObject({
+      createdByUserId: fixture.userId,
+      updatedByUserId: updaterId,
+      displayName: "Updated Audit Workflow",
+    });
+
+    const demoted = await accept(
+      visibilityClient().demote({
+        headers: authHeaders(),
+        params: { workflowId },
+      }),
+      [200],
+    );
+    expect(demoted.body.visibility).toBe("private");
+
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const afterDemote = await accept(
+      detailClient().get({
+        headers: authHeaders(),
+        params: { workflowId },
+      }),
+      [200],
+    );
+    expect(afterDemote.body.updatedByUserId).toBe(updaterId);
   });
 
   it("deletes workflow storage using a slash-bounded prefix", async () => {

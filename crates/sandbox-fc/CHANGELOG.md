@@ -1,5 +1,55 @@
 # Changelog
 
+## [0.37.79](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.78...sandbox-fc-v0.37.79) (2026-06-30)
+
+## [0.37.78](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.77...sandbox-fc-v0.37.78) (2026-06-30)
+
+## [0.37.77](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.76...sandbox-fc-v0.37.77) (2026-06-29)
+
+
+### Refactoring
+
+* **sandbox-fc:** extract state and snapshot restore helpers ([#19343](https://github.com/vm0-ai/vm0/issues/19343)) ([e16fffa](https://github.com/vm0-ai/vm0/commit/e16fffa9e056194b0951cb2c0ce7569356ba3fb4))
+
+## [0.37.76](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.75...sandbox-fc-v0.37.76) (2026-06-29)
+
+## [0.37.75](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.74...sandbox-fc-v0.37.75) (2026-06-29)
+
+## [0.37.74](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.73...sandbox-fc-v0.37.74) (2026-06-29)
+
+## [0.37.73](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.72...sandbox-fc-v0.37.73) (2026-06-29)
+
+## [0.37.72](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.71...sandbox-fc-v0.37.72) (2026-06-27)
+
+## [0.37.71](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.70...sandbox-fc-v0.37.71) (2026-06-27)
+
+## [0.37.70](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.69...sandbox-fc-v0.37.70) (2026-06-26)
+
+
+### Bug Fixes
+
+* saturate telemetry duration milliseconds ([#19139](https://github.com/vm0-ai/vm0/issues/19139)) ([4db715c](https://github.com/vm0-ai/vm0/commit/4db715c9ed4a6469519e84bb83ff1b33917f1162))
+
+## [0.37.69](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.68...sandbox-fc-v0.37.69) (2026-06-26)
+
+## [0.37.68](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.67...sandbox-fc-v0.37.68) (2026-06-26)
+
+
+### Performance Improvements
+
+* **sandbox-fc:** bound host command output capture ([#19097](https://github.com/vm0-ai/vm0/issues/19097)) ([3fbd964](https://github.com/vm0-ai/vm0/commit/3fbd964950ce06bb9b880e7915b6f117b8210457))
+
+## [0.37.67](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.66...sandbox-fc-v0.37.67) (2026-06-26)
+
+## [0.37.66](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.65...sandbox-fc-v0.37.66) (2026-06-26)
+
+## [0.37.65](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.64...sandbox-fc-v0.37.65) (2026-06-26)
+
+
+### Bug Fixes
+
+* add agent exit 126 diagnostics ([#19032](https://github.com/vm0-ai/vm0/issues/19032)) ([b894039](https://github.com/vm0-ai/vm0/commit/b894039c617722da0ab4a9dd1fa2f188e552c7c7))
+
 ## [0.37.64](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.63...sandbox-fc-v0.37.64) (2026-06-26)
 
 ## [0.37.63](https://github.com/vm0-ai/vm0/compare/sandbox-fc-v0.37.62...sandbox-fc-v0.37.63) (2026-06-25)

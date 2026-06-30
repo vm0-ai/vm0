@@ -16,7 +16,7 @@ import {
   upsertUserMultiAuthModelProvider$,
   type ModelProviderInfo,
 } from "../services/zero-model-provider.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 function providerNotFound(type: string) {
   return {

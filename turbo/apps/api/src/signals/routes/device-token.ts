@@ -13,7 +13,7 @@ import {
   createBb0DeviceCode$,
   pollBb0Device$,
 } from "../services/device-token.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const createBody$ = bodyResultOf(deviceTokenContract.create);
 const pollBody$ = bodyResultOf(deviceTokenContract.poll);

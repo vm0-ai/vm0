@@ -1,4 +1,4 @@
-import type { ConnectorConfig } from "../connectors";
+import type { ConnectorConfig } from "../connector-config";
 
 export const scrapeninja = {
   scrapeninja: {
@@ -8,7 +8,7 @@ export const scrapeninja = {
       "Connect your ScrapeNinja account to scrape web pages with Chrome TLS fingerprint and JS rendering",
     authMethods: {
       "api-token": {
-        label: "API Token",
+        label: "RapidAPI Key",
         storage: {
           secrets: ["SCRAPENINJA_TOKEN"],
           variables: [],
@@ -17,7 +17,7 @@ export const scrapeninja = {
           kind: "manual",
           fields: {
             SCRAPENINJA_TOKEN: {
-              label: "API Token",
+              label: "RapidAPI Key",
               required: true,
             },
           },

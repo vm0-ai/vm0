@@ -5,24 +5,21 @@ import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { mockEnv } from "../../../lib/env";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { expectApiError } from "./helpers/api-bdd";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
-import { storageTextFile } from "./helpers/api-bdd-chat-files";
+import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import {
   AMBIGUOUS_COMPOSE_CONTENTS,
   AMBIGUOUS_COMPOSE_NAME,
   AMBIGUOUS_VERSION_IDS,
   AMBIGUOUS_VERSION_PREFIX,
   createComposesBddApi,
-  mockComposeInstructionsDownloads,
   sandboxComposeToken,
-  zeroComposeDeleteToken,
 } from "./helpers/api-bdd-composes";
-import { mockClerkMembership } from "./helpers/api-bdd-github";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 
@@ -30,8 +27,8 @@ import { createStoragesBddApi } from "./helpers/api-bdd-storages";
  * COMPOSE-01 round-5 expansion. The compose lifecycle chain (create, read,
  * list, metadata, delete through public APIs) lives in
  * auth-org-agents.bdd.test.ts and stays there; this file adds version
- * resolution, instructions, token scoping, zero-route errors, and delete
- * protection/sweep behavior.
+ * resolution, token scoping, zero-route errors, and delete protection/sweep
+ * behavior.
  *
  * - Version ids are sha256 hashes of canonical compose content, so the
  *   ambiguous-prefix 400 is API-constructible from the precomputed
@@ -43,9 +40,7 @@ import { createStoragesBddApi } from "./helpers/api-bdd-storages";
  * - Unreachable arms intentionally not exercised (see api.bdd.md):
  *   agent-composes-read.service `agentComposeVersionResolution` no-head 400
  *   ("Agent compose has no versions...") — every public write path sets a
- *   head version; and `agentComposeInstructions` safeParse-failure
- *   `{content:null, filename:null}` — stored content is contract-validated
- *   on every public write path.
+ *   head version.
  */
 
 const context = testContext();
@@ -360,82 +355,7 @@ describe("COMPOSE-01 create and metadata validation", () => {
     expect(Object.keys(storedAgent)).toStrictEqual(["framework"]);
   });
 
-  it("updates compose metadata through partial patches with visible list reads", async () => {
-    const admin = api.user();
-    const created = await api.createCompose(
-      admin,
-      composeWith(slug("bdd-meta")),
-    );
-    await api.updateComposeMetadata(admin, created.composeId, {
-      displayName: "Initial Name",
-      description: "Initial description",
-      sound: "calm",
-    });
-
-    const invalidBody = await composes.rawRequest(admin, {
-      method: "PATCH",
-      path: `/api/agent/composes/${created.composeId}/metadata`,
-      jsonBody: { displayName: 12_345 },
-    });
-    expect(invalidBody.status).toBe(400);
-    expect(invalidBody.body).toMatchObject({
-      error: { code: "BAD_REQUEST" },
-    });
-
-    const noOrg = api.user({ orgId: null });
-    const noOrgPatch = await composes.requestUpdateComposeMetadata(
-      noOrg,
-      created.composeId,
-      { displayName: "No Org" },
-      [400],
-    );
-    expectApiError(noOrgPatch.body);
-    expect(noOrgPatch.body.error.message).toBe(
-      "Explicit org context required — ensure active org in session",
-    );
-
-    const missing = await composes.requestUpdateComposeMetadata(
-      admin,
-      randomUUID(),
-      { displayName: "Missing" },
-      [404],
-    );
-    expectApiError(missing.body);
-    expect(missing.body.error.message).toBe("Agent compose not found");
-
-    const outsider = api.user();
-    const crossOrg = await composes.requestUpdateComposeMetadata(
-      outsider,
-      created.composeId,
-      { displayName: "Cross Org" },
-      [404],
-    );
-    expectApiError(crossOrg.body);
-    expect(crossOrg.body.error.code).toBe("NOT_FOUND");
-
-    const member = api.user({
-      orgId: orgIdOf(admin),
-      orgRole: "org:member",
-    });
-    await composes.requestUpdateComposeMetadata(
-      member,
-      created.composeId,
-      { displayName: "Member Updated" },
-      [200],
-    );
-    const listed = await api.listComposes(admin);
-    expect(
-      listed.find((compose) => {
-        return compose.id === created.composeId;
-      }),
-    ).toMatchObject({
-      displayName: "Member Updated",
-      description: "Initial description",
-      sound: "calm",
-    });
-  });
-
-  it("returns visible read errors for missing names, org-less lists, and invalid queries", async () => {
+  it("returns visible read errors for missing names and invalid queries", async () => {
     const admin = api.user();
     const missingName = slug("bdd-missing");
 
@@ -449,12 +369,6 @@ describe("COMPOSE-01 create and metadata validation", () => {
       `Agent compose not found: ${missingName}`,
     );
 
-    const noOrg = api.user({ orgId: null });
-    const noOrgList = await composes.requestListComposes(noOrg, [400]);
-    expect(noOrgList.body).toStrictEqual({
-      error: { message: "Invalid request", code: "BAD_REQUEST" },
-    });
-
     const missingQuery = await composes.rawRequest(admin, {
       method: "GET",
       path: "/api/agent/composes",
@@ -465,138 +379,6 @@ describe("COMPOSE-01 create and metadata validation", () => {
         code: "BAD_REQUEST",
         message: expect.stringContaining("expected string"),
       },
-    });
-  });
-});
-
-describe("COMPOSE-01 instructions", () => {
-  it("serves canonical defaults and storage-backed instructions across actors", async () => {
-    mockEnv("R2_USER_STORAGES_BUCKET_NAME", "test-bucket");
-    const admin = api.user();
-    storages.mockStoragePresignedUrls();
-    storages.mockStorageObjectsExist();
-
-    const plainName = slug("bdd-instr-a");
-    const plain = await api.createCompose(admin, composeWith(plainName));
-    const canonical = await composes.readComposeInstructions(
-      admin,
-      plain.composeId,
-    );
-    expect(canonical).toStrictEqual({ content: null, filename: "CLAUDE.md" });
-
-    const explicitName = slug("bdd-instr-b");
-    const explicit = await api.createCompose(
-      admin,
-      composeWith(explicitName, { instructions: "AGENTS.md" }),
-    );
-    const storageAbsent = await composes.readComposeInstructions(
-      admin,
-      explicit.composeId,
-    );
-    expect(storageAbsent).toStrictEqual({
-      content: null,
-      filename: "AGENTS.md",
-    });
-
-    // The instructions volume is created through the public storages API
-    // (recipe: storages.bdd.test.ts volume prepare/commit); only the S3
-    // download boundary is mocked for the read-back.
-    const storageName = getInstructionsStorageName(explicitName);
-    const instructionsFile = storageTextFile(
-      "CLAUDE.md",
-      "# Shared Instructions",
-    );
-    const prepared = await storages.prepareStorage(admin, {
-      storageName,
-      storageType: "volume",
-      files: [instructionsFile],
-    });
-    await storages.commitStorage(admin, {
-      storageName,
-      storageType: "volume",
-      versionId: prepared.versionId,
-      files: [instructionsFile],
-    });
-
-    mockComposeInstructionsDownloads(context, {
-      storageName,
-      filename: "CLAUDE.md",
-      manifestPath: "./CLAUDE.md",
-      content: "# Shared Instructions",
-    });
-
-    const member = api.user({
-      orgId: orgIdOf(admin),
-      orgRole: "org:member",
-    });
-    const memberRead = await composes.readComposeInstructions(
-      member,
-      explicit.composeId,
-    );
-    expect(memberRead).toStrictEqual({
-      content: "# Shared Instructions",
-      filename: "AGENTS.md",
-    });
-
-    // Sandbox tokens minted for another org still read instructions: the
-    // route resolves the org from the compose itself.
-    const foreignSandbox = {
-      bearer: sandboxComposeToken({
-        userId: `user_${randomUUID()}`,
-        orgId: `org_${randomUUID()}`,
-      }),
-    };
-    const sandboxRead = await composes.readComposeInstructions(
-      foreignSandbox,
-      explicit.composeId,
-    );
-    expect(sandboxRead).toStrictEqual({
-      content: "# Shared Instructions",
-      filename: "AGENTS.md",
-    });
-
-    const outsider = api.user();
-    const crossOrg = await composes.requestReadComposeInstructions(
-      outsider,
-      explicit.composeId,
-      [404],
-    );
-    expectApiError(crossOrg.body);
-    expect(crossOrg.body.error.message).toBe("Agent compose not found");
-
-    const noOrg = api.user({ orgId: null });
-    const noOrgRead = await composes.requestReadComposeInstructions(
-      noOrg,
-      explicit.composeId,
-      [404],
-    );
-    expectApiError(noOrgRead.body);
-    expect(noOrgRead.body.error.message).toBe("Agent compose not found");
-
-    const unauthenticated = await composes.requestReadComposeInstructions(
-      null,
-      explicit.composeId,
-      [401],
-    );
-    expect(unauthenticated.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-
-    const missing = await composes.requestReadComposeInstructions(
-      admin,
-      randomUUID(),
-      [404],
-    );
-    expectApiError(missing.body);
-    expect(missing.body.error.message).toBe("Agent compose not found");
-
-    const malformed = await composes.rawRequest(admin, {
-      method: "GET",
-      path: "/api/agent/composes/91fc0bd84bba673393d9adfc1a0f4dec/instructions",
-    });
-    expect(malformed.status).toBe(400);
-    expect(malformed.body).toMatchObject({
-      error: { code: "BAD_REQUEST" },
     });
   });
 });
@@ -628,13 +410,6 @@ describe("COMPOSE-01 token access", () => {
     );
     expect(byName.body.id).toBe(composeId);
 
-    const listed = await composes.requestListComposes(sandbox, [200]);
-    expect(
-      listed.body.composes.some((compose) => {
-        return compose.id === composeId;
-      }),
-    ).toBeTruthy();
-
     const resolved = await composes.requestResolveComposeVersion(
       sandbox,
       { composeId, version: "latest" },
@@ -643,41 +418,6 @@ describe("COMPOSE-01 token access", () => {
     expect(resolved.body).toStrictEqual({
       versionId: created.body.versionId,
       tag: "latest",
-    });
-
-    await composes.requestUpdateComposeMetadata(
-      sandbox,
-      composeId,
-      { displayName: "Sandbox Updated" },
-      [200],
-    );
-    const adminListed = await api.listComposes(admin);
-    expect(
-      adminListed.find((compose) => {
-        return compose.id === composeId;
-      }),
-    ).toMatchObject({ displayName: "Sandbox Updated" });
-
-    const instructions = await composes.requestReadComposeInstructions(
-      sandbox,
-      composeId,
-      [200],
-    );
-    expect(instructions.body).toStrictEqual({
-      content: null,
-      filename: "CLAUDE.md",
-    });
-
-    const sandboxDelete = await composes.requestDeleteCompose(
-      sandbox,
-      composeId,
-      [403],
-    );
-    expect(sandboxDelete.body).toStrictEqual({
-      error: {
-        message: "Agent deletion is not available from sandbox",
-        code: "FORBIDDEN",
-      },
     });
 
     const foreignSandbox = {
@@ -692,25 +432,6 @@ describe("COMPOSE-01 token access", () => {
       [200],
     );
     expect(foreignRead.body.id).toBe(composeId);
-
-    mockClerkMembership(context, admin, "org:admin");
-    const zeroToken = {
-      bearer: zeroComposeDeleteToken({
-        userId: admin.userId,
-        orgId: adminOrgId,
-      }),
-    };
-    const zeroDelete = await composes.requestDeleteCompose(
-      zeroToken,
-      composeId,
-      [403],
-    );
-    expect(zeroDelete.body).toStrictEqual({
-      error: {
-        message: "Agent deletion is not available from sandbox",
-        code: "FORBIDDEN",
-      },
-    });
 
     const freshSandbox = {
       bearer: sandboxComposeToken({
@@ -748,37 +469,12 @@ describe("COMPOSE-01 token access", () => {
     const byId = await api.requestReadComposeById(null, missingId, [401]);
     expect(byId.body).toStrictEqual(unauthenticatedBody);
 
-    const list = await composes.requestListComposes(null, [401]);
-    expect(list.body).toStrictEqual(unauthenticatedBody);
-
     const versions = await composes.requestResolveComposeVersion(
       null,
       { composeId: missingId, version: "latest" },
       [401],
     );
     expect(versions.body).toStrictEqual(unauthenticatedBody);
-
-    const instructions = await composes.requestReadComposeInstructions(
-      null,
-      missingId,
-      [401],
-    );
-    expect(instructions.body).toStrictEqual(unauthenticatedBody);
-
-    const metadata = await composes.requestUpdateComposeMetadata(
-      null,
-      missingId,
-      { displayName: "Unauthenticated" },
-      [401],
-    );
-    expect(metadata.body).toStrictEqual(unauthenticatedBody);
-
-    const composeDelete = await composes.requestDeleteCompose(
-      null,
-      missingId,
-      [401],
-    );
-    expect(composeDelete.body).toStrictEqual(unauthenticatedBody);
 
     const zeroByName = await composes.requestReadZeroComposeByName(
       null,
@@ -978,13 +674,6 @@ describe("COMPOSE-01 delete protection and volume sweep", () => {
         code: "CONFLICT",
       },
     };
-    const agentConflict = await composes.requestDeleteCompose(
-      actor,
-      compose.composeId,
-      [409],
-    );
-    expect(agentConflict.body).toStrictEqual(conflictBody);
-
     const zeroConflict = await composes.requestDeleteZeroCompose(
       actor,
       compose.composeId,
@@ -1013,7 +702,7 @@ describe("COMPOSE-01 delete protection and volume sweep", () => {
       },
     ]);
 
-    await composes.requestDeleteCompose(actor, compose.composeId, [204]);
+    await composes.requestDeleteZeroCompose(actor, compose.composeId, [204]);
 
     const deleted = await api.requestReadComposeById(
       actor,
@@ -1047,7 +736,7 @@ describe("COMPOSE-01 delete protection and volume sweep", () => {
       owner,
       composeWith(slug("bdd-plain-delete")),
     );
-    await composes.requestDeleteCompose(owner, created.composeId, [204]);
+    await composes.requestDeleteZeroCompose(owner, created.composeId, [204]);
     const gone = await api.requestReadComposeById(
       owner,
       created.composeId,
@@ -1056,7 +745,7 @@ describe("COMPOSE-01 delete protection and volume sweep", () => {
     expectApiError(gone.body);
     expect(context.mocks.s3.send).not.toHaveBeenCalled();
 
-    const unknown = await composes.requestDeleteCompose(
+    const unknown = await composes.requestDeleteZeroCompose(
       owner,
       randomUUID(),
       [404],
@@ -1069,7 +758,7 @@ describe("COMPOSE-01 delete protection and volume sweep", () => {
       orgId: orgIdOf(owner),
       orgRole: "org:member",
     });
-    const memberDelete = await composes.requestDeleteCompose(
+    const memberDelete = await composes.requestDeleteZeroCompose(
       member,
       kept.composeId,
       [404],
@@ -1077,7 +766,7 @@ describe("COMPOSE-01 delete protection and volume sweep", () => {
     expectApiError(memberDelete.body);
     expect(memberDelete.body.error.message).toBe("Agent not found");
 
-    const listed = await api.listComposes(owner);
+    const listed = await api.listZeroComposes(owner);
     expect(
       listed.some((compose) => {
         return compose.id === kept.composeId;

@@ -51,5 +51,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Cal.com firewall config...");
   const ts = generateTypeScript();
-  writeOutput("cal-com", ts, import.meta.dirname);
+  writeOutput("cal-com", ts);
 }

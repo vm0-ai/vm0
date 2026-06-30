@@ -1074,6 +1074,10 @@ PY
                 .any(|arg| arg == "vm0_usage_state_id=usage-state-test"),
             "mitmdump args should include vm0_usage_state_id option; got:\n{args}",
         );
+        assert!(
+            args.lines().all(|arg| arg != "connection_strategy=lazy"),
+            "mitmdump args must not use global lazy upstream connections because server-first TCP protocols must keep working; got:\n{args}",
+        );
     }
 
     #[tokio::test]

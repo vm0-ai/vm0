@@ -21,6 +21,7 @@ import {
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 
 import {
@@ -148,6 +149,14 @@ function tabByText(text: string): HTMLElement {
     throw new Error(`${text} tab not found`);
   }
   return tab;
+}
+
+function queryTabByText(text: string): HTMLElement | null {
+  return (
+    queryAllByRoleFast("tab").find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+    }) ?? null
+  );
 }
 
 async function permissionRowByName(
@@ -305,6 +314,7 @@ function mockTeamAPIs(): void {
       avatarUrl: null,
       modelProviderId: null,
       selectedModel: null,
+      preferPersonalProvider: false,
     });
   });
   context.mocks.api(zeroAgentInstructionsContract.get, ({ respond }) => {
@@ -574,6 +584,37 @@ describe("team page navigation", () => {
         screen.getAllByText("Collect weekly research links")[0],
       ).toBeInTheDocument();
     });
+  });
+
+  it("hides agent automation and workflow tabs when workflow automation is enabled", async () => {
+    mockTeamAPIs();
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${researchAgentId}?tab=automations`,
+      featureSwitches: {
+        [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
+        [FeatureSwitchKey.WorkflowsViewer]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Research Agent" }),
+      ).toBeInTheDocument();
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("@workspace")).toBeInTheDocument();
+    });
+    expect(queryTabByText("Automations")).not.toBeInTheDocument();
+    expect(queryTabByText("Workflows")).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Research Agent's automations"),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByText("Workflow automations attached to Research Agent."),
+    ).not.toBeInTheDocument();
   });
 
   it("runs an agent automation and opens its detail page", async () => {

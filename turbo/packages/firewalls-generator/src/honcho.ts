@@ -49,5 +49,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Honcho firewall config...");
   const ts = generateTypeScript();
-  writeOutput("honcho", ts, import.meta.dirname);
+  writeOutput("honcho", ts);
 }

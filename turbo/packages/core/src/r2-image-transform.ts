@@ -8,7 +8,7 @@ const R2_IMAGE_TRANSFORM_QUALITY = 85;
 export interface R2ImageTransformOptions {
   readonly width?: number;
   readonly height?: number;
-  readonly fit?: "scale-down";
+  readonly fit?: "cover" | "scale-down";
   readonly quality?: number;
 }
 

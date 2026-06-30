@@ -9,6 +9,7 @@ use shell_quote::quote_shell_arg;
 use crate::exec_operation;
 
 pub use copy::{CopyFileOptions, CopyFileResult};
+pub use write::WriteFileEntry;
 
 const MISSING_FILE_EXIT_CODE: i32 = 66;
 

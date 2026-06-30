@@ -964,6 +964,31 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
           "Authorization"
         ],
         "authQueryParamNames": [],
+        "base": "https://app.daytona.io/api",
+        "envNames": [
+          "DAYTONA_API_KEY"
+        ]
+      },
+      {
+        "authHeaderNames": [
+          "Authorization"
+        ],
+        "authQueryParamNames": [],
+        "base": "https://proxy.app.daytona.io/toolbox",
+        "envNames": [
+          "DAYTONA_API_KEY"
+        ]
+      }
+    ],
+    "name": "daytona"
+  },
+  {
+    "apis": [
+      {
+        "authHeaderNames": [
+          "Authorization"
+        ],
+        "authQueryParamNames": [],
         "base": "https://api.db9.ai",
         "envNames": [
           "DB9_API_KEY"
@@ -1645,6 +1670,16 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
         "envNames": [
           "GOOGLE_ADS_TOKEN",
           "GOOGLE_ADS_DEVELOPER_TOKEN"
+        ]
+      },
+      {
+        "authHeaderNames": [
+          "Authorization"
+        ],
+        "authQueryParamNames": [],
+        "base": "https://datamanager.googleapis.com",
+        "envNames": [
+          "GOOGLE_ADS_TOKEN"
         ]
       }
     ],
@@ -2909,6 +2944,23 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
     "apis": [
       {
         "authHeaderNames": [
+          "x-modal-token-id",
+          "x-modal-token-secret"
+        ],
+        "authQueryParamNames": [],
+        "base": "https://api.modal.com",
+        "envNames": [
+          "MODAL_TOKEN_ID",
+          "MODAL_TOKEN_SECRET"
+        ]
+      }
+    ],
+    "name": "modal"
+  },
+  {
+    "apis": [
+      {
+        "authHeaderNames": [
           "Authorization"
         ],
         "authQueryParamNames": [],
@@ -3692,6 +3744,7 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
     "apis": [
       {
         "authHeaderNames": [
+          "X-RapidAPI-Host",
           "X-RapidAPI-Key"
         ],
         "authQueryParamNames": [],
@@ -4692,14 +4745,7 @@ MODEL_PROVIDER_DIAGNOSTIC_EXCLUSIONS = json.loads(r"""[
       },
       {
         "base": "https://auth.openai.com",
-        "permissions": [
-          {
-            "name": "denied",
-            "rules": [
-              "ANY /*"
-            ]
-          }
-        ]
+        "permissions": []
       }
     ],
     "name": "model-provider:codex-oauth-token"

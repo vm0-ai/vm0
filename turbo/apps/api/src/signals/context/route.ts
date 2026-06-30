@@ -1,4 +1,7 @@
-import { type AppRoute, validateResponse } from "@ts-rest/core";
+import {
+  type AppRoute,
+  validateResponse,
+} from "@vm0/api-contracts/contracts/trpc-contract";
 import { createStore, type Command, type Computed } from "ccstate";
 import type { Handler } from "hono";
 import type { ContentfulStatusCode, StatusCode } from "hono/utils/http-status";
@@ -95,7 +98,7 @@ export function honoSignalHandler(
     store.set(setRootSignal$, signal);
     store.set(initHono$, context, contract);
 
-    // Mirror the order ts-rest applies on the web side: path/query validation
+    // Mirror the contract client order: path/query validation
     // precedes auth and downstream services, so a malformed request returns
     // 400 without touching either.
     const validationError = store.get(requestValidation$);
@@ -116,7 +119,7 @@ export function honoSignalHandler(
     }
 
     if (!isRouteResult(data)) {
-      throw new Error("Route handler must return a ts-rest response object");
+      throw new Error("Route handler must return a contract response object");
     }
 
     const response = validateResponse({

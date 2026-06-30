@@ -60,5 +60,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating PostHog firewall config...");
   const ts = generateTypeScript();
-  writeOutput("posthog", ts, import.meta.dirname);
+  writeOutput("posthog", ts);
 }

@@ -2,6 +2,7 @@ import {
   chatThreadArtifactsContract,
   type ChatThreadArtifactFile,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import { zeroHostContract } from "@vm0/api-contracts/contracts/zero-host";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   createEvent,
@@ -15,9 +16,18 @@ import { StoreProvider } from "ccstate-react";
 import userEvent from "@testing-library/user-event";
 import { beforeEach, describe, expect, it } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
-import { click, detachedSetupPage } from "../../../__tests__/page-helper.ts";
+import {
+  click,
+  detachedSetupPage,
+  fill,
+} from "../../../__tests__/page-helper.ts";
 import { Markdown } from "../../components/markdown.tsx";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
+import {
+  HTML_DOM_EDIT_SELECTED_ATTR,
+  HTML_DOM_EDIT_OVERLAY_ATTR,
+  HTML_DOM_NODE_ID_ATTR,
+} from "../html-dom-edit-protocol.ts";
 
 const context = testContext();
 const PLACEHOLDER = "Ask me to automate workflows, manage tasks...";
@@ -62,6 +72,106 @@ function presentationHtml(): string {
     </section>
   </body>
 </html>`;
+}
+
+function setupHostedSiteArtifactPreview({
+  featureSwitches = {
+    [FeatureSwitchKey.HtmlArtifactCommentEditing]: true,
+  },
+  filename,
+  htmlUrl,
+  label,
+  path = `/chats/${THREAD_ID}`,
+  runId,
+}: {
+  featureSwitches?: Parameters<typeof detachedSetupPage>[0]["featureSwitches"];
+  filename: string;
+  htmlUrl: string;
+  label: string;
+  path?: string;
+  runId: string;
+}): void {
+  context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
+    expect(new URL(request.url).searchParams.get("url")).toBe(htmlUrl);
+    return new Response(
+      `<!doctype html>
+      <html>
+        <head><title>${label}</title></head>
+        <body>
+          <main>
+            <h1>Launch faster</h1>
+            <p>Ship the first version today.</p>
+          </main>
+        </body>
+      </html>`,
+      { headers: { "Content-Type": "text/html" } },
+    );
+  });
+  context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+    return respond(200, {
+      runs: [
+        {
+          runId,
+          files: [
+            artifactFile(htmlUrl, {
+              artifactKind: "hosted-site",
+              filename,
+            }),
+          ],
+        },
+      ],
+    });
+  });
+  mockChatLifecycle(context, {
+    threadId: THREAD_ID,
+    chatMessages: [
+      {
+        id: `msg-${runId}`,
+        role: "assistant",
+        content: `[${label}](${htmlUrl})`,
+        runId,
+        createdAt: "2026-03-10T00:00:00Z",
+      },
+    ],
+  });
+
+  detachedSetupPage({
+    context,
+    featureSwitches,
+    path,
+  });
+}
+
+function expectHostedSiteEditingHeader({
+  fullscreen,
+}: {
+  fullscreen: boolean;
+}): void {
+  const sidebar = screen.getByTestId("artifact-sidebar");
+  const fullscreenLabel = fullscreen ? "Exit fullscreen" : "Enter fullscreen";
+  expect(
+    within(sidebar).getByTestId("artifact-sidebar-html-edit-status"),
+  ).toHaveTextContent("Editing");
+  expect(
+    within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
+  ).toHaveTextContent("Exit");
+  expect(
+    within(sidebar)
+      .getByTestId("artifact-sidebar-html-edit-status")
+      .compareDocumentPosition(
+        within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
+      ),
+  ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(
+    within(sidebar)
+      .getByTestId("artifact-sidebar-exit-html-edit")
+      .compareDocumentPosition(within(sidebar).getByLabelText(fullscreenLabel)),
+  ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+  expect(within(sidebar).queryByLabelText("Edit page")).toBeNull();
+  expect(within(sidebar).queryByLabelText("Open in new tab")).toBeNull();
+  expect(within(sidebar).queryByLabelText("Share artifact")).toBeNull();
+  expect(within(sidebar).queryByLabelText("Download artifact")).toBeNull();
+  expect(within(sidebar).queryByLabelText("Close artifact")).toBeNull();
 }
 
 beforeEach(() => {
@@ -143,6 +253,35 @@ function mockElementBox(
         width,
         x: 0,
         y: 0,
+      };
+    },
+  });
+}
+
+function mockElementRect(
+  element: Element,
+  {
+    height,
+    left,
+    top,
+    width,
+  }: { height: number; left: number; top: number; width: number },
+) {
+  Object.defineProperty(element, "getBoundingClientRect", {
+    configurable: true,
+    value: () => {
+      return {
+        bottom: top + height,
+        height,
+        left,
+        right: left + width,
+        toJSON: () => {
+          return {};
+        },
+        top,
+        width,
+        x: left,
+        y: top,
       };
     },
   });
@@ -962,9 +1101,6 @@ describe("zero attachment chips", () => {
 
     detachedSetupPage({
       context,
-      featureSwitches: {
-        [FeatureSwitchKey.PresentationHtmlPptxDownload]: true,
-      },
       path: `/chats/${THREAD_ID}`,
     });
 
@@ -1022,6 +1158,1198 @@ describe("zero attachment chips", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Presentation editor")).toBeInTheDocument();
+    });
+  });
+
+  it("prepares a hosted-site HTML comment edit session", async () => {
+    const htmlUrl = "https://launch-site-demo.sites.vm7.io";
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
+      expect(new URL(request.url).searchParams.get("url")).toBe(htmlUrl);
+      return new Response(
+        `<!doctype html>
+        <html>
+          <head><title>Launch site</title></head>
+          <body>
+            <main>
+              <h1>Launch faster</h1>
+              <p>Ship the first version today.</p>
+            </main>
+          </body>
+        </html>`,
+        { headers: { "Content-Type": "text/html" } },
+      );
+    });
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-hosted-site",
+            files: [
+              artifactFile(htmlUrl, {
+                artifactKind: "hosted-site",
+                filename: "launch-site.html",
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    context.mocks.api(
+      zeroHostContract.createHtmlEditDraft,
+      ({ body, respond }) => {
+        expect(body.comments).toStrictEqual([
+          {
+            id: expect.any(String),
+            targetNodeIds: [expect.any(String)],
+            comment: "Make the hero headline shorter",
+          },
+          {
+            id: expect.any(String),
+            targetNodeIds: [expect.any(String)],
+            comment: "Make the body copy warmer",
+          },
+        ]);
+        expect(body.html).toContain("Launch faster");
+        return respond(200, {
+          kind: "html-edit-draft",
+          version: 1,
+          html: "<!doctype html><html><body><main><h1>Launch sooner</h1><p>Ship the first version today.</p></main></body></html>",
+        });
+      },
+    );
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-hosted-site-artifact",
+          role: "assistant",
+          content: `[Launch site](${htmlUrl})`,
+          runId: "run-hosted-site",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.HtmlArtifactCommentEditing]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByLabelText("Open html preview for Launch site"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Open html preview for Launch site"));
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Edit page")).toBeInTheDocument();
+      expect(screen.queryByLabelText("Edit presentation")).toBeNull();
+    });
+
+    click(screen.getByLabelText("Edit page"));
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    await waitFor(() => {
+      expect(sidebar).toBeInTheDocument();
+      expect(screen.getByTestId("html-dom-comment-frame")).toBeInTheDocument();
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-html-edit-status"),
+      ).toHaveTextContent("Editing");
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
+      ).toHaveTextContent("Exit");
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
+      ).toHaveClass("border");
+      expect(
+        within(sidebar)
+          .getByTestId("artifact-sidebar-html-edit-status")
+          .compareDocumentPosition(
+            within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
+          ),
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(
+        within(sidebar)
+          .getByTestId("artifact-sidebar-exit-html-edit")
+          .compareDocumentPosition(
+            within(sidebar).getByLabelText("Enter fullscreen"),
+          ),
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
+      expect(within(sidebar).queryByLabelText("Edit page")).toBeNull();
+      expect(within(sidebar).queryByLabelText("Open in new tab")).toBeNull();
+      expect(within(sidebar).queryByLabelText("Share artifact")).toBeNull();
+      expect(within(sidebar).queryByLabelText("Download artifact")).toBeNull();
+      expect(within(sidebar).queryByLabelText("Close artifact")).toBeNull();
+      expect(
+        within(sidebar).getByLabelText("Enter fullscreen"),
+      ).toBeInTheDocument();
+      expect(screen.queryByLabelText("Exit comment mode")).toBeNull();
+    });
+    const frame = (await screen.findByTestId(
+      "html-dom-comment-frame",
+    )) as HTMLIFrameElement;
+    expect(frame).toHaveAttribute("sandbox", "allow-same-origin allow-scripts");
+    await waitFor(() => {
+      expect(
+        frame.contentDocument
+          ?.querySelector("h1")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+    });
+    let title = frame.contentDocument?.querySelector("h1");
+    expect(title).not.toBeNull();
+    fireEvent.click(title!);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("html-dom-comment-popover"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByPlaceholderText("Describe the change you want"),
+      ).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup({ delay: null });
+    const commentTextArea = screen.getByTestId("html-dom-comment-textarea");
+    expect(commentTextArea).toHaveFocus();
+    await user.type(commentTextArea, "Make the headline shorter");
+    fireEvent.keyDown(commentTextArea, { key: "Enter", shiftKey: true });
+    expect(screen.getByTestId("html-dom-comment-popover")).toBeInTheDocument();
+    expect(
+      frame.contentDocument?.querySelector(
+        "[data-testid='html-dom-comment-marker']",
+      ),
+    ).toBeNull();
+
+    fireEvent.keyDown(commentTextArea, { key: "Enter" });
+
+    await waitFor(() => {
+      expect(screen.queryByTestId("html-dom-comment-popover")).toBeNull();
+    });
+
+    await waitFor(() => {
+      const marker = frame.contentDocument?.querySelector<HTMLElement>(
+        "[data-testid='html-dom-comment-marker']",
+      );
+      const tag = marker?.querySelector<HTMLElement>(
+        "[data-testid='html-dom-comment-tag']",
+      );
+      const tagText = tag?.querySelector<HTMLElement>(
+        "[data-testid='html-dom-comment-tag-text']",
+      );
+      const deleteButton = marker?.querySelector<HTMLElement>(
+        "[data-testid='html-dom-comment-delete']",
+      );
+      expect(marker).not.toBeNull();
+      expect(marker).toHaveAttribute(HTML_DOM_EDIT_OVERLAY_ATTR);
+      expect(marker).not.toHaveAttribute("title");
+      expect(marker).toHaveAttribute(
+        "data-vm0-html-comment-placement",
+        "right",
+      );
+      expect(
+        marker?.querySelector("[data-testid='html-dom-comment-anchor']"),
+      ).not.toBeNull();
+      expect(
+        marker?.querySelector("[data-testid='html-dom-comment-leader']"),
+      ).not.toBeNull();
+      expect(deleteButton).not.toBeNull();
+      expect(deleteButton?.style.opacity).toBe("0");
+      expect(deleteButton?.style.pointerEvents).toBe("none");
+      expect(frame.contentDocument?.head.textContent).toContain(
+        "[data-vm0-html-comment-target-node-id]:hover [data-vm0-html-comment-delete-id]",
+      );
+      expect(frame.contentDocument?.head.textContent).toContain(":hover");
+      expect(tag).toHaveTextContent("Make the headline shorter");
+      expect(tagText).toHaveTextContent("Make the headline shorter");
+      expect(tag?.style.maxWidth).toBe("136px");
+      expect(tag?.style.height).toBe("56px");
+      expect(tag?.style.overflow).toBe("hidden");
+      expect(tagText?.style.whiteSpace).toBe("normal");
+      expect(tagText?.style.overflowWrap).toBe("anywhere");
+      expect(tagText?.style.getPropertyValue("-webkit-line-clamp")).toBe("2");
+    });
+    expect(screen.getByTestId("html-dom-comment-toolbar")).toBeInTheDocument();
+    expect(screen.getByTestId("html-dom-toolbar-send")).toBeEnabled();
+    expect(
+      screen.getByTestId("html-dom-toolbar-comments-count"),
+    ).toHaveTextContent("1");
+
+    title!.textContent = "Changed during edit";
+    click(screen.getByTestId("html-dom-toolbar-discard"));
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-comment-frame")).toBeInTheDocument();
+      expect(frame.contentDocument?.querySelector("h1")).toHaveTextContent(
+        "Launch faster",
+      );
+      expect(
+        frame.contentDocument?.querySelector(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toBeNull();
+      expect(
+        screen.queryByTestId("html-dom-toolbar-comments-count"),
+      ).toBeNull();
+      expect(screen.getByTestId("html-dom-toolbar-send")).toBeDisabled();
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-html-edit-status"),
+      ).toHaveTextContent("Editing");
+    });
+
+    title = frame.contentDocument?.querySelector("h1");
+    expect(title).not.toBeNull();
+    mockElementRect(title!, {
+      height: 32,
+      left: 284,
+      top: 24,
+      width: 32,
+    });
+    fireEvent.click(title!);
+    const nextCommentTextArea = await screen.findByTestId(
+      "html-dom-comment-textarea",
+    );
+    await user.type(nextCommentTextArea, "Make the headline shorter");
+    fireEvent.keyDown(nextCommentTextArea, { key: "Enter" });
+    await waitFor(() => {
+      expect(screen.queryByTestId("html-dom-comment-popover")).toBeNull();
+      expect(
+        frame.contentDocument?.querySelector(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).not.toBeNull();
+      expect(
+        frame.contentDocument?.querySelector(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveAttribute("data-vm0-html-comment-placement", "bottom");
+    });
+
+    fireEvent.mouseOver(title!);
+    await waitFor(() => {
+      const popover = screen.getByTestId("html-dom-comment-popover");
+      const textArea = screen.getByTestId("html-dom-comment-textarea");
+      expect(popover).toBeInTheDocument();
+      expect(
+        screen.getByPlaceholderText("Describe the change you want"),
+      ).toBeInTheDocument();
+      expect(textArea).toHaveValue("Make the headline shorter");
+      expect(textArea).toHaveAttribute("readonly");
+      expect(screen.getByTestId("html-dom-comment-add")).toBeDisabled();
+      expect(screen.queryByTestId("html-dom-comment-send")).toBeNull();
+      expect(screen.queryByTestId("html-dom-edit-prepared")).toBeNull();
+      expect(
+        screen.queryByLabelText("Close comment popover"),
+      ).not.toBeInTheDocument();
+      expect(popover.querySelectorAll("textarea")).toHaveLength(1);
+      expect(popover.querySelectorAll("button")).toHaveLength(1);
+      expect(popover).toHaveClass("flex");
+    });
+    fireEvent.click(screen.getByTestId("html-dom-comment-textarea"));
+    await waitFor(() => {
+      const textArea = screen.getByTestId("html-dom-comment-textarea");
+      expect(textArea).toHaveValue("Make the headline shorter");
+      expect(textArea).not.toHaveAttribute("readonly");
+      expect(textArea).toHaveFocus();
+      expect(screen.getByTestId("html-dom-comment-add")).toBeEnabled();
+    });
+    await fill(
+      screen.getByTestId("html-dom-comment-textarea"),
+      "Make the hero headline shorter",
+    );
+    fireEvent.keyDown(screen.getByTestId("html-dom-comment-textarea"), {
+      key: "Enter",
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("html-dom-comment-popover")).toBeNull();
+    });
+
+    const updatedCommentMarker =
+      frame.contentDocument?.querySelector<HTMLElement>(
+        "[data-testid='html-dom-comment-marker']",
+      );
+    expect(updatedCommentMarker).not.toHaveAttribute("title");
+    fireEvent.mouseOver(updatedCommentMarker!);
+    expect(screen.queryByTestId("html-dom-comment-popover")).toBeNull();
+    fireEvent.mouseOver(title!);
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-comment-textarea")).toHaveValue(
+        "Make the hero headline shorter",
+      );
+      expect(screen.getByTestId("html-dom-comment-add")).toBeDisabled();
+    });
+    fireEvent.mouseOut(title!, {
+      relatedTarget: frame.contentDocument?.body,
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("html-dom-comment-popover")).toBeNull();
+    });
+
+    const bodyCopy = frame.contentDocument?.querySelector("p");
+    expect(bodyCopy).not.toBeNull();
+    mockElementRect(bodyCopy!, {
+      height: 28,
+      left: 48,
+      top: 96,
+      width: 180,
+    });
+    fireEvent.click(bodyCopy!);
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-comment-textarea")).toHaveValue("");
+      expect(
+        frame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(0);
+    });
+    await user.type(
+      await screen.findByTestId("html-dom-comment-textarea"),
+      "Make the body copy warmer",
+    );
+    fireEvent.keyDown(screen.getByTestId("html-dom-comment-textarea"), {
+      key: "Enter",
+    });
+    await waitFor(() => {
+      expect(
+        frame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(2);
+    });
+    expect(
+      screen.getByTestId("html-dom-toolbar-comments-count"),
+    ).toHaveTextContent("2");
+
+    const bodyCommentMarker = Array.from(
+      frame.contentDocument?.querySelectorAll<HTMLElement>(
+        "[data-testid='html-dom-comment-marker']",
+      ) ?? [],
+    ).find((marker) => {
+      return marker.textContent?.includes("Make the body copy warmer");
+    });
+    expect(bodyCommentMarker).toBeDefined();
+    fireEvent.click(
+      bodyCommentMarker!.querySelector<HTMLElement>(
+        "[data-testid='html-dom-comment-delete']",
+      )!,
+    );
+    await waitFor(() => {
+      expect(
+        frame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(1);
+      expect(
+        screen.getByTestId("html-dom-toolbar-comments-count"),
+      ).toHaveTextContent("1");
+    });
+
+    fireEvent.click(bodyCopy!);
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-comment-textarea")).toHaveValue("");
+    });
+    await user.type(
+      await screen.findByTestId("html-dom-comment-textarea"),
+      "Make the body copy warmer",
+    );
+    fireEvent.keyDown(screen.getByTestId("html-dom-comment-textarea"), {
+      key: "Enter",
+    });
+    await waitFor(() => {
+      expect(
+        frame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(2);
+    });
+
+    fireEvent.click(title!);
+    await waitFor(() => {
+      const visibleMarkers = frame.contentDocument?.querySelectorAll(
+        "[data-testid='html-dom-comment-marker']",
+      );
+      expect(visibleMarkers).toHaveLength(1);
+      expect(
+        visibleMarkers?.[0]?.querySelector(
+          "[data-testid='html-dom-comment-tag']",
+        ),
+      ).toHaveTextContent("Make the hero headline shorter");
+      expect(screen.getByTestId("html-dom-comment-textarea")).toHaveValue(
+        "Make the hero headline shorter",
+      );
+      expect(
+        screen.getByTestId("html-dom-comment-textarea"),
+      ).not.toHaveAttribute("readonly");
+    });
+    fireEvent.keyDown(screen.getByTestId("html-dom-comment-textarea"), {
+      key: "Enter",
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("html-dom-comment-popover")).toBeNull();
+      expect(
+        frame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(2);
+    });
+
+    click(screen.getByTestId("html-dom-toolbar-comments"));
+    const commentsList = await screen.findByTestId("html-dom-comments-list");
+    expect(within(commentsList).queryByText("Comment 1")).toBeNull();
+    const heroListItem = within(commentsList).getByText(
+      "Make the hero headline shorter",
+    );
+    expect(heroListItem).toBeInTheDocument();
+    expect(
+      within(commentsList).getByText("Make the body copy warmer"),
+    ).toBeInTheDocument();
+    const listDeleteButtons =
+      within(commentsList).getAllByLabelText("Delete comment");
+    expect(listDeleteButtons).toHaveLength(2);
+    expect(listDeleteButtons[0]).toHaveClass("opacity-0");
+    expect(listDeleteButtons[0]).toHaveClass("group-hover/comment:opacity-100");
+
+    fireEvent.click(heroListItem);
+    await waitFor(() => {
+      expect(title).toHaveAttribute(HTML_DOM_EDIT_SELECTED_ATTR, "true");
+      expect(title).toHaveAttribute("data-vm0-html-comment-flash", "true");
+    });
+    mockElementRect(title!, {
+      height: 32,
+      left: 284,
+      top: -80,
+      width: 32,
+    });
+    fireEvent.scroll(frame.contentDocument!);
+    await waitFor(() => {
+      const heroCommentMarker = Array.from(
+        frame.contentDocument?.querySelectorAll<HTMLElement>(
+          "[data-testid='html-dom-comment-marker']",
+        ) ?? [],
+      ).find((marker) => {
+        return marker.textContent?.includes("Make the hero headline shorter");
+      });
+      expect(heroCommentMarker).toBeUndefined();
+    });
+    mockElementRect(title!, {
+      height: 32,
+      left: 284,
+      top: 24,
+      width: 32,
+    });
+    fireEvent.scroll(frame.contentDocument!);
+    await waitFor(() => {
+      const heroCommentMarker = Array.from(
+        frame.contentDocument?.querySelectorAll<HTMLElement>(
+          "[data-testid='html-dom-comment-marker']",
+        ) ?? [],
+      ).find((marker) => {
+        return marker.textContent?.includes("Make the hero headline shorter");
+      });
+      expect(heroCommentMarker).toBeDefined();
+    });
+
+    listDeleteButtons[1]!.focus();
+    await user.keyboard("{Enter}");
+    await waitFor(() => {
+      expect(
+        within(commentsList).queryByText("Make the body copy warmer"),
+      ).toBeNull();
+      expect(
+        frame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(1);
+      expect(
+        screen.getByTestId("html-dom-toolbar-comments-count"),
+      ).toHaveTextContent("1");
+    });
+
+    click(screen.getByTestId("html-dom-toolbar-comments"));
+    fireEvent.click(bodyCopy!);
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-comment-textarea")).toHaveValue("");
+    });
+    await user.type(
+      await screen.findByTestId("html-dom-comment-textarea"),
+      "Make the body copy warmer",
+    );
+    fireEvent.keyDown(screen.getByTestId("html-dom-comment-textarea"), {
+      key: "Enter",
+    });
+    await waitFor(() => {
+      expect(
+        frame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(2);
+    });
+
+    click(screen.getByTestId("html-dom-toolbar-send"));
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("html-dom-comment-toolbar"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "srcdoc",
+        expect.stringContaining("Launch sooner"),
+      );
+      expect(screen.getByTestId("html-dom-draft-toolbar")).toBeInTheDocument();
+      expect(screen.getByTestId("html-dom-draft-discard")).toBeEnabled();
+      expect(screen.getByTestId("html-dom-draft-publish")).toBeEnabled();
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-html-edit-status"),
+      ).toHaveTextContent("Preview draft");
+      expect(within(sidebar).queryByLabelText("Open in new tab")).toBeNull();
+      expect(within(sidebar).queryByLabelText("Share artifact")).toBeNull();
+      expect(within(sidebar).queryByLabelText("Download artifact")).toBeNull();
+      expect(
+        within(sidebar).getByLabelText("Enter fullscreen"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByTestId("html-dom-draft-discard"));
+    await waitFor(() => {
+      expect(screen.queryByTestId("html-dom-draft-toolbar")).toBeNull();
+      expect(
+        screen.queryByTestId("artifact-sidebar-body-html"),
+      ).not.toBeInTheDocument();
+      expect(screen.getByTestId("html-dom-comment-frame")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("html-dom-comment-toolbar"),
+      ).toBeInTheDocument();
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-html-edit-status"),
+      ).toHaveTextContent("Editing");
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-exit-html-edit"),
+      ).toHaveTextContent("Exit");
+      expect(within(sidebar).queryByLabelText("Open in new tab")).toBeNull();
+      expect(within(sidebar).queryByLabelText("Share artifact")).toBeNull();
+      expect(within(sidebar).queryByLabelText("Download artifact")).toBeNull();
+      expect(within(sidebar).queryByLabelText("Edit page")).toBeNull();
+    });
+    const restoredEditFrame = screen.getByTestId(
+      "html-dom-comment-frame",
+    ) as HTMLIFrameElement;
+    await waitFor(() => {
+      expect(restoredEditFrame.contentDocument?.body.textContent).toContain(
+        "Launch faster",
+      );
+      expect(restoredEditFrame.contentDocument?.body.textContent).not.toContain(
+        "Launch sooner",
+      );
+    });
+  });
+
+  it("does not enter hosted-site HTML edit mode from URL params when the feature is off", async () => {
+    const htmlUrl = "https://feature-off-launch-site.sites.vm7.io";
+
+    setupHostedSiteArtifactPreview({
+      featureSwitches: {
+        [FeatureSwitchKey.HtmlArtifactCommentEditing]: false,
+      },
+      filename: "feature-off-launch-site.html",
+      htmlUrl,
+      label: "Feature off launch site",
+      path: `/chats/${THREAD_ID}?artifact=${encodeURIComponent(
+        htmlUrl,
+      )}&artifact-html-edit=1`,
+      runId: "run-hosted-site-feature-off",
+    });
+
+    const sidebar = await screen.findByTestId("artifact-sidebar");
+    await waitFor(() => {
+      expect(screen.queryByTestId("html-dom-comment-frame")).toBeNull();
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "src",
+        expect.stringContaining(htmlUrl),
+      );
+      expect(
+        within(sidebar).queryByTestId("artifact-sidebar-html-edit-status"),
+      ).toBeNull();
+      expect(within(sidebar).queryByLabelText("Edit page")).toBeNull();
+    });
+  });
+
+  it("uploads a large hosted-site HTML snapshot before creating an edit draft", async () => {
+    const htmlUrl = "https://large-launch-site.sites.vm7.io";
+    const snapshotUrl =
+      "https://cdn.vm7.io/artifacts/test/html-edit/large-snapshot.html";
+    const longCopy = "Long launch copy ".repeat(40_000);
+    let snapshotUploaded = false;
+
+    context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
+      expect(new URL(request.url).searchParams.get("url")).toBe(htmlUrl);
+      return new Response(
+        `<!doctype html>
+        <html>
+          <head><title>Large launch site</title></head>
+          <body>
+            <main>
+              <h1>Launch faster</h1>
+              <p>${longCopy}</p>
+            </main>
+          </body>
+        </html>`,
+        { headers: { "Content-Type": "text/html" } },
+      );
+    });
+    context.mocks.http.post(
+      "*/api/zero/uploads/html-dom-edit-snapshot",
+      async ({ request }) => {
+        const body = (await request.json()) as { readonly html: string };
+        expect(body.html).toContain("Launch faster");
+        expect(new TextEncoder().encode(body.html).byteLength).toBeGreaterThan(
+          500_000,
+        );
+        snapshotUploaded = true;
+        return Response.json({
+          id: "html-edit-large-snapshot",
+          filename: "vm0-html-edit.html",
+          contentType: "text/html",
+          size: body.html.length,
+          url: snapshotUrl,
+        });
+      },
+    );
+    context.mocks.api(
+      zeroHostContract.createHtmlEditDraft,
+      ({ body, respond }) => {
+        expect(snapshotUploaded).toBeTruthy();
+        expect(body).toStrictEqual({
+          htmlSnapshotUrl: snapshotUrl,
+          comments: [
+            {
+              id: expect.any(String),
+              targetNodeIds: [expect.any(String)],
+              comment: "Make the hero headline shorter",
+            },
+          ],
+        });
+        return respond(200, {
+          kind: "html-edit-draft",
+          version: 1,
+          html: "<!doctype html><html><body><main><h1>Launch sooner</h1><p>Short copy.</p></main></body></html>",
+        });
+      },
+    );
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-hosted-site-large",
+            files: [
+              artifactFile(htmlUrl, {
+                artifactKind: "hosted-site",
+                filename: "large-launch-site.html",
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-hosted-site-large-artifact",
+          role: "assistant",
+          content: `[Large launch site](${htmlUrl})`,
+          runId: "run-hosted-site-large",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      featureSwitches: {
+        [FeatureSwitchKey.HtmlArtifactCommentEditing]: true,
+      },
+      path: `/chats/${THREAD_ID}`,
+    });
+
+    click(
+      await screen.findByLabelText("Open html preview for Large launch site"),
+    );
+    click(await screen.findByLabelText("Edit page"));
+
+    const frame = (await screen.findByTestId(
+      "html-dom-comment-frame",
+    )) as HTMLIFrameElement;
+    await waitFor(() => {
+      expect(
+        frame.contentDocument
+          ?.querySelector("h1")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+    });
+    const title = frame.contentDocument?.querySelector("h1");
+    expect(title).not.toBeNull();
+    fireEvent.click(title!);
+
+    const user = userEvent.setup({ delay: null });
+    await user.type(
+      await screen.findByTestId("html-dom-comment-textarea"),
+      "Make the hero headline shorter",
+    );
+    fireEvent.keyDown(screen.getByTestId("html-dom-comment-textarea"), {
+      key: "Enter",
+    });
+    click(await screen.findByTestId("html-dom-toolbar-send"));
+
+    await waitFor(() => {
+      expect(snapshotUploaded).toBeTruthy();
+      expect(
+        screen.getByTestId("artifact-sidebar-html-edit-status"),
+      ).toHaveTextContent("Preview draft");
+    });
+  });
+
+  it("shows applying status while hosted-site HTML comments are being processed", async () => {
+    const editGenerationStarted = context.mocks.deferred<void>();
+    const editGenerationReady = context.mocks.deferred<void>();
+    const publishStarted = context.mocks.deferred<void>();
+    const publishReady = context.mocks.deferred<void>();
+    const htmlUrl = "https://applying-launch-site.sites.vm7.io";
+
+    setupHostedSiteArtifactPreview({
+      filename: "applying-launch-site.html",
+      htmlUrl,
+      label: "Applying launch site",
+      runId: "run-hosted-site-applying",
+    });
+    context.mocks.api(
+      zeroHostContract.createHtmlEditDraft,
+      async ({ respond }) => {
+        editGenerationStarted.resolve();
+        await editGenerationReady.promise;
+        return respond(200, {
+          kind: "html-edit-draft",
+          version: 1,
+          html: "<!doctype html><html><body><main><h1>Launch sooner</h1><p>Ship the first version today.</p></main></body></html>",
+        });
+      },
+    );
+    context.mocks.api(
+      zeroHostContract.redeployHtml,
+      async ({ body, respond }) => {
+        expect(body).toStrictEqual({
+          url: htmlUrl,
+          html: "<!doctype html><html><body><main><h1>Launch sooner</h1><p>Ship the first version today.</p></main></body></html>",
+        });
+        publishStarted.resolve();
+        await publishReady.promise;
+        return respond(200, {
+          siteId: "7c82da29-6280-4d65-b078-e233c8ad14bf",
+          deploymentId: "dc8b4d42-5dc1-4769-ad8b-17bdf1ad035a",
+          publicSlug: "applying-launch-site",
+          url: htmlUrl,
+          status: "ready",
+        });
+      },
+    );
+
+    click(
+      await screen.findByLabelText(
+        "Open html preview for Applying launch site",
+      ),
+    );
+    click(await screen.findByLabelText("Edit page"));
+
+    const frame = (await screen.findByTestId(
+      "html-dom-comment-frame",
+    )) as HTMLIFrameElement;
+    await waitFor(() => {
+      expect(
+        frame.contentDocument
+          ?.querySelector("h1")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+    });
+    const title = frame.contentDocument?.querySelector("h1");
+    expect(title).not.toBeNull();
+    fireEvent.click(title!);
+
+    const user = userEvent.setup({ delay: null });
+    await user.type(
+      await screen.findByTestId("html-dom-comment-textarea"),
+      "Make the headline shorter",
+    );
+    fireEvent.keyDown(screen.getByTestId("html-dom-comment-textarea"), {
+      key: "Enter",
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-toolbar-send")).toBeEnabled();
+    });
+
+    click(screen.getByTestId("html-dom-toolbar-send"));
+    await editGenerationStarted.promise;
+
+    const sidebar = screen.getByTestId("artifact-sidebar");
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-comment-frame")).toBe(frame);
+      expect(
+        screen.getByTestId("html-dom-comment-toolbar"),
+      ).toBeInTheDocument();
+      expect(frame).not.toHaveClass("pointer-events-none");
+      expect(screen.getByTestId("html-dom-toolbar-comments")).toBeDisabled();
+      expect(screen.getByTestId("html-dom-toolbar-discard")).toBeDisabled();
+      expect(screen.getByTestId("html-dom-toolbar-send")).toBeDisabled();
+      expect(screen.queryByTestId("artifact-sidebar-body-html")).toBeNull();
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-html-edit-status"),
+      ).toHaveTextContent("Working");
+      expect(screen.queryByTestId("html-dom-edit-preview-status")).toBeNull();
+      expect(within(sidebar).queryByLabelText("Open in new tab")).toBeNull();
+      expect(within(sidebar).queryByLabelText("Share artifact")).toBeNull();
+      expect(within(sidebar).queryByLabelText("Download artifact")).toBeNull();
+      expect(within(sidebar).queryByLabelText("Close artifact")).toBeNull();
+      expect(
+        within(sidebar).queryByTestId("artifact-sidebar-exit-html-edit"),
+      ).toBeNull();
+      expect(
+        within(sidebar).getByLabelText("Enter fullscreen"),
+      ).toBeInTheDocument();
+    });
+
+    editGenerationReady.resolve();
+    await waitFor(() => {
+      expect(screen.queryByTestId("html-dom-comment-frame")).toBeNull();
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-html-edit-status"),
+      ).toHaveTextContent("Preview draft");
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "srcdoc",
+        expect.stringContaining("Launch sooner"),
+      );
+      expect(screen.getByTestId("html-dom-draft-toolbar")).toBeInTheDocument();
+      expect(screen.getByTestId("html-dom-draft-discard")).toBeEnabled();
+      expect(screen.getByTestId("html-dom-draft-publish")).toBeEnabled();
+    });
+
+    click(screen.getByTestId("html-dom-draft-publish"));
+    await publishStarted.promise;
+    await waitFor(() => {
+      expect(
+        within(sidebar).getByTestId("artifact-sidebar-html-edit-status"),
+      ).toHaveTextContent("Working");
+      expect(screen.getByTestId("html-dom-draft-discard")).toBeDisabled();
+      expect(screen.getByTestId("html-dom-draft-publish")).toBeDisabled();
+    });
+
+    publishReady.resolve();
+    await waitFor(() => {
+      const publishedFrame = screen.getByTestId("artifact-sidebar-body-html");
+      expect(screen.queryByTestId("html-dom-draft-toolbar")).toBeNull();
+      expect(
+        within(sidebar).queryByTestId("artifact-sidebar-html-edit-status"),
+      ).toBeNull();
+      expect(publishedFrame).not.toHaveAttribute("srcdoc");
+      expect(publishedFrame).toHaveAttribute(
+        "src",
+        expect.stringContaining(htmlUrl),
+      );
+      expect(
+        within(sidebar).getByLabelText("Open in new tab"),
+      ).toBeInTheDocument();
+      expect(
+        within(sidebar).getByLabelText("Share artifact"),
+      ).toBeInTheDocument();
+      expect(
+        within(sidebar).getByLabelText("Download artifact"),
+      ).toBeInTheDocument();
+      expect(within(sidebar).getByLabelText("Edit page")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps the hosted-site HTML draft when publish fails", async () => {
+    const htmlUrl = "https://failed-publish-launch-site.sites.vm7.io";
+
+    setupHostedSiteArtifactPreview({
+      filename: "failed-publish-launch-site.html",
+      htmlUrl,
+      label: "Failed publish launch site",
+      runId: "run-hosted-site-publish-failure",
+    });
+    context.mocks.api(zeroHostContract.createHtmlEditDraft, ({ respond }) => {
+      return respond(200, {
+        kind: "html-edit-draft",
+        version: 1,
+        html: "<!doctype html><html><body><main><h1>Launch sooner</h1><p>Ship the first version today.</p></main></body></html>",
+      });
+    });
+    context.mocks.api(zeroHostContract.redeployHtml, ({ respond }) => {
+      return respond(500, {
+        error: {
+          code: "INTERNAL_SERVER_ERROR",
+          message: "Publish failed",
+        },
+      });
+    });
+
+    click(
+      await screen.findByLabelText(
+        "Open html preview for Failed publish launch site",
+      ),
+    );
+    click(await screen.findByLabelText("Edit page"));
+
+    const frame = (await screen.findByTestId(
+      "html-dom-comment-frame",
+    )) as HTMLIFrameElement;
+    await waitFor(() => {
+      expect(
+        frame.contentDocument
+          ?.querySelector("h1")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+    });
+    const title = frame.contentDocument?.querySelector("h1");
+    expect(title).not.toBeNull();
+    fireEvent.click(title!);
+
+    const user = userEvent.setup({ delay: null });
+    await user.type(
+      await screen.findByTestId("html-dom-comment-textarea"),
+      "Make the headline shorter",
+    );
+    fireEvent.keyDown(screen.getByTestId("html-dom-comment-textarea"), {
+      key: "Enter",
+    });
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-toolbar-send")).toBeEnabled();
+    });
+
+    click(screen.getByTestId("html-dom-toolbar-send"));
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "srcdoc",
+        expect.stringContaining("Launch sooner"),
+      );
+      expect(screen.getByTestId("html-dom-draft-publish")).toBeEnabled();
+    });
+
+    click(screen.getByTestId("html-dom-draft-publish"));
+    await waitFor(() => {
+      expect(
+        within(screen.getByTestId("artifact-sidebar")).getByTestId(
+          "artifact-sidebar-html-edit-status",
+        ),
+      ).toHaveTextContent("Preview draft");
+      expect(screen.getByTestId("html-dom-draft-discard")).toBeEnabled();
+      expect(screen.getByTestId("html-dom-draft-publish")).toBeEnabled();
+      expect(screen.getByTestId("artifact-sidebar-body-html")).toHaveAttribute(
+        "srcdoc",
+        expect.stringContaining("Launch sooner"),
+      );
+    });
+  });
+
+  it("keeps direct hosted-site edit controls consistent while exiting and toggling fullscreen", async () => {
+    setupHostedSiteArtifactPreview({
+      filename: "direct-edit-launch-site.html",
+      htmlUrl: "https://direct-edit-launch-site.sites.vm7.io",
+      label: "Direct edit launch site",
+      runId: "run-hosted-site-direct-edit",
+    });
+
+    click(
+      await screen.findByLabelText(
+        "Open html preview for Direct edit launch site",
+      ),
+    );
+    click(await screen.findByLabelText("Edit page"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-comment-frame")).toBeInTheDocument();
+      expectHostedSiteEditingHeader({ fullscreen: false });
+    });
+
+    click(screen.getByTestId("artifact-sidebar-exit-html-edit"));
+
+    await waitFor(() => {
+      const sidebar = screen.getByTestId("artifact-sidebar");
+      expect(
+        screen.queryByTestId("html-dom-comment-frame"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByTestId("artifact-sidebar-body-html"),
+      ).toBeInTheDocument();
+      expect(
+        within(sidebar).getByLabelText("Enter fullscreen"),
+      ).toBeInTheDocument();
+      expect(within(sidebar).getByLabelText("Edit page")).toBeInTheDocument();
+      expect(
+        within(sidebar).getByLabelText("Close artifact"),
+      ).toBeInTheDocument();
+    });
+
+    click(screen.getByTestId("artifact-sidebar-edit-html"));
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-comment-frame")).toBeInTheDocument();
+      expectHostedSiteEditingHeader({ fullscreen: false });
+    });
+    const editFrame = screen.getByTestId(
+      "html-dom-comment-frame",
+    ) as HTMLIFrameElement;
+    await waitFor(() => {
+      expect(
+        editFrame.contentDocument
+          ?.querySelector("h1")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+    });
+    const title = editFrame.contentDocument?.querySelector("h1");
+    expect(title).not.toBeNull();
+    fireEvent.click(title!);
+    const user = userEvent.setup({ delay: null });
+    await user.type(
+      await screen.findByTestId("html-dom-comment-textarea"),
+      "Make the title clearer",
+    );
+    fireEvent.keyDown(screen.getByTestId("html-dom-comment-textarea"), {
+      key: "Enter",
+    });
+    await waitFor(() => {
+      expect(
+        editFrame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(1);
+    });
+
+    click(screen.getByTestId("artifact-sidebar-fullscreen-toggle"));
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-comment-frame")).toBe(editFrame);
+      expect(
+        editFrame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(1);
+      expectHostedSiteEditingHeader({ fullscreen: true });
+    });
+
+    click(screen.getByTestId("artifact-sidebar-exit-html-edit"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("html-dom-comment-frame"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByTestId("artifact-sidebar-body-html"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+      expect(screen.getByLabelText("Close artifact")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Exit fullscreen"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
+      expect(screen.getByLabelText("Edit page")).toBeInTheDocument();
+    });
+  });
+
+  it("keeps hosted-site edit controls consistent after opening split view first", async () => {
+    setupHostedSiteArtifactPreview({
+      filename: "split-edit-launch-site.html",
+      htmlUrl: "https://split-edit-launch-site.sites.vm7.io",
+      label: "Split edit launch site",
+      runId: "run-hosted-site-split-edit",
+    });
+
+    click(
+      await screen.findByLabelText(
+        "Open html preview for Split edit launch site",
+      ),
+    );
+    click(await screen.findByLabelText("Open in split view"));
+
+    await waitFor(() => {
+      const sidebar = screen.getByTestId("artifact-sidebar");
+      expect(
+        screen.getByTestId("artifact-sidebar-body-html"),
+      ).toBeInTheDocument();
+      expect(
+        within(sidebar).getByLabelText("Enter fullscreen"),
+      ).toBeInTheDocument();
+      expect(within(sidebar).getByLabelText("Edit page")).toBeInTheDocument();
+    });
+
+    click(screen.getByTestId("artifact-sidebar-edit-html"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-comment-frame")).toBeInTheDocument();
+      expectHostedSiteEditingHeader({ fullscreen: false });
+    });
+
+    click(screen.getByTestId("artifact-sidebar-exit-html-edit"));
+
+    await waitFor(() => {
+      const sidebar = screen.getByTestId("artifact-sidebar");
+      expect(
+        screen.queryByTestId("html-dom-comment-frame"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByTestId("artifact-sidebar-body-html"),
+      ).toBeInTheDocument();
+      expect(
+        within(sidebar).getByLabelText("Enter fullscreen"),
+      ).toBeInTheDocument();
+      expect(within(sidebar).getByLabelText("Edit page")).toBeInTheDocument();
+      expect(
+        within(sidebar).getByLabelText("Close artifact"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("keeps hosted-site edit fullscreen when fullscreen is entered before editing", async () => {
+    setupHostedSiteArtifactPreview({
+      filename: "fullscreen-edit-launch-site.html",
+      htmlUrl: "https://fullscreen-edit-launch-site.sites.vm7.io",
+      label: "Fullscreen edit launch site",
+      runId: "run-hosted-site-fullscreen-edit",
+    });
+
+    click(
+      await screen.findByLabelText(
+        "Open html preview for Fullscreen edit launch site",
+      ),
+    );
+    click(await screen.findByLabelText("Enter fullscreen"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Edit page"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-comment-frame")).toBeInTheDocument();
+      expectHostedSiteEditingHeader({ fullscreen: true });
+    });
+
+    click(screen.getByTestId("artifact-sidebar-exit-html-edit"));
+
+    await waitFor(() => {
+      expect(
+        screen.queryByTestId("html-dom-comment-frame"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByTestId("artifact-sidebar-body-html"),
+      ).toBeInTheDocument();
+      expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+      expect(screen.getByLabelText("Close artifact")).toBeInTheDocument();
+    });
+
+    click(screen.getByLabelText("Exit fullscreen"));
+    await waitFor(() => {
+      expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
+      expect(screen.getByLabelText("Edit page")).toBeInTheDocument();
     });
   });
 

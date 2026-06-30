@@ -11,10 +11,10 @@ async fn execute_inner_retries_fresh_after_workspace_cache_hit_create_failure() 
     overrides.push_create_result(Err(sandbox_create_error("bad seed image")));
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "sess-cache-hit".into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline(
+        "sess-cache-hit".into(),
+        r#"{"type":"init"}"#.into(),
+    ));
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -74,10 +74,10 @@ async fn execute_inner_uses_workspace_cache_when_configured() {
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "sess-cache-default".into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline(
+        "sess-cache-default".into(),
+        r#"{"type":"init"}"#.into(),
+    ));
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -127,10 +127,10 @@ async fn execute_inner_does_not_retry_workspace_cache_hit_after_proxy_register_f
     let overrides = Arc::new(sandbox_mock::MockSandboxOverrides::new());
     let factory = MockSandboxFactory::with_overrides(Arc::clone(&overrides));
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: "sess-register-fail".into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline(
+        "sess-register-fail".into(),
+        r#"{"type":"init"}"#.into(),
+    ));
     let params = JobParams {
         workspace_disk_mb: 16,
         ..default_params()
@@ -207,10 +207,10 @@ async fn execute_job_reuse_uses_workspace_cache_when_configured() {
     let (idle_sandbox, _lease) = make_reusable_idle_sandbox(sandbox, source_ip, session_id).await;
 
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: session_id.into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline(
+        session_id.into(),
+        r#"{"type":"init"}"#.into(),
+    ));
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -260,10 +260,10 @@ async fn cached_reuse_workspace_promotion_identity_mismatch_stops_before_agent()
     .await;
 
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: session_id.into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline(
+        session_id.into(),
+        r#"{"type":"init"}"#.into(),
+    ));
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -315,10 +315,10 @@ async fn execute_job_reuse_without_workspace_cache_config_invalidates_held_cache
             .await;
 
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: session_id.into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline(
+        session_id.into(),
+        r#"{"type":"init"}"#.into(),
+    ));
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -373,10 +373,10 @@ async fn unconfigured_cache_reuse_stops_when_cache_invalidation_fails() {
     tokio::fs::create_dir(&current_image).await.unwrap();
 
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: session_id.into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline(
+        session_id.into(),
+        r#"{"type":"init"}"#.into(),
+    ));
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -432,10 +432,10 @@ async fn unconfigured_cache_reuse_stops_when_required_cache_invalidation_lock_is
     .unwrap();
 
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: session_id.into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline(
+        session_id.into(),
+        r#"{"type":"init"}"#.into(),
+    ));
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -480,10 +480,10 @@ async fn cached_reuse_validation_failure_keeps_workspace_cache_hidden() {
             .await;
 
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: session_id.into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline(
+        session_id.into(),
+        r#"{"type":"init"}"#.into(),
+    ));
     ctx.environment = Some(HashMap::from([(
         "OPENAI_API_KEY".into(),
         "sk-proj-real-openai-secret".into(),
@@ -539,10 +539,10 @@ async fn cached_reuse_invalid_resume_session_keeps_existing_workspace_cache_hidd
 
     let raw_session_id = "../invalid-resume";
     let mut ctx = minimal_context();
-    ctx.resume_session = Some(ResumeSession {
-        cli_agent_session_id: raw_session_id.into(),
-        session_history: r#"{"type":"init"}"#.into(),
-    });
+    ctx.resume_session = Some(ResumeSession::inline(
+        raw_session_id.into(),
+        r#"{"type":"init"}"#.into(),
+    ));
 
     let cancel = tokio_util::sync::CancellationToken::new();
     let (reuse_outcome, _telemetry) =
@@ -654,6 +654,7 @@ async fn reusable_idle_sandbox_with_workspace_promotion(
         budget_lease: test_budget_lease(),
         source_ip,
         storage_fingerprints: StorageFingerprints::default(),
+        restored_session_identity: None,
         workspace_image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
         workspace_promotion: Some(promotion),
     })
@@ -759,6 +760,7 @@ async fn reusable_idle_sandbox_with_unlocked_workspace_promotion(
         budget_lease: test_budget_lease(),
         source_ip,
         storage_fingerprints: StorageFingerprints::default(),
+        restored_session_identity: None,
         workspace_image_size_bytes: u64::from(params.workspace_disk_mb) * 1024 * 1024,
         workspace_promotion: Some(promotion),
     })

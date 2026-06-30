@@ -24,7 +24,7 @@ import type {
   ChatThreadArtifactRun,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import type { ZeroChatAttachment } from "../../signals/chat-page/chat-message.ts";
-import type { ChatThreadSignals } from "../../signals/chat-page/create-chat-thread.ts";
+import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
 import {
   currentLeftThread$,
   currentRightThread$,
@@ -55,6 +55,7 @@ import {
   type AttachmentLightboxState,
 } from "../../signals/zero-page/zero-attachment-chips.ts";
 import {
+  openArtifactSidebarHtmlEdit$,
   openArtifactSidebarPreview$,
   openPresentationEditor$,
 } from "../../signals/zero-page/zero-artifact-sidebar.ts";
@@ -320,6 +321,14 @@ function ArtifactDialogEditPresentationButton({
 }) {
   return (
     <DialogIconButton ariaLabel="Edit presentation" onClick={onClick}>
+      <IconPencil size={18} stroke={1.8} />
+    </DialogIconButton>
+  );
+}
+
+function ArtifactDialogEditHtmlButton({ onClick }: { onClick: () => void }) {
+  return (
+    <DialogIconButton ariaLabel="Edit page" onClick={onClick}>
       <IconPencil size={18} stroke={1.8} />
     </DialogIconButton>
   );
@@ -894,6 +903,7 @@ function ArtifactPreviewDialogActions({
   preview: AttachmentLightboxState;
 }) {
   const closeLightboxWithDialogExit = useSet(closeLightboxWithDialogExit$);
+  const openArtifactSidebarHtmlEdit = useSet(openArtifactSidebarHtmlEdit$);
   const openArtifactSidebarPreview = useSet(openArtifactSidebarPreview$);
   const openPresentationEditor = useSet(openPresentationEditor$);
   const resetZoomableImageCanvasZoom = useSet(resetZoomableImageCanvasZoom$);
@@ -902,9 +912,11 @@ function ArtifactPreviewDialogActions({
   );
   const features = useGet(featureSwitch$);
   const showPresentationEdit =
+    preview.kind === "html" && artifact?.artifactKind === "presentation-html";
+  const showHtmlEdit =
     preview.kind === "html" &&
-    artifact?.artifactKind === "presentation-html" &&
-    Boolean(features?.[FeatureSwitchKey.PresentationHtmlPptxDownload]);
+    artifact?.artifactKind === "hosted-site" &&
+    Boolean(features?.[FeatureSwitchKey.HtmlArtifactCommentEditing]);
   const resetDialogImageZoom = (targetFullscreen: boolean) => {
     resetArtifactDialogImageZoom({
       fullscreen,
@@ -921,6 +933,10 @@ function ArtifactPreviewDialogActions({
       );
     }
     openArtifactSidebarPreview(preview.url);
+    closeLightboxWithDialogExit();
+  };
+  const openHtmlEditInSplitView = () => {
+    openArtifactSidebarHtmlEdit({ fullscreen, url: preview.url });
     closeLightboxWithDialogExit();
   };
 
@@ -944,6 +960,12 @@ function ArtifactPreviewDialogActions({
               openPresentationEditor(preview.url);
             }}
           />
+          <ArtifactActionSeparator />
+        </>
+      )}
+      {showHtmlEdit && (
+        <>
+          <ArtifactDialogEditHtmlButton onClick={openHtmlEditInSplitView} />
           <ArtifactActionSeparator />
         </>
       )}

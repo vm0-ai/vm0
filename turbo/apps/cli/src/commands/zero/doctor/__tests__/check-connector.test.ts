@@ -119,6 +119,7 @@ describe("zero doctor check-connector command", () => {
     vi.clearAllMocks();
     chalk.level = 0;
     vi.stubEnv("GH_TOKEN", "");
+    vi.stubEnv("ZERO_TOKEN", "");
   });
 
   function getOutput(): string {
@@ -421,6 +422,57 @@ describe("zero doctor check-connector command", () => {
       const output = getOutput();
       expect(output).toContain("connected and active");
       expect(output).toContain("authorized for this agent");
+    });
+
+    it("should use agent authorization inside workflow-triggered runs", async () => {
+      const workflowId = "11111111-1111-4111-8111-111111111111";
+      const triggerId = "22222222-2222-4222-8222-222222222222";
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_WORKFLOW_ID", workflowId);
+      vi.stubEnv("ZERO_WORKFLOW_TRIGGER_ID", triggerId);
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/connectors/github", () => {
+          return HttpResponse.json(connectedResponse);
+        }),
+        http.get(
+          "https://app.vm0.ai/api/zero/agents/agent-abc-123/user-connectors",
+          () => {
+            return HttpResponse.json({ enabledTypes: [] });
+          },
+        ),
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [],
+            networkPolicies: null,
+          });
+        }),
+      );
+
+      await checkConnectorCommand.parseAsync([
+        "node",
+        "cli",
+        "--env-name",
+        "GH_TOKEN",
+        "--check-permission",
+        "contents:read",
+      ]);
+
+      const output = getOutput();
+      expect(output).toContain("Agent authorization");
+      expect(output).toContain(
+        "The GitHub connector is not authorized for this agent (agent-abc-123).",
+      );
+      expect(output).toContain(
+        "/connectors/github/authorize?agentId=agent-abc-123",
+      );
+      expect(output).not.toContain(`/workflows/${workflowId}/permissions?`);
+      expect(output).not.toContain(`triggerId=${triggerId}`);
+      expect(output).toContain("Check the agent authorization settings");
+      expect(output).not.toContain("fully permissive");
     });
   });
 
@@ -878,6 +930,49 @@ describe("zero doctor check-connector command", () => {
       expect(output).toContain("Matched base URL: https://acme.zendesk.com");
       expect(output).toContain("Relative path:    /api/v2/tickets.json");
       expect(output).toContain("  - https://acme.zendesk.com");
+    });
+
+    it("should reject compact built-in run context base URL vars outside host policy", async () => {
+      vi.stubEnv("VM0_API_URL", "https://app.vm0.ai");
+      vi.stubEnv("VM0_TOKEN", "test-token");
+      vi.stubEnv("ZERO_AGENT_ID", "agent-abc-123");
+      vi.stubEnv("ZERO_TOKEN", buildZeroToken());
+      server.use(
+        http.get("https://app.vm0.ai/api/zero/runs/run-abc-123/context", () => {
+          return HttpResponse.json({
+            ...runContextResponse,
+            firewalls: [
+              {
+                kind: "builtin",
+                name: "jira",
+                baseUrlVars: { JIRA_DOMAIN: "attacker.example" },
+              },
+            ],
+            networkPolicies: {
+              jira: {
+                allow: [],
+                deny: [],
+                ask: [],
+                unknownPolicy: "allow" as const,
+              },
+            },
+          });
+        }),
+      );
+
+      await expect(async () => {
+        await checkConnectorCommand.parseAsync([
+          "node",
+          "cli",
+          "--url",
+          "https://attacker.example/rest/api/3/project",
+        ]);
+      }).rejects.toThrow("process.exit called");
+
+      expect(mockConsoleError).toHaveBeenCalledWith(
+        expect.stringContaining("host policy does not allow resolved host"),
+      );
+      expect(mockExit).toHaveBeenCalledWith(1);
     });
 
     it("should strip query and match permissions only on the resolved API base", async () => {

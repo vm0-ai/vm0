@@ -16,7 +16,7 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { mintExpiredAccessToken } from "../test-oauth-provider-helpers";
@@ -2243,7 +2243,7 @@ describe("CONN-02: test-oauth auth-code journey", () => {
     expect(exchangeBody?.get("client_secret")).toBe("test-oauth-secret");
     expect(exchangeBody?.get("code")).toBe("bdd-test-oauth-code");
     expect(exchangeBody?.get("redirect_uri")).toBe(
-      "https://www.vm0.ai/api/connectors/test-oauth/callback",
+      "https://api.vm0.ai/api/connectors/test-oauth/callback",
     );
 
     const oauthConnector = await connectorsApi.readConnectorByType(

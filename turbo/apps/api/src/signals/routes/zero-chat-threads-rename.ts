@@ -10,7 +10,7 @@ import { writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { publishThreadListChanged } from "../external/realtime";
 import { notFound } from "../../lib/error";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const renameBody$ = bodyResultOf(chatThreadRenameContract.rename);
 
@@ -47,6 +47,9 @@ const renameInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 export const zeroChatThreadRenameRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadRenameContract.rename,
-    handler: authRoute({}, renameInner$),
+    handler: authRoute(
+      { requiredCapability: "chat-thread:write" },
+      renameInner$,
+    ),
   },
 ];

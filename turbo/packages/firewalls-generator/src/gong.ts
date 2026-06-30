@@ -37,6 +37,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "https://${{ vars.GONG_API_BASE }}",',
+    '      hostPolicy: { kind: "providerOwned", suffixes: ["gong.io"] },',
     "      auth: {",
     "        headers: {",
     "          Authorization:",
@@ -56,5 +57,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Gong firewall config...");
   const ts = generateTypeScript();
-  writeOutput("gong", ts, import.meta.dirname);
+  writeOutput("gong", ts);
 }

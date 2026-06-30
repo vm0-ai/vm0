@@ -35,6 +35,15 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "https://${{ vars.IRONCLAD_HOST }}",',
+    "      hostPolicy: {",
+    '        kind: "providerOwned",',
+    "        exactHosts: [",
+    '          "ironcladapp.com",',
+    '          "na1.ironcladapp.com",',
+    '          "eu1.ironcladapp.com",',
+    '          "demo.ironcladapp.com",',
+    "        ],",
+    "      },",
     "      auth: {",
     "        headers: {",
     '          Authorization: "Bearer ${{ secrets.IRONCLAD_API_KEY }}",',
@@ -53,5 +62,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Ironclad firewall config...");
   const ts = generateTypeScript();
-  writeOutput("ironclad", ts, import.meta.dirname);
+  writeOutput("ironclad", ts);
 }

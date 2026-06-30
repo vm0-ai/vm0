@@ -63,6 +63,55 @@ class TestFirewallNetworkPolicyDecisions:
             }
         }
 
+    def _dropbox_firewall(self):
+        return [builtin_firewalls.BUILTIN_FIREWALLS["dropbox"]]
+
+    def _dropbox_policy_allowing(self, *allowed_permissions: str):
+        firewall = builtin_firewalls.BUILTIN_FIREWALLS["dropbox"]
+        names = {
+            permission["name"]
+            for api in firewall["apis"]
+            for permission in api.get("permissions", [])
+        }
+        allowed = set(allowed_permissions)
+        return {
+            "dropbox": {
+                "allow": sorted(allowed),
+                "deny": sorted(names - allowed),
+                "unknownPolicy": "deny",
+            }
+        }
+
+    def test_codex_oauth_auth_host_is_blocked_by_unknown_policy(self):
+        firewalls = [builtin_firewalls.BUILTIN_FIREWALLS["model-provider:codex-oauth-token"]]
+        policies = {
+            "model-provider:codex-oauth-token": {
+                "allow": ["codex:api"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            }
+        }
+
+        auth_result = match_request_with_raw_firewalls(
+            "https://auth.openai.com/oauth/token",
+            "POST",
+            firewalls,
+            network_policies=policies,
+        )
+        codex_result = match_request_with_raw_firewalls(
+            "https://chatgpt.com/backend-api/codex/responses",
+            "POST",
+            firewalls,
+            network_policies=policies,
+        )
+
+        assert isinstance(auth_result, matching.FirewallBlock)
+        assert auth_result.reason == "unknown_endpoint"
+        assert auth_result.permissions == ()
+        assert isinstance(codex_result, matching.FirewallAllow)
+        assert codex_result.permission == "codex:api"
+
     def test_allowed_permission_passes(self):
         policies = {
             "github": {"allow": ["repo-read"], "deny": ["repo-write"], "unknownPolicy": "deny"}
@@ -864,3 +913,32 @@ class TestFirewallNetworkPolicyDecisions:
 
         assert isinstance(result, matching.FirewallAllow)
         assert result.permission == "messages.send"
+
+    def test_dropbox_members_read_does_not_allow_custom_quota_mutation(self):
+        get_custom_quota = match_request_with_raw_firewalls(
+            "https://api.dropboxapi.com/2/team/member_space_limits/get_custom_quota",
+            "POST",
+            self._dropbox_firewall(),
+            network_policies=self._dropbox_policy_allowing("members.read"),
+        )
+        assert isinstance(get_custom_quota, matching.FirewallAllow)
+        assert get_custom_quota.permission == "members.read"
+
+        set_custom_quota_read_only = match_request_with_raw_firewalls(
+            "https://api.dropboxapi.com/2/team/member_space_limits/set_custom_quota",
+            "POST",
+            self._dropbox_firewall(),
+            network_policies=self._dropbox_policy_allowing("members.read"),
+        )
+        assert isinstance(set_custom_quota_read_only, matching.FirewallBlock)
+        assert set_custom_quota_read_only.permissions == ("members.write",)
+        assert set_custom_quota_read_only.reason == "permission_denied"
+
+        set_custom_quota_write = match_request_with_raw_firewalls(
+            "https://api.dropboxapi.com/2/team/member_space_limits/set_custom_quota",
+            "POST",
+            self._dropbox_firewall(),
+            network_policies=self._dropbox_policy_allowing("members.write"),
+        )
+        assert isinstance(set_custom_quota_write, matching.FirewallAllow)
+        assert set_custom_quota_write.permission == "members.write"

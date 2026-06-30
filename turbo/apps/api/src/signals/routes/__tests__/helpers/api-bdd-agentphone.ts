@@ -27,6 +27,7 @@ import {
   agentPhoneBddWebhookSecret,
   createBddIntegrationApi,
 } from "./api-bdd-integrations";
+import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import { createZeroRouteMocks } from "./zero-route-test";
 
 export const AGENTPHONE_BDD_AGENT_ID = "agt-bdd-agentphone";
@@ -402,10 +403,13 @@ export function createAgentPhoneBddApi(context: TestContext) {
         const input = commandInput(args[0]);
         const key = typeof input.Key === "string" ? input.Key : "";
         if (key.startsWith("blobs/") && key.endsWith(".blob")) {
+          const body = sessionHistoryBlobBodyForKey(context, key);
           return Promise.resolve({
             Body: {
               async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
-                yield Buffer.from(`bdd agentphone history ${key}`, "utf8");
+                if (body) {
+                  yield body;
+                }
               },
             },
           });

@@ -1,7 +1,11 @@
 import { command } from "ccstate";
 import { isSupportedRunModel } from "@vm0/api-contracts/contracts/model-providers";
 import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
-import { findVideoTemplateItem } from "@vm0/core";
+import {
+  ILLUSTRATION_TEMPLATE_ITEMS,
+  PRESENTATION_TEMPLATE_PICKER_ITEMS,
+  findVideoTemplateItem,
+} from "@vm0/core";
 import { sendNewThreadOptimistically$ } from "../chat-page/optimistic-chat-thread-page.ts";
 import { updateDocumentTitle$ } from "../document-title.ts";
 import { orgModelPolicies$ } from "../external/org-model-policies.ts";
@@ -33,7 +37,47 @@ function generationTemplateFromSearchParam(
   }
   const videoTemplate = findVideoTemplateItem(id);
   if (!videoTemplate) {
-    return undefined;
+    const presentationTemplateId = id.replace(/^presentation-template:/, "");
+    const presentationTemplate = PRESENTATION_TEMPLATE_PICKER_ITEMS.find(
+      (item) => {
+        return (
+          item.slug === presentationTemplateId ||
+          item.templateId === id ||
+          item.templateId === presentationTemplateId
+        );
+      },
+    );
+    if (!presentationTemplate) {
+      const illustrationTemplateId = id
+        .replace(/^illustration-template:/, "")
+        .replace(/^image-template:/, "");
+      const illustrationTemplate = ILLUSTRATION_TEMPLATE_ITEMS.find((item) => {
+        return (
+          item.slug === illustrationTemplateId ||
+          item.illustrationStyleId === id ||
+          item.illustrationStyleId === illustrationTemplateId
+        );
+      });
+      if (!illustrationTemplate) {
+        return undefined;
+      }
+      return {
+        type: "illustration",
+        selection: {
+          illustrationStyleId: illustrationTemplate.illustrationStyleId,
+        },
+      };
+    }
+    return {
+      type: "presentation",
+      selection: {
+        colorSystemId:
+          presentationTemplate.colorSystemId ?? "color-system:warm-sand",
+        designSystemId: presentationTemplate.designSystemId,
+        templateId: presentationTemplate.templateId,
+        previewUrl: presentationTemplate.embedUrl,
+      },
+    };
   }
   return {
     type: "video",

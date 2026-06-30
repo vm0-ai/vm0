@@ -7,24 +7,21 @@ import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   LogStatus,
   TriggerSource,
-  AgentEvent,
 } from "../../signals/zero-page/log-types.ts";
 import {
   formatLogTime,
   formatDuration,
 } from "../../signals/activity-page/activity-signals.ts";
+import { groupedMessageMatchesSearch } from "../zero-page/components/log-views/log-detail-utils.ts";
 import {
-  groupEventsIntoMessages,
-  groupedMessageMatchesSearch,
-} from "../zero-page/components/log-views/log-detail-utils.ts";
-import {
-  isVisibleMessage,
   ActivityHeaderCard,
   StepsList,
 } from "../zero-page/zero-activity-detail-page.tsx";
 import {
   inspectLogData$,
+  inspectLogLoadError$,
   inspectStepSearch$,
+  inspectVisibleMessages$,
   loadInspectLogFile$,
   setInspectStepSearch$,
   type InspectLogData,
@@ -36,6 +33,69 @@ import { NetworkContent } from "../zero-page/components/network-content.tsx";
 import { Link } from "../router/link.tsx";
 
 type InspectTab = "steps" | "context" | "network";
+
+const LOG_STATUSES = [
+  "queued",
+  "pending",
+  "running",
+  "completed",
+  "failed",
+  "timeout",
+  "cancelled",
+] as const satisfies readonly LogStatus[];
+
+const TRIGGER_SOURCES = [
+  "automation",
+  "web",
+  "slack",
+  "email",
+  "telegram",
+  "agentphone",
+  "github",
+  "cli",
+  "agent",
+  "webhook",
+  "workflow-schedule",
+  "workflow-event",
+] as const satisfies readonly TriggerSource[];
+
+function stringValue(value: unknown): string | undefined {
+  return typeof value === "string" ? value : undefined;
+}
+
+function nullableStringValue(value: unknown): string | null {
+  return typeof value === "string" ? value : null;
+}
+
+function isLogStatus(value: unknown): value is LogStatus {
+  return (
+    typeof value === "string" &&
+    LOG_STATUSES.some((status) => {
+      return status === value;
+    })
+  );
+}
+
+function isTriggerSource(value: unknown): value is TriggerSource {
+  return (
+    typeof value === "string" &&
+    TRIGGER_SOURCES.some((source) => {
+      return source === value;
+    })
+  );
+}
+
+function logStatusValue(value: unknown): LogStatus {
+  return isLogStatus(value) ? value : "completed";
+}
+
+function triggerSourceValue(value: unknown): TriggerSource | null {
+  return isTriggerSource(value) ? value : null;
+}
+
+function isInspectTab(value: string): value is InspectTab {
+  return value === "steps" || value === "context" || value === "network";
+}
 
 function InspectBreadcrumb({ title }: { title: string }) {
   return (
@@ -58,6 +118,7 @@ function InspectBreadcrumb({ title }: { title: string }) {
 function InspectEmptyState() {
   const loadFile = useSet(loadInspectLogFile$);
   const pageSignal = useGet(pageSignal$);
+  const loadError = useGet(inspectLogLoadError$);
 
   return (
     <div className="h-full flex flex-col min-h-0">
@@ -68,6 +129,11 @@ function InspectEmptyState() {
         <p className="text-sm text-muted-foreground text-center max-w-sm">
           Upload an activity log JSON file to inspect it.
         </p>
+        {loadError && (
+          <p className="text-sm text-destructive text-center max-w-sm">
+            {loadError}
+          </p>
+        )}
         <Button variant="outline" asChild>
           <label className="cursor-pointer">
             <IconUpload size={16} stroke={1.5} />
@@ -93,33 +159,34 @@ function InspectEmptyState() {
 
 function buildInspectDetail(meta: InspectLogData["meta"]) {
   return {
-    id: meta?.id ?? "inspect",
-    modelProvider: meta?.modelProvider ?? null,
-    selectedModel: meta?.selectedModel ?? null,
-    framework: meta?.framework ?? null,
-    error: meta?.error ?? null,
-    automationId: meta?.automationId ?? null,
+    id: stringValue(meta?.id) ?? "inspect",
+    modelProvider: nullableStringValue(meta?.modelProvider),
+    selectedModel: nullableStringValue(meta?.selectedModel),
+    framework: nullableStringValue(meta?.framework),
+    error: nullableStringValue(meta?.error),
+    automationId: nullableStringValue(meta?.automationId),
   };
 }
 
 function prepareInspectData(data: InspectLogData) {
   const { meta, events } = data;
   const detail = buildInspectDetail(meta);
+  const createdAt = stringValue(meta?.createdAt);
 
   return {
     events,
-    displayName: meta?.displayName ?? "Imported Log",
-    status: (meta?.status as LogStatus) ?? ("completed" as const),
-    triggerSource: (meta?.triggerSource as TriggerSource) ?? null,
-    triggerAgentName: meta?.triggerAgentName ?? null,
+    displayName: stringValue(meta?.displayName) ?? "Imported Log",
+    status: logStatusValue(meta?.status),
+    triggerSource: triggerSourceValue(meta?.triggerSource),
+    triggerAgentName: nullableStringValue(meta?.triggerAgentName),
     detail,
     duration: formatDuration(
-      meta?.startedAt ?? null,
-      meta?.completedAt ?? null,
+      nullableStringValue(meta?.startedAt),
+      nullableStringValue(meta?.completedAt),
     ),
-    time: meta?.createdAt ? formatLogTime(meta.createdAt) : "—",
-    prompt: meta?.prompt ?? "",
-    appendSystemPrompt: meta?.appendSystemPrompt ?? "",
+    time: createdAt ? formatLogTime(createdAt) : "—",
+    prompt: stringValue(meta?.prompt) ?? "",
+    appendSystemPrompt: stringValue(meta?.appendSystemPrompt) ?? "",
   };
 }
 
@@ -130,15 +197,13 @@ function StepsTab({
 }) {
   const stepSearch = useGet(inspectStepSearch$);
   const setStepSearch = useSet(setInspectStepSearch$);
-  const { events, prompt, appendSystemPrompt } = prepared;
+  const visibleMessages = useGet(inspectVisibleMessages$);
+  const { prompt, appendSystemPrompt } = prepared;
   const showSystemPrompt = appendSystemPrompt.trim().length > 0;
 
-  const allMessages = groupEventsIntoMessages(events);
-  const visibleMessages = allMessages.filter((message, index) => {
-    return isVisibleMessage(message, allMessages[index + 1]);
-  });
-  const messages = visibleMessages.filter((m) => {
-    return groupedMessageMatchesSearch(m, stepSearch.trim());
+  const searchTerm = stepSearch.trim();
+  const messages = visibleMessages.filter((message) => {
+    return groupedMessageMatchesSearch(message, searchTerm);
   });
 
   return (
@@ -180,6 +245,47 @@ function StepsTab({
   );
 }
 
+function InspectMissingPanel({
+  title,
+  description,
+}: {
+  title: string;
+  description: string;
+}) {
+  return (
+    <div className="flex flex-col items-center justify-center gap-3 py-12">
+      <h2 className="text-lg font-semibold text-foreground">{title}</h2>
+      <p className="text-sm text-muted-foreground text-center max-w-sm">
+        {description}
+      </p>
+    </div>
+  );
+}
+
+function InspectContextTab({ data }: { data: InspectLogData }) {
+  if (!data.context) {
+    return (
+      <InspectMissingPanel
+        title="Context not available"
+        description="Execution context is not available in this imported log."
+      />
+    );
+  }
+  return <ContextContent context={data.context} />;
+}
+
+function InspectNetworkTab({ data }: { data: InspectLogData }) {
+  if (!data.networkLogs) {
+    return (
+      <InspectMissingPanel
+        title="Network logs not available"
+        description="Network logs are not available in this imported log."
+      />
+    );
+  }
+  return <NetworkContent networkLogs={data.networkLogs} />;
+}
+
 function InspectLogContent({ data }: { data: InspectLogData }) {
   const features = useLastResolved(featureSwitch$);
   const showDebugTabs = features?.[FeatureSwitchKey.ZeroDebug] ?? false;
@@ -188,7 +294,9 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
   const updateParams = useSet(updateSearchParams$);
   const rawTab = params.get("tab");
   const activeTab: InspectTab =
-    rawTab === "context" || rawTab === "network" ? rawTab : "steps";
+    showDebugTabs && (rawTab === "context" || rawTab === "network")
+      ? rawTab
+      : "steps";
   const setActiveTab = (tab: InspectTab) => {
     const next = new URLSearchParams(params);
     if (tab === "steps") {
@@ -224,7 +332,7 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
             detail={detail}
             duration={duration}
             time={time}
-            events={events as AgentEvent[]}
+            events={events}
             showModelDetail={Boolean(detail.selectedModel)}
           />
 
@@ -233,7 +341,9 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
               <Tabs
                 value={activeTab}
                 onValueChange={(v) => {
-                  setActiveTab(v as InspectTab);
+                  if (isInspectTab(v)) {
+                    setActiveTab(v);
+                  }
                 }}
               >
                 <TabsList>
@@ -247,12 +357,8 @@ function InspectLogContent({ data }: { data: InspectLogData }) {
 
           <div className="mt-6">
             {activeTab === "steps" && <StepsTab prepared={prepared} />}
-            {activeTab === "context" && data.context && (
-              <ContextContent context={data.context} />
-            )}
-            {activeTab === "network" && data.networkLogs && (
-              <NetworkContent networkLogs={data.networkLogs} />
-            )}
+            {activeTab === "context" && <InspectContextTab data={data} />}
+            {activeTab === "network" && <InspectNetworkTab data={data} />}
           </div>
         </div>
       </div>

@@ -17,7 +17,7 @@ import { afterEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { writeDb$ } from "../../external/db";
 import {
   createBddApi,
@@ -255,6 +255,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
     expect(readable).toMatchObject({
       source: "chat",
       completedAt: null,
+      computerUseHostId: null,
       hosts: [expect.objectContaining({ id: host.hostId })],
     });
 
@@ -281,6 +282,7 @@ describe("FILE-03 desktop computer-use runtime", () => {
       requestToken,
     );
     expect(completed.completedAt).not.toBeNull();
+    expect(completed.computerUseHostId).toBe(host.hostId);
   });
 
   it("only exposes online hosts for delegated authorization requests", async () => {

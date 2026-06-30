@@ -58,7 +58,7 @@ export const audioInputQuota$ = computed(
     get(audioInputQuotaReload$);
     const createClient = get(zeroClient$);
     const client = createClient(zeroVoiceIoQuotaContract);
-    const result = await accept(client.get(), [200], { toast: false });
+    const result = await accept(client.get(), [200]);
     return result.body;
   },
 );
@@ -210,7 +210,7 @@ export const stopAndTranscribe$ = command(
     const extension = mimeType.includes("mp4") ? "mp4" : "webm";
     formData.append("file", blob, `recording.${extension}`);
 
-    // eslint-disable-next-line no-restricted-syntax -- raw fetch for FormData upload (not a ts-rest contract)
+    // eslint-disable-next-line no-restricted-syntax -- raw fetch for FormData upload (not a typed contract)
     try {
       const response = await fetchFn("/api/zero/voice-io/stt", {
         method: "POST",

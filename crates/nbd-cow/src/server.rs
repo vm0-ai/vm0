@@ -36,6 +36,86 @@ enum HandlerOutcome {
     Shutdown,
 }
 
+#[derive(Clone, Copy)]
+enum ReadContext {
+    Header,
+    WritePayload { handle: u64 },
+    OversizedDiscard { handle: u64 },
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum DispatchReadEventKind {
+    WritePayload,
+    OversizedDiscard,
+}
+
+#[cfg(test)]
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+struct DispatchReadEvent {
+    kind: DispatchReadEventKind,
+    handle: u64,
+}
+
+#[cfg(test)]
+impl DispatchReadEvent {
+    fn from_context(context: ReadContext) -> Option<Self> {
+        match context {
+            ReadContext::Header => None,
+            ReadContext::WritePayload { handle } => Some(Self {
+                kind: DispatchReadEventKind::WritePayload,
+                handle,
+            }),
+            ReadContext::OversizedDiscard { handle } => Some(Self {
+                kind: DispatchReadEventKind::OversizedDiscard,
+                handle,
+            }),
+        }
+    }
+}
+
+#[derive(Clone)]
+struct DispatchReadObserver {
+    #[cfg(test)]
+    sender: Option<tokio::sync::mpsc::UnboundedSender<DispatchReadEvent>>,
+}
+
+impl DispatchReadObserver {
+    fn none() -> Self {
+        Self {
+            #[cfg(test)]
+            sender: None,
+        }
+    }
+
+    #[cfg(test)]
+    fn new(sender: tokio::sync::mpsc::UnboundedSender<DispatchReadEvent>) -> Self {
+        Self {
+            sender: Some(sender),
+        }
+    }
+
+    fn notify_partial_read(&self, context: ReadContext) {
+        #[cfg(test)]
+        {
+            if let Some(sender) = &self.sender
+                && let Some(event) = DispatchReadEvent::from_context(context)
+            {
+                let _ = sender.send(event);
+            }
+        }
+        #[cfg(not(test))]
+        {
+            match context {
+                ReadContext::Header => {}
+                ReadContext::WritePayload { handle } | ReadContext::OversizedDiscard { handle } => {
+                    let _ = handle;
+                }
+            }
+        }
+    }
+}
+
 /// Run the NBD dispatch loop on a Unix stream.
 ///
 /// Reads NBD requests from the socket, dispatches to the COW layer,
@@ -50,6 +130,15 @@ pub async fn dispatch(
     cow: Arc<RwLock<CowLayer>>,
     shutdown: CancellationToken,
 ) -> Result<()> {
+    dispatch_with_read_observer(socket_fd, cow, shutdown, DispatchReadObserver::none()).await
+}
+
+async fn dispatch_with_read_observer(
+    socket_fd: OwnedFd,
+    cow: Arc<RwLock<CowLayer>>,
+    shutdown: CancellationToken,
+    read_observer: DispatchReadObserver,
+) -> Result<()> {
     let raw_fd = socket_fd.into_raw_fd();
     let std_stream = unsafe { std::os::unix::net::UnixStream::from_raw_fd(raw_fd) };
     std_stream.set_nonblocking(true)?;
@@ -61,7 +150,15 @@ pub async fn dispatch(
     let mut payload_buf = Vec::with_capacity(crate::BLOCK_SIZE);
 
     loop {
-        match read_exact_or_shutdown(&mut reader, &mut header_buf, &shutdown).await {
+        match read_exact_or_shutdown(
+            &mut reader,
+            &mut header_buf,
+            &shutdown,
+            ReadContext::Header,
+            &read_observer,
+        )
+        .await
+        {
             Ok(IoOutcome::Complete) => {}
             Ok(IoOutcome::Shutdown) => {
                 sync_cow_on_shutdown(&cow).await?;
@@ -87,6 +184,7 @@ pub async fn dispatch(
                     &mut writer,
                     &mut payload_buf,
                     &shutdown,
+                    &read_observer,
                 )
                 .await?
             }
@@ -121,6 +219,8 @@ async fn read_exact_or_shutdown(
     reader: &mut tokio::net::unix::OwnedReadHalf,
     buf: &mut [u8],
     shutdown: &CancellationToken,
+    context: ReadContext,
+    read_observer: &DispatchReadObserver,
 ) -> Result<IoOutcome> {
     let mut filled = 0usize;
     while filled < buf.len() {
@@ -141,6 +241,9 @@ async fn read_exact_or_shutdown(
                     ).into());
                 }
                 filled += count;
+                if filled < buf.len() {
+                    read_observer.notify_partial_read(context);
+                }
             }
         }
     }
@@ -254,10 +357,19 @@ async fn handle_write(
     writer: &mut tokio::net::unix::OwnedWriteHalf,
     payload_buf: &mut Vec<u8>,
     shutdown: &CancellationToken,
+    read_observer: &DispatchReadObserver,
 ) -> Result<HandlerOutcome> {
     if request.length > MAX_REQUEST_LENGTH {
         // Must consume the payload to keep the protocol stream in sync
-        if let IoOutcome::Shutdown = discard_bytes(reader, request.length as u64, shutdown).await? {
+        if let IoOutcome::Shutdown = discard_bytes(
+            reader,
+            request.length as u64,
+            shutdown,
+            request.handle,
+            read_observer,
+        )
+        .await?
+        {
             return Ok(HandlerOutcome::Shutdown);
         }
         return send_error_reply(writer, request.handle, libc::EIO as u32, shutdown)
@@ -274,13 +386,23 @@ async fn handle_write(
             writer,
             payload_buf.as_mut_slice(),
             shutdown,
+            read_observer,
         )
         .await;
         reset_reusable_payload_if_oversized(payload_buf);
         result
     } else {
         let mut data = vec![0u8; len];
-        read_and_apply_write(request, reader, cow, writer, data.as_mut_slice(), shutdown).await
+        read_and_apply_write(
+            request,
+            reader,
+            cow,
+            writer,
+            data.as_mut_slice(),
+            shutdown,
+            read_observer,
+        )
+        .await
     }
 }
 
@@ -291,8 +413,19 @@ async fn read_and_apply_write(
     writer: &mut tokio::net::unix::OwnedWriteHalf,
     data: &mut [u8],
     shutdown: &CancellationToken,
+    read_observer: &DispatchReadObserver,
 ) -> Result<HandlerOutcome> {
-    if let IoOutcome::Shutdown = read_exact_or_shutdown(reader, data, shutdown).await? {
+    if let IoOutcome::Shutdown = read_exact_or_shutdown(
+        reader,
+        data,
+        shutdown,
+        ReadContext::WritePayload {
+            handle: request.handle,
+        },
+        read_observer,
+    )
+    .await?
+    {
         return Ok(HandlerOutcome::Shutdown);
     }
 
@@ -396,6 +529,8 @@ async fn discard_bytes(
     reader: &mut tokio::net::unix::OwnedReadHalf,
     mut remaining: u64,
     shutdown: &CancellationToken,
+    handle: u64,
+    read_observer: &DispatchReadObserver,
 ) -> Result<IoOutcome> {
     let mut buf = [0u8; 4096];
     while remaining > 0 {
@@ -403,7 +538,15 @@ async fn discard_bytes(
         let dest = buf
             .get_mut(..to_read)
             .ok_or_else(|| NbdCowError::Io(std::io::Error::other("discard slice error")))?;
-        if let IoOutcome::Shutdown = read_exact_or_shutdown(reader, dest, shutdown).await? {
+        if let IoOutcome::Shutdown = read_exact_or_shutdown(
+            reader,
+            dest,
+            shutdown,
+            ReadContext::OversizedDiscard { handle },
+            read_observer,
+        )
+        .await?
+        {
             return Ok(IoOutcome::Shutdown);
         }
         remaining -= to_read as u64;

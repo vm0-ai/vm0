@@ -16,7 +16,7 @@ import {
   slackMessageSendFooterText,
 } from "../services/zero-integrations-slack-message.service";
 import { buildFooterBlocks } from "../../lib/slack-blocks";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const noInstallation = Object.freeze({
   status: 404 as const,

@@ -4,7 +4,7 @@ import { zeroBillingStatusContract } from "@vm0/api-contracts/contracts/zero-bil
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { zeroBillingStatus } from "../services/zero-billing-status.service";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 
 const getBillingStatusInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);

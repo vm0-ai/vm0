@@ -421,6 +421,108 @@ fn app_server_turn_steer_returns_active_turn_and_records_inputs() -> std::io::Re
 }
 
 #[test]
+fn app_server_turn_steer_can_complete_runtime_turn_after_success() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--listen", "stdio://"],
+        Some("runtime-turn-complete-after-steer"),
+    )?;
+
+    server.request(1, "initialize", initialize_params())?;
+    let started = server.request(2, "thread/start", json!({ "cwd": "/tmp" }))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let turn_started = server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let turn_id = turn_started["result"]["turn"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let steered = server.request(
+        4,
+        "turn/steer",
+        json!({
+            "threadId": thread_id,
+            "expectedTurnId": turn_id,
+            "clientUserMessageId": "active-msg-1",
+            "input": [text_input("follow-up prompt")]
+        }),
+    )?;
+    assert_eq!(steered["result"]["turnId"], turn_id);
+
+    let turn_started_notification = server.read_required()?;
+    let item_completed_notification = server.read_required()?;
+    let turn_completed_notification = server.read_required()?;
+    assert_eq!(turn_started_notification["method"], "turn/started");
+    assert_eq!(item_completed_notification["method"], "item/completed");
+    assert_eq!(turn_completed_notification["method"], "turn/completed");
+
+    let session_path = require_session_file(dir.path())?;
+    let events = read_session_file(&session_path)?;
+    assert_eq!(events[1]["kind"], "steered");
+    assert_eq!(
+        events[1]["turn_request_client_user_message_id"],
+        "active-msg-1"
+    );
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
+fn app_server_exit_on_turn_steer_closes_without_response() -> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let mut server = spawn_app_server(
+        dir.path(),
+        &["app-server", "--listen", "stdio://"],
+        Some("exit-on-turn-steer"),
+    )?;
+
+    server.request(1, "initialize", initialize_params())?;
+    let started = server.request(2, "thread/start", json!({ "cwd": "/tmp" }))?;
+    let thread_id = started["result"]["thread"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+    let turn_started = server.request(
+        3,
+        "turn/start",
+        json!({
+            "threadId": thread_id,
+            "input": [text_input("initial prompt")]
+        }),
+    )?;
+    let turn_id = turn_started["result"]["turn"]["id"]
+        .as_str()
+        .unwrap()
+        .to_string();
+
+    let error = server
+        .request(
+            4,
+            "turn/steer",
+            json!({
+                "threadId": thread_id,
+                "expectedTurnId": turn_id,
+                "input": [text_input("follow-up prompt")]
+            }),
+        )
+        .expect_err("exit-on-turn-steer should close before responding");
+    assert_eq!(error.kind(), std::io::ErrorKind::UnexpectedEof);
+    assert_eq!(server.close_and_wait()?, 0);
+    Ok(())
+}
+
+#[test]
 fn app_server_rejects_invalid_or_duplicate_initialize() -> std::io::Result<()> {
     let dir = TempDir::new().unwrap();
     let mut server = spawn_app_server(dir.path(), &["app-server", "--listen", "stdio://"], None)?;
@@ -1584,6 +1686,38 @@ fn resume_rejects_duplicate_matching_sessions_without_events() -> std::io::Resul
     );
     assert_eq!(read_session_file(&first_path)?.len(), 3);
     assert_eq!(read_session_file(&second_path)?.len(), 3);
+    Ok(())
+}
+
+#[test]
+fn resume_rejects_duplicate_matching_session_in_non_layout_tree_without_events()
+-> std::io::Result<()> {
+    let dir = TempDir::new().unwrap();
+    let thread_id = "0199a213-81c0-7800-8aa1-bbab2a035a53";
+    let layout_path = dir
+        .path()
+        .join(format!("sessions/2001/01/01/{thread_id}.jsonl"));
+    let non_layout_path = dir.path().join(format!(
+        "sessions/not-layout/deep/rollout-restored-{thread_id}.jsonl"
+    ));
+    write_session_file(&layout_path, &build_events(thread_id, "layout"))?;
+    write_session_file(&non_layout_path, &build_events(thread_id, "non-layout"))?;
+
+    let out = run(dir.path(), &["exec", "resume", thread_id, "--", "turn-3"])?;
+
+    assert_ne!(out.status, 0);
+    assert!(
+        out.events.is_empty(),
+        "non-layout duplicate should fail before emitting events: {:?}",
+        out.events
+    );
+    assert!(
+        out.stderr.contains("multiple session files found"),
+        "resume should report duplicate session files: {:?}",
+        out.stderr
+    );
+    assert_eq!(read_session_file(&layout_path)?.len(), 3);
+    assert_eq!(read_session_file(&non_layout_path)?.len(), 3);
     Ok(())
 }
 

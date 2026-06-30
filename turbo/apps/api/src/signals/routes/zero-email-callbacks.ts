@@ -16,7 +16,7 @@ import {
   callbackPayload$,
   callbackRoute,
 } from "../../lib/callback-route/callback-route";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import { db$, writeDb$ } from "../external/db";
 import { clerk$ } from "../external/clerk";
 import { getRunOutputText } from "../services/run-output.service";

@@ -17,7 +17,7 @@ Known coverage jitter (not regressions): `src/signals/services/agent-run-create.
 
 ## Test Principles
 
-- Test API behavior through the Hono app and ts-rest contracts.
+- Test API behavior through the Hono app and typed contracts.
 - Construct state through API requests when a route exists.
 - Use helper functions only as API clients, not as direct database writers.
 - Mock only external services: Clerk, Stripe, Slack, Telegram, GitHub, OpenAI, Axiom, S3/R2, Plain, provider APIs, and webhook senders.
@@ -347,7 +347,7 @@ Given app-level API requests, compatibility config, cron config, and telemetry c
 When the app handles registered routes, unmatched routes, CORS, proxy fallback, thrown errors, instrumentation, release graph, and cron config checks
 Then HTTP responses, config checks, and boundary initialization behavior match the API contract.
 
-Coverage: `app-factory`, `instrument`, `release-please-config`, `vercel-crons`, `web-api-compatibility`.
+Coverage: `app-factory`, `instrument`, `release-please-config`, `vercel-crons`.
 
 ## Chained Scenario Candidates
 

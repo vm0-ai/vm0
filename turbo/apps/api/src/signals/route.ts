@@ -1,10 +1,8 @@
-import type { AppRoute } from "@ts-rest/core";
 import { healthContract } from "@vm0/api-contracts/contracts/health";
 
 import { agentCheckpointsRoutes } from "./routes/agent-checkpoints-id";
 import { agentComposesByIdRoutes } from "./routes/agent-composes-id";
 import { automationsRoutes } from "./routes/automations";
-import { agentComposesMetadataRoutes } from "./routes/agent-composes-metadata";
 import { agentComposesReadRoutes } from "./routes/agent-composes-read";
 import { agentComposesRoutes } from "./routes/agent-composes";
 import { agentRunsCancelRoutes } from "./routes/agent-runs-cancel";
@@ -16,7 +14,7 @@ import { authMeRoutes } from "./routes/auth-me";
 import { audioTranscriptionsV1Routes } from "./routes/audio-transcriptions-v1";
 import { cliAuthRoutes } from "./routes/cli-auth";
 import { cliAuthTestRoutes } from "./routes/cli-auth-test";
-import type { SignalRouteHandler } from "./context/route";
+import type { RouteEntry } from "./route-entry";
 import { chatThreadsV1Routes } from "./routes/chat-threads-v1";
 import { connectorsTypeCallbackRoutes } from "./routes/connectors-type-callback";
 import { cronAggregateInsightsRoutes } from "./routes/cron-aggregate-insights";
@@ -26,6 +24,7 @@ import { cronDrainEmailOutboxRoutes } from "./routes/cron-drain-email-outbox";
 import { cronExecuteAutomationsRoutes } from "./routes/cron-execute-automations";
 import { cronExecuteWorkflowTriggersRoutes } from "./routes/cron-execute-workflow-triggers";
 import { cronRenewGmailWatchesRoutes } from "./routes/cron-renew-gmail-watches";
+import { cronRenewGoogleCalendarWatchesRoutes } from "./routes/cron-renew-google-calendar-watches";
 import { cronProcessUsageEventsRoutes } from "./routes/cron-process-usage-events";
 import { cronReconcileBillingEntitlementsRoutes } from "./routes/cron-reconcile-billing-entitlements";
 import { cronComputerUseScreenshotCleanupRoutes } from "./routes/cron-computer-use-screenshot-cleanup";
@@ -43,6 +42,7 @@ import { githubOauthRoutes } from "./routes/github-oauth";
 import { legacyFileRoutes } from "./routes/legacy-file";
 import { logsSearchRoutes } from "./routes/logs-search";
 import { modelStatsRoutes } from "./routes/model-stats";
+import { presentationImagesRoutes } from "./routes/presentation-images";
 import { registryResourceDownloadRoutes } from "./routes/registry-resources-download";
 import { runnersRoutes } from "./routes/runners";
 import { usageRoutes } from "./routes/usage";
@@ -57,6 +57,8 @@ import { webhooksBuiltInGenerationRoutes } from "./routes/webhooks-built-in-gene
 import { webhooksClerkRoutes } from "./routes/webhooks-clerk";
 import { webhooksGithubRoutes } from "./routes/webhooks-github";
 import { webhooksGmailRoutes } from "./routes/webhooks-gmail";
+import { webhooksGoogleCalendarRoutes } from "./routes/webhooks-google-calendar";
+import { webhooksWorkflowTriggersRoutes } from "./routes/webhooks-workflow-triggers";
 import { webhooksStripeRoutes } from "./routes/webhooks-stripe";
 import { zeroAgentDraftRoutes } from "./routes/zero-agent-drafts";
 import { zeroAgentInstructionsRoutes } from "./routes/zero-agent-instructions";
@@ -152,6 +154,7 @@ import { zeroSlackInteractiveRoutes } from "./routes/zero-slack-interactive";
 import { zeroSlackOauthRoutes } from "./routes/zero-slack-oauth";
 import { zeroTeamRoutes } from "./routes/zero-team";
 import { zeroUploadsCompleteRoutes } from "./routes/zero-uploads-complete";
+import { zeroUploadsHtmlDomEditSnapshotRoutes } from "./routes/zero-uploads-html-dom-edit-snapshot";
 import { zeroUploadsPrepareRoutes } from "./routes/zero-uploads-prepare";
 import { zeroUsageInsightRoutes } from "./routes/zero-usage-insight";
 import { zeroUsageMembersRoutes } from "./routes/zero-usage-members";
@@ -181,13 +184,6 @@ import { testTelegramDispatchProbeRoutes } from "./routes/test-telegram-dispatch
 import { testTelegramMockRoutes } from "./routes/test-telegram-mock";
 import { testTelegramStateRoutes } from "./routes/test-telegram-state";
 
-export type { SignalRouteHandler };
-
-export interface RouteEntry {
-  readonly route: AppRoute;
-  readonly handler: SignalRouteHandler<unknown>;
-}
-
 export const ROUTES: readonly RouteEntry[] = [
   {
     route: healthContract.check,
@@ -210,6 +206,8 @@ export const ROUTES: readonly RouteEntry[] = [
   ...webhooksBuiltInGenerationRoutes,
   ...webhooksGithubRoutes,
   ...webhooksGmailRoutes,
+  ...webhooksGoogleCalendarRoutes,
+  ...webhooksWorkflowTriggersRoutes,
   ...webhooksStripeRoutes,
   ...webhooksAgentHealthUsageTelemetryRoutes,
   ...webhooksAgentCheckpointsRoutes,
@@ -220,7 +218,6 @@ export const ROUTES: readonly RouteEntry[] = [
   ...agentCheckpointsRoutes,
   ...agentComposesReadRoutes,
   ...agentComposesByIdRoutes,
-  ...agentComposesMetadataRoutes,
   ...agentComposesRoutes,
   ...agentRunsCreateRoutes,
   ...agentRunsCancelRoutes,
@@ -235,6 +232,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...cronExecuteAutomationsRoutes,
   ...cronExecuteWorkflowTriggersRoutes,
   ...cronRenewGmailWatchesRoutes,
+  ...cronRenewGoogleCalendarWatchesRoutes,
   ...cronProcessUsageEventsRoutes,
   ...cronReconcileBillingEntitlementsRoutes,
   ...cronComputerUseScreenshotCleanupRoutes,
@@ -346,6 +344,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...zeroIntegrationsTelegramUploadInitRoutes,
   ...zeroTeamRoutes,
   ...zeroUploadsCompleteRoutes,
+  ...zeroUploadsHtmlDomEditSnapshotRoutes,
   ...zeroUploadsPrepareRoutes,
   ...registryResourceDownloadRoutes,
   ...storagesCommitRoutes,
@@ -359,6 +358,7 @@ export const ROUTES: readonly RouteEntry[] = [
   ...chatThreadsV1Routes,
   ...audioTranscriptionsV1Routes,
   ...modelStatsRoutes,
+  ...presentationImagesRoutes,
   ...runnersRoutes,
   ...testOAuthProviderAuthorizeRoutes,
   ...testOAuthProviderDeviceAuthRoutes,

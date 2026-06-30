@@ -10,7 +10,7 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { clerk$ } from "../external/clerk";
 import { writeDb$ } from "../external/db";
-import type { RouteEntry } from "../route";
+import type { RouteEntry } from "../route-entry";
 import {
   DESKTOP_AUTH_SIGN_IN_TICKET_TTL_SECONDS,
   buildDesktopAuthCallbackUrl,

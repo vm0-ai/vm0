@@ -1,15 +1,8 @@
 /**
- * ts-rest API Contracts
+ * API Contracts
  *
- * This module provides type-safe API contracts using ts-rest.
- *
- * IMPORTANT: We use @ts-rest/core@3.53.0-rc.1 (RC version) because:
- * - The stable version (3.52.x) requires Zod v3
- * - This project uses Zod v4 which has breaking type changes
- * - The RC version adds Zod v4 compatibility
- *
- * TODO: Upgrade to stable @ts-rest/core@3.53.0 when released.
- * Track: https://github.com/ts-rest/ts-rest/releases
+ * This module exports type-safe REST contracts backed by tRPC procedure
+ * typing.
  */
 export { initContract } from "./base";
 export {
@@ -45,15 +38,9 @@ export {
   composesMainContract,
   composesByIdContract,
   composesVersionsContract,
-  composesListContract,
-  composesMetadataContract,
-  composesInstructionsContract,
   type ComposesMainContract,
   type ComposesByIdContract,
   type ComposesVersionsContract,
-  type ComposesListContract,
-  type ComposesMetadataContract,
-  type ComposesInstructionsContract,
   AGENT_NAME_REGEX,
   agentNameSchema,
   volumeConfigSchema,
@@ -66,8 +53,6 @@ export {
   agentComposeApiContentSchema,
   composeResponseSchema,
   composeListItemSchema,
-  metadataUpdateSchema,
-  composeInstructionsResponseSchema,
   ZERO_CAPABILITIES,
   ZERO_CAPABILITY_META,
   type ZeroCapability,
@@ -82,7 +67,6 @@ export {
   runsByIdContract,
   runsCancelContract,
   runEventsContract,
-  runTelemetryContract,
   runSystemLogContract,
   runMetricsContract,
   runAgentEventsContract,
@@ -101,7 +85,6 @@ export {
   runStateSchema,
   eventsResponseSchema,
   telemetryMetricSchema,
-  telemetryResponseSchema,
   systemLogResponseSchema,
   metricsResponseSchema,
   agentEventsResponseSchema,
@@ -113,7 +96,6 @@ export {
   type RunsByIdContract,
   type RunsCancelContract,
   type RunEventsContract,
-  type RunTelemetryContract,
   type RunSystemLogContract,
   type RunMetricsContract,
   type RunAgentEventsContract,
@@ -131,7 +113,6 @@ export {
   type CancelRunResponse,
   type EventsResponse,
   type TelemetryMetric,
-  type TelemetryResponse,
   type SystemLogResponse,
   type MetricsResponse,
   type AgentEventsResponse,
@@ -188,6 +169,20 @@ export {
   type RegistryResourceDownloadContract,
 } from "./registry-resources";
 export {
+  presentationImageAssetSchema,
+  presentationImageOrientationSchema,
+  presentationImageResolveErrorSchema,
+  presentationImageResolveItemSchema,
+  presentationImageResolveRequestSchema,
+  presentationImageResolveResponseSchema,
+  presentationImagesContract,
+  type PresentationImageAsset,
+  type PresentationImageResolveItem,
+  type PresentationImageResolveRequest,
+  type PresentationImageResolveResponse,
+  type PresentationImagesContract,
+} from "./presentation-images";
+export {
   testTelegramDispatchProbeContract,
   type TestTelegramDispatchProbeContract,
 } from "./test-telegram-dispatch-probe";
@@ -206,6 +201,9 @@ export {
   webhookEventsContract,
   webhookFirewallAuthContract,
   webhookGithubContract,
+  webhookGmailContract,
+  webhookGoogleCalendarContract,
+  webhookWorkflowTriggerContract,
   webhookStripeContract,
   webhookBuiltInGenerationFalContract,
   webhookBuiltInGenerationBytePlusContract,
@@ -237,6 +235,9 @@ export {
   type WebhookModelUsageObservationContract,
   type WebhookUsageEventContract,
   type WebhookGithubContract,
+  type WebhookGmailContract,
+  type WebhookGoogleCalendarContract,
+  type WebhookWorkflowTriggerContract,
   type WebhookStripeContract,
   type WebhookBuiltInGenerationFalContract,
 } from "./webhooks";
@@ -368,6 +369,10 @@ export {
   cronExecuteAutomationsContract,
   cronExecuteAutomationsResponseSchema,
   cronExecuteWorkflowTriggersContract,
+  cronRenewGmailWatchesContract,
+  cronRenewGmailWatchesResponseSchema,
+  cronRenewGoogleCalendarWatchesContract,
+  cronRenewGoogleCalendarWatchesResponseSchema,
   cronProcessUsageEventsContract,
   cronProcessUsageEventsResponseSchema,
   cronReconcileBillingEntitlementsContract,
@@ -386,6 +391,8 @@ export {
   type CronExecuteAutomationsContract,
   type CronProcessUsageEventsContract,
   type CronReconcileBillingEntitlementsContract,
+  type CronRenewGmailWatchesContract,
+  type CronRenewGoogleCalendarWatchesContract,
   type CronSyncSkillsContract,
   type CronTelegramCleanupContract,
 } from "./cron";
@@ -437,7 +444,8 @@ export {
   modelProviderCredentialScopeSchema,
   MODEL_PROVIDER_TYPES,
   SUPPORTED_RUN_MODELS,
-  VM0_MODEL_CREDIT_MULTIPLIER,
+  VM0_MODEL_PRICE_TIER,
+  VM0_MODEL_PRICE_TIER_LABEL,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   getFrameworkForType,
@@ -458,7 +466,8 @@ export {
   isModelSupportedByProvider,
   isSupportedRunModel,
   normalizeRunModelId,
-  getVm0ModelMultiplier,
+  getVm0ModelPriceTier,
+  getVm0ModelPriceTierLabel,
   // Selectable provider filtering
   getSelectableProviderTypes,
   // Multi-auth provider support
@@ -471,6 +480,7 @@ export {
   type ModelProviderFramework,
   type ModelProviderEnvBindings,
   type ModelProviderResponse,
+  type Vm0ModelPriceTier,
   type ModelProviderListResponse,
   type UpsertModelProviderRequest,
   type UpsertModelProviderResponse,
@@ -518,6 +528,7 @@ export {
   chatThreadsContract,
   chatThreadByIdContract,
   chatThreadMarkReadContract,
+  chatThreadMetadataContract,
   chatThreadModelSelectionContract,
   chatThreadComputerUseHostContract,
   chatMessagesContract,
@@ -527,6 +538,7 @@ export {
   chatSearchContract,
   chatThreadListItemSchema,
   chatThreadDetailSchema,
+  chatThreadMetadataSchema,
   modelSelectionRequestSchema,
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
@@ -546,6 +558,7 @@ export {
   type ChatThreadsContract,
   type ChatThreadByIdContract,
   type ChatThreadMarkReadContract,
+  type ChatThreadMetadataContract,
   type ChatThreadModelSelectionContract,
   type ChatThreadComputerUseHostContract,
   type ChatMessagesContract,
@@ -558,6 +571,7 @@ export {
   type ChatSearchMessage,
   type ChatThreadListItem,
   type ChatThreadDetail,
+  type ChatThreadMetadata,
   type PagedChatMessage,
   type PersistedAttachment,
   type AttachFile,
@@ -865,7 +879,12 @@ export {
   workflowFileMetadataSchema,
   workflowInstructionSchema,
   zeroWorkflowTriggerKindSchema,
+  zeroWorkflowEventTypeSchema,
   zeroWorkflowScheduleTypeSchema,
+  gmailNewMessageEventConfigSchema,
+  gmailLabelAppliedEventConfigSchema,
+  gmailWorkflowEventConfigSchema,
+  googleCalendarEventCreatedEventConfigSchema,
   zeroWorkflowScheduleSchema,
   zeroWorkflowTriggerSummarySchema,
   chatThreadWorkflowTriggerSchema,
@@ -886,7 +905,13 @@ export {
   type WorkflowFileEntry,
   type WorkflowFileMetadata,
   type ZeroWorkflowTriggerKind,
+  type ZeroWorkflowEventType,
   type ZeroWorkflowScheduleType,
+  type GmailNewMessageEventConfig,
+  type GmailLabelAppliedEventConfig,
+  type GmailWorkflowEventConfig,
+  type GoogleCalendarEventCreatedEventConfig,
+  type GoogleCalendarWorkflowEventConfig,
   type ZeroWorkflowSchedule,
   type ZeroWorkflowTriggerSummary,
   type ChatThreadWorkflowTrigger,
@@ -911,11 +936,11 @@ export {
 } from "./user-connectors";
 export {
   zeroUserPermissionGrantsContract,
+  userPermissionGrantScopeSchema,
   userPermissionGrantActionSchema,
   userPermissionGrantApplyModeSchema,
   userPermissionGrantExpiresInSchema,
   userPermissionGrantResponseSchema,
-  listUserPermissionGrantsQuerySchema,
   applyUserPermissionGrantSchema,
   applyUserPermissionGrantsRequestSchema,
   type UserPermissionGrantAction,

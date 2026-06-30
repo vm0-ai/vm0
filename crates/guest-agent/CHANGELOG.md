@@ -1,5 +1,57 @@
 # Changelog
 
+## [0.42.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.42.0...guest-agent-v0.42.1) (2026-06-30)
+
+
+### Performance Improvements
+
+* verify large session histories in guest ([#19386](https://github.com/vm0-ai/vm0/issues/19386)) ([a3f62a1](https://github.com/vm0-ai/vm0/commit/a3f62a1bd2b649e6d5dfe0a694894d020d196925))
+
+## [0.42.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.18...guest-agent-v0.42.0) (2026-06-30)
+
+
+### Features
+
+* add Codex app-server active input steering ([#19361](https://github.com/vm0-ai/vm0/issues/19361)) ([7a231a7](https://github.com/vm0-ai/vm0/commit/7a231a7e9069c817b314aeea7408859b496c60d2))
+
+## [0.41.18](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.17...guest-agent-v0.41.18) (2026-06-29)
+
+
+### Refactoring
+
+* centralize guest-agent cli termination runtime ([#19342](https://github.com/vm0-ai/vm0/issues/19342)) ([fe032a9](https://github.com/vm0-ai/vm0/commit/fe032a9714a6d577bdba1c31c0001f5cac128954))
+
+## [0.41.17](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.16...guest-agent-v0.41.17) (2026-06-29)
+
+
+### Refactoring
+
+* merge agent diagnostics into guest contracts ([#19317](https://github.com/vm0-ai/vm0/issues/19317)) ([e36a711](https://github.com/vm0-ai/vm0/commit/e36a71168939a1b692a1ab80005d984697a77fe4))
+
+## [0.41.16](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.15...guest-agent-v0.41.16) (2026-06-29)
+
+## [0.41.15](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.14...guest-agent-v0.41.15) (2026-06-29)
+
+
+### Performance Improvements
+
+* park checkpointed session history identity ([#19270](https://github.com/vm0-ai/vm0/issues/19270)) ([e21745b](https://github.com/vm0-ai/vm0/commit/e21745be11c34b09052a27182971d4c48ab881c1))
+
+## [0.41.14](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.13...guest-agent-v0.41.14) (2026-06-29)
+
+## [0.41.13](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.12...guest-agent-v0.41.13) (2026-06-27)
+
+
+### Bug Fixes
+
+* guard post-result cleanup deadlines ([#19179](https://github.com/vm0-ai/vm0/issues/19179)) ([e1d2779](https://github.com/vm0-ai/vm0/commit/e1d2779ab9b32e0d195e1d5bf4d3ae7745022b5d))
+
+## [0.41.12](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.11...guest-agent-v0.41.12) (2026-06-26)
+
+## [0.41.11](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.10...guest-agent-v0.41.11) (2026-06-26)
+
+## [0.41.10](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.9...guest-agent-v0.41.10) (2026-06-26)
+
 ## [0.41.9](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.8...guest-agent-v0.41.9) (2026-06-26)
 
 ## [0.41.8](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.41.7...guest-agent-v0.41.8) (2026-06-26)

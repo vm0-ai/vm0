@@ -5,7 +5,7 @@ import { createStore } from "ccstate";
 import { and, eq, inArray, sql } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 
-import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { builtInGenerationJobs } from "@vm0/db/schema/built-in-generation-job";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
@@ -13,7 +13,7 @@ import { runBuiltInAdmissions } from "@vm0/db/schema/run-built-in-admission";
 import { runUploadedFiles } from "@vm0/db/schema/run-uploaded-file";
 import { usageEvent } from "@vm0/db/schema/usage-event";
 import { usagePricing } from "@vm0/db/schema/usage-pricing";
-import { testContext } from "../../../__tests__/test-helpers";
+import { testContext } from "../../../__tests__/test-context";
 import { mockEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
@@ -25,6 +25,9 @@ import {
   imagePricingKey,
 } from "../../services/zero-image-io-generate.service";
 import { builtInGenerationUsageIdempotencyKey } from "../../services/built-in-generation-usage-idempotency";
+import { webhooksBuiltInGenerationRoutes } from "../webhooks-built-in-generations";
+import { zeroBuiltInGenerationRoutes } from "../zero-built-in-generation";
+import { zeroImageIoGenerateRoutes } from "../zero-image-io-generate";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -119,6 +122,17 @@ function authHeaders() {
   return { authorization: "Bearer clerk-session" };
 }
 
+function createImageIoTestApp() {
+  return createAppWithRoutes({
+    signal: context.signal,
+    routes: [
+      ...zeroBuiltInGenerationRoutes,
+      ...zeroImageIoGenerateRoutes,
+      ...webhooksBuiltInGenerationRoutes,
+    ],
+  });
+}
+
 function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
@@ -165,7 +179,7 @@ function readWebhookUrl(requestUrl: string | null): string {
 }
 
 async function postFalWebhook(
-  app: ReturnType<typeof createApp>,
+  app: ReturnType<typeof createImageIoTestApp>,
   requestUrl: string | null,
   payload: unknown,
 ): Promise<void> {
@@ -689,7 +703,7 @@ describe("POST /api/zero/image-io/generate", () => {
   });
 
   it("returns 401 when not authenticated", async () => {
-    const app = createApp({ signal: context.signal });
+    const app = createImageIoTestApp();
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       body: JSON.stringify({ prompt: "a cat" }),
@@ -709,7 +723,7 @@ describe("POST /api/zero/image-io/generate", () => {
       capabilities: [],
     });
 
-    const app = createApp({ signal: context.signal });
+    const app = createImageIoTestApp();
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -736,7 +750,7 @@ describe("POST /api/zero/image-io/generate", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createImageIoTestApp();
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -761,7 +775,7 @@ describe("POST /api/zero/image-io/generate", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createImageIoTestApp();
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -787,7 +801,7 @@ describe("POST /api/zero/image-io/generate", () => {
     const fixture = await track(seedImageFixture({ credits: 0 }));
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
-    const app = createApp({ signal: context.signal });
+    const app = createImageIoTestApp();
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -815,7 +829,7 @@ describe("POST /api/zero/image-io/generate", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createImageIoTestApp();
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -889,7 +903,7 @@ describe("POST /api/zero/image-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createApp({ signal: context.signal });
+    const app = createImageIoTestApp();
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -951,7 +965,7 @@ describe("POST /api/zero/image-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createApp({ signal: context.signal });
+    const app = createImageIoTestApp();
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1165,7 +1179,7 @@ describe("POST /api/zero/image-io/generate", () => {
     const timeoutTime = new Date(staleTime.getTime() + 16 * 60 * 1000);
     mockNow(staleTime);
 
-    const app = createApp({ signal: context.signal });
+    const app = createImageIoTestApp();
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -1281,7 +1295,7 @@ describe("POST /api/zero/image-io/generate", () => {
       orgId: fixture.orgId,
       runId,
     });
-    const app = createApp({ signal: context.signal });
+    const app = createImageIoTestApp();
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: { authorization: `Bearer ${token}` },
@@ -1415,7 +1429,7 @@ describe("POST /api/zero/image-io/generate", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createImageIoTestApp();
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -1532,7 +1546,7 @@ describe("POST /api/zero/image-io/generate", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createImageIoTestApp();
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -1649,7 +1663,7 @@ describe("POST /api/zero/image-io/generate", () => {
     );
 
     const sourceImageUrls = [MOCKUP_IMAGE_URL, SECOND_MOCKUP_IMAGE_URL];
-    const app = createApp({ signal: context.signal });
+    const app = createImageIoTestApp();
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -1734,7 +1748,7 @@ describe("POST /api/zero/image-io/generate", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createImageIoTestApp();
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -1848,7 +1862,7 @@ describe("POST /api/zero/image-io/generate", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createImageIoTestApp();
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: authHeaders(),
@@ -1954,7 +1968,7 @@ describe("POST /api/zero/image-io/generate", () => {
       }),
     );
 
-    const app = createApp({ signal: context.signal });
+    const app = createImageIoTestApp();
     const response = await app.request("/api/zero/image-io/generate", {
       method: "POST",
       headers: authHeaders(),

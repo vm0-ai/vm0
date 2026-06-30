@@ -49,5 +49,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating AviationStack firewall config...");
   const ts = generateTypeScript();
-  writeOutput("aviationstack", ts, import.meta.dirname);
+  writeOutput("aviationstack", ts);
 }

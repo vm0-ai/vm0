@@ -19,7 +19,7 @@ import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
 import { and, eq } from "drizzle-orm";
 
-import type { TestContext } from "../../../../__tests__/test-helpers";
+import type { TestContext } from "../../../../__tests__/test-context";
 import { writeDb$ } from "../../../external/db";
 
 export interface WorkflowsFixture {
@@ -95,6 +95,7 @@ export const seedWorkflow$ = command(
       instruction?: string | null;
       displayName?: string | null;
       description?: string | null;
+      updatedByUserId?: string;
     },
     signal: AbortSignal,
   ): Promise<string> => {
@@ -111,6 +112,7 @@ export const seedWorkflow$ = command(
         displayName: args.displayName ?? null,
         description: args.description ?? null,
         createdBy: args.userId,
+        updatedBy: args.updatedByUserId ?? args.userId,
       })
       .returning({ id: zeroWorkflows.id });
     signal.throwIfAborted();
@@ -497,6 +499,7 @@ export const seedAgentForInstructions$ = command(
                 displayName: null,
                 description: null,
                 createdBy: args.userId,
+                updatedBy: args.userId,
               };
             }),
           )

@@ -33,6 +33,7 @@ function generateTypeScript(): string {
     "  apis: [",
     "    {",
     '      base: "https://${{ vars.JIRA_DOMAIN }}",',
+    '      hostPolicy: { kind: "providerOwned", suffixes: ["atlassian.net"] },',
     "      auth: {",
     "        headers: {",
     '          Authorization: "${{ basic(vars.JIRA_EMAIL, secrets.JIRA_API_TOKEN) }}",',
@@ -51,5 +52,5 @@ function generateTypeScript(): string {
 export async function generate(): Promise<void> {
   console.error("Generating Jira firewall config...");
   const ts = generateTypeScript();
-  writeOutput("jira", ts, import.meta.dirname);
+  writeOutput("jira", ts);
 }

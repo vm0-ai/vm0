@@ -47,6 +47,19 @@ describe("r2ImageTransformUrl", () => {
     );
   });
 
+  it("allows callers to crop cover thumbnails", () => {
+    expect(
+      r2ImageTransformUrl("https://cdn.vm0.io/artifacts/user/id/image.jpg", {
+        width: 96,
+        height: 96,
+        fit: "cover",
+        quality: 65,
+      }),
+    ).toBe(
+      "https://cdn.vm0.io/cdn-cgi/image/width=96,height=96,fit=cover,format=auto,quality=65,metadata=none/artifacts/user/id/image.jpg",
+    );
+  });
+
   it("leaves already transformed URLs untouched", () => {
     const url =
       "https://cdn.vm0.io/cdn-cgi/image/width=100,height=100,fit=scale-down/artifacts/user/id/image.png";
