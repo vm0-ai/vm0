@@ -1653,7 +1653,8 @@ describe("zero attachment chips", () => {
       expect(heroCommentMarker).toBeDefined();
     });
 
-    fireEvent.click(listDeleteButtons[1]!);
+    listDeleteButtons[1]!.focus();
+    await user.keyboard("{Enter}");
     await waitFor(() => {
       expect(
         within(commentsList).queryByText("Make the body copy warmer"),

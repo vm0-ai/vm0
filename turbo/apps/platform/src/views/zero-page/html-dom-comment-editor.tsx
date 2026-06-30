@@ -167,6 +167,9 @@ function HtmlDomCommentsList({
                   aria-label="Delete comment"
                   className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 bg-background text-blue-600 opacity-0 shadow-sm transition-opacity hover:bg-blue-600 hover:text-white focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 group-hover/comment:opacity-100"
                   data-testid="html-dom-comments-list-delete"
+                  onKeyDown={(event) => {
+                    event.stopPropagation();
+                  }}
                   onClick={(event) => {
                     event.stopPropagation();
                     deleteComment(comment.id);
