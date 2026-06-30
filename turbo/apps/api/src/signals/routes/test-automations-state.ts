@@ -648,11 +648,11 @@ function fakeSecretKmsClient(): SecretKmsClient {
     command: GenerateDataKeyCommand,
   ): Promise<GenerateDataKeyCommandOutput>;
   function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
-  async function send(
+  function send(
     command: GenerateDataKeyCommand | DecryptCommand,
   ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
     if (command instanceof GenerateDataKeyCommand) {
-      return {
+      return Promise.resolve({
         $metadata: {},
         KeyId: command.input.KeyId,
         CiphertextBlob: Buffer.from(
@@ -660,10 +660,10 @@ function fakeSecretKmsClient(): SecretKmsClient {
           "utf8",
         ),
         Plaintext: fakeKmsDataKey,
-      };
+      });
     }
     fakeKmsDecryptCallCount.set(fakeKmsDecryptCallCount.get() + 1);
-    return { $metadata: {}, Plaintext: fakeKmsDataKey };
+    return Promise.resolve({ $metadata: {}, Plaintext: fakeKmsDataKey });
   }
   return { send };
 }
@@ -846,9 +846,10 @@ const postAutomationsStateAction$ = command(
     const body = bodyResult.data;
     const db = set(writeDb$);
     switch (body.action) {
-      case "cleanup-created-automations":
+      case "cleanup-created-automations": {
         await cleanupCreatedAutomations(db, body.org_id, signal);
         return { status: 200 as const, body: { ok: true as const } };
+      }
       case "seed-compose": {
         const composeId = await seedCompose(db, {
           orgId: body.org_id,
@@ -861,12 +862,13 @@ const postAutomationsStateAction$ = command(
           body: { ok: true as const, compose_id: composeId },
         };
       }
-      case "delete-compose":
+      case "delete-compose": {
         await db
           .delete(agentComposes)
           .where(eq(agentComposes.id, body.compose_id));
         signal.throwIfAborted();
         return { status: 200 as const, body: { ok: true as const } };
+      }
       case "seed-run": {
         const runId = await seedRun(db, {
           orgId: body.org_id,
@@ -881,7 +883,7 @@ const postAutomationsStateAction$ = command(
           body: { ok: true as const, run_id: runId },
         };
       }
-      case "delete-org-member":
+      case "delete-org-member": {
         await db
           .delete(orgMembersCache)
           .where(
@@ -892,7 +894,8 @@ const postAutomationsStateAction$ = command(
           );
         signal.throwIfAborted();
         return { status: 200 as const, body: { ok: true as const } };
-      case "read-compose-head-version":
+      }
+      case "read-compose-head-version": {
         return {
           status: 200 as const,
           body: {
@@ -904,7 +907,8 @@ const postAutomationsStateAction$ = command(
             ),
           },
         };
-      case "seed-vm0-managed-default-model-key":
+      }
+      case "seed-vm0-managed-default-model-key": {
         return {
           status: 200 as const,
           body: {
@@ -912,18 +916,22 @@ const postAutomationsStateAction$ = command(
             selected_model: await seedVm0ManagedDefaultModelKey(db, signal),
           },
         };
-      case "delete-vm0-managed-default-model-key":
+      }
+      case "delete-vm0-managed-default-model-key": {
         await deleteVm0ManagedDefaultModelKey(db, signal);
         return { status: 200 as const, body: { ok: true as const } };
-      case "enable-fake-kms":
+      }
+      case "enable-fake-kms": {
         fakeKmsDecryptCallCount.set(0);
         setSecretKmsClientForTests(fakeSecretKmsClient());
         return { status: 200 as const, body: { ok: true as const } };
-      case "reset-fake-kms":
+      }
+      case "reset-fake-kms": {
         resetSecretKmsClientForTests();
         fakeKmsDecryptCallCount.set(0);
         return { status: 200 as const, body: { ok: true as const } };
-      case "read-fake-kms-state":
+      }
+      case "read-fake-kms-state": {
         return {
           status: 200 as const,
           body: {
@@ -931,6 +939,7 @@ const postAutomationsStateAction$ = command(
             decrypt_call_count: fakeKmsDecryptCallCount.get(),
           },
         };
+      }
     }
   },
 );

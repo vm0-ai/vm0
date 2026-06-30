@@ -78,7 +78,7 @@ async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function expectOk(response: Response, operation: string): Promise<void> {
+function expectOk(response: Response, operation: string): void {
   if (response.ok) {
     return;
   }

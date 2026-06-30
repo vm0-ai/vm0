@@ -280,7 +280,7 @@ async function createConcurrencySubscriptionOrg(args: {
     [200],
   );
   const status = await readBillingStatus(fixture);
-  expect(status.concurrencySubscriptions).toEqual(
+  expect(status.concurrencySubscriptions).toStrictEqual(
     expect.arrayContaining([
       expect.objectContaining({
         id: args.subscriptionId,
@@ -306,11 +306,11 @@ describe("POST /api/zero/billing/checkout", () => {
     setZeroPrice();
   });
 
-  async function trackedSeed(): Promise<{ orgId: string; userId: string }> {
+  function trackedSeed(): { orgId: string; userId: string } {
     return createOrgFixture();
   }
 
-  async function trackedBillingSeed(values: {
+  function trackedBillingSeed(values: {
     readonly stripeCustomerId: string;
     readonly stripeSubscriptionId: string;
     readonly subscriptionStatus: string;
@@ -324,7 +324,7 @@ describe("POST /api/zero/billing/checkout", () => {
     });
   }
 
-  async function trackedPendingSeed(): Promise<{
+  function trackedPendingSeed(): Promise<{
     orgId: string;
     userId: string;
   }> {
@@ -1219,7 +1219,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
     setZeroPrice();
   });
 
-  async function trackedSeed(): Promise<{ orgId: string; userId: string }> {
+  function trackedSeed(): { orgId: string; userId: string } {
     return createOrgFixture();
   }
 
@@ -1387,7 +1387,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       { cancel_at_period_end: true },
     );
     const status = await readBillingStatus(fixture);
-    expect(status.concurrencySubscriptions).toEqual(
+    expect(status.concurrencySubscriptions).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: subscriptionId,
@@ -1442,7 +1442,7 @@ describe("POST /api/zero/billing/concurrency-checkout", () => {
       { cancel_at_period_end: false },
     );
     const status = await readBillingStatus(fixture);
-    expect(status.concurrencySubscriptions).toEqual(
+    expect(status.concurrencySubscriptions).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: subscriptionId,
@@ -1500,7 +1500,7 @@ describe("POST /api/zero/billing/credit-checkout", () => {
     setZeroPrice();
   });
 
-  async function trackedSeed(): Promise<{ orgId: string; userId: string }> {
+  function trackedSeed(): { orgId: string; userId: string } {
     return createOrgFixture();
   }
 

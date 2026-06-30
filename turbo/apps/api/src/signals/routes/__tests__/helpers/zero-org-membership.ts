@@ -103,11 +103,11 @@ function installMembershipMocks(memberships: readonly MockMembership[]): void {
 }
 
 export const seedOrgMembership$ = command(
-  async (
+  (
     { get, set },
     values: SeedOrgMembershipValues,
     signal: AbortSignal,
-  ): Promise<OrgMembershipFixture> => {
+  ): OrgMembershipFixture => {
     const membership: MockMembership = {
       orgId: values.orgId,
       userId: values.userId,

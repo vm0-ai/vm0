@@ -6,7 +6,6 @@ import type {
 } from "@vm0/api-contracts/contracts/test-workflow-trigger-state";
 import { command } from "ccstate";
 
-import type { TestContext } from "../../../../__tests__/test-context";
 import { createAppWithRoutes } from "../../../../app-factory-core";
 import { testWorkflowTriggerStateRoutes } from "../../test-workflow-trigger-state";
 

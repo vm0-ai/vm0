@@ -14,11 +14,7 @@ import {
   DEFAULT_SKILLS_OWNER,
   DEFAULT_SKILLS_REPO,
 } from "@vm0/core/github-url";
-import {
-  getSkillStorageName,
-  SYSTEM_ORG_ID,
-  VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
+import { getSkillStorageName, SYSTEM_ORG_ID } from "@vm0/core/storage-names";
 import { getSeedSkillNames, SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { cronSyncSkillsContract } from "@vm0/api-contracts/contracts/cron";
 import { http, HttpResponse } from "msw";

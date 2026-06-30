@@ -406,7 +406,7 @@ describe("GET /api/test/telegram-state", () => {
       dmWelcomeSent: false,
     });
     expect(body.message_count).toBe(1);
-    expect(recentRuns(body.recent_runs)).toEqual(
+    expect(recentRuns(body.recent_runs)).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           triggerSource: "telegram",
@@ -773,7 +773,7 @@ describe("DELETE /api/test/telegram-state", () => {
     expect(deletedTelegram.recent_runs).toStrictEqual([]);
 
     const slackState = await readSlackState(slack.teamId);
-    expect(recentRuns(slackState.recent_runs)).toEqual(
+    expect(recentRuns(slackState.recent_runs)).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           triggerSource: "slack",

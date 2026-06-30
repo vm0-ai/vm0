@@ -731,7 +731,7 @@ describe("POST /api/webhooks/gmail", () => {
       chatThreadId,
     );
     expect(triggerBriefsAfterWebhook).toContain(expectedTriggerBrief);
-    expect(triggerBriefsAfterWebhook.length).toBe(
+    expect(triggerBriefsAfterWebhook).toHaveLength(
       triggerBriefsBeforeWebhook.length + 1,
     );
     await expect(readTrigger(actor, created.body.id)).resolves.toMatchObject({

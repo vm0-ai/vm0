@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
-import { testEmailStateContract } from "@vm0/api-contracts/contracts/test-email-state";
+import {
+  testEmailStateContract,
+  type TestEmailStateActionBody,
+} from "@vm0/api-contracts/contracts/test-email-state";
 import {
   agentComposes,
   agentComposeVersions,
@@ -988,6 +991,53 @@ async function getOutboxForAction(
   return actionOk({ outbox: rows });
 }
 
+type EmailStateActionHandler = (
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) => Promise<unknown>;
+
+async function seedFixtureStateAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  void body;
+  return await seedFixtureForAction(db, signal);
+}
+
+const emailStateActionHandlers = {
+  "seed-fixture": seedFixtureStateAction,
+  "delete-fixture": deleteFixtureForAction,
+  "seed-agent-session": seedAgentSessionForAction,
+  "seed-run": seedRunForAction,
+  "seed-thread": seedThreadForAction,
+  "seed-reply-callback": seedReplyCallbackForAction,
+  "seed-trigger-callback": seedTriggerCallbackForAction,
+  "seed-user-cache": seedUserCacheForAction,
+  "seed-outbox": seedOutboxForAction,
+  "delete-outbox-by-subject": deleteOutboxBySubjectForAction,
+  "touch-outbox": touchOutboxForAction,
+  "get-outbox-by-subject": getOutboxBySubjectForAction,
+  "seed-suppression": seedSuppressionForAction,
+  "delete-suppression": deleteSuppressionForAction,
+  "delete-org-metadata": deleteOrgMetadataForAction,
+  "get-thread": getThreadForAction,
+  "get-run-state": getRunStateForAction,
+  "get-suppressions": getSuppressionsForAction,
+  "get-user": getUserForAction,
+  "get-outbox": getOutboxForAction,
+} satisfies Record<TestEmailStateActionBody["action"], EmailStateActionHandler>;
+
+async function mutateTestEmailStateAction(
+  db: Db,
+  body: Record<string, unknown>,
+  action: TestEmailStateActionBody["action"],
+  signal: AbortSignal,
+) {
+  return await emailStateActionHandlers[action](db, body, signal);
+}
+
 const mutateTestEmailState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -1000,69 +1050,12 @@ const mutateTestEmailState$ = command(
     }
 
     const body = bodyResult.data as Record<string, unknown>;
-    const db = set(writeDb$);
-    switch (bodyResult.data.action) {
-      case "seed-fixture": {
-        return await seedFixtureForAction(db, signal);
-      }
-      case "delete-fixture": {
-        return await deleteFixtureForAction(db, body, signal);
-      }
-      case "seed-agent-session": {
-        return await seedAgentSessionForAction(db, body, signal);
-      }
-      case "seed-run": {
-        return await seedRunForAction(db, body, signal);
-      }
-      case "seed-thread": {
-        return await seedThreadForAction(db, body, signal);
-      }
-      case "seed-reply-callback": {
-        return await seedReplyCallbackForAction(db, body, signal);
-      }
-      case "seed-trigger-callback": {
-        return await seedTriggerCallbackForAction(db, body, signal);
-      }
-      case "seed-user-cache": {
-        return await seedUserCacheForAction(db, body, signal);
-      }
-      case "seed-outbox": {
-        return await seedOutboxForAction(db, body, signal);
-      }
-      case "delete-outbox-by-subject": {
-        return await deleteOutboxBySubjectForAction(db, body, signal);
-      }
-      case "touch-outbox": {
-        return await touchOutboxForAction(db, body, signal);
-      }
-      case "get-outbox-by-subject": {
-        return await getOutboxBySubjectForAction(db, body, signal);
-      }
-      case "seed-suppression": {
-        return await seedSuppressionForAction(db, body, signal);
-      }
-      case "delete-suppression": {
-        return await deleteSuppressionForAction(db, body, signal);
-      }
-      case "delete-org-metadata": {
-        return await deleteOrgMetadataForAction(db, body, signal);
-      }
-      case "get-thread": {
-        return await getThreadForAction(db, body, signal);
-      }
-      case "get-run-state": {
-        return await getRunStateForAction(db, body, signal);
-      }
-      case "get-suppressions": {
-        return await getSuppressionsForAction(db, body, signal);
-      }
-      case "get-user": {
-        return await getUserForAction(db, body, signal);
-      }
-      case "get-outbox": {
-        return await getOutboxForAction(db, body, signal);
-      }
-    }
+    return await mutateTestEmailStateAction(
+      set(writeDb$),
+      body,
+      bodyResult.data.action,
+      signal,
+    );
   },
 );
 

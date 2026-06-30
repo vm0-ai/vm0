@@ -47,10 +47,6 @@ export interface AutomationsFixture {
   readonly automationIds: readonly string[];
 }
 
-type AutomationState = NonNullable<
-  TestAutomationsStateReadResponse["automation"]
->;
-type AutomationRunState = NonNullable<TestAutomationsStateReadResponse["run"]>;
 type AutomationTriggerRow = TestAutomationsStateTriggerRow;
 
 function requestAutomationsState(
@@ -105,7 +101,7 @@ async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function expectOk(response: Response, operation: string): Promise<void> {
+function expectOk(response: Response, operation: string): void {
   if (response.ok) {
     return;
   }

@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
-import { testUsageInsightStateContract } from "@vm0/api-contracts/contracts/test-usage-insight-state";
+import {
+  testUsageInsightStateContract,
+  type TestUsageInsightStateActionBody,
+} from "@vm0/api-contracts/contracts/test-usage-insight-state";
 import {
   agentComposes,
   agentComposeVersions,
@@ -85,6 +88,25 @@ interface AutomationBatchEntry {
   readonly credits: number;
   readonly bonus?: BonusUsageEvent | null;
 }
+
+type UsageInsightAction<
+  Action extends TestUsageInsightStateActionBody["action"],
+> = Extract<TestUsageInsightStateActionBody, { readonly action: Action }>;
+
+type UsageInsightFixtureAction = UsageInsightAction<
+  "seed-fixture" | "delete-fixture" | "seed-compose"
+>;
+
+type UsageInsightRunAction = UsageInsightAction<
+  "seed-run" | "seed-automation" | "seed-chat-thread"
+>;
+
+type UsageInsightEventAction = UsageInsightAction<
+  | "insert-model-usage-event-for-run"
+  | "insert-usage-event"
+  | "set-usage-event-created-at"
+  | "seed-automation-batch"
+>;
 
 const MODEL_TOKEN_CATEGORIES = [
   "tokens.input",
@@ -684,6 +706,246 @@ async function seedAutomationBatch(
   return { automationIds: results };
 }
 
+async function mutateUsageInsightFixtureState(
+  db: Db,
+  body: UsageInsightFixtureAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "seed-fixture": {
+      const fixture = await seedUsageInsightFixture(db);
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: { ok: true as const, fixture: fixtureToWire(fixture) },
+      };
+    }
+    case "delete-fixture": {
+      await deleteUsageInsightFixture(
+        db,
+        fixtureFromWire(body.fixture),
+        signal,
+      );
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "seed-compose": {
+      const result = await seedCompose(db, {
+        orgId: body.org_id,
+        userId: body.user_id,
+        name: body.name,
+        displayName: body.display_name,
+        visibility: body.visibility,
+      });
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: {
+          ok: true as const,
+          compose_id: result.composeId,
+          agent_id: result.agentId,
+        },
+      };
+    }
+  }
+}
+
+async function mutateUsageInsightRunState(
+  db: Db,
+  body: UsageInsightRunAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "seed-run": {
+      const result = await seedRun(
+        db,
+        {
+          orgId: body.org_id,
+          userId: body.user_id,
+          composeId: body.compose_id,
+          triggerSource: body.trigger_source,
+          automationId: body.automation_id,
+          chatThreadId: body.chat_thread_id,
+          status: body.status,
+          prompt: body.prompt,
+          createdAt: parseMaybeDate(body.created_at),
+          startedAt:
+            body.started_at === undefined
+              ? undefined
+              : parseOptionalDate(body.started_at),
+          completedAt:
+            body.completed_at === undefined
+              ? undefined
+              : parseOptionalDate(body.completed_at),
+          continuedFromSessionId: body.continued_from_session_id,
+          sandboxReuseResult: body.sandbox_reuse_result,
+          result: body.result,
+          error: body.error,
+          lastEventSequence: body.last_event_sequence,
+          selectedModel: body.selected_model,
+        },
+        signal,
+      );
+      return {
+        status: 200 as const,
+        body: { ok: true as const, run_id: result.runId },
+      };
+    }
+    case "seed-automation": {
+      const automationId = await seedAutomation(
+        db,
+        {
+          orgId: body.org_id,
+          userId: body.user_id,
+          agentId: body.agent_id,
+          name: body.name,
+          description: body.description,
+        },
+        signal,
+      );
+      return {
+        status: 200 as const,
+        body: { ok: true as const, automation_id: automationId },
+      };
+    }
+    case "seed-chat-thread": {
+      const threadId = await seedChatThread(
+        db,
+        {
+          userId: body.user_id,
+          composeId: body.compose_id,
+          title: body.title,
+        },
+        signal,
+      );
+      return {
+        status: 200 as const,
+        body: { ok: true as const, chat_thread_id: threadId },
+      };
+    }
+  }
+}
+
+function automationBatchEntriesFromWire(
+  entries: UsageInsightAction<"seed-automation-batch">["entries"],
+): AutomationBatchEntry[] {
+  return entries.map((entry) => {
+    return {
+      credits: entry.credits,
+      bonus: entry.bonus
+        ? {
+            kind: entry.bonus.kind,
+            provider: entry.bonus.provider,
+            category: entry.bonus.category,
+            quantity: entry.bonus.quantity,
+            creditsCharged: entry.bonus.credits_charged,
+            status: entry.bonus.status,
+          }
+        : null,
+    };
+  });
+}
+
+async function mutateUsageInsightEventState(
+  db: Db,
+  body: UsageInsightEventAction,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "insert-model-usage-event-for-run": {
+      const result = await insertModelUsageEventForRun(db, {
+        orgId: body.org_id,
+        userId: body.user_id,
+        runId: body.run_id,
+        inputTokens: body.input_tokens,
+        outputTokens: body.output_tokens,
+        cacheReadInputTokens: body.cache_read_input_tokens,
+        cacheCreationInputTokens: body.cache_creation_input_tokens,
+        creditsCharged: body.credits_charged,
+        status: body.status,
+        processedAt:
+          body.processed_at === undefined
+            ? undefined
+            : parseOptionalDate(body.processed_at),
+      });
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: { ok: true as const, usage_event_id: result.id },
+      };
+    }
+    case "insert-usage-event": {
+      const id = await insertUsageEvent(db, {
+        orgId: body.org_id,
+        userId: body.user_id,
+        runId: body.run_id,
+        kind: body.kind,
+        provider: body.provider,
+        category: body.category,
+        quantity: body.quantity,
+        status: body.status,
+        creditsCharged: body.credits_charged,
+        idempotencyKey: body.idempotency_key,
+        createdAt: parseMaybeDate(body.created_at),
+        processedAt:
+          body.processed_at === undefined
+            ? undefined
+            : parseOptionalDate(body.processed_at),
+      });
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: { ok: true as const, usage_event_id: id },
+      };
+    }
+    case "set-usage-event-created-at": {
+      await setUsageEventCreatedAt(
+        db,
+        { id: body.id, createdAt: new Date(body.created_at) },
+        signal,
+      );
+      return { status: 200 as const, body: { ok: true as const } };
+    }
+    case "seed-automation-batch": {
+      const result = await seedAutomationBatch(db, {
+        orgId: body.org_id,
+        userId: body.user_id,
+        composeId: body.compose_id,
+        entries: automationBatchEntriesFromWire(body.entries),
+      });
+      signal.throwIfAborted();
+      return {
+        status: 200 as const,
+        body: { ok: true as const, automation_ids: result.automationIds },
+      };
+    }
+  }
+}
+
+async function mutateUsageInsightState(
+  db: Db,
+  body: TestUsageInsightStateActionBody,
+  signal: AbortSignal,
+) {
+  switch (body.action) {
+    case "seed-fixture":
+    case "delete-fixture":
+    case "seed-compose": {
+      return await mutateUsageInsightFixtureState(db, body, signal);
+    }
+    case "seed-run":
+    case "seed-automation":
+    case "seed-chat-thread": {
+      return await mutateUsageInsightRunState(db, body, signal);
+    }
+    case "insert-model-usage-event-for-run":
+    case "insert-usage-event":
+    case "set-usage-event-created-at":
+    case "seed-automation-batch": {
+      return await mutateUsageInsightEventState(db, body, signal);
+    }
+  }
+}
+
 const mutateUsageInsightState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -696,193 +958,11 @@ const mutateUsageInsightState$ = command(
       return bodyResult.response;
     }
 
-    const db = set(writeDb$);
-    const body = bodyResult.data;
-
-    switch (body.action) {
-      case "seed-fixture": {
-        const fixture = await seedUsageInsightFixture(db);
-        signal.throwIfAborted();
-        return {
-          status: 200 as const,
-          body: { ok: true as const, fixture: fixtureToWire(fixture) },
-        };
-      }
-      case "delete-fixture": {
-        await deleteUsageInsightFixture(
-          db,
-          fixtureFromWire(body.fixture),
-          signal,
-        );
-        return { status: 200 as const, body: { ok: true as const } };
-      }
-      case "seed-compose": {
-        const result = await seedCompose(db, {
-          orgId: body.org_id,
-          userId: body.user_id,
-          name: body.name,
-          displayName: body.display_name,
-          visibility: body.visibility,
-        });
-        signal.throwIfAborted();
-        return {
-          status: 200 as const,
-          body: {
-            ok: true as const,
-            compose_id: result.composeId,
-            agent_id: result.agentId,
-          },
-        };
-      }
-      case "seed-run": {
-        const result = await seedRun(
-          db,
-          {
-            orgId: body.org_id,
-            userId: body.user_id,
-            composeId: body.compose_id,
-            triggerSource: body.trigger_source,
-            automationId: body.automation_id,
-            chatThreadId: body.chat_thread_id,
-            status: body.status,
-            prompt: body.prompt,
-            createdAt: parseMaybeDate(body.created_at),
-            startedAt:
-              body.started_at === undefined
-                ? undefined
-                : parseOptionalDate(body.started_at),
-            completedAt:
-              body.completed_at === undefined
-                ? undefined
-                : parseOptionalDate(body.completed_at),
-            continuedFromSessionId: body.continued_from_session_id,
-            sandboxReuseResult: body.sandbox_reuse_result,
-            result: body.result,
-            error: body.error,
-            lastEventSequence: body.last_event_sequence,
-            selectedModel: body.selected_model,
-          },
-          signal,
-        );
-        return {
-          status: 200 as const,
-          body: { ok: true as const, run_id: result.runId },
-        };
-      }
-      case "seed-automation": {
-        const automationId = await seedAutomation(
-          db,
-          {
-            orgId: body.org_id,
-            userId: body.user_id,
-            agentId: body.agent_id,
-            name: body.name,
-            description: body.description,
-          },
-          signal,
-        );
-        return {
-          status: 200 as const,
-          body: { ok: true as const, automation_id: automationId },
-        };
-      }
-      case "seed-chat-thread": {
-        const threadId = await seedChatThread(
-          db,
-          {
-            userId: body.user_id,
-            composeId: body.compose_id,
-            title: body.title,
-          },
-          signal,
-        );
-        return {
-          status: 200 as const,
-          body: { ok: true as const, chat_thread_id: threadId },
-        };
-      }
-      case "insert-model-usage-event-for-run": {
-        const result = await insertModelUsageEventForRun(db, {
-          orgId: body.org_id,
-          userId: body.user_id,
-          runId: body.run_id,
-          inputTokens: body.input_tokens,
-          outputTokens: body.output_tokens,
-          cacheReadInputTokens: body.cache_read_input_tokens,
-          cacheCreationInputTokens: body.cache_creation_input_tokens,
-          creditsCharged: body.credits_charged,
-          status: body.status,
-          processedAt:
-            body.processed_at === undefined
-              ? undefined
-              : parseOptionalDate(body.processed_at),
-        });
-        signal.throwIfAborted();
-        return {
-          status: 200 as const,
-          body: { ok: true as const, usage_event_id: result.id },
-        };
-      }
-      case "insert-usage-event": {
-        const id = await insertUsageEvent(db, {
-          orgId: body.org_id,
-          userId: body.user_id,
-          runId: body.run_id,
-          kind: body.kind,
-          provider: body.provider,
-          category: body.category,
-          quantity: body.quantity,
-          status: body.status,
-          creditsCharged: body.credits_charged,
-          idempotencyKey: body.idempotency_key,
-          createdAt: parseMaybeDate(body.created_at),
-          processedAt:
-            body.processed_at === undefined
-              ? undefined
-              : parseOptionalDate(body.processed_at),
-        });
-        signal.throwIfAborted();
-        return {
-          status: 200 as const,
-          body: { ok: true as const, usage_event_id: id },
-        };
-      }
-      case "set-usage-event-created-at": {
-        await setUsageEventCreatedAt(
-          db,
-          { id: body.id, createdAt: new Date(body.created_at) },
-          signal,
-        );
-        return { status: 200 as const, body: { ok: true as const } };
-      }
-      case "seed-automation-batch": {
-        const result = await seedAutomationBatch(db, {
-          orgId: body.org_id,
-          userId: body.user_id,
-          composeId: body.compose_id,
-          entries: body.entries.map((entry) => {
-            return {
-              credits: entry.credits,
-              bonus: entry.bonus
-                ? {
-                    kind: entry.bonus.kind,
-                    provider: entry.bonus.provider,
-                    category: entry.bonus.category,
-                    quantity: entry.bonus.quantity,
-                    creditsCharged: entry.bonus.credits_charged,
-                    status: entry.bonus.status,
-                  }
-                : null,
-            };
-          }),
-        });
-        signal.throwIfAborted();
-        return {
-          status: 200 as const,
-          body: { ok: true as const, automation_ids: result.automationIds },
-        };
-      }
-    }
+    return await mutateUsageInsightState(
+      set(writeDb$),
+      bodyResult.data,
+      signal,
+    );
   },
 );
 

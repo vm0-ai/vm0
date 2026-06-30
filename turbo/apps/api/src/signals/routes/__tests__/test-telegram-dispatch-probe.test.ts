@@ -323,7 +323,7 @@ describe("POST /api/test/telegram-dispatch-probe", () => {
     expect(claim.appendSystemPrompt).toContain("Telegram username: @e2e-user");
     const state = await readTelegramState(fixture);
     expect(state.message_count).toBe(1);
-    expect(recentTelegramRuns(state)).toEqual(
+    expect(recentTelegramRuns(state)).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: claim.runId,
@@ -406,7 +406,7 @@ describe("POST /api/test/telegram-dispatch-probe", () => {
     expect(claim.appendSystemPrompt).toContain("Chat type: group");
     const state = await readTelegramState(fixture);
     expect(state.message_count).toBe(1);
-    expect(recentTelegramRuns(state)).toEqual(
+    expect(recentTelegramRuns(state)).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           id: claim.runId,

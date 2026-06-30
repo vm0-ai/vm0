@@ -187,7 +187,7 @@ describe("Automations API", () => {
     expect(automation.description).toBe("Daily digest");
     expect(automation.enabled).toBeTruthy();
     expect(automation.triggers).toHaveLength(1);
-    expect(automation.chatThreadId).toEqual(expect.any(String));
+    expect(automation.chatThreadId).toStrictEqual(expect.any(String));
   });
 
   it("rejects creating an automation when schedule automations are switched to workflow triggers", async () => {

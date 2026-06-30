@@ -135,7 +135,7 @@ async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function expectOk(response: Response, operation: string): Promise<void> {
+function expectOk(response: Response, operation: string): void {
   if (response.ok) {
     return;
   }
@@ -1114,7 +1114,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       url: null,
       internalKind: "telegram",
     });
-    expect(runState.jobExists).toBe(true);
+    expect(runState.jobExists).toBeTruthy();
     const timingEvents = sandboxOperationEventsForRun(run!.id).filter(
       (event) => {
         return (

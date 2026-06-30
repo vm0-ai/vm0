@@ -100,7 +100,7 @@ function actionThread(result: Record<string, unknown>): EmailThreadState {
 }
 
 function actionRuns(result: Record<string, unknown>): readonly EmailRunState[] {
-  expect(Array.isArray(result.runs)).toBe(true);
+  expect(Array.isArray(result.runs)).toBeTruthy();
   return result.runs as readonly EmailRunState[];
 }
 
@@ -951,7 +951,7 @@ describe("POST /api/zero/email/inbound", () => {
       action: "get-suppressions",
       emails: [bounced, complained],
     });
-    expect(Array.isArray(suppressions)).toBe(true);
+    expect(Array.isArray(suppressions)).toBeTruthy();
     expect(
       (suppressions as { emailAddress: string; reason: string }[]).map(
         (row) => {
@@ -1075,7 +1075,7 @@ describe("POST /api/zero/email/inbound", () => {
       action: "get-outbox",
       from_address: "Zero <vm0@mail.example.com>",
     });
-    expect(Array.isArray(outbox)).toBe(true);
+    expect(Array.isArray(outbox)).toBeTruthy();
     const [outboxItem] = outbox as EmailOutboxState[];
     expect(outboxItem).toMatchObject({
       toAddresses: fx.userEmail,

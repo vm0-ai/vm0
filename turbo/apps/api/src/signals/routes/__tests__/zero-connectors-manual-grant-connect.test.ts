@@ -118,7 +118,7 @@ describe("POST /api/zero/connectors/:type/manual-grant", () => {
     }
   });
 
-  async function seedFixture(): Promise<AuthenticatedFixture> {
+  function seedFixture(): AuthenticatedFixture {
     const fixture = seedAuthenticatedFixture();
     fixtures.push(fixture);
     return fixture;

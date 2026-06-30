@@ -454,7 +454,7 @@ describe("POST /api/test/slack-dispatch-probe", () => {
     );
     expect(claim.appendSystemPrompt).toContain("Channel type: Channel");
     const state = await readSlackState(fixture);
-    expect(state.recent_runs).toEqual(
+    expect(state.recent_runs).toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: claim.runId, triggerSource: "slack" }),
       ]),

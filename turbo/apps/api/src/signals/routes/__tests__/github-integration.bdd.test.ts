@@ -2099,7 +2099,7 @@ describe("HOOK-02/INT-03 G7: label dispatch context and trigger gating", () => {
     mockOptionalEnv("GITHUB_APP_ID", undefined);
     mockOptionalEnv("GITHUB_APP_PRIVATE_KEY", undefined);
     mockOptionalEnv("RUNNER_DEFAULT_GROUP", undefined);
-    const failedRunsSince = new Date(now() - 1_000).toISOString();
+    const failedRunsSince = new Date(now() - 1000).toISOString();
 
     await postGithubWebhook(
       webhooks,

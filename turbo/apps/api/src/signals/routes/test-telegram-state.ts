@@ -2,7 +2,10 @@ import { createHash, randomUUID } from "node:crypto";
 
 import { command, computed } from "ccstate";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
-import { testTelegramStateContract } from "@vm0/api-contracts/contracts/test-telegram-state";
+import {
+  testTelegramStateContract,
+  type TestTelegramStateActionBody,
+} from "@vm0/api-contracts/contracts/test-telegram-state";
 import {
   agentComposes,
   agentComposeVersions,
@@ -75,6 +78,16 @@ interface DefaultAgentSeed {
   readonly composeId: string;
   readonly versionId: string;
   readonly agentId: string;
+}
+
+interface TelegramPostFixtureSeed {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly composeId: string;
+  readonly versionId: string;
+  readonly telegramBotId: string;
+  readonly webhookSecret: string;
+  readonly name: string;
 }
 
 function resolveTelegramApiUrlForDiagnostics(): string | null {
@@ -867,6 +880,154 @@ async function deleteTelegramFixtureForAction(
   return actionOk();
 }
 
+async function seedTelegramPostAgent(
+  db: Db,
+  seed: TelegramPostFixtureSeed,
+  signal: AbortSignal,
+): Promise<void> {
+  await db.insert(agentComposes).values({
+    id: seed.composeId,
+    userId: seed.userId,
+    orgId: seed.orgId,
+    name: seed.name,
+  });
+  signal.throwIfAborted();
+  await db.insert(agentComposeVersions).values({
+    id: seed.versionId,
+    composeId: seed.composeId,
+    content: {
+      version: "1.0",
+      agents: {
+        telegram: {
+          framework: "claude-code",
+          environment: { ANTHROPIC_API_KEY: "test-key" },
+        },
+      },
+    },
+    createdBy: seed.userId,
+  });
+  signal.throwIfAborted();
+  await db
+    .update(agentComposes)
+    .set({ headVersionId: seed.versionId })
+    .where(eq(agentComposes.id, seed.composeId));
+  signal.throwIfAborted();
+  await db.insert(zeroAgents).values({
+    id: seed.composeId,
+    orgId: seed.orgId,
+    owner: seed.userId,
+    name: seed.name,
+    displayName: "Telegram Agent",
+    visibility: "public",
+  });
+  signal.throwIfAborted();
+}
+
+async function seedTelegramPostDefaultAgent(
+  db: Db,
+  seed: TelegramPostFixtureSeed,
+  signal: AbortSignal,
+): Promise<void> {
+  await db
+    .insert(orgMetadata)
+    .values({
+      orgId: seed.orgId,
+      defaultAgentId: seed.composeId,
+      tier: "free",
+      credits: 100_000,
+    })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: { defaultAgentId: seed.composeId, tier: "free", credits: 100_000 },
+    });
+  signal.throwIfAborted();
+}
+
+async function seedTelegramPostModelKeys(
+  db: Db,
+  seed: TelegramPostFixtureSeed,
+  signal: AbortSignal,
+): Promise<void> {
+  await db.insert(vm0ApiKeys).values([
+    {
+      vendor: "anthropic",
+      model: "claude-sonnet-4-6",
+      apiKey: `vm0-key-anthropic-${seed.composeId}`,
+      label: seed.composeId,
+    },
+    {
+      vendor: "deepseek",
+      model: "deepseek-v4-pro",
+      apiKey: `vm0-key-deepseek-${seed.composeId}`,
+      label: seed.composeId,
+    },
+    {
+      vendor: "moonshot",
+      model: "kimi-k2.7-code",
+      apiKey: `vm0-key-moonshot-${seed.composeId}`,
+      label: seed.composeId,
+    },
+  ]);
+  signal.throwIfAborted();
+}
+
+async function seedTelegramPostInstallation(
+  db: Db,
+  body: Record<string, unknown>,
+  seed: TelegramPostFixtureSeed,
+  signal: AbortSignal,
+): Promise<void> {
+  const encryptedBotToken = await encryptPersistentSecretValue(
+    readActionOptionalString(body, "bot_token") ?? "123456:test-bot-token",
+    { orgId: seed.orgId, userId: seed.userId },
+  );
+  signal.throwIfAborted();
+  await db.insert(telegramInstallations).values({
+    telegramBotId: seed.telegramBotId,
+    botUsername: `bot_${seed.telegramBotId}`,
+    encryptedBotToken,
+    webhookSecret: seed.webhookSecret,
+    defaultComposeId: seed.composeId,
+    ownerUserId: seed.userId,
+    orgId: seed.orgId,
+  });
+  signal.throwIfAborted();
+}
+
+async function seedTelegramPostLinks(
+  db: Db,
+  body: Record<string, unknown>,
+  seed: TelegramPostFixtureSeed,
+  signal: AbortSignal,
+): Promise<string | undefined> {
+  const telegramUserId = readActionBoolean(body, "link_telegram_user", false)
+    ? "99001"
+    : undefined;
+  if (telegramUserId) {
+    await db.insert(telegramUserLinks).values({
+      installationId: seed.telegramBotId,
+      telegramUserId,
+      telegramUsername: "alice",
+      telegramDisplayName: "Alice",
+      vm0UserId: seed.userId,
+    });
+    signal.throwIfAborted();
+  }
+
+  if (readActionBoolean(body, "seed_official_link", false)) {
+    await db.insert(telegramOfficialUserLinks).values({
+      orgId: seed.orgId,
+      vm0UserId: seed.userId,
+      telegramUserId: "99002",
+      telegramUsername: "bob",
+      telegramDisplayName: "Bob",
+    });
+    signal.throwIfAborted();
+  }
+
+  return telegramUserId;
+}
+
 async function seedTelegramPostFixtureForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -879,139 +1040,36 @@ async function seedTelegramPostFixtureForAction(
     readActionOptionalString(body, "user_id") ??
     `user_${randomUUID().slice(0, 8)}`;
   const composeId = randomUUID();
-  const versionId = randomUUID();
-  const telegramBotId =
-    readActionOptionalString(body, "telegram_bot_id") ??
-    String(Math.floor(Math.random() * 9_000_000_000) + 1_000_000_000);
-  const webhookSecret = `whs_${randomUUID()}`;
-  const name = `telegram-agent-${composeId.slice(0, 8)}`;
-
-  await db.insert(agentComposes).values({
-    id: composeId,
+  const seed: TelegramPostFixtureSeed = {
+    orgId,
     userId,
-    orgId,
-    name,
-  });
-  signal.throwIfAborted();
-  await db.insert(agentComposeVersions).values({
-    id: versionId,
     composeId,
-    content: {
-      version: "1.0",
-      agents: {
-        telegram: {
-          framework: "claude-code",
-          environment: { ANTHROPIC_API_KEY: "test-key" },
-        },
-      },
-    },
-    createdBy: userId,
-  });
-  signal.throwIfAborted();
-  await db
-    .update(agentComposes)
-    .set({ headVersionId: versionId })
-    .where(eq(agentComposes.id, composeId));
-  signal.throwIfAborted();
-  await db.insert(zeroAgents).values({
-    id: composeId,
-    orgId,
-    owner: userId,
-    name,
-    displayName: "Telegram Agent",
-    visibility: "public",
-  });
-  signal.throwIfAborted();
+    versionId: randomUUID(),
+    telegramBotId:
+      readActionOptionalString(body, "telegram_bot_id") ??
+      String(Math.floor(Math.random() * 9_000_000_000) + 1_000_000_000),
+    webhookSecret: `whs_${randomUUID()}`,
+    name: `telegram-agent-${composeId.slice(0, 8)}`,
+  };
 
+  await seedTelegramPostAgent(db, seed, signal);
   if (readActionBoolean(body, "seed_default_agent", true)) {
-    await db
-      .insert(orgMetadata)
-      .values({
-        orgId,
-        defaultAgentId: composeId,
-        tier: "free",
-        credits: 100_000,
-      })
-      .onConflictDoUpdate({
-        target: orgMetadata.orgId,
-        set: { defaultAgentId: composeId, tier: "free", credits: 100_000 },
-      });
-    signal.throwIfAborted();
+    await seedTelegramPostDefaultAgent(db, seed, signal);
   }
-
-  await db.insert(vm0ApiKeys).values([
-    {
-      vendor: "anthropic",
-      model: "claude-sonnet-4-6",
-      apiKey: `vm0-key-anthropic-${composeId}`,
-      label: composeId,
-    },
-    {
-      vendor: "deepseek",
-      model: "deepseek-v4-pro",
-      apiKey: `vm0-key-deepseek-${composeId}`,
-      label: composeId,
-    },
-    {
-      vendor: "moonshot",
-      model: "kimi-k2.7-code",
-      apiKey: `vm0-key-moonshot-${composeId}`,
-      label: composeId,
-    },
-  ]);
-  signal.throwIfAborted();
-
+  await seedTelegramPostModelKeys(db, seed, signal);
   if (readActionBoolean(body, "install_bot", true)) {
-    const encryptedBotToken = await encryptPersistentSecretValue(
-      readActionOptionalString(body, "bot_token") ?? "123456:test-bot-token",
-      { orgId, userId },
-    );
-    signal.throwIfAborted();
-    await db.insert(telegramInstallations).values({
-      telegramBotId,
-      botUsername: `bot_${telegramBotId}`,
-      encryptedBotToken,
-      webhookSecret,
-      defaultComposeId: composeId,
-      ownerUserId: userId,
-      orgId,
-    });
-    signal.throwIfAborted();
+    await seedTelegramPostInstallation(db, body, seed, signal);
   }
-
-  const telegramUserId = readActionBoolean(body, "link_telegram_user", false)
-    ? "99001"
-    : undefined;
-  if (telegramUserId) {
-    await db.insert(telegramUserLinks).values({
-      installationId: telegramBotId,
-      telegramUserId,
-      telegramUsername: "alice",
-      telegramDisplayName: "Alice",
-      vm0UserId: userId,
-    });
-    signal.throwIfAborted();
-  }
-
-  if (readActionBoolean(body, "seed_official_link", false)) {
-    await db.insert(telegramOfficialUserLinks).values({
-      orgId,
-      vm0UserId: userId,
-      telegramUserId: "99002",
-      telegramUsername: "bob",
-      telegramDisplayName: "Bob",
-    });
-    signal.throwIfAborted();
-  }
+  const telegramUserId = await seedTelegramPostLinks(db, body, seed, signal);
 
   return actionOk({
     fixture: {
-      org_id: orgId,
-      user_id: userId,
-      compose_id: composeId,
-      version_id: versionId,
-      telegram_bot_id: telegramBotId,
-      webhook_secret: webhookSecret,
+      org_id: seed.orgId,
+      user_id: seed.userId,
+      compose_id: seed.composeId,
+      version_id: seed.versionId,
+      telegram_bot_id: seed.telegramBotId,
+      webhook_secret: seed.webhookSecret,
       telegram_user_id: telegramUserId,
     },
   });
@@ -2041,6 +2099,51 @@ const deleteTestTelegramState$ = command(
   },
 );
 
+type TelegramStateActionHandler = (
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) => Promise<unknown>;
+
+const telegramStateActionHandlers = {
+  "seed-installation": seedTelegramInstallationForAction,
+  "seed-org-default-agent": seedOrgDefaultAgentForAction,
+  "seed-official-user-link": seedOfficialUserLinkForAction,
+  "seed-user-link": seedUserLinkForAction,
+  "seed-user-agent-preference": seedUserAgentPreferenceForAction,
+  "seed-agent-run-callback": seedAgentRunCallbackForAction,
+  "seed-post-fixture": seedTelegramPostFixtureForAction,
+  "delete-post-fixture": deleteTelegramPostFixtureForAction,
+  "get-post-run-state": getTelegramPostRunStateForAction,
+  "get-telegram-link-id": getTelegramLinkIdForAction,
+  "seed-agent-session": seedAgentSessionForAction,
+  "seed-thread-session": seedThreadSessionForAction,
+  "has-thread-session": hasThreadSessionForAction,
+  "seed-running-run": seedRunningRunForAction,
+  "seed-completed-run": seedCompletedRunForAction,
+  "seed-model-policies": seedModelPoliciesForAction,
+  "seed-org-credits": seedOrgCreditsForAction,
+  "get-selected-model": getSelectedModelForAction,
+  "seed-pending-user-link": seedPendingUserLinkForAction,
+  "update-run-callback": updateRunCallbackForAction,
+  "update-run": updateRunForAction,
+  "get-run": getRunForAction,
+  "find-thread-session": findThreadSessionForAction,
+  "delete-fixture": deleteTelegramFixtureForAction,
+} satisfies Record<
+  TestTelegramStateActionBody["action"],
+  TelegramStateActionHandler
+>;
+
+async function mutateTestTelegramStateAction(
+  db: Db,
+  body: Record<string, unknown>,
+  action: TestTelegramStateActionBody["action"],
+  signal: AbortSignal,
+) {
+  return await telegramStateActionHandlers[action](db, body, signal);
+}
+
 const mutateTestTelegramState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -2054,82 +2157,12 @@ const mutateTestTelegramState$ = command(
     }
 
     const body = bodyResult.data as Record<string, unknown>;
-    const db = set(writeDb$);
-
-    switch (bodyResult.data.action) {
-      case "seed-installation": {
-        return await seedTelegramInstallationForAction(db, body, signal);
-      }
-      case "seed-org-default-agent": {
-        return await seedOrgDefaultAgentForAction(db, body, signal);
-      }
-      case "seed-official-user-link": {
-        return await seedOfficialUserLinkForAction(db, body, signal);
-      }
-      case "seed-user-link": {
-        return await seedUserLinkForAction(db, body, signal);
-      }
-      case "seed-user-agent-preference": {
-        return await seedUserAgentPreferenceForAction(db, body, signal);
-      }
-      case "seed-agent-run-callback": {
-        return await seedAgentRunCallbackForAction(db, body, signal);
-      }
-      case "seed-post-fixture": {
-        return await seedTelegramPostFixtureForAction(db, body, signal);
-      }
-      case "delete-post-fixture": {
-        return await deleteTelegramPostFixtureForAction(db, body, signal);
-      }
-      case "get-post-run-state": {
-        return await getTelegramPostRunStateForAction(db, body, signal);
-      }
-      case "get-telegram-link-id": {
-        return await getTelegramLinkIdForAction(db, body, signal);
-      }
-      case "seed-agent-session": {
-        return await seedAgentSessionForAction(db, body, signal);
-      }
-      case "seed-thread-session": {
-        return await seedThreadSessionForAction(db, body, signal);
-      }
-      case "has-thread-session": {
-        return await hasThreadSessionForAction(db, body, signal);
-      }
-      case "seed-running-run": {
-        return await seedRunningRunForAction(db, body, signal);
-      }
-      case "seed-completed-run": {
-        return await seedCompletedRunForAction(db, body, signal);
-      }
-      case "seed-model-policies": {
-        return await seedModelPoliciesForAction(db, body, signal);
-      }
-      case "seed-org-credits": {
-        return await seedOrgCreditsForAction(db, body, signal);
-      }
-      case "get-selected-model": {
-        return await getSelectedModelForAction(db, body, signal);
-      }
-      case "seed-pending-user-link": {
-        return await seedPendingUserLinkForAction(db, body, signal);
-      }
-      case "update-run-callback": {
-        return await updateRunCallbackForAction(db, body, signal);
-      }
-      case "update-run": {
-        return await updateRunForAction(db, body, signal);
-      }
-      case "get-run": {
-        return await getRunForAction(db, body, signal);
-      }
-      case "find-thread-session": {
-        return await findThreadSessionForAction(db, body, signal);
-      }
-      case "delete-fixture": {
-        return await deleteTelegramFixtureForAction(db, body, signal);
-      }
-    }
+    return await mutateTestTelegramStateAction(
+      set(writeDb$),
+      body,
+      bodyResult.data.action,
+      signal,
+    );
   },
 );
 

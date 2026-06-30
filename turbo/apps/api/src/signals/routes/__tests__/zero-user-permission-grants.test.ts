@@ -421,14 +421,14 @@ describe("zero user permission grants", () => {
     });
     expect(applied).toStrictEqual([]);
 
-    expect(await listPermissionGrants(agentId)).toMatchObject([
+    await expect(listPermissionGrants(agentId)).resolves.toMatchObject([
       {
         connectorRef: "notion",
         permission: "read_content",
         action: "deny",
       },
     ]);
-    expect(await listPermissionGrants(otherAgentId)).toMatchObject([
+    await expect(listPermissionGrants(otherAgentId)).resolves.toMatchObject([
       {
         connectorRef: SLACK_CONNECTOR,
         permission: SLACK_READ_PERMISSION,
@@ -437,7 +437,7 @@ describe("zero user permission grants", () => {
     ]);
 
     mocks.clerk.session(otherUserId, fixture.orgId, "org:member");
-    expect(await listPermissionGrants(agentId)).toMatchObject([
+    await expect(listPermissionGrants(agentId)).resolves.toMatchObject([
       {
         connectorRef: SLACK_CONNECTOR,
         permission: SLACK_READ_PERMISSION,
@@ -527,7 +527,7 @@ describe("zero user permission grants", () => {
       Date.parse(seededRead.updatedAt),
     );
 
-    expect(await listPermissionGrants(agentId)).toEqual(
+    await expect(listPermissionGrants(agentId)).resolves.toStrictEqual(
       expect.arrayContaining([
         expect.objectContaining({
           connectorRef: SLACK_CONNECTOR,
@@ -543,7 +543,7 @@ describe("zero user permission grants", () => {
     );
 
     mocks.clerk.session(otherUserId, fixture.orgId, "org:member");
-    expect(await listPermissionGrants(agentId)).toMatchObject([
+    await expect(listPermissionGrants(agentId)).resolves.toMatchObject([
       {
         connectorRef: SLACK_CONNECTOR,
         permission: SLACK_READ_PERMISSION,
@@ -657,7 +657,7 @@ describe("zero user permission grants", () => {
     expect(applied).toMatchObject([
       { permission: SLACK_WRITE_PERMISSION, action: "deny" },
     ]);
-    expect(await listPermissionGrants(agentId)).toMatchObject([
+    await expect(listPermissionGrants(agentId)).resolves.toMatchObject([
       { permission: SLACK_WRITE_PERMISSION, action: "deny" },
     ]);
   });
@@ -800,7 +800,7 @@ describe("zero user permission grants", () => {
     });
     expect(denied.action).toBe("deny");
     expect(denied.expiresAt).toBeNull();
-    expect(await listPermissionGrants(agentId)).toMatchObject([
+    await expect(listPermissionGrants(agentId)).resolves.toMatchObject([
       {
         permission: SLACK_READ_PERMISSION,
         action: "deny",
@@ -830,7 +830,7 @@ describe("zero user permission grants", () => {
       expiresIn: "always",
     });
     expect(cleared.expiresAt).toBeNull();
-    expect(await listPermissionGrants(agentId)).toMatchObject([
+    await expect(listPermissionGrants(agentId)).resolves.toMatchObject([
       {
         permission: SLACK_READ_PERMISSION,
         action: "allow",
@@ -906,7 +906,7 @@ describe("zero user permission grants", () => {
       expiresIn: "always",
     });
     expect(always.expiresAt).toBeNull();
-    expect(await listPermissionGrants(agentId)).toMatchObject([
+    await expect(listPermissionGrants(agentId)).resolves.toMatchObject([
       {
         permission: SLACK_READ_PERMISSION,
         action: "allow",
