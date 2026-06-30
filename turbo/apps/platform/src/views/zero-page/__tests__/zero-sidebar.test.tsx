@@ -128,13 +128,19 @@ function createThread(
 }
 
 function menuItemByText(text: string): HTMLElement {
-  const item = queryAllByRoleFast("menuitem").find((candidate) => {
-    return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
-  });
+  const item = queryMenuItemByText(text);
   if (!item) {
     throw new Error(`${text} menu item not found`);
   }
   return item;
+}
+
+function queryMenuItemByText(text: string): HTMLElement | null {
+  return (
+    queryAllByRoleFast("menuitem").find((candidate) => {
+      return candidate.textContent?.replace(/\s+/g, " ").trim() === text;
+    }) ?? null
+  );
 }
 
 function buttonByText(
@@ -1281,8 +1287,66 @@ describe("zero sidebar", () => {
 
     await waitFor(() => {
       expect(markedAgentIds).toStrictEqual([RESEARCH_AGENT_ID]);
+      expect(queryMenuItemByText("Mark all read")).not.toBeInTheDocument();
       expect(
         within(researchSidebarRow).queryByLabelText("Unread"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("marks all default agent chats read from the default agent menu", async () => {
+    prepareAgentTeam();
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    let unreadAgentIds = [AGENT_ID, SUPPORT_AGENT_ID];
+    const markedAgentIds: string[] = [];
+    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
+      return respond(200, { agentIds: unreadAgentIds });
+    });
+    context.mocks.api(
+      chatThreadMarkAgentReadContract.markAgentRead,
+      ({ body, respond }) => {
+        markedAgentIds.push(body.agentId);
+        unreadAgentIds = unreadAgentIds.filter((id) => {
+          return id !== body.agentId;
+        });
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
+    });
+
+    const nav = await waitFor(() => {
+      const current = sidebar();
+      expect(within(current).getByText("Zero")).toBeInTheDocument();
+      return current;
+    });
+    const defaultSidebarRow = agentRowByName(nav, "Zero");
+    await waitFor(() => {
+      expect(
+        within(defaultSidebarRow).getByLabelText("Unread"),
+      ).toBeInTheDocument();
+      expect(
+        within(defaultSidebarRow).getByLabelText("Open agent menu"),
+      ).toBeInTheDocument();
+    });
+
+    click(within(defaultSidebarRow).getByLabelText("Open agent menu"));
+    expect(menuItemByText("Mark all read")).toBeInTheDocument();
+    expect(queryMenuItemByText("Unpin")).not.toBeInTheDocument();
+    click(menuItemByText("Mark all read"));
+
+    await waitFor(() => {
+      expect(markedAgentIds).toStrictEqual([AGENT_ID]);
+      expect(queryMenuItemByText("Mark all read")).not.toBeInTheDocument();
+      expect(
+        within(defaultSidebarRow).queryByLabelText("Unread"),
       ).not.toBeInTheDocument();
     });
   });

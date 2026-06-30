@@ -91,37 +91,35 @@ function PinnedAgentSideDecorator({
     );
   }
 
-  if (isDefaultAgent && !hasUnread) {
-    return null;
-  }
+  const actions = [
+    ...(hasUnread
+      ? [
+          {
+            label: "Mark all read",
+            disabled: markingRead,
+            icon: <IconChecks size={16} stroke={2} />,
+            onSelect: markAllRead,
+          },
+        ]
+      : []),
+    ...(!isDefaultAgent
+      ? [
+          {
+            label: "Unpin",
+            disabled: savingPinned,
+            icon: <IconPinnedOff size={16} stroke={2} />,
+            onSelect: unpinAgent,
+          },
+        ]
+      : []),
+  ];
 
   return (
     <AgentRowSideActions
       variant="sidebar"
       isPrimarySelected={isPrimarySelected}
       hasUnread={hasUnread}
-      actions={
-        isDefaultAgent
-          ? undefined
-          : [
-              ...(hasUnread
-                ? [
-                    {
-                      label: "Mark all read",
-                      disabled: markingRead,
-                      icon: <IconChecks size={16} stroke={2} />,
-                      onSelect: markAllRead,
-                    },
-                  ]
-                : []),
-              {
-                label: "Unpin",
-                disabled: savingPinned,
-                icon: <IconPinnedOff size={16} stroke={2} />,
-                onSelect: unpinAgent,
-              },
-            ]
-      }
+      actions={actions}
     />
   );
 }
