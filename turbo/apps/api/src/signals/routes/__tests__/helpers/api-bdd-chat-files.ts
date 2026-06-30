@@ -7,6 +7,7 @@ import {
   chatThreadByIdContract,
   chatThreadComputerUseHostContract,
   chatThreadGithubPrsContract,
+  chatThreadMarkAgentReadContract,
   chatThreadMarkReadContract,
   chatThreadModelSelectionContract,
   chatThreadPinContract,
@@ -290,6 +291,10 @@ export function createChatFilesBddApi(context: TestContext) {
     return chatFilesApp(context)(chatThreadMarkReadContract);
   }
 
+  function threadMarkAgentReadClient() {
+    return chatFilesApp(context)(chatThreadMarkAgentReadContract);
+  }
+
   function threadPinClient() {
     return chatFilesApp(context)(chatThreadPinContract);
   }
@@ -546,6 +551,33 @@ export function createChatFilesBddApi(context: TestContext) {
         [200],
       );
       return response.body.agentIds;
+    },
+
+    async markAgentThreadsRead(
+      actor: ApiTestUser,
+      agentId: string,
+    ): Promise<void> {
+      await accept(
+        threadMarkAgentReadClient().markAgentRead({
+          headers: authenticate(context, actor),
+          body: { agentId },
+        }),
+        [204],
+      );
+    },
+
+    async requestMarkAgentThreadsRead(
+      actor: ApiTestUser | null,
+      agentId: string,
+      statuses: readonly (204 | 400 | 401 | 403)[],
+    ) {
+      return await accept(
+        threadMarkAgentReadClient().markAgentRead({
+          headers: authenticate(context, actor),
+          body: { agentId },
+        }),
+        statuses,
+      );
     },
 
     async readThread(

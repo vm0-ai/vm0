@@ -8,7 +8,7 @@ import {
   IconLoader2,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
-import { clerk$, resolveWebOrigin } from "../../signals/auth.ts";
+import { clerk$, resolveAppAuthUrl } from "../../signals/auth.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { searchParams$ } from "../../signals/route.ts";
 import {
@@ -24,9 +24,7 @@ import { Link } from "../router/link.tsx";
 import githubIconImg from "./components/settings/icons/github.svg";
 
 function signInHref(): string {
-  const webOrigin = resolveWebOrigin();
-  const signInPath = `${webOrigin}/sign-in`;
-  return `${signInPath}?redirect_url=${encodeURIComponent(location.href)}`;
+  return resolveAppAuthUrl("/sign-in", { redirectUrl: location.href });
 }
 
 function BackLink() {

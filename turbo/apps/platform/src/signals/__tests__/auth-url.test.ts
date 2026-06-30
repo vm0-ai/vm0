@@ -2,7 +2,11 @@ import { waitFor } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
 
 import { detachedSetupPage } from "../../__tests__/page-helper.ts";
-import { resolveWebAuthUrl, resolveWebOrigin } from "../auth.ts";
+import {
+  resolveAppAuthUrl,
+  resolveWebAuthUrl,
+  resolveWebOrigin,
+} from "../auth.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
@@ -38,33 +42,33 @@ async function withProductionDeployment<T>(
 }
 
 describe("platform auth URLs", () => {
-  it("uses the configured onboarding origin for auth URLs", () => {
+  it("uses the configured onboarding origin for web/onboarding URLs", () => {
     setBrowserUrl("https://pr-18532-app.vm6.ai/agents");
 
     expect(resolveWebOrigin()).toBe(AUTH_ORIGIN);
   });
 
-  it("adds the configured API domain override to auth URLs", () => {
+  it("builds app auth URLs with the configured API domain override", () => {
     setBrowserUrl("https://pr-18532-app.vm6.ai/agents");
 
-    const signInUrl = new URL(resolveWebAuthUrl("/sign-in"));
-    expect(signInUrl.origin).toBe(AUTH_ORIGIN);
+    const signInUrl = new URL(resolveAppAuthUrl("/sign-in"));
+    expect(signInUrl.origin).toBe("https://pr-18532-app.vm6.ai");
     expect(signInUrl.pathname).toBe("/sign-in");
     expect(signInUrl.searchParams.get("domain")).toBe(AUTH_DOMAIN);
 
     const chooseOrgUrl = new URL(
-      resolveWebAuthUrl("/sign-in/tasks/choose-organization"),
+      resolveAppAuthUrl("/sign-in/tasks/choose-organization"),
     );
-    expect(chooseOrgUrl.origin).toBe(AUTH_ORIGIN);
+    expect(chooseOrgUrl.origin).toBe("https://pr-18532-app.vm6.ai");
     expect(chooseOrgUrl.pathname).toBe("/sign-in/tasks/choose-organization");
     expect(chooseOrgUrl.searchParams.get("domain")).toBe(AUTH_DOMAIN);
 
     const redirectUrl = new URL(
-      resolveWebAuthUrl("/sign-in", {
+      resolveAppAuthUrl("/sign-in", {
         redirectUrl: "https://pr-18532-app.vm6.ai/",
       }),
     );
-    expect(redirectUrl.origin).toBe(AUTH_ORIGIN);
+    expect(redirectUrl.origin).toBe("https://pr-18532-app.vm6.ai");
     expect(redirectUrl.pathname).toBe("/sign-in");
     expect(redirectUrl.searchParams.get("domain")).toBe(AUTH_DOMAIN);
     expect(redirectUrl.searchParams.get("redirect_url")).toBe(
@@ -72,12 +76,21 @@ describe("platform auth URLs", () => {
     );
   });
 
-  it("falls back to derived vm6 web and API origins without configured onboarding", async () => {
+  it("keeps legacy web auth URLs available for onboarding-hosted flows", () => {
+    setBrowserUrl("https://pr-18532-app.vm6.ai/agents");
+
+    const signInUrl = new URL(resolveWebAuthUrl("/sign-in"));
+    expect(signInUrl.origin).toBe(AUTH_ORIGIN);
+    expect(signInUrl.pathname).toBe("/sign-in");
+    expect(signInUrl.searchParams.get("domain")).toBe(AUTH_DOMAIN);
+  });
+
+  it("falls back to a derived vm6 API override for app auth without configured onboarding", async () => {
     await withoutConfiguredOnboarding(() => {
       setBrowserUrl("https://pr-18532-app.vm6.ai/agents");
 
-      const url = new URL(resolveWebAuthUrl("/sign-in"));
-      expect(url.origin).toBe("https://pr-18532-www.vm6.ai");
+      const url = new URL(resolveAppAuthUrl("/sign-in"));
+      expect(url.origin).toBe("https://pr-18532-app.vm6.ai");
       expect(url.searchParams.get("domain")).toBe("pr-18532-api.vm6.ai");
     });
   });
@@ -86,16 +99,16 @@ describe("platform auth URLs", () => {
     await withoutConfiguredOnboarding(() => {
       setBrowserUrl("https://app.vm0.ai/agents");
 
-      expect(resolveWebAuthUrl("/sign-in")).toBe("https://www.vm0.ai/sign-in");
+      expect(resolveAppAuthUrl("/sign-in")).toBe("https://app.vm0.ai/sign-in");
     });
   });
 
-  it("uses the configured onboarding origin in production without domain override", async () => {
+  it("uses app auth in production without domain override", async () => {
     await withProductionDeployment(() => {
       setBrowserUrl("https://app.vm0.ai/agents");
 
-      const url = new URL(resolveWebAuthUrl("/sign-in"));
-      expect(url.origin).toBe(AUTH_ORIGIN);
+      const url = new URL(resolveAppAuthUrl("/sign-in"));
+      expect(url.origin).toBe("https://app.vm0.ai");
       expect(url.pathname).toBe("/sign-in");
       expect(url.searchParams.has("domain")).toBeFalsy();
     });
@@ -103,7 +116,7 @@ describe("platform auth URLs", () => {
 });
 
 describe("platform auth redirects", () => {
-  it("redirects unauthenticated users to configured auth with API domain override", async () => {
+  it("redirects unauthenticated users to app auth with API domain override", async () => {
     setBrowserUrl("https://pr-18532-app.vm6.ai/agents");
 
     detachedSetupPage({
@@ -115,7 +128,7 @@ describe("platform auth redirects", () => {
 
     await waitFor(() => {
       const url = new URL(window.location.href);
-      expect(url.origin).toBe(AUTH_ORIGIN);
+      expect(url.origin).toBe("https://pr-18532-app.vm6.ai");
       expect(url.pathname).toBe("/sign-in");
       expect(url.searchParams.get("domain")).toBe(AUTH_DOMAIN);
       expect(url.searchParams.get("redirect_url")).toBe(
@@ -138,13 +151,13 @@ describe("platform auth redirects", () => {
 
     await waitFor(() => {
       const url = new URL(window.location.href);
-      expect(url.origin).toBe(AUTH_ORIGIN);
+      expect(url.origin).toBe("https://pr-18532-app.vm6.ai");
       expect(url.pathname).toBe("/sign-in/tasks/choose-organization");
       expect(url.searchParams.get("domain")).toBe(AUTH_DOMAIN);
     });
   });
 
-  it("falls back to derived web auth for non-preview org selection", async () => {
+  it("uses app auth for non-preview org selection", async () => {
     await withoutConfiguredOnboarding(async () => {
       setBrowserUrl("https://app.vm0.ai/agents");
 
@@ -159,7 +172,7 @@ describe("platform auth redirects", () => {
 
       await waitFor(() => {
         const url = new URL(window.location.href);
-        expect(url.origin).toBe("https://www.vm0.ai");
+        expect(url.origin).toBe("https://app.vm0.ai");
         expect(url.pathname).toBe("/sign-in/tasks/choose-organization");
         expect(url.searchParams.has("domain")).toBeFalsy();
       });

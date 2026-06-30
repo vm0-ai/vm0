@@ -4369,7 +4369,7 @@ export interface PresentationRunbookPackage {
 const PRESENTATION_RUNBOOK_ARCHIVE_SHA256: Record<string, string> = {
   "playful-launch":
     "d39a2c6c42365613f5c3aedff56333e6bb0af7ce2df30da26f3c4f20f128e69e",
-  bloom: "1c815ce0dc091d965b2332ba672640b8d2c27fbdbdd89d43c14ed9702c2d42c2",
+  bloom: "ad8764eb812697b5079ad4f34f42b2014b10a3a86f0ee080242ca24e062568cc",
   "blueprint-academy":
     "abe24c3cbf0c2f4517657a7a08f185d3dd688f7e8a4e0dc0656960f84c085ed0",
   "botane-organic":

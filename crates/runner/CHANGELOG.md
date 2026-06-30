@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.130.13](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.12...runner-rs-v0.130.13) (2026-06-30)
+
+
+### Documentation
+
+* document Ably supervisor discovery contract ([#19433](https://github.com/vm0-ai/vm0/issues/19433)) ([83f686e](https://github.com/vm0-ai/vm0/commit/83f686e8a32de4dd4edd7dcf416421b78756ffca))
+
 ## [0.130.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.11...runner-rs-v0.130.12) (2026-06-30)
 
 

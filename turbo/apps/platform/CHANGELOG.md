@@ -1,5 +1,28 @@
 # Changelog
 
+## [0.512.0](https://github.com/vm0-ai/vm0/compare/app-v0.511.2...app-v0.512.0) (2026-06-30)
+
+
+### Features
+
+* add connected connectors filter ([#19460](https://github.com/vm0-ai/vm0/issues/19460)) ([e7f098b](https://github.com/vm0-ai/vm0/commit/e7f098b13f4ba7c56cfb8e01bbe7ca5b42a57908))
+
+## [0.511.2](https://github.com/vm0-ai/vm0/compare/app-v0.511.1...app-v0.511.2) (2026-06-30)
+
+
+### Bug Fixes
+
+* update instatus widget integrity ([#19455](https://github.com/vm0-ai/vm0/issues/19455)) ([9fa280e](https://github.com/vm0-ai/vm0/commit/9fa280eb69b76323db22c40d5f1c203f3b0b7a82))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.129.1
+    * @vm0/connectors bumped to 1.116.0
+    * @vm0/core bumped to 8.378.0
+
 ## [0.511.1](https://github.com/vm0-ai/vm0/compare/app-v0.511.0...app-v0.511.1) (2026-06-30)
 
 
