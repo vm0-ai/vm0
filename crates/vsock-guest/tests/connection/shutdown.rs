@@ -1,13 +1,14 @@
 use std::io::Write;
+use std::path::Path;
 use std::thread;
 use std::time::Duration;
 
 use vsock_guest::run;
-use vsock_proto::{self, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK};
+use vsock_proto::{self, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_SHUTDOWN_ACK, MSG_WRITE_FILE};
 
 use super::support::{
-    finish_guest_connection, read_and_discard_message, read_error_response, read_message,
-    start_guest_connection, unique_socket_path,
+    finish_guest_connection, join_guest_connection, read_and_discard_message, read_error_response,
+    read_message, start_guest_connection, unique_socket_path, unique_tmp_path,
 };
 
 #[test]
@@ -99,4 +100,25 @@ fn shutdown_rejects_non_empty_payload_without_exiting() {
     assert_eq!(pong.seq, 43);
 
     finish_guest_connection(handle, host_stream);
+}
+
+#[test]
+fn shutdown_ignores_later_frames_in_same_read_buffer() {
+    let (handle, mut host_stream) = start_guest_connection();
+    let path = unique_tmp_path("shutdown-followed-by-write-file", ".txt");
+    let write_payload =
+        vsock_proto::encode_write_file(path.as_str(), b"should-not-write", false, false)
+            .expect("encode write_file");
+
+    let mut batch = vsock_proto::encode(MSG_SHUTDOWN, 50, &[]).unwrap();
+    batch.extend_from_slice(&vsock_proto::encode(MSG_WRITE_FILE, 51, &write_payload).unwrap());
+    host_stream.write_all(&batch).unwrap();
+
+    let ack = read_message(&mut host_stream);
+    assert_eq!(ack.msg_type, MSG_SHUTDOWN_ACK);
+    assert_eq!(ack.seq, 50);
+
+    drop(host_stream);
+    join_guest_connection(handle);
+    assert!(!Path::new(path.as_str()).exists());
 }

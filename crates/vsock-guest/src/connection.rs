@@ -6,9 +6,9 @@ use std::thread;
 use std::time::{Duration, Instant};
 
 use vsock_proto::{
-    self, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_START, MSG_OPERATIONS_QUIESCED,
-    MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_READY, MSG_RESUME_OPERATIONS,
-    MSG_WRITE_FILE, MSG_WRITE_FILES, RawMessage,
+    self, BorrowedRawMessage, DecodeWithError, MSG_EXEC_CANCEL, MSG_EXEC_CONTROL, MSG_EXEC_START,
+    MSG_OPERATIONS_QUIESCED, MSG_OPERATIONS_RESUMED, MSG_QUIESCE_OPERATIONS, MSG_READY,
+    MSG_RESUME_OPERATIONS, MSG_WRITE_FILE, MSG_WRITE_FILES,
 };
 
 use crate::error::to_io_error;
@@ -49,6 +49,11 @@ enum ReconnectFailure {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum DispatchOutcome {
     Continue,
+    Shutdown,
+}
+
+enum DecodeDispatchError {
+    Dispatch(io::Error),
     Shutdown,
 }
 
@@ -252,7 +257,7 @@ impl ConnectionDispatcher {
         }
     }
 
-    fn dispatch(&self, msg: &RawMessage) -> io::Result<DispatchOutcome> {
+    fn dispatch(&self, msg: BorrowedRawMessage<'_>) -> io::Result<DispatchOutcome> {
         match msg.msg_type {
             MSG_EXEC_START => self.handle_exec_start(msg)?,
             MSG_EXEC_CANCEL => self.handle_exec_cancel(msg)?,
@@ -267,14 +272,14 @@ impl ConnectionDispatcher {
         Ok(DispatchOutcome::Continue)
     }
 
-    fn handle_exec_start(&self, msg: &RawMessage) -> io::Result<()> {
+    fn handle_exec_start(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
         if !require_non_zero_sequence(msg.seq, "exec start", &self.writer)? {
             return Ok(());
         }
         if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
             return Ok(());
         }
-        let decoded = match vsock_proto::decode_exec_start(&msg.payload) {
+        let decoded = match vsock_proto::decode_exec_start(msg.payload) {
             Ok(decoded) => decoded,
             Err(error) => {
                 send_error_response(msg.seq, &error.to_string(), &self.writer)?;
@@ -330,11 +335,11 @@ impl ConnectionDispatcher {
         )
     }
 
-    fn handle_exec_cancel(&self, msg: &RawMessage) -> io::Result<()> {
+    fn handle_exec_cancel(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
         if !require_non_zero_sequence(msg.seq, "exec cancel", &self.writer)? {
             return Ok(());
         }
-        if let Err(error) = vsock_proto::decode_exec_cancel(&msg.payload) {
+        if let Err(error) = vsock_proto::decode_exec_cancel(msg.payload) {
             log(
                 "WARN",
                 &format!(
@@ -347,11 +352,11 @@ impl ConnectionDispatcher {
         Ok(())
     }
 
-    fn handle_exec_control(&self, msg: &RawMessage) -> io::Result<()> {
+    fn handle_exec_control(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
         if !require_non_zero_sequence(msg.seq, "exec control", &self.writer)? {
             return Ok(());
         }
-        let decoded = match vsock_proto::decode_exec_control(&msg.payload) {
+        let decoded = match vsock_proto::decode_exec_control(msg.payload) {
             Ok(decoded) => decoded,
             Err(error) => {
                 send_error_response(msg.seq, &error.to_string(), &self.writer)?;
@@ -361,14 +366,14 @@ impl ConnectionDispatcher {
         route_exec_control(msg.seq, decoded, &self.exec_control_registry, &self.writer)
     }
 
-    fn handle_write_file(&self, msg: &RawMessage) -> io::Result<()> {
+    fn handle_write_file(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
         if !require_non_zero_sequence(msg.seq, "write_file", &self.writer)? {
             return Ok(());
         }
         if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
             return Ok(());
         }
-        let decoded = match decode_write_file_message(msg) {
+        let decoded = match decode_write_file_message(msg.payload) {
             Ok(decoded) => decoded,
             Err(error) => {
                 send_error_response(msg.seq, &error.to_string(), &self.writer)?;
@@ -386,14 +391,14 @@ impl ConnectionDispatcher {
         })
     }
 
-    fn handle_write_files(&self, msg: &RawMessage) -> io::Result<()> {
+    fn handle_write_files(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
         if !require_non_zero_sequence(msg.seq, "write_files", &self.writer)? {
             return Ok(());
         }
         if reject_operation_if_quiescing(&self.operation_state, msg.seq, &self.writer)? {
             return Ok(());
         }
-        let decoded = match decode_write_files_message(msg) {
+        let decoded = match decode_write_files_message(msg.payload) {
             Ok(decoded) => decoded,
             Err(error) => {
                 send_error_response(msg.seq, &error.to_string(), &self.writer)?;
@@ -411,15 +416,15 @@ impl ConnectionDispatcher {
         })
     }
 
-    fn handle_quiesce_operations(&self, msg: &RawMessage) -> io::Result<()> {
-        handle_quiesce_operations(msg.seq, &msg.payload, &self.operation_state, &self.writer)
+    fn handle_quiesce_operations(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
+        handle_quiesce_operations(msg.seq, msg.payload, &self.operation_state, &self.writer)
     }
 
-    fn handle_resume_operations(&self, msg: &RawMessage) -> io::Result<()> {
-        handle_resume_operations(msg.seq, &msg.payload, &self.operation_state, &self.writer)
+    fn handle_resume_operations(&self, msg: BorrowedRawMessage<'_>) -> io::Result<()> {
+        handle_resume_operations(msg.seq, msg.payload, &self.operation_state, &self.writer)
     }
 
-    fn handle_basic_message(&self, msg: &RawMessage) -> io::Result<DispatchOutcome> {
+    fn handle_basic_message(&self, msg: BorrowedRawMessage<'_>) -> io::Result<DispatchOutcome> {
         match handle_basic_message(msg)? {
             MessageOutcome::Response(response) => {
                 self.writer.write_frame(&response)?;
@@ -533,19 +538,26 @@ fn handle_connection_with_outcome(stream: UnixStream) -> Result<ConnectionEnd, C
         }
 
         // n <= buf.len() is guaranteed by read()
-        for msg in decoder
-            .decode(buf.get(..n).unwrap_or_default())
-            .map_err(to_io_error)
-            .map_err(|error| session.failure(error))?
-        {
-            if dispatcher
-                .dispatch(&msg)
-                .map_err(|error| session.failure(error))?
-                == DispatchOutcome::Shutdown
-            {
+        match decoder.decode_with(buf.get(..n).unwrap_or_default(), |msg| {
+            match dispatcher.dispatch(msg) {
+                Ok(DispatchOutcome::Continue) => {
+                    session.mark_real_host_work(msg.msg_type);
+                    Ok(())
+                }
+                Ok(DispatchOutcome::Shutdown) => Err(DecodeDispatchError::Shutdown),
+                Err(error) => Err(DecodeDispatchError::Dispatch(error)),
+            }
+        }) {
+            Ok(()) => {}
+            Err(DecodeWithError::Protocol(error)) => {
+                return Err(session.failure(to_io_error(error)));
+            }
+            Err(DecodeWithError::Visitor(DecodeDispatchError::Dispatch(error))) => {
+                return Err(session.failure(error));
+            }
+            Err(DecodeWithError::Visitor(DecodeDispatchError::Shutdown)) => {
                 return Ok(ConnectionEnd::Shutdown);
             }
-            session.mark_real_host_work(msg.msg_type);
         }
     }
 
