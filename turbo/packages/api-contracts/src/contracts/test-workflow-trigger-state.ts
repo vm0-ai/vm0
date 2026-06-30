@@ -9,12 +9,21 @@ export const testWorkflowTriggerStateActionBodySchema = z
     action: z.enum([
       "seed-scenario",
       "delete-scenario",
+      "seed-agent-workflow",
       "seed-trigger",
+      "seed-connector",
       "seed-gmail-authorization",
+      "seed-github-installation",
+      "seed-github-user-link",
       "set-owner-timezone",
       "seed-active-run",
+      "set-trigger-run-state",
       "get-trigger",
       "get-run-state",
+      "get-workflow-state",
+      "get-gmail-watch",
+      "get-google-calendar-watch",
+      "get-chat-thread",
     ]),
   })
   .passthrough();
