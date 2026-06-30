@@ -76,10 +76,11 @@ async fn shielded_snapshot_publish(
     // Once the provider returns an uncommitted snapshot, publish must reach
     // either commit or discard even if the caller waiting on this result is
     // cancelled. Move the snapshot lock into the detached task so other
-    // builders and GC cannot observe this output directory until commit
-    // succeeds or discard finishes. This shields waiter cancellation only; it
-    // is not a process-exit or runtime-shutdown guarantee. The cancellation
-    // tests below cover the lock lifetime through both commit and discard.
+    // builders and GC cannot acquire the lock and act on this output directory
+    // until commit succeeds or discard finishes. This shields waiter
+    // cancellation only; it is not a process-exit or runtime-shutdown
+    // guarantee. The cancellation tests below cover the lock lifetime through
+    // both commit and discard.
     tokio::spawn(async move {
         let result =
             commit_or_discard_pending_snapshot(pending, &snapshot_hash, &snapshot_dir).await;
