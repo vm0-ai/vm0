@@ -523,6 +523,21 @@ mod tests {
     }
 
     #[test]
+    fn parse_fio_json_preserves_inactive_direction_iops_fallback() {
+        let json = br#"{
+            "jobs": [{
+                "read": {"iops": 0.0, "total_ios": 0},
+                "write": {"iops": 0.0, "total_ios": 0},
+                "trim": {"iops": 0.0, "total_ios": 0}
+            }]
+        }"#;
+
+        let err = parse_fio_json(json).unwrap_err();
+
+        assert!(err.contains("no active read/write/trim direction"), "{err}");
+    }
+
+    #[test]
     fn active_source_vm_iops_sums_multiple_jobs() {
         let root = json!({
             "jobs": [
