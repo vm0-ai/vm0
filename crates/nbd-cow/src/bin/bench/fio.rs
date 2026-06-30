@@ -73,8 +73,9 @@ pub(crate) async fn run_fio_with_iostat(
 fn parse_fio_json(stdout: &[u8]) -> Result<FioResult, String> {
     let root: Value = serde_json::from_slice(stdout).map_err(|e| format!("parse fio JSON: {e}"))?;
     let jobs = fio_jobs(&root)?;
-    let vm_iops = fio_vm_iops(jobs)?;
-    let (lat_p50_us, lat_p99_us) = fio_latency_us(jobs)?;
+    let active_source = select_active_fio_source(jobs);
+    let vm_iops = active_source_vm_iops(&active_source, jobs)?;
+    let (lat_p50_us, lat_p99_us) = active_source_latency_us(&active_source)?;
 
     Ok(FioResult {
         vm_iops: float_to_u64(vm_iops, "fio JSON VM IOPS")?,
@@ -95,29 +96,69 @@ fn fio_jobs(root: &Value) -> Result<&[Value], String> {
     Ok(jobs)
 }
 
-fn fio_vm_iops(jobs: &[Value]) -> Result<f64, String> {
-    let active_mixed_sections = jobs
-        .iter()
-        .filter_map(|job| job.get("mixed"))
-        .filter(|section| section_is_active(section))
-        .collect::<Vec<_>>();
-    if !active_mixed_sections.is_empty() {
-        return sum_section_iops(&active_mixed_sections, "mixed");
+enum ActiveFioSource<'a> {
+    Mixed(Vec<&'a Value>),
+    Directions(Vec<ActiveDirectionSections<'a>>),
+    None,
+}
+
+struct ActiveDirectionSections<'a> {
+    name: &'static str,
+    sections: Vec<&'a Value>,
+}
+
+const DIRECTIONS: [&str; 3] = ["read", "write", "trim"];
+
+fn select_active_fio_source(jobs: &[Value]) -> ActiveFioSource<'_> {
+    let mixed_sections = active_sections(jobs, "mixed");
+    if !mixed_sections.is_empty() {
+        return ActiveFioSource::Mixed(mixed_sections);
     }
 
-    let active_direction_sections = jobs
+    let direction_sections = DIRECTIONS
         .iter()
-        .flat_map(|job| {
-            DIRECTIONS
-                .iter()
-                .filter_map(move |direction| job.get(*direction))
+        .copied()
+        .filter_map(|direction| {
+            let sections = active_sections(jobs, direction);
+            (!sections.is_empty()).then_some(ActiveDirectionSections {
+                name: direction,
+                sections,
+            })
         })
-        .filter(|section| section_is_active(section))
         .collect::<Vec<_>>();
-    if !active_direction_sections.is_empty() {
-        return sum_section_iops(&active_direction_sections, "active direction");
-    }
 
+    if direction_sections.is_empty() {
+        ActiveFioSource::None
+    } else {
+        ActiveFioSource::Directions(direction_sections)
+    }
+}
+
+fn active_sections<'a>(jobs: &'a [Value], section_name: &str) -> Vec<&'a Value> {
+    jobs.iter()
+        .filter_map(|job| job.get(section_name))
+        .filter(|section| section_is_active(section))
+        .collect()
+}
+
+fn active_source_vm_iops(
+    active_source: &ActiveFioSource<'_>,
+    jobs: &[Value],
+) -> Result<f64, String> {
+    match active_source {
+        ActiveFioSource::Mixed(sections) => sum_section_iops(sections, "mixed"),
+        ActiveFioSource::Directions(directions) => {
+            let sections = directions
+                .iter()
+                .flat_map(|direction| direction.sections.iter().copied())
+                .collect::<Vec<_>>();
+            sum_section_iops(&sections, "active direction")
+        }
+        ActiveFioSource::None => fallback_direction_iops(jobs),
+    }
+}
+
+fn fallback_direction_iops(jobs: &[Value]) -> Result<f64, String> {
     let mut saw_iops = false;
     let total = jobs
         .iter()
@@ -135,42 +176,26 @@ fn fio_vm_iops(jobs: &[Value]) -> Result<f64, String> {
     Ok(total)
 }
 
-const DIRECTIONS: [&str; 3] = ["read", "write", "trim"];
-
-fn fio_latency_us(jobs: &[Value]) -> Result<(u64, u64), String> {
-    let active_mixed_sections = jobs
-        .iter()
-        .filter_map(|job| job.get("mixed"))
-        .filter(|section| section_is_active(section))
-        .collect::<Vec<_>>();
-    if !active_mixed_sections.is_empty() {
-        return single_latency_section(active_mixed_sections, "mixed");
-    }
-
-    let active_directions = DIRECTIONS
-        .iter()
-        .copied()
-        .filter(|direction| {
-            jobs.iter()
-                .filter_map(|job| job.get(*direction))
-                .any(section_is_active)
-        })
-        .collect::<Vec<_>>();
-
-    match active_directions.as_slice() {
-        [] => Err("fio JSON has no active read/write/trim direction".to_string()),
-        [direction] => {
-            let latency_sections = jobs
-                .iter()
-                .filter_map(|job| job.get(*direction))
-                .filter(|section| section_is_active(section))
-                .collect::<Vec<_>>();
-            single_latency_section(latency_sections, direction)
+fn active_source_latency_us(active_source: &ActiveFioSource<'_>) -> Result<(u64, u64), String> {
+    match active_source {
+        ActiveFioSource::Mixed(sections) => single_latency_section(sections, "mixed"),
+        ActiveFioSource::None => {
+            Err("fio JSON has no active read/write/trim direction".to_string())
         }
-        directions => Err(format!(
-            "fio JSON has mixed directions ({}) but no unified mixed latency; rerun with --unified_rw_reporting=1",
-            directions.join(",")
-        )),
+        ActiveFioSource::Directions(directions) => match directions.as_slice() {
+            [] => Err("fio JSON has no active read/write/trim direction".to_string()),
+            [direction] => single_latency_section(&direction.sections, direction.name),
+            directions => {
+                let direction_names = directions
+                    .iter()
+                    .map(|direction| direction.name)
+                    .collect::<Vec<_>>();
+                Err(format!(
+                    "fio JSON has mixed directions ({}) but no unified mixed latency; rerun with --unified_rw_reporting=1",
+                    direction_names.join(",")
+                ))
+            }
+        },
     }
 }
 
@@ -207,8 +232,8 @@ fn section_latency_us(section: &Value, section_name: &str) -> Result<(u64, u64),
     Ok((p50, p99))
 }
 
-fn single_latency_section(sections: Vec<&Value>, section_name: &str) -> Result<(u64, u64), String> {
-    match sections.as_slice() {
+fn single_latency_section(sections: &[&Value], section_name: &str) -> Result<(u64, u64), String> {
+    match sections {
         [] => Err(format!(
             "fio JSON missing {section_name} latency percentiles"
         )),
@@ -240,32 +265,54 @@ fn nonnegative_f64(value: &Value) -> Option<f64> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use serde_json::Value;
+    use serde_json::{Value, json};
+
+    fn fio_stdout(jobs: Vec<Value>) -> Vec<u8> {
+        serde_json::to_vec(&json!({ "jobs": jobs })).unwrap()
+    }
+
+    fn fio_job(sections: Vec<(&str, Value)>) -> Value {
+        let mut job = serde_json::Map::new();
+        for (name, section) in sections {
+            job.insert(name.to_string(), section);
+        }
+        Value::Object(job)
+    }
+
+    fn section(iops: f64, total_ios: u64, p50_ns: u64, p99_ns: u64) -> Value {
+        json!({
+            "iops": iops,
+            "total_ios": total_ios,
+            "clat_ns": {
+                "percentile": {
+                    "50.000000": p50_ns,
+                    "99.000000": p99_ns,
+                },
+            },
+        })
+    }
+
+    fn section_without_latency(iops: f64, total_ios: u64) -> Value {
+        json!({
+            "iops": iops,
+            "total_ios": total_ios,
+        })
+    }
+
+    fn inactive_section() -> Value {
+        section_without_latency(0.0, 0)
+    }
 
     #[test]
     fn parse_fio_json_sums_mixed_read_write_iops() {
-        let json = br#"{
-            "jobs": [{
-                "read": {
-                    "iops": 700.0,
-                    "total_ios": 700,
-                    "clat_ns": {"percentile": {"50.000000": 10000, "99.000000": 20000}}
-                },
-                "write": {
-                    "iops": 300.0,
-                    "total_ios": 300,
-                    "clat_ns": {"percentile": {"50.000000": 12000, "99.000000": 22000}}
-                },
-                "trim": {"iops": 0.0, "total_ios": 0},
-                "mixed": {
-                    "iops": 1000.0,
-                    "total_ios": 1000,
-                    "clat_ns": {"percentile": {"50.000000": 11000, "99.000000": 21000}}
-                }
-            }]
-        }"#;
+        let json = fio_stdout(vec![fio_job(vec![
+            ("read", section(700.0, 700, 10000, 20000)),
+            ("write", section(300.0, 300, 12000, 22000)),
+            ("trim", inactive_section()),
+            ("mixed", section(1000.0, 1000, 11000, 21000)),
+        ])]);
 
-        let result = parse_fio_json(json).unwrap();
+        let result = parse_fio_json(&json).unwrap();
 
         assert_eq!(result.vm_iops, 1000);
         assert_eq!(result.lat_p50_us, 11);
@@ -273,36 +320,33 @@ mod tests {
     }
 
     #[test]
-    fn fio_vm_iops_sums_read_write_without_mixed() {
-        let json = br#"{
-            "jobs": [{
-                "read": {"iops": 700.0, "total_ios": 700},
-                "write": {"iops": 300.0, "total_ios": 300},
-                "trim": {"iops": 0.0, "total_ios": 0}
-            }]
-        }"#;
-        let root: Value = serde_json::from_slice(json).unwrap();
+    fn active_source_vm_iops_sums_read_write_without_mixed() {
+        let root = json!({
+            "jobs": [fio_job(vec![
+                ("read", section_without_latency(700.0, 700)),
+                ("write", section_without_latency(300.0, 300)),
+                ("trim", inactive_section()),
+            ])],
+        });
         let jobs = fio_jobs(&root).unwrap();
+        let active_source = select_active_fio_source(jobs);
 
-        assert_eq!(fio_vm_iops(jobs).unwrap() as u64, 1000);
+        assert_eq!(
+            active_source_vm_iops(&active_source, jobs).unwrap() as u64,
+            1000
+        );
     }
 
     #[test]
     fn parse_fio_json_prefers_mixed_section() {
-        let json = br#"{
-            "jobs": [{
-                "read": {"iops": 700.0, "total_ios": 700},
-                "write": {"iops": 300.0, "total_ios": 300},
-                "trim": {"iops": 0.0, "total_ios": 0},
-                "mixed": {
-                    "iops": 950.0,
-                    "total_ios": 1000,
-                    "clat_ns": {"percentile": {"50.000000": 13000, "99.000000": 23000}}
-                }
-            }]
-        }"#;
+        let json = fio_stdout(vec![fio_job(vec![
+            ("read", section_without_latency(700.0, 700)),
+            ("write", section_without_latency(300.0, 300)),
+            ("trim", inactive_section()),
+            ("mixed", section(950.0, 1000, 13000, 23000)),
+        ])]);
 
-        let result = parse_fio_json(json).unwrap();
+        let result = parse_fio_json(&json).unwrap();
 
         assert_eq!(result.vm_iops, 950);
         assert_eq!(result.lat_p50_us, 13);
@@ -397,20 +441,14 @@ mod tests {
 
     #[test]
     fn parse_fio_json_ignores_inactive_mixed_section_for_read_only() {
-        let json = br#"{
-            "jobs": [{
-                "read": {
-                    "iops": 512.0,
-                    "total_ios": 512,
-                    "clat_ns": {"percentile": {"50.000000": 8000, "99.000000": 16000}}
-                },
-                "write": {"iops": 0.0, "total_ios": 0},
-                "trim": {"iops": 0.0, "total_ios": 0},
-                "mixed": {"iops": 0.0, "total_ios": 0}
-            }]
-        }"#;
+        let json = fio_stdout(vec![fio_job(vec![
+            ("read", section(512.0, 512, 8000, 16000)),
+            ("write", inactive_section()),
+            ("trim", inactive_section()),
+            ("mixed", inactive_section()),
+        ])]);
 
-        let result = parse_fio_json(json).unwrap();
+        let result = parse_fio_json(&json).unwrap();
 
         assert_eq!(result.vm_iops, 512);
         assert_eq!(result.lat_p50_us, 8);
@@ -447,29 +485,20 @@ mod tests {
     }
 
     #[test]
-    fn fio_vm_iops_sums_multiple_jobs() {
-        let json = br#"{
+    fn active_source_vm_iops_sums_multiple_jobs() {
+        let root = json!({
             "jobs": [
-                {
-                    "mixed": {
-                        "iops": 600.0,
-                        "total_ios": 600,
-                        "clat_ns": {"percentile": {"50.000000": 10000, "99.000000": 20000}}
-                    }
-                },
-                {
-                    "mixed": {
-                        "iops": 400.0,
-                        "total_ios": 400,
-                        "clat_ns": {"percentile": {"50.000000": 12000, "99.000000": 22000}}
-                    }
-                }
-            ]
-        }"#;
-        let root: Value = serde_json::from_slice(json).unwrap();
+                fio_job(vec![("mixed", section(600.0, 600, 10000, 20000))]),
+                fio_job(vec![("mixed", section(400.0, 400, 12000, 22000))]),
+            ],
+        });
         let jobs = fio_jobs(&root).unwrap();
+        let active_source = select_active_fio_source(jobs);
 
-        assert_eq!(fio_vm_iops(jobs).unwrap() as u64, 1000);
+        assert_eq!(
+            active_source_vm_iops(&active_source, jobs).unwrap() as u64,
+            1000
+        );
     }
 
     #[test]
@@ -526,19 +555,13 @@ mod tests {
 
     #[test]
     fn parse_fio_json_accepts_read_only_without_mixed() {
-        let json = br#"{
-            "jobs": [{
-                "read": {
-                    "iops": 512.0,
-                    "total_ios": 512,
-                    "clat_ns": {"percentile": {"50.000000": 8000, "99.000000": 16000}}
-                },
-                "write": {"iops": 0.0, "total_ios": 0},
-                "trim": {"iops": 0.0, "total_ios": 0}
-            }]
-        }"#;
+        let json = fio_stdout(vec![fio_job(vec![
+            ("read", section(512.0, 512, 8000, 16000)),
+            ("write", inactive_section()),
+            ("trim", inactive_section()),
+        ])]);
 
-        let result = parse_fio_json(json).unwrap();
+        let result = parse_fio_json(&json).unwrap();
 
         assert_eq!(result.vm_iops, 512);
         assert_eq!(result.lat_p50_us, 8);
@@ -547,19 +570,13 @@ mod tests {
 
     #[test]
     fn parse_fio_json_accepts_write_only_without_mixed() {
-        let json = br#"{
-            "jobs": [{
-                "read": {"iops": 0.0, "total_ios": 0},
-                "write": {
-                    "iops": 256.0,
-                    "total_ios": 256,
-                    "clat_ns": {"percentile": {"50.000000": 9000, "99.000000": 18000}}
-                },
-                "trim": {"iops": 0.0, "total_ios": 0}
-            }]
-        }"#;
+        let json = fio_stdout(vec![fio_job(vec![
+            ("read", inactive_section()),
+            ("write", section(256.0, 256, 9000, 18000)),
+            ("trim", inactive_section()),
+        ])]);
 
-        let result = parse_fio_json(json).unwrap();
+        let result = parse_fio_json(&json).unwrap();
 
         assert_eq!(result.vm_iops, 256);
         assert_eq!(result.lat_p50_us, 9);
