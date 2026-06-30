@@ -36,7 +36,7 @@ _PROVIDER_OWNED_HOST_POLICY_KEYS = frozenset(
     ("kind", "exactHosts", "suffixes", "allowNonDefaultPort")
 )
 _PUBLIC_DESTINATION_HOST_POLICY_KEYS = frozenset(("kind",))
-_PERCENT_DECODED_HOST_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61,")
+_PERCENT_DECODED_HOST_SYNTAX_CHARS = frozenset("{}*.\u3002\uff0e\uff61,")
 
 
 class BuiltinHostPolicyError(ValueError):
@@ -125,6 +125,8 @@ def _decoded_base_host(
         syntax_chars=_PERCENT_DECODED_HOST_SYNTAX_CHARS,
     )
     if decoded.invalid_encoding or decoded.decoded_syntax:
+        raise _invalid_resolved_base_url(firewall_name)
+    if "*" in decoded.value:
         raise _invalid_resolved_base_url(firewall_name)
     if raw_host.bracketed:
         try:
