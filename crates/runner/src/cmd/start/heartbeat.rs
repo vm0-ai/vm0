@@ -1,5 +1,5 @@
 use std::collections::BTreeMap;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex, MutexGuard};
 use std::time::Duration;
 
 use tracing::{debug, info};
@@ -65,7 +65,7 @@ impl<'a> HeartbeatContext<'a> {
 
 #[derive(Clone, Default)]
 pub(super) struct HeldSessionStateSnapshot {
-    workspace_cache_states: Arc<tokio::sync::Mutex<Vec<HeldSessionState>>>,
+    workspace_cache_states: Arc<Mutex<Vec<HeldSessionState>>>,
 }
 
 impl HeldSessionStateSnapshot {
@@ -73,23 +73,29 @@ impl HeldSessionStateSnapshot {
         Self::default()
     }
 
-    async fn update_workspace_cache_states(&self, states: Vec<HeldSessionState>) {
-        *self.workspace_cache_states.lock().await = states;
+    fn update_workspace_cache_states(&self, states: Vec<HeldSessionState>) {
+        *self.lock_workspace_cache_states() = states;
     }
 
-    pub(super) async fn current_held_session_states(
+    pub(super) fn current_held_session_states(
         &self,
         idle_states: Vec<HeldSessionState>,
         active_cli_agent_sessions: &ActiveCliAgentSessions,
         extra_active_session: Option<&str>,
     ) -> Vec<HeldSessionState> {
-        let workspace_cache_states = self.workspace_cache_states.lock().await.clone();
+        let workspace_cache_states = self.lock_workspace_cache_states().clone();
         merge_current_held_session_states(
             idle_states,
             workspace_cache_states,
             active_cli_agent_sessions,
             extra_active_session,
         )
+    }
+
+    fn lock_workspace_cache_states(&self) -> MutexGuard<'_, Vec<HeldSessionState>> {
+        self.workspace_cache_states
+            .lock()
+            .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
 }
 
@@ -110,8 +116,7 @@ pub(super) async fn send_heartbeat(hb: &HeartbeatContext<'_>, mode: RunnerMode) 
     let workspace_cache_states =
         workspace_cache_held_session_states(hb.workspace_cache.as_ref()).await;
     hb.held_session_snapshot
-        .update_workspace_cache_states(workspace_cache_states.clone())
-        .await;
+        .update_workspace_cache_states(workspace_cache_states.clone());
     state.held_session_states = merge_current_held_session_states(
         state.held_session_states,
         workspace_cache_states,
@@ -418,9 +423,11 @@ mod tests {
         let updates = provider_handle.held_session_state_updates();
         assert_eq!(updates.len(), 1);
         assert_eq!(updates[0][0].session_id, session_id);
-        let cached_states = held_session_snapshot
-            .current_held_session_states(Vec::new(), &active_cli_agent_sessions, None)
-            .await;
+        let cached_states = held_session_snapshot.current_held_session_states(
+            Vec::new(),
+            &active_cli_agent_sessions,
+            None,
+        );
         assert_eq!(cached_states.len(), 1);
         assert_eq!(cached_states[0].session_id, session_id);
     }
@@ -468,22 +475,20 @@ mod tests {
     #[tokio::test]
     async fn held_session_snapshot_merges_cached_states_and_filters_active_sessions() {
         let snapshot = HeldSessionStateSnapshot::new();
-        snapshot
-            .update_workspace_cache_states(vec![
-                HeldSessionState {
-                    session_id: "sess-cache".into(),
-                    last_completed_at: "2026-06-01T00:00:02.000Z".into(),
-                },
-                HeldSessionState {
-                    session_id: "sess-claimed".into(),
-                    last_completed_at: "2026-06-01T00:00:03.000Z".into(),
-                },
-                HeldSessionState {
-                    session_id: "sess-active".into(),
-                    last_completed_at: "2026-06-01T00:00:04.000Z".into(),
-                },
-            ])
-            .await;
+        snapshot.update_workspace_cache_states(vec![
+            HeldSessionState {
+                session_id: "sess-cache".into(),
+                last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+            },
+            HeldSessionState {
+                session_id: "sess-claimed".into(),
+                last_completed_at: "2026-06-01T00:00:03.000Z".into(),
+            },
+            HeldSessionState {
+                session_id: "sess-active".into(),
+                last_completed_at: "2026-06-01T00:00:04.000Z".into(),
+            },
+        ]);
         let active_cli_agent_sessions =
             super::super::active_sessions::new_active_cli_agent_sessions();
         super::super::active_sessions::insert_active_cli_agent_session(
@@ -501,9 +506,11 @@ mod tests {
             },
         ];
 
-        let states = snapshot
-            .current_held_session_states(idle, &active_cli_agent_sessions, Some("sess-claimed"))
-            .await;
+        let states = snapshot.current_held_session_states(
+            idle,
+            &active_cli_agent_sessions,
+            Some("sess-claimed"),
+        );
 
         assert_eq!(
             states,

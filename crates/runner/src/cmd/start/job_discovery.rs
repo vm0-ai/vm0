@@ -416,8 +416,7 @@ async fn try_reuse_from_pool(
             held_session_states,
             &ctx.spawn_ctx.active_cli_agent_sessions,
             Some(cli_agent_session_id),
-        )
-        .await;
+        );
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::HeldSessionStateRefresh, started_at);
     let started_at = Instant::now();
     ctx.spawn_ctx
