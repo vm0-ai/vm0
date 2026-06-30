@@ -1009,7 +1009,7 @@ async def test_firewall_allow_header_auth_requestheaders_falls_back_when_upstrea
     assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "upstream_destination_unbound"
 
 
-async def test_firewall_allow_header_auth_requestheaders_defers_on_runtime_host_policy_block(
+async def test_firewall_allow_header_auth_requestheaders_blocks_public_destination_private_host(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
     api_entry: dict[str, object] = {
@@ -1052,16 +1052,18 @@ async def test_firewall_allow_header_auth_requestheaders_defers_on_runtime_host_
         fake_firewall_headers(headers={"Authorization": "Bearer resolved"}) as auth_fetch,
     ):
         requestheaders_result = mitm_addon.requestheaders(flow)
-        await await_requestheaders_result(requestheaders_result)
+        assert requestheaders_result is None
         _assert_no_request_stream(flow)
         assert "Authorization" not in flow.request.headers
 
         await mitm_addon.request(flow)
 
     auth_fetch.assert_not_called()
-    assert flow.response is not None
-    assert flow.response.status_code == 403
-    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "builtin_host_policy_denied"
+    assert flow.response is None
+    assert flow.live is False
+    assert flow.error is not None
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_public_destination"
     assert "Authorization" not in flow.request.headers
 
 

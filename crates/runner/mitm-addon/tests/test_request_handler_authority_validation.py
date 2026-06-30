@@ -130,10 +130,11 @@ async def test_runtime_host_policy_blocks_public_destination_private_endpoint(
     assert flow.response is not None
     assert flow.response.status_code == 403
     body = json.loads(flow.response.content)
-    assert body["error"] == "builtin_host_policy_denied"
-    assert body["reason"] == "public_endpoint_non_public_ip"
-    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
-    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "builtin_host_policy_denied"
+    assert body["error"] == "unsafe_public_destination"
+    assert body["reason"] == "non_public_destination"
+    assert body["destination_host"] == "10.0.0.5"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_public_destination"
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
 
@@ -168,7 +169,7 @@ async def test_runtime_host_policy_allows_public_destination_public_endpoint(
     auth_fetch.assert_awaited_once()
 
 
-async def test_runtime_host_policy_allows_public_destination_hostname_without_ip_endpoint(
+async def test_runtime_host_policy_blocks_public_destination_hostname_without_ip_endpoint(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers
 ):
     reg_path = _write_host_policy_registry(
@@ -195,10 +196,16 @@ async def test_runtime_host_policy_allows_public_destination_hostname_without_ip
     ):
         await mitm_addon.request(flow)
 
-    assert flow.response is None
-    assert flow.request.headers["Authorization"] == "Bearer x"
-    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
-    auth_fetch.assert_awaited_once()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "unsafe_public_destination"
+    assert body["reason"] == "invalid_destination"
+    assert body["destination_host"] == "strapi.example.com"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_public_destination"
+    auth_fetch.assert_not_called()
+    assert "Authorization" not in flow.request.headers
 
 
 async def test_runtime_host_policy_blocks_public_destination_private_request_host(
@@ -226,13 +233,16 @@ async def test_runtime_host_policy_blocks_public_destination_private_request_hos
     assert flow.response is not None
     assert flow.response.status_code == 403
     body = json.loads(flow.response.content)
-    assert body["error"] == "builtin_host_policy_denied"
-    assert body["reason"] == "public_host_non_public_ip"
+    assert body["error"] == "unsafe_public_destination"
+    assert body["reason"] == "non_public_destination"
+    assert body["destination_host"] == "10.0.0.5"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_public_destination"
     auth_fetch.assert_not_called()
     assert "Authorization" not in flow.request.headers
 
 
-async def test_runtime_host_policy_ignores_inline_public_destination_policy(
+async def test_runtime_host_policy_enforces_inline_public_destination_policy(
     tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
 ):
     reg_path = _write_host_policy_registry(
@@ -257,9 +267,16 @@ async def test_runtime_host_policy_ignores_inline_public_destination_policy(
     ):
         await mitm_addon.request(flow)
 
-    assert flow.response is None
-    assert flow.request.headers["Authorization"] == "Bearer x"
-    auth_fetch.assert_awaited_once()
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "unsafe_public_destination"
+    assert body["reason"] == "non_public_destination"
+    assert body["destination_host"] == "10.0.0.5"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "DENY"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "unsafe_public_destination"
+    auth_fetch.assert_not_called()
+    assert "Authorization" not in flow.request.headers
 
 
 @pytest.mark.parametrize(
