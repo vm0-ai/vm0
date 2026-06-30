@@ -333,6 +333,11 @@ const chatThreadDetailSchema = z.object({
   renamedAt: z.string().nullable().optional(),
 });
 
+const chatThreadMetadataSchema = z.object({
+  id: z.string(),
+  title: z.string().nullable(),
+});
+
 /**
  * Per-run model selection from the composer. Both fields are required when
  * the object is present; pass `null` to clear the thread's override and fall
@@ -635,6 +640,27 @@ export const chatThreadRenameContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Rename a chat thread (suppresses automated title generation)",
+  },
+});
+
+/**
+ * Narrow metadata endpoint for the current chat thread. This intentionally
+ * does not expose messages or detail fields needed by the web UI.
+ */
+export const chatThreadMetadataContract = c.router({
+  get: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:id/metadata",
+    headers: authHeadersSchema,
+    pathParams: chatThreadIdPathParamsSchema,
+    responses: {
+      200: chatThreadMetadataSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get chat thread metadata",
   },
 });
 
@@ -952,6 +978,7 @@ export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
 export type ChatThreadPinContract = typeof chatThreadPinContract;
 export type ChatThreadUnpinContract = typeof chatThreadUnpinContract;
 export type ChatThreadRenameContract = typeof chatThreadRenameContract;
+export type ChatThreadMetadataContract = typeof chatThreadMetadataContract;
 export type ChatThreadModelSelectionContract =
   typeof chatThreadModelSelectionContract;
 export type ChatThreadComputerUseHostContract =
@@ -968,6 +995,7 @@ export type ChatSearchMessage = z.infer<typeof chatSearchMessageSchema>;
 export {
   chatThreadListItemSchema,
   chatThreadDetailSchema,
+  chatThreadMetadataSchema,
   modelSelectionRequestSchema,
   generationTemplateRequestSchema,
   presentationGenerationTemplateRequestSchema,
@@ -1013,6 +1041,7 @@ export type IllustrationGenerationTemplateRequest = z.infer<
 export type SummaryEntry = z.infer<typeof summaryEntrySchema>;
 export type ChatThreadListItem = z.infer<typeof chatThreadListItemSchema>;
 export type ChatThreadDetail = z.infer<typeof chatThreadDetailSchema>;
+export type ChatThreadMetadata = z.infer<typeof chatThreadMetadataSchema>;
 export type PagedChatMessage = z.infer<typeof pagedChatMessageSchema>;
 export type ChatMessageUsagePayload = z.infer<
   typeof chatMessageUsagePayloadSchema

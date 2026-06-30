@@ -33,6 +33,7 @@ const EXISTING_THREAD_ID = "b0000000-0000-4000-a000-000000000001";
 const INCIDENT_THREAD_ID = "b0000000-0000-4000-a000-000000000002";
 const AUTOMATION_THREAD_ID = "b0000000-0000-4000-a000-000000000003";
 const ARCHIVED_THREAD_ID = "b0000000-0000-4000-a000-000000000004";
+const RESEARCH_THREAD_ID = "b0000000-0000-4000-a000-000000000005";
 
 type SidebarThread = Parameters<typeof splitChatThreadListResponse>[0][number];
 
@@ -925,31 +926,27 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("pins an agent from the conversation picker and starts that agent chat", async () => {
+  it("pins an agent from the conversation picker and opens that agent chat", async () => {
     prepareAgentTeam();
-    const createDeferred = context.mocks.deferred<void>();
+    let createRequests = 0;
 
-    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
-      return respond(200, splitChatThreadListResponse([]));
+    context.mocks.api(chatThreadsContract.list, ({ query, respond }) => {
+      const threads =
+        query.agentId === RESEARCH_AGENT_ID
+          ? [
+              createThread(RESEARCH_THREAD_ID, "Research kickoff", {
+                agent: { id: RESEARCH_AGENT_ID, avatarUrl: null },
+              }),
+            ]
+          : [];
+      return respond(200, splitChatThreadListResponse(threads));
     });
-    context.mocks.api(chatThreadsContract.create, async ({ body, respond }) => {
-      await createDeferred.promise;
+    context.mocks.api(chatThreadsContract.create, ({ body, respond }) => {
+      createRequests += 1;
       return respond(201, {
         id: body.clientThreadId ?? "created-thread-id",
         title: null,
         createdAt: "2026-03-10T00:00:00Z",
-      });
-    });
-    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
-      return respond(200, {
-        id: params.id,
-        title: null,
-        agentId: RESEARCH_AGENT_ID,
-        activeRunIds: [],
-        draftContent: null,
-        draftAttachments: null,
-        createdAt: "2026-03-10T00:00:00Z",
-        updatedAt: "2026-03-10T00:00:00Z",
       });
     });
 
@@ -1037,10 +1034,11 @@ describe("zero sidebar", () => {
       expect(
         within(sidebar).getByText("Chats with Research Agent"),
       ).toBeInTheDocument();
-      expect(within(sidebar).getByText("New chat")).toBeInTheDocument();
+      expect(within(sidebar).getByText("Research kickoff")).toBeInTheDocument();
+      expect(within(sidebar).queryByText("New chat")).not.toBeInTheDocument();
     });
 
-    createDeferred.resolve();
+    expect(createRequests).toBe(0);
   });
 
   it("shows agent unread indicators and dropdown actions behind the feature switch", async () => {
