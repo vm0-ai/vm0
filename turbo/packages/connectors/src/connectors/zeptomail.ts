@@ -20,6 +20,7 @@ export const zeptomail = {
           fields: {
             ZEPTOMAIL_TOKEN: {
               label: "Send Mail Token",
+              publicId: "sendMailToken",
               required: true,
               placeholder: "your-zeptomail-send-mail-token",
             },

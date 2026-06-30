@@ -21,6 +21,7 @@ export const dropboxSign = {
           fields: {
             DROPBOX_SIGN_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "40-character hex key",
             },

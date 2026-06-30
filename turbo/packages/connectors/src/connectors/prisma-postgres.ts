@@ -20,6 +20,7 @@ export const prismaPostgres = {
           fields: {
             PRISMA_POSTGRES_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "eyJhbGci...",
             },

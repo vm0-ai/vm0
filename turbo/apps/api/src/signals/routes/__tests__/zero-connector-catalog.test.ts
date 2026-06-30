@@ -244,7 +244,7 @@ describe("GET /api/zero/connector-catalog", () => {
     });
     expect(apiToken?.manualFields).toStrictEqual([
       {
-        id: "field-1",
+        id: "apiKey",
         label: "API Key",
         required: true,
         placeholder: "sk-...",
@@ -275,7 +275,7 @@ describe("GET /api/zero/connector-catalog", () => {
     expect(apiToken?.description).toBeNull();
     expect(apiToken?.manualFields).toStrictEqual([
       {
-        id: "field-1",
+        id: "apiKey",
         label: "API Key",
         required: true,
         placeholder: null,
@@ -328,6 +328,42 @@ describe("GET /api/zero/connector-catalog", () => {
     expect(response.body.error.message).toBe(
       "Connector catalog item not found",
     );
+  });
+
+  it("returns semantic public ids for device-auth start options", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    await enablePublicCatalog(orgId, userId, {
+      [FeatureSwitchKey.TestOauthConnector]: true,
+    });
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(
+      client.get({
+        params: { connectorRef: "test-oauth-device" },
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+
+    assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    const apiMethod = response.body.connector.authMethods.find((method) => {
+      return method.id === "api";
+    });
+    expect(apiMethod?.startOptions).toStrictEqual([
+      {
+        id: "mode",
+        kind: "select",
+        label: "Mode",
+        required: true,
+        defaultValue: "test",
+        options: [
+          { value: "test", label: "Test" },
+          { value: "live", label: "Live" },
+        ],
+      },
+    ]);
   });
 
   it("hides feature-gated auth methods from connector detail", async () => {

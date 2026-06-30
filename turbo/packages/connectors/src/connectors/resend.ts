@@ -20,6 +20,7 @@ export const resend = {
           fields: {
             RESEND_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "re_xxxxxxxxxx",
             },

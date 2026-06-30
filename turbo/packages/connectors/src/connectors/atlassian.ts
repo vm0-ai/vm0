@@ -20,17 +20,20 @@ export const atlassian = {
           fields: {
             ATLASSIAN_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "your-api-token",
             },
             ATLASSIAN_EMAIL: {
               label: "Email",
+              publicId: "email",
               required: true,
               placeholder: "you@example.com",
               storage: "variable",
             },
             ATLASSIAN_DOMAIN: {
               label: "Domain",
+              publicId: "domain",
               required: true,
               placeholder: "mycompany",
               storage: "variable",

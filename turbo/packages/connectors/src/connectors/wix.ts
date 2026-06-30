@@ -20,6 +20,7 @@ export const wix = {
           fields: {
             WIX_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-wix-api-key",
             },

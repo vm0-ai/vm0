@@ -20,6 +20,7 @@ export const clado = {
           fields: {
             CLADO_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
           },

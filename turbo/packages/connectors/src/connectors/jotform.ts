@@ -20,6 +20,7 @@ export const jotform = {
           fields: {
             JOTFORM_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
           },

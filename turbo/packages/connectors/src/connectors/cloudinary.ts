@@ -20,14 +20,17 @@ export const cloudinary = {
           fields: {
             CLOUDINARY_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
             CLOUDINARY_API_SECRET: {
               label: "API Secret",
+              publicId: "apiSecret",
               required: true,
             },
             CLOUDINARY_CLOUD_NAME: {
               label: "Cloud Name",
+              publicId: "cloudName",
               required: true,
               storage: "variable",
               placeholder: "your-cloud-name",

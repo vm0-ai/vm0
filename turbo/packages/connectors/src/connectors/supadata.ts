@@ -20,6 +20,7 @@ export const supadata = {
           fields: {
             SUPADATA_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-supadata-api-key",
             },

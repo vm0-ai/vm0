@@ -24,15 +24,18 @@ export const mixpanel = {
           fields: {
             MIXPANEL_SERVICE_ACCOUNT_USERNAME: {
               label: "Service Account Username",
+              publicId: "serviceAccountUsername",
               required: true,
               placeholder: "my-sa.12ab34",
             },
             MIXPANEL_SERVICE_ACCOUNT_SECRET: {
               label: "Service Account Secret",
+              publicId: "serviceAccountSecret",
               required: true,
             },
             MIXPANEL_PROJECT_ID: {
               label: "Project ID",
+              publicId: "projectId",
               required: true,
               storage: "variable",
               placeholder: "1234567",

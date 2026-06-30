@@ -20,6 +20,7 @@ export const qiita = {
           fields: {
             QIITA_TOKEN: {
               label: "Access Token",
+              publicId: "accessToken",
               required: true,
               placeholder: "your-qiita-access-token",
             },

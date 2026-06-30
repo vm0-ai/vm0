@@ -23,6 +23,7 @@ export const pexels = {
           fields: {
             PEXELS_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-pexels-api-key",
             },

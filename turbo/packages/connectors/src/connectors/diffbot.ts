@@ -20,6 +20,7 @@ export const diffbot = {
           fields: {
             DIFFBOT_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
             },
           },

@@ -20,6 +20,7 @@ export const axiom = {
           fields: {
             AXIOM_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "xaat-...",
             },

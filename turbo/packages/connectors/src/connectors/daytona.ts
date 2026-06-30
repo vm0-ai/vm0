@@ -21,6 +21,7 @@ export const daytona = {
           fields: {
             DAYTONA_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-daytona-api-key",
             },

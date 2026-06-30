@@ -19,6 +19,7 @@ export const replicas = {
           fields: {
             REPLICAS_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-replicas-api-key",
             },

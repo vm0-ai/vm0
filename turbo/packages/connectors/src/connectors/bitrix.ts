@@ -20,6 +20,7 @@ export const bitrix = {
           fields: {
             BITRIX_WEBHOOK_URL: {
               label: "Webhook URL",
+              publicId: "url",
               required: true,
               placeholder: "https://your-domain.bitrix24.com/rest/1/xxx/",
             },

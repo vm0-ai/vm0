@@ -22,6 +22,7 @@ export const atlascloud = {
           fields: {
             ATLASCLOUD_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-atlascloud-api-key",
             },

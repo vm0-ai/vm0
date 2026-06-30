@@ -20,6 +20,7 @@ export const bubblemaps = {
           fields: {
             BUBBLEMAPS_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "Coffee5afe10ca1Coffee5afe10ca1Co",
             },

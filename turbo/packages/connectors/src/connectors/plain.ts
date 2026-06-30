@@ -20,6 +20,7 @@ export const plain = {
           fields: {
             PLAIN_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "plainApiKey__...",
             },

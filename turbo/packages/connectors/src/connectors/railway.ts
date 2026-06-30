@@ -20,6 +20,7 @@ export const railway = {
           fields: {
             RAILWAY_TOKEN: {
               label: "Account/Workspace Token",
+              publicId: "workspaceToken",
               required: true,
               placeholder: "00000000-0000-0000-0000-000000000000",
             },

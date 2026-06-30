@@ -20,6 +20,7 @@ export const drive9 = {
           fields: {
             DRIVE9_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "drive9_sk_...",
             },

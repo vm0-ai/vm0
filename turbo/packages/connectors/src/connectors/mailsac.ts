@@ -20,6 +20,7 @@ export const mailsac = {
           fields: {
             MAILSAC_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-mailsac-api-key",
             },

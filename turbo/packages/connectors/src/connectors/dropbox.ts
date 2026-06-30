@@ -62,6 +62,7 @@ export const dropbox = {
           fields: {
             DROPBOX_TOKEN: {
               label: "Access Token",
+              publicId: "accessToken",
               required: true,
               placeholder: "sl.xxxxxxxx",
             },

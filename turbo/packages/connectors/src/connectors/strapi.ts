@@ -20,10 +20,12 @@ export const strapi = {
           fields: {
             STRAPI_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
             },
             STRAPI_BASE_URL: {
               label: "Base URL",
+              publicId: "baseUrl",
               required: true,
               placeholder: "https://your-strapi.example.com",
               storage: "variable",

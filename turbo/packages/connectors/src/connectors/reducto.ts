@@ -20,6 +20,7 @@ export const reducto = {
           fields: {
             REDUCTO_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
           },

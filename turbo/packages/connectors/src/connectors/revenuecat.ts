@@ -20,6 +20,7 @@ export const revenuecat = {
           fields: {
             REVENUECAT_TOKEN: {
               label: "Secret API Key",
+              publicId: "secretApiKey",
               required: true,
               placeholder: "sk_xxxxxxxxxxxxxxxx",
             },

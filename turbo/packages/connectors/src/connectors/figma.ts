@@ -68,6 +68,7 @@ export const figma = {
           fields: {
             FIGMA_TOKEN: {
               label: "Personal Access Token",
+              publicId: "accessToken",
               required: true,
               placeholder: "figd_xxxxxxxx",
             },

@@ -20,6 +20,7 @@ export const doppler = {
           fields: {
             DOPPLER_TOKEN: {
               label: "Service Token",
+              publicId: "token",
               required: true,
               placeholder: "dp.st.dev.xxxx",
             },

@@ -20,6 +20,7 @@ export const pandadoc = {
           fields: {
             PANDADOC_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your PandaDoc API key",
             },

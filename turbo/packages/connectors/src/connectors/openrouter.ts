@@ -21,6 +21,7 @@ export const openrouter = {
           fields: {
             OPENROUTER_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "sk-or-v1-...",
             },

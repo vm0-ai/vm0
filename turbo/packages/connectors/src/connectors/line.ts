@@ -20,6 +20,7 @@ export const line = {
           fields: {
             LINE_TOKEN: {
               label: "Channel Access Token",
+              publicId: "accessToken",
               required: true,
             },
           },

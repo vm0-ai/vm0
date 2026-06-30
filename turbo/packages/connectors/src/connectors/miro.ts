@@ -20,6 +20,7 @@ export const miro = {
           fields: {
             MIRO_TOKEN: {
               label: "Access Token",
+              publicId: "accessToken",
               required: true,
               placeholder: "non-expiring access token",
             },

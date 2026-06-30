@@ -28,6 +28,10 @@ import {
   getFirewallPermissionSummary,
   loadFirewallPermissionMetadata,
 } from "@vm0/connectors/firewall-metadata";
+import {
+  getPublicDeviceAuthStartOptionDescriptors,
+  getPublicManualGrantFieldDescriptors,
+} from "./connector-catalog-form-fields.service";
 
 interface ConnectorCatalogSearchArgs {
   readonly keyword: string | undefined;
@@ -245,54 +249,65 @@ function authMethodSummaryForCatalog(
 }
 
 function manualFieldsForCatalog(
+  type: ConnectorType,
+  id: ConnectorAuthMethodId,
   method: ConnectorAuthMethodConfig,
   privateNames: ReadonlySet<string>,
 ): PublicConnectorCatalogManualField[] {
   if (method.grant.kind !== "manual") {
     return [];
   }
-  return Object.values(method.grant.fields).map((field, index) => {
-    return {
-      id: `field-${index + 1}`,
-      label: field.label,
-      required: field.required,
-      placeholder: publicTextOrNull(field.placeholder, privateNames, {
-        checkDerivedPrivateNames: true,
-      }),
-      inputType: field.storage === "variable" ? "text" : "password",
-    };
-  });
+  return (
+    getPublicManualGrantFieldDescriptors(type, id)?.map((descriptor) => {
+      const field = descriptor.config;
+      return {
+        id: descriptor.publicId,
+        label: field.label,
+        required: field.required,
+        placeholder: publicTextOrNull(field.placeholder, privateNames, {
+          checkDerivedPrivateNames: true,
+        }),
+        inputType: field.storage === "variable" ? "text" : "password",
+      };
+    }) ?? []
+  );
 }
 
 function startOptionsForCatalog(
+  type: ConnectorType,
+  id: ConnectorAuthMethodId,
   method: ConnectorAuthMethodConfig,
 ): PublicConnectorCatalogStartOption[] {
   if (method.grant.kind !== "device-auth") {
     return [];
   }
-  return Object.values(method.grant.startOptions ?? {}).map((option, index) => {
-    return {
-      id: `option-${index + 1}`,
-      kind: option.kind,
-      label: option.label,
-      required: option.required,
-      defaultValue: option.defaultValue ?? null,
-      options: option.options.map((choice) => {
-        return { value: choice.value, label: choice.label };
-      }),
-    };
-  });
+  return (
+    getPublicDeviceAuthStartOptionDescriptors(type, id)?.map((descriptor) => {
+      const option = descriptor.config;
+      return {
+        id: descriptor.publicId,
+        kind: option.kind,
+        label: option.label,
+        required: option.required,
+        defaultValue: option.defaultValue ?? null,
+        options: option.options.map((choice) => {
+          return { value: choice.value, label: choice.label };
+        }),
+      };
+    }) ?? []
+  );
 }
 
 function authMethodDetailForCatalog(
+  type: ConnectorType,
   id: ConnectorAuthMethodId,
   method: ConnectorAuthMethodConfig,
   privateNames: ReadonlySet<string>,
 ): PublicConnectorCatalogAuthMethodDetail {
   return {
     ...authMethodSummaryForCatalog(id, method, privateNames),
-    manualFields: manualFieldsForCatalog(method, privateNames),
-    startOptions: startOptionsForCatalog(method),
+    manualFields: manualFieldsForCatalog(type, id, method, privateNames),
+    startOptions: startOptionsForCatalog(type, id, method),
   };
 }
 
@@ -330,7 +345,7 @@ function connectorCatalogDetail(
     authMethods: authMethods.flatMap((authMethod) => {
       const method = getConnectorAuthMethod(type, authMethod);
       return method
-        ? [authMethodDetailForCatalog(authMethod, method, privateNames)]
+        ? [authMethodDetailForCatalog(type, authMethod, method, privateNames)]
         : [];
     }),
   };

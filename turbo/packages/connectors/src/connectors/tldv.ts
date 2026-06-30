@@ -20,6 +20,7 @@ export const tldv = {
           fields: {
             TLDV_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-tldv-api-key",
             },

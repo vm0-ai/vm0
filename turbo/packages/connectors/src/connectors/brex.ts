@@ -21,6 +21,7 @@ export const brex = {
           fields: {
             BREX_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "your-brex-api-token",
             },

@@ -20,6 +20,7 @@ export const bentolabsAi = {
           fields: {
             BENTOLABS_AI_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-bentolabs-ai-api-key",
             },

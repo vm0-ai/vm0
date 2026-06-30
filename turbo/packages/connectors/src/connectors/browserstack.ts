@@ -21,11 +21,13 @@ export const browserstack = {
           fields: {
             BROWSERSTACK_USERNAME: {
               label: "Username",
+              publicId: "username",
               required: true,
               placeholder: "your-bstack-username",
             },
             BROWSERSTACK_ACCESS_KEY: {
               label: "Access Key",
+              publicId: "accessKey",
               required: true,
               placeholder: "your-bstack-access-key",
             },

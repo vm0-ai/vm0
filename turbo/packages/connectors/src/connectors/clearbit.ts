@@ -20,6 +20,7 @@ export const clearbit = {
           fields: {
             CLEARBIT_TOKEN: {
               label: "Secret API Key",
+              publicId: "secretApiKey",
               required: true,
               placeholder: "sk_your_secret_api_key",
             },

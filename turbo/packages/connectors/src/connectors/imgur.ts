@@ -19,6 +19,7 @@ export const imgur = {
           fields: {
             IMGUR_CLIENT_ID: {
               label: "Client ID",
+              publicId: "clientId",
               required: true,
               placeholder: "your-imgur-client-id",
             },

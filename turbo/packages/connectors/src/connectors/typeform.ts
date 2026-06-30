@@ -20,6 +20,7 @@ export const typeform = {
           fields: {
             TYPEFORM_TOKEN: {
               label: "Personal Access Token",
+              publicId: "accessToken",
               required: true,
               placeholder: "tfp_...",
             },

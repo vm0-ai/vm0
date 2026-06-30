@@ -140,6 +140,7 @@ function connectorOutputTargetKey(target: ConnectorOutputTarget): string {
   return `${target.kind}:${target.name}`;
 }
 const SLOCK_ACCESS_TOKEN_TTL_SECONDS = 900;
+const PUBLIC_CONNECTOR_FORM_ID_PATTERN = /^[a-z][A-Za-z0-9]*$/u;
 
 type OAuthAuthMethodConnectorType = {
   readonly [Type in ConnectorType]: "oauth" extends ConnectorAuthMethodIds<Type>
@@ -265,6 +266,10 @@ function restoreEnv(values: Record<string, string | undefined>): void {
   }
 }
 
+function normalizePublicIdentifier(value: string): string {
+  return value.replace(/[^A-Za-z0-9]/gu, "").toLowerCase();
+}
+
 const manualAuthMethodConfig = {
   label: "API Token",
   helpText: "Enter an API token.",
@@ -277,6 +282,7 @@ const manualAuthMethodConfig = {
     fields: {
       API_TOKEN: {
         label: "Token",
+        publicId: "token",
         required: true,
       },
     },
@@ -543,10 +549,12 @@ describe("connector auth method config", () => {
         fields: {
           GITHUB_API_TOKEN: {
             label: "Token",
+            publicId: "token",
             required: true,
           },
           GITHUB_API_HOST: {
             label: "Host",
+            publicId: "host",
             required: false,
             storage: "variable",
           },
@@ -573,10 +581,12 @@ describe("connector auth method config", () => {
         fields: {
           GITHUB_SECONDARY_TOKEN: {
             label: "Token",
+            publicId: "token",
             required: true,
           },
           GITHUB_SECONDARY_HOST: {
             label: "Host",
+            publicId: "host",
             required: false,
             storage: "variable",
           },
@@ -626,6 +636,87 @@ describe("connector auth method config", () => {
     } finally {
       Reflect.deleteProperty(authMethods, "api-token");
       Reflect.deleteProperty(authMethods, "api");
+    }
+  });
+
+  it("uses stable public ids for manual grant fields and device-auth start options", () => {
+    for (const type of CONNECTOR_TYPE_KEYS) {
+      const connectorPrefix = normalizePublicIdentifier(type);
+      for (const authMethod of getConfiguredConnectorAuthMethodIds(type)) {
+        const method = getConnectorAuthMethod(type, authMethod);
+        if (!method) {
+          continue;
+        }
+
+        if (method.grant.kind === "manual") {
+          const publicIds = new Map<string, string[]>();
+          const privateNames = new Set(Object.keys(method.grant.fields));
+          for (const [privateName, field] of Object.entries(
+            method.grant.fields,
+          )) {
+            expect(
+              field.publicId,
+              `${type}/${authMethod}: ${privateName} must declare a public id`,
+            ).toMatch(PUBLIC_CONNECTOR_FORM_ID_PATTERN);
+            expect(
+              privateNames.has(field.publicId),
+              `${type}/${authMethod}: public id must not equal a private field name`,
+            ).toBe(false);
+            expect(
+              normalizePublicIdentifier(field.publicId),
+              `${type}/${authMethod}: public id must not normalize to private field ${privateName}`,
+            ).not.toBe(normalizePublicIdentifier(privateName));
+            expect(
+              normalizePublicIdentifier(field.publicId).startsWith(
+                connectorPrefix,
+              ),
+              `${type}/${authMethod}: public id ${field.publicId} must not include connector prefix ${type}`,
+            ).toBe(false);
+            publicIds.set(field.publicId, [
+              ...(publicIds.get(field.publicId) ?? []),
+              privateName,
+            ]);
+          }
+
+          const duplicatePublicIds = [...publicIds].filter(([, names]) => {
+            return names.length > 1;
+          });
+          expect(
+            duplicatePublicIds,
+            `${type}/${authMethod}: manual grant public ids must be unique`,
+          ).toStrictEqual([]);
+        }
+
+        if (method.grant.kind === "device-auth") {
+          const publicIds = new Map<string, string[]>();
+          for (const [optionName, option] of Object.entries(
+            method.grant.startOptions ?? {},
+          )) {
+            expect(
+              option.publicId,
+              `${type}/${authMethod}: ${optionName} must declare a public id`,
+            ).toMatch(PUBLIC_CONNECTOR_FORM_ID_PATTERN);
+            expect(
+              normalizePublicIdentifier(option.publicId).startsWith(
+                connectorPrefix,
+              ),
+              `${type}/${authMethod}: public id ${option.publicId} must not include connector prefix ${type}`,
+            ).toBe(false);
+            publicIds.set(option.publicId, [
+              ...(publicIds.get(option.publicId) ?? []),
+              optionName,
+            ]);
+          }
+
+          const duplicatePublicIds = [...publicIds].filter(([, names]) => {
+            return names.length > 1;
+          });
+          expect(
+            duplicatePublicIds,
+            `${type}/${authMethod}: device-auth public ids must be unique`,
+          ).toStrictEqual([]);
+        }
+      }
     }
   });
 
@@ -2696,11 +2787,13 @@ describe("getConnectorAuthMethodAccessMetadata", () => {
     expect(getApiTokenManualGrantFields("lark")).toStrictEqual({
       LARK_APP_ID: {
         label: "App ID",
+        publicId: "appId",
         required: true,
         storage: "variable",
       },
       LARK_APP_SECRET: {
         label: "App Secret",
+        publicId: "appSecret",
         required: true,
         storage: "secret",
       },
@@ -4237,6 +4330,7 @@ describe("connector OAuth device authorization config", () => {
       mode: {
         kind: "select",
         label: "Mode",
+        publicId: "mode",
         required: true,
         defaultValue: "test",
         options: [

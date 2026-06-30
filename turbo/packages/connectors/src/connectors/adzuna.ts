@@ -21,12 +21,14 @@ export const adzuna = {
           fields: {
             ADZUNA_APP_ID: {
               label: "App ID",
+              publicId: "appId",
               required: true,
               storage: "variable",
               placeholder: "your-adzuna-app-id",
             },
             ADZUNA_APP_KEY: {
               label: "App Key",
+              publicId: "appKey",
               required: true,
               placeholder: "your-adzuna-app-key",
             },

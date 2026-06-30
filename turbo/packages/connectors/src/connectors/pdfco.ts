@@ -19,6 +19,7 @@ export const pdfco = {
           fields: {
             PDFCO_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-pdfco-api-key",
             },

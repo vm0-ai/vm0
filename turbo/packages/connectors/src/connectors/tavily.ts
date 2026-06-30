@@ -20,6 +20,7 @@ export const tavily = {
           fields: {
             TAVILY_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "tvly-...",
             },

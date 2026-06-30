@@ -49,6 +49,7 @@ import {
   upsertConnectorTokenConnection$,
   zeroConnectorByType,
 } from "./zero-connector-data.service";
+import { normalizeDeviceAuthStartOptions } from "./connector-catalog-form-fields.service";
 
 const DEFAULT_POLL_INTERVAL_SECONDS = 5;
 const SLOW_DOWN_INCREMENT_SECONDS = 5;
@@ -771,10 +772,19 @@ export const startConnectorOauthDeviceAuthSession$ = command(
       return resolvedClient;
     }
 
-    const startOptionsResult = parseConnectorDeviceAuthStartOptions({
+    const normalizedStartOptions = normalizeDeviceAuthStartOptions({
       type: resolvedMethod.type,
       authMethod: resolvedMethod.authMethod,
       options: args.options,
+    });
+    if (!normalizedStartOptions.ok) {
+      return badRequestMessage(normalizedStartOptions.message);
+    }
+
+    const startOptionsResult = parseConnectorDeviceAuthStartOptions({
+      type: resolvedMethod.type,
+      authMethod: resolvedMethod.authMethod,
+      options: normalizedStartOptions.options,
     });
     if (!startOptionsResult.success) {
       return badRequestMessage(startOptionsResult.message);

@@ -21,11 +21,13 @@ export const twilio = {
           fields: {
             TWILIO_ACCOUNT_SID: {
               label: "Account SID",
+              publicId: "accountSid",
               required: true,
               placeholder: "ACxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
             },
             TWILIO_AUTH_TOKEN: {
               label: "Auth Token",
+              publicId: "authToken",
               required: true,
               placeholder: "32-char hex token",
             },

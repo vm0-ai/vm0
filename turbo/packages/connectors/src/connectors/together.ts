@@ -21,6 +21,7 @@ export const together = {
           fields: {
             TOGETHER_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder:
                 "c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ffee5afe10ca1c0ff",

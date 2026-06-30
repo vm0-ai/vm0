@@ -60,6 +60,7 @@ export const testOauthDevice = {
             mode: {
               kind: "select",
               label: "Mode",
+              publicId: "mode",
               required: true,
               defaultValue: "test",
               options: [

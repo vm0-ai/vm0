@@ -27,6 +27,7 @@ export const semrush = {
           fields: {
             SEMRUSH_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-semrush-api-key",
             },

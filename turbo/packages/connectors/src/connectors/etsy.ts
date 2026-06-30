@@ -23,6 +23,7 @@ export const etsy = {
           fields: {
             ETSY_TOKEN: {
               label: "API Key (keystring:shared_secret)",
+              publicId: "apiKey",
               required: true,
               placeholder: "c0ffee5afe10ca1c0ffee5af:e10ca15afe",
             },

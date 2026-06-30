@@ -19,6 +19,7 @@ export const ardent = {
           fields: {
             ARDENT_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-ardent-api-key",
             },
