@@ -340,6 +340,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
+  [FeatureSwitchKey.AgentUnreadIndicators]: {
+    maintainer: "ethan@vm0.ai",
+    description:
+      "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
 };
 
 interface ResolvedHashes {
