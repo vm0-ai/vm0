@@ -30,7 +30,7 @@ import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
-export type WorkflowDetailTab = "triggers" | "instructions" | "info";
+export type WorkflowDetailTab = "automations" | "instructions" | "info";
 export type WorkflowCopyDialogAgent = {
   readonly id: string;
   readonly displayName: string | null;
@@ -70,7 +70,7 @@ function workflowDetailTabFromSearchParams(
 ): WorkflowDetailTab | null {
   const value = params.get(WORKFLOW_DETAIL_TAB_PARAM);
   switch (value) {
-    case "triggers":
+    case "automations":
     case "instructions":
     case "info": {
       return value;
@@ -126,7 +126,8 @@ interface WorkflowMetadataPatch {
  * The workflow uuid for the active detail route, or null elsewhere.
  */
 export const currentWorkflowId$ = computed((get): string | null => {
-  if (get(activeRoute$) !== "agentWorkflowDetail") {
+  const route = get(activeRoute$);
+  if (route !== "agentWorkflowDetail" && route !== "workflowDetail") {
     return null;
   }
   const workflowId = get(pathParams$)?.workflowId;
@@ -134,7 +135,8 @@ export const currentWorkflowId$ = computed((get): string | null => {
 });
 
 const internalWorkflowReload$ = state(0);
-const internalWorkflowDetailActiveTab$ = state<WorkflowDetailTab>("triggers");
+const internalWorkflowDetailActiveTab$ =
+  state<WorkflowDetailTab>("automations");
 
 const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
@@ -220,7 +222,7 @@ export const resetWorkflowMetadataForm$ = command(({ set }) => {
 });
 
 export const resetWorkflowDetailUiState$ = command(({ set }) => {
-  set(internalWorkflowDetailActiveTab$, "triggers");
+  set(internalWorkflowDetailActiveTab$, "automations");
   set(internalSelectedFilePath$, null);
   set(internalWorkflowActionDialog$, null);
   set(internalWorkflowCopyDialogState$, { kind: "select" });
@@ -411,6 +413,22 @@ export const composerWorkflows$ = computed(
       return [];
     }
     return get(agentWorkflows(agentId));
+  },
+);
+
+export const allVisibleWorkflows$ = computed(
+  async (get): Promise<readonly ZeroWorkflowSummary[]> => {
+    get(internalWorkflowReload$);
+    const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
+    const result = await accept(client.list({ query: {} }), [200]);
+    return [...result.body].sort((a, b) => {
+      if (a.visibility !== b.visibility) {
+        return a.visibility === "public" ? -1 : 1;
+      }
+      const aTitle = a.displayName ?? a.name;
+      const bTitle = b.displayName ?? b.name;
+      return aTitle.localeCompare(bTitle);
+    });
   },
 );
 

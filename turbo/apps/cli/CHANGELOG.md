@@ -1,5 +1,31 @@
 # Changelog
 
+## [9.216.0](https://github.com/vm0-ai/vm0/compare/cli-v9.215.3...cli-v9.216.0) (2026-06-30)
+
+
+### Features
+
+* add zero chat rename command ([#19381](https://github.com/vm0-ai/vm0/issues/19381)) ([dd04ffb](https://github.com/vm0-ai/vm0/commit/dd04ffb0651ed7083bdb2831e9775315180d8ecd))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.128.0
+    * @vm0/core bumped to 8.377.1
+
+## [9.215.3](https://github.com/vm0-ai/vm0/compare/cli-v9.215.2...cli-v9.215.3) (2026-06-30)
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.127.0
+    * @vm0/connectors bumped to 1.115.0
+    * @vm0/core bumped to 8.377.0
+
 ## [9.215.2](https://github.com/vm0-ai/vm0/compare/cli-v9.215.1...cli-v9.215.2) (2026-06-29)
 
 

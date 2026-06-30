@@ -268,9 +268,6 @@ const markRead$ = command(
     { threadId, latestMessageId }: MarkReadArgs,
     signal: AbortSignal,
   ): Promise<string | null> => {
-    // Optimistic: suppress this thread's sidebar unread dot immediately.
-    // The response's unread snapshot kicks the mark if a newer message
-    // already landed. Mark-read is not broadcast by the server.
     set(recordOptimisticReadMark$, threadId);
     const client = get(zeroClient$)(chatThreadMarkReadContract);
     const result = await accept(

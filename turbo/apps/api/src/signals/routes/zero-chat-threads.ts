@@ -26,6 +26,7 @@ import {
   zeroChatThreadDraftIds,
   zeroChatThreadList,
   zeroChatThreadMessagesPage,
+  zeroChatThreadUnreadAgentIds,
   zeroChatThreadUnreads,
 } from "../services/zero-chat-thread.service";
 import { zeroChatThreadGithubPrs$ } from "../services/chat-thread-github-prs.service";
@@ -35,6 +36,7 @@ import { zeroChatThreadsArtifactsSyncRoutes } from "./zero-chat-threads-artifact
 import { zeroChatThreadComputerUseHostRoutes } from "./zero-chat-threads-computer-use-host";
 import { zeroChatThreadCreateRoutes } from "./zero-chat-threads-create";
 import { zeroChatThreadDeleteRoutes } from "./zero-chat-threads-delete";
+import { zeroChatThreadGetRoutes } from "./zero-chat-threads-get";
 import { zeroChatThreadMarkReadRoutes } from "./zero-chat-threads-mark-read";
 import { zeroChatThreadModelSelectionRoutes } from "./zero-chat-threads-model-selection";
 import { zeroChatThreadPatchRoutes } from "./zero-chat-threads-patch";
@@ -166,6 +168,29 @@ const listChatThreadUnreadsInner$ = computed(async (get) => {
   return { status: 200 as const, body: { unreads: [...unreads] } };
 });
 
+const listChatThreadUnreadAgentsInner$ = computed(async (get) => {
+  const auth = get(organizationAuthContext$);
+  const overrides = await get(
+    userFeatureSwitchOverrides(auth.orgId, auth.userId),
+  );
+
+  if (
+    !isFeatureEnabled(FeatureSwitchKey.AgentUnreadIndicators, {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      overrides,
+    })
+  ) {
+    return forbidden("Agent unread indicators are not enabled");
+  }
+
+  const agentIds = await get(
+    zeroChatThreadUnreadAgentIds({ userId: auth.userId, orgId: auth.orgId }),
+  );
+
+  return { status: 200 as const, body: { agentIds: [...agentIds] } };
+});
+
 const listChatThreadArtifactsInner$ = computed(async (get) => {
   const auth = get(authContext$);
   const params = get(pathParamsOf(chatThreadArtifactsContract.list));
@@ -280,6 +305,13 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
     handler: authRoute({}, listChatThreadUnreadsInner$),
   },
   {
+    route: chatThreadsContract.unreadAgents,
+    handler: authRoute(
+      { requireOrganization: true, missingOrganizationStatus: 401 },
+      listChatThreadUnreadAgentsInner$,
+    ),
+  },
+  {
     route: chatThreadByIdContract.get,
     handler: authRoute({}, getChatThreadInner$),
   },
@@ -313,6 +345,7 @@ export const zeroChatThreadRoutes: readonly RouteEntry[] = [
   ...zeroChatThreadComputerUseHostRoutes,
   ...zeroChatThreadCreateRoutes,
   ...zeroChatThreadDeleteRoutes,
+  ...zeroChatThreadGetRoutes,
   ...zeroChatThreadMarkReadRoutes,
   ...zeroChatThreadModelSelectionRoutes,
   ...zeroChatThreadPatchRoutes,

@@ -1,9 +1,20 @@
-// Read-only workflow lists. Cards link into the agent-scoped detail page; there
-// are no write actions here.
+// Workflow list surfaces for agent-scoped tabs and the workspace index page.
+import { useLastLoadable, useSet } from "ccstate-react";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
+import { IconChevronDown, IconMessageCircle } from "@tabler/icons-react";
+import {
+  Button,
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@vm0/ui";
 
+import { openCreateWorkflowDialog$ } from "../../signals/automation-page/workflow-trigger-automation-dialog.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
+import { allVisibleWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
 import { Link } from "../router/link.tsx";
+import { CreateWorkflowAutomationDialog } from "../zero-page/workflow-trigger-automations-page.tsx";
 import { agentLabel, workflowTitle } from "./workflow-shared.tsx";
 
 type WorkflowGroupKey = "pending" | "public" | "private";
@@ -57,11 +68,13 @@ export function WorkflowListPanel({
   loading,
   showAgentColumn,
   emptyDescription,
+  linkMode = "agent",
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[] | null;
   readonly loading: boolean;
   readonly showAgentColumn: boolean;
   readonly emptyDescription: string;
+  readonly linkMode?: "agent" | "workspace";
 }) {
   return (
     <section className="min-h-[520px]">
@@ -71,6 +84,7 @@ export function WorkflowListPanel({
         <WorkflowGroups
           workflows={workflows}
           showAgentColumn={showAgentColumn}
+          linkMode={linkMode}
         />
       ) : (
         <div className="zero-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
@@ -87,9 +101,11 @@ export function WorkflowListPanel({
 function WorkflowGroups({
   workflows,
   showAgentColumn,
+  linkMode,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[];
   readonly showAgentColumn: boolean;
+  readonly linkMode: "agent" | "workspace";
 }) {
   const groups = groupWorkflows(workflows);
 
@@ -118,6 +134,7 @@ function WorkflowGroups({
                     key={workflow.id}
                     workflow={workflow}
                     showAgentColumn={showAgentColumn}
+                    linkMode={linkMode}
                   />
                 );
               })}
@@ -168,19 +185,36 @@ function WorkflowSlug({ name }: { readonly name: string }) {
 function WorkflowIndexCard({
   workflow,
   showAgentColumn,
+  linkMode,
 }: {
   readonly workflow: ZeroWorkflowSummary;
   readonly showAgentColumn: boolean;
+  readonly linkMode: "agent" | "workspace";
 }) {
+  const linkOptions =
+    linkMode === "workspace"
+      ? {
+          pathname: ROUTES.workflowDetail,
+          options: {
+            pathParams: {
+              workflowId: workflow.id,
+            },
+          },
+        }
+      : {
+          pathname: ROUTES.agentWorkflowDetail,
+          options: {
+            pathParams: {
+              agentId: workflow.agentId,
+              workflowId: workflow.id,
+            },
+          },
+        };
+
   return (
     <Link
-      pathname={ROUTES.agentWorkflowDetail}
-      options={{
-        pathParams: {
-          agentId: workflow.agentId,
-          workflowId: workflow.id,
-        },
-      }}
+      pathname={linkOptions.pathname}
+      options={linkOptions.options}
       className="zero-card block px-5 py-4 text-left text-foreground no-underline transition-colors hover:bg-gray-50"
     >
       <div className="flex items-start justify-between gap-4">
@@ -197,6 +231,68 @@ function WorkflowIndexCard({
         {workflow.description ?? workflow.name}
       </div>
     </Link>
+  );
+}
+
+export function WorkflowsPage() {
+  const workflowsLoadable = useLastLoadable(allVisibleWorkflows$);
+  const openCreateWorkflowDialog = useSet(openCreateWorkflowDialog$);
+  const loading = workflowsLoadable.state === "loading";
+  const workflows =
+    workflowsLoadable.state === "hasData" ? workflowsLoadable.data : null;
+
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <header className="shrink-0 bg-transparent px-4 pb-0 pt-3 sm:px-6 md:pb-3 md:pt-10">
+        <div className="mx-auto flex max-w-[900px] flex-wrap items-end justify-between gap-4">
+          <div className="hidden min-w-0 md:block">
+            <h1 className="text-lg font-semibold tracking-tight text-foreground">
+              Workflows
+            </h1>
+            <p className="mt-0.5 text-sm text-muted-foreground">
+              Reusable instructions your team can run, edit, or trigger.
+            </p>
+          </div>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button
+                type="button"
+                size="sm"
+                className="h-9 shrink-0 gap-2 rounded-lg bg-foreground px-3 text-background hover:bg-foreground/90"
+              >
+                Create with chat
+                <IconChevronDown size={14} stroke={1.5} />
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuItem
+                className="gap-2"
+                onClick={() => {
+                  openCreateWorkflowDialog();
+                }}
+              >
+                <IconMessageCircle size={14} stroke={1.5} />
+                Create with Zero
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      </header>
+
+      <main className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6">
+        <div className="mx-auto max-w-[900px]">
+          <WorkflowListPanel
+            workflows={workflows}
+            loading={loading}
+            showAgentColumn
+            linkMode="workspace"
+            emptyDescription="Create a workflow from chat or save one from a useful run."
+          />
+        </div>
+      </main>
+
+      <CreateWorkflowAutomationDialog />
+    </div>
   );
 }
 

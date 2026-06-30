@@ -40,8 +40,8 @@ describe("agentDefinitionSchema strips unknown experimental_capabilities", () =>
 });
 
 describe("ZERO_CAPABILITIES", () => {
-  it("should have exactly 29 capabilities", () => {
-    expect(ZERO_CAPABILITIES).toHaveLength(29);
+  it("should have exactly 31 capabilities", () => {
+    expect(ZERO_CAPABILITIES).toHaveLength(31);
   });
 
   it("should follow {resource}:{action} naming pattern", () => {
@@ -102,6 +102,11 @@ describe("ZERO_CAPABILITIES", () => {
     expect(ZERO_CAPABILITIES).toContain("goal:read");
     expect(ZERO_CAPABILITIES).toContain("goal:agent-result:write");
     expect(ZERO_CAPABILITIES).toContain("goal:user-control:write");
+  });
+
+  it("should include chat thread read and write capabilities", () => {
+    expect(ZERO_CAPABILITIES).toContain("chat-thread:read");
+    expect(ZERO_CAPABILITIES).toContain("chat-thread:write");
   });
 });
 

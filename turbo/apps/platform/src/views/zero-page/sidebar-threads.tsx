@@ -31,6 +31,7 @@ import {
   DropdownMenuContent,
   DropdownMenuItem,
 } from "@vm0/ui";
+import { Switch } from "@vm0/ui/components/ui/switch";
 import {
   Dialog,
   DialogContent,
@@ -94,6 +95,8 @@ import {
   setRenameDialogInput$,
   sessionListCollapsed$,
   setSessionListCollapsed$,
+  sessionListUnreadOnly$,
+  setSessionListUnreadOnly$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { Link } from "../router/link.tsx";
 
@@ -751,6 +754,10 @@ function ChatThreads() {
   const pageSignal = useGet(pageSignal$);
 
   const chatThreads = useLastResolved(sidebarChatThreads$) ?? [];
+  const unreadOnly = useGet(sessionListUnreadOnly$);
+  const unreadThreadIds = useLastResolved(sidebarUnreadThreadIds$);
+  const pathParams = useGet(pathParams$);
+  const searchParams = useGet(searchParams$);
   const firstPageHasMore = useLastResolved(chatThreadsHasMore$) ?? false;
   const firstPageNextCursor = useLastResolved(chatThreadsNextCursor$);
   const hasLoadedExtraPages =
@@ -766,6 +773,18 @@ function ChatThreads() {
   const cursorForLoadMore = hasLoadedExtraPages
     ? extraLatestCursor
     : firstPageNextCursor;
+  const currentThreadId =
+    typeof pathParams?.threadId === "string" ? pathParams.threadId : null;
+  const sidebarThreadId = searchParams.get(SIDEBAR_PARAM);
+  const visibleChatThreads = unreadOnly
+    ? chatThreads.filter((session) => {
+        return (
+          session.id === currentThreadId ||
+          session.id === sidebarThreadId ||
+          (unreadThreadIds?.has(session.id) ?? false)
+        );
+      })
+    : chatThreads;
 
   function handleLoadMore() {
     if (!cursorForLoadMore || loadingMore) {
@@ -774,16 +793,18 @@ function ChatThreads() {
     detach(loadMore(cursorForLoadMore, pageSignal), Reason.DomCallback);
   }
 
-  if (chatThreads.length === 0) {
+  if (visibleChatThreads.length === 0) {
     return (
       <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
-        Start a conversation and it&apos;ll show up here
+        {unreadOnly
+          ? "No unread chats"
+          : "Start a conversation and it'll show up here"}
       </p>
     );
   }
   return (
     <>
-      {chatThreads.map((session) => {
+      {visibleChatThreads.map((session) => {
         return <ChatThreadItem key={session.id} session={session} />;
       })}
       {hasMore && cursorForLoadMore && (
@@ -803,7 +824,7 @@ function ChatThreadsTitle() {
   const createNewChat = useSet(createNewChatThreadOptimistically$);
   const setExpanded = useSet(setSidebarExpanded$);
   const rootSignal = useGet(rootSignal$);
-  const { titleLabel, newChatAriaLabel } = useChatThreadsTitleLabels();
+  const { titleLabel } = useChatThreadsTitleLabels();
   const newChatDisabled = useGet(optimisticChatThread$) !== null;
   const onNewChat = (pane: OptimisticChatPane) => {
     if (!currentChatAgentId) {
@@ -817,6 +838,15 @@ function ChatThreadsTitle() {
   };
   const setCollapsed = useSet(setSessionListCollapsed$);
   const collapsed = useGet(sessionListCollapsed$);
+  const unreadOnly = useGet(sessionListUnreadOnly$);
+  const setUnreadOnly = useSet(setSessionListUnreadOnly$);
+
+  function toggleUnreadOnly(next: boolean) {
+    setUnreadOnly(next);
+    if (next) {
+      setCollapsed(false);
+    }
+  }
 
   return (
     <div
@@ -837,25 +867,54 @@ function ChatThreadsTitle() {
       </span>
       <div className="flex items-center gap-0.5">
         <TooltipProvider delayDuration={200}>
-          <Tooltip>
-            <TooltipTrigger asChild>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
               <button
                 type="button"
                 onClick={(e) => {
                   e.stopPropagation();
-                  onNewChat(e.altKey ? "sidebar" : "main");
+                }}
+                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors"
+                aria-label="Open chat list menu"
+              >
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span>
+                      <IconDots size={16} stroke={2} />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">More</p>
+                  </TooltipContent>
+                </Tooltip>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent
+              align="end"
+              className="w-44"
+              onClick={(e) => {
+                e.stopPropagation();
+              }}
+            >
+              <DropdownMenuItem
+                onSelect={() => {
+                  onNewChat("main");
                 }}
                 disabled={!currentChatAgentId || newChatDisabled}
-                className="relative z-10 flex h-8 w-8 items-center justify-center rounded-lg text-sidebar-foreground/70 hover:text-sidebar-foreground hover:bg-[hsl(var(--gray-200))] transition-colors disabled:opacity-50"
-                aria-label={newChatAriaLabel}
               >
-                <IconPlus size={15} stroke={2.5} />
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              <p className="text-xs">New chat</p>
-            </TooltipContent>
-          </Tooltip>
+                <IconPlus size={16} stroke={2} className="mr-2" />
+                New chat
+              </DropdownMenuItem>
+              <div className="flex h-9 items-center justify-between gap-3 px-2 text-sm text-popover-foreground">
+                <span>Unread</span>
+                <Switch
+                  checked={unreadOnly}
+                  onCheckedChange={toggleUnreadOnly}
+                  aria-label="Unread"
+                />
+              </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </TooltipProvider>
       </div>
     </div>

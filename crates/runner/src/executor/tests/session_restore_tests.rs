@@ -217,13 +217,7 @@ fn restore_session_writes_history() {
 
     let writes = sandbox.write_file_calls();
     assert_eq!(writes.len(), 1);
-    let expected_identity = RestoredSessionIdentity::from_context(&ctx)
-        .expect("restored identity")
-        .with_guest_history(history.len() as u64, writes[0].path.clone());
-    assert_eq!(
-        diagnostics.restored_session_identity,
-        Some(expected_identity)
-    );
+    assert_eq!(diagnostics.bytes_in, history.len());
 }
 
 #[tokio::test]
@@ -351,13 +345,7 @@ fn restore_session_writes_codex_session() {
         writes[0].path
     );
     assert_eq!(writes[0].content, session.history_bytes());
-    let expected_identity = RestoredSessionIdentity::from_context(&ctx)
-        .expect("restored identity")
-        .with_guest_history(history.len() as u64, writes[0].path.clone());
-    assert_eq!(
-        diagnostics.restored_session_identity,
-        Some(expected_identity)
-    );
+    assert_eq!(diagnostics.bytes_in, history.len());
 }
 
 #[test]

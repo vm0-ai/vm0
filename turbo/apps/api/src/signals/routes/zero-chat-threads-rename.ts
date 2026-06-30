@@ -47,6 +47,9 @@ const renameInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 export const zeroChatThreadRenameRoutes: readonly RouteEntry[] = [
   {
     route: chatThreadRenameContract.rename,
-    handler: authRoute({}, renameInner$),
+    handler: authRoute(
+      { requiredCapability: "chat-thread:write" },
+      renameInner$,
+    ),
   },
 ];

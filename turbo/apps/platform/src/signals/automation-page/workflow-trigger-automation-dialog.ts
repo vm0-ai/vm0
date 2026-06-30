@@ -1,6 +1,10 @@
 import { command, computed, state } from "ccstate";
 
 type WorkflowAutomationDialogStep = 1 | 2;
+export type WorkflowAutomationDialogIntent =
+  | "automation"
+  | "workflow"
+  | "workflow-chat";
 
 const workflowAutomationDialogOpenState$ = state(false);
 const workflowAutomationDialogStepState$ =
@@ -8,6 +12,8 @@ const workflowAutomationDialogStepState$ =
 const selectedWorkflowAutomationAgentIdState$ = state("");
 const workflowAutomationAgentQueryState$ = state("");
 const workflowAutomationAgentSelectionLockedState$ = state(false);
+const workflowAutomationDialogIntentState$ =
+  state<WorkflowAutomationDialogIntent>("automation");
 
 export const workflowAutomationDialogOpen$ = computed((get) => {
   return get(workflowAutomationDialogOpenState$);
@@ -29,6 +35,10 @@ export const workflowAutomationAgentSelectionLocked$ = computed((get) => {
   return get(workflowAutomationAgentSelectionLockedState$);
 });
 
+export const workflowAutomationDialogIntent$ = computed((get) => {
+  return get(workflowAutomationDialogIntentState$);
+});
+
 export const setWorkflowAutomationDialogOpen$ = command(
   ({ set }, open: boolean) => {
     set(workflowAutomationDialogOpenState$, open);
@@ -37,9 +47,19 @@ export const setWorkflowAutomationDialogOpen$ = command(
       set(selectedWorkflowAutomationAgentIdState$, "");
       set(workflowAutomationAgentQueryState$, "");
       set(workflowAutomationAgentSelectionLockedState$, false);
+      set(workflowAutomationDialogIntentState$, "automation");
     }
   },
 );
+
+export const openCreateWorkflowDialog$ = command(({ set }) => {
+  set(workflowAutomationDialogOpenState$, true);
+  set(workflowAutomationDialogStepState$, 1);
+  set(selectedWorkflowAutomationAgentIdState$, "");
+  set(workflowAutomationAgentQueryState$, "");
+  set(workflowAutomationAgentSelectionLockedState$, false);
+  set(workflowAutomationDialogIntentState$, "workflow-chat");
+});
 
 export const openWorkflowAutomationDialogForAgent$ = command(
   ({ set }, agentId: string) => {
@@ -48,8 +68,17 @@ export const openWorkflowAutomationDialogForAgent$ = command(
     set(selectedWorkflowAutomationAgentIdState$, agentId);
     set(workflowAutomationAgentQueryState$, "");
     set(workflowAutomationAgentSelectionLockedState$, true);
+    set(workflowAutomationDialogIntentState$, "workflow");
   },
 );
+
+export const startCreateWorkflowFromAutomationDialog$ = command(({ set }) => {
+  set(workflowAutomationDialogStepState$, 1);
+  set(selectedWorkflowAutomationAgentIdState$, "");
+  set(workflowAutomationAgentQueryState$, "");
+  set(workflowAutomationAgentSelectionLockedState$, false);
+  set(workflowAutomationDialogIntentState$, "workflow");
+});
 
 export const setWorkflowAutomationDialogStep$ = command(
   ({ set }, step: WorkflowAutomationDialogStep) => {

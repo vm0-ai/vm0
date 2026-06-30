@@ -3105,7 +3105,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("lists workflow triggers in the sidebar", async () => {
+  it("lists workflow automations in the sidebar", async () => {
     mockAutomationThread();
     setMockWorkflowTriggers([
       createMockWorkflowTrigger({
@@ -3159,10 +3159,12 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("dialog", { name: "Edit trigger" }),
+        screen.getByRole("dialog", { name: "Edit automation" }),
       ).toBeInTheDocument();
     });
-    const editDialog = screen.getByRole("dialog", { name: "Edit trigger" });
+    const editDialog = screen.getByRole("dialog", {
+      name: "Edit automation",
+    });
     expect(
       within(editDialog).getByRole("combobox", { name: "Every" }),
     ).toHaveTextContent("1 minute");
@@ -3171,7 +3173,7 @@ describe("chat lifecycle", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("updates a schedule workflow trigger from the sidebar", async () => {
+  it("updates a schedule workflow automation from the sidebar", async () => {
     const updateBodies: {
       readonly triggerId: string;
       readonly body: ZeroWorkflowTriggerUpdateRequest;
@@ -3191,9 +3193,11 @@ describe("chat lifecycle", () => {
 
     click(within(sidebar).getAllByText("Edit").at(-1)!);
 
-    const dialog = await screen.findByRole("dialog", { name: "Edit trigger" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Edit automation",
+    });
     selectOptionByLabel("Every", "30 minutes", dialog);
-    click(buttonByText("Save trigger", dialog));
+    click(buttonByText("Save automation", dialog));
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
@@ -3208,7 +3212,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("updates a Gmail workflow trigger match from the sidebar", async () => {
+  it("updates a Gmail workflow automation match from the sidebar", async () => {
     const updateBodies: {
       readonly triggerId: string;
       readonly body: ZeroWorkflowTriggerUpdateRequest;
@@ -3234,10 +3238,12 @@ describe("chat lifecycle", () => {
 
     click(within(sidebar).getAllByText("Edit").at(-1)!);
 
-    const dialog = await screen.findByRole("dialog", { name: "Edit trigger" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Edit automation",
+    });
     await fill(within(dialog).getByLabelText("From contains"), "@acme.com");
     await fill(within(dialog).getByLabelText("Body contains"), "invoice");
-    click(buttonByText("Save trigger", dialog));
+    click(buttonByText("Save automation", dialog));
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
@@ -3257,7 +3263,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("updates a Gmail label workflow trigger from the sidebar", async () => {
+  it("updates a Gmail label workflow automation from the sidebar", async () => {
     const updateBodies: {
       readonly triggerId: string;
       readonly body: ZeroWorkflowTriggerUpdateRequest;
@@ -3281,9 +3287,11 @@ describe("chat lifecycle", () => {
 
     click(within(sidebar).getAllByText("Edit").at(-1)!);
 
-    const dialog = await screen.findByRole("dialog", { name: "Edit trigger" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Edit automation",
+    });
     await fill(within(dialog).getByLabelText("Label name"), "Escalated");
-    click(buttonByText("Save trigger", dialog));
+    click(buttonByText("Save automation", dialog));
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
