@@ -24,6 +24,7 @@ import {
 import { Markdown } from "../../components/markdown.tsx";
 import { mockChatLifecycle } from "./chat-test-helpers.ts";
 import {
+  HTML_DOM_EDIT_SELECTED_ATTR,
   HTML_DOM_EDIT_OVERLAY_ATTR,
   HTML_DOM_NODE_ID_ATTR,
 } from "../html-dom-edit-protocol.ts";
@@ -252,6 +253,35 @@ function mockElementBox(
         width,
         x: 0,
         y: 0,
+      };
+    },
+  });
+}
+
+function mockElementRect(
+  element: Element,
+  {
+    height,
+    left,
+    top,
+    width,
+  }: { height: number; left: number; top: number; width: number },
+) {
+  Object.defineProperty(element, "getBoundingClientRect", {
+    configurable: true,
+    value: () => {
+      return {
+        bottom: top + height,
+        height,
+        left,
+        right: left + width,
+        toJSON: () => {
+          return {};
+        },
+        top,
+        width,
+        x: left,
+        y: top,
       };
     },
   });
@@ -1173,6 +1203,11 @@ describe("zero attachment chips", () => {
             targetNodeIds: [expect.any(String)],
             comment: "Make the hero headline shorter",
           },
+          {
+            id: expect.any(String),
+            targetNodeIds: [expect.any(String)],
+            comment: "Make the body copy warmer",
+          },
         ]);
         expect(body.html).toContain("Launch faster");
         return respond(200, {
@@ -1301,9 +1336,43 @@ describe("zero attachment chips", () => {
       const marker = frame.contentDocument?.querySelector<HTMLElement>(
         "[data-testid='html-dom-comment-marker']",
       );
+      const tag = marker?.querySelector<HTMLElement>(
+        "[data-testid='html-dom-comment-tag']",
+      );
+      const tagText = tag?.querySelector<HTMLElement>(
+        "[data-testid='html-dom-comment-tag-text']",
+      );
+      const deleteButton = marker?.querySelector<HTMLElement>(
+        "[data-testid='html-dom-comment-delete']",
+      );
       expect(marker).not.toBeNull();
-      expect(marker?.querySelector("svg")).not.toBeNull();
       expect(marker).toHaveAttribute(HTML_DOM_EDIT_OVERLAY_ATTR);
+      expect(marker).not.toHaveAttribute("title");
+      expect(marker).toHaveAttribute(
+        "data-vm0-html-comment-placement",
+        "right",
+      );
+      expect(
+        marker?.querySelector("[data-testid='html-dom-comment-anchor']"),
+      ).not.toBeNull();
+      expect(
+        marker?.querySelector("[data-testid='html-dom-comment-leader']"),
+      ).not.toBeNull();
+      expect(deleteButton).not.toBeNull();
+      expect(deleteButton?.style.opacity).toBe("0");
+      expect(deleteButton?.style.pointerEvents).toBe("none");
+      expect(frame.contentDocument?.head.textContent).toContain(
+        "[data-vm0-html-comment-target-node-id]:hover [data-vm0-html-comment-delete-id]",
+      );
+      expect(frame.contentDocument?.head.textContent).toContain(":hover");
+      expect(tag).toHaveTextContent("Make the headline shorter");
+      expect(tagText).toHaveTextContent("Make the headline shorter");
+      expect(tag?.style.maxWidth).toBe("136px");
+      expect(tag?.style.height).toBe("56px");
+      expect(tag?.style.overflow).toBe("hidden");
+      expect(tagText?.style.whiteSpace).toBe("normal");
+      expect(tagText?.style.overflowWrap).toBe("anywhere");
+      expect(tagText?.style.getPropertyValue("-webkit-line-clamp")).toBe("2");
     });
     expect(screen.getByTestId("html-dom-comment-toolbar")).toBeInTheDocument();
     expect(screen.getByTestId("html-dom-toolbar-send")).toBeEnabled();
@@ -1334,6 +1403,12 @@ describe("zero attachment chips", () => {
 
     title = frame.contentDocument?.querySelector("h1");
     expect(title).not.toBeNull();
+    mockElementRect(title!, {
+      height: 32,
+      left: 284,
+      top: 24,
+      width: 32,
+    });
     fireEvent.click(title!);
     const nextCommentTextArea = await screen.findByTestId(
       "html-dom-comment-textarea",
@@ -1347,6 +1422,11 @@ describe("zero attachment chips", () => {
           "[data-testid='html-dom-comment-marker']",
         ),
       ).not.toBeNull();
+      expect(
+        frame.contentDocument?.querySelector(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveAttribute("data-vm0-html-comment-placement", "bottom");
     });
 
     fireEvent.mouseOver(title!);
@@ -1392,22 +1472,9 @@ describe("zero attachment chips", () => {
       frame.contentDocument?.querySelector<HTMLElement>(
         "[data-testid='html-dom-comment-marker']",
       );
+    expect(updatedCommentMarker).not.toHaveAttribute("title");
     fireEvent.mouseOver(updatedCommentMarker!);
-    await waitFor(() => {
-      expect(screen.getByTestId("html-dom-comment-textarea")).toHaveValue(
-        "Make the hero headline shorter",
-      );
-      expect(screen.getByTestId("html-dom-comment-textarea")).toHaveAttribute(
-        "readonly",
-      );
-      expect(screen.getByTestId("html-dom-comment-add")).toBeDisabled();
-    });
-    fireEvent.mouseOut(updatedCommentMarker!, {
-      relatedTarget: frame.contentDocument?.body,
-    });
-    await waitFor(() => {
-      expect(screen.queryByTestId("html-dom-comment-popover")).toBeNull();
-    });
+    expect(screen.queryByTestId("html-dom-comment-popover")).toBeNull();
     fireEvent.mouseOver(title!);
     await waitFor(() => {
       expect(screen.getByTestId("html-dom-comment-textarea")).toHaveValue(
@@ -1422,12 +1489,204 @@ describe("zero attachment chips", () => {
       expect(screen.queryByTestId("html-dom-comment-popover")).toBeNull();
     });
 
+    const bodyCopy = frame.contentDocument?.querySelector("p");
+    expect(bodyCopy).not.toBeNull();
+    mockElementRect(bodyCopy!, {
+      height: 28,
+      left: 48,
+      top: 96,
+      width: 180,
+    });
+    fireEvent.click(bodyCopy!);
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-comment-textarea")).toHaveValue("");
+      expect(
+        frame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(0);
+    });
+    await user.type(
+      await screen.findByTestId("html-dom-comment-textarea"),
+      "Make the body copy warmer",
+    );
+    fireEvent.keyDown(screen.getByTestId("html-dom-comment-textarea"), {
+      key: "Enter",
+    });
+    await waitFor(() => {
+      expect(
+        frame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(2);
+    });
+    expect(
+      screen.getByTestId("html-dom-toolbar-comments-count"),
+    ).toHaveTextContent("2");
+
+    const bodyCommentMarker = Array.from(
+      frame.contentDocument?.querySelectorAll<HTMLElement>(
+        "[data-testid='html-dom-comment-marker']",
+      ) ?? [],
+    ).find((marker) => {
+      return marker.textContent?.includes("Make the body copy warmer");
+    });
+    expect(bodyCommentMarker).toBeDefined();
+    fireEvent.click(
+      bodyCommentMarker!.querySelector<HTMLElement>(
+        "[data-testid='html-dom-comment-delete']",
+      )!,
+    );
+    await waitFor(() => {
+      expect(
+        frame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(1);
+      expect(
+        screen.getByTestId("html-dom-toolbar-comments-count"),
+      ).toHaveTextContent("1");
+    });
+
+    fireEvent.click(bodyCopy!);
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-comment-textarea")).toHaveValue("");
+    });
+    await user.type(
+      await screen.findByTestId("html-dom-comment-textarea"),
+      "Make the body copy warmer",
+    );
+    fireEvent.keyDown(screen.getByTestId("html-dom-comment-textarea"), {
+      key: "Enter",
+    });
+    await waitFor(() => {
+      expect(
+        frame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(2);
+    });
+
+    fireEvent.click(title!);
+    await waitFor(() => {
+      const visibleMarkers = frame.contentDocument?.querySelectorAll(
+        "[data-testid='html-dom-comment-marker']",
+      );
+      expect(visibleMarkers).toHaveLength(1);
+      expect(
+        visibleMarkers?.[0]?.querySelector(
+          "[data-testid='html-dom-comment-tag']",
+        ),
+      ).toHaveTextContent("Make the hero headline shorter");
+      expect(screen.getByTestId("html-dom-comment-textarea")).toHaveValue(
+        "Make the hero headline shorter",
+      );
+      expect(
+        screen.getByTestId("html-dom-comment-textarea"),
+      ).not.toHaveAttribute("readonly");
+    });
+    fireEvent.keyDown(screen.getByTestId("html-dom-comment-textarea"), {
+      key: "Enter",
+    });
+    await waitFor(() => {
+      expect(screen.queryByTestId("html-dom-comment-popover")).toBeNull();
+      expect(
+        frame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(2);
+    });
+
     click(screen.getByTestId("html-dom-toolbar-comments"));
     const commentsList = await screen.findByTestId("html-dom-comments-list");
-    expect(within(commentsList).getByText("Comment 1")).toBeInTheDocument();
+    expect(within(commentsList).queryByText("Comment 1")).toBeNull();
+    const heroListItem = within(commentsList).getByText(
+      "Make the hero headline shorter",
+    );
+    expect(heroListItem).toBeInTheDocument();
     expect(
-      within(commentsList).getByText("Make the hero headline shorter"),
+      within(commentsList).getByText("Make the body copy warmer"),
     ).toBeInTheDocument();
+    const listDeleteButtons =
+      within(commentsList).getAllByLabelText("Delete comment");
+    expect(listDeleteButtons).toHaveLength(2);
+    expect(listDeleteButtons[0]).toHaveClass("opacity-0");
+    expect(listDeleteButtons[0]).toHaveClass("group-hover/comment:opacity-100");
+
+    fireEvent.click(heroListItem);
+    await waitFor(() => {
+      expect(title).toHaveAttribute(HTML_DOM_EDIT_SELECTED_ATTR, "true");
+      expect(title).toHaveAttribute("data-vm0-html-comment-flash", "true");
+    });
+    mockElementRect(title!, {
+      height: 32,
+      left: 284,
+      top: -80,
+      width: 32,
+    });
+    fireEvent.scroll(frame.contentDocument!);
+    await waitFor(() => {
+      const heroCommentMarker = Array.from(
+        frame.contentDocument?.querySelectorAll<HTMLElement>(
+          "[data-testid='html-dom-comment-marker']",
+        ) ?? [],
+      ).find((marker) => {
+        return marker.textContent?.includes("Make the hero headline shorter");
+      });
+      expect(heroCommentMarker).toBeUndefined();
+    });
+    mockElementRect(title!, {
+      height: 32,
+      left: 284,
+      top: 24,
+      width: 32,
+    });
+    fireEvent.scroll(frame.contentDocument!);
+    await waitFor(() => {
+      const heroCommentMarker = Array.from(
+        frame.contentDocument?.querySelectorAll<HTMLElement>(
+          "[data-testid='html-dom-comment-marker']",
+        ) ?? [],
+      ).find((marker) => {
+        return marker.textContent?.includes("Make the hero headline shorter");
+      });
+      expect(heroCommentMarker).toBeDefined();
+    });
+
+    fireEvent.click(listDeleteButtons[1]!);
+    await waitFor(() => {
+      expect(
+        within(commentsList).queryByText("Make the body copy warmer"),
+      ).toBeNull();
+      expect(
+        frame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(1);
+      expect(
+        screen.getByTestId("html-dom-toolbar-comments-count"),
+      ).toHaveTextContent("1");
+    });
+
+    click(screen.getByTestId("html-dom-toolbar-comments"));
+    fireEvent.click(bodyCopy!);
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-comment-textarea")).toHaveValue("");
+    });
+    await user.type(
+      await screen.findByTestId("html-dom-comment-textarea"),
+      "Make the body copy warmer",
+    );
+    fireEvent.keyDown(screen.getByTestId("html-dom-comment-textarea"), {
+      key: "Enter",
+    });
+    await waitFor(() => {
+      expect(
+        frame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(2);
+    });
 
     click(screen.getByTestId("html-dom-toolbar-send"));
     await waitFor(() => {

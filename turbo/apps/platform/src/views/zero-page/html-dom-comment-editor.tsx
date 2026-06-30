@@ -4,6 +4,7 @@ import {
   IconLoader2,
   IconMessageCircle,
   IconSend,
+  IconTrash,
 } from "@tabler/icons-react";
 import { useGet, useSet } from "ccstate-react";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -11,7 +12,9 @@ import {
   addHtmlDomComment$,
   beginEditingCurrentHtmlDomComment$,
   bindHtmlDomCommentFrame$,
+  deleteHtmlDomComment$,
   discardHtmlDomComments$,
+  focusHtmlDomComment$,
   htmlDomCommentEditorModel$,
   sendHtmlDomEditRequest$,
   setHtmlDomCommentIframeRef$,
@@ -22,6 +25,7 @@ import {
   type HtmlDomCommentEditorModel,
 } from "../../signals/zero-page/html-dom-comment-editor.ts";
 import type {
+  HtmlDomEditComment,
   HtmlDomEditDraft,
   HtmlDomEditPayload,
 } from "./html-dom-edit-types.ts";
@@ -109,6 +113,76 @@ function HtmlDomCommentStage({
   );
 }
 
+function HtmlDomCommentsList({
+  comments,
+}: {
+  readonly comments: readonly HtmlDomEditComment[];
+}) {
+  const deleteComment = useSet(deleteHtmlDomComment$);
+  const focusComment = useSet(focusHtmlDomComment$);
+
+  return (
+    <div
+      className="absolute bottom-full left-0 mb-3 w-[min(360px,calc(100vw-32px))] overflow-hidden rounded-xl border border-border/80 bg-background/98 p-2 shadow-2xl ring-1 ring-black/5 backdrop-blur"
+      data-testid="html-dom-comments-list"
+    >
+      <div className="flex items-center justify-between px-2 pb-2 pt-1">
+        <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
+          Comments
+        </div>
+        <div className="rounded-full bg-blue-50 px-2 py-0.5 text-xs font-medium text-blue-700">
+          {comments.length}
+        </div>
+      </div>
+      {comments.length === 0 ? (
+        <div className="rounded-lg border border-dashed border-border/80 bg-muted/20 px-3 py-4 text-center text-sm text-muted-foreground">
+          No comments yet
+        </div>
+      ) : (
+        <div className="max-h-64 space-y-1.5 overflow-auto pr-1">
+          {comments.map((comment) => {
+            const focusCurrentComment = () => {
+              focusComment(comment.id);
+            };
+            return (
+              <div
+                key={comment.id}
+                role="button"
+                tabIndex={0}
+                className="group/comment relative cursor-pointer rounded-lg border border-transparent bg-muted/35 px-3 py-2.5 pr-10 text-left transition-colors hover:border-blue-200 hover:bg-blue-50/70 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
+                onClick={focusCurrentComment}
+                onKeyDown={(event: KeyboardEvent<HTMLDivElement>) => {
+                  if (event.key !== "Enter" && event.key !== " ") {
+                    return;
+                  }
+                  event.preventDefault();
+                  focusCurrentComment();
+                }}
+              >
+                <div className="line-clamp-3 whitespace-pre-wrap break-words text-sm leading-5 text-foreground">
+                  {comment.comment}
+                </div>
+                <button
+                  type="button"
+                  aria-label="Delete comment"
+                  className="absolute right-2 top-2 inline-flex h-7 w-7 items-center justify-center rounded-full border border-blue-200 bg-background text-blue-600 opacity-0 shadow-sm transition-opacity hover:bg-blue-600 hover:text-white focus:opacity-100 focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-offset-1 group-hover/comment:opacity-100"
+                  data-testid="html-dom-comments-list-delete"
+                  onClick={(event) => {
+                    event.stopPropagation();
+                    deleteComment(comment.id);
+                  }}
+                >
+                  <IconTrash size={14} stroke={2} />
+                </button>
+              </div>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function HtmlDomCommentToolbar({
   disabled,
   model,
@@ -134,34 +208,7 @@ function HtmlDomCommentToolbar({
     <div className="pointer-events-none absolute inset-x-0 bottom-4 z-30 flex justify-center px-4">
       <div className="relative pointer-events-auto">
         {!disabled && model.commentsOpen && (
-          <div
-            className="absolute bottom-full left-0 mb-2 w-[min(320px,calc(100vw-32px))] rounded-lg border border-border/70 bg-background p-3 shadow-xl"
-            data-testid="html-dom-comments-list"
-          >
-            {model.comments.length === 0 ? (
-              <div className="text-sm text-muted-foreground">
-                No comments yet
-              </div>
-            ) : (
-              <div className="max-h-56 space-y-2 overflow-auto">
-                {model.comments.map((comment, index) => {
-                  return (
-                    <div
-                      key={comment.id}
-                      className="rounded-md bg-muted/30 px-3 py-2"
-                    >
-                      <div className="mb-1 text-xs font-medium text-muted-foreground">
-                        Comment {index + 1}
-                      </div>
-                      <div className="whitespace-pre-wrap break-words text-sm text-foreground">
-                        {comment.comment}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            )}
-          </div>
+          <HtmlDomCommentsList comments={model.comments} />
         )}
         <div
           className="flex items-center gap-2 rounded-full border border-border/70 bg-background/95 px-2 py-2 shadow-xl backdrop-blur"
