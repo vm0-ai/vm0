@@ -1086,7 +1086,15 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
       new Set([agentA.agentId, agentB.agentId]),
     );
 
+    context.mocks.ably.publish.mockClear();
     await chat.markAgentThreadsRead(owner, agentA.agentId);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "chatThreadReadCursorUpdated",
+      {
+        agentId: agentA.agentId,
+        threadIds: expect.arrayContaining([firstThreadA, secondThreadA]),
+      },
+    );
 
     await expect(
       chat.listThreadUnreads(owner, agentA.agentId),
