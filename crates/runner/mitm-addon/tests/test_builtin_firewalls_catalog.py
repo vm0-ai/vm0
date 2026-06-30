@@ -259,14 +259,22 @@ def test_model_provider_builtin_firewalls_are_available():
     assert openai_firewall is not None
     assert openai_firewall["apis"][0]["base"] == "https://api.openai.com/v1/responses"
     assert codex_firewall is not None
-    assert any(
-        api["base"] == "https://chatgpt.com/backend-api/codex" for api in codex_firewall["apis"]
-    )
-    assert any(
-        api["base"] == "https://auth.openai.com"
-        and api.get("permissions") == [{"name": "denied", "rules": ["ANY /*"]}]
+    codex_api = next(
+        api
         for api in codex_firewall["apis"]
+        if api["base"] == "https://chatgpt.com/backend-api/codex"
     )
+    assert codex_api.get("permissions") == [
+        {
+            "name": "codex:api",
+            "description": "Access the ChatGPT Codex backend with GET and POST requests.",
+            "rules": ["GET /{path*}", "POST /{path*}"],
+        }
+    ]
+    auth_api = next(
+        api for api in codex_firewall["apis"] if api["base"] == "https://auth.openai.com"
+    )
+    assert auth_api.get("permissions") == []
 
 
 def test_unknown_builtin_firewall_does_not_import(monkeypatch):
