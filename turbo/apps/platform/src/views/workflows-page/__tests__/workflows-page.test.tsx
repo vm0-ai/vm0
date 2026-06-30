@@ -789,7 +789,7 @@ describe("workflows routes", () => {
     expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).not.toContain("side effects");
     expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).not.toContain("trigger");
 
-    click(buttonByText(/create with chat/i));
+    click(buttonByText(/create in chat/i));
     const dialog = await screen.findByRole("dialog", {
       name: "Create workflow",
     });

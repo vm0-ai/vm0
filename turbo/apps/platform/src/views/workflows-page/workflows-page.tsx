@@ -179,7 +179,11 @@ function WorkflowIndexCard({
   return (
     <Link
       pathname={ROUTES.workflowDetail}
-      options={{ pathParams: { workflowId: workflow.id } }}
+      options={{
+        pathParams: {
+          workflowId: workflow.id,
+        },
+      }}
       className="zero-card block px-5 py-4 text-left text-foreground no-underline transition-colors hover:bg-gray-50"
     >
       <div className="flex items-start justify-between gap-4">
@@ -226,7 +230,7 @@ export function WorkflowsPage() {
               openCreateWorkflowDialog();
             }}
           >
-            Create with chat
+            Create in chat
           </Button>
         </div>
       </header>
