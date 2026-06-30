@@ -1852,6 +1852,72 @@ export function hasBaseUrlParams(base: string): boolean {
 
 const HOST_WILDCARD_PARAM_PREFIX = "hostWildcard";
 
+interface RawBaseUrlAuthority {
+  readonly authority: string;
+  readonly start: number;
+  readonly end: number;
+}
+
+interface RawWildcardAuthorityParts {
+  readonly host: string;
+  readonly portSuffix: string;
+}
+
+function rawBaseUrlAuthorityRange(base: string): RawBaseUrlAuthority | null {
+  const schemeEnd = base.indexOf("://");
+  if (schemeEnd === -1) return null;
+  const start = schemeEnd + 3;
+  const rest = base.slice(start);
+  const delimiterIndexes = [
+    rest.indexOf("/"),
+    rest.indexOf("?"),
+    rest.indexOf("#"),
+  ].filter((index) => {
+    return index !== -1;
+  });
+  const end =
+    delimiterIndexes.length === 0
+      ? base.length
+      : start + Math.min(...delimiterIndexes);
+  return {
+    authority: base.slice(start, end),
+    start,
+    end,
+  };
+}
+
+function splitRawWildcardAuthority(
+  authority: string,
+): RawWildcardAuthorityParts | null {
+  if (
+    authority === "" ||
+    authority.includes("@") ||
+    authorityHasEmptyPort(authority)
+  ) {
+    return null;
+  }
+
+  if (authority.startsWith("[")) {
+    const closeBracket = authority.indexOf("]");
+    if (closeBracket === -1) return null;
+    const portSuffix = authority.slice(closeBracket + 1);
+    if (portSuffix !== "" && !portSuffix.startsWith(":")) return null;
+    return { host: authority.slice(0, closeBracket + 1), portSuffix };
+  }
+
+  const portSeparator = authority.lastIndexOf(":");
+  if (portSeparator === -1) {
+    return { host: authority, portSuffix: "" };
+  }
+  if (authority.indexOf(":") !== portSeparator) {
+    return null;
+  }
+  return {
+    host: authority.slice(0, portSeparator),
+    portSuffix: authority.slice(portSeparator),
+  };
+}
+
 /**
  * Convert user-facing `*` wildcards in a URL host into the existing
  * parameterized host grammar understood by the firewall matcher.
@@ -1865,24 +1931,19 @@ const HOST_WILDCARD_PARAM_PREFIX = "hostWildcard";
  * Path `*` characters remain literal.
  */
 export function expandHostWildcardsInBaseUrl(base: string): string {
-  const rawAuthority = rawAuthorityFromBaseUrl(base);
-  if (rawAuthority !== null && authorityHasEmptyPort(rawAuthority)) {
+  if (base.includes("\\")) {
     return base;
   }
 
-  let url: URL;
-  try {
-    url = new URL(base);
-  } catch {
+  const authorityRange = rawBaseUrlAuthorityRange(base);
+  if (authorityRange === null) {
     return base;
   }
-
-  if (!url.hostname.includes("*")) {
-    return base;
-  }
+  const authority = splitRawWildcardAuthority(authorityRange.authority);
+  if (authority === null || !authority.host.includes("*")) return base;
 
   let paramIndex = 0;
-  const host = url.hostname
+  const host = authority.host
     .split(".")
     .map((segment) => {
       if (!segment.includes("*")) {
@@ -1902,8 +1963,9 @@ export function expandHostWildcardsInBaseUrl(base: string): string {
     })
     .join(".");
 
-  const authority = url.port ? `${host}:${url.port}` : host;
-  return `${url.protocol}//${authority}${url.pathname}${url.search}${url.hash}`;
+  return `${base.slice(0, authorityRange.start)}${host}${authority.portSuffix}${base.slice(
+    authorityRange.end,
+  )}`;
 }
 
 function errMsg(base: string, svc: string, detail: string): string {
@@ -2274,6 +2336,15 @@ function validateHostPercentEncoding(
           errMsg(base, serviceName, "host must not contain commas"),
         );
       }
+      if (char === "*") {
+        throw new Error(
+          errMsg(
+            base,
+            serviceName,
+            "host must not contain wildcard characters",
+          ),
+        );
+      }
     }
     i = end - 1;
   }
@@ -2505,6 +2576,33 @@ function validateStaticHostLabels(
 ): void {
   if (hostname.startsWith("[") && hostname.endsWith("]")) return;
   validateHostHasNoEmptyLabels(hostname, base, serviceName);
+  validateHostHasNoRawWildcards(hostname, base, serviceName);
+}
+
+function hostSegmentHasRawWildcard(segment: string): boolean {
+  const parsed = parseSegment(segment);
+  if (parsed.kind === "literal") return parsed.value.includes("*");
+  if (parsed.kind === "param") {
+    return parsed.prefix.includes("*") || parsed.suffix.includes("*");
+  }
+  return false;
+}
+
+function validateHostHasNoRawWildcards(
+  host: string,
+  base: string,
+  serviceName: string,
+): void {
+  if (host.startsWith("[") && host.endsWith("]")) return;
+  for (const segment of host
+    .replace(HOST_DOT_EQUIVALENT_PATTERN, ".")
+    .split(".")) {
+    if (hostSegmentHasRawWildcard(segment)) {
+      throw new Error(
+        errMsg(base, serviceName, "host must not contain wildcard characters"),
+      );
+    }
+  }
 }
 
 function hostSegmentForSyntaxValidation(
@@ -2690,6 +2788,7 @@ function validateBaseUrlParams(base: string, serviceName: string): void {
     base,
     serviceName,
   );
+  validateHostHasNoRawWildcards(authority.normalizedHost, base, serviceName);
   validateParameterizedHostUrlSyntax(
     base.slice(0, schemeEnd),
     authority,

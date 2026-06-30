@@ -40,7 +40,7 @@ _IDNA_DOT_TRANSLATION = str.maketrans(
 )
 _FORBIDDEN_AUTHORITY_HOST_CHARS = frozenset("#%/<>?@[\\]^|[]")
 _FORBIDDEN_RUNTIME_AUTHORITY_HOST_CHARS = _FORBIDDEN_AUTHORITY_HOST_CHARS | frozenset("{}")
-_PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61")
+_PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS = frozenset("{}*.\u3002\uff0e\uff61")
 _VALID_BASE_SCHEMES = frozenset(("http", "https"))
 _BASE_PATH_SCORE_MULTIPLIER = 1_000_000
 _BASE_AUTHORITY_SCORE_MULTIPLIER = 100
@@ -150,6 +150,10 @@ def _normalize_parameterized_authority_host(host: str) -> tuple[str, bool]:
     for label in normalized.split("."):
         parsed = _parse_segment(label)
         if isinstance(parsed, SegmentLiteral):
+            if "*" in parsed.value:
+                labels.append(parsed.value.lower())
+                malformed = True
+                continue
             try:
                 labels.append(normalize_idna_hostname(parsed.value))
             except (UnicodeError, ValueError):
@@ -162,6 +166,8 @@ def _normalize_parameterized_authority_host(host: str) -> tuple[str, bool]:
             continue
 
         if not _is_ascii(parsed.prefix) or not _is_ascii(parsed.suffix):
+            malformed = True
+        if "*" in parsed.prefix or "*" in parsed.suffix:
             malformed = True
         labels.append(_format_param_segment(parsed))
 
@@ -258,7 +264,9 @@ def _normalize_authority_host(
         return normalized, True
     if percent_malformed:
         return normalized.lower(), True
-    if _has_invalid_authority_host_chars(normalized, allow_host_params=allow_host_params):
+    if _has_invalid_authority_host_chars(normalized, allow_host_params=allow_host_params) or (
+        "*" in normalized and not (allow_host_params and _has_base_url_params(normalized))
+    ):
         return normalized.lower(), True
     if raw_host.bracketed:
         try:

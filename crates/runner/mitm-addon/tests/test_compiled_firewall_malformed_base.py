@@ -43,6 +43,24 @@ def test_empty_port_base_authority_is_invalid():
 @pytest.mark.parametrize(
     "base",
     [
+        "https://*.example.com",
+        "https://api-*.example.com",
+        "https://api-{sub}*.example.com",
+        "https://%2A.example.com",
+        "https://api-%2A.example.com",
+    ],
+)
+def test_raw_wildcard_base_authority_is_invalid(base):
+    assert not matching.firewall_base_config_is_valid(base)
+
+
+def test_star_greedy_host_param_base_authority_is_valid():
+    assert matching.firewall_base_config_is_valid("https://{sub*}.example.com")
+
+
+@pytest.mark.parametrize(
+    "base",
+    [
         "https://\u0668.\u0668.\u0668.\u0668",
         "https://\u0967\u0968\u096d.\u0966.\u0966.\u0967",
         "https://\uff11\uff12\uff17.\uff10.\uff10.\uff11",

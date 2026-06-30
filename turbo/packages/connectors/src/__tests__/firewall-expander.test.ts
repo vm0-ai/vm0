@@ -845,6 +845,24 @@ describe("validateBaseUrl", () => {
     }).toThrow("host must not contain percent-encoded dots");
   });
 
+  it("should reject raw and percent-encoded wildcard host characters", () => {
+    expect(() => {
+      return validateBaseUrl("https://*.example.com", "fw");
+    }).toThrow("host must not contain wildcard characters");
+    expect(() => {
+      return validateBaseUrl("https://api-*.example.com", "fw");
+    }).toThrow("host must not contain wildcard characters");
+    expect(() => {
+      return validateBaseUrl("https://api-{sub}*.example.com", "fw");
+    }).toThrow("host must not contain wildcard characters");
+    expect(() => {
+      return validateBaseUrl("https://%2A.example.com", "fw");
+    }).toThrow("host must not contain wildcard characters");
+    expect(() => {
+      return validateBaseUrl("https://api-%2A.example.com", "fw");
+    }).toThrow("host must not contain wildcard characters");
+  });
+
   it("should reject commas in host", () => {
     expect(() => {
       return validateBaseUrl("https://api,example.com", "fw");
@@ -1188,6 +1206,10 @@ describe("expandHostWildcardsInBaseUrl", () => {
     expect(() => {
       return validateBaseUrl(expanded, "fw");
     }).not.toThrow();
+
+    expect(expandHostWildcardsInBaseUrl("https://*.example.com:443/v1/")).toBe(
+      "https://{hostWildcard1}.example.com:443/v1/",
+    );
   });
 
   it("does not normalize wildcard URLs with empty ports", () => {
@@ -1196,6 +1218,34 @@ describe("expandHostWildcardsInBaseUrl", () => {
     expect(() => {
       return validateBaseUrl(expanded, "fw");
     }).toThrow("not a valid URL authority");
+  });
+
+  it("does not normalize wildcard URLs with userinfo", () => {
+    const expanded = expandHostWildcardsInBaseUrl(
+      "https://user@*.example.com/v1/",
+    );
+    expect(expanded).toBe("https://user@*.example.com/v1/");
+    expect(() => {
+      return validateBaseUrl(expanded, "fw");
+    }).toThrow("must not contain userinfo");
+  });
+
+  it("does not expand percent-encoded host wildcards", () => {
+    expect(expandHostWildcardsInBaseUrl("https://%2A.example.com/v1/")).toBe(
+      "https://%2A.example.com/v1/",
+    );
+    expect(() => {
+      return validateBaseUrl("https://%2A.example.com/v1/", "fw");
+    }).toThrow("host must not contain wildcard characters");
+  });
+
+  it("does not normalize wildcard URLs with backslashes", () => {
+    const base = String.raw`https://*.example.com\v1`;
+    const expanded = expandHostWildcardsInBaseUrl(base);
+    expect(expanded).toBe(base);
+    expect(() => {
+      return validateBaseUrl(expanded, "fw");
+    }).toThrow("must not contain backslash");
   });
 
   it("converts mixed-label host wildcards and leaves path wildcards literal", () => {
