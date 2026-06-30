@@ -352,11 +352,7 @@ impl<'a> CliRuntimeConfig<'a> {
                 Cow::Borrowed("")
             },
             home_dir: Cow::Borrowed(env::home_dir()),
-            api_url: if use_codex_app_server_backend {
-                Cow::Owned(child_env::runner_visible_api_url_from_process_env())
-            } else {
-                Cow::Borrowed(env::api_url())
-            },
+            api_url: Cow::Owned(child_env::runner_visible_api_url_from_process_env()),
             openai_model: if is_codex {
                 Cow::Borrowed(env::openai_model())
             } else {
