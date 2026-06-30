@@ -1,29 +1,21 @@
 import { zeroWorkflowTriggersContract } from "@vm0/api-contracts/contracts/zero-workflows";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { connectors } from "@vm0/db/schema/connector";
-import {
-  googleCalendarEventSnapshots,
-  googleCalendarProcessedEvents,
-  googleCalendarWatchStates,
-} from "@vm0/db/schema/google-calendar-event";
-import { secrets } from "@vm0/db/schema/secret";
-import { zeroWorkflows } from "@vm0/db/schema/zero-workflow";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
-import { expect, onTestFinished } from "vitest";
+import { expect } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { createApp } from "../../../app-factory";
 import { mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { writeDb$ } from "../../external/db";
-import { encryptStoredSecretValue } from "../../services/crypto.utils";
 import {
   deleteWorkflowsForFixture$,
+  getWorkflowGoogleCalendarWatchState$,
   seedAgentForInstructions$,
+  seedWorkflowConnector$,
   seedWorkflowsFixture$,
+  type GoogleCalendarWatchState,
   type WorkflowsFixture,
 } from "./helpers/zero-workflows";
 import {
@@ -63,31 +55,16 @@ async function enableGoogleCalendarWorkflowTriggers(
 async function seedGoogleCalendarConnector(
   fixture: WorkflowsFixture,
 ): Promise<string> {
-  const db = store.set(writeDb$);
-  const [connector] = await db
-    .insert(connectors)
-    .values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      type: "google-calendar",
-      authMethod: "oauth",
+  return await store.set(
+    seedWorkflowConnector$,
+    {
+      fixture,
+      connectorType: "google-calendar",
       externalEmail: CALENDAR_EMAIL,
-      tokenExpiresAt: new Date(now() + 60 * 60 * 1000),
-      oauthScopes: JSON.stringify(["https://www.googleapis.com/auth/calendar"]),
-    })
-    .returning({ id: connectors.id });
-  if (!connector) {
-    throw new Error("Expected Google Calendar connector to be created");
-  }
-
-  await db.insert(secrets).values({
-    orgId: fixture.orgId,
-    userId: fixture.userId,
-    name: "GOOGLE_CALENDAR_ACCESS_TOKEN",
-    encryptedValue: await encryptStoredSecretValue("calendar-access-token"),
-    type: "connector",
-  });
-  return connector.id;
+      accessToken: "calendar-access-token",
+    },
+    context.signal,
+  );
 }
 
 function configureGoogleCalendarApiMock(args: {
@@ -170,7 +147,7 @@ async function setupFixture(): Promise<{
     context.signal,
   );
   context.mocks.s3.send.mockResolvedValue({});
-  const { agentId } = await store.set(
+  const seededAgent = await store.set(
     seedAgentForInstructions$,
     {
       orgId: fixture.orgId,
@@ -189,22 +166,12 @@ async function setupFixture(): Promise<{
     },
     context.signal,
   );
-  const [workflow] = await store
-    .set(writeDb$)
-    .select({ id: zeroWorkflows.id })
-    .from(zeroWorkflows)
-    .where(
-      and(
-        eq(zeroWorkflows.orgId, fixture.orgId),
-        eq(zeroWorkflows.agentId, agentId),
-        eq(zeroWorkflows.name, WORKFLOW_NAME),
-      ),
-    );
-  if (!workflow) {
+  const workflowId = seededAgent.workflowIdsByName[WORKFLOW_NAME];
+  if (!workflowId) {
     throw new Error("Expected the agent to own the seeded workflow");
   }
   mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
-  return { fixture, runnerGroup, workflowId: workflow.id };
+  return { fixture, runnerGroup, workflowId };
 }
 
 async function postGoogleCalendarWebhook(headers: HeadersInit): Promise<{
@@ -226,7 +193,7 @@ async function postGoogleCalendarWebhook(headers: HeadersInit): Promise<{
 }
 
 function webhookHeaders(
-  state: typeof googleCalendarWatchStates.$inferSelect,
+  state: GoogleCalendarWatchState,
   overrides?: Record<string, string>,
 ): Record<string, string> {
   return {
@@ -241,10 +208,7 @@ function webhookHeaders(
 
 describe("POST /api/webhooks/google-calendar", () => {
   const track = createFixtureTracker<WorkflowsFixture>(async (fixture) => {
-    const db = store.set(writeDb$);
     await deleteFeatureSwitchesForUser(context, fixture);
-    await db.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
-    await db.delete(connectors).where(eq(connectors.orgId, fixture.orgId));
     await store.set(deleteWorkflowsForFixture$, fixture, context.signal);
   });
 
@@ -283,11 +247,12 @@ describe("POST /api/webhooks/google-calendar", () => {
       [201],
     );
 
-    const db = store.set(writeDb$);
-    const [watch] = await db
-      .select()
-      .from(googleCalendarWatchStates)
-      .where(eq(googleCalendarWatchStates.connectorId, connectorId));
+    const watchState = await store.set(
+      getWorkflowGoogleCalendarWatchState$,
+      { connectorId, triggerId: created.body.id },
+      context.signal,
+    );
+    const watch = watchState.watches[0];
     if (!watch) {
       throw new Error("Expected Google Calendar watch state");
     }
@@ -303,30 +268,21 @@ describe("POST /api/webhooks/google-calendar", () => {
     });
     await runsApi.heartbeatRunner(runnerGroup);
     const firstJob = await runsApi.pollRunner(runnerGroup);
-    expect(firstJob.body.job?.runId).toEqual(expect.any(String));
+    expect(firstJob.body.job?.runId).toStrictEqual(expect.any(String));
     await runsApi.claimRunnerJob(firstJob.body.job!.runId);
 
-    const processed = await db
-      .select({
-        calendarEventId: googleCalendarProcessedEvents.calendarEventId,
-      })
-      .from(googleCalendarProcessedEvents)
-      .where(eq(googleCalendarProcessedEvents.triggerId, created.body.id));
-    expect(processed).toStrictEqual([{ calendarEventId: "event-created-1" }]);
-
-    const snapshots = await db
-      .select({
-        calendarEventId: googleCalendarEventSnapshots.calendarEventId,
-      })
-      .from(googleCalendarEventSnapshots)
-      .where(eq(googleCalendarEventSnapshots.watchStateId, watch.id));
-    expect(snapshots).toStrictEqual([{ calendarEventId: "event-created-1" }]);
-
-    const [updatedWatch] = await db
-      .select({ syncToken: googleCalendarWatchStates.syncToken })
-      .from(googleCalendarWatchStates)
-      .where(eq(googleCalendarWatchStates.id, watch.id));
-    expect(updatedWatch?.syncToken).toBe("calendar-sync-next");
+    const updatedWatchState = await store.set(
+      getWorkflowGoogleCalendarWatchState$,
+      { connectorId, triggerId: created.body.id },
+      context.signal,
+    );
+    expect(updatedWatchState.processed).toStrictEqual([
+      { calendarEventId: "event-created-1" },
+    ]);
+    expect(updatedWatchState.snapshots).toStrictEqual([
+      { calendarEventId: "event-created-1" },
+    ]);
+    expect(updatedWatchState.watches[0]?.syncToken).toBe("calendar-sync-next");
 
     const second = await postGoogleCalendarWebhook(webhookHeaders(watch));
 
@@ -388,11 +344,12 @@ describe("POST /api/webhooks/google-calendar", () => {
       [201],
     );
 
-    const [watch] = await store
-      .set(writeDb$)
-      .select()
-      .from(googleCalendarWatchStates)
-      .where(eq(googleCalendarWatchStates.connectorId, connectorId));
+    const watchState = await store.set(
+      getWorkflowGoogleCalendarWatchState$,
+      { connectorId, triggerId: created.body.id },
+      context.signal,
+    );
+    const watch = watchState.watches[0];
     if (!watch) {
       throw new Error("Expected Google Calendar watch state");
     }
@@ -419,7 +376,7 @@ describe("POST /api/webhooks/google-calendar", () => {
     await enableGoogleCalendarWorkflowTriggers(fixture);
     const connectorId = await seedGoogleCalendarConnector(fixture);
 
-    await accept(
+    const created = await accept(
       triggersClient().create({
         headers: authHeaders(),
         params: { workflowId },
@@ -431,11 +388,12 @@ describe("POST /api/webhooks/google-calendar", () => {
       [201],
     );
 
-    const [watch] = await store
-      .set(writeDb$)
-      .select()
-      .from(googleCalendarWatchStates)
-      .where(eq(googleCalendarWatchStates.connectorId, connectorId));
+    const watchState = await store.set(
+      getWorkflowGoogleCalendarWatchState$,
+      { connectorId, triggerId: created.body.id },
+      context.signal,
+    );
+    const watch = watchState.watches[0];
     if (!watch) {
       throw new Error("Expected Google Calendar watch state");
     }

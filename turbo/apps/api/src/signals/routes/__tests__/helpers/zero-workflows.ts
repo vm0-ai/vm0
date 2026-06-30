@@ -34,6 +34,28 @@ export interface GithubProcessedWorkflowEvent {
   readonly labelNameNormalized: string;
 }
 
+export interface GoogleCalendarWatchState {
+  readonly id: string;
+  readonly channelId: string;
+  readonly channelToken: string;
+  readonly resourceId: string;
+  readonly syncToken: string | null;
+}
+
+export interface GoogleCalendarProcessedEvent {
+  readonly calendarEventId: string;
+}
+
+export interface GoogleCalendarEventSnapshot {
+  readonly calendarEventId: string;
+}
+
+export interface GoogleCalendarWatchStateResult {
+  readonly watches: readonly GoogleCalendarWatchState[];
+  readonly processed: readonly GoogleCalendarProcessedEvent[];
+  readonly snapshots: readonly GoogleCalendarEventSnapshot[];
+}
+
 interface SeedAgentForInstructionsResult {
   readonly agentId: string;
   readonly name: string;
@@ -298,6 +320,71 @@ export const getWorkflowGithubProcessedEvents$ = command(
         ? { githubDeliveryId, action, labelNameNormalized }
         : null;
     });
+  },
+);
+
+export const seedWorkflowConnector$ = command(
+  async (
+    _,
+    args: {
+      readonly fixture: WorkflowsFixture;
+      readonly connectorType: "gmail" | "google-calendar";
+      readonly externalEmail?: string;
+      readonly accessToken?: string;
+    },
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const response = await postAction(signal, {
+      action: "seed-connector",
+      org_id: args.fixture.orgId,
+      user_id: args.fixture.userId,
+      connector_type: args.connectorType,
+      external_email: args.externalEmail,
+      access_token: args.accessToken,
+    });
+    return stringField(response, "connector_id");
+  },
+);
+
+export const getWorkflowGoogleCalendarWatchState$ = command(
+  async (
+    _,
+    args: { readonly connectorId: string; readonly triggerId?: string },
+    signal: AbortSignal,
+  ): Promise<GoogleCalendarWatchStateResult> => {
+    const response = await postAction(signal, {
+      action: "get-google-calendar-watch",
+      connector_id: args.connectorId,
+      trigger_id: args.triggerId,
+    });
+    return {
+      watches: recordsField(response, "watches", (row) => {
+        const id = row.id;
+        const channelId = row.channelId;
+        const channelToken = row.channelToken;
+        const resourceId = row.resourceId;
+        return typeof id === "string" &&
+          typeof channelId === "string" &&
+          typeof channelToken === "string" &&
+          typeof resourceId === "string"
+          ? {
+              id,
+              channelId,
+              channelToken,
+              resourceId,
+              syncToken: nullableString(row.syncToken),
+            }
+          : null;
+      }),
+      processed: recordsField(response, "processed", (row) => {
+        const calendarEventId = row.calendarEventId;
+        return typeof calendarEventId === "string" ? { calendarEventId } : null;
+      }),
+      snapshots: recordsField(response, "snapshots", (row) => {
+        const calendarEventId = row.calendarEventId;
+        return typeof calendarEventId === "string" ? { calendarEventId } : null;
+      }),
+    };
   },
 );
 

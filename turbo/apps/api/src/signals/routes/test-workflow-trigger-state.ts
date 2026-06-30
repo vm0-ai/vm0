@@ -23,6 +23,7 @@ import { connectors } from "@vm0/db/schema/connector";
 import { gmailWatchStates } from "@vm0/db/schema/gmail-event";
 import {
   googleCalendarEventSnapshots,
+  googleCalendarProcessedEvents,
   googleCalendarWatchStates,
 } from "@vm0/db/schema/google-calendar-event";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
@@ -1026,6 +1027,8 @@ async function getGoogleCalendarWatchForAction(
       orgId: googleCalendarWatchStates.orgId,
       userId: googleCalendarWatchStates.userId,
       calendarId: googleCalendarWatchStates.calendarId,
+      channelId: googleCalendarWatchStates.channelId,
+      channelToken: googleCalendarWatchStates.channelToken,
       resourceId: googleCalendarWatchStates.resourceId,
       syncToken: googleCalendarWatchStates.syncToken,
       needsRewatch: googleCalendarWatchStates.needsRewatch,
@@ -1048,7 +1051,27 @@ async function getGoogleCalendarWatchForAction(
           .where(inArray(googleCalendarEventSnapshots.watchStateId, watchIds))
       : [];
   signal.throwIfAborted();
-  return actionOk({ watches, snapshots });
+  const triggerId = readOptionalString(body, "trigger_id");
+  const processed =
+    watchIds.length > 0
+      ? await db
+          .select({
+            watchStateId: googleCalendarProcessedEvents.watchStateId,
+            triggerId: googleCalendarProcessedEvents.triggerId,
+            calendarEventId: googleCalendarProcessedEvents.calendarEventId,
+          })
+          .from(googleCalendarProcessedEvents)
+          .where(
+            and(
+              inArray(googleCalendarProcessedEvents.watchStateId, watchIds),
+              triggerId
+                ? eq(googleCalendarProcessedEvents.triggerId, triggerId)
+                : undefined,
+            ),
+          )
+      : [];
+  signal.throwIfAborted();
+  return actionOk({ watches, snapshots, processed });
 }
 
 async function getChatThreadForAction(
