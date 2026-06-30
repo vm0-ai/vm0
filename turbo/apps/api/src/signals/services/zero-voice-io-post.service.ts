@@ -11,6 +11,7 @@ import { parseBuffer } from "music-metadata";
 
 import { buildArtifactKey, buildFileUrl } from "../../lib/file-url";
 import { env } from "../../lib/env";
+import { logger } from "../../lib/log";
 import { db$, writeDb$ } from "../external/db";
 import { nowDate } from "../external/time";
 import { putS3Object } from "../external/s3";
@@ -18,9 +19,16 @@ import { settle } from "../utils";
 import { recordWebUploadedFile$ } from "./run-uploaded-files.service";
 import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 
+const L = logger("ZeroVoiceIoPost");
+
 export const OPENAI_AUDIO_SPEECH_URL = "https://api.openai.com/v1/audio/speech";
 export const OPENAI_AUDIO_TRANSCRIPTIONS_URL =
   "https://api.openai.com/v1/audio/transcriptions";
+export const BYTEPLUS_ASR_FLASH_URL =
+  "https://voice.ap-southeast-1.bytepluses.com/api/v3/auc/bigmodel/recognize/flash";
+const BYTEPLUS_ASR_RESOURCE_ID = "volc.seedasr.auc_turbo";
+const BYTEPLUS_ASR_MODEL = "bigmodel";
+const BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH = 4000;
 export const VOICE_IO_TTS_MODEL = "gpt-4o-mini-tts";
 // Verbose transcription (per-segment timestamps) requires whisper-1;
 // gpt-4o-mini-transcribe does not return segment timestamps.
@@ -102,10 +110,25 @@ interface QuotaErrorBody extends ErrorBody {
   };
 }
 
-type ErrorResponse = {
+export type ErrorResponse = {
   readonly status: ErrorStatus;
   readonly body: ErrorBody | QuotaErrorBody;
 };
+
+export interface VoiceInputSttSegment {
+  readonly start: number;
+  readonly end: number;
+  readonly text: string;
+}
+
+export interface VoiceInputSttTranscript {
+  readonly text: string;
+  readonly segments?: readonly VoiceInputSttSegment[];
+}
+
+export type VoiceInputSttProviderResult =
+  | VoiceInputSttTranscript
+  | ErrorResponse;
 
 interface SttDailyPolicy {
   readonly orgTier: OrgTier;
@@ -212,6 +235,275 @@ export function isVerboseTranscriptionSegment(value: unknown): value is {
     typeof value.end === "number" &&
     typeof value.text === "string"
   );
+}
+
+function bytePlusAudioFormatForKey(value: string): string | undefined {
+  if (isBytePlusWavFormat(value)) {
+    return "wav";
+  }
+  if (isBytePlusMp3Format(value)) {
+    return "mp3";
+  }
+  if (isBytePlusOggFormat(value)) {
+    return "ogg";
+  }
+  if (isBytePlusWebmFormat(value)) {
+    return "webm";
+  }
+  if (isBytePlusM4aFormat(value)) {
+    return "m4a";
+  }
+  return undefined;
+}
+
+function isBytePlusWavFormat(value: string): boolean {
+  return (
+    value === "audio/wav" ||
+    value === "audio/wave" ||
+    value === "audio/x-wav" ||
+    value === "wav"
+  );
+}
+
+function isBytePlusMp3Format(value: string): boolean {
+  return (
+    value === "audio/mpeg" ||
+    value === "audio/mp3" ||
+    value === "audio/mpga" ||
+    value === "mp3" ||
+    value === "mpga" ||
+    value === "mpeg"
+  );
+}
+
+function isBytePlusOggFormat(value: string): boolean {
+  return value === "audio/ogg" || value === "ogg";
+}
+
+function isBytePlusWebmFormat(value: string): boolean {
+  return value === "audio/webm" || value === "webm";
+}
+
+function isBytePlusM4aFormat(value: string): boolean {
+  return (
+    value === "audio/mp4" ||
+    value === "audio/m4a" ||
+    value === "audio/x-m4a" ||
+    value === "mp4" ||
+    value === "m4a"
+  );
+}
+
+function bytePlusAudioFormat(file: File): string {
+  const baseMimeType = file.type.split(";")[0]?.toLowerCase() ?? file.type;
+  const extension = file.name.toLowerCase().split(".").pop();
+  const mimeFormat = bytePlusAudioFormatForKey(baseMimeType);
+  if (mimeFormat) {
+    return mimeFormat;
+  }
+
+  if (extension) {
+    return bytePlusAudioFormatForKey(extension) ?? extension;
+  }
+  return "raw";
+}
+
+function bytePlusAudioCodec(file: File): string | undefined {
+  const mimeType = file.type.toLowerCase();
+  if (mimeType.includes("opus") || mimeType.startsWith("audio/webm")) {
+    return "opus";
+  }
+  return undefined;
+}
+
+async function providerErrorBodyForLog(
+  response: Response,
+): Promise<string | undefined> {
+  const result = await settle(response.text());
+  if (!result.ok || !result.value) {
+    return undefined;
+  }
+  return result.value.length > BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH
+    ? `${result.value.slice(0, BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH)}...`
+    : result.value;
+}
+
+function bytePlusTranscriptionStatus(response: Response): string | null {
+  return (
+    response.headers.get("x-api-status-code") ??
+    response.headers.get("X-Api-Status-Code")
+  );
+}
+
+function isBytePlusTranscriptionBody(value: unknown): value is {
+  readonly result: {
+    readonly text: string;
+    readonly utterances?: readonly unknown[];
+  };
+} {
+  return (
+    isRecord(value) &&
+    isRecord(value.result) &&
+    typeof value.result.text === "string"
+  );
+}
+
+function isBytePlusUtterance(value: unknown): value is {
+  readonly start_time: number;
+  readonly end_time: number;
+  readonly text: string;
+} {
+  return (
+    isRecord(value) &&
+    typeof value.start_time === "number" &&
+    typeof value.end_time === "number" &&
+    typeof value.text === "string"
+  );
+}
+
+function bytePlusSegments(
+  utterances: readonly unknown[] | undefined,
+): readonly VoiceInputSttSegment[] | undefined {
+  if (!utterances) {
+    return undefined;
+  }
+  return utterances.filter(isBytePlusUtterance).map((utterance) => {
+    return {
+      start: utterance.start_time / 1000,
+      end: utterance.end_time / 1000,
+      text: utterance.text,
+    };
+  });
+}
+
+export async function transcribeOpenAiVoiceInputFile(
+  file: File,
+  signal: AbortSignal,
+): Promise<VoiceInputSttProviderResult> {
+  const openaiForm = new FormData();
+  openaiForm.append("file", file, file.name || "audio.webm");
+  openaiForm.append("model", VOICE_IO_STT_VERBOSE_MODEL);
+  openaiForm.append("response_format", "verbose_json");
+
+  const openaiResponse = await fetch(OPENAI_AUDIO_TRANSCRIPTIONS_URL, {
+    method: "POST",
+    headers: { Authorization: `Bearer ${env("OPENAI_API_KEY")}` },
+    body: openaiForm,
+    signal,
+  });
+  signal.throwIfAborted();
+
+  if (!openaiResponse.ok) {
+    const errorBody = await openaiResponse.text();
+    signal.throwIfAborted();
+    L.error("OpenAI STT API error", {
+      status: openaiResponse.status,
+      statusText: openaiResponse.statusText,
+      body: errorBody,
+      fileMime: file.type,
+      fileSize: file.size,
+      fileName: file.name,
+    });
+    return internalError("Transcription failed");
+  }
+
+  const result: unknown = await openaiResponse.json();
+  signal.throwIfAborted();
+  if (!isTranscriptionBody(result)) {
+    return internalError("Transcription failed");
+  }
+
+  const segments = Array.isArray((result as Record<string, unknown>).segments)
+    ? ((result as Record<string, unknown>).segments as unknown[]).filter(
+        isVerboseTranscriptionSegment,
+      )
+    : undefined;
+
+  return {
+    text: result.text,
+    ...(segments !== undefined && { segments }),
+  };
+}
+
+export async function transcribeBytePlusVoiceInputFile(
+  file: File,
+  signal: AbortSignal,
+): Promise<VoiceInputSttProviderResult> {
+  const apiKey = env("BYTEPLUS_API_KEY");
+  if (!apiKey) {
+    return serviceUnavailable(
+      "BytePlus STT is not configured",
+      "BYTEPLUS_STT_NOT_CONFIGURED",
+    );
+  }
+
+  const requestId = randomUUID();
+  const fileBytes = await file.arrayBuffer();
+  signal.throwIfAborted();
+  const audio: Record<string, unknown> = {
+    data: Buffer.from(fileBytes).toString("base64"),
+    format: bytePlusAudioFormat(file),
+  };
+  const codec = bytePlusAudioCodec(file);
+  if (codec) {
+    audio.codec = codec;
+  }
+
+  const bytePlusResponse = await fetch(BYTEPLUS_ASR_FLASH_URL, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      "X-Api-Key": apiKey,
+      "X-Api-Resource-Id": BYTEPLUS_ASR_RESOURCE_ID,
+      "X-Api-Request-Id": requestId,
+      "X-Api-Sequence": "-1",
+    },
+    body: JSON.stringify({
+      audio,
+      request: {
+        model_name: BYTEPLUS_ASR_MODEL,
+        enable_itn: true,
+        enable_punc: true,
+        enable_ddc: true,
+        enable_speaker_info: false,
+        show_utterances: true,
+      },
+    }),
+    signal,
+  });
+  signal.throwIfAborted();
+
+  const providerStatus = bytePlusTranscriptionStatus(bytePlusResponse);
+  if (
+    !bytePlusResponse.ok ||
+    (providerStatus !== null && providerStatus !== "20000000")
+  ) {
+    const responseBody = await providerErrorBodyForLog(bytePlusResponse);
+    signal.throwIfAborted();
+    L.error("BytePlus STT API error", {
+      status: bytePlusResponse.status,
+      statusText: bytePlusResponse.statusText,
+      providerStatus,
+      responseBody,
+      fileMime: file.type,
+      fileSize: file.size,
+      fileName: file.name,
+      requestId,
+    });
+    return internalError("Transcription failed");
+  }
+
+  const result: unknown = await bytePlusResponse.json();
+  signal.throwIfAborted();
+  if (!isBytePlusTranscriptionBody(result)) {
+    return internalError("Transcription failed");
+  }
+
+  const segments = bytePlusSegments(result.result.utterances);
+  return {
+    text: result.result.text,
+    ...(segments !== undefined && { segments }),
+  };
 }
 
 export function isAllowedSttMimeType(value: string): boolean {
