@@ -18,6 +18,7 @@ from mitmproxy import http
 
 from authority_utils import (
     IPV6_VERSION,
+    authority_has_empty_port,
     bracketed_authority_host_is_ipv6,
     format_url_host,
     has_ascii_space_or_control,
@@ -414,6 +415,8 @@ def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResul
         raise ValueError("Invalid auth.base URL: userinfo is not allowed")
     if not bracketed_authority_host_is_ipv6(parsed.netloc):
         raise ValueError("Invalid auth.base URL: invalid host")
+    if authority_has_empty_port(parsed.netloc):
+        raise ValueError("Invalid auth.base URL: invalid port")
     if parsed.fragment:
         raise ValueError("Invalid auth.base URL: must not contain fragment")
     if has_unsafe_path(parsed.path):

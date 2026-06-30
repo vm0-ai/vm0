@@ -24,6 +24,7 @@ import flow_metadata_keys as metadata_keys
 import public_destination
 from authority_utils import (
     IPV6_VERSION,
+    authority_has_empty_port,
     format_url_host,
     percent_decode_host,
     raw_authority_host,
@@ -627,6 +628,8 @@ def _forward_request_sync(
     conn_factory = _connection_factory(parsed.scheme.lower())
     _reject_userinfo(parsed)
     host = _normalized_forward_request_host(parsed)
+    if authority_has_empty_port(parsed.netloc):
+        raise ValueError("Invalid upstream URL: invalid port")
     try:
         port = parsed.port
     except ValueError as exc:

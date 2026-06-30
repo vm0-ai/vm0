@@ -205,12 +205,19 @@ class TestAuthBaseForwarderSecurity:
 
         getaddrinfo.assert_not_called()
 
-    async def test_rejects_invalid_port_before_dns(self):
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://example.com:bad/path",
+            "https://example.com:/path",
+        ],
+    )
+    async def test_rejects_invalid_port_before_dns(self, url: str):
         with (
             patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
             pytest.raises(ValueError, match="Invalid upstream URL: invalid port"),
         ):
-            await forwarder.forward_request("https://example.com:bad/path", "GET", [], None)
+            await forwarder.forward_request(url, "GET", [], None)
 
         getaddrinfo.assert_not_called()
 

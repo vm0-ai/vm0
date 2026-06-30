@@ -224,6 +224,9 @@ describe("firewall expander helpers", () => {
       return collectAndValidatePermissions(config("https:///hook"));
     }).toThrow("not a valid URL authority");
     expect(() => {
+      return collectAndValidatePermissions(config("https://example.com:/hook"));
+    }).toThrow("not a valid URL authority");
+    expect(() => {
       return collectAndValidatePermissions(
         config("https://example.com/hook#fragment"),
       );
@@ -584,6 +587,15 @@ describe("validateBaseUrl", () => {
   it("should reject URLs with missing authority", () => {
     expect(() => {
       return validateBaseUrl("https:///v1", "fw");
+    }).toThrow("not a valid URL authority");
+  });
+
+  it("should reject URLs with empty ports", () => {
+    expect(() => {
+      return validateBaseUrl("https://api.example.com:", "fw");
+    }).toThrow("not a valid URL authority");
+    expect(() => {
+      return validateBaseUrl("https://{sub}.example.com:", "fw");
     }).toThrow("not a valid URL authority");
   });
 

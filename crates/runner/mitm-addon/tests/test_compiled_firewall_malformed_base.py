@@ -36,6 +36,10 @@ def test_bracketed_non_ipv6_base_authority_is_invalid():
     assert not matching.firewall_base_config_is_valid("https://[v1.invalid]")
 
 
+def test_empty_port_base_authority_is_invalid():
+    assert not matching.firewall_base_config_is_valid("https://api.github.com:")
+
+
 @pytest.mark.parametrize(
     "base",
     [

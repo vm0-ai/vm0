@@ -265,6 +265,31 @@ class TestRegistryBuiltinBaseUrlVars:
         assert invalid_vm.reason == "invalid_firewalls"
         assert "resolved base URL is invalid" in invalid_vm.message
 
+    def test_builtin_public_destination_rejects_empty_port_authority(self, tmp_path, monkeypatch):
+        install_test_builtin_firewall(
+            monkeypatch,
+            name="empty-port-public-host",
+            base="https://example.com:",
+            host_policy={"kind": "publicDestination"},
+        )
+        path = tmp_path / "registry.json"
+        write_builtin_firewall_registry(
+            path,
+            run_id="run-empty-port-public-host",
+            name="empty-port-public-host",
+            base_url_vars={},
+        )
+
+        with patch.object(registry.ctx, "log", MagicMock(), create=True):
+            context = registry.get_vm_context("10.200.0.1", str(path))
+            state = registry.load_registry_state(str(path))
+
+        assert context is None
+        assert not isinstance(state, registry.RegistryUnavailable)
+        invalid_vm = state.invalid_vms["10.200.0.1"]
+        assert invalid_vm.reason == "invalid_firewalls"
+        assert "resolved base URL is invalid" in invalid_vm.message
+
     def test_builtin_provider_owned_whole_authority_rejects_unowned_hosts(self, tmp_path):
         for value in [
             "attacker.example",

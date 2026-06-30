@@ -113,6 +113,19 @@ def raw_authority_host(netloc: str) -> RawAuthorityHost | None:
     return RawAuthorityHost(authority, bracketed=False) if authority else None
 
 
+def authority_has_empty_port(netloc: str) -> bool:
+    authority = netloc.rsplit("@", maxsplit=1)[-1]
+    if authority.startswith("["):
+        close_index = authority.find("]")
+        if close_index == -1:
+            return False
+        return authority[close_index + 1 :] == ":"
+
+    if authority.count(":") != 1:
+        return False
+    return authority.endswith(":")
+
+
 def bracketed_authority_host_is_ipv6(netloc: str) -> bool:
     raw_host = raw_authority_host(netloc)
     if raw_host is None:

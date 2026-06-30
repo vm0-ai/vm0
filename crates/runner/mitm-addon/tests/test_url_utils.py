@@ -117,6 +117,7 @@ class TestBuildRewriteUrl:
             ("https://user:pass@example.com/hook", "userinfo"),
             ("https://exa mple.com/hook", "whitespace"),
             ("https://example.com:99999/hook", "Port out of range"),
+            ("https://example.com:/hook", "invalid port"),
             ("https://[::1/hook", "Invalid IPv6 URL"),
             ("https://[v1.invalid]/hook", "invalid host"),
             ("https://example%2ecom/hook", "unsafe percent encoding"),

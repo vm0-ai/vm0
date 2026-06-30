@@ -6,6 +6,7 @@ from urllib.parse import urlsplit
 
 from authority_utils import (
     IPV6_VERSION,
+    authority_has_empty_port,
     has_ascii_space_or_control,
     is_default_scheme_port,
     percent_decode_host,
@@ -205,15 +206,21 @@ def _split_base_match_url(
         return None
 
     has_userinfo = parts.username is not None or parts.password is not None
-    try:
-        port = parts.port
-    except ValueError:
+    if authority_has_empty_port(parts.netloc):
         if not allow_malformed_authority:
             return None
         port_malformed = True
         port = None
     else:
-        port_malformed = False
+        try:
+            port = parts.port
+        except ValueError:
+            if not allow_malformed_authority:
+                return None
+            port_malformed = True
+            port = None
+        else:
+            port_malformed = False
     if has_userinfo and not allow_malformed_authority:
         return None
 

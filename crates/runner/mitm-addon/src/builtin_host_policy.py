@@ -8,6 +8,7 @@ import public_destination
 from authority_utils import (
     IPV6_VERSION,
     RawAuthorityHost,
+    authority_has_empty_port,
     percent_decode_host,
     raw_authority_host,
 )
@@ -69,6 +70,8 @@ def validate_credentialed_builtin_base(
         raise BuiltinHostPolicyError(
             f'builtin firewall "{firewall_name}" credentialed base URL must use https'
         )
+    if authority_has_empty_port(parsed.netloc):
+        raise _invalid_resolved_base_url(firewall_name)
     _validate_builtin_base_host_policy(
         firewall_name=firewall_name,
         parsed=parsed,

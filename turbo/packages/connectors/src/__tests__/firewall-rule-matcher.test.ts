@@ -961,6 +961,7 @@ describe("matchFirewallBaseUrl", () => {
       "https:\\api%2egithub.com/repos",
     ],
     ["malformed IPv6 authority", "https://[::1/repos"],
+    ["empty port", "https://api.github.com:/repos"],
     ["non-default port", "https://api.github.com:8443/repos"],
   ])("rejects runtime URLs with %s", (_label, url) => {
     expect(matchFirewallBaseUrl(url, "https://api.github.com")).toBeNull();
@@ -1064,6 +1065,7 @@ describe("matchFirewallBaseUrl", () => {
     ["percent-encoded braces", "https://%7Benv%7D.github.com"],
     ["percent-encoded dot", "https://api%2egithub.com"],
     ["percent-encoded comma", "https://api%2Cgithub.com"],
+    ["empty port", "https://api.github.com:"],
     ["non-canonical IPv4 octal component", "https://0177.0.0.1"],
     ["non-canonical IPv4 hex component", "https://0x7f.0.0.1"],
     ["non-canonical IPv4 single number", "https://2130706433"],

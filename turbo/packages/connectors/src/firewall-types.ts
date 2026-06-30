@@ -2301,6 +2301,21 @@ function rawAuthorityFromBaseUrl(base: string): string | null {
   return authorityEnd === -1 ? rest : rest.slice(0, authorityEnd);
 }
 
+function authorityHasEmptyPort(authority: string): boolean {
+  if (authority.startsWith("[")) {
+    const closeBracket = authority.indexOf("]");
+    if (closeBracket === -1) return false;
+    return authority.slice(closeBracket + 1) === ":";
+  }
+
+  const portSeparator = authority.lastIndexOf(":");
+  if (portSeparator === -1) return false;
+  return (
+    authority.indexOf(":") === portSeparator &&
+    portSeparator === authority.length - 1
+  );
+}
+
 function validateNoUserinfo(
   authority: string,
   base: string,
@@ -2654,6 +2669,9 @@ function validateBaseUrlParams(base: string, serviceName: string): void {
   const slashIdx = rest.indexOf("/");
   const host = slashIdx === -1 ? rest : rest.slice(0, slashIdx);
   const path = slashIdx === -1 ? "" : rest.slice(slashIdx);
+  if (authorityHasEmptyPort(host)) {
+    throw new Error(errMsg(base, serviceName, "not a valid URL authority"));
+  }
   validateNoUserinfo(host, base, serviceName);
   validateHostPercentEncoding(host, base, serviceName);
   const authority = splitParameterizedAuthority(host, base, serviceName);
@@ -2743,6 +2761,11 @@ export function validateBaseUrl(base: string, serviceName: string): void {
   const authority = rawAuthorityFromBaseUrl(base);
   if (authority !== null) {
     if (authority === "") {
+      throw new Error(
+        `Invalid base URL "${base}" in firewall "${serviceName}": not a valid URL authority`,
+      );
+    }
+    if (authorityHasEmptyPort(authority)) {
       throw new Error(
         `Invalid base URL "${base}" in firewall "${serviceName}": not a valid URL authority`,
       );
@@ -2890,6 +2913,11 @@ export function validateAuthBaseUrl(
   const authority = rawAuthorityFromBaseUrl(validationUrl);
   if (authority !== null) {
     if (authority === "") {
+      throw new Error(
+        `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": not a valid URL authority`,
+      );
+    }
+    if (authorityHasEmptyPort(authority)) {
       throw new Error(
         `Invalid auth.base URL "${authBase}" in firewall "${serviceName}": not a valid URL authority`,
       );

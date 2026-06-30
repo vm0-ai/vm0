@@ -486,6 +486,22 @@ function rawHostFromAuthority(authority: string): string {
     : withoutUserinfo.slice(0, portSeparator);
 }
 
+function authorityHasEmptyPort(authority: string): boolean {
+  const withoutUserinfo = authority.slice(authority.lastIndexOf("@") + 1);
+  if (withoutUserinfo.startsWith("[")) {
+    const closeBracket = withoutUserinfo.indexOf("]");
+    if (closeBracket === -1) return false;
+    return withoutUserinfo.slice(closeBracket + 1) === ":";
+  }
+
+  const portSeparator = withoutUserinfo.lastIndexOf(":");
+  if (portSeparator === -1) return false;
+  return (
+    withoutUserinfo.indexOf(":") === portSeparator &&
+    portSeparator === withoutUserinfo.length - 1
+  );
+}
+
 function rawAuthorityHostStartsWithDigit(authority: string): boolean {
   const firstChar = rawHostFromAuthority(authority)[0];
   return firstChar !== undefined && firstChar >= "0" && firstChar <= "9";
@@ -545,7 +561,9 @@ function hasMalformedRuntimeAuthoritySyntax(url: string): boolean {
   const authority = rawAuthorityFromUrl(url);
   if (authority === null) return false;
   return (
-    authority.includes("\\") || hasPercentEncodedAuthoritySyntax(authority)
+    authority.includes("\\") ||
+    authorityHasEmptyPort(authority) ||
+    hasPercentEncodedAuthoritySyntax(authority)
   );
 }
 
