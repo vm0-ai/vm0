@@ -367,6 +367,52 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("moves reconnect into the connector options menu", async () => {
+    mockConnectors([
+      {
+        type: "meta-ads",
+        connectionStatus: "reconnect-required",
+      },
+    ]);
+    const authWindow = createMockAuthWindow();
+    context.mocks.browser.open(authWindow);
+    context.mocks.api(
+      zeroConnectorOauthStartContract.start,
+      ({ params, respond }) => {
+        expect(params.type).toBe("meta-ads");
+        return respond(200, {
+          authorizationUrl: "https://oauth.test/meta-ads/authorize",
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+    });
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("Meta Ads");
+      expect(within(card).getByText("Connection expired")).toBeInTheDocument();
+      expect(queryButtonByText("Reconnect", card)).not.toBeInTheDocument();
+    });
+
+    click(
+      within(connectorCardByLabel("Meta Ads")).getByLabelText("More options"),
+    );
+
+    await waitFor(() => {
+      expect(menuItemByText("Reconnect")).toBeInTheDocument();
+    });
+    click(menuItemByText("Reconnect"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/meta-ads/authorize",
+      );
+    });
+  });
+
   it("moves scope review into the connector options menu", async () => {
     const storedScopes = ["https://www.googleapis.com/auth/adwords"];
     const addedScopes = [

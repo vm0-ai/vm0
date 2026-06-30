@@ -495,13 +495,6 @@ function GlobalConnectorCard({
               </TooltipProvider>
             ) : null}
           </span>
-          <button
-            type="button"
-            onClick={onConnect}
-            className="font-medium text-amber-600 hover:text-amber-700 dark:text-amber-400 dark:hover:text-amber-300 transition-colors"
-          >
-            Reconnect
-          </button>
         </span>
       );
     }
@@ -586,6 +579,11 @@ function GlobalConnectorCard({
                 </Button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="end" className="w-44">
+                {connectionStatus === "reconnect-required" ? (
+                  <DropdownMenuItem onClick={onConnect}>
+                    Reconnect
+                  </DropdownMenuItem>
+                ) : null}
                 {connectionStatus === "scope-mismatch" && onReviewScopes ? (
                   <DropdownMenuItem onClick={onReviewScopes}>
                     Review permissions
