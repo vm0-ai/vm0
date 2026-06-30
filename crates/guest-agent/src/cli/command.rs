@@ -121,10 +121,10 @@ fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
 }
 
 fn build_claude_command(use_mock: bool, replay_user_messages: bool) -> Vec<String> {
-    let mock_claude_path = env::mock_claude_path();
+    let mock_claude_path = use_mock.then(env::mock_claude_path);
     build_claude_command_with_config(
         use_mock,
-        &mock_claude_path,
+        mock_claude_path.as_deref().unwrap_or(""),
         ClaudeArgsConfig {
             resume_id: env::resume_session_id(),
             append_system_prompt: env::append_system_prompt(),
@@ -253,10 +253,10 @@ fn build_codex_args(
 }
 
 fn build_codex_command(use_mock: bool) -> Vec<String> {
-    let mock_codex_path = env::mock_codex_path();
+    let mock_codex_path = use_mock.then(env::mock_codex_path);
     build_codex_command_with_config(
         use_mock,
-        &mock_codex_path,
+        mock_codex_path.as_deref().unwrap_or(""),
         env::openai_model(),
         env::resume_session_id(),
         env::append_system_prompt(),

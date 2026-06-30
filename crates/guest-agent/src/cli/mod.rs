@@ -308,25 +308,66 @@ impl<'a> CliRuntimeConfig<'a> {
     }
 
     fn from_legacy_env(framework: env::Framework) -> Self {
+        let is_claude = matches!(framework, env::Framework::ClaudeCode);
+        let is_codex = matches!(framework, env::Framework::Codex);
+        let use_mock_claude = is_claude && env::use_mock_claude();
+        let use_mock_codex = is_codex && env::use_mock_codex();
+        let use_codex_app_server_backend = is_codex && env::use_codex_app_server_backend();
         Self {
             framework,
-            run_id: Cow::Borrowed(env::run_id()),
+            run_id: if is_claude {
+                Cow::Borrowed(env::run_id())
+            } else {
+                Cow::Borrowed("")
+            },
             prompt: Cow::Borrowed(env::prompt()),
             resume_session_id: Cow::Borrowed(env::resume_session_id()),
             append_system_prompt: Cow::Borrowed(env::append_system_prompt()),
-            disallowed_tools: Cow::Borrowed(env::disallowed_tools()),
-            tools: Cow::Borrowed(env::tools()),
-            settings: Cow::Borrowed(env::settings()),
-            use_mock_claude: env::use_mock_claude(),
-            mock_claude_path: Cow::Owned(env::mock_claude_path()),
-            use_mock_codex: env::use_mock_codex(),
-            use_codex_app_server_backend: env::use_codex_app_server_backend(),
-            mock_codex_path: Cow::Owned(env::mock_codex_path()),
+            disallowed_tools: if is_claude {
+                Cow::Borrowed(env::disallowed_tools())
+            } else {
+                Cow::Borrowed("")
+            },
+            tools: if is_claude {
+                Cow::Borrowed(env::tools())
+            } else {
+                Cow::Borrowed("")
+            },
+            settings: if is_claude {
+                Cow::Borrowed(env::settings())
+            } else {
+                Cow::Borrowed("")
+            },
+            use_mock_claude,
+            mock_claude_path: if use_mock_claude {
+                Cow::Owned(env::mock_claude_path())
+            } else {
+                Cow::Borrowed("")
+            },
+            use_mock_codex,
+            use_codex_app_server_backend,
+            mock_codex_path: if use_mock_codex {
+                Cow::Owned(env::mock_codex_path())
+            } else {
+                Cow::Borrowed("")
+            },
             home_dir: Cow::Borrowed(env::home_dir()),
-            api_url: Cow::Borrowed(env::api_url()),
-            openai_model: Cow::Borrowed(env::openai_model()),
-            codex_oauth_mode: env::is_codex_oauth_mode(),
-            stuck_tool_timeout_secs: env::stuck_tool_timeout_secs(),
+            api_url: if use_codex_app_server_backend {
+                Cow::Borrowed("")
+            } else {
+                Cow::Borrowed(env::api_url())
+            },
+            openai_model: if is_codex {
+                Cow::Borrowed(env::openai_model())
+            } else {
+                Cow::Borrowed("")
+            },
+            codex_oauth_mode: is_codex && env::is_codex_oauth_mode(),
+            stuck_tool_timeout_secs: if is_claude {
+                env::stuck_tool_timeout_secs()
+            } else {
+                constants::STUCK_TOOL_TIMEOUT_SECS
+            },
             agent_log_file: Cow::Borrowed(paths::agent_log_file()),
             user_env: env::user_env(),
         }
@@ -509,6 +550,14 @@ pub async fn execute_cli_with_active_input(
     execute_cli_inner(masker, heartbeat_monitor, http, active_input, &runtime).await
 }
 
+/// Execute the CLI process using values captured in a [`env::GuestConfig`] and
+/// [`paths::GuestPaths`].
+///
+/// Production guest-agent bootstrap should prefer this entry point so CLI
+/// setup observes the same immutable runtime snapshot as the rest of the run.
+/// The legacy [`execute_cli`] and [`execute_cli_with_active_input`] wrappers
+/// remain for transitional tests and callers that still use process env
+/// facades.
 pub async fn execute_cli_with_active_input_for_config(
     masker: &SecretMasker,
     heartbeat_monitor: HeartbeatMonitor,

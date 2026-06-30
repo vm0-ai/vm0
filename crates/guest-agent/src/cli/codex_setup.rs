@@ -40,10 +40,10 @@ pub async fn setup_codex(_masker: &SecretMasker) -> Result<(), AgentError> {
 
 /// Reconcile Codex auth using the config captured during guest-agent bootstrap.
 ///
-/// Production should use this instead of [`setup_codex`] so OAuth/API-key mode
-/// and child `HOME` come from the same immutable [`env::GuestConfig`] as CLI
-/// execution. The legacy wrapper remains for tests and transitional callers
-/// that still use process-env facades.
+/// Production should use this instead of [`setup_codex`] so OAuth/API-key mode,
+/// child `HOME`, and loaded user env come from the same immutable
+/// [`env::GuestConfig`] as CLI execution. The legacy wrapper remains for tests
+/// and transitional callers that still rely on process-env facades.
 pub async fn setup_codex_for_config(
     _masker: &SecretMasker,
     config: &env::GuestConfig,
