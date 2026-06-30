@@ -46,7 +46,7 @@ use crate::active_input::ActiveInputSource;
 use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
 use crate::paths::guest;
 use crate::restored_session_identity::{
-    FINAL_SESSION_HISTORY_IDENTITY_READ_LIMIT, RestoredSessionHistoryVerification,
+    FINAL_SESSION_HISTORY_IDENTITY_READ_LIMIT, RestoredSessionFinalMetadataVerification,
     RestoredSessionIdentity,
 };
 use crate::telemetry::JobTelemetry;
@@ -234,10 +234,10 @@ async fn verify_restored_session_identity_for_reuse(
         );
         return Err(SessionHistoryIdentityReason::VerifyRequestMismatch);
     }
-    let Some(verification) = identity.guest_history_verification() else {
+    let Some(verification) = identity.final_metadata_verification() else {
         debug!(
             run_id = %context.run_id,
-            "restored session identity cannot be verified without a bounded verifier"
+            "restored session identity cannot be verified without a final metadata verifier"
         );
         return Err(SessionHistoryIdentityReason::VerifyMissingVerifier);
     };
@@ -245,7 +245,7 @@ async fn verify_restored_session_identity_for_reuse(
         return Err(SessionHistoryIdentityReason::VerifyRequestMismatch);
     }
 
-    let RestoredSessionHistoryVerification {
+    let RestoredSessionFinalMetadataVerification {
         metadata_path,
         runtime_dir,
         framework,

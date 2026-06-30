@@ -45,7 +45,7 @@ enum RestoredSessionIdentityVerifier {
     },
 }
 
-pub(crate) struct RestoredSessionHistoryVerification<'a> {
+pub(crate) struct RestoredSessionFinalMetadataVerification<'a> {
     pub(crate) metadata_path: &'a str,
     pub(crate) runtime_dir: &'a str,
     pub(crate) framework: FinalSessionHistoryFramework,
@@ -97,7 +97,7 @@ impl RestoredSessionIdentity {
             }),
         };
         identity
-            .has_guest_history_verification()
+            .has_final_metadata_verification()
             .then_some(identity)
     }
 
@@ -132,9 +132,9 @@ impl RestoredSessionIdentity {
         }
     }
 
-    pub(crate) fn guest_history_verification(
+    pub(crate) fn final_metadata_verification(
         &self,
-    ) -> Option<RestoredSessionHistoryVerification<'_>> {
+    ) -> Option<RestoredSessionFinalMetadataVerification<'_>> {
         let expected_size = self.history_size_bytes?;
         match self.verifier.as_ref()? {
             RestoredSessionIdentityVerifier::FinalIdentityMetadata {
@@ -144,7 +144,7 @@ impl RestoredSessionIdentity {
                 if !metadata_path.starts_with('/') || !runtime_dir.starts_with('/') {
                     return None;
                 }
-                Some(RestoredSessionHistoryVerification {
+                Some(RestoredSessionFinalMetadataVerification {
                     metadata_path,
                     runtime_dir,
                     framework: final_session_history_framework(self.framework),
@@ -157,13 +157,13 @@ impl RestoredSessionIdentity {
         }
     }
 
-    pub(crate) fn has_guest_history_verification(&self) -> bool {
-        self.guest_history_verification().is_some()
+    pub(crate) fn has_final_metadata_verification(&self) -> bool {
+        self.final_metadata_verification().is_some()
     }
 
     pub(crate) fn is_verified_match_for_request(&self, requested: &Self) -> bool {
         self == requested
-            && self.has_guest_history_verification()
+            && self.has_final_metadata_verification()
             && requested
                 .history_size_bytes
                 .is_none_or(|requested_size| self.history_size_bytes == Some(requested_size))

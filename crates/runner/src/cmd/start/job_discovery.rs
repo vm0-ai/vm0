@@ -243,7 +243,7 @@ fn build_session_history_restore_plan(
                         return SessionHistoryRestorePlan::SkipVerified(restored_identity.clone());
                     }
                     Some(restored_identity) if restored_identity == &requested_identity => {
-                        if restored_identity.has_guest_history_verification() {
+                        if restored_identity.has_final_metadata_verification() {
                             Some(SessionHistoryRestoreFallback::IdentityMismatch)
                         } else {
                             Some(SessionHistoryRestoreFallback::UnverifiedIdleIdentity)
