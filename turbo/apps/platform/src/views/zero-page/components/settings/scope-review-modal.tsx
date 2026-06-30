@@ -47,7 +47,7 @@ export function ScopeReviewModal({
             <div className="flex h-5 w-5 shrink-0 items-center justify-center">
               <ConnectorIcon type={connectorType} size={20} />
             </div>
-            <DialogTitle>{config.label} — Permissions Update</DialogTitle>
+            <DialogTitle>{config.label} permissions update</DialogTitle>
           </div>
         </DialogHeader>
 
