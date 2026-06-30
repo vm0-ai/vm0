@@ -33,6 +33,7 @@ use std::sync::Arc;
 use std::time::{Duration, Instant};
 
 use clap::Args;
+use futures_util::FutureExt;
 use sandbox::{RuntimeProvider, SandboxRuntime};
 use tokio::sync::mpsc;
 use tokio::task::JoinSet;
@@ -1406,6 +1407,15 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         jobs: &mut jobs,
                     },
                 ).await;
+                if park_notify.notified().now_or_never().is_some()
+                    && matches!(current_mode, RunnerMode::Running | RunnerMode::Draining)
+                {
+                    info!(
+                        source = "post_discovery",
+                        "session affinity state triggered immediate heartbeat"
+                    );
+                    send_heartbeat(&hb_ctx, current_mode).await;
+                }
             }
             // Mode changes (signals)
             _ = mode_rx.changed() => {}
