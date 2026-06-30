@@ -88,7 +88,7 @@ export const CREATE_WORKFLOW_WITH_CHAT_PROMPT =
   "Help me create a workflow for this agent. Use the workflow-setup skill, then ask me for the desired outcome, automation, and action before creating the workflow and automation.";
 
 const CREATE_AUTOMATION_CHAT_PROMPT =
-  "I'd like to create a workflow automation. Help me define the reusable workflow and decide when it should run automatically. An automation can run on a schedule, every few minutes, when an email arrives, when a Gmail label is applied, from a webhook, from a GitHub label, or when a calendar event is created. Ask what the workflow should do each time it runs, what inputs or sources it should use, what output it should produce, what side effects are allowed, and whether it should be enabled immediately.";
+  "Help me create a workflow automation for this agent. Use the workflow-setup skill, then ask me for the desired outcome, automation, and action before creating the workflow and automation.";
 
 function formatClockTime(hour: number, minute: number): string {
   const ampm = hour >= 12 ? "PM" : "AM";

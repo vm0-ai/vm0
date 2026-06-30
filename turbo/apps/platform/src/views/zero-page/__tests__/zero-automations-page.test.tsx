@@ -549,7 +549,7 @@ describe("zero automations page", () => {
 
   it("starts automation creation in chat after choosing an agent", async () => {
     const prompt =
-      "I'd like to create a workflow automation. Help me define the reusable workflow and decide when it should run automatically. An automation can run on a schedule, every few minutes, when an email arrives, when a Gmail label is applied, from a webhook, from a GitHub label, or when a calendar event is created. Ask what the workflow should do each time it runs, what inputs or sources it should use, what output it should produce, what side effects are allowed, and whether it should be enabled immediately.";
+      "Help me create a workflow automation for this agent. Use the workflow-setup skill, then ask me for the desired outcome, automation, and action before creating the workflow and automation.";
     mockWorkflowTriggerStory();
 
     detachedSetupPage({
@@ -609,6 +609,8 @@ describe("zero automations page", () => {
     await expect(
       screen.findByDisplayValue(prompt),
     ).resolves.toBeInTheDocument();
+    expect(prompt).not.toContain("when an email arrives");
+    expect(prompt).not.toContain("trigger");
   });
 
   it("opens the selected workflow when adding an automation to an existing workflow", async () => {
