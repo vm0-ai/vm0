@@ -173,6 +173,7 @@ impl Decoder {
             });
             if let Err(error) = result {
                 self.buf.drain(..next_offset);
+                self.release_oversized_buffer();
                 return Err(DecodeWithError::Visitor(error));
             }
             offset = next_offset;
@@ -182,19 +183,27 @@ impl Decoder {
         if verified_offset > 0 {
             self.buf.drain(..verified_offset);
         }
-        self.release_empty_oversized_buffer();
+        self.release_oversized_buffer();
 
         Ok(())
     }
 
     fn clear_after_protocol_error(&mut self) {
         self.buf.clear();
-        self.release_empty_oversized_buffer();
+        self.release_oversized_buffer();
     }
 
-    fn release_empty_oversized_buffer(&mut self) {
-        if self.buf.is_empty() && self.buf.capacity() > OVERSIZED_BUFFER_CAPACITY {
+    fn release_oversized_buffer(&mut self) {
+        if self.buf.capacity() <= OVERSIZED_BUFFER_CAPACITY {
+            return;
+        }
+
+        if self.buf.is_empty() {
             self.buf = Vec::with_capacity(INITIAL_BUFFER_CAPACITY);
+        } else if self.buf.len() <= INITIAL_BUFFER_CAPACITY {
+            let mut buf = Vec::with_capacity(INITIAL_BUFFER_CAPACITY);
+            buf.extend_from_slice(&self.buf);
+            self.buf = buf;
         }
     }
 }
@@ -642,7 +651,7 @@ mod tests {
 
         assert!(matches!(err, DecodeWithError::Visitor(VisitorError::Stop)));
         assert_eq!(dec.buf, later);
-        assert!(dec.buf.capacity() > OVERSIZED_BUFFER_CAPACITY);
+        assert!(dec.buf.capacity() <= OVERSIZED_BUFFER_CAPACITY);
 
         let mut visited = Vec::new();
         dec.decode_with(&[], |msg| {
@@ -652,6 +661,61 @@ mod tests {
         .unwrap();
 
         assert_eq!(visited, vec![(MSG_PONG, 2, b"later".to_vec())]);
+        assert!(dec.buf.is_empty());
+        assert!(dec.buf.capacity() <= OVERSIZED_BUFFER_CAPACITY);
+    }
+
+    #[test]
+    fn decode_with_releases_oversized_buffer_with_small_partial_remainder() {
+        let payload = vec![0x33; OVERSIZED_BUFFER_CAPACITY];
+        let large = encode(MSG_PING, 1, &payload).unwrap();
+        let later = encode(MSG_PONG, 2, b"later").unwrap();
+        let split = 3;
+        let mut data = large;
+        data.extend_from_slice(&later[..split]);
+        let mut dec = Decoder::new();
+        let mut visited = Vec::new();
+
+        dec.decode_with(&data, |msg| {
+            visited.push((msg.msg_type, msg.seq, msg.payload.len()));
+            Ok::<(), Infallible>(())
+        })
+        .unwrap();
+
+        assert_eq!(visited, vec![(MSG_PING, 1, payload.len())]);
+        assert_eq!(dec.buf.as_slice(), &later[..split]);
+        assert!(dec.buf.capacity() <= OVERSIZED_BUFFER_CAPACITY);
+
+        dec.decode_with(&later[split..], |msg| {
+            visited.push((msg.msg_type, msg.seq, msg.payload.len()));
+            Ok::<(), Infallible>(())
+        })
+        .unwrap();
+
+        assert_eq!(
+            visited,
+            vec![(MSG_PING, 1, payload.len()), (MSG_PONG, 2, b"later".len())]
+        );
+        assert!(dec.buf.is_empty());
+        assert!(dec.buf.capacity() <= OVERSIZED_BUFFER_CAPACITY);
+    }
+
+    #[test]
+    fn decode_with_visitor_error_releases_empty_oversized_buffer() {
+        #[derive(Debug, Clone, PartialEq, Eq)]
+        enum VisitorError {
+            Stop,
+        }
+
+        let payload = vec![0x22; OVERSIZED_BUFFER_CAPACITY];
+        let data = encode(MSG_PING, 1, &payload).unwrap();
+        let mut dec = Decoder::new();
+
+        let err = dec
+            .decode_with(&data, |_msg| Err(VisitorError::Stop))
+            .unwrap_err();
+
+        assert!(matches!(err, DecodeWithError::Visitor(VisitorError::Stop)));
         assert!(dec.buf.is_empty());
         assert!(dec.buf.capacity() <= OVERSIZED_BUFFER_CAPACITY);
     }
