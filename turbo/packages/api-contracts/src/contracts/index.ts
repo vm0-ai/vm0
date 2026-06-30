@@ -399,6 +399,15 @@ export {
   type TestChatThreadStateFixture,
 } from "./test-chat-thread-state";
 export {
+  testChatMessagesStateActionBodySchema,
+  testChatMessagesStateActionResponseSchema,
+  testChatMessagesStateContract,
+  testChatMessagesStateErrorSchema,
+  type TestChatMessagesStateActionBody,
+  type TestChatMessagesStateActionResponse,
+  type TestChatMessagesStateContract,
+} from "./test-chat-messages-state";
+export {
   testUsageInsightStateActionBodySchema,
   testUsageInsightStateActionResponseSchema,
   testUsageInsightStateContract,
@@ -445,6 +454,18 @@ export {
   type TestOnboardingStatusStateContract,
   type TestOnboardingStatusStateFixture,
 } from "./test-onboarding-status-state";
+export {
+  testMemoryStateActionBodySchema,
+  testMemoryStateActionResponseSchema,
+  testMemoryStateContract,
+  testMemoryStateErrorSchema,
+  testMemoryStateFixtureSchema,
+  type TestMemoryStateActionBody,
+  type TestMemoryStateActionResponse,
+  type TestMemoryStateContract,
+  type TestMemoryStateFixture,
+  type TestMemoryStateSummaryRow,
+} from "./test-memory-state";
 export {
   testSlackDispatchProbeBodySchema,
   testSlackDispatchProbeContract,

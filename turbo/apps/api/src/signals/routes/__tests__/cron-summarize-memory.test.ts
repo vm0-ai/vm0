@@ -3,11 +3,7 @@ import { randomUUID } from "node:crypto";
 import { cronSummarizeMemoryContract } from "@vm0/api-contracts/contracts/cron";
 import { zeroMemoryDevRefreshContract } from "@vm0/api-contracts/contracts/zero-memory-dev-refresh";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
-import { memoryChangeItems } from "@vm0/db/schema/memory-change-item";
-import { memoryChangeSummaries } from "@vm0/db/schema/memory-change-summary";
-import { storageVersions } from "@vm0/db/schema/storage";
 import { createStore } from "ccstate";
-import { and, asc, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
@@ -16,15 +12,18 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { writeDb$ } from "../../external/db";
 import {
   deleteMemoryForFixture$,
   findMemoryStorageId$,
   type MemoryFixture,
   mockMemoryVersions,
+  readMemoryItems,
+  readMemorySummaries,
+  readMemorySummary,
   seedMemoryFixture$,
   seedMemoryStorage$,
   seedMemoryVersion$,
+  updateMemoryVersionCreatedAt,
 } from "./helpers/zero-memory";
 import {
   createFixtureTracker,
@@ -158,11 +157,11 @@ async function seedTwoVersions(
   );
   // Re-stamp the head version (v1) before the lookback window so it is the
   // baseline for every backfilled day, not an implicit wall-clock now.
-  const db = store.set(writeDb$);
-  await db
-    .update(storageVersions)
-    .set({ createdAt: new Date(BASELINE_BEFORE_LOOKBACK) })
-    .where(eq(storageVersions.id, v1Id));
+  await updateMemoryVersionCreatedAt(
+    context.signal,
+    v1Id,
+    new Date(BASELINE_BEFORE_LOOKBACK),
+  );
   await store.set(
     seedMemoryVersion$,
     {
@@ -225,11 +224,11 @@ async function seedTwoVersionsNoMock(): Promise<{
     context.signal,
   );
   // v1 appears during the lookback window; v2 lands during yesterday.
-  const db = store.set(writeDb$);
-  await db
-    .update(storageVersions)
-    .set({ createdAt: new Date(BASELINE_DURING_LOOKBACK) })
-    .where(eq(storageVersions.id, v1Id));
+  await updateMemoryVersionCreatedAt(
+    context.signal,
+    v1Id,
+    new Date(BASELINE_DURING_LOOKBACK),
+  );
   await store.set(
     seedMemoryVersion$,
     {
@@ -291,11 +290,7 @@ async function seedVersions(versions: readonly DayVersion[]): Promise<{
   );
   // Stamp the first version to its intended createdAt (the storage head
   // version otherwise defaults to wall-clock now) so day boundaries are exact.
-  const db = store.set(writeDb$);
-  await db
-    .update(storageVersions)
-    .set({ createdAt: first.createdAt })
-    .where(eq(storageVersions.id, firstId));
+  await updateMemoryVersionCreatedAt(context.signal, firstId, first.createdAt);
 
   const content: { s3Key: string; files: readonly MemoryFile[] }[] = [
     { s3Key: firstKey, files: first.files },
@@ -333,25 +328,7 @@ async function findSummary(
   toVersionId: string;
   summary: string | null;
 } | null> {
-  const db = store.set(writeDb$);
-  const [row] = await db
-    .select({
-      id: memoryChangeSummaries.id,
-      date: memoryChangeSummaries.date,
-      fromVersionId: memoryChangeSummaries.fromVersionId,
-      toVersionId: memoryChangeSummaries.toVersionId,
-      summary: memoryChangeSummaries.summary,
-    })
-    .from(memoryChangeSummaries)
-    .where(
-      and(
-        eq(memoryChangeSummaries.orgId, fixture.orgId),
-        eq(memoryChangeSummaries.userId, fixture.userId),
-        eq(memoryChangeSummaries.date, date),
-      ),
-    )
-    .limit(1);
-  return row ?? null;
+  return await readMemorySummary(context.signal, fixture, date);
 }
 
 async function findSummaries(fixture: MemoryFixture): Promise<
@@ -363,37 +340,11 @@ async function findSummaries(fixture: MemoryFixture): Promise<
     readonly summary: string | null;
   }[]
 > {
-  const db = store.set(writeDb$);
-  return await db
-    .select({
-      id: memoryChangeSummaries.id,
-      date: memoryChangeSummaries.date,
-      fromVersionId: memoryChangeSummaries.fromVersionId,
-      toVersionId: memoryChangeSummaries.toVersionId,
-      summary: memoryChangeSummaries.summary,
-    })
-    .from(memoryChangeSummaries)
-    .where(
-      and(
-        eq(memoryChangeSummaries.orgId, fixture.orgId),
-        eq(memoryChangeSummaries.userId, fixture.userId),
-      ),
-    )
-    .orderBy(asc(memoryChangeSummaries.date));
+  return [...(await readMemorySummaries(context.signal, fixture))];
 }
 
 async function findItems(summaryId: string): Promise<string[]> {
-  const db = store.set(writeDb$);
-  const rows = await db
-    .select({
-      filePath: memoryChangeItems.filePath,
-    })
-    .from(memoryChangeItems)
-    .where(eq(memoryChangeItems.summaryId, summaryId))
-    .orderBy(asc(memoryChangeItems.filePath));
-  return rows.map((row) => {
-    return row.filePath;
-  });
+  return [...(await readMemoryItems(context.signal, summaryId))];
 }
 
 function mockLlm(
@@ -700,12 +651,7 @@ describe("GET /api/cron/summarize-memory", () => {
     // The day was already summarized, so the next run advances past it.
     expect(second.body).toStrictEqual({ skipped: true });
 
-    const db = store.set(writeDb$);
-    const rows = await db
-      .select({ id: memoryChangeSummaries.id })
-      .from(memoryChangeSummaries)
-      .where(eq(memoryChangeSummaries.orgId, seeded.fixture.orgId));
-    expect(rows).toHaveLength(7);
+    await expect(findSummaries(seeded.fixture)).resolves.toHaveLength(7);
     const summary = await findSummary(seeded.fixture);
     await expect(findItems(summary?.id ?? "")).resolves.toHaveLength(1);
   });
@@ -918,16 +864,18 @@ describe("POST /api/zero/memory/dev-refresh", () => {
   });
 
   it("rejects non-staff users outside development", async () => {
-    mockEnv("ENV", "production");
     const fixture = await track(
       store.set(seedMemoryFixture$, undefined, context.signal),
     );
+    mockEnv("ENV", "production");
     mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const response = await accept(
       devRefreshClient().refresh({ headers: authHeaders() }),
       [403],
-    );
+    ).finally(() => {
+      mockEnv("ENV", "development");
+    });
 
     expect(response.body).toStrictEqual({
       error: {

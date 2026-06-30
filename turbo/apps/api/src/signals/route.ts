@@ -188,9 +188,11 @@ import { testTelegramMockRoutes } from "./routes/test-telegram-mock";
 import { testTelegramStateRoutes } from "./routes/test-telegram-state";
 import { testGenerationStateRoutes } from "./routes/test-generation-state";
 import { testOnboardingStatusStateRoutes } from "./routes/test-onboarding-status-state";
+import { testMemoryStateRoutes } from "./routes/test-memory-state";
 import { testUsageInsightStateRoutes } from "./routes/test-usage-insight-state";
 import { testUsageStateRoutes } from "./routes/test-usage-state";
 import { testWorkflowTriggerStateRoutes } from "./routes/test-workflow-trigger-state";
+import { testChatMessagesStateRoutes } from "./routes/test-chat-messages-state";
 
 export const ROUTES: readonly RouteEntry[] = [
   {
@@ -384,7 +386,9 @@ export const ROUTES: readonly RouteEntry[] = [
   ...testTelegramStateRoutes,
   ...testGenerationStateRoutes,
   ...testOnboardingStatusStateRoutes,
+  ...testMemoryStateRoutes,
   ...testUsageInsightStateRoutes,
   ...testUsageStateRoutes,
   ...testWorkflowTriggerStateRoutes,
+  ...testChatMessagesStateRoutes,
 ];

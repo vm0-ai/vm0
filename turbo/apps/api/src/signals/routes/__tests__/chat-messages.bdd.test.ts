@@ -1,7 +1,5 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { and, eq, like, or } from "drizzle-orm";
-import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
 import {
   ILLUSTRATION_TEMPLATE_ITEMS,
@@ -15,23 +13,24 @@ import {
   type ModelSelectionRequest,
   type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  TestChatMessagesStateActionBody,
+  TestChatMessagesStateActionResponse,
+} from "@vm0/api-contracts/contracts/test-chat-messages-state";
 import {
   getModelProviderFirewall,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { secrets } from "@vm0/db/schema/secret";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
 import { createApp } from "../../../app-factory";
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
-import { writeDb$ } from "../../external/db";
 import {
   createBddApi,
   expectApiError,
@@ -43,8 +42,8 @@ import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { encryptSecretForTests } from "./helpers/encrypt-secret";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import { testChatMessagesStateRoutes } from "../test-chat-messages-state";
 
 /**
  * CHAT-02 / RUN-01 / CHAIN-CHAT: the web chat send route end to end.
@@ -57,7 +56,6 @@ import { createZeroRouteMocks } from "./helpers/zero-route-test";
  */
 
 const context = testContext();
-const store = createStore();
 const bdd = createBddApi(context);
 const api = createRunsAutomationsApi(context);
 const chat = createChatFilesBddApi(context);
@@ -65,7 +63,6 @@ const webhooks = createWebhookCallbackApi(context);
 const chatCallbacks = createChatCallbacksApi(context);
 const cu = createComputerUseBddApi(context);
 const routeMocks = createZeroRouteMocks(context);
-const ORG_SENTINEL_USER_ID = "__org__";
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
@@ -454,6 +451,36 @@ function chatMessagesClient() {
   return setupApp({ context })(chatMessagesContract);
 }
 
+function requestChatMessagesState(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: testChatMessagesStateRoutes,
+  });
+  return Promise.resolve(app.request(path, init));
+}
+
+async function postChatMessagesStateAction(
+  body: TestChatMessagesStateActionBody,
+): Promise<TestChatMessagesStateActionResponse> {
+  const response = await requestChatMessagesState(
+    "/api/test/chat-messages-state/action",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `chat messages state action ${body.action} failed with ${response.status}`,
+    );
+  }
+  return (await response.json()) as TestChatMessagesStateActionResponse;
+}
+
 function sessionHeaders(actor: ApiTestUser): {
   readonly authorization: string;
 } {
@@ -491,33 +518,22 @@ async function overwriteOrgModelProviderSecret(
   name: string,
   value: string,
 ): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb
-    .update(secrets)
-    .set({ encryptedValue: encryptSecretForTests(value) })
-    .where(
-      and(
-        eq(secrets.orgId, orgId),
-        eq(secrets.userId, ORG_SENTINEL_USER_ID),
-        eq(secrets.name, name),
-        eq(secrets.type, "model-provider"),
-      ),
-    );
+  await postChatMessagesStateAction({
+    action: "overwrite-org-model-provider-secret",
+    org_id: orgId,
+    name,
+    value,
+  });
 }
 
 async function readThreadComputerUseHostId(
   threadId: string,
 ): Promise<string | null> {
-  const db = store.set(writeDb$);
-  const [thread] = await db
-    .select({ computerUseHostId: chatThreads.computerUseHostId })
-    .from(chatThreads)
-    .where(eq(chatThreads.id, threadId))
-    .limit(1);
-  if (!thread) {
-    throw new Error("Expected chat thread to exist");
-  }
-  return thread.computerUseHostId;
+  const response = await postChatMessagesStateAction({
+    action: "read-thread-computer-use-host-id",
+    thread_id: threadId,
+  });
+  return response.computer_use_host_id ?? null;
 }
 
 /**
@@ -1443,34 +1459,21 @@ describe("CHAT-02: explicit provider pins", () => {
     const keySuffix = randomUUID();
     const fakeKey = `vm0-key-bdd-fake-${keySuffix}`;
     const devSeedKey = `vm0-key-bdd-dev-seed-${keySuffix}`;
-    const writeDb = store.set(writeDb$);
 
-    await writeDb
-      .delete(vm0ApiKeys)
-      .where(
-        and(
-          eq(vm0ApiKeys.vendor, "openrouter"),
-          eq(vm0ApiKeys.model, "z-ai/glm-5.2"),
-          or(
-            like(vm0ApiKeys.apiKey, "vm0-key-bdd-fake-%"),
-            like(vm0ApiKeys.apiKey, "vm0-key-bdd-dev-seed-%"),
-          ),
-        ),
-      );
-    await writeDb.insert(vm0ApiKeys).values([
-      {
-        vendor: "openrouter",
-        model: "z-ai/glm-5.2",
-        apiKey: fakeKey,
-        label: `bdd-fake-${keySuffix}`,
-      },
-      {
-        vendor: "openrouter",
-        model: "z-ai/glm-5.2",
-        apiKey: devSeedKey,
-        label: "dev-seed",
-      },
-    ]);
+    await postChatMessagesStateAction({
+      action: "replace-openrouter-vm0-api-keys",
+      model: "z-ai/glm-5.2",
+      keys: [
+        {
+          api_key: fakeKey,
+          label: `bdd-fake-${keySuffix}`,
+        },
+        {
+          api_key: devSeedKey,
+          label: "dev-seed",
+        },
+      ],
+    });
 
     const { providerId } = await upsertOrgModelProvider(actor, {
       type: "vm0",
@@ -1518,18 +1521,10 @@ describe("CHAT-02: explicit provider pins", () => {
     expect(resolved.body.headers.Authorization).toBe(`Bearer ${devSeedKey}`);
 
     await api.requestCancelRun(actor, run.runId, [200]);
-    await writeDb
-      .delete(vm0ApiKeys)
-      .where(
-        and(
-          eq(vm0ApiKeys.vendor, "openrouter"),
-          eq(vm0ApiKeys.model, "z-ai/glm-5.2"),
-          or(
-            like(vm0ApiKeys.apiKey, "vm0-key-bdd-fake-%"),
-            like(vm0ApiKeys.apiKey, "vm0-key-bdd-dev-seed-%"),
-          ),
-        ),
-      );
+    await postChatMessagesStateAction({
+      action: "delete-openrouter-vm0-api-keys",
+      model: "z-ai/glm-5.2",
+    });
   }, 90_000);
 
   it("rejects legacy blank OpenRouter provider secrets during firewall auth", async () => {

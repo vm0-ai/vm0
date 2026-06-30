@@ -1,0 +1,157 @@
+import { command } from "ccstate";
+import {
+  testChatMessagesStateContract,
+  type TestChatMessagesStateActionBody,
+} from "@vm0/api-contracts/contracts/test-chat-messages-state";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
+import { secrets } from "@vm0/db/schema/secret";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
+import { and, eq, like, or } from "drizzle-orm";
+
+import { bodyResultOf } from "../context/request";
+import { request$ } from "../context/hono";
+import { writeDb$, type Db } from "../external/db";
+import type { RouteEntry } from "../route-entry";
+import { encryptPersistentSecretValue } from "../services/crypto.utils";
+import {
+  isTestEndpointAllowed,
+  testEndpointNotFoundResponse,
+} from "./test-oauth-provider-helpers";
+
+const actionBody$ = bodyResultOf(testChatMessagesStateContract.action);
+const ORG_SENTINEL_USER_ID = "__org__";
+
+type ChatMessagesAction<
+  TAction extends TestChatMessagesStateActionBody["action"],
+> = Extract<TestChatMessagesStateActionBody, { action: TAction }>;
+
+function actionOk(extra: Record<string, unknown> = {}) {
+  return { status: 200 as const, body: { ok: true as const, ...extra } };
+}
+
+function bddVm0OpenRouterKeyFilter(model: string) {
+  return and(
+    eq(vm0ApiKeys.vendor, "openrouter"),
+    eq(vm0ApiKeys.model, model),
+    or(
+      like(vm0ApiKeys.apiKey, "vm0-key-bdd-fake-%"),
+      like(vm0ApiKeys.apiKey, "vm0-key-bdd-dev-seed-%"),
+    ),
+  );
+}
+
+async function overwriteOrgModelProviderSecretForAction(
+  db: Db,
+  body: ChatMessagesAction<"overwrite-org-model-provider-secret">,
+  signal: AbortSignal,
+) {
+  const encryptedValue = await encryptPersistentSecretValue(body.value, {
+    orgId: body.org_id,
+    userId: ORG_SENTINEL_USER_ID,
+  });
+  signal.throwIfAborted();
+  await db
+    .update(secrets)
+    .set({ encryptedValue })
+    .where(
+      and(
+        eq(secrets.orgId, body.org_id),
+        eq(secrets.userId, ORG_SENTINEL_USER_ID),
+        eq(secrets.name, body.name),
+        eq(secrets.type, "model-provider"),
+      ),
+    );
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function readThreadComputerUseHostIdForAction(
+  db: Db,
+  body: ChatMessagesAction<"read-thread-computer-use-host-id">,
+  signal: AbortSignal,
+) {
+  const [thread] = await db
+    .select({ computerUseHostId: chatThreads.computerUseHostId })
+    .from(chatThreads)
+    .where(eq(chatThreads.id, body.thread_id))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!thread) {
+    return {
+      status: 400 as const,
+      body: { error: "Expected chat thread to exist" },
+    };
+  }
+  return actionOk({ computer_use_host_id: thread.computerUseHostId });
+}
+
+async function replaceOpenRouterVm0ApiKeysForAction(
+  db: Db,
+  body: ChatMessagesAction<"replace-openrouter-vm0-api-keys">,
+  signal: AbortSignal,
+) {
+  await db.delete(vm0ApiKeys).where(bddVm0OpenRouterKeyFilter(body.model));
+  signal.throwIfAborted();
+  if (body.keys.length > 0) {
+    await db.insert(vm0ApiKeys).values(
+      body.keys.map((key) => {
+        return {
+          vendor: "openrouter",
+          model: body.model,
+          apiKey: key.api_key,
+          label: key.label,
+        };
+      }),
+    );
+    signal.throwIfAborted();
+  }
+  return actionOk();
+}
+
+async function deleteOpenRouterVm0ApiKeysForAction(
+  db: Db,
+  body: ChatMessagesAction<"delete-openrouter-vm0-api-keys">,
+  signal: AbortSignal,
+) {
+  await db.delete(vm0ApiKeys).where(bddVm0OpenRouterKeyFilter(body.model));
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+const mutateChatMessagesState$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    if (!isTestEndpointAllowed(get(request$))) {
+      return testEndpointNotFoundResponse();
+    }
+
+    const bodyResult = await get(actionBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const db = set(writeDb$);
+    const body = bodyResult.data;
+    switch (body.action) {
+      case "overwrite-org-model-provider-secret": {
+        return await overwriteOrgModelProviderSecretForAction(db, body, signal);
+      }
+      case "read-thread-computer-use-host-id": {
+        return await readThreadComputerUseHostIdForAction(db, body, signal);
+      }
+      case "replace-openrouter-vm0-api-keys": {
+        return await replaceOpenRouterVm0ApiKeysForAction(db, body, signal);
+      }
+      case "delete-openrouter-vm0-api-keys": {
+        return await deleteOpenRouterVm0ApiKeysForAction(db, body, signal);
+      }
+    }
+  },
+);
+
+export const testChatMessagesStateRoutes: readonly RouteEntry[] = [
+  {
+    route: testChatMessagesStateContract.action,
+    handler: mutateChatMessagesState$,
+  },
+];
