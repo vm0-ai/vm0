@@ -29,14 +29,14 @@ function triggerClassName(
   isPrimarySelected: boolean,
 ) {
   if (variant === "sidebar") {
-    return `peer pointer-events-auto absolute left-1 top-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible group-focus-within:visible data-[state=open]:visible transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
+    return `peer pointer-events-auto absolute left-1 top-1 z-10 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md invisible group-hover:visible group-focus-within:visible data-[state=open]:visible transition-opacity duration-150 disabled:cursor-not-allowed disabled:opacity-50 ${
       isPrimarySelected
         ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
         : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
     }`;
   }
 
-  return "peer absolute inset-0 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground invisible transition-colors duration-150 group-hover:visible group-focus-within:visible data-[state=open]:visible hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18 disabled:cursor-not-allowed disabled:opacity-50";
+  return "peer absolute inset-0 z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground invisible transition-colors duration-150 group-hover:visible group-focus-within:visible data-[state=open]:visible hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18 disabled:cursor-not-allowed disabled:opacity-50";
 }
 
 export function AgentRowSideActions({
@@ -106,7 +106,7 @@ export function AgentRowSideActions({
         </TooltipProvider>
       ) : null}
       {hasUnread ? (
-        <span className="flex items-center justify-center group-hover:hidden group-focus-within:hidden peer-data-[state=open]:hidden">
+        <span className="pointer-events-none flex items-center justify-center opacity-100 transition-opacity duration-150 group-hover:opacity-0 group-focus-within:opacity-0 peer-data-[state=open]:opacity-0">
           <AgentUnreadIndicator />
         </span>
       ) : null}
