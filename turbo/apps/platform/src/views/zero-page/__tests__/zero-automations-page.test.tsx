@@ -505,19 +505,26 @@ describe("zero automations page", () => {
       throw new Error("Ops brief card not found");
     }
     expect(within(opsCard).getByText("Zero")).toBeInTheDocument();
-    expect(within(opsCard).getByText("Trigger")).toBeInTheDocument();
+    expect(within(opsCard).getByText("Schedule")).toBeInTheDocument();
     expect(within(opsCard).getByText("Every 15 minutes")).toBeInTheDocument();
     expect(
       within(opsCard).getByRole("switch", { name: "Disable Ops brief" }),
     ).toHaveAttribute("aria-checked", "true");
 
+    const gmailRule = screen.getByText(
+      'When Gmail message matches from contains "@acme.com"',
+    );
+    const gmailCard = gmailRule.closest("article");
+    if (!gmailCard) {
+      throw new Error("Ops brief Gmail card not found");
+    }
+    expect(within(gmailCard).getByText("Gmail")).toBeInTheDocument();
+
     linkByNameAndPath(
       "Support intake",
       `/automations/${webhookWorkflowTrigger().id}`,
     );
-    expect(
-      screen.getByText('When Gmail message matches from contains "@acme.com"'),
-    ).toBeInTheDocument();
+    expect(screen.getByText("Webhook")).toBeInTheDocument();
     expect(
       screen.getByText("When an inbound webhook is received"),
     ).toBeInTheDocument();

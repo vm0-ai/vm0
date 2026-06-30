@@ -335,6 +335,28 @@ function humanReadableTriggerRuleLabel(
   return gmailTriggerTitle(trigger);
 }
 
+function triggerTypeLabel(trigger: ZeroWorkflowTriggerSummary): string {
+  if (trigger.kind === "schedule") {
+    return "Schedule";
+  }
+  if (
+    trigger.eventType === "gmail-new-message" ||
+    trigger.eventType === "gmail-label-applied"
+  ) {
+    return "Gmail";
+  }
+  if (trigger.eventType === "github-label-applied") {
+    return "GitHub";
+  }
+  if (trigger.eventType === "google-calendar-event-created") {
+    return "Google Calendar";
+  }
+  if (trigger.eventType === "webhook-received") {
+    return "Webhook";
+  }
+  return "Trigger";
+}
+
 function triggerRows(
   trigger: ZeroWorkflowTriggerSummary,
   displayTimezone: string,
@@ -667,7 +689,7 @@ function WorkflowTriggerIndexCard({
         <WorkflowAgentAvatar agent={agent} label={label} />
         <span className="max-w-[10rem] truncate">{label}</span>
         <span className="select-none text-muted-foreground/50">·</span>
-        <span>Trigger</span>
+        <span>{triggerTypeLabel(entry.trigger)}</span>
         <span className="select-none text-muted-foreground/50">·</span>
         <span className="min-w-0 font-medium text-foreground/85">
           {humanReadableTriggerRuleLabel(entry.trigger, displayTimezone)}
