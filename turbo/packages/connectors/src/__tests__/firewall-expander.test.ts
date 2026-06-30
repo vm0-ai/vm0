@@ -140,6 +140,56 @@ describe("firewall expander helpers", () => {
     }).not.toThrow();
   });
 
+  it("collectAndValidatePermissions validates host policy shape before base URL vars resolve", () => {
+    const config = (
+      hostPolicy: FirewallConfig["apis"][number]["hostPolicy"],
+    ): FirewallConfig => {
+      return {
+        name: "template-host-policy",
+        apis: [
+          {
+            base: "https://${{ vars.API_HOST }}",
+            hostPolicy,
+            auth: { headers: { Authorization: "Bearer token" } },
+            permissions: [],
+          },
+        ],
+      };
+    };
+
+    expect(() => {
+      return collectAndValidatePermissions(
+        config({
+          kind: "providerOwned",
+          suffixes: ["*.example.com"],
+        }),
+      );
+    }).toThrow("providerOwned host policy suffixes must be fixed hostnames");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config({
+          kind: "providerOwned",
+          exactHosts: [".api.example.com"],
+        }),
+      );
+    }).toThrow("providerOwned host policy exactHosts must be fixed hostnames");
+    expect(() => {
+      return collectAndValidatePermissions(
+        config({
+          kind: "providerOwned",
+          suffixes: ["example.com"],
+        }),
+      );
+    }).not.toThrow();
+    expect(() => {
+      return collectAndValidatePermissions(
+        config({
+          kind: "publicDestination",
+        }),
+      );
+    }).not.toThrow();
+  });
+
   it("collectAndValidatePermissions validates parameterized host policies", () => {
     const config = (
       base: string,

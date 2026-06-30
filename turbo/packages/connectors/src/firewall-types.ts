@@ -1659,6 +1659,24 @@ function baseUrlAuthorityHasParams(base: string): boolean {
   return authority !== null && hasBaseUrlParams(authority);
 }
 
+function validateHostPolicyShape(
+  base: string,
+  serviceName: string,
+  hostPolicy: FirewallBaseHostPolicy,
+): void {
+  const result = firewallBaseHostPolicySchema.safeParse(hostPolicy);
+  if (result.success) return;
+
+  const message = result.error.issues
+    .map((issue) => {
+      return issue.message;
+    })
+    .join("; ");
+  throw new Error(
+    errMsg(base, serviceName, `hostPolicy is invalid: ${message}`),
+  );
+}
+
 function urlForHostPolicyValidation(base: string, serviceName: string): URL {
   if (!baseUrlAuthorityHasParams(base)) return new URL(base);
   const schemeEnd = base.indexOf("://");
@@ -1690,7 +1708,12 @@ export function validateBaseUrlHostPolicy({
   readonly serviceName: string;
   readonly hostPolicy: FirewallBaseHostPolicy | undefined;
 }): void {
-  if (!hostPolicy || hasBaseUrlVars(base)) {
+  if (!hostPolicy) {
+    return;
+  }
+
+  validateHostPolicyShape(diagnosticBase, serviceName, hostPolicy);
+  if (hasBaseUrlVars(base)) {
     return;
   }
 
