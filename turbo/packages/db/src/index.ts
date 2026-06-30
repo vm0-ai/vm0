@@ -50,6 +50,10 @@ import * as slackOrgInstallationSchema from "./schema/slack-org-installation";
 import * as slackOrgConnectionSchema from "./schema/slack-org-connection";
 import * as slackOrgThreadSessionSchema from "./schema/slack-org-thread-session";
 import * as slackUserAgentPreferenceSchema from "./schema/slack-user-agent-preference";
+import * as teamsOrgInstallationSchema from "./schema/teams-org-installation";
+import * as teamsOrgConnectionSchema from "./schema/teams-org-connection";
+import * as teamsOrgThreadSessionSchema from "./schema/teams-org-thread-session";
+import * as teamsUserAgentPreferenceSchema from "./schema/teams-user-agent-preference";
 import * as e2eTelegramMockCallLogSchema from "./schema/e2e-telegram-mock-call-log";
 import * as orgSchema from "./schema/org-metadata";
 import * as orgConcurrencyEntitlementSchema from "./schema/org-concurrency-entitlement";
@@ -114,6 +118,10 @@ export const schema = {
   ...slackOrgConnectionSchema,
   ...slackOrgThreadSessionSchema,
   ...slackUserAgentPreferenceSchema,
+  ...teamsOrgInstallationSchema,
+  ...teamsOrgConnectionSchema,
+  ...teamsOrgThreadSessionSchema,
+  ...teamsUserAgentPreferenceSchema,
   ...e2eTelegramMockCallLogSchema,
   ...variableSchema,
   ...composeJobSchema,
