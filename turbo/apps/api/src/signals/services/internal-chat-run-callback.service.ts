@@ -64,7 +64,7 @@ import {
 import { createZeroRun$ } from "./zero-runs-create.service";
 import { loadActiveGoalForThread } from "./zero-goal.service";
 import { loadUserFeatureSwitchContext } from "./feature-switches.service";
-import { onRejection, settle, tapError } from "../utils";
+import { settle, tapError } from "../utils";
 import { resolveThreadGenerationTemplatePrompt } from "../routes/thread-generation-template";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
@@ -905,20 +905,18 @@ async function runFailedChatCallbackSideEffects(args: {
   });
 }
 
-function scheduleTerminalChatCallbackSideEffects(args: {
+async function runTerminalChatCallbackSideEffects(args: {
   readonly runId: string;
   readonly status: "completed" | "failed";
   readonly run: () => Promise<void>;
-}): void {
-  waitUntil(
-    tapError(args.run(), (error) => {
-      log.warn("Failed to process terminal chat callback side effects", {
-        runId: args.runId,
-        status: args.status,
-        error,
-      });
-    }),
-  );
+}): Promise<void> {
+  await tapError(args.run(), (error) => {
+    log.warn("Failed to process terminal chat callback side effects", {
+      runId: args.runId,
+      status: args.status,
+      error,
+    });
+  });
 }
 
 function buildWebChatPrompt(): string {
@@ -1887,20 +1885,7 @@ async function processTerminalChatCallback(args: {
     };
   }
 
-  let sideEffectsScheduled = false;
-  const scheduleSideEffects = (): void => {
-    if (!deferredSideEffects || sideEffectsScheduled) {
-      return;
-    }
-    sideEffectsScheduled = true;
-    scheduleTerminalChatCallbackSideEffects({
-      runId,
-      status: callbackStatus,
-      run: deferredSideEffects,
-    });
-  };
-
-  await onRejection(
+  const autoSendResult = await settle(
     autoSendQueuedMessageForTerminalCallback({
       db: args.db,
       runId,
@@ -1909,9 +1894,20 @@ async function processTerminalChatCallback(args: {
       dependencies: args.dependencies,
       signal: args.signal,
     }),
-    scheduleSideEffects,
+    args.signal,
   );
-  scheduleSideEffects();
+
+  if (deferredSideEffects) {
+    await runTerminalChatCallbackSideEffects({
+      runId,
+      status: callbackStatus,
+      run: deferredSideEffects,
+    });
+  }
+
+  if (!autoSendResult.ok) {
+    throw autoSendResult.error;
+  }
 }
 
 function handleChatInternalCallback(args: {
