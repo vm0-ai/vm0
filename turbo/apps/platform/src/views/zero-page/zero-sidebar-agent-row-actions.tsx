@@ -143,7 +143,7 @@ export function AgentRowSideActions({
                   <DropdownMenuItem
                     key={menuAction.label}
                     className="gap-2"
-                    onSelect={menuAction.onSelect}
+                    onClick={menuAction.onSelect}
                     disabled={menuAction.disabled}
                   >
                     {menuAction.icon}
