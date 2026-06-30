@@ -81,8 +81,8 @@ mod signals;
 use active_sessions::new_active_cli_agent_sessions;
 use factory_lifecycle::{shutdown_factories, start_factories};
 use heartbeat::{
-    HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, collect_heartbeat_state,
-    send_heartbeat,
+    HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeldSessionStateSnapshot,
+    collect_heartbeat_state, send_heartbeat,
 };
 use identity::load_or_generate_runner_id;
 use idle_lifecycle::{
@@ -1242,6 +1242,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let park_notify = Arc::new(tokio::sync::Notify::new());
     let orphaned_active_runs = OrphanedActiveRuns::new();
     let active_cli_agent_sessions = new_active_cli_agent_sessions();
+    let held_session_snapshot = HeldSessionStateSnapshot::new();
     let mut orphan_reap_tick = tokio::time::interval_at(
         tokio::time::Instant::now() + Duration::from_secs(10),
         Duration::from_secs(10),
@@ -1258,6 +1259,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         provider: &*provider_state.provider,
         workspace_cache: exec_config.workspace_cache.clone(),
         active_cli_agent_sessions: &active_cli_agent_sessions,
+        held_session_snapshot: held_session_snapshot.clone(),
     });
 
     // Pin the discover future so it survives cancellation by other select!
@@ -1278,6 +1280,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         park_notify: Arc::clone(&park_notify),
         usage_flush_tx,
         active_cli_agent_sessions: active_cli_agent_sessions.clone(),
+        held_session_snapshot,
         device_rate_limits: capacity.device_rate_limits.clone(),
         #[cfg(test)]
         outer_job_panic: test_hooks.outer_job_panic,

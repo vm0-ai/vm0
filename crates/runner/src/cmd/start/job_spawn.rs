@@ -20,6 +20,7 @@ use tracing::{error, info, warn};
 
 use super::active_sessions::{ActiveCliAgentSessionGuard, ActiveCliAgentSessions};
 use super::factory_lifecycle::SharedFactory;
+use super::heartbeat::HeldSessionStateSnapshot;
 use super::idle_lifecycle::SharedIdlePool;
 use super::job_lifecycle::{
     ActiveBudgetLease, CompletionPayload, CompletionReady, RunCleanupDisposition, RunCleanupState,
@@ -78,6 +79,7 @@ pub(super) struct SpawnContext {
     /// Best-effort signal for the main loop to ask mitmproxy to flush usage.
     pub(super) usage_flush_tx: mpsc::Sender<()>,
     pub(super) active_cli_agent_sessions: ActiveCliAgentSessions,
+    pub(super) held_session_snapshot: HeldSessionStateSnapshot,
     pub(super) device_rate_limits: Option<sandbox::DeviceRateLimits>,
     #[cfg(test)]
     pub(super) outer_job_panic: Option<OuterJobPanicPoint>,

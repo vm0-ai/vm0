@@ -15,7 +15,6 @@ use tracing::{info, warn};
 
 use super::active_sessions::ActiveCliAgentSessionGuard;
 use super::factory_lifecycle::SharedFactory;
-use super::heartbeat::current_held_session_states;
 use super::idle_lifecycle::{
     SharedIdlePool, add_preparing_run_with_idle_status_snapshot,
     add_running_run_with_idle_status_snapshot, spawn_idle_destroy_job,
@@ -410,13 +409,15 @@ async fn try_reuse_from_pool(
     };
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
     let started_at = Instant::now();
-    let held_session_states = current_held_session_states(
-        held_session_states,
-        ctx.spawn_ctx.exec_config.workspace_cache.as_ref(),
-        &ctx.spawn_ctx.active_cli_agent_sessions,
-        Some(cli_agent_session_id),
-    )
-    .await;
+    let held_session_states = ctx
+        .spawn_ctx
+        .held_session_snapshot
+        .current_held_session_states(
+            held_session_states,
+            &ctx.spawn_ctx.active_cli_agent_sessions,
+            Some(cli_agent_session_id),
+        )
+        .await;
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::HeldSessionStateRefresh, started_at);
     let started_at = Instant::now();
     ctx.spawn_ctx

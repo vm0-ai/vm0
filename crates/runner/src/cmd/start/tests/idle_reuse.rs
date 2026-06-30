@@ -11,8 +11,13 @@ use super::support::{
 
 use crate::idle_pool::ParkingState;
 use crate::paths::RunnerPaths;
+use crate::storage_fingerprints::StorageFingerprints;
 use crate::types::SandboxReuseResult;
-use crate::workspace_image_cache::SessionWorkspaceCache;
+use crate::workspace_image_cache::{
+    SessionWorkspaceCache, WorkspaceCacheTerminalStatus, WorkspaceImageLeaseIdentity,
+    WorkspaceImagePrepareRequest,
+};
+use api_contracts::generated::constants::runners::paths::CANONICAL_WORKING_DIR;
 
 // -----------------------------------------------------------------------
 // Test 9: idle pool park/take is gated on session ID availability
@@ -63,6 +68,48 @@ fn device_rate_limits() -> sandbox::DeviceRateLimits {
             tx_bytes_per_sec: 25 * 1024 * 1024,
         },
     }
+}
+
+async fn promote_workspace_cache_session(
+    cache: &SessionWorkspaceCache,
+    paths: &RunnerPaths,
+    session_id: &str,
+) {
+    let run_id = RunId::new_v4();
+    let sandbox_id = sandbox::SandboxId::new_v4();
+    let image_size_bytes = 4 * 1024;
+    let lease = cache
+        .prepare(WorkspaceImagePrepareRequest {
+            identity: WorkspaceImageLeaseIdentity {
+                run_id,
+                sandbox_id,
+                profile_name: "vm0/default",
+                cli_agent_session_id: Some(session_id),
+                working_dir: CANONICAL_WORKING_DIR,
+                image_size_bytes,
+            },
+            workspace_drive_required: false,
+        })
+        .await;
+    let active_image = paths.active_workspace_image(&sandbox_id);
+    tokio::fs::create_dir_all(active_image.parent().unwrap())
+        .await
+        .unwrap();
+    let file = tokio::fs::File::create(&active_image).await.unwrap();
+    file.set_len(image_size_bytes).await.unwrap();
+    drop(file);
+    assert!(
+        lease
+            .promote(
+                run_id,
+                None,
+                WorkspaceCacheTerminalStatus::Success,
+                super::support::TEST_SESSION_LAST_COMPLETED_AT.into(),
+                &StorageFingerprints::default(),
+            )
+            .await
+            .unwrap()
+    );
 }
 
 #[tokio::test(start_paused = true)]
@@ -466,6 +513,76 @@ async fn reuse_take_refreshes_provider_held_session_states() {
     assert!(
         updates.iter().any(Vec::is_empty),
         "provider should observe an empty held-session state after idle take; updates: {updates:?}"
+    );
+
+    shutdown(&env, run_handle).await;
+}
+
+#[tokio::test(start_paused = true)]
+async fn reuse_take_preserves_cached_workspace_held_session_state() {
+    let (mut config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
+    let idle_pool = Arc::clone(&config.shared.idle_pool);
+    let budget = Arc::clone(&config.capacity.budget);
+    let runner_paths = RunnerPaths::new(config.paths.base_dir.clone());
+    let workspace_cache = SessionWorkspaceCache::shared(
+        runner_paths.clone(),
+        &config.paths.home,
+        &config.runner.group,
+    );
+    Arc::get_mut(&mut config.exec_config)
+        .unwrap()
+        .workspace_cache = Some(workspace_cache.clone());
+    tokio::time::resume();
+    promote_workspace_cache_session(&workspace_cache, &runner_paths, "sess-cached").await;
+    tokio::time::pause();
+    assert!(
+        workspace_cache
+            .held_session_states()
+            .await
+            .iter()
+            .any(|state| state.session_id == "sess-cached"),
+        "workspace cache should expose the promoted held session before runner starts"
+    );
+
+    seed_idle_pool(&idle_pool, &budget, "sess-refresh", "vm0/default", 2, 4096).await;
+
+    let run_handle = tokio::spawn(run(config));
+    wait_discover_entered(&env, Duration::from_secs(5)).await;
+    let heartbeat_count = env.handle.heartbeat_count();
+    tokio::time::advance(HEARTBEAT_PERIOD).await;
+    tokio::task::yield_now().await;
+    assert!(
+        env.handle
+            .wait_heartbeat_past(heartbeat_count, Duration::from_secs(1))
+            .await,
+        "heartbeat should refresh the held-session snapshot before claim"
+    );
+
+    let run_id = RunId::new_v4();
+    push_job(
+        &env,
+        run_id,
+        "vm0/default",
+        Some(context_with_session(run_id, "sess-refresh")),
+    );
+
+    let completion = env
+        .handle
+        .wait_completion(run_id, Duration::from_secs(5))
+        .await
+        .expect("job should complete");
+    assert_eq!(completion.reuse_result, Some(SandboxReuseResult::Reused));
+    wait_idle_pool_session_states(&idle_pool, &["sess-refresh"], Duration::from_secs(5)).await;
+
+    let updates = env.handle.held_session_state_updates();
+    assert!(
+        updates.iter().any(|states| {
+            states.iter().any(|state| state.session_id == "sess-cached")
+                && states
+                    .iter()
+                    .all(|state| state.session_id != "sess-refresh")
+        }),
+        "provider should keep cached workspace state while filtering the claimed idle session; updates: {updates:?}"
     );
 
     shutdown(&env, run_handle).await;
