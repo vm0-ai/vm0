@@ -613,7 +613,7 @@ describe("team page navigation", () => {
       screen.queryByText("Research Agent's automations"),
     ).not.toBeInTheDocument();
     expect(
-      screen.queryByText("Workflow triggers attached to Research Agent."),
+      screen.queryByText("Workflow automations attached to Research Agent."),
     ).not.toBeInTheDocument();
   });
 

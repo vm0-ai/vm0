@@ -30,7 +30,7 @@ import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
-export type WorkflowDetailTab = "triggers" | "instructions" | "info";
+export type WorkflowDetailTab = "automations" | "instructions" | "info";
 export type WorkflowCopyDialogAgent = {
   readonly id: string;
   readonly displayName: string | null;
@@ -70,7 +70,7 @@ function workflowDetailTabFromSearchParams(
 ): WorkflowDetailTab | null {
   const value = params.get(WORKFLOW_DETAIL_TAB_PARAM);
   switch (value) {
-    case "triggers":
+    case "automations":
     case "instructions":
     case "info": {
       return value;
@@ -135,7 +135,8 @@ export const currentWorkflowId$ = computed((get): string | null => {
 });
 
 const internalWorkflowReload$ = state(0);
-const internalWorkflowDetailActiveTab$ = state<WorkflowDetailTab>("triggers");
+const internalWorkflowDetailActiveTab$ =
+  state<WorkflowDetailTab>("automations");
 
 const internalSelectedFilePath$ = state<string | null>(null);
 const internalWorkflowActionDialog$ = state<WorkflowDetailActionDialog>(null);
@@ -221,7 +222,7 @@ export const resetWorkflowMetadataForm$ = command(({ set }) => {
 });
 
 export const resetWorkflowDetailUiState$ = command(({ set }) => {
-  set(internalWorkflowDetailActiveTab$, "triggers");
+  set(internalWorkflowDetailActiveTab$, "automations");
   set(internalSelectedFilePath$, null);
   set(internalWorkflowActionDialog$, null);
   set(internalWorkflowCopyDialogState$, { kind: "select" });
