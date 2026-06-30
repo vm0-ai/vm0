@@ -53,6 +53,10 @@
       "destination": "https://us.posthog.com/$1"
     },
     {
+      "source": "/api/zero/teams/bot",
+      "destination": "https://api.vm0.ai/api/zero/teams/bot"
+    },
+    {
       "source": "/((?!assets/|.*\\..*).*)",
       "destination": "/index.html"
     }

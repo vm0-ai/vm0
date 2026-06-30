@@ -1448,6 +1448,14 @@ export {
   type ZeroSlackEventsContract,
 } from "./zero-slack-events";
 export {
+  zeroTeamsBotContract,
+  teamsInboundActivitySchema,
+  teamsBotIngressResponseSchema,
+  type TeamsInboundActivity,
+  type TeamsBotIngressResponse,
+  type ZeroTeamsBotContract,
+} from "./zero-teams-bot";
+export {
   zeroSlackInteractiveContract,
   type ZeroSlackInteractiveContract,
 } from "./zero-slack-interactive";
