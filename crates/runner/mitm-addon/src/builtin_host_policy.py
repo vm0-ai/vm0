@@ -4,9 +4,13 @@ import ipaddress
 import re
 import urllib.parse
 
-from firewall_auth_config import auth_config_injects_credentials
+from firewall_auth_config import (
+    auth_config_injects_credentials,
+    auth_config_injects_ordinary_upstream_credentials,
+)
 from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 
+BUILTIN_HOST_POLICY_RUNTIME_MARKER = "_vm0BuiltinHostPolicy"
 _DEFAULT_HTTPS_PORT = 443
 _MIN_FIXED_HOST_OWNERSHIP_LABELS = 2
 _HOST_DOT_EQUIVALENT_TRANSLATION = str.maketrans(
@@ -59,6 +63,15 @@ class BuiltinHostPolicyError(ValueError):
     """Builtin firewall host policy rejected a credentialed runtime base URL."""
 
 
+class BuiltinRuntimeHostPolicyError(ValueError):
+    """Builtin firewall host policy rejected a credentialed request destination."""
+
+    def __init__(self, *, reason: str, message: str) -> None:
+        super().__init__(message)
+        self.reason = reason
+        self.message = message
+
+
 def validate_credentialed_builtin_base(
     *,
     firewall_name: str,
@@ -79,6 +92,33 @@ def validate_credentialed_builtin_base(
         parsed=parsed,
         host_policy=host_policy,
     )
+
+
+def validate_credentialed_builtin_request_destination(
+    *,
+    firewall_name: str,
+    trusted_host: str,
+    trusted_port: int,
+    auth_config: object,
+    host_policy: object,
+    upstream_endpoint: tuple[str, int] | None,
+) -> None:
+    if not auth_config_injects_ordinary_upstream_credentials(auth_config):
+        return
+    try:
+        _validate_builtin_runtime_host_policy(
+            firewall_name=firewall_name,
+            trusted_host=trusted_host,
+            trusted_port=trusted_port,
+            host_policy=host_policy,
+            upstream_endpoint=upstream_endpoint,
+        )
+    except BuiltinHostPolicyError as e:
+        raise _runtime_host_policy_error(
+            reason="invalid_host_policy",
+            firewall_name=firewall_name,
+            message=str(e),
+        ) from e
 
 
 def _normalize_host_policy_hostname(hostname: str) -> str:
@@ -317,6 +357,126 @@ def _validate_public_destination_host_policy(
             f'builtin firewall "{firewall_name}" host policy does not allow '
             f'non-public IP literal "{hostname}"'
         )
+
+
+def _runtime_host_policy_error(
+    *,
+    reason: str,
+    firewall_name: str,
+    message: str,
+) -> BuiltinRuntimeHostPolicyError:
+    return BuiltinRuntimeHostPolicyError(
+        reason=reason,
+        message=f'builtin firewall "{firewall_name}" {message}',
+    )
+
+
+def _validate_provider_owned_runtime_host_policy(
+    *,
+    firewall_name: str,
+    trusted_host: str,
+    trusted_port: int,
+    policy: dict,
+) -> None:
+    hostname = _normalize_host_policy_hostname(trusted_host)
+    exact_hosts = _host_policy_string_list(policy, "exactHosts")
+    suffixes = _host_policy_string_list(policy, "suffixes")
+    allow_non_default_port = _host_policy_optional_bool(
+        firewall_name=firewall_name,
+        policy=policy,
+        key="allowNonDefaultPort",
+    )
+    if not _provider_owned_host_matches(
+        hostname,
+        exact_hosts=exact_hosts,
+        suffixes=suffixes,
+    ):
+        raise _runtime_host_policy_error(
+            reason="provider_host_not_allowed",
+            firewall_name=firewall_name,
+            message=f'host policy does not allow request host "{hostname}"',
+        )
+    if not allow_non_default_port and trusted_port != _DEFAULT_HTTPS_PORT:
+        raise _runtime_host_policy_error(
+            reason="provider_non_default_port",
+            firewall_name=firewall_name,
+            message="host policy does not allow non-default request ports",
+        )
+
+
+def _validate_public_destination_runtime_host_policy(
+    *,
+    firewall_name: str,
+    trusted_host: str,
+    upstream_endpoint: tuple[str, int] | None,
+) -> None:
+    hostname = _normalize_host_policy_hostname(trusted_host)
+    public_ip_literal = _ip_literal_is_public(hostname)
+    if public_ip_literal is False:
+        raise _runtime_host_policy_error(
+            reason="public_host_non_public_ip",
+            firewall_name=firewall_name,
+            message=f'host policy does not allow non-public request IP "{hostname}"',
+        )
+    if upstream_endpoint is None:
+        return
+    endpoint_host, _endpoint_port = upstream_endpoint
+    public_endpoint_ip_literal = _ip_literal_is_public(endpoint_host)
+    if public_endpoint_ip_literal is False:
+        raise _runtime_host_policy_error(
+            reason="public_endpoint_non_public_ip",
+            firewall_name=firewall_name,
+            message=f'host policy does not allow non-public upstream IP "{endpoint_host}"',
+        )
+
+
+def _validate_builtin_runtime_host_policy(
+    *,
+    firewall_name: str,
+    trusted_host: str,
+    trusted_port: int,
+    host_policy: object,
+    upstream_endpoint: tuple[str, int] | None,
+) -> None:
+    if host_policy is None:
+        return
+    if not isinstance(host_policy, dict):
+        raise _runtime_host_policy_error(
+            reason="invalid_host_policy",
+            firewall_name=firewall_name,
+            message="hostPolicy must be an object",
+        )
+    kind = host_policy.get("kind")
+    if kind == "providerOwned":
+        _validate_host_policy_keys(
+            firewall_name=firewall_name,
+            policy=host_policy,
+            allowed_keys=_PROVIDER_OWNED_HOST_POLICY_KEYS,
+        )
+        _validate_provider_owned_runtime_host_policy(
+            firewall_name=firewall_name,
+            trusted_host=trusted_host,
+            trusted_port=trusted_port,
+            policy=host_policy,
+        )
+        return
+    if kind == "publicDestination":
+        _validate_host_policy_keys(
+            firewall_name=firewall_name,
+            policy=host_policy,
+            allowed_keys=_PUBLIC_DESTINATION_HOST_POLICY_KEYS,
+        )
+        _validate_public_destination_runtime_host_policy(
+            firewall_name=firewall_name,
+            trusted_host=trusted_host,
+            upstream_endpoint=upstream_endpoint,
+        )
+        return
+    raise _runtime_host_policy_error(
+        reason="invalid_host_policy",
+        firewall_name=firewall_name,
+        message="hostPolicy kind is invalid",
+    )
 
 
 def _validate_builtin_base_host_policy(

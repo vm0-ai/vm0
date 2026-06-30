@@ -98,6 +98,8 @@ def _resolve_builtin_firewall_entry(entry: dict) -> _ResolvedBuiltinFirewallEntr
         ) as e:
             raise _resolution_error(e) from e
         api["base"] = resolved_base
+        if api.get("hostPolicy") is not None:
+            api[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER] = True
         resolved_bases.append(resolved_base)
 
     return _ResolvedBuiltinFirewallEntry(

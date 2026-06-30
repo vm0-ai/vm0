@@ -6,6 +6,7 @@ from unittest.mock import patch
 import pytest
 from mitmproxy import connection
 
+import builtin_host_policy
 import flow_metadata_keys as metadata_keys
 import mitm_addon
 import upstream_destination_binding
@@ -51,6 +52,39 @@ def _write_test_oauth_registry(tmp_path):
     )
 
 
+def _write_host_policy_registry(
+    tmp_path,
+    *,
+    firewall_name: str,
+    base: str,
+    host_policy: dict[str, object],
+    marked_builtin: bool = True,
+):
+    api_entry: dict[str, object] = {
+        "base": base,
+        "auth": {"headers": {"Authorization": "Bearer ${{ secrets.TEST_TOKEN }}"}},
+        "hostPolicy": host_policy,
+        "permissions": [{"name": "full-access", "rules": ["ANY /{path+}"]}],
+    }
+    if marked_builtin:
+        api_entry[builtin_host_policy.BUILTIN_HOST_POLICY_RUNTIME_MARKER] = True
+    return _write_registry(
+        tmp_path,
+        client_ip="10.200.0.5",
+        vm_info=_single_firewall_vm(
+            tmp_path,
+            firewall_name=firewall_name,
+            api_entry=api_entry,
+            network_policy={
+                "allow": ["full-access"],
+                "deny": [],
+                "ask": [],
+                "unknownPolicy": "deny",
+            },
+        ),
+    )
+
+
 def _bind_flow_upstream(
     flow,
     *,
@@ -67,6 +101,257 @@ def _bind_flow_upstream(
         kinds=kinds,
         original_address=original_address,
     )
+
+
+async def test_runtime_host_policy_blocks_public_destination_private_endpoint(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_host_policy_registry(
+        tmp_path,
+        firewall_name="strapi",
+        base="https://strapi.example.com",
+        host_policy={"kind": "publicDestination"},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="10.0.0.5",
+        sni="strapi.example.com",
+        path="/api/articles",
+        request_headers=headers(("Host", "strapi.example.com")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "builtin_host_policy_denied"
+    assert body["reason"] == "public_endpoint_non_public_ip"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "BLOCK"
+    assert flow.metadata[metadata_keys.FIREWALL_ERROR] == "builtin_host_policy_denied"
+    auth_fetch.assert_not_called()
+    assert "Authorization" not in flow.request.headers
+
+
+async def test_runtime_host_policy_allows_public_destination_public_endpoint(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_host_policy_registry(
+        tmp_path,
+        firewall_name="strapi",
+        base="https://strapi.example.com",
+        host_policy={"kind": "publicDestination"},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="8.8.8.8",
+        sni="strapi.example.com",
+        path="/api/articles",
+        request_headers=headers(("Host", "strapi.example.com")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer x"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    auth_fetch.assert_awaited_once()
+
+
+async def test_runtime_host_policy_allows_public_destination_hostname_without_ip_endpoint(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers
+):
+    reg_path = _write_host_policy_registry(
+        tmp_path,
+        firewall_name="strapi",
+        base="https://strapi.example.com",
+        host_policy={"kind": "publicDestination"},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="strapi.example.com",
+        path="/api/articles",
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        patch.object(
+            mitm_addon.socket,
+            "getaddrinfo",
+            side_effect=AssertionError("runtime host policy must not use DNS"),
+        ),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer x"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    auth_fetch.assert_awaited_once()
+
+
+async def test_runtime_host_policy_blocks_public_destination_private_request_host(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers
+):
+    reg_path = _write_host_policy_registry(
+        tmp_path,
+        firewall_name="strapi",
+        base="https://10.0.0.5",
+        host_policy={"kind": "publicDestination"},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="10.0.0.5",
+        path="/api/articles",
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "builtin_host_policy_denied"
+    assert body["reason"] == "public_host_non_public_ip"
+    auth_fetch.assert_not_called()
+    assert "Authorization" not in flow.request.headers
+
+
+async def test_runtime_host_policy_ignores_inline_public_destination_policy(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_host_policy_registry(
+        tmp_path,
+        firewall_name="strapi",
+        base="https://strapi.example.com",
+        host_policy={"kind": "publicDestination"},
+        marked_builtin=False,
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="10.0.0.5",
+        sni="strapi.example.com",
+        path="/api/articles",
+        request_headers=headers(("Host", "strapi.example.com")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer x"
+    auth_fetch.assert_awaited_once()
+
+
+@pytest.mark.parametrize(
+    ("base", "host_header", "sni", "port", "expected_reason"),
+    [
+        (
+            "https://attacker.example.com",
+            "attacker.example.com",
+            "attacker.example.com",
+            443,
+            "provider_host_not_allowed",
+        ),
+        (
+            "https://acme.atlassian.net:8443",
+            "acme.atlassian.net:8443",
+            "acme.atlassian.net",
+            8443,
+            "provider_non_default_port",
+        ),
+    ],
+)
+async def test_runtime_host_policy_blocks_provider_owned_request_authority(
+    tmp_path,
+    real_flow,
+    mitm_ctx,
+    fake_firewall_headers,
+    headers,
+    base,
+    host_header,
+    sni,
+    port,
+    expected_reason,
+):
+    reg_path = _write_host_policy_registry(
+        tmp_path,
+        firewall_name="jira",
+        base=base,
+        host_policy={"kind": "providerOwned", "suffixes": ["atlassian.net"]},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        port=port,
+        sni=sni,
+        path="/rest/api/3/myself",
+        request_headers=headers(("Host", host_header)),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is not None
+    assert flow.response.status_code == 403
+    body = json.loads(flow.response.content)
+    assert body["error"] == "builtin_host_policy_denied"
+    assert body["reason"] == expected_reason
+    auth_fetch.assert_not_called()
+    assert "Authorization" not in flow.request.headers
+
+
+async def test_runtime_host_policy_allows_provider_owned_request_authority(
+    tmp_path, real_flow, mitm_ctx, fake_firewall_headers, headers
+):
+    reg_path = _write_host_policy_registry(
+        tmp_path,
+        firewall_name="jira",
+        base="https://acme.atlassian.net",
+        host_policy={"kind": "providerOwned", "suffixes": ["atlassian.net"]},
+    )
+    flow = real_flow(
+        with_response=False,
+        client_ip="10.200.0.5",
+        host="203.0.113.10",
+        sni="acme.atlassian.net",
+        path="/rest/api/3/myself",
+        request_headers=headers(("Host", "acme.atlassian.net")),
+    )
+
+    with (
+        mitm_ctx(registry_path=str(reg_path), api_url="https://api.vm0.ai"),
+        fake_firewall_headers() as auth_fetch,
+    ):
+        await mitm_addon.request(flow)
+
+    assert flow.response is None
+    assert flow.request.headers["Authorization"] == "Bearer x"
+    assert flow.metadata[metadata_keys.FIREWALL_ACTION] == "ALLOW"
+    auth_fetch.assert_awaited_once()
 
 
 @pytest.mark.parametrize(
