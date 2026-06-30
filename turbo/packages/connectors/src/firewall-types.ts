@@ -1865,6 +1865,11 @@ const HOST_WILDCARD_PARAM_PREFIX = "hostWildcard";
  * Path `*` characters remain literal.
  */
 export function expandHostWildcardsInBaseUrl(base: string): string {
+  const rawAuthority = rawAuthorityFromBaseUrl(base);
+  if (rawAuthority !== null && authorityHasEmptyPort(rawAuthority)) {
+    return base;
+  }
+
   let url: URL;
   try {
     url = new URL(base);

@@ -1190,6 +1190,14 @@ describe("expandHostWildcardsInBaseUrl", () => {
     }).not.toThrow();
   });
 
+  it("does not normalize wildcard URLs with empty ports", () => {
+    const expanded = expandHostWildcardsInBaseUrl("https://*.example.com:/v1/");
+    expect(expanded).toBe("https://*.example.com:/v1/");
+    expect(() => {
+      return validateBaseUrl(expanded, "fw");
+    }).toThrow("not a valid URL authority");
+  });
+
   it("converts mixed-label host wildcards and leaves path wildcards literal", () => {
     expect(
       expandHostWildcardsInBaseUrl("https://api-*.example.com/files/*/"),
