@@ -401,6 +401,7 @@ describe("CHAT-02: completed chat callback", () => {
     chatCallbacks.failIfChatCallbackRouteIsFetched();
 
     const titlePrompts: string[] = [];
+    const followupPrompts: string[] = [];
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterCompletions((body) => {
       const systemContent = body.messages[0]?.content ?? "";
@@ -411,6 +412,7 @@ describe("CHAT-02: completed chat callback", () => {
       if (
         systemContent.includes("Generate up to three concise follow-up prompts")
       ) {
+        followupPrompts.push(body.messages[1]?.content ?? "");
         return JSON.stringify([
           { prompt: "Turn this into a checklist", kind: "talk" },
           {
@@ -517,6 +519,9 @@ describe("CHAT-02: completed chat callback", () => {
         generationType: "website",
       },
     ]);
+    expect(followupPrompts).toHaveLength(1);
+    expect(followupPrompts[0]).toContain("final answer");
+    expect(followupPrompts[0]).not.toContain("queued next turn");
     await expect
       .poll(() => {
         return publishedChatThreadRunFinished(first.threadId);

@@ -62,6 +62,16 @@ export function isChatTitleGenerationConfigured(): boolean {
   return Boolean(optionalEnv("OPENROUTER_API_KEY"));
 }
 
+function nonQueuedContextMessageCondition() {
+  return sql<boolean>`NOT (
+    ${chatMessages.role} = 'user'
+    AND ${chatMessages.runId} IS NULL
+    AND ${chatMessages.revokesMessageId} IS NULL
+    AND ${chatMessages.interruptsRunId} IS NULL
+    AND ${chatMessages.error} IS NULL
+  )`;
+}
+
 function stripMarkdown(text: string): string {
   return text
     .replace(/(\*{1,3}|_{1,3})(.+?)\1/g, "$2")
@@ -166,6 +176,7 @@ async function getLatestTitleContextMessages(
     isNotNull(chatMessages.content),
     inArray(chatMessages.role, ["user", "assistant"]),
     visibleChatMessageCondition(),
+    nonQueuedContextMessageCondition(),
   ];
   if (options?.excludeRunId !== undefined) {
     filters.push(
@@ -444,6 +455,7 @@ async function getLatestFollowupContextMessages(
         isNotNull(chatMessages.content),
         inArray(chatMessages.role, ["user", "assistant"]),
         visibleChatMessageCondition(),
+        nonQueuedContextMessageCondition(),
       ),
     )
     .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
