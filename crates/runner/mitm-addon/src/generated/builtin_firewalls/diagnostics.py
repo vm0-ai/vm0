@@ -3231,6 +3231,31 @@ CONNECTOR_DIAGNOSTIC_FIREWALLS = json.loads(r"""[
           "Authorization"
         ],
         "authQueryParamNames": [],
+        "base": "https://api.pexels.com/v1",
+        "envNames": [
+          "PEXELS_API_KEY"
+        ]
+      },
+      {
+        "authHeaderNames": [
+          "Authorization"
+        ],
+        "authQueryParamNames": [],
+        "base": "https://api.pexels.com/videos",
+        "envNames": [
+          "PEXELS_API_KEY"
+        ]
+      }
+    ],
+    "name": "pexels"
+  },
+  {
+    "apis": [
+      {
+        "authHeaderNames": [
+          "Authorization"
+        ],
+        "authQueryParamNames": [],
         "base": "https://srkibaanghvsriahb.pika.art",
         "envNames": [
           "PIKA_TOKEN"

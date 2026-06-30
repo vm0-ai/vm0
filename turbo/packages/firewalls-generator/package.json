@@ -182,6 +182,7 @@
     "generate:pdforge": "tsx src/index.ts pdforge",
     "generate:people-data-labs": "tsx src/index.ts people-data-labs",
     "generate:perplexity": "tsx src/index.ts perplexity",
+    "generate:pexels": "tsx src/index.ts pexels",
     "generate:pika": "tsx src/index.ts pika",
     "generate:pinecone": "tsx src/index.ts pinecone",
     "generate:pipedream": "tsx src/index.ts pipedream",

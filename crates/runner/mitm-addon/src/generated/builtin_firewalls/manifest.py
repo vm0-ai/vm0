@@ -197,6 +197,7 @@ FIREWALL_MODULES = {
     "pdforge": ("pdforge_0",),
     "people-data-labs": ("people_data_labs_0",),
     "perplexity": ("perplexity_0",),
+    "pexels": ("pexels_0",),
     "pika": ("pika_0",),
     "pinecone": ("pinecone_0",),
     "pipedream": ("pipedream_0",),

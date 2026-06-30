@@ -761,6 +761,10 @@ def load_json_parts(name: str) -> tuple[str, ...]:
         from . import perplexity_0
 
         return (perplexity_0.JSON_PART,)
+    if name == "pexels":
+        from . import pexels_0
+
+        return (pexels_0.JSON_PART,)
     if name == "pika":
         from . import pika_0
 

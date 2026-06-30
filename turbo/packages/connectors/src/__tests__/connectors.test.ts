@@ -2219,6 +2219,15 @@ describe("getAvailableConnectorAuthMethodIds", () => {
     ).toStrictEqual(["oauth"]);
   });
 
+  it("exposes Pexels API-token auth only when its switch is enabled", () => {
+    expect(getAvailableConnectorAuthMethodIds("pexels", {})).toStrictEqual([]);
+    expect(
+      getAvailableConnectorAuthMethodIds("pexels", {
+        [FeatureSwitchKey.PexelsConnector]: true,
+      }),
+    ).toStrictEqual(["api-token"]);
+  });
+
   it("exposes Google Search Console OAuth without a feature switch", () => {
     expect(
       getAvailableConnectorAuthMethodIds("google-search-console", {}),

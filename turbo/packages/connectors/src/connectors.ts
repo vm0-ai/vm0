@@ -218,6 +218,7 @@ import { pdfco } from "./connectors/pdfco";
 import { pdforge } from "./connectors/pdforge";
 import { peopleDataLabs } from "./connectors/people-data-labs";
 import { perplexity } from "./connectors/perplexity";
+import { pexels } from "./connectors/pexels";
 import { pika } from "./connectors/pika";
 import { pinecone } from "./connectors/pinecone";
 import { pipedream } from "./connectors/pipedream";
@@ -1254,6 +1255,7 @@ const CONNECTOR_TYPES_DEF = defineConnectors({
   ...pdforge,
   ...peopleDataLabs,
   ...perplexity,
+  ...pexels,
   ...pika,
   ...pinecone,
   ...pipedream,
