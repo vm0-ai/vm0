@@ -9,6 +9,7 @@ import { createBddApi, expectApiError } from "./helpers/api-bdd";
 import {
   createAuthDeviceApiActions,
   makeCodexAuthJson,
+  makeCodexJwt,
 } from "./helpers/api-bdd-auth-device";
 import { createAuthDeviceSupportApi } from "./helpers/api-bdd-auth-device-support";
 
@@ -960,6 +961,12 @@ describe("CLI-TEST: test-codex-oauth", () => {
     return provider;
   }
 
+  function expectAuthJsonShapeError(body: unknown, message: string): void {
+    expect(body).toStrictEqual({
+      error: `auth.json shape invalid: ${message}`,
+    });
+  }
+
   it("hides test-codex-oauth in production and allows preview rewrites", async () => {
     const actor = bdd.user();
     await authDevice.provisionTestOrg(actor);
@@ -1126,5 +1133,167 @@ describe("CLI-TEST: test-codex-oauth", () => {
     });
 
     await authDevice.deleteOrgModelProvider(actor, "codex-oauth-token");
+  });
+
+  it("accepts pasted auth.json claim variants through public API state", async () => {
+    const actor = bdd.user();
+    await authDevice.provisionTestOrg(actor);
+
+    await authDevice.requestTestCodexOauth(
+      {},
+      { authJson: makeCodexAuthJson({ withApiKey: true }) },
+      [200],
+    );
+    const organizationTitleProvider = await readCodexProvider(actor);
+    expect(organizationTitleProvider).toMatchObject({
+      workspaceName: "Acme",
+      planType: "plus",
+    });
+
+    for (const variant of [
+      {
+        workspaceClaim: "workspace.name" as const,
+        workspaceName: "Workspace Claim",
+      },
+      {
+        workspaceClaim: "chatgpt_workspace_name" as const,
+        workspaceName: "Legacy Workspace Claim",
+      },
+    ]) {
+      await authDevice.requestTestCodexOauth(
+        {},
+        { authJson: makeCodexAuthJson(variant) },
+        [200],
+      );
+      const variantProvider = await readCodexProvider(actor);
+      expect(variantProvider).toMatchObject({
+        workspaceName: variant.workspaceName,
+        planType: "plus",
+      });
+    }
+
+    await authDevice.requestTestCodexOauth(
+      {},
+      { authJson: makeCodexAuthJson({ workspaceName: null }) },
+      [200],
+    );
+    const missingWorkspaceProvider = await readCodexProvider(actor);
+    expect(missingWorkspaceProvider).toMatchObject({
+      workspaceName: null,
+      planType: "plus",
+    });
+
+    await authDevice.deleteOrgModelProvider(actor, "codex-oauth-token");
+  });
+
+  it("derives pasted auth.json expiry from API inputs", async () => {
+    const actor = bdd.user();
+    await authDevice.provisionTestOrg(actor);
+
+    const accessExp = Math.floor(now() / 1000) + 7200;
+    const accessExpiry = await authDevice.requestTestCodexOauth(
+      {},
+      {
+        authJson: makeCodexAuthJson({
+          accessToken: makeCodexJwt({ exp: accessExp, sub: "user" }),
+          idTokenExpiresAt: accessExp - 3600,
+        }),
+      },
+      [200],
+    );
+    if (accessExpiry.status !== 200) {
+      throw new Error(
+        `Expected access expiry seed, got ${accessExpiry.status}`,
+      );
+    }
+    if (!accessExpiry.body.tokenExpiresAt) {
+      throw new Error("Expected access tokenExpiresAt in response");
+    }
+    expect(Date.parse(accessExpiry.body.tokenExpiresAt)).toBe(accessExp * 1000);
+
+    const idTokenExp = accessExp + 3600;
+    const fallbackExpiry = await authDevice.requestTestCodexOauth(
+      {},
+      {
+        authJson: makeCodexAuthJson({
+          accessToken: "opaque-access-token",
+          idTokenExpiresAt: idTokenExp,
+        }),
+      },
+      [200],
+    );
+    if (fallbackExpiry.status !== 200) {
+      throw new Error(
+        `Expected fallback expiry seed, got ${fallbackExpiry.status}`,
+      );
+    }
+    if (!fallbackExpiry.body.tokenExpiresAt) {
+      throw new Error("Expected fallback tokenExpiresAt in response");
+    }
+    expect(Date.parse(fallbackExpiry.body.tokenExpiresAt)).toBe(
+      idTokenExp * 1000,
+    );
+
+    await authDevice.deleteOrgModelProvider(actor, "codex-oauth-token");
+  });
+
+  it("maps invalid pasted auth.json inputs to endpoint errors", async () => {
+    const actor = bdd.user();
+    await authDevice.provisionTestOrg(actor);
+
+    const missingTokens = await authDevice.requestTestCodexOauth(
+      {},
+      { authJson: JSON.stringify({ OPENAI_API_KEY: "sk-test" }) },
+      [400],
+    );
+    expectAuthJsonShapeError(
+      missingTokens.body,
+      "auth.json shape unrecognized — your codex CLI may need updating",
+    );
+
+    const invalidIdToken = await authDevice.requestTestCodexOauth(
+      {},
+      { authJson: makeCodexAuthJson({ idToken: "not-a-jwt-at-all" }) },
+      [400],
+    );
+    expectAuthJsonShapeError(
+      invalidIdToken.body,
+      "auth.json id_token claims unparsable",
+    );
+
+    const missingClaims = await authDevice.requestTestCodexOauth(
+      {},
+      { authJson: makeCodexAuthJson({ accountId: null }) },
+      [400],
+    );
+    expectAuthJsonShapeError(
+      missingClaims.body,
+      "auth.json id_token missing required claims",
+    );
+
+    const missingExp = await authDevice.requestTestCodexOauth(
+      {},
+      {
+        authJson: makeCodexAuthJson({
+          accessToken: makeCodexJwt({ sub: "user" }),
+          idTokenExpiresAt: null,
+        }),
+      },
+      [400],
+    );
+    expectAuthJsonShapeError(
+      missingExp.body,
+      "auth.json access_token has no exp claim",
+    );
+
+    const oversized = await authDevice.requestTestCodexOauth(
+      {},
+      { authJson: " ".repeat(17 * 1024) + makeCodexAuthJson() },
+      [400],
+    );
+    expectAuthJsonShapeError(
+      oversized.body,
+      "auth.json is unexpectedly large — paste only the contents of ~/.codex/auth.json",
+    );
   });
 });

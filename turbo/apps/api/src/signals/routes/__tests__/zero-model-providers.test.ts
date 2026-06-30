@@ -58,41 +58,88 @@ function makeJwt(payload: Record<string, unknown>): string {
   return `${header}.${body}.fake-signature`;
 }
 
+type CodexWorkspaceClaim =
+  | "organization.title"
+  | "workspace.name"
+  | "chatgpt_workspace_name";
+
 function makeIdToken(opts: {
-  readonly accountId: string;
-  readonly planType: string;
-  readonly workspaceName?: string;
+  readonly accountId: string | null;
+  readonly exp?: number | null;
+  readonly planType: string | null;
+  readonly workspaceClaim?: CodexWorkspaceClaim;
+  readonly workspaceName?: string | null;
 }): string {
-  const auth: Record<string, unknown> = {
-    chatgpt_account_id: opts.accountId,
-    chatgpt_plan_type: opts.planType,
-  };
-  if (opts.workspaceName !== undefined) {
-    auth.organization = { title: opts.workspaceName };
+  const auth: Record<string, unknown> = {};
+  if (opts.accountId !== null) {
+    auth.chatgpt_account_id = opts.accountId;
   }
-  return makeJwt({
+  if (opts.planType !== null) {
+    auth.chatgpt_plan_type = opts.planType;
+  }
+  if (opts.workspaceName !== undefined && opts.workspaceName !== null) {
+    switch (opts.workspaceClaim ?? "organization.title") {
+      case "organization.title": {
+        auth.organization = { title: opts.workspaceName };
+        break;
+      }
+      case "workspace.name": {
+        auth.workspace = { name: opts.workspaceName };
+        break;
+      }
+      case "chatgpt_workspace_name": {
+        auth.chatgpt_workspace_name = opts.workspaceName;
+        break;
+      }
+    }
+  }
+
+  const payload: Record<string, unknown> = {
     "https://api.openai.com/auth": auth,
-    exp: Math.floor(now() / 1000) + 3600,
-  });
+  };
+  const exp =
+    opts.exp === undefined ? Math.floor(now() / 1000) + 3600 : opts.exp;
+  if (exp !== null) {
+    payload.exp = exp;
+  }
+  return makeJwt(payload);
 }
 
 function makeAuthJson(overrides?: {
   readonly accessToken?: string;
+  readonly accountId?: string | null;
+  readonly idToken?: string;
+  readonly idTokenExpiresAt?: number | null;
   readonly refreshToken?: string;
-  readonly planType?: string;
+  readonly planType?: string | null;
+  readonly withApiKey?: boolean;
+  readonly workspaceClaim?: CodexWorkspaceClaim;
+  readonly workspaceName?: string | null;
 }): string {
   const accessExp = Math.floor(now() / 1000) + 7200;
+  const workspaceName =
+    overrides?.workspaceName === undefined
+      ? "Org Acme"
+      : overrides.workspaceName;
   return JSON.stringify({
-    OPENAI_API_KEY: null,
+    OPENAI_API_KEY: overrides?.withApiKey ? "sk-test" : null,
     tokens: {
       access_token: overrides?.accessToken ?? makeJwt({ exp: accessExp }),
       refresh_token: overrides?.refreshToken ?? "rt_org_synthetic_high_entropy",
       account_id: "ws_acct_plain",
-      id_token: makeIdToken({
-        accountId: "ws_acct_from_id_token_org",
-        planType: overrides?.planType ?? "plus",
-        workspaceName: "Org Acme",
-      }),
+      id_token:
+        overrides?.idToken ??
+        makeIdToken({
+          accountId:
+            overrides?.accountId === undefined
+              ? "ws_acct_from_id_token_org"
+              : overrides.accountId,
+          exp: overrides?.idTokenExpiresAt,
+          planType:
+            overrides?.planType === undefined ? "plus" : overrides.planType,
+          workspaceClaim: overrides?.workspaceClaim,
+          workspaceName,
+        }),
     },
   });
 }
@@ -720,6 +767,59 @@ describe("POST /api/zero/model-providers", () => {
     });
   });
 
+  it("handles codex auth_json claim variants through provider upsert", async () => {
+    const fixture = uniqueOrgUser("zmp-codex-claims");
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const client = setupApp({ context })(zeroModelProvidersMainContract);
+
+    const withApiKey = await accept(
+      client.upsert({
+        headers: { authorization: "Bearer clerk-session" },
+        body: {
+          type: "codex-oauth-token",
+          authMethod: "auth_json",
+          secrets: { CODEX_AUTH_JSON: makeAuthJson({ withApiKey: true }) },
+        },
+      }),
+      [201],
+    );
+    expect(withApiKey.body.provider).toMatchObject({
+      workspaceName: "Org Acme",
+      planType: "plus",
+    });
+
+    for (const variant of [
+      {
+        workspaceClaim: "workspace.name" as const,
+        workspaceName: "Workspace Claim",
+      },
+      {
+        workspaceClaim: "chatgpt_workspace_name" as const,
+        workspaceName: "Legacy Workspace Claim",
+      },
+      {
+        workspaceClaim: "organization.title" as const,
+        workspaceName: null,
+      },
+    ]) {
+      const response = await accept(
+        client.upsert({
+          headers: { authorization: "Bearer clerk-session" },
+          body: {
+            type: "codex-oauth-token",
+            authMethod: "auth_json",
+            secrets: { CODEX_AUTH_JSON: makeAuthJson(variant) },
+          },
+        }),
+        [200],
+      );
+      expect(response.body.provider).toMatchObject({
+        workspaceName: variant.workspaceName,
+        planType: "plus",
+      });
+    }
+  });
+
   it("returns typed codex auth_json validation errors", async () => {
     const fixture = uniqueOrgUser("zmp-codex-invalid");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
@@ -789,6 +889,36 @@ describe("POST /api/zero/model-providers", () => {
     expect(missingRefresh.body.error.code).toBe(
       "CODEX_AUTH_JSON_SHAPE_INVALID",
     );
+  });
+
+  it("returns typed codex auth_json validation errors for token claims", async () => {
+    const fixture = uniqueOrgUser("zmp-codex-token-invalid");
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    const client = setupApp({ context })(zeroModelProvidersMainContract);
+
+    for (const authJson of [
+      JSON.stringify({ OPENAI_API_KEY: "sk-test" }),
+      makeAuthJson({ idToken: "not-a-jwt-at-all" }),
+      makeAuthJson({ accountId: null }),
+      makeAuthJson({
+        accessToken: makeJwt({ sub: "user" }),
+        idTokenExpiresAt: null,
+      }),
+      " ".repeat(17 * 1024) + makeAuthJson(),
+    ]) {
+      const response = await accept(
+        client.upsert({
+          headers: { authorization: "Bearer clerk-session" },
+          body: {
+            type: "codex-oauth-token",
+            authMethod: "auth_json",
+            secrets: { CODEX_AUTH_JSON: authJson },
+          },
+        }),
+        [400],
+      );
+      expect(response.body.error.code).toBe("CODEX_AUTH_JSON_SHAPE_INVALID");
+    }
   });
 
   it("re-paste clears codex reconnect state", async () => {

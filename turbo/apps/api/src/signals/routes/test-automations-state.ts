@@ -42,13 +42,13 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
-import { testOverride } from "../../lib/singleton";
-import type { RouteEntry } from "../route-entry";
 import {
   resetSecretKmsClientForTests,
   setSecretKmsClientForTests,
   type SecretKmsClient,
-} from "../services/crypto.utils";
+} from "../../lib/secret-kms-client";
+import { testOverride } from "../../lib/singleton";
+import type { RouteEntry } from "../route-entry";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,

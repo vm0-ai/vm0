@@ -183,30 +183,62 @@ function base64UrlEncode(input: string): string {
     .replace(/=+$/, "");
 }
 
-function makeJwt(payload: Record<string, unknown>): string {
+export function makeCodexJwt(payload: Record<string, unknown>): string {
   const header = base64UrlEncode(JSON.stringify({ alg: "RS256", typ: "JWT" }));
   const body = base64UrlEncode(JSON.stringify(payload));
   return `${header}.${body}.fake-signature`;
 }
 
+type CodexWorkspaceClaim =
+  | "organization.title"
+  | "workspace.name"
+  | "chatgpt_workspace_name";
+
 function makeCodexIdToken(opts: {
-  readonly accountId: string;
-  readonly planType: string;
-  readonly workspaceName: string;
+  readonly accountId: string | null;
+  readonly planType: string | null;
+  readonly workspaceName: string | null;
+  readonly workspaceClaim?: CodexWorkspaceClaim;
+  readonly exp?: number | null;
 }): string {
-  return makeJwt({
-    "https://api.openai.com/auth": {
-      chatgpt_account_id: opts.accountId,
-      chatgpt_plan_type: opts.planType,
-      organization: { title: opts.workspaceName },
-    },
-    exp: Math.floor(now() / 1000) + 3600,
-  });
+  const auth: Record<string, unknown> = {};
+  if (opts.accountId !== null) {
+    auth.chatgpt_account_id = opts.accountId;
+  }
+  if (opts.planType !== null) {
+    auth.chatgpt_plan_type = opts.planType;
+  }
+  if (opts.workspaceName !== null) {
+    switch (opts.workspaceClaim ?? "organization.title") {
+      case "organization.title": {
+        auth.organization = { title: opts.workspaceName };
+        break;
+      }
+      case "workspace.name": {
+        auth.workspace = { name: opts.workspaceName };
+        break;
+      }
+      case "chatgpt_workspace_name": {
+        auth.chatgpt_workspace_name = opts.workspaceName;
+        break;
+      }
+    }
+  }
+
+  const payload: Record<string, unknown> = {
+    "https://api.openai.com/auth": auth,
+  };
+  const exp =
+    opts.exp === undefined ? Math.floor(now() / 1000) + 3600 : opts.exp;
+  if (exp !== null) {
+    payload.exp = exp;
+  }
+  return makeCodexJwt(payload);
 }
 
 function makeCodexTokenResponse(scope: "org" | "personal") {
   return {
-    access_token: makeJwt({ exp: Math.floor(now() / 1000) + 7200 }),
+    access_token: makeCodexJwt({ exp: Math.floor(now() / 1000) + 7200 }),
     refresh_token: `rt_${scope}_synthetic_high_entropy`,
     id_token: makeCodexIdToken({
       accountId: `ws_acct_from_id_token_${scope}`,
@@ -218,21 +250,45 @@ function makeCodexTokenResponse(scope: "org" | "personal") {
 
 export function makeCodexAuthJson(
   args: {
-    readonly planType?: string;
-    readonly workspaceName?: string;
+    readonly accessToken?: string;
+    readonly accessTokenExpiresAt?: number;
+    readonly accountId?: string | null;
+    readonly idToken?: string;
+    readonly idTokenExpiresAt?: number | null;
+    readonly planType?: string | null;
+    readonly rawAccountId?: string;
+    readonly refreshToken?: string;
+    readonly withApiKey?: boolean;
+    readonly workspaceClaim?: CodexWorkspaceClaim;
+    readonly workspaceName?: string | null;
   } = {},
 ): string {
+  const accountId =
+    args.accountId === undefined ? "ws_acct_id_token" : args.accountId;
+  const planType = args.planType === undefined ? "plus" : args.planType;
+  const workspaceName =
+    args.workspaceName === undefined ? "Acme" : args.workspaceName;
+
   return JSON.stringify({
-    OPENAI_API_KEY: null,
+    OPENAI_API_KEY: args.withApiKey ? "sk-test" : null,
     tokens: {
-      access_token: makeJwt({ exp: Math.floor(now() / 1000) + 7200 }),
-      refresh_token: "rt_synthetic_authjson_seed_high_entropy",
-      account_id: "ws_acct_plain",
-      id_token: makeCodexIdToken({
-        accountId: "ws_acct_id_token",
-        planType: args.planType ?? "plus",
-        workspaceName: args.workspaceName ?? "Acme",
-      }),
+      access_token:
+        args.accessToken ??
+        makeCodexJwt({
+          exp: args.accessTokenExpiresAt ?? Math.floor(now() / 1000) + 7200,
+        }),
+      refresh_token:
+        args.refreshToken ?? "rt_synthetic_authjson_seed_high_entropy",
+      account_id: args.rawAccountId ?? "ws_acct_plain",
+      id_token:
+        args.idToken ??
+        makeCodexIdToken({
+          accountId,
+          exp: args.idTokenExpiresAt,
+          planType,
+          workspaceClaim: args.workspaceClaim,
+          workspaceName,
+        }),
     },
   });
 }

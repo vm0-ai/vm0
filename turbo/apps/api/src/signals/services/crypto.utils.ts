@@ -1,17 +1,11 @@
 import { createCipheriv, createDecipheriv, randomBytes } from "node:crypto";
 
-import {
-  DecryptCommand,
-  type DecryptCommandOutput,
-  GenerateDataKeyCommand,
-  type GenerateDataKeyCommandOutput,
-  KMSClient,
-} from "@aws-sdk/client-kms";
+import { DecryptCommand, GenerateDataKeyCommand } from "@aws-sdk/client-kms";
 import type { FeatureSwitchContext } from "@vm0/core/feature-switch";
 import { z } from "zod";
 
 import { env } from "../../lib/env";
-import { singleton, testOverride } from "../../lib/singleton";
+import { getSecretKmsClient } from "../../lib/secret-kms-client";
 
 const secretsMapSchema = z.record(z.string(), z.string());
 const STORED_SECRET_ENVELOPE_PREFIX = "vm0secret:v1:";
@@ -43,45 +37,10 @@ const storedSecretEnvelopeSchema = z.object({
 type KmsCiphertext = z.infer<typeof kmsCiphertextSchema>;
 type StoredSecretEnvelope = z.infer<typeof storedSecretEnvelopeSchema>;
 
-export interface SecretKmsClient {
-  send(command: GenerateDataKeyCommand): Promise<GenerateDataKeyCommandOutput>;
-  send(command: DecryptCommand): Promise<DecryptCommandOutput>;
-}
-
-const secretKmsClient = singleton((): SecretKmsClient => {
-  const client = new KMSClient({});
-  function send(
-    command: GenerateDataKeyCommand,
-  ): Promise<GenerateDataKeyCommandOutput>;
-  function send(command: DecryptCommand): Promise<DecryptCommandOutput>;
-  function send(
-    command: GenerateDataKeyCommand | DecryptCommand,
-  ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
-    if (command instanceof GenerateDataKeyCommand) {
-      return client.send(command);
-    }
-    return client.send(command);
-  }
-
-  return { send };
-});
-
-const {
-  get: getSecretKmsClientOverride,
-  set: setSecretKmsClientOverride,
-  clear: clearSecretKmsClientOverride,
-} = testOverride<SecretKmsClient | null>(() => {
-  return null;
-});
-
 const KMS_ENCRYPTION_CONTEXT = {
   purpose: "vm0-stored-secret",
 } as const;
 const DATA_KEY_BYTE_LENGTH = 32;
-
-function getSecretKmsClient(): SecretKmsClient {
-  return getSecretKmsClientOverride() ?? secretKmsClient();
-}
 
 function requireSecretsKmsKeyId(): string {
   const keyId = env("SECRETS_KMS_KEY_ID");
@@ -226,15 +185,6 @@ async function decryptSecretValueWithKms(
   const plaintext = decryptSecretValueWithDataKey(ciphertext, plaintextDataKey);
   plaintextDataKey.fill(0);
   return plaintext;
-}
-
-export function resetSecretKmsClientForTests(): void {
-  clearSecretKmsClientOverride();
-  secretKmsClient.reset();
-}
-
-export function setSecretKmsClientForTests(client: SecretKmsClient): void {
-  setSecretKmsClientOverride(client);
 }
 
 export async function encryptStoredSecretValue(
