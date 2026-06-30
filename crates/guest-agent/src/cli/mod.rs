@@ -278,6 +278,8 @@ pub(super) struct CliRuntimeConfig<'a> {
     codex_oauth_mode: bool,
     stuck_tool_timeout_secs: u64,
     agent_log_file: Cow<'a, str>,
+    session_id_file: Cow<'a, str>,
+    session_history_path_file: Cow<'a, str>,
     user_env: &'a HashMap<String, String>,
 }
 
@@ -303,6 +305,8 @@ impl<'a> CliRuntimeConfig<'a> {
             codex_oauth_mode: !user_env_value(&config.user_env, "CHATGPT_ACCOUNT_ID").is_empty(),
             stuck_tool_timeout_secs: config.stuck_tool_timeout_secs,
             agent_log_file: Cow::Borrowed(paths.agent_log_file()),
+            session_id_file: Cow::Borrowed(paths.session_id_file()),
+            session_history_path_file: Cow::Borrowed(paths.session_history_path_file()),
             user_env: &config.user_env,
         }
     }
@@ -315,11 +319,7 @@ impl<'a> CliRuntimeConfig<'a> {
         let use_codex_app_server_backend = is_codex && env::use_codex_app_server_backend();
         Self {
             framework,
-            run_id: if is_claude {
-                Cow::Borrowed(env::run_id())
-            } else {
-                Cow::Borrowed("")
-            },
+            run_id: Cow::Borrowed(env::run_id()),
             prompt: Cow::Borrowed(env::prompt()),
             resume_session_id: Cow::Borrowed(env::resume_session_id()),
             append_system_prompt: Cow::Borrowed(env::append_system_prompt()),
@@ -365,6 +365,8 @@ impl<'a> CliRuntimeConfig<'a> {
                 constants::STUCK_TOOL_TIMEOUT_SECS
             },
             agent_log_file: Cow::Borrowed(paths::agent_log_file()),
+            session_id_file: Cow::Borrowed(paths::session_id_file()),
+            session_history_path_file: Cow::Borrowed(paths::session_history_path_file()),
             user_env: env::user_env(),
         }
     }
@@ -385,17 +387,24 @@ enum ParsedEventAction {
 
 struct CliEventIngestor {
     seq: u32,
+    run_id: String,
     last_read_event_at: Option<Instant>,
     session_metadata_capture: events::SessionMetadataCapture,
     failure_diagnostic: Option<CliFailureDiagnostic>,
 }
 
 impl CliEventIngestor {
-    fn new() -> Self {
+    fn new(runtime: &CliRuntimeConfig<'_>) -> Self {
         Self {
             seq: 0,
+            run_id: runtime.run_id.to_string(),
             last_read_event_at: None,
-            session_metadata_capture: events::SessionMetadataCapture::new(),
+            session_metadata_capture: events::SessionMetadataCapture::from_values(
+                runtime.framework,
+                runtime.home_dir.as_ref(),
+                runtime.session_id_file.as_ref(),
+                runtime.session_history_path_file.as_ref(),
+            ),
             failure_diagnostic: None,
         }
     }
@@ -416,7 +425,8 @@ impl CliEventIngestor {
         Self::write_raw_line(log_file, raw_line).await;
 
         if event.get("type").and_then(serde_json::Value::as_str) == Some("stream_event") {
-            events::register_event_session_identifier(event, masker);
+            self.session_metadata_capture
+                .register_event_session_identifier(event, masker);
             return Ok(ParsedEventAction::Skip);
         }
         self.last_read_event_at = Some(Instant::now());
@@ -466,7 +476,8 @@ impl CliEventIngestor {
         event_tx: &tokio::sync::mpsc::UnboundedSender<PreparedEvent>,
     ) {
         if should_send_events {
-            let payload = events::prepare_event_payload(event, self.seq, masker);
+            let payload =
+                events::prepare_event_payload_for_run_id(event, self.seq, masker, &self.run_id);
             if event_tx
                 .send(PreparedEvent::Webhook {
                     sequence: self.seq,
@@ -770,7 +781,7 @@ async fn execute_cli_inner(
     let mut cli_exit_at: Option<Instant> = None;
     let mut claude_result = None;
     let mut post_result_cleanup_result = None;
-    let mut event_ingestor = CliEventIngestor::new();
+    let mut event_ingestor = CliEventIngestor::new(runtime);
     let event_result: Result<(), AgentError> = loop {
         tokio::select! {
             stdin_write_result = async {

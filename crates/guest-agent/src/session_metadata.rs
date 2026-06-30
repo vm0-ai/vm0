@@ -16,21 +16,35 @@ use std::path::{Component, Path, PathBuf};
 const LOG_TAG: &str = "sandbox:guest-agent";
 
 pub(crate) fn history_marker_payload_for_session_id(session_id: &str) -> Option<String> {
-    match Framework::from_env() {
-        Framework::ClaudeCode => claude_history_path_payload(session_id),
+    history_marker_payload_for_session_id_with_home(
+        Framework::from_env(),
+        env::home_dir(),
+        session_id,
+    )
+}
+
+pub(crate) fn history_marker_payload_for_session_id_with_home(
+    framework: Framework,
+    home_dir: &str,
+    session_id: &str,
+) -> Option<String> {
+    match framework {
+        Framework::ClaudeCode => claude_history_path_payload_for_home(home_dir, session_id),
         Framework::Codex => {
             let thread_id = canonical_codex_thread_id(session_id)?;
-            Some(codex_history_marker_payload(&thread_id))
+            Some(codex_history_marker_payload_for_home(
+                Path::new(home_dir),
+                &thread_id,
+            ))
         }
     }
 }
 
-pub(crate) fn claude_history_path_payload(session_id: &str) -> Option<String> {
+fn claude_history_path_payload_for_home(home: &str, session_id: &str) -> Option<String> {
     if !is_valid_session_history_id(session_id) {
         return None;
     }
 
-    let home = env::home_dir();
     let project_name = paths::CANONICAL_WORKING_DIR
         .strip_prefix('/')
         .unwrap_or(paths::CANONICAL_WORKING_DIR)
@@ -77,7 +91,13 @@ pub(crate) fn session_history_marker_kind(history_path_payload: &str) -> &'stati
 }
 
 pub(crate) fn read_existing_history_marker_payload() -> io::Result<Option<String>> {
-    match std::fs::read_to_string(paths::session_history_path_file()) {
+    read_existing_history_marker_payload_from(paths::session_history_path_file())
+}
+
+pub(crate) fn read_existing_history_marker_payload_from(
+    session_history_path_file: &str,
+) -> io::Result<Option<String>> {
+    match std::fs::read_to_string(session_history_path_file) {
         Ok(existing) => {
             let existing = existing.trim();
             if existing.is_empty() {
@@ -91,14 +111,19 @@ pub(crate) fn read_existing_history_marker_payload() -> io::Result<Option<String
     }
 }
 
-pub(crate) fn ensure_history_marker_payload(history_path_payload: &str) {
-    match read_existing_history_marker_payload() {
+pub(crate) fn ensure_history_marker_payload_at(
+    session_history_path_file: &str,
+    history_path_payload: &str,
+) {
+    match read_existing_history_marker_payload_from(session_history_path_file) {
         Ok(Some(_)) => {}
-        Ok(None) => write_session_history_marker(history_path_payload),
+        Ok(None) => {
+            write_session_history_marker_at(session_history_path_file, history_path_payload)
+        }
         Err(e) => log_error!(
             LOG_TAG,
             "Failed to read existing session history marker from {}: {e}",
-            paths::session_history_path_file()
+            session_history_path_file
         ),
     }
 }
@@ -144,17 +169,24 @@ pub fn resolve_history_marker_payload_for_diagnostics() -> io::Result<Option<Str
 }
 
 pub(crate) fn write_session_history_marker(history_path_payload: &str) {
-    match paths::write_private(paths::session_history_path_file(), history_path_payload) {
+    write_session_history_marker_at(paths::session_history_path_file(), history_path_payload);
+}
+
+pub(crate) fn write_session_history_marker_at(
+    session_history_path_file: &str,
+    history_path_payload: &str,
+) {
+    match paths::write_private(session_history_path_file, history_path_payload) {
         Ok(()) => log_info!(
             LOG_TAG,
             "Session history marker written to {} ({})",
-            paths::session_history_path_file(),
+            session_history_path_file,
             session_history_marker_kind(history_path_payload)
         ),
         Err(e) => log_error!(
             LOG_TAG,
             "Failed to write session history marker to {}: {e}",
-            paths::session_history_path_file()
+            session_history_path_file
         ),
     }
 }

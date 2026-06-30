@@ -139,7 +139,7 @@ async fn run_codex_app_server(
 ) -> Result<CliExecutionResult, AgentError> {
     let log_file = guest_contracts::runtime_paths::create_private(runtime.agent_log_file.as_ref())?;
     let mut log_file = tokio::fs::File::from_std(log_file);
-    let mut ingestor = CliEventIngestor::new();
+    let mut ingestor = CliEventIngestor::new(runtime);
     let resume_thread_id = resume_thread_id_from_runtime(runtime)?;
     if let Some(resume_thread_id) = &resume_thread_id {
         masker.add_sensitive_value(resume_thread_id);
