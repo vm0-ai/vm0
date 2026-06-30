@@ -265,7 +265,10 @@ import {
   type PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
 import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
-import { openRenameChatThreadDialogFromThreadData$ } from "../../signals/chat-page/chat-thread-rename.ts";
+import {
+  openRenameChatThreadDialogFromThreadData$,
+  reloadChatThreadDataForId$,
+} from "../../signals/chat-page/chat-thread-rename.ts";
 import {
   applyChatThreadEmoji,
   chatThreadEmojiShortcutIndex,
@@ -1170,6 +1173,7 @@ function ChatThreadEmojiMenuButton({
   const openChatThreadEmojiMenu = useSet(openChatThreadEmojiMenu$);
   const closeChatThreadEmojiMenu = useSet(closeChatThreadEmojiMenu$);
   const renameChatThread = useSet(renameChatThread$);
+  const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
   const pageSignal = useGet(pageSignal$);
   const open = emojiMenuThreadId === threadId;
 
@@ -1184,20 +1188,24 @@ function ChatThreadEmojiMenuButton({
   }
 
   function selectEmoji(nextEmoji: string) {
-    if (!emojiMenuThreadId) {
+    const activeThreadId = emojiMenuThreadId;
+    if (!activeThreadId) {
       return;
     }
     detach(
-      renameChatThread(
-        {
-          threadId: emojiMenuThreadId,
-          title: applyChatThreadEmoji(emojiMenuTitle ?? title, nextEmoji),
-        },
-        pageSignal,
-      ),
+      (async () => {
+        await renameChatThread(
+          {
+            threadId: activeThreadId,
+            title: applyChatThreadEmoji(emojiMenuTitle ?? title, nextEmoji),
+          },
+          pageSignal,
+        );
+        reloadChatThreadDataForId(activeThreadId);
+        closeMenu();
+      })(),
       Reason.DomCallback,
     );
-    closeMenu();
   }
 
   return (

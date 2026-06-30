@@ -34,6 +34,7 @@ export interface ChatThreadSignals {
   threadId: string;
   // -- Data signals ----------------------------------------------------------
   threadData$: Computed<Promise<ChatThread | null>>;
+  reloadThread$: Command<void, []>;
   threadTitleEmoji$: Computed<Promise<string | null>>;
   threadTitleText$: Computed<Promise<string>>;
   // -- Composer model override ---------------------------------------------

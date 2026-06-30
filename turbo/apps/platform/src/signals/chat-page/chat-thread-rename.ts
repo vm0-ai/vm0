@@ -35,3 +35,16 @@ export const openRenameChatThreadDialogFromThreadData$ = command(
     });
   },
 );
+
+export const reloadChatThreadDataForId$ = command(
+  ({ get, set }, threadId: string) => {
+    const leftThread = get(currentLeftThread$);
+    if (leftThread?.threadId === threadId) {
+      set(leftThread.reloadThread$);
+    }
+    const rightThread = get(currentRightThread$);
+    if (rightThread?.threadId === threadId) {
+      set(rightThread.reloadThread$);
+    }
+  },
+);

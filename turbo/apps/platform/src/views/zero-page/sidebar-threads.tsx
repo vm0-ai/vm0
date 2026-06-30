@@ -52,7 +52,10 @@ import {
   unpinChatThread$,
   renameChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
-import { openRenameChatThreadDialogFromThreadData$ } from "../../signals/chat-page/chat-thread-rename.ts";
+import {
+  openRenameChatThreadDialogFromThreadData$,
+  reloadChatThreadDataForId$,
+} from "../../signals/chat-page/chat-thread-rename.ts";
 import {
   SIDEBAR_PARAM,
   currentLeftThread$,
@@ -580,6 +583,7 @@ function ChatThreadRenameDialog() {
   const setRenameDialogInput = useSet(setRenameDialogInput$);
   const setRenameDialogThreadId = useSet(setRenameDialogThreadId$);
   const renameChatThread = useSet(renameChatThread$);
+  const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
   const pageSignal = useGet(pageSignal$);
 
   function closeRenameDialog() {
@@ -597,11 +601,13 @@ function ChatThreadRenameDialog() {
     if (!renameDialogThreadId || !renameDialogInput.trim()) {
       return;
     }
+    const threadId = renameDialogThreadId;
+    const title = renameDialogInput.trim();
     detach(
-      renameChatThread(
-        { threadId: renameDialogThreadId, title: renameDialogInput.trim() },
-        pageSignal,
-      ),
+      (async () => {
+        await renameChatThread({ threadId, title }, pageSignal);
+        reloadChatThreadDataForId(threadId);
+      })(),
       Reason.DomCallback,
     );
     closeRenameDialog();

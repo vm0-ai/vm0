@@ -2920,6 +2920,7 @@ export function createChatThreadSignals(
   return {
     threadId,
     threadData$,
+    reloadThread$,
     threadTitleEmoji$,
     threadTitleText$,
     modelSelection$,
