@@ -70,6 +70,8 @@ def validate_credentialed_builtin_base(
         raise BuiltinHostPolicyError(
             f'builtin firewall "{firewall_name}" credentialed base URL must use https'
         )
+    if parsed.username is not None or parsed.password is not None:
+        raise _invalid_resolved_base_url(firewall_name)
     if authority_has_empty_port(parsed.netloc):
         raise _invalid_resolved_base_url(firewall_name)
     _validate_builtin_base_host_policy(
