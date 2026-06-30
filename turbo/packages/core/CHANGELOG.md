@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.379.3](https://github.com/vm0-ai/vm0/compare/core-v8.379.2...core-v8.379.3) (2026-06-30)
+
+
+### Refactoring
+
+* remove legacy GitHub integration surface ([#19516](https://github.com/vm0-ai/vm0/issues/19516)) ([c7c6b30](https://github.com/vm0-ai/vm0/commit/c7c6b3003aecca18104de6e3e9f540ea2a3fe60d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.132.1
+    * @vm0/connectors bumped to 1.117.2
+
 ## [8.379.2](https://github.com/vm0-ai/vm0/compare/core-v8.379.1...core-v8.379.2) (2026-06-30)
 
 

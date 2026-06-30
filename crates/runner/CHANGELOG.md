@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.131.2](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.1...runner-rs-v0.131.2) (2026-06-30)
+
+
+### Performance Improvements
+
+* split runner storage manifest telemetry ([#19518](https://github.com/vm0-ai/vm0/issues/19518)) ([cd0cc9e](https://github.com/vm0-ai/vm0/commit/cd0cc9ec1b11239b294c9b569f61fa20115c3a0b))
+
 ## [0.131.1](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.0...runner-rs-v0.131.1) (2026-06-30)
 
 ## [0.131.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.14...runner-rs-v0.131.0) (2026-06-30)
