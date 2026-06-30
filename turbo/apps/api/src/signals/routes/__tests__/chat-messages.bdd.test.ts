@@ -68,6 +68,57 @@ const routeMocks = createZeroRouteMocks(context);
 const ORG_SENTINEL_USER_ID = "__org__";
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
+const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
+  "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
+  "api_dispatch_pre_create_zero_web_chat_validate_revocation",
+  "api_dispatch_pre_create_zero_web_chat_check_active_run",
+  "api_dispatch_pre_create_zero_web_chat_create_normal_run",
+  "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
+  "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
+  "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
+] as const;
+const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_entrypoint_gap",
+] as const;
+const FORBIDDEN_API_DISPATCH_TIMING_KEYS = [
+  "org_id",
+  "user_id",
+  "connector",
+  "connector_name",
+  "agent_id",
+  "prompt",
+  "vars",
+  "secrets",
+  "secret_names",
+  "environment",
+  "execution_context",
+  "presigned_url",
+  "presignedUrl",
+  "archive_url",
+  "archiveUrl",
+  "manifest_url",
+  "manifestUrl",
+  "url",
+  "storage_name",
+  "storageName",
+  "artifact_name",
+  "artifactName",
+  "volume_name",
+  "volumeName",
+  "mount_path",
+  "mountPath",
+  "runner_id",
+  "runnerId",
+  "target_runner_id",
+  "targetRunnerId",
+  "cli_agent_session_id",
+  "cliAgentSessionId",
+  "sandbox_token",
+  "sandboxToken",
+  "api_key",
+  "apiKey",
+] as const;
 
 type AssistantMessage = Extract<PagedChatMessage, { role: "assistant" }>;
 type UserMessage = Extract<PagedChatMessage, { role: "user" }>;
@@ -146,6 +197,99 @@ function claimEnvironment(claim: RunnerClaim): Record<string, string> {
     throw new Error("Expected the runner claim to carry an environment");
   }
   return claim.environment;
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event) && event.run_id === runId;
+    });
+  });
+}
+
+function apiDispatchTimingEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return sandboxOperationEventsForRun(runId).filter((event) => {
+    return (
+      typeof event.op_type === "string" &&
+      event.op_type.startsWith("api_dispatch_")
+    );
+  });
+}
+
+function apiDispatchActionTypes(
+  events: readonly Record<string, unknown>[],
+): Set<unknown> {
+  return new Set(
+    events.map((event) => {
+      return event.op_type;
+    }),
+  );
+}
+
+function expectApiDispatchActions(
+  events: readonly Record<string, unknown>[],
+  expectedActionTypes: readonly string[],
+): void {
+  const observedActionTypes = apiDispatchActionTypes(events);
+  for (const actionType of expectedActionTypes) {
+    expect(observedActionTypes).toContain(actionType);
+  }
+}
+
+function expectNoApiDispatchActions(
+  events: readonly Record<string, unknown>[],
+  unexpectedActionTypes: readonly string[],
+): void {
+  const observedActionTypes = apiDispatchActionTypes(events);
+  for (const actionType of unexpectedActionTypes) {
+    expect(observedActionTypes).not.toContain(actionType);
+  }
+}
+
+function expectApiDispatchSpanKind(
+  events: readonly Record<string, unknown>[],
+  expectedActionTypes: readonly string[],
+  spanKind: string,
+): void {
+  for (const actionType of expectedActionTypes) {
+    const matchingEvents = events.filter((event) => {
+      return event.op_type === actionType;
+    });
+    expect(matchingEvents).toHaveLength(1);
+    expect(matchingEvents[0]).toStrictEqual(
+      expect.objectContaining({
+        span_kind: spanKind,
+      }),
+    );
+  }
+}
+
+function expectApiDispatchTimingEventsNotToLeak(
+  events: readonly Record<string, unknown>[],
+  forbiddenValues: readonly string[],
+): void {
+  for (const event of events) {
+    for (const forbiddenKey of FORBIDDEN_API_DISPATCH_TIMING_KEYS) {
+      expect(event).not.toHaveProperty(forbiddenKey);
+    }
+    const serialized = JSON.stringify(event);
+    for (const forbiddenValue of forbiddenValues) {
+      expect(serialized).not.toContain(forbiddenValue);
+    }
+  }
 }
 
 /** Sandbox-scoped zero token issued to the run, exposed via the claim env. */
@@ -429,6 +573,32 @@ describe("CHAT-02: web chat send and client-id idempotency", () => {
     expect(first.body.threadId).toBe(clientThreadId);
     expect(first.body.status).toBe("pending");
     const runId = first.body.runId;
+
+    const timingEvents = apiDispatchTimingEventsForRun(runId);
+    expectApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+      "nested",
+    );
+    expectApiDispatchSpanKind(
+      timingEvents,
+      ["api_dispatch_pre_create_agent_run"],
+      "top_level",
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
+    );
+    expectApiDispatchTimingEventsNotToLeak(timingEvents, [
+      prompt,
+      clientThreadId,
+      clientMessageId,
+      agentId,
+    ]);
 
     const run = await api.readRun(actor, runId);
     expect(run.prompt).toBe(prompt);

@@ -973,6 +973,12 @@ function pathSegmentHasUnsafeSyntax(
   return decoded === null || decoded !== current;
 }
 
+export function hasUnsafeFirewallPath(path: string): boolean {
+  return path.split("/").some((segment) => {
+    return pathSegmentHasUnsafeSyntax(segment, false);
+  });
+}
+
 function validateBaseUrlVariablePercentEncoding({
   base,
   serviceName,

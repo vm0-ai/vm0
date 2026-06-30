@@ -210,7 +210,6 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
       (await reads.requestReadCheckpoint(null, missingId, [401])).body,
       (await reads.requestQueuePosition(null, missingId, [401])).body,
       (await reads.requestRunEvents(null, missingId, {}, [401])).body,
-      (await reads.requestRunTelemetry(null, missingId, [401])).body,
       (await reads.requestRunAgentEvents(null, missingId, {}, [401])).body,
       (await reads.requestRunSystemLog(null, missingId, {}, [401])).body,
       (await reads.requestRunMetrics(null, missingId, {}, [401])).body,
@@ -259,12 +258,6 @@ describe("RUN-03/RUN-04: run read surface auth matrix", () => {
     );
     expectApiError(orglessEvents.body);
     expect(orglessEvents.body.error.code).toBe("BAD_REQUEST");
-
-    const orglessTelemetry = await reads.rawApiRequest(
-      orgless,
-      `/api/agent/runs/${missingId}/telemetry`,
-    );
-    expect(orglessTelemetry.status).toBe(400);
   });
 });
 
@@ -1926,10 +1919,6 @@ describe("RUN-04: agent run telemetry families", () => {
     );
     expect(sandboxEvents.body).toMatchObject({ hasMore: true });
 
-    // Legacy combined telemetry stays empty without Postgres rows.
-    const combined = await reads.requestRunTelemetry(actor, runId, [200]);
-    expect(combined.body).toStrictEqual({ systemLog: "", metrics: [] });
-
     // Paged agent events: asc with since, then desc past the watermark.
     const ascStart = axiomCallCount();
     const ascEvents = await reads.requestRunAgentEvents(
@@ -2211,12 +2200,6 @@ describe("RUN-04: agent run telemetry families", () => {
       [404],
     );
     expectApiError(memberSystem.body);
-    const memberTelemetry = await reads.requestRunTelemetry(
-      member,
-      runId,
-      [404],
-    );
-    expectApiError(memberTelemetry.body);
 
     await api.requestCancelRun(actor, pendingRun.runId, [200]);
   });

@@ -1,7 +1,9 @@
 use std::time::{Duration, Instant};
 
 use guest_contracts::diagnostics::FailureDiagnostic;
-use guest_contracts::session_history_identity::FinalSessionHistoryIdentity;
+use guest_contracts::session_history_identity::{
+    FinalSessionHistoryIdentity, FinalSessionHistoryIdentityError,
+};
 use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, ProcessControlMode, ProcessOutputMode,
     Sandbox, StartProcessRequest,
@@ -72,6 +74,85 @@ impl SessionHistoryRestoreFallback {
     }
 }
 
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+enum SessionHistoryIdentityReason {
+    FinalizeMetadataPathUnresolved,
+    FinalizeRuntimeDirUnresolved,
+    FinalizeMissingMetadata,
+    FinalizeMetadataReadFailed,
+    FinalizeInvalidMetadata,
+    FinalizeUnverifiableMetadata,
+    VerifyRequestMissing,
+    VerifyRequestMismatch,
+    VerifyMissingVerifier,
+    VerifyMissingFile,
+    VerifyReadFailed,
+    VerifySizeMismatch,
+    VerifyHashMismatch,
+    VerifyHelperFailed,
+    VerifyHelperExecError,
+    ReuseMissingNoIdleIdentity,
+}
+
+impl SessionHistoryIdentityReason {
+    const fn action_type(self) -> &'static str {
+        match self {
+            Self::FinalizeMetadataPathUnresolved => {
+                "session_history_identity_finalize_metadata_path_unresolved"
+            }
+            Self::FinalizeRuntimeDirUnresolved => {
+                "session_history_identity_finalize_runtime_dir_unresolved"
+            }
+            Self::FinalizeMissingMetadata => "session_history_identity_finalize_missing_metadata",
+            Self::FinalizeMetadataReadFailed => {
+                "session_history_identity_finalize_metadata_read_failed"
+            }
+            Self::FinalizeInvalidMetadata => "session_history_identity_finalize_invalid_metadata",
+            Self::FinalizeUnverifiableMetadata => {
+                "session_history_identity_finalize_unverifiable_metadata"
+            }
+            Self::VerifyRequestMissing => "session_history_identity_verify_request_missing",
+            Self::VerifyRequestMismatch => "session_history_identity_verify_request_mismatch",
+            Self::VerifyMissingVerifier => "session_history_identity_verify_missing_verifier",
+            Self::VerifyMissingFile => "session_history_identity_verify_missing_file",
+            Self::VerifyReadFailed => "session_history_identity_verify_read_failed",
+            Self::VerifySizeMismatch => "session_history_identity_verify_size_mismatch",
+            Self::VerifyHashMismatch => "session_history_identity_verify_hash_mismatch",
+            Self::VerifyHelperFailed => "session_history_identity_verify_helper_failed",
+            Self::VerifyHelperExecError => "session_history_identity_verify_helper_exec_error",
+            Self::ReuseMissingNoIdleIdentity => {
+                "session_history_identity_reuse_missing_no_idle_identity"
+            }
+        }
+    }
+
+    const fn from_final_metadata_error(error: FinalSessionHistoryIdentityError) -> Self {
+        match error {
+            FinalSessionHistoryIdentityError::MetadataTooLarge
+            | FinalSessionHistoryIdentityError::HistoryTooLarge => {
+                Self::FinalizeUnverifiableMetadata
+            }
+            FinalSessionHistoryIdentityError::InvalidJson
+            | FinalSessionHistoryIdentityError::UnsupportedVersion
+            | FinalSessionHistoryIdentityError::InvalidFramework
+            | FinalSessionHistoryIdentityError::InvalidHistoryRefKind
+            | FinalSessionHistoryIdentityError::InvalidSessionIdHash
+            | FinalSessionHistoryIdentityError::InvalidHistoryHash
+            | FinalSessionHistoryIdentityError::InvalidHistorySize
+            | FinalSessionHistoryIdentityError::MissingHistoryMarker => {
+                Self::FinalizeInvalidMetadata
+            }
+        }
+    }
+}
+
+fn record_session_history_identity_reason(
+    telemetry: &mut JobTelemetry,
+    reason: SessionHistoryIdentityReason,
+) {
+    telemetry.record(reason.action_type(), Duration::ZERO, true, None);
+}
+
 #[derive(Default)]
 #[must_use = "restore plans decide whether resume history download can be skipped"]
 pub(crate) enum SessionHistoryRestorePlan {
@@ -106,30 +187,32 @@ pub(super) fn build_agent_start_command(run_agent_path: &str) -> String {
 async fn verify_restored_session_identity_for_reuse(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-    identity: Option<RestoredSessionIdentity>,
-) -> Option<RestoredSessionIdentity> {
-    let identity = identity?;
+    identity: RestoredSessionIdentity,
+) -> Result<RestoredSessionIdentity, SessionHistoryIdentityReason> {
     let Some(requested_identity) = RestoredSessionIdentity::from_context(context) else {
         debug!(
             run_id = %context.run_id,
             "restored session identity cannot be verified without a valid hash-backed resume request"
         );
-        return None;
+        return Err(SessionHistoryIdentityReason::VerifyRequestMissing);
     };
-    if !identity.is_verified_match_for_request(&requested_identity) {
+    if identity != requested_identity {
         debug!(
             run_id = %context.run_id,
             "restored session identity invalidated because it does not match the resume request"
         );
-        return None;
+        return Err(SessionHistoryIdentityReason::VerifyRequestMismatch);
     }
     let Some(verification) = identity.guest_history_verification() else {
         debug!(
             run_id = %context.run_id,
             "restored session identity cannot be verified without a bounded verifier"
         );
-        return None;
+        return Err(SessionHistoryIdentityReason::VerifyMissingVerifier);
     };
+    if !identity.is_verified_match_for_request(&requested_identity) {
+        return Err(SessionHistoryIdentityReason::VerifyRequestMismatch);
+    }
 
     match verification {
         RestoredSessionHistoryVerification::GuestHistoryPath {
@@ -180,7 +263,7 @@ async fn verify_guest_history_path_identity(
     expected_size: u64,
     guest_history_path: &str,
     read_limit: u64,
-) -> Option<RestoredSessionIdentity> {
+) -> Result<RestoredSessionIdentity, SessionHistoryIdentityReason> {
     let read_result = sandbox.read_file(guest_history_path, read_limit).await;
     let bytes = match read_result {
         Ok(Some(bytes)) => bytes,
@@ -189,14 +272,14 @@ async fn verify_guest_history_path_identity(
                 run_id = %context.run_id,
                 "restored session identity invalidated because history file is missing"
             );
-            return None;
+            return Err(SessionHistoryIdentityReason::VerifyMissingFile);
         }
         Err(_) => {
             debug!(
                 run_id = %context.run_id,
                 "restored session identity verification failed"
             );
-            return None;
+            return Err(SessionHistoryIdentityReason::VerifyReadFailed);
         }
     };
     if bytes.len() as u64 != expected_size {
@@ -206,7 +289,7 @@ async fn verify_guest_history_path_identity(
             actual_size = bytes.len(),
             "restored session identity invalidated because history size changed"
         );
-        return None;
+        return Err(SessionHistoryIdentityReason::VerifySizeMismatch);
     }
     let actual_hash = hex::encode(Sha256::digest(&bytes));
     if actual_hash != identity.history_hash() {
@@ -214,10 +297,10 @@ async fn verify_guest_history_path_identity(
             run_id = %context.run_id,
             "restored session identity invalidated because history hash changed"
         );
-        return None;
+        return Err(SessionHistoryIdentityReason::VerifyHashMismatch);
     }
 
-    Some(identity)
+    Ok(identity)
 }
 
 async fn verify_final_identity_metadata(
@@ -226,7 +309,7 @@ async fn verify_final_identity_metadata(
     identity: RestoredSessionIdentity,
     command: String,
     runtime_dir: &str,
-) -> Option<RestoredSessionIdentity> {
+) -> Result<RestoredSessionIdentity, SessionHistoryIdentityReason> {
     let env = [(
         guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
         runtime_dir,
@@ -243,21 +326,21 @@ async fn verify_final_identity_metadata(
         .exec_with_diagnostic_label(&request, "session-history-identity-verify")
         .await
     {
-        Ok(result) if helper_exec_succeeded(&result) => Some(identity),
+        Ok(result) if helper_exec_succeeded(&result) => Ok(identity),
         Ok(result) => {
             debug!(
                 run_id = %context.run_id,
                 termination = %helper_exec_termination_label(&result),
                 "restored session identity final metadata verification failed"
             );
-            None
+            Err(SessionHistoryIdentityReason::VerifyHelperFailed)
         }
         Err(_) => {
             debug!(
                 run_id = %context.run_id,
                 "restored session identity final metadata verification errored"
             );
-            None
+            Err(SessionHistoryIdentityReason::VerifyHelperExecError)
         }
     }
 }
@@ -287,7 +370,7 @@ fn build_final_identity_verify_command(
 async fn read_final_session_history_identity(
     sandbox: &dyn Sandbox,
     context: &ExecutionContext,
-) -> Option<RestoredSessionIdentity> {
+) -> Result<RestoredSessionIdentity, SessionHistoryIdentityReason> {
     let metadata_path = match guest_runtime_path(
         context.run_id,
         guest_contracts::runtime_paths::final_session_history_identity_file,
@@ -299,7 +382,7 @@ async fn read_final_session_history_identity(
                 error = %error,
                 "final session history identity path could not be resolved"
             );
-            return None;
+            return Err(SessionHistoryIdentityReason::FinalizeMetadataPathUnresolved);
         }
     };
     let runtime_dir = match guest_runtime_dir(context.run_id) {
@@ -310,7 +393,7 @@ async fn read_final_session_history_identity(
                 error = %error,
                 "guest runtime dir could not be resolved for final session history identity"
             );
-            return None;
+            return Err(SessionHistoryIdentityReason::FinalizeRuntimeDirUnresolved);
         }
     };
     let bytes = match sandbox
@@ -318,13 +401,13 @@ async fn read_final_session_history_identity(
         .await
     {
         Ok(Some(bytes)) => bytes,
-        Ok(None) => return None,
+        Ok(None) => return Err(SessionHistoryIdentityReason::FinalizeMissingMetadata),
         Err(_) => {
             debug!(
                 run_id = %context.run_id,
                 "final session history identity metadata read failed"
             );
-            return None;
+            return Err(SessionHistoryIdentityReason::FinalizeMetadataReadFailed);
         }
     };
     let metadata = match FinalSessionHistoryIdentity::from_json_slice(&bytes) {
@@ -335,10 +418,13 @@ async fn read_final_session_history_identity(
                 error = %error,
                 "final session history identity metadata was invalid"
             );
-            return None;
+            return Err(SessionHistoryIdentityReason::from_final_metadata_error(
+                error,
+            ));
         }
     };
     RestoredSessionIdentity::from_final_metadata(metadata, metadata_path, runtime_dir)
+        .ok_or(SessionHistoryIdentityReason::FinalizeUnverifiableMetadata)
 }
 
 pub(super) struct ProcessCancelTimeouts {
@@ -646,9 +732,8 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     let mut produced_restored_session_identity = false;
     let session_history_materializer = match session_history_restore_plan {
         SessionHistoryRestorePlan::SkipVerified(identity) => {
-            match verify_restored_session_identity_for_reuse(sandbox, context, Some(identity)).await
-            {
-                Some(identity) => {
+            match verify_restored_session_identity_for_reuse(sandbox, context, identity).await {
+                Ok(identity) => {
                     telemetry.record(
                         "session_history_identity_reuse_hit",
                         Duration::ZERO,
@@ -659,13 +744,14 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     restored_session_identity = Some(identity);
                     None
                 }
-                None => {
+                Err(reason) => {
                     telemetry.record(
                         SessionHistoryRestoreFallback::StaleIdleIdentity.action_type(),
                         Duration::ZERO,
                         true,
                         None,
                     );
+                    record_session_history_identity_reason(telemetry, reason);
                     Some(SessionHistoryMaterializer::start_cancellable(
                         &config.http,
                         context.resume_session.as_ref(),
@@ -691,6 +777,10 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                         Duration::ZERO,
                         true,
                         None,
+                    );
+                    record_session_history_identity_reason(
+                        telemetry,
+                        SessionHistoryIdentityReason::ReuseMissingNoIdleIdentity,
                     );
                 }
             }
@@ -1201,30 +1291,43 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     };
 
     if failure.is_none() {
-        if let Some(final_identity) = read_final_session_history_identity(sandbox, context).await {
-            telemetry.record(
-                "session_history_identity_finalized",
-                Duration::ZERO,
-                true,
-                None,
-            );
-            restored_session_identity = Some(final_identity);
-        } else {
-            let verified_restored_session_identity = verify_restored_session_identity_for_reuse(
-                sandbox,
-                context,
-                restored_session_identity,
-            )
-            .await;
-            if produced_restored_session_identity && verified_restored_session_identity.is_some() {
+        match read_final_session_history_identity(sandbox, context).await {
+            Ok(final_identity) => {
                 telemetry.record(
-                    "session_history_identity_restored",
+                    "session_history_identity_finalized",
                     Duration::ZERO,
                     true,
                     None,
                 );
+                restored_session_identity = Some(final_identity);
             }
-            restored_session_identity = verified_restored_session_identity;
+            Err(final_identity_reason) => {
+                record_session_history_identity_reason(telemetry, final_identity_reason);
+                if let Some(restored_identity) = restored_session_identity.take() {
+                    match verify_restored_session_identity_for_reuse(
+                        sandbox,
+                        context,
+                        restored_identity,
+                    )
+                    .await
+                    {
+                        Ok(verified_restored_session_identity) => {
+                            if produced_restored_session_identity {
+                                telemetry.record(
+                                    "session_history_identity_restored",
+                                    Duration::ZERO,
+                                    true,
+                                    None,
+                                );
+                            }
+                            restored_session_identity = Some(verified_restored_session_identity);
+                        }
+                        Err(reason) => {
+                            record_session_history_identity_reason(telemetry, reason);
+                        }
+                    }
+                }
+            }
         }
     }
 

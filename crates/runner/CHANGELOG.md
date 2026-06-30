@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.130.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.7...runner-rs-v0.130.8) (2026-06-29)
+
+
+### Bug Fixes
+
+* **cli:** make permission-deny base-aware ([#19330](https://github.com/vm0-ai/vm0/issues/19330)) ([3e2c7f6](https://github.com/vm0-ai/vm0/commit/3e2c7f64f81518f36df41d81521201dc8bff51ff))
+
+## [0.130.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.6...runner-rs-v0.130.7) (2026-06-29)
+
+
+### Performance Improvements
+
+* **runner:** add session history identity reason telemetry ([#19352](https://github.com/vm0-ai/vm0/issues/19352)) ([4a29190](https://github.com/vm0-ai/vm0/commit/4a29190916173ad04bd9613c717dfb8947a2289b))
+
 ## [0.130.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.5...runner-rs-v0.130.6) (2026-06-29)
 
 ## [0.130.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.4...runner-rs-v0.130.5) (2026-06-29)

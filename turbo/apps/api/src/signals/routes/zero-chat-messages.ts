@@ -50,6 +50,10 @@ import type { AuthContext } from "../../types/auth";
 import { createZeroRun$ } from "../services/zero-runs-create.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
 import {
+  ApiDispatchTimingCollector,
+  measureApiDispatchTiming,
+} from "../services/api-dispatch-timing.service";
+import {
   cancelRun$,
   dispatchCancelSideEffects$,
   type CancelRunResult,
@@ -179,6 +183,7 @@ interface NormalSendArgs {
   readonly userId: string;
   readonly orgId: string;
   readonly apiStartTime: number;
+  readonly timing?: ApiDispatchTimingCollector;
 }
 
 interface PreparedNormalSend {
@@ -2338,6 +2343,125 @@ async function appendInsufficientCreditsMessages(params: {
   };
 }
 
+type ModelFirstProviderAdmission = Awaited<
+  ReturnType<typeof resolveModelFirstProviderAdmission>
+>;
+
+async function resolveTimedRunModelPin(
+  args: NormalSendArgs,
+  prepared: PreparedNormalSend,
+): ReturnType<typeof resolveRunModelPin> {
+  return await measureApiDispatchTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
+    "nested",
+    async () => {
+      return await resolveRunModelPin({
+        db: prepared.db,
+        orgId: args.orgId,
+        userId: args.userId,
+        threadId: prepared.thread.threadId,
+        modelSelection: args.body.modelSelection,
+      });
+    },
+  );
+}
+
+function requestedModelProviderFor(body: NormalSendBody): string | undefined {
+  return body.modelProvider && body.modelProvider !== "default"
+    ? body.modelProvider
+    : undefined;
+}
+
+async function resolveTimedProviderAdmission(params: {
+  readonly args: NormalSendArgs;
+  readonly prepared: PreparedNormalSend;
+  readonly modelPin: ThreadModelPin;
+  readonly requestedModelProvider: string | undefined;
+}): ReturnType<typeof resolveModelFirstProviderAdmission> {
+  return await measureApiDispatchTiming(
+    params.args.timing,
+    "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
+    "nested",
+    async () => {
+      return await resolveModelFirstProviderAdmission({
+        db: params.prepared.db,
+        orgId: params.args.orgId,
+        userId: params.args.userId,
+        modelPin: params.modelPin,
+        requestedModelProvider: params.requestedModelProvider,
+      });
+    },
+  );
+}
+
+function buildCreateZeroRunArgs(params: {
+  readonly args: NormalSendArgs;
+  readonly prepared: PreparedNormalSend;
+  readonly modelPin: ThreadModelPin;
+  readonly providerAdmission: ModelFirstProviderAdmission;
+}) {
+  const { args, prepared, modelPin, providerAdmission } = params;
+  const fullPrompt = buildFullPrompt(args.body.prompt, args.body.attachFiles);
+  return {
+    auth: args.auth,
+    apiStartTime: args.apiStartTime,
+    chatThreadId: prepared.thread.threadId,
+    computerUseHostId: prepared.computerUseHostGrant?.hostId,
+    modelProviderId: modelPin.modelProviderId ?? undefined,
+    modelProviderCredentialScope:
+      modelPin.modelProviderCredentialScope ?? undefined,
+    selectedModelOverride: modelPin.selectedModel ?? undefined,
+    callbacks: [
+      {
+        internalKind: "chat" as const,
+        secret: generateCallbackSecret(),
+        payload: {
+          threadId: prepared.thread.threadId,
+          agentId: args.body.agentId,
+        },
+      },
+    ],
+    body: {
+      prompt: fullPrompt,
+      agentId: args.body.agentId,
+      ...(prepared.thread.sessionId
+        ? { sessionId: prepared.thread.sessionId }
+        : {}),
+      ...(providerAdmission.effectiveModelProvider
+        ? { modelProvider: providerAdmission.effectiveModelProvider }
+        : {}),
+      debugNoMockClaude: args.body.debugNoMockClaude,
+      debugNoMockCodex: args.body.debugNoMockCodex,
+    },
+    triggerSource: "web" as const,
+    dispatchFailedCallbacks: dispatchFailedRunCallbacks,
+    appendSystemPrompt: buildAppendSystemPrompt(
+      prepared.thread.incompleteContext,
+      prepared.priorContext,
+      prepared.generationTemplatePrompt,
+      prepared.computerUseHostGrant?.displayName ?? null,
+    ),
+    ...(args.timing ? { timing: args.timing } : {}),
+  };
+}
+
+async function buildTimedCreateZeroRunArgs(params: {
+  readonly args: NormalSendArgs;
+  readonly prepared: PreparedNormalSend;
+  readonly modelPin: ThreadModelPin;
+  readonly providerAdmission: ModelFirstProviderAdmission;
+}): Promise<ReturnType<typeof buildCreateZeroRunArgs>> {
+  return await measureApiDispatchTiming(
+    params.args.timing,
+    "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
+    "nested",
+    () => {
+      return buildCreateZeroRunArgs(params);
+    },
+  );
+}
+
 const createNormalChatRun$ = command(
   async (
     { set },
@@ -2348,29 +2472,18 @@ const createNormalChatRun$ = command(
     signal: AbortSignal,
   ) => {
     const { args, prepared } = params;
-    const modelPin = await resolveRunModelPin({
-      db: prepared.db,
-      orgId: args.orgId,
-      userId: args.userId,
-      threadId: prepared.thread.threadId,
-      modelSelection: args.body.modelSelection,
-    });
+    const createNormalRunStartedAt = now();
+    const modelPin = await resolveTimedRunModelPin(args, prepared);
     signal.throwIfAborted();
     if ("status" in modelPin) {
       return modelPin;
     }
 
-    const fullPrompt = buildFullPrompt(args.body.prompt, args.body.attachFiles);
-    const requestedModelProvider =
-      args.body.modelProvider && args.body.modelProvider !== "default"
-        ? args.body.modelProvider
-        : undefined;
-    const providerAdmission = await resolveModelFirstProviderAdmission({
-      db: prepared.db,
-      orgId: args.orgId,
-      userId: args.userId,
+    const providerAdmission = await resolveTimedProviderAdmission({
+      args,
+      prepared,
       modelPin,
-      requestedModelProvider,
+      requestedModelProvider: requestedModelProviderFor(args.body),
     });
     signal.throwIfAborted();
     if (providerAdmission.error) {
@@ -2382,50 +2495,22 @@ const createNormalChatRun$ = command(
       });
     }
 
-    const runResult = await set(
-      createZeroRun$,
-      {
-        auth: args.auth,
-        apiStartTime: args.apiStartTime,
-        chatThreadId: prepared.thread.threadId,
-        computerUseHostId: prepared.computerUseHostGrant?.hostId,
-        modelProviderId: modelPin.modelProviderId ?? undefined,
-        modelProviderCredentialScope:
-          modelPin.modelProviderCredentialScope ?? undefined,
-        selectedModelOverride: modelPin.selectedModel ?? undefined,
-        callbacks: [
-          {
-            internalKind: "chat",
-            secret: generateCallbackSecret(),
-            payload: {
-              threadId: prepared.thread.threadId,
-              agentId: args.body.agentId,
-            },
-          },
-        ],
-        body: {
-          prompt: fullPrompt,
-          agentId: args.body.agentId,
-          ...(prepared.thread.sessionId
-            ? { sessionId: prepared.thread.sessionId }
-            : {}),
-          ...(providerAdmission.effectiveModelProvider
-            ? { modelProvider: providerAdmission.effectiveModelProvider }
-            : {}),
-          debugNoMockClaude: args.body.debugNoMockClaude,
-          debugNoMockCodex: args.body.debugNoMockCodex,
-        },
-        triggerSource: "web",
-        dispatchFailedCallbacks: dispatchFailedRunCallbacks,
-        appendSystemPrompt: buildAppendSystemPrompt(
-          prepared.thread.incompleteContext,
-          prepared.priorContext,
-          prepared.generationTemplatePrompt,
-          prepared.computerUseHostGrant?.displayName ?? null,
-        ),
-      },
-      signal,
-    );
+    const createRunArgs = await buildTimedCreateZeroRunArgs({
+      args,
+      prepared,
+      modelPin,
+      providerAdmission,
+    });
+    signal.throwIfAborted();
+
+    if (args.timing) {
+      args.timing.recordElapsed(
+        "api_dispatch_pre_create_zero_web_chat_create_normal_run",
+        "nested",
+        createNormalRunStartedAt,
+      );
+    }
+    const runResult = await set(createZeroRun$, createRunArgs, signal);
     signal.throwIfAborted();
     if (runResult.status !== 201) {
       return runResult;
@@ -2475,28 +2560,49 @@ const createNormalChatRun$ = command(
 
 export const sendNormalMessage$ = command(
   async ({ set }, args: NormalSendArgs, signal: AbortSignal) => {
-    const prepared = await set(prepareNormalSend$, args, signal);
+    const prepared = await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
+      "nested",
+      async () => {
+        return await set(prepareNormalSend$, args, signal);
+      },
+    );
     signal.throwIfAborted();
     if ("status" in prepared) {
       return prepared;
     }
 
-    const clientMessageResolution = await resolveClientMessageSend({
-      db: prepared.db,
-      userId: args.userId,
-      threadId: prepared.thread.threadId,
-      clientMessageId: args.body.clientMessageId,
-    });
+    const clientMessageResolution = await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
+      "nested",
+      async () => {
+        return await resolveClientMessageSend({
+          db: prepared.db,
+          userId: args.userId,
+          threadId: prepared.thread.threadId,
+          clientMessageId: args.body.clientMessageId,
+        });
+      },
+    );
     signal.throwIfAborted();
     if (clientMessageResolution) {
       return clientMessageResolution;
     }
 
-    const revocationError = await validateNormalRevocationTarget({
-      db: prepared.db,
-      threadId: prepared.thread.threadId,
-      revokesMessageId: args.body.revokesMessageId,
-    });
+    const revocationError = await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_web_chat_validate_revocation",
+      "nested",
+      async () => {
+        return await validateNormalRevocationTarget({
+          db: prepared.db,
+          threadId: prepared.thread.threadId,
+          revokesMessageId: args.body.revokesMessageId,
+        });
+      },
+    );
     signal.throwIfAborted();
     if (revocationError) {
       return revocationError;
@@ -2514,9 +2620,16 @@ export const sendNormalMessage$ = command(
       return badRequestMessage("Client thread id is already in use");
     }
 
-    const hasActiveRun = await activeRunExistsForThread(
-      prepared.db,
-      prepared.thread.threadId,
+    const hasActiveRun = await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_web_chat_check_active_run",
+      "nested",
+      async () => {
+        return await activeRunExistsForThread(
+          prepared.db,
+          prepared.thread.threadId,
+        );
+      },
     );
     signal.throwIfAborted();
     if (hasActiveRun) {
@@ -2564,6 +2677,8 @@ const sendChatMessageInner$ = command(
       return badRequestMessage("Prompt is required");
     }
 
+    const apiStartTime = now();
+    const timing = new ApiDispatchTimingCollector();
     return await set(
       sendNormalMessage$,
       {
@@ -2571,7 +2686,8 @@ const sendChatMessageInner$ = command(
         auth,
         userId: auth.userId,
         orgId: auth.orgId,
-        apiStartTime: now(),
+        apiStartTime,
+        timing,
       },
       signal,
     );

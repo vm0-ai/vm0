@@ -188,6 +188,16 @@ const API_DISPATCH_ZERO_PRE_CREATE_ACTION_TYPES = [
 const API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES = [
   "api_dispatch_pre_create_zero_entrypoint_gap",
 ] as const;
+const API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES = [
+  "api_dispatch_pre_create_zero_web_chat_prepare_normal_send",
+  "api_dispatch_pre_create_zero_web_chat_resolve_client_message",
+  "api_dispatch_pre_create_zero_web_chat_validate_revocation",
+  "api_dispatch_pre_create_zero_web_chat_check_active_run",
+  "api_dispatch_pre_create_zero_web_chat_create_normal_run",
+  "api_dispatch_pre_create_zero_web_chat_resolve_model_pin",
+  "api_dispatch_pre_create_zero_web_chat_resolve_provider_admission",
+  "api_dispatch_pre_create_zero_web_chat_build_create_run_args",
+] as const;
 const API_DISPATCH_STORED_CONNECTOR_ROW_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_stored_connector_rows",
   "api_dispatch_prepare_context_filter_stored_connector_rows",
@@ -710,6 +720,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
       timingEvents,
       API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
     );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
+    );
     expectApiDispatchActions(
       timingEvents,
       API_DISPATCH_PERMISSION_MANIFEST_SUBSTEP_ACTION_TYPES,
@@ -832,6 +846,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     expectNoApiDispatchActions(
       timingEvents,
       API_DISPATCH_ZERO_INTERNAL_ENTRYPOINT_ACTION_TYPES,
+    );
+    expectNoApiDispatchActions(
+      timingEvents,
+      API_DISPATCH_ZERO_WEB_CHAT_PRE_CREATE_ACTION_TYPES,
     );
     expectApiDispatchSpanKind(
       timingEvents,
@@ -3231,7 +3249,8 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       "zero generate -h",
       "zero doctor credit",
       "zero credit <credits>",
-      "zero doctor permission-deny --help",
+      "zero doctor permission-deny <connector-ref> --method <METHOD> --url <DENIED_URL>",
+      "Use the `url` field from the firewall denial response when present",
       "zero doctor permission-change --help",
       "--duration 1h|24h|7d|always",
       "zero workflow --help",

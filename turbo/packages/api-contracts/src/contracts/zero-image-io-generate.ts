@@ -29,11 +29,11 @@ export const zeroImageIoGenerateRequestSchema = z
     imageUrls: stringOrStringArraySchema.optional(),
     image_urls: stringOrStringArraySchema.optional(),
     maskImageUrl: z.string().optional(),
-    mask_image_url: z.unknown().optional(),
-    inputFidelity: z.unknown().optional(),
-    input_fidelity: z.unknown().optional(),
-    imagePromptStrength: z.unknown().optional(),
-    image_prompt_strength: z.unknown().optional(),
+    mask_image_url: z.string().optional(),
+    inputFidelity: z.string().optional(),
+    input_fidelity: z.string().optional(),
+    imagePromptStrength: numberOrStringSchema.optional(),
+    image_prompt_strength: numberOrStringSchema.optional(),
   })
   .passthrough();
 

@@ -1,6 +1,7 @@
 const COMPUTER_USE_CONNECTOR_REF = "computer-use";
 const COMPUTER_USE_CAPABILITY = "computer-use:write";
 const COMPUTER_USE_PATH_PREFIX = "/computer-use";
+const COMPUTER_USE_PATH_PREFIX_WITH_SLASH = `${COMPUTER_USE_PATH_PREFIX}/`;
 
 interface ComputerUsePermissionTarget {
   readonly connectorRef: string;
@@ -14,7 +15,8 @@ export function isComputerUsePermissionTarget(
   return (
     target.connectorRef === COMPUTER_USE_CONNECTOR_REF ||
     target.permission === COMPUTER_USE_CAPABILITY ||
-    target.path?.startsWith(COMPUTER_USE_PATH_PREFIX) === true
+    target.path === COMPUTER_USE_PATH_PREFIX ||
+    target.path?.startsWith(COMPUTER_USE_PATH_PREFIX_WITH_SLASH) === true
   );
 }
 

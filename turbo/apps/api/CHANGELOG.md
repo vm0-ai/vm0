@@ -1,5 +1,43 @@
 # Changelog
 
+## [1.189.2](https://github.com/vm0-ai/vm0/compare/api-v1.189.1...api-v1.189.2) (2026-06-29)
+
+
+### Bug Fixes
+
+* **cli:** make permission-deny base-aware ([#19330](https://github.com/vm0-ai/vm0/issues/19330)) ([3e2c7f6](https://github.com/vm0-ai/vm0/commit/3e2c7f64f81518f36df41d81521201dc8bff51ff))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.126.2
+    * @vm0/connectors bumped to 1.114.1
+    * @vm0/core bumped to 8.376.2
+    * @vm0/db bumped to 1.78.2
+
+## [1.189.1](https://github.com/vm0-ai/vm0/compare/api-v1.189.0...api-v1.189.1) (2026-06-29)
+
+
+### Refactoring
+
+* remove legacy agent run telemetry route ([#19358](https://github.com/vm0-ai/vm0/issues/19358)) ([be6301c](https://github.com/vm0-ai/vm0/commit/be6301cd6a9dc5f81f87c37d511e845f9c512f20))
+
+
+### Performance Improvements
+
+* split zero web chat pre-create timing ([#19356](https://github.com/vm0-ai/vm0/issues/19356)) ([f765730](https://github.com/vm0-ai/vm0/commit/f7657309d326e84c10b05321d12829be21f9185e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.126.1
+    * @vm0/core bumped to 8.376.1
+    * @vm0/db bumped to 1.78.1
+
 ## [1.189.0](https://github.com/vm0-ai/vm0/compare/api-v1.188.0...api-v1.189.0) (2026-06-29)
 
 
