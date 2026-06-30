@@ -7,7 +7,7 @@ import type {
 const MEMORY_SUMMARY_MODEL = "google/gemini-3.5-flash";
 const MEMORY_SUMMARY_PROMPT_MAX_CHARS = 24_000;
 const MEMORY_SUMMARY_DIFF_LINES_PER_FILE = 160;
-export const MEMORY_SUMMARY_SYSTEM_PROMPT = [
+const MEMORY_SUMMARY_SYSTEM_PROMPT = [
   "You summarize how Zero's long-term memory changed during a single day.",
   "Read the provided internal memory diffs carefully and write a Markdown summary with exactly these two sections:",
   "",
@@ -103,7 +103,7 @@ function appendLineWithinBudget(lines: string[], line: string): boolean {
   return true;
 }
 
-export function buildMemorySummaryPrompt(changeSet: MemoryChangeSet): string {
+function buildMemorySummaryPrompt(changeSet: MemoryChangeSet): string {
   const lines = [
     "Internal memory diffs today. Interpret these as memory changes, but do not echo internal source labels or storage operations:",
   ];

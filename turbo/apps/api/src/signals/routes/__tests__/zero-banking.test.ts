@@ -3,17 +3,7 @@ import { randomUUID } from "node:crypto";
 import type { ZeroCapability } from "@vm0/api-contracts/contracts/composes";
 import { zeroBankingContract } from "@vm0/api-contracts/contracts/zero-banking";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  bankingAccessAuditEvents,
-  bankingAccounts,
-  bankingAgentEnablements,
-  bankingConnections,
-  type BankingConnectionStatus,
-  type BankingOperationScope,
-} from "@vm0/db/schema/banking";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { beforeEach } from "vitest";
 
@@ -21,12 +11,8 @@ import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
-import { now, nowDate } from "../../external/time";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-} from "./helpers/zero-org-membership";
+import { now } from "../../external/time";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -35,12 +21,31 @@ import {
   type UsageInsightFixture,
 } from "./helpers/zero-usage-insight";
 import { createFixtureTracker } from "./helpers/zero-route-test";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/zero-feature-switches";
+import {
+  deleteBankingState,
+  readBankingAuditEventsState,
+  seedBankingState,
+} from "./helpers/zero-banking-state";
 
 const context = testContext();
 const store = createStore();
 
 const FINICITY_BASE_URL = "https://api.finicity.com";
 const FINICITY_AUTH_URL = `${FINICITY_BASE_URL}/aggregation/v2/partners/authentication`;
+
+type BankingConnectionStatus =
+  | "active"
+  | "repair_required"
+  | "revoked"
+  | "deleted";
+type BankingOperationScope =
+  | "accounts.read"
+  | "balances.read"
+  | "transactions.read";
 
 interface BankingFixture extends UsageInsightFixture {
   readonly runId: string;
@@ -117,80 +122,47 @@ async function seedBankingFixture(
   const providerCustomerId = randomProviderId("customer");
   const enabledAccountId = randomProviderId("acct-enabled");
   const disabledAccountId = randomProviderId("acct-disabled");
-  const db = store.set(writeDb$);
   if (args.featureSwitchEnabled ?? true) {
-    await db.insert(userFeatureSwitches).values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      switches: { [FeatureSwitchKey.Banking]: true },
-      updatedAt: nowDate(),
-    });
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        userId: fixture.userId,
+        orgId: fixture.orgId,
+      },
+      {
+        [FeatureSwitchKey.Banking]: true,
+      },
+    );
   }
 
-  const [connection] = await db
-    .insert(bankingConnections)
-    .values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      providerCustomerId,
-      status: args.connectionStatus ?? "active",
-      revokedAt:
-        args.connectionStatus === "revoked" ? new Date("2026-01-01") : null,
-    })
-    .returning({ id: bankingConnections.id });
-  if (!connection) {
-    throw new Error("seedBankingFixture: connection insert returned no row");
-  }
-
-  await db.insert(bankingAccounts).values([
-    {
-      connectionId: connection.id,
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      providerAccountId: enabledAccountId,
-      displayName: "Everyday Checking",
-      institutionName: "Example Bank",
-      accountType: "checking",
-      accountNumberLast4: "6789",
-      enabled: true,
-    },
-    {
-      connectionId: connection.id,
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      providerAccountId: disabledAccountId,
-      displayName: "Old Savings",
-      institutionName: "Example Bank",
-      accountType: "savings",
-      accountNumberLast4: "4321",
-      enabled: false,
-    },
-  ]);
-
-  await db.insert(bankingAgentEnablements).values({
+  const operationScopes = [
+    ...(args.operationScopes ?? [
+      "accounts.read",
+      "balances.read",
+      "transactions.read",
+    ]),
+  ];
+  const connection = await seedBankingState(context, {
     orgId: fixture.orgId,
     userId: fixture.userId,
     agentId: compose.agentId,
-    connectionId: connection.id,
+    providerCustomerId,
+    enabledAccountId,
+    disabledAccountId,
     accountProviderIds: [...(args.accountProviderIds ?? [enabledAccountId])],
-    operationScopes: [
-      ...(args.operationScopes ?? [
-        "accounts.read",
-        "balances.read",
-        "transactions.read",
-      ]),
-    ],
+    operationScopes,
     // #17307 D3: only allow_automation_runs is seeded; the legacy
     // allow_scheduled_runs column is NOT NULL with a default and drops in the
     // final phase.
     allowAutomationRuns: args.allowAutomationRuns ?? false,
+    connectionStatus: args.connectionStatus ?? "active",
   });
 
   return {
     ...fixture,
     runId: run.runId,
     agentId: compose.agentId,
-    connectionId: connection.id,
+    connectionId: connection.connectionId,
     providerCustomerId,
     enabledAccountId,
     disabledAccountId,
@@ -198,59 +170,13 @@ async function seedBankingFixture(
 }
 
 async function deleteBankingFixture(fixture: BankingFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  await db
-    .delete(bankingAccessAuditEvents)
-    .where(
-      and(
-        eq(bankingAccessAuditEvents.orgId, fixture.orgId),
-        eq(bankingAccessAuditEvents.userId, fixture.userId),
-      ),
-    );
-  await db
-    .delete(bankingAgentEnablements)
-    .where(
-      and(
-        eq(bankingAgentEnablements.orgId, fixture.orgId),
-        eq(bankingAgentEnablements.userId, fixture.userId),
-      ),
-    );
-  await db
-    .delete(bankingAccounts)
-    .where(
-      and(
-        eq(bankingAccounts.orgId, fixture.orgId),
-        eq(bankingAccounts.userId, fixture.userId),
-      ),
-    );
-  await db
-    .delete(bankingConnections)
-    .where(
-      and(
-        eq(bankingConnections.orgId, fixture.orgId),
-        eq(bankingConnections.userId, fixture.userId),
-      ),
-    );
-  await store.set(deleteOrgMembership$, fixture, context.signal);
+  await deleteBankingState(context, fixture);
+  await deleteFeatureSwitchesForUser(context, fixture);
   await store.set(deleteUsageInsightFixture$, fixture, context.signal);
 }
 
 async function bankingAuditEvents(fixture: BankingFixture) {
-  return await store
-    .set(writeDb$)
-    .select({
-      action: bankingAccessAuditEvents.action,
-      status: bankingAccessAuditEvents.status,
-      failureCode: bankingAccessAuditEvents.failureCode,
-      providerAccountId: bankingAccessAuditEvents.providerAccountId,
-    })
-    .from(bankingAccessAuditEvents)
-    .where(
-      and(
-        eq(bankingAccessAuditEvents.orgId, fixture.orgId),
-        eq(bankingAccessAuditEvents.userId, fixture.userId),
-      ),
-    );
+  return await readBankingAuditEventsState(context, fixture);
 }
 
 function finicityAuthHandler() {

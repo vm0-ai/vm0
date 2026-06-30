@@ -1,24 +1,15 @@
-import { randomUUID } from "node:crypto";
-
 import { command } from "ccstate";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { userCache } from "@vm0/db/schema/user-cache";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq, inArray } from "drizzle-orm";
+import type {
+  TestUsageStateActionBody,
+  TestUsageStateActionResponse,
+  TestUsageStateFixture,
+  TestUsageStateInsightsResponse,
+} from "@vm0/api-contracts/contracts/test-usage-state";
 
-import { nowDate } from "../../../../lib/time";
-import { writeDb$ } from "../../../external/db";
+import { createAppWithRoutes } from "../../../../app-factory-core";
+import { testUsageStateRoutes } from "../../test-usage-state";
+
+const USAGE_STATE_ROUTE = "/api/test/usage-state";
 
 export interface UsageFixture {
   readonly orgId: string;
@@ -43,6 +34,13 @@ interface InsertUsageEventArgs {
   readonly status?: string;
   readonly createdAt?: Date;
   readonly processedAt?: Date | null;
+}
+
+interface SeedUsagePricingArgs {
+  readonly provider: string;
+  readonly category: string;
+  readonly unitPrice: number;
+  readonly unitSize: number;
 }
 
 interface InsertModelUsageArgs {
@@ -80,380 +78,359 @@ interface SeedChatThreadRunArgs {
   readonly createdAt?: Date;
 }
 
+export interface InsightData {
+  readonly agents: {
+    readonly agentName: string;
+    readonly agentId: string | null;
+    readonly runs: number;
+    readonly credits: number;
+  }[];
+  readonly creditsUsed: number;
+  readonly creditBalance: number;
+  readonly teamUsage: {
+    readonly userId: string;
+    readonly name: string;
+    readonly credits: number;
+    readonly agentNames: string[];
+    readonly agentCredits: Record<string, number>;
+  }[];
+  readonly services: {
+    readonly domain: string;
+    readonly calls: number;
+    readonly agentNames: string[];
+  }[];
+  readonly permissions: {
+    readonly label: string;
+    readonly connectorType: string;
+    readonly allowed: number;
+    readonly denied: number;
+    readonly agentNames: string[];
+  }[];
+  readonly axiomDegraded?: boolean;
+}
+
+function requestUsageState(
+  signal: AbortSignal,
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal,
+    routes: testUsageStateRoutes,
+  });
+  return Promise.resolve(app.request(path, init));
+}
+
+function dateToWire(value: Date | null | undefined): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  return value.toISOString();
+}
+
+function fixtureFromWire(fixture: TestUsageStateFixture): UsageFixture {
+  return {
+    orgId: fixture.org_id,
+    userId: fixture.user_id,
+    userIds: fixture.user_ids,
+  };
+}
+
+function fixtureToWire(fixture: UsageFixture): TestUsageStateFixture {
+  return {
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+    user_ids: [...fixture.userIds],
+  };
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+function expectOk(response: Response, operation: string): void {
+  if (response.ok) {
+    return;
+  }
+  throw new Error(`${operation} failed with ${response.status}`);
+}
+
+async function postAction(
+  signal: AbortSignal,
+  body: TestUsageStateActionBody,
+): Promise<TestUsageStateActionResponse> {
+  const response = await requestUsageState(
+    signal,
+    `${USAGE_STATE_ROUTE}/action`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  expectOk(response, `usage action ${body.action}`);
+  return await readJson<TestUsageStateActionResponse>(response);
+}
+
 export const seedUsageFixture$ = command(
   async (
-    { set },
+    _,
     args: SeedUsageFixtureArgs,
     signal: AbortSignal,
   ): Promise<UsageFixture> => {
-    const db = set(writeDb$);
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-
-    await db.insert(orgMetadata).values({
-      orgId,
-      tier: args.tier ?? "free",
-      currentPeriodEnd: args.currentPeriodEnd ?? null,
-      stripeCustomerId: args.currentPeriodEnd ? `cus_${randomUUID()}` : null,
-      stripeSubscriptionId: args.currentPeriodEnd
-        ? `sub_${randomUUID()}`
-        : null,
-      subscriptionStatus: args.currentPeriodEnd ? "active" : null,
+    const response = await postAction(signal, {
+      action: "seed-fixture",
+      current_period_end: dateToWire(args.currentPeriodEnd),
+      tier: args.tier,
     });
-    signal.throwIfAborted();
-
-    return { orgId, userId, userIds: [userId] };
+    if (!response.fixture) {
+      throw new Error("seedUsageFixture$: response missing fixture");
+    }
+    return fixtureFromWire(response.fixture);
   },
 );
 
 export const deleteUsageFixture$ = command(
-  async (
-    { set },
-    fixture: UsageFixture,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-
-    const usageUserRows = await db
-      .select({ userId: usageEvent.userId })
-      .from(usageEvent)
-      .where(eq(usageEvent.orgId, fixture.orgId));
-    signal.throwIfAborted();
-
-    await db.delete(usageEvent).where(eq(usageEvent.orgId, fixture.orgId));
-    signal.throwIfAborted();
-
-    const runRows = await db
-      .select({ id: agentRuns.id, userId: agentRuns.userId })
-      .from(agentRuns)
-      .where(eq(agentRuns.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    const runIds = runRows.map((row) => {
-      return row.id;
+  async (_, fixture: UsageFixture, signal: AbortSignal): Promise<void> => {
+    await postAction(signal, {
+      action: "delete-fixture",
+      fixture: fixtureToWire(fixture),
     });
-    if (runIds.length > 0) {
-      await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
-      signal.throwIfAborted();
-    }
-
-    await db
-      .delete(agentSessions)
-      .where(eq(agentSessions.orgId, fixture.orgId));
-    signal.throwIfAborted();
-
-    const composeRows = await db
-      .select({ id: agentComposes.id })
-      .from(agentComposes)
-      .where(eq(agentComposes.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    const composeIds = composeRows.map((row) => {
-      return row.id;
-    });
-    if (composeIds.length > 0) {
-      await db
-        .delete(agentComposeVersions)
-        .where(inArray(agentComposeVersions.composeId, composeIds));
-      signal.throwIfAborted();
-      await db.delete(zeroAgents).where(inArray(zeroAgents.id, composeIds));
-      signal.throwIfAborted();
-      await db
-        .delete(agentComposes)
-        .where(inArray(agentComposes.id, composeIds));
-      signal.throwIfAborted();
-    }
-
-    const memberRows = await db
-      .select({ userId: orgMembersMetadata.userId })
-      .from(orgMembersMetadata)
-      .where(eq(orgMembersMetadata.orgId, fixture.orgId));
-    signal.throwIfAborted();
-
-    await db
-      .delete(orgMembersMetadata)
-      .where(eq(orgMembersMetadata.orgId, fixture.orgId));
-    signal.throwIfAborted();
-
-    await db
-      .delete(userFeatureSwitches)
-      .where(eq(userFeatureSwitches.orgId, fixture.orgId));
-    signal.throwIfAborted();
-
-    await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
-    signal.throwIfAborted();
-
-    const userIds = [
-      ...new Set([
-        ...fixture.userIds,
-        ...usageUserRows.map((row) => {
-          return row.userId;
-        }),
-        ...runRows.map((row) => {
-          return row.userId;
-        }),
-        ...memberRows.map((row) => {
-          return row.userId;
-        }),
-      ]),
-    ];
-    if (userIds.length > 0) {
-      await db.delete(userCache).where(inArray(userCache.userId, userIds));
-      signal.throwIfAborted();
-    }
   },
 );
 
 export const insertUsageEvent$ = command(
   async (
-    { set },
+    _,
     args: InsertUsageEventArgs,
     signal: AbortSignal,
   ): Promise<string> => {
-    const db = set(writeDb$);
-    const status = args.status ?? "processed";
-    const processedAt =
-      args.processedAt !== undefined
-        ? args.processedAt
-        : status === "processed"
-          ? nowDate()
-          : null;
-    const [row] = await db
-      .insert(usageEvent)
-      .values({
-        runId: args.runId ?? null,
-        orgId: args.orgId,
-        userId: args.userId,
-        kind: args.kind ?? "connector",
-        provider: args.provider ?? "x",
-        category: args.category ?? "tweet.read",
-        quantity: args.quantity ?? 1,
-        creditsCharged: args.creditsCharged ?? null,
-        status,
-        createdAt: args.createdAt,
-        processedAt,
-        idempotencyKey: randomUUID(),
-      })
-      .returning({ id: usageEvent.id });
-    signal.throwIfAborted();
-    if (!row) {
-      throw new Error("insertUsageEvent$: insert returned no row");
+    const response = await postAction(signal, {
+      action: "insert-usage-event",
+      org_id: args.orgId,
+      user_id: args.userId,
+      run_id: args.runId,
+      kind: args.kind,
+      provider: args.provider,
+      category: args.category,
+      quantity: args.quantity,
+      credits_charged: args.creditsCharged,
+      status: args.status,
+      created_at: dateToWire(args.createdAt) ?? undefined,
+      processed_at: dateToWire(args.processedAt),
+    });
+    if (!response.usage_event_id) {
+      throw new Error("insertUsageEvent$: response missing usage_event_id");
     }
-    return row.id;
+    return response.usage_event_id;
+  },
+);
+
+export const seedUsagePricing$ = command(
+  async (_, args: SeedUsagePricingArgs, signal: AbortSignal): Promise<void> => {
+    await postAction(signal, {
+      action: "seed-usage-pricing",
+      provider: args.provider,
+      category: args.category,
+      unit_price: args.unitPrice,
+      unit_size: args.unitSize,
+    });
+  },
+);
+
+export const emitRunUsageMessage$ = command(
+  async (_, runId: string, signal: AbortSignal): Promise<boolean> => {
+    const response = await postAction(signal, {
+      action: "emit-run-usage-message",
+      run_id: runId,
+    });
+    return response.emitted ?? false;
   },
 );
 
 export const insertModelUsage$ = command(
-  async (
-    { set },
-    args: InsertModelUsageArgs,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    const status = args.status ?? "processed";
-    const processedAt =
-      args.processedAt !== undefined
-        ? args.processedAt
-        : status === "processed"
-          ? nowDate()
-          : null;
-    const rows: (typeof usageEvent.$inferInsert)[] = [
-      {
-        runId: args.runId ?? null,
-        orgId: args.orgId,
-        userId: args.userId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.input",
-        quantity: args.inputTokens ?? 0,
-        creditsCharged: args.creditsCharged ?? null,
-        status,
-        createdAt: args.createdAt,
-        processedAt,
-        idempotencyKey: randomUUID(),
-      },
-      {
-        runId: args.runId ?? null,
-        orgId: args.orgId,
-        userId: args.userId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.output",
-        quantity: args.outputTokens ?? 0,
-        creditsCharged: null,
-        status,
-        createdAt: args.createdAt,
-        processedAt,
-        idempotencyKey: randomUUID(),
-      },
-      {
-        runId: args.runId ?? null,
-        orgId: args.orgId,
-        userId: args.userId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.cache_read",
-        quantity: args.cacheReadInputTokens ?? 0,
-        creditsCharged: null,
-        status,
-        createdAt: args.createdAt,
-        processedAt,
-        idempotencyKey: randomUUID(),
-      },
-      {
-        runId: args.runId ?? null,
-        orgId: args.orgId,
-        userId: args.userId,
-        kind: "model",
-        provider: "claude-sonnet-4-6",
-        category: "tokens.cache_creation",
-        quantity: args.cacheCreationInputTokens ?? 0,
-        creditsCharged: null,
-        status,
-        createdAt: args.createdAt,
-        processedAt,
-        idempotencyKey: randomUUID(),
-      },
-    ];
-
-    await db.insert(usageEvent).values(rows);
-    signal.throwIfAborted();
+  async (_, args: InsertModelUsageArgs, signal: AbortSignal): Promise<void> => {
+    await postAction(signal, {
+      action: "insert-model-usage",
+      org_id: args.orgId,
+      user_id: args.userId,
+      run_id: args.runId,
+      input_tokens: args.inputTokens,
+      output_tokens: args.outputTokens,
+      cache_read_input_tokens: args.cacheReadInputTokens,
+      cache_creation_input_tokens: args.cacheCreationInputTokens,
+      credits_charged: args.creditsCharged,
+      status: args.status,
+      created_at: dateToWire(args.createdAt) ?? undefined,
+      processed_at: dateToWire(args.processedAt),
+    });
   },
 );
 
 export const seedRun$ = command(
   async (
-    { set },
+    _,
     args: SeedRunArgs,
     signal: AbortSignal,
   ): Promise<{ runId: string; composeId: string }> => {
-    const db = set(writeDb$);
-    const composeName = `usage-${randomUUID().slice(0, 8)}`;
-    const [compose] = await db
-      .insert(agentComposes)
-      .values({
-        userId: args.userId,
-        orgId: args.orgId,
-        name: composeName,
-        createdAt: args.createdAt,
-      })
-      .returning({ id: agentComposes.id });
-    signal.throwIfAborted();
-    if (!compose) {
-      throw new Error("seedRun$: compose insert returned no row");
-    }
-
-    await db.insert(zeroAgents).values({
-      id: compose.id,
-      orgId: args.orgId,
-      owner: args.userId,
-      name: composeName,
-      displayName: args.displayName ?? null,
+    const response = await postAction(signal, {
+      action: "seed-run",
+      org_id: args.orgId,
+      user_id: args.userId,
+      display_name: args.displayName,
+      prompt: args.prompt,
+      status: args.status,
+      trigger_source: args.triggerSource,
+      created_at: dateToWire(args.createdAt) ?? undefined,
+      started_at: dateToWire(args.startedAt),
+      completed_at: dateToWire(args.completedAt),
     });
-    signal.throwIfAborted();
-
-    const versionId = randomUUID();
-    await db.insert(agentComposeVersions).values({
-      id: versionId,
-      composeId: compose.id,
-      content: {
-        version: "1.0",
-        agents: { "test-agent": { framework: "claude-code" } },
-      },
-      createdBy: args.userId,
-    });
-    signal.throwIfAborted();
-
-    await db
-      .update(agentComposes)
-      .set({ headVersionId: versionId })
-      .where(eq(agentComposes.id, compose.id));
-    signal.throwIfAborted();
-
-    const [session] = await db
-      .insert(agentSessions)
-      .values({
-        userId: args.userId,
-        orgId: args.orgId,
-        agentComposeId: compose.id,
-      })
-      .returning({ id: agentSessions.id });
-    signal.throwIfAborted();
-    if (!session) {
-      throw new Error("seedRun$: session insert returned no row");
+    if (!response.run_id || !response.compose_id) {
+      throw new Error("seedRun$: response missing run identifiers");
     }
-
-    const [run] = await db
-      .insert(agentRuns)
-      .values({
-        userId: args.userId,
-        orgId: args.orgId,
-        agentComposeVersionId: versionId,
-        prompt: args.prompt ?? "test prompt",
-        status: args.status ?? "completed",
-        sessionId: session.id,
-        createdAt: args.createdAt,
-        startedAt: args.startedAt,
-        completedAt: args.completedAt,
-      })
-      .returning({ id: agentRuns.id });
-    signal.throwIfAborted();
-    if (!run) {
-      throw new Error("seedRun$: run insert returned no row");
-    }
-
-    await db.insert(zeroRuns).values({
-      id: run.id,
-      triggerSource: args.triggerSource ?? "cli",
-    });
-    signal.throwIfAborted();
-
-    return { runId: run.id, composeId: compose.id };
+    return { runId: response.run_id, composeId: response.compose_id };
   },
 );
 
-// Seed a run that belongs to a chat thread, so it surfaces in the per-chat
-// usage record. Returns the thread id alongside the run/compose ids.
 export const seedChatThreadRun$ = command(
   async (
-    { set },
+    _,
     args: SeedChatThreadRunArgs,
     signal: AbortSignal,
   ): Promise<{ runId: string; threadId: string; composeId: string }> => {
-    const db = set(writeDb$);
-    const { runId, composeId } = await set(
-      seedRun$,
-      {
-        orgId: args.orgId,
-        userId: args.userId,
-        triggerSource: args.triggerSource ?? "web",
-        createdAt: args.createdAt,
-      },
+    const response = await postAction(signal, {
+      action: "seed-chat-thread-run",
+      org_id: args.orgId,
+      user_id: args.userId,
+      title: args.title,
+      trigger_source: args.triggerSource,
+      thread_id: args.threadId,
+      created_at: dateToWire(args.createdAt) ?? undefined,
+    });
+    if (!response.run_id || !response.thread_id || !response.compose_id) {
+      throw new Error("seedChatThreadRun$: response missing run identifiers");
+    }
+    return {
+      runId: response.run_id,
+      threadId: response.thread_id,
+      composeId: response.compose_id,
+    };
+  },
+);
+
+export const setUsageFixtureCreditBalance$ = command(
+  async (
+    _,
+    args: { readonly fixture: UsageFixture; readonly credits: number },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "set-credit-balance",
+      org_id: args.fixture.orgId,
+      credits: args.credits,
+    });
+  },
+);
+
+export const setUsageOrgTier$ = command(
+  async (
+    _,
+    args: { readonly orgId: string; readonly tier: string },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "set-org-tier",
+      org_id: args.orgId,
+      tier: args.tier,
+    });
+  },
+);
+
+export const seedUsageUserName$ = command(
+  async (
+    _,
+    args: {
+      readonly userId: string;
+      readonly email: string;
+      readonly name: string | null;
+      readonly cachedAt: Date;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "seed-user-name",
+      user_id: args.userId,
+      email: args.email,
+      name: args.name,
+      cached_at: args.cachedAt.toISOString(),
+    });
+  },
+);
+
+export const seedUsageCachedOrgMember$ = command(
+  async (
+    _,
+    args: {
+      readonly orgId: string;
+      readonly userId: string;
+      readonly cachedAt: Date;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "seed-cached-org-member",
+      org_id: args.orgId,
+      user_id: args.userId,
+      cached_at: args.cachedAt.toISOString(),
+    });
+  },
+);
+
+export const seedExistingUsageInsights$ = command(
+  async (
+    _,
+    args: {
+      readonly fixture: UsageFixture;
+      readonly date: string;
+      readonly updatedAt: Date;
+      readonly data?: unknown;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "seed-existing-insights",
+      org_id: args.fixture.orgId,
+      user_id: args.fixture.userId,
+      date: args.date,
+      updated_at: args.updatedAt.toISOString(),
+      data: args.data,
+    });
+  },
+);
+
+export const findUsageInsights$ = command(
+  async (
+    _,
+    args: { readonly fixture: UsageFixture; readonly date: string },
+    signal: AbortSignal,
+  ): Promise<InsightData | null> => {
+    const query = new URLSearchParams({
+      org_id: args.fixture.orgId,
+      user_id: args.fixture.userId,
+      date: args.date,
+    });
+    const response = await requestUsageState(
       signal,
+      `${USAGE_STATE_ROUTE}/insights?${query.toString()}`,
     );
     signal.throwIfAborted();
-
-    let threadId = args.threadId;
-    if (!threadId) {
-      const [thread] = await db
-        .insert(chatThreads)
-        .values({
-          userId: args.userId,
-          agentComposeId: composeId,
-          title: args.title ?? null,
-        })
-        .returning({ id: chatThreads.id });
-      signal.throwIfAborted();
-      if (!thread) {
-        throw new Error("seedChatThreadRun$: thread insert returned no row");
-      }
-      threadId = thread.id;
-    }
-
-    await db
-      .update(zeroRuns)
-      .set({ chatThreadId: threadId })
-      .where(eq(zeroRuns.id, runId));
+    expectOk(response, "findUsageInsights$");
     signal.throwIfAborted();
-
-    return { runId, threadId, composeId };
+    const body = await readJson<TestUsageStateInsightsResponse>(response);
+    signal.throwIfAborted();
+    return (body.data as InsightData | null | undefined) ?? null;
   },
 );

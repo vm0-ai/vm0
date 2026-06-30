@@ -1,67 +1,88 @@
 import { randomUUID } from "node:crypto";
 
-import { zeroConnectorsByTypeContract } from "@vm0/api-contracts/contracts/zero-connectors";
-import { connectors } from "@vm0/db/schema/connector";
-import { secrets } from "@vm0/db/schema/secret";
+import {
+  zeroConnectorManualGrantContract,
+  zeroConnectorsByTypeContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
+interface AuthenticatedFixture {
+  readonly orgId: string;
+  readonly userId: string;
+}
+
+function authHeaders() {
+  return { authorization: "Bearer clerk-session" };
+}
+
 function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
 
-async function seedConnector(args: {
-  readonly orgId: string;
-  readonly userId: string;
-  readonly type: string;
-  readonly authMethod?: string;
-  readonly needsReconnect?: boolean;
-  readonly reconnectReason?: string | null;
-}): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(connectors).values({
-    userId: args.userId,
-    orgId: args.orgId,
-    type: args.type,
-    authMethod: args.authMethod ?? "oauth",
-    needsReconnect: args.needsReconnect ?? false,
-    reconnectReason: args.reconnectReason ?? null,
-  });
+function seedAuthenticatedFixture(): AuthenticatedFixture {
+  const fixture = {
+    orgId: `org_${randomUUID()}`,
+    userId: `user_${randomUUID()}`,
+  };
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  return fixture;
 }
 
-async function deleteConnectorsByOrg(orgId: string): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await Promise.all([
-    writeDb.delete(connectors).where(eq(connectors.orgId, orgId)),
-    writeDb.delete(secrets).where(eq(secrets.orgId, orgId)),
-  ]);
+async function seedSandboxJwtFixture(): Promise<AuthenticatedFixture> {
+  const fixture = await store.set(
+    seedOrgMembership$,
+    { orgId: `org_${randomUUID()}`, userId: `user_${randomUUID()}` },
+    context.signal,
+  );
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  return fixture;
+}
+
+async function connectOpenai(fixture: AuthenticatedFixture): Promise<void> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  await accept(
+    setupApp({ context })(zeroConnectorManualGrantContract).connect({
+      params: { type: "openai" },
+      body: {
+        authMethod: "api-token",
+        values: { OPENAI_TOKEN: "sk-test-token" },
+      },
+      headers: authHeaders(),
+    }),
+    [200],
+  );
+}
+
+async function deleteOpenai(fixture: AuthenticatedFixture): Promise<void> {
+  mocks.clerk.session(fixture.userId, fixture.orgId);
+  await accept(
+    setupApp({ context })(zeroConnectorsByTypeContract).delete({
+      params: { type: "openai" },
+      headers: authHeaders(),
+    }),
+    [204, 404],
+  );
 }
 
 describe("GET /api/zero/connectors/:type", () => {
-  const seededFixtures: OrgMembershipFixture[] = [];
+  const seededFixtures: AuthenticatedFixture[] = [];
 
   afterEach(async () => {
     while (seededFixtures.length > 0) {
       const fixture = seededFixtures.pop();
       if (fixture) {
-        await deleteConnectorsByOrg(fixture.orgId);
-        await store.set(deleteOrgMembership$, fixture, context.signal);
+        await deleteOpenai(fixture);
       }
     }
   });
@@ -83,7 +104,7 @@ describe("GET /api/zero/connectors/:type", () => {
     const response = await accept(
       client.get({
         params: { type: "github" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [401],
     );
@@ -92,18 +113,14 @@ describe("GET /api/zero/connectors/:type", () => {
   });
 
   it("returns 404 when no connector of that type exists", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(
-      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
-    mocks.clerk.session(userId, orgId);
+    const fixture = seedAuthenticatedFixture();
+    mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroConnectorsByTypeContract);
     const response = await accept(
       client.get({
         params: { type: "github" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [404],
     );
@@ -111,83 +128,39 @@ describe("GET /api/zero/connectors/:type", () => {
     expect(response.body.error.code).toBe("NOT_FOUND");
   });
 
-  it("returns the connector when one exists for that type", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(
-      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
-    await seedConnector({
-      orgId,
-      userId,
-      type: "github",
-      needsReconnect: true,
-      reconnectReason: "provider_session_expired",
-    });
-    mocks.clerk.session(userId, orgId);
-
-    const client = setupApp({ context })(zeroConnectorsByTypeContract);
-    const response = await accept(
-      client.get({
-        params: { type: "github" },
-        headers: { authorization: "Bearer clerk-session" },
-      }),
-      [200],
-    );
-
-    expect(response.body.type).toBe("github");
-    expect(response.body.connectionStatus).toBe("reconnect-required");
-    expect(response.body.reconnectReason).toBe("provider_session_expired");
-  });
-
-  it("returns 404 for legacy user-owned credential secrets without a connector row", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    seededFixtures.push(
-      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
-    const writeDb = store.set(writeDb$);
-    await writeDb.insert(secrets).values({
-      orgId,
-      userId,
-      name: "OPENAI_TOKEN",
-      encryptedValue: "encrypted_openai_token",
-      type: "user",
-    });
-    mocks.clerk.session(userId, orgId);
+  it("returns a connector created through the connector API", async () => {
+    const fixture = seedAuthenticatedFixture();
+    seededFixtures.push(fixture);
+    await connectOpenai(fixture);
+    mocks.clerk.session(fixture.userId, fixture.orgId);
 
     const client = setupApp({ context })(zeroConnectorsByTypeContract);
     const response = await accept(
       client.get({
         params: { type: "openai" },
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
-      [404],
+      [200],
     );
 
-    expect(response.body).toStrictEqual({
-      error: { message: "Connector not found", code: "NOT_FOUND" },
+    expect(response.body).toMatchObject({
+      type: "openai",
+      authMethod: "api-token",
+      connectionStatus: "connected",
     });
   });
 
   it("allows access with a sandbox JWT carrying connector:read capability", async () => {
-    const userId = `user_${randomUUID()}`;
-    const orgId = `org_${randomUUID()}`;
-    const runId = `run_${randomUUID()}`;
-    // org_members_cache must be present so org-role resolution hits the cache
-    // path instead of falling back to Clerk (which is not mocked for token-auth
-    // requests).
-    seededFixtures.push(
-      await store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
-    await seedConnector({ orgId, userId, type: "github" });
+    const fixture = await seedSandboxJwtFixture();
+    seededFixtures.push(fixture);
+    await connectOpenai(fixture);
 
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
       scope: "zero",
-      userId,
-      orgId,
-      runId,
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      runId: `run_${randomUUID()}`,
       capabilities: ["connector:read"],
       iat: seconds,
       exp: seconds + 60,
@@ -196,12 +169,12 @@ describe("GET /api/zero/connectors/:type", () => {
     const client = setupApp({ context })(zeroConnectorsByTypeContract);
     const response = await accept(
       client.get({
-        params: { type: "github" },
+        params: { type: "openai" },
         headers: { authorization: `Bearer ${token}` },
       }),
       [200],
     );
 
-    expect(response.body.type).toBe("github");
+    expect(response.body.type).toBe("openai");
   });
 });

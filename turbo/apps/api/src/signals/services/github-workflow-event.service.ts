@@ -89,7 +89,7 @@ interface GithubWorkflowDispatchCounts {
   readonly duplicates: number;
 }
 
-export interface GithubWorkflowRunStartTestInput {
+interface GithubWorkflowRunStartTestInput {
   readonly triggerId: string;
   readonly workflowName: string;
   readonly deliveryId: string;
@@ -107,15 +107,6 @@ const githubWorkflowRunStarterOverride = testOverride<
 >(() => {
   return undefined;
 });
-
-export function setGithubWorkflowRunStarterForTests(
-  starter: (args: GithubWorkflowRunStartTestInput) => Promise<"ok" | "error">,
-): () => void {
-  githubWorkflowRunStarterOverride.set(starter);
-  return () => {
-    githubWorkflowRunStarterOverride.clear();
-  };
-}
 
 function normalizeGithubWorkflowLabelName(labelName: string): string {
   return labelName.trim().toLowerCase();

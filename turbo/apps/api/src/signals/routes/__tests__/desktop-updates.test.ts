@@ -1,15 +1,32 @@
 import { desktopUpdatesContract } from "@vm0/api-contracts/contracts/desktop-updates";
-import { beforeEach, describe, expect, it } from "vitest";
+import { HttpResponse, http } from "msw";
+import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import {
-  clearDesktopUpdateManifestCacheForTest,
-  mockDesktopUpdateManifestForTest,
-  type DesktopUpdateManifest,
-} from "../../services/desktop-updates.service";
+import { clearMockNow, mockNow } from "../../../lib/time";
+import { server } from "../../../mocks/server";
 
 const context = testContext();
+const DESKTOP_UPDATE_MANIFEST_URL =
+  "https://github.com/vm0-ai/vm0/releases/download/desktop-updates/desktop-update-manifest.json";
+
+interface DesktopUpdateRelease {
+  readonly version: string;
+  readonly name?: string;
+  readonly notes?: string;
+  readonly pubDate: string;
+  readonly platforms: Record<string, Record<string, { readonly url: string }>>;
+}
+
+interface DesktopUpdateManifest {
+  readonly schemaVersion: 1;
+  readonly channels: Record<
+    string,
+    { readonly latest: string; readonly blocked?: readonly string[] }
+  >;
+  readonly releases: Record<string, DesktopUpdateRelease>;
+}
 
 function client() {
   return setupApp({ context })(desktopUpdatesContract);
@@ -18,6 +35,14 @@ function client() {
 function appRequest(path: string): Promise<Response> {
   return Promise.resolve(
     createApp({ signal: context.signal }).request(path, { method: "GET" }),
+  );
+}
+
+function mockDesktopUpdateManifest(manifest: DesktopUpdateManifest): void {
+  server.use(
+    http.get(DESKTOP_UPDATE_MANIFEST_URL, () => {
+      return HttpResponse.json(manifest);
+    }),
   );
 }
 
@@ -50,12 +75,19 @@ function darwinArm64Release(version: string, url: string) {
 }
 
 describe("desktop update routes", () => {
+  let testIndex = 0;
+
   beforeEach(() => {
-    clearDesktopUpdateManifestCacheForTest();
+    mockNow(Date.parse("2026-06-08T00:00:00.000Z") + testIndex * 120_000);
+    testIndex += 1;
+  });
+
+  afterEach(() => {
+    clearMockNow();
   });
 
   it("redirects the release page route to the current stable desktop release", async () => {
-    mockDesktopUpdateManifestForTest(
+    mockDesktopUpdateManifest(
       stableManifest("0.2.1", {
         "0.2.1": darwinArm64Release(
           "0.2.1",
@@ -76,7 +108,7 @@ describe("desktop update routes", () => {
   });
 
   it("redirects the dmg route to the current stable desktop dmg asset", async () => {
-    mockDesktopUpdateManifestForTest(
+    mockDesktopUpdateManifest(
       stableManifest("0.12.0", {
         "0.12.0": darwinArm64Release(
           "0.12.0",
@@ -99,7 +131,7 @@ describe("desktop update routes", () => {
   it("serves the current stable macOS arm64 update from the manifest", async () => {
     const zipUrl =
       "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.1/Zero-darwin-arm64-0.2.1.zip";
-    mockDesktopUpdateManifestForTest(
+    mockDesktopUpdateManifest(
       stableManifest("0.2.1", {
         "0.2.1": darwinArm64Release("0.2.1", zipUrl),
       }),
@@ -132,7 +164,7 @@ describe("desktop update routes", () => {
   it("does not return a blocked latest release", async () => {
     const previousUrl =
       "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.2.1/Zero-darwin-arm64-0.2.1.zip";
-    mockDesktopUpdateManifestForTest(
+    mockDesktopUpdateManifest(
       stableManifest(
         "0.2.2",
         {
@@ -162,7 +194,7 @@ describe("desktop update routes", () => {
   });
 
   it("returns not found when the manifest has no matching asset", async () => {
-    mockDesktopUpdateManifestForTest(
+    mockDesktopUpdateManifest(
       stableManifest("0.2.1", {
         "0.2.1": {
           version: "0.2.1",
@@ -187,7 +219,7 @@ describe("desktop update routes", () => {
   it("returns not found when no dmg release is available", async () => {
     const zipUrl =
       "https://github.com/vm0-ai/vm0/releases/download/desktop-v0.11.2/Zero-darwin-arm64-0.11.2.zip";
-    mockDesktopUpdateManifestForTest(
+    mockDesktopUpdateManifest(
       stableManifest("0.11.2", {
         "0.11.2": darwinArm64Release("0.11.2", zipUrl),
       }),

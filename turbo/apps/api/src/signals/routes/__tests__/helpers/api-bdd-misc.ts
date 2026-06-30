@@ -436,6 +436,20 @@ export function createMiscRoutesApi(context: TestContext) {
       );
     },
 
+    async upsertOrgModelProvider(
+      actor: ApiTestUser,
+      body: UpsertModelProviderRequest,
+      statuses: readonly (200 | 201 | 400 | 401 | 403 | 404 | 500)[],
+    ) {
+      return await accept(
+        setupApp({ context })(zeroModelProvidersMainContract).upsert({
+          headers: authenticate(context, actor),
+          body,
+        }),
+        statuses,
+      );
+    },
+
     async deleteVm0Provider(
       actor: ApiTestUser,
       statuses: readonly (204 | 401 | 403 | 404 | 500)[],

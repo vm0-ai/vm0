@@ -525,6 +525,30 @@ def test_youtube_builtin_allows_video_media_put_as_create():
         assert result.rel_path == "/v3/videos"
 
 
+def test_youtube_builtin_allows_video_batch_stats_as_read():
+    firewall = builtin_firewalls.BUILTIN_FIREWALLS["youtube"]
+    compiled = matching.compile_firewalls([firewall])
+    assert compiled is not None
+
+    result = matching.match_compiled_firewall_request(
+        "https://youtube.googleapis.com/youtube/v3/videos:batchGetStats",
+        "GET",
+        compiled,
+        {
+            "youtube": {
+                "allow": ["videos.read"],
+                "deny": [],
+                "unknownPolicy": "deny",
+            }
+        },
+    )
+
+    assert isinstance(result, matching.FirewallAllow)
+    assert result.permission == "videos.read"
+    assert result.rule == "GET /v3/videos:batchGetStats"
+    assert result.rel_path == "/v3/videos:batchGetStats"
+
+
 def test_figma_firewall_uses_granular_permissions():
     firewall = builtin_firewalls.BUILTIN_FIREWALLS["figma"]
     permissions = {

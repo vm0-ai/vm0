@@ -1,20 +1,15 @@
-import { randomUUID } from "node:crypto";
-
 import type { PersistedAttachment } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  TestChatThreadStateActionBody,
+  TestChatThreadStateActionResponse,
+  TestChatThreadStateFixture,
+} from "@vm0/api-contracts/contracts/test-chat-thread-state";
 import { command } from "ccstate";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatMessages } from "@vm0/db/schema/chat-message";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { eq, inArray } from "drizzle-orm";
 
-import { writeDb$ } from "../../../external/db";
+import { createAppWithRoutes } from "../../../../app-factory-core";
+import { testChatThreadStateRoutes } from "../../test-chat-thread-state";
+
+const CHAT_THREAD_STATE_ROUTE = "/api/test/chat-thread-state";
 
 export interface ZeroChatThreadFixture {
   readonly userId: string;
@@ -37,120 +32,170 @@ interface SeedChatThreadOptions {
   readonly agentAvatarUrl?: string | null;
 }
 
+type ChatThreadRunStatus =
+  | "cancelled"
+  | "completed"
+  | "failed"
+  | "pending"
+  | "queued"
+  | "running";
+
+interface SeedChatThreadRunOptions {
+  readonly userId: string;
+  readonly orgId: string;
+  readonly agentId: string;
+  readonly threadId: string;
+  readonly status: ChatThreadRunStatus;
+}
+
+function dateToWire(value: Date | null | undefined): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  return value.toISOString();
+}
+
+function fixtureFromWire(
+  fixture: TestChatThreadStateFixture,
+): ZeroChatThreadFixture {
+  return {
+    userId: fixture.user_id,
+    orgId: fixture.org_id,
+    composeId: fixture.compose_id,
+    threadId: fixture.thread_id,
+  };
+}
+
+function fixtureToWire(
+  fixture: ZeroChatThreadFixture,
+): TestChatThreadStateFixture {
+  return {
+    user_id: fixture.userId,
+    org_id: fixture.orgId,
+    compose_id: fixture.composeId,
+    thread_id: fixture.threadId,
+  };
+}
+
+function requestChatThreadState(
+  signal: AbortSignal,
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal,
+    routes: testChatThreadStateRoutes,
+  });
+  return Promise.resolve(app.request(path, init));
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+function expectOk(response: Response, operation: string): void {
+  if (response.ok) {
+    return;
+  }
+  throw new Error(`${operation} failed with ${response.status}`);
+}
+
+async function postAction(
+  signal: AbortSignal,
+  body: TestChatThreadStateActionBody,
+): Promise<TestChatThreadStateActionResponse> {
+  const response = await requestChatThreadState(
+    signal,
+    `${CHAT_THREAD_STATE_ROUTE}/action`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  expectOk(response, `chat thread state ${body.action}`);
+  return await readJson<TestChatThreadStateActionResponse>(response);
+}
+
 export const seedZeroChatThread$ = command(
   async (
-    { set },
+    _,
     options: SeedChatThreadOptions,
     signal: AbortSignal,
   ): Promise<ZeroChatThreadFixture> => {
-    const userId = options.userId ?? `user_${randomUUID()}`;
-    const orgId = options.orgId ?? `org_${randomUUID()}`;
-    const composeId = randomUUID();
-    const threadId = randomUUID();
-    const writeDb = set(writeDb$);
-
-    await writeDb.insert(agentComposes).values({
-      id: composeId,
-      userId,
-      orgId,
-      name: `compose-${composeId.slice(0, 8)}`,
+    const response = await postAction(signal, {
+      action: "seed-thread",
+      user_id: options.userId,
+      org_id: options.orgId,
+      title: options.title,
+      pinned_at: dateToWire(options.pinnedAt),
+      renamed_at: dateToWire(options.renamedAt),
+      last_read_at: dateToWire(options.lastReadAt),
+      last_read_message_id: options.lastReadMessageId,
+      draft_content: options.draftContent,
+      draft_attachments: options.draftAttachments
+        ? [...options.draftAttachments]
+        : options.draftAttachments,
+      created_at: dateToWire(options.createdAt) ?? undefined,
+      agent_avatar_url: options.agentAvatarUrl,
     });
-    signal.throwIfAborted();
-    await writeDb.insert(zeroAgents).values({
-      id: composeId,
-      orgId,
-      owner: userId,
-      name: `agent-${composeId.slice(0, 8)}`,
-      ...(options.agentAvatarUrl !== undefined
-        ? { avatarUrl: options.agentAvatarUrl }
-        : {}),
-    });
-    signal.throwIfAborted();
-    await writeDb.insert(chatThreads).values({
-      id: threadId,
-      userId,
-      agentComposeId: composeId,
-      title: options.title ?? "chat thread",
-      pinnedAt: options.pinnedAt ?? null,
-      renamedAt: options.renamedAt ?? null,
-      ...(options.lastReadAt !== undefined
-        ? { lastReadAt: options.lastReadAt }
-        : {}),
-      ...(options.lastReadMessageId !== undefined
-        ? { lastReadMessageId: options.lastReadMessageId }
-        : {}),
-      ...(options.draftContent !== undefined
-        ? { draftContent: options.draftContent }
-        : {}),
-      ...(options.draftAttachments !== undefined
-        ? {
-            draftAttachments: options.draftAttachments
-              ? [...options.draftAttachments]
-              : null,
-          }
-        : {}),
-      ...(options.createdAt !== undefined
-        ? { createdAt: options.createdAt }
-        : {}),
-    });
-    signal.throwIfAborted();
-
-    return { userId, orgId, composeId, threadId };
+    if (!response.fixture) {
+      throw new Error("seedZeroChatThread$: response missing fixture");
+    }
+    return fixtureFromWire(response.fixture);
   },
 );
 
 export const deleteZeroChatThread$ = command(
   async (
-    { set },
+    _,
     fixture: ZeroChatThreadFixture,
     signal: AbortSignal,
   ): Promise<void> => {
-    const writeDb = set(writeDb$);
-
-    // Find run ids tied to this fixture's user (created by seedRun$ from
-    // helpers/zero-usage-insight.ts). Some tests don't seed runs at all, so
-    // this may be empty.
-    const runRows = await writeDb
-      .select({ id: agentRuns.id })
-      .from(agentRuns)
-      .where(eq(agentRuns.userId, fixture.userId));
-    signal.throwIfAborted();
-    const runIds = runRows.map((row) => {
-      return row.id;
+    await postAction(signal, {
+      action: "delete-thread",
+      fixture: fixtureToWire(fixture),
     });
+  },
+);
 
-    // chat_messages first (FKs into chat_threads + agent_runs).
-    await writeDb
-      .delete(chatMessages)
-      .where(eq(chatMessages.chatThreadId, fixture.threadId));
-    signal.throwIfAborted();
-
-    if (runIds.length > 0) {
-      await writeDb.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
-      signal.throwIfAborted();
-      await writeDb.delete(agentRuns).where(inArray(agentRuns.id, runIds));
-      signal.throwIfAborted();
+export const seedZeroChatThreadRun$ = command(
+  async (
+    _,
+    options: SeedChatThreadRunOptions,
+    signal: AbortSignal,
+  ): Promise<string> => {
+    const response = await postAction(signal, {
+      action: "seed-thread-run",
+      user_id: options.userId,
+      org_id: options.orgId,
+      agent_id: options.agentId,
+      thread_id: options.threadId,
+      status: options.status,
+    });
+    if (!response.run_id) {
+      throw new Error("seedZeroChatThreadRun$: response missing run id");
     }
+    return response.run_id;
+  },
+);
 
-    await writeDb
-      .delete(agentSessions)
-      .where(eq(agentSessions.userId, fixture.userId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(chatThreads)
-      .where(eq(chatThreads.id, fixture.threadId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.composeId, fixture.composeId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(zeroAgents)
-      .where(eq(zeroAgents.id, fixture.composeId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(agentComposes)
-      .where(eq(agentComposes.id, fixture.composeId));
-    signal.throwIfAborted();
+export const updateZeroChatThreadRunStatus$ = command(
+  async (
+    _,
+    args: {
+      readonly runId: string;
+      readonly status: ChatThreadRunStatus;
+    },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "update-thread-run-status",
+      run_id: args.runId,
+      status: args.status,
+    });
   },
 );

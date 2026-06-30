@@ -4,12 +4,12 @@ import {
   zeroInsightsContract,
   zeroInsightsRangeContract,
 } from "@vm0/api-contracts/contracts/zero-insights";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { zeroConnectorScopeDiffContract } from "@vm0/api-contracts/contracts/zero-connectors";
 import { createStore } from "ccstate";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { nowDate } from "../../../lib/time";
-import { writeDb$ } from "../../external/db";
+import { signSandboxJwtForTests } from "../../auth/tokens";
 import {
   deleteInsightsForFixture$,
   seedInsightsDaily$,
@@ -35,6 +35,14 @@ function apiClient() {
 
 function apiRangeClient() {
   return setupApp({ context })(zeroInsightsRangeContract);
+}
+
+function connectorScopeDiffClient() {
+  return setupApp({ context })(zeroConnectorScopeDiffContract);
+}
+
+function currentSecond(): number {
+  return Math.floor(nowDate().getTime() / 1000);
 }
 
 function daysAgo(n: number): string {
@@ -74,17 +82,36 @@ function defaultInsightData(
   };
 }
 
-async function seedCachedOrgMember(
+async function cacheOrgMemberViaConnectorReadAuth(
   orgId: string,
   userId: string,
 ): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(orgMembersCache).values({
-    orgId,
-    userId,
-    role: "member",
-    cachedAt: nowDate(),
+  context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+    data: [
+      {
+        organization: { id: orgId },
+        role: "org:member",
+      },
+    ],
   });
+  const seconds = currentSecond();
+  const token = signSandboxJwtForTests({
+    scope: "zero",
+    userId,
+    orgId,
+    runId: `run_${randomUUID()}`,
+    capabilities: ["connector:read"],
+    iat: seconds,
+    exp: seconds + 60,
+  });
+
+  await accept(
+    connectorScopeDiffClient().getScopeDiff({
+      params: { type: "github" },
+      headers: { authorization: `Bearer ${token}` },
+    }),
+    [404],
+  );
 }
 
 function mockCurrentOrgMembers(
@@ -243,7 +270,7 @@ describe("GET /api/zero/insights", () => {
     const removedUserId = `user_${randomUUID()}`;
     const cachedOtherUserId = `user_${randomUUID()}`;
     const yesterday = daysAgo(1);
-    await seedCachedOrgMember(fixture.orgId, cachedOtherUserId);
+    await cacheOrgMemberViaConnectorReadAuth(fixture.orgId, cachedOtherUserId);
     mockCurrentOrgMembers(fixture.orgId, [fixture.userId, cachedOtherUserId]);
     await store.set(
       seedInsightsDaily$,

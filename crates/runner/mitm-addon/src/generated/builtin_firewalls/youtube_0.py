@@ -107,11 +107,10 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create and update YouTube comment threads.",
+          "description": "Create YouTube comment threads.",
           "name": "comment-threads.write",
           "rules": [
-            "POST /v3/commentThreads",
-            "PUT /v3/commentThreads"
+            "POST /v3/commentThreads"
           ]
         },
         {
@@ -473,7 +472,8 @@ JSON_PART = r"""{
           "description": "Read YouTube videos.",
           "name": "videos.read",
           "rules": [
-            "GET /v3/videos"
+            "GET /v3/videos",
+            "GET /v3/videos:batchGetStats"
           ]
         },
         {

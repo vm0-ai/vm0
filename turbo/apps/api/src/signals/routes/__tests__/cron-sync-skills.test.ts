@@ -14,17 +14,9 @@ import {
   DEFAULT_SKILLS_OWNER,
   DEFAULT_SKILLS_REPO,
 } from "@vm0/core/github-url";
-import {
-  getSkillStorageName,
-  SYSTEM_ORG_ID,
-  VOLUME_ORG_USER_ID,
-} from "@vm0/core/storage-names";
+import { getSkillStorageName, SYSTEM_ORG_ID } from "@vm0/core/storage-names";
 import { getSeedSkillNames, SEED_SKILLS } from "@vm0/core/zero-seed-skills";
 import { cronSyncSkillsContract } from "@vm0/api-contracts/contracts/cron";
-import { skills } from "@vm0/db/schema/skill";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
-import { createStore, command } from "ccstate";
-import { eq, inArray, like, sql } from "drizzle-orm";
 import { http, HttpResponse } from "msw";
 import { create as createTar } from "tar";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
@@ -32,10 +24,15 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
 import { server } from "../../../mocks/server";
-import { writeDb$ } from "../../external/db";
+import {
+  cleanupOfficialTestSkillsState,
+  findSkillByUrlState,
+  findSystemStorageByNameState,
+  seedCurrentSkillVersionsState,
+  setAllSkillsCommitShaState,
+} from "./helpers/cron-sync-skills-state";
 
 const context = testContext();
-const store = createStore();
 const CRON_SECRET = "test-cron-secret";
 const BUCKET = "test-user-storages";
 const TEST_SKILL_PREFIX = "api-test-skill";
@@ -103,193 +100,53 @@ const EXTRA_SKILLS = {
   },
 } satisfies Record<string, MockSkillEntry>;
 
-const cleanupOfficialTestSkills$ = command(
-  async ({ set }, _input: void, signal: AbortSignal): Promise<void> => {
-    const db = set(writeDb$);
-    const urlPrefix = `https://github.com/vm0-ai/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${TEST_SKILL_PREFIX}-`;
-    const skillRows = await db
-      .select({ id: skills.id, storageId: skills.storageId })
-      .from(skills)
-      .where(like(skills.url, `${urlPrefix}%`));
-    signal.throwIfAborted();
+function officialTestSkillUrlPrefix(): string {
+  return `https://github.com/vm0-ai/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${TEST_SKILL_PREFIX}-`;
+}
 
-    if (skillRows.length === 0) {
-      return;
-    }
+async function cleanupOfficialTestSkills(): Promise<void> {
+  await cleanupOfficialTestSkillsState(context, officialTestSkillUrlPrefix());
+}
 
-    const skillIds = skillRows.map((row) => {
-      return row.id;
-    });
-    const storageIds = skillRows
-      .map((row) => {
-        return row.storageId;
-      })
-      .filter((id): id is string => {
-        return id !== null;
-      });
+async function setAllSkillsCommitSha(commitSha: string): Promise<void> {
+  const skillName = `${TEST_SKILL_PREFIX}-existing`;
+  await setAllSkillsCommitShaState(context, {
+    skillName,
+    url: testSkillUrl(skillName),
+    fullPath: `${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${skillName}`,
+    commitSha,
+    frontmatter: {
+      name: skillName,
+      description: `${skillName} skill`,
+    },
+  });
+}
 
-    await db.delete(skills).where(inArray(skills.id, skillIds));
-    signal.throwIfAborted();
-    if (storageIds.length > 0) {
-      await db.delete(storages).where(inArray(storages.id, storageIds));
-      signal.throwIfAborted();
-    }
-  },
-);
-
-const setAllSkillsCommitSha$ = command(
-  async ({ set }, commitSha: string, signal: AbortSignal): Promise<void> => {
-    const db = set(writeDb$);
-    const skillName = `${TEST_SKILL_PREFIX}-existing`;
-    await db
-      .insert(skills)
-      .values({
-        url: testSkillUrl(skillName),
-        name: skillName,
-        fullPath: `${DEFAULT_SKILLS_OWNER}/${DEFAULT_SKILLS_REPO}/tree/${DEFAULT_SKILLS_BRANCH}/${skillName}`,
-        commitSha,
-        frontmatter: {
-          name: skillName,
-          description: `${skillName} skill`,
-        },
-      })
-      .onConflictDoNothing();
-    signal.throwIfAborted();
-
-    await db.update(skills).set({ commitSha });
-    signal.throwIfAborted();
-  },
-);
-
-const seedCurrentSkillVersions$ = command(
-  async (
-    { set },
-    entries: readonly MockSkillEntry[],
-    signal: AbortSignal,
-  ): Promise<void> => {
-    if (entries.length === 0) {
-      return;
-    }
-
-    const db = set(writeDb$);
-    const versions = entries.map((entry) => {
-      return buildMockSkillVersion(entry);
-    });
-    const storageRows = await db
-      .insert(storages)
-      .values(
-        versions.map((version) => {
-          return {
-            orgId: SYSTEM_ORG_ID,
-            userId: VOLUME_ORG_USER_ID,
-            name: version.storageName,
-            type: "volume",
-            s3Prefix: version.s3Prefix,
-            size: version.size,
-            fileCount: version.fileCount,
-          };
-        }),
-      )
-      .onConflictDoUpdate({
-        target: [storages.orgId, storages.userId, storages.name, storages.type],
-        set: {
-          s3Prefix: sql`excluded.s3_prefix`,
-          size: sql`excluded.size`,
-          fileCount: sql`excluded.file_count`,
-        },
-      })
-      .returning({ id: storages.id, name: storages.name });
-    signal.throwIfAborted();
-
-    const storageIdsByName = new Map(
-      storageRows.map((row) => {
-        return [row.name, row.id];
-      }),
-    );
-
-    await db
-      .insert(storageVersions)
-      .values(
-        versions.map((version) => {
-          const storageId = storageIdsByName.get(version.storageName);
-          if (!storageId) {
-            throw new Error(`Missing storage for ${version.name}`);
-          }
-          return {
-            id: version.versionHash,
-            storageId,
-            s3Key: version.s3Key,
-            size: version.size,
-            fileCount: version.fileCount,
-            message: "Preseeded by cron sync skills route test",
-            createdBy: "system",
-          };
-        }),
-      )
-      .onConflictDoUpdate({
-        target: storageVersions.id,
-        set: {
-          storageId: sql`excluded.storage_id`,
-          s3Key: sql`excluded.s3_key`,
-          size: sql`excluded.size`,
-          fileCount: sql`excluded.file_count`,
-        },
-      });
-    signal.throwIfAborted();
-
-    await Promise.all(
-      versions.map((version) => {
-        const storageId = storageIdsByName.get(version.storageName);
-        if (!storageId) {
-          throw new Error(`Missing storage for ${version.name}`);
-        }
-        return db
-          .update(storages)
-          .set({ headVersionId: version.versionHash })
-          .where(eq(storages.id, storageId));
-      }),
-    );
-    signal.throwIfAborted();
-
-    await db
-      .insert(skills)
-      .values(
-        versions.map((version) => {
-          const storageId = storageIdsByName.get(version.storageName);
-          if (!storageId) {
-            throw new Error(`Missing storage for ${version.name}`);
-          }
-          return {
-            url: version.url,
-            name: version.name,
-            fullPath: version.fullPath,
-            storageId,
-            versionHash: version.versionHash,
-            commitSha: STALE_PRESEEDED_COMMIT_SHA,
-            frontmatter: version.frontmatter,
-            s3Key: version.s3Key,
-            size: version.size,
-            fileCount: version.fileCount,
-          };
-        }),
-      )
-      .onConflictDoUpdate({
-        target: skills.url,
-        set: {
-          name: sql`excluded.name`,
-          fullPath: sql`excluded.full_path`,
-          storageId: sql`excluded.storage_id`,
-          versionHash: sql`excluded.version_hash`,
-          commitSha: sql`excluded.commit_sha`,
-          frontmatter: sql`excluded.frontmatter`,
-          s3Key: sql`excluded.s3_key`,
-          size: sql`excluded.size`,
-          fileCount: sql`excluded.file_count`,
-        },
-      });
-    signal.throwIfAborted();
-  },
-);
+async function seedCurrentSkillVersions(
+  entries: readonly MockSkillEntry[],
+): Promise<void> {
+  if (entries.length === 0) {
+    return;
+  }
+  await seedCurrentSkillVersionsState(context, {
+    staleCommitSha: STALE_PRESEEDED_COMMIT_SHA,
+    versions: entries.map((entry) => {
+      const version = buildMockSkillVersion(entry);
+      return {
+        name: version.name,
+        url: version.url,
+        full_path: version.fullPath,
+        storage_name: version.storageName,
+        version_hash: version.versionHash,
+        s3_prefix: version.s3Prefix,
+        s3_key: version.s3Key,
+        size: version.size,
+        file_count: version.fileCount,
+        frontmatter: version.frontmatter,
+      };
+    }),
+  });
+}
 
 function apiClient() {
   return setupApp({ context })(cronSyncSkillsContract);
@@ -414,11 +271,7 @@ function computeMockSkillVersionHash(skill: MockSkillEntry): string {
 }
 
 async function seedCurrentSeedSkillVersions(): Promise<void> {
-  await store.set(
-    seedCurrentSkillVersions$,
-    seedSkillEntries(),
-    context.signal,
-  );
+  await seedCurrentSkillVersions(seedSkillEntries());
 }
 
 function setupGitRefsHandler(commitSha: string): void {
@@ -498,35 +351,14 @@ async function findSkillByUrl(url: string): Promise<{
   readonly fileCount: number;
   readonly frontmatter: unknown;
 } | null> {
-  const db = store.set(writeDb$);
-  const [row] = await db
-    .select({
-      fullPath: skills.fullPath,
-      commitSha: skills.commitSha,
-      versionHash: skills.versionHash,
-      fileCount: skills.fileCount,
-      frontmatter: skills.frontmatter,
-    })
-    .from(skills)
-    .where(eq(skills.url, url))
-    .limit(1);
-  return row ?? null;
+  return await findSkillByUrlState(context, url);
 }
 
 async function findSystemStorageByName(name: string): Promise<{
   readonly type: string;
   readonly headVersionId: string | null;
 } | null> {
-  const db = store.set(writeDb$);
-  const [row] = await db
-    .select({
-      type: storages.type,
-      headVersionId: storages.headVersionId,
-    })
-    .from(storages)
-    .where(eq(storages.name, name))
-    .limit(1);
-  return row ?? null;
+  return await findSystemStorageByNameState(context, name);
 }
 
 describe("GET /api/cron/sync-skills", () => {
@@ -538,7 +370,7 @@ describe("GET /api/cron/sync-skills", () => {
   });
 
   afterEach(async () => {
-    await store.set(cleanupOfficialTestSkills$, undefined, context.signal);
+    await cleanupOfficialTestSkills();
   });
 
   it("rejects requests with an invalid cron secret", async () => {
@@ -562,7 +394,7 @@ describe("GET /api/cron/sync-skills", () => {
 
   it("skips sync when the stored commit SHA is unchanged", async () => {
     const commitSha = newCommitSha();
-    await store.set(setAllSkillsCommitSha$, commitSha, context.signal);
+    await setAllSkillsCommitSha(commitSha);
     setupGitRefsHandler(commitSha);
 
     const response = await accept(

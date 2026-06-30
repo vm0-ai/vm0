@@ -1,13 +1,14 @@
-import { randomUUID } from "node:crypto";
-
 import { command } from "ccstate";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { and, eq } from "drizzle-orm";
+import type {
+  TestOnboardingStatusStateActionBody,
+  TestOnboardingStatusStateActionResponse,
+  TestOnboardingStatusStateFixture,
+} from "@vm0/api-contracts/contracts/test-onboarding-status-state";
 
-import { writeDb$ } from "../../../external/db";
+import { createAppWithRoutes } from "../../../../app-factory-core";
+import { testOnboardingStatusStateRoutes } from "../../test-onboarding-status-state";
+
+const ONBOARDING_STATUS_STATE_ROUTE = "/api/test/onboarding-status-state";
 
 interface DefaultAgentValues {
   readonly displayName?: string | null;
@@ -27,79 +28,111 @@ export interface OnboardingStatusFixture {
   readonly composeId: string | null;
 }
 
+function requestOnboardingStatusState(
+  signal: AbortSignal,
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal,
+    routes: testOnboardingStatusStateRoutes,
+  });
+  return Promise.resolve(app.request(path, init));
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+function expectOk(response: Response, operation: string): void {
+  if (response.ok) {
+    return;
+  }
+  throw new Error(`${operation} failed with ${response.status}`);
+}
+
+async function postAction(
+  signal: AbortSignal,
+  body: TestOnboardingStatusStateActionBody,
+): Promise<TestOnboardingStatusStateActionResponse> {
+  const response = await requestOnboardingStatusState(
+    signal,
+    `${ONBOARDING_STATUS_STATE_ROUTE}/action`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  signal.throwIfAborted();
+  expectOk(response, `onboarding status state action ${body.action}`);
+  signal.throwIfAborted();
+  const result =
+    await readJson<TestOnboardingStatusStateActionResponse>(response);
+  signal.throwIfAborted();
+  return result;
+}
+
+function fixtureFromWire(
+  fixture: TestOnboardingStatusStateFixture,
+): OnboardingStatusFixture {
+  return {
+    orgId: fixture.org_id,
+    userId: fixture.user_id,
+    composeId: fixture.compose_id,
+  };
+}
+
+function fixtureToWire(
+  fixture: OnboardingStatusFixture,
+): TestOnboardingStatusStateFixture {
+  return {
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+    compose_id: fixture.composeId,
+  };
+}
+
+function seedValuesToWire(
+  values: OnboardingSeedValues,
+): TestOnboardingStatusStateActionBody {
+  return {
+    action: "seed-org",
+    default_agent: values.defaultAgent
+      ? {
+          display_name: values.defaultAgent.displayName,
+          description: values.defaultAgent.description,
+          sound: values.defaultAgent.sound,
+        }
+      : undefined,
+    onboarding_payment_pending: values.onboardingPaymentPending,
+    tier: values.tier,
+  };
+}
+
 export const seedOnboardingStatusOrg$ = command(
   async (
-    { set },
+    _,
     values: OnboardingSeedValues,
     signal: AbortSignal,
   ): Promise<OnboardingStatusFixture> => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    const writeDb = set(writeDb$);
-    const composeId = values.defaultAgent ? randomUUID() : null;
-
-    if (composeId) {
-      await writeDb.insert(agentComposes).values({
-        id: composeId,
-        userId,
-        orgId,
-        name: `agent-${composeId.slice(0, 8)}`,
-      });
-      signal.throwIfAborted();
-      await writeDb.insert(zeroAgents).values({
-        id: composeId,
-        orgId,
-        owner: userId,
-        name: `agent-${composeId.slice(0, 8)}`,
-        displayName: values.defaultAgent?.displayName ?? null,
-        description: values.defaultAgent?.description ?? null,
-        sound: values.defaultAgent?.sound ?? null,
-      });
-      signal.throwIfAborted();
+    const response = await postAction(signal, seedValuesToWire(values));
+    if (!response.fixture) {
+      throw new Error("seedOnboardingStatusOrg$: response missing fixture");
     }
-
-    await writeDb.insert(orgMetadata).values({
-      orgId,
-      defaultAgentId: composeId,
-      onboardingPaymentPending: values.onboardingPaymentPending ?? false,
-      ...(values.tier === undefined ? {} : { tier: values.tier }),
-    });
-    signal.throwIfAborted();
-
-    return { orgId, userId, composeId };
+    return fixtureFromWire(response.fixture);
   },
 );
 
 export const deleteOnboardingStatusOrg$ = command(
   async (
-    { set },
+    _,
     fixture: OnboardingStatusFixture,
     signal: AbortSignal,
   ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb
-      .delete(orgMembersMetadata)
-      .where(
-        and(
-          eq(orgMembersMetadata.orgId, fixture.orgId),
-          eq(orgMembersMetadata.userId, fixture.userId),
-        ),
-      );
-    signal.throwIfAborted();
-    await writeDb
-      .delete(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId));
-    signal.throwIfAborted();
-
-    if (fixture.composeId) {
-      await writeDb
-        .delete(zeroAgents)
-        .where(eq(zeroAgents.id, fixture.composeId));
-      signal.throwIfAborted();
-      await writeDb
-        .delete(agentComposes)
-        .where(eq(agentComposes.id, fixture.composeId));
-      signal.throwIfAborted();
-    }
+    await postAction(signal, {
+      action: "delete-org",
+      fixture: fixtureToWire(fixture),
+    });
   },
 );

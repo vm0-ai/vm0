@@ -264,15 +264,6 @@ const pubSubOidcVerifierOverride = testOverride<PubSubOidcVerifier | undefined>(
   },
 );
 
-export function setGmailPubSubOidcVerifierForTests(
-  verifier: PubSubOidcVerifier,
-): () => void {
-  pubSubOidcVerifierOverride.set(verifier);
-  return () => {
-    pubSubOidcVerifierOverride.clear();
-  };
-}
-
 function tokenNeedsRefresh(tokenExpiresAt: Date | null, currentTime: Date) {
   if (tokenExpiresAt === null) {
     return true;
@@ -1104,7 +1095,7 @@ type GmailRunStarter = (args: {
   readonly message: GmailMessageContext;
 }) => Promise<"ok" | "error">;
 
-export interface GmailWorkflowRunStartTestInput {
+interface GmailWorkflowRunStartTestInput {
   readonly triggerId: string;
   readonly workflowName: string;
   readonly emailAddress: string;
@@ -1123,15 +1114,6 @@ const gmailRunStarterOverride = testOverride<
 >(() => {
   return undefined;
 });
-
-export function setGmailWorkflowRunStarterForTests(
-  starter: GmailRunStarterTestOverride,
-): () => void {
-  gmailRunStarterOverride.set(starter);
-  return () => {
-    gmailRunStarterOverride.clear();
-  };
-}
 
 type GmailDispatchStateResult =
   | {

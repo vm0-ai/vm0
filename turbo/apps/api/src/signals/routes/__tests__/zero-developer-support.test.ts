@@ -12,11 +12,7 @@ import { server } from "../../../mocks/server";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { createFixtureTracker } from "./helpers/zero-route-test";
-import {
-  deleteOrgMembership$,
-  type OrgMembershipFixture,
-  seedOrgMembership$,
-} from "./helpers/zero-org-membership";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   deleteUsageInsightFixture$,
   seedCompose$,
@@ -30,12 +26,6 @@ const store = createStore();
 const trackUsage = createFixtureTracker<UsageInsightFixture>((fixture) => {
   return store.set(deleteUsageInsightFixture$, fixture, context.signal);
 });
-const trackMembership = createFixtureTracker<OrgMembershipFixture>(
-  (fixture) => {
-    return store.set(deleteOrgMembership$, fixture, context.signal);
-  },
-);
-
 const PLAIN_API_URL = "https://core-api.uk.plain.com/graphql/v1";
 
 interface DeveloperSupportFixture extends UsageInsightFixture {
@@ -118,12 +108,10 @@ async function seedSupportRun(
   const fixture = await trackUsage(
     store.set(seedUsageInsightFixture$, undefined, context.signal),
   );
-  await trackMembership(
-    store.set(
-      seedOrgMembership$,
-      { orgId: fixture.orgId, userId: fixture.userId },
-      context.signal,
-    ),
+  await store.set(
+    seedOrgMembership$,
+    { orgId: fixture.orgId, userId: fixture.userId },
+    context.signal,
   );
   const { composeId } = await store.set(
     seedCompose$,

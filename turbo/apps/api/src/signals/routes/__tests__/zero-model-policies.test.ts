@@ -1,6 +1,5 @@
 import { randomUUID } from "node:crypto";
 
-import { createStore, command } from "ccstate";
 import {
   DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   DEFAULT_ORG_MODEL_POLICY_MODELS,
@@ -9,124 +8,29 @@ import {
   type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
-import { modelProviders } from "@vm0/db/schema/model-provider";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { and, eq } from "drizzle-orm";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
-import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
+import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import {
-  createFixtureTracker,
-  createZeroRouteMocks,
-} from "./helpers/zero-route-test";
+  createAuthOrgAgentsBddApi,
+  type ApiTestUser,
+} from "./helpers/api-bdd-auth-org";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 
-interface ModelPolicyFixture {
-  readonly orgId: string;
-  readonly userId: string;
-}
+type ModelPolicyFixture = ApiTestUser & { readonly orgId: string };
 
-const ORG_SENTINEL_USER_ID = "__org__";
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
+const authOrgApi = createAuthOrgAgentsBddApi(context);
+const runsApi = createRunsAutomationsApi(context);
 const MODEL_POLICIES_PATH = "/api/zero/model-policies";
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
 }
-
-const seedModelPolicyFixture$ = command(
-  async (
-    { set },
-    switches: Record<string, boolean>,
-    signal: AbortSignal,
-  ): Promise<ModelPolicyFixture> => {
-    const orgId = `org_${randomUUID()}`;
-    const userId = `user_${randomUUID()}`;
-    const writeDb = set(writeDb$);
-
-    await writeDb.insert(userFeatureSwitches).values({
-      orgId,
-      userId,
-      switches,
-    });
-    signal.throwIfAborted();
-    await writeDb.insert(orgMembersCache).values({
-      orgId,
-      userId,
-      role: "admin",
-    });
-    signal.throwIfAborted();
-
-    return { orgId, userId };
-  },
-);
-
-const deleteModelPolicyFixture$ = command(
-  async (
-    { set },
-    fixture: ModelPolicyFixture,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-
-    await writeDb
-      .delete(orgModelPolicies)
-      .where(eq(orgModelPolicies.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(modelProviders)
-      .where(eq(modelProviders.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(orgMembersCache)
-      .where(eq(orgMembersCache.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(userFeatureSwitches)
-      .where(
-        and(
-          eq(userFeatureSwitches.orgId, fixture.orgId),
-          eq(userFeatureSwitches.userId, fixture.userId),
-        ),
-      );
-    signal.throwIfAborted();
-  },
-);
-
-const insertOrgProvider$ = command(
-  async (
-    { set },
-    params: { readonly orgId: string; readonly type: ModelProviderType },
-    signal: AbortSignal,
-  ): Promise<string> => {
-    const writeDb = set(writeDb$);
-    const [provider] = await writeDb
-      .insert(modelProviders)
-      .values({
-        orgId: params.orgId,
-        userId: ORG_SENTINEL_USER_ID,
-        type: params.type,
-      })
-      .returning({ id: modelProviders.id });
-    signal.throwIfAborted();
-
-    if (!provider) {
-      throw new Error("Expected inserted model provider");
-    }
-    return provider.id;
-  },
-);
 
 function toUpdate(data: OrgModelPoliciesResponse): UpdateOrgModelPolicy[] {
   return data.policies.map((policy) => {
@@ -157,6 +61,17 @@ function apiClient() {
   return setupApp({ context })(zeroModelPoliciesMainContract);
 }
 
+function authHeaders() {
+  return { authorization: "Bearer clerk-session" };
+}
+
+function useSession(
+  fixture: ModelPolicyFixture,
+  orgRole: "org:admin" | "org:member" = "org:admin",
+): void {
+  mocks.clerk.session(fixture.userId, fixture.orgId, orgRole);
+}
+
 async function putRawModelPolicies(body: string): Promise<{
   readonly status: number;
   readonly body: unknown;
@@ -177,15 +92,47 @@ async function putRawModelPolicies(body: string): Promise<{
   };
 }
 
-function seedFixture(
-  switches: Record<string, boolean>,
-): Promise<ModelPolicyFixture> {
-  return track(store.set(seedModelPolicyFixture$, switches, context.signal));
+function seedFixture(): ModelPolicyFixture {
+  const actor = authOrgApi.user();
+  if (!actor.orgId) {
+    throw new Error("Expected model policy fixture to have an organization");
+  }
+  return { ...actor, orgId: actor.orgId };
 }
 
-const track = createFixtureTracker<ModelPolicyFixture>((fixture) => {
-  return store.set(deleteModelPolicyFixture$, fixture, context.signal);
-});
+async function createOrgProvider(
+  fixture: ModelPolicyFixture,
+  type: ModelProviderType,
+): Promise<string> {
+  const { providerId } = await runsApi.createOrgModelProvider(fixture, {
+    type,
+    secret: "test-model-provider-secret",
+  });
+  return providerId;
+}
+
+async function makeLimitedFreeWorkspace(
+  fixture: ModelPolicyFixture,
+): Promise<void> {
+  authOrgApi.acceptAgentStorageWrites();
+  const setup = await authOrgApi.setupOnboarding(fixture, {
+    displayName: "BDD Model Policy Agent",
+  });
+  if (setup.status !== 200 && setup.status !== 409) {
+    throw new Error(
+      `Expected onboarding setup to succeed, got ${setup.status}`,
+    );
+  }
+  const completed = await authOrgApi.completeLimitedFreeOnboarding(fixture, {
+    credits: 1000,
+    expiresAt: null,
+  });
+  if (completed.status !== 200) {
+    throw new Error(
+      `Expected limited-free onboarding to succeed, got ${completed.status}`,
+    );
+  }
+}
 
 describe("GET/PUT /api/zero/model-policies", () => {
   it("returns 401 for unauthenticated reads and writes", async () => {
@@ -208,15 +155,15 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("returns 401 for sessions without an active organization", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
     mocks.clerk.session(fixture.userId, null);
     const client = apiClient();
 
     const listResponse = await client.list({
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
     });
     const updateResponse = await client.update({
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       body: { policies: [] },
     });
 
@@ -231,12 +178,12 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("lists model policy controls without a feature switch", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = await seedFixture();
+    useSession(fixture);
 
     const response = await accept(
       apiClient().list({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [200],
     );
@@ -247,12 +194,12 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("lists seeded curated models and the explicit default when enabled", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = await seedFixture();
+    useSession(fixture);
 
     const response = await accept(
       apiClient().list({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [200],
     );
@@ -279,18 +226,13 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("lists restricted policies for limited-free-1 workspace UI gating", async () => {
-    const fixture = await seedFixture({});
-    const writeDb = store.set(writeDb$);
-    await writeDb.insert(orgMetadata).values({
-      orgId: fixture.orgId,
-      tier: "limited-free-1",
-      credits: 20_000,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = await seedFixture();
+    await makeLimitedFreeWorkspace(fixture);
+    useSession(fixture);
 
     const response = await accept(
       apiClient().list({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [200],
     );
@@ -306,12 +248,12 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("allows members to read policy controls", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const fixture = await seedFixture();
+    useSession(fixture, "org:member");
 
     const response = await accept(
       apiClient().list({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
       }),
       [200],
     );
@@ -327,7 +269,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("allows zero tokens to read policy controls without a model-provider capability", async () => {
-    const fixture = await seedFixture({});
+    const fixture = await seedFixture();
+    authOrgApi.mockClerkOrg(fixture);
     const seconds = currentSecond();
     const token = signSandboxJwtForTests({
       scope: "zero",
@@ -352,11 +295,11 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("requires admins for policy writes", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId, "org:member");
+    const fixture = await seedFixture();
+    useSession(fixture, "org:member");
 
     const response = await apiClient().update({
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       body: { policies: [] },
     });
 
@@ -370,11 +313,11 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("updates the explicit workspace default", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = await seedFixture();
+    useSession(fixture);
     const client = apiClient();
     const listResponse = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      client.list({ headers: authHeaders() }),
       [200],
     );
     const updates = toUpdate(listResponse.body);
@@ -388,7 +331,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
 
     const response = await accept(
       client.update({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { policies: updates },
       }),
       [200],
@@ -408,11 +351,11 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("removes supported models omitted from an update", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = await seedFixture();
+    useSession(fixture);
     const client = apiClient();
     const listResponse = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      client.list({ headers: authHeaders() }),
       [200],
     );
     const removedModel = DEFAULT_ORG_MODEL_POLICY_MODELS.find((model) => {
@@ -427,13 +370,13 @@ describe("GET/PUT /api/zero/model-policies", () => {
 
     const updateResponse = await accept(
       client.update({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { policies: updates },
       }),
       [200],
     );
     const secondListResponse = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      client.list({ headers: authHeaders() }),
       [200],
     );
 
@@ -450,11 +393,11 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("allows adding a supported model that was not seeded by default", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = await seedFixture();
+    useSession(fixture);
     const client = apiClient();
     const listResponse = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      client.list({ headers: authHeaders() }),
       [200],
     );
     const updates = [
@@ -464,7 +407,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
 
     const response = await accept(
       client.update({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { policies: updates },
       }),
       [200],
@@ -482,17 +425,12 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects restricted policy writes for limited-free-1 workspaces", async () => {
-    const fixture = await seedFixture({});
-    const writeDb = store.set(writeDb$);
-    await writeDb.insert(orgMetadata).values({
-      orgId: fixture.orgId,
-      tier: "limited-free-1",
-      credits: 20_000,
-    });
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = await seedFixture();
+    await makeLimitedFreeWorkspace(fixture);
+    useSession(fixture);
 
     const response = await apiClient().update({
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       body: {
         policies: [
           makeVm0Policy("kimi-k2.7-code", true),
@@ -500,10 +438,12 @@ describe("GET/PUT /api/zero/model-policies", () => {
         ],
       },
     });
-    const rows = await writeDb
-      .select({ model: orgModelPolicies.model })
-      .from(orgModelPolicies)
-      .where(eq(orgModelPolicies.orgId, fixture.orgId));
+    const afterRejected = await accept(
+      apiClient().list({
+        headers: authHeaders(),
+      }),
+      [200],
+    );
 
     expect(response.status).toBe(402);
     expect(response.body).toStrictEqual({
@@ -513,25 +453,31 @@ describe("GET/PUT /api/zero/model-policies", () => {
         code: "INSUFFICIENT_CREDITS",
       },
     });
-    expect(rows).toStrictEqual([]);
+    expect(afterRejected.body.workspaceDefaultModel).toBe(
+      DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+    );
+    expect(
+      afterRejected.body.policies
+        .filter((policy) => {
+          return policy.isDefault;
+        })
+        .map((policy) => {
+          return policy.model;
+        }),
+    ).toStrictEqual([DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL]);
   });
 
   it("allows compatible GLM 5.2 org provider routes", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const openRouterProviderId = await store.set(
-      insertOrgProvider$,
-      { orgId: fixture.orgId, type: "openrouter-api-key" },
-      context.signal,
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const openRouterProviderId = await createOrgProvider(
+      fixture,
+      "openrouter-api-key",
     );
-    const zaiProviderId = await store.set(
-      insertOrgProvider$,
-      { orgId: fixture.orgId, type: "zai-api-key" },
-      context.signal,
-    );
+    const zaiProviderId = await createOrgProvider(fixture, "zai-api-key");
     const client = apiClient();
     const listResponse = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      client.list({ headers: authHeaders() }),
       [200],
     );
     const updates = toUpdate(listResponse.body).map((policy) => {
@@ -548,7 +494,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
 
     const openRouterResponse = await accept(
       client.update({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { policies: updates },
       }),
       [200],
@@ -576,7 +522,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
     const zaiResponse = await accept(
       client.update({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { policies: zaiUpdates },
       }),
       [200],
@@ -594,11 +540,11 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("allows compatible member OAuth provider routes", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = await seedFixture();
+    useSession(fixture);
     const client = apiClient();
     const listResponse = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      client.list({ headers: authHeaders() }),
       [200],
     );
     const updates = toUpdate(listResponse.body).map((policy) => {
@@ -615,7 +561,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
 
     const response = await accept(
       client.update({
-        headers: { authorization: "Bearer clerk-session" },
+        headers: authHeaders(),
         body: { policies: updates },
       }),
       [200],
@@ -633,16 +579,15 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects workspace-scoped OAuth provider routes", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const providerId = await store.set(
-      insertOrgProvider$,
-      { orgId: fixture.orgId, type: "claude-code-oauth-token" },
-      context.signal,
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const providerId = await createOrgProvider(
+      fixture,
+      "claude-code-oauth-token",
     );
     const client = apiClient();
     const listResponse = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      client.list({ headers: authHeaders() }),
       [200],
     );
     const updates = toUpdate(listResponse.body).map((policy) => {
@@ -658,7 +603,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
 
     const response = await client.update({
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       body: { policies: updates },
     });
 
@@ -669,16 +614,12 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects incompatible provider routes", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
-    const providerId = await store.set(
-      insertOrgProvider$,
-      { orgId: fixture.orgId, type: "anthropic-api-key" },
-      context.signal,
-    );
+    const fixture = await seedFixture();
+    useSession(fixture);
+    const providerId = await createOrgProvider(fixture, "anthropic-api-key");
     const client = apiClient();
     const listResponse = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      client.list({ headers: authHeaders() }),
       [200],
     );
     const updates = toUpdate(listResponse.body).map((policy) => {
@@ -694,7 +635,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
 
     const response = await client.update({
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       body: { policies: updates },
     });
 
@@ -705,11 +646,11 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects org provider routes without a provider id", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = await seedFixture();
+    useSession(fixture);
     const client = apiClient();
     const listResponse = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      client.list({ headers: authHeaders() }),
       [200],
     );
     const updates = toUpdate(listResponse.body).map((policy) => {
@@ -725,7 +666,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
 
     const response = await client.update({
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       body: { policies: updates },
     });
 
@@ -739,18 +680,18 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects duplicate model updates", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = await seedFixture();
+    useSession(fixture);
     const client = apiClient();
     const listResponse = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      client.list({ headers: authHeaders() }),
       [200],
     );
     const updates = toUpdate(listResponse.body);
     const duplicatedPolicy = updates[0]!;
 
     const response = await client.update({
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       body: {
         policies: [
           duplicatedPolicy,
@@ -770,11 +711,11 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects updates without exactly one default model", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = await seedFixture();
+    useSession(fixture);
     const client = apiClient();
     const listResponse = await accept(
-      client.list({ headers: { authorization: "Bearer clerk-session" } }),
+      client.list({ headers: authHeaders() }),
       [200],
     );
     const updates = toUpdate(listResponse.body).map((policy) => {
@@ -782,7 +723,7 @@ describe("GET/PUT /api/zero/model-policies", () => {
     });
 
     const response = await client.update({
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       body: { policies: updates },
     });
 
@@ -796,8 +737,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects update bodies that are not valid JSON", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = await seedFixture();
+    useSession(fixture);
 
     const response = await putRawModelPolicies("not-json");
 
@@ -811,8 +752,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects malformed update bodies", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = await seedFixture();
+    useSession(fixture);
 
     const response = await putRawModelPolicies("{}");
 
@@ -823,8 +764,8 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects removed model policy updates", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = await seedFixture();
+    useSession(fixture);
 
     const response = await putRawModelPolicies(
       JSON.stringify({
@@ -847,11 +788,11 @@ describe("GET/PUT /api/zero/model-policies", () => {
   });
 
   it("rejects incomplete update payloads", async () => {
-    const fixture = await seedFixture({});
-    mocks.clerk.session(fixture.userId, fixture.orgId);
+    const fixture = await seedFixture();
+    useSession(fixture);
 
     const response = await apiClient().update({
-      headers: { authorization: "Bearer clerk-session" },
+      headers: authHeaders(),
       body: { policies: [] },
     });
 

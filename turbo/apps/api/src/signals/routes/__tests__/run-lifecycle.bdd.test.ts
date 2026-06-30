@@ -1,12 +1,8 @@
 import { createHash, randomUUID } from "node:crypto";
 
-import { DecryptCommand } from "@aws-sdk/client-kms";
 import {
-  getProviderRuntimeModel,
   getModelProviderFirewall,
   getVm0ConcreteProviderType,
-  getVm0Vendor,
-  MODEL_PROVIDER_TYPES,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
@@ -16,23 +12,14 @@ import {
   type FirewallApi,
 } from "@vm0/connectors/firewall-types";
 import { getFirewallExecutionMetadata } from "@vm0/connectors/firewall-metadata/server";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
 import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
+import { v5 as uuidv5 } from "uuid";
 
 import { mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
-import { writeDb$ } from "../../external/db";
-import { assistantMessageIdForRunEvent } from "../../services/assistant-message-id";
-import {
-  resetSecretKmsClientForTests,
-  setSecretKmsClientForTests,
-} from "../../services/crypto.utils";
 import {
   createBddApi,
   expectApiError,
@@ -49,7 +36,14 @@ import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
-import { fakeKmsClient } from "./helpers/fake-kms-client";
+import {
+  deleteVm0ManagedDefaultModelKey,
+  enableAutomationsFakeKms,
+  readAutomationComposeHeadVersion,
+  readAutomationsFakeKmsDecryptCallCount,
+  resetAutomationsFakeKms,
+  seedVm0ManagedDefaultModelKey as seedVm0ManagedDefaultModelKeyState,
+} from "./helpers/automations";
 
 /**
  * RUN-01..04 and CHAIN-RUN: successful run dispatch and lifecycle.
@@ -60,9 +54,7 @@ import { fakeKmsClient } from "./helpers/fake-kms-client";
  */
 
 const context = testContext();
-const store = createStore();
-const writeDb = store.set(writeDb$);
-const TEST_VM0_MANAGED_API_KEY = "vm0-key-run-lifecycle-bdd-default-model";
+const ASSISTANT_MESSAGE_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 
 // Sentinel provider id for model-first thread selections (the wire-protocol
 // value the chat composer sends when picking a model instead of a provider).
@@ -92,6 +84,14 @@ const CLAIM_ROUTE_TIMING_ACTION_TYPES = [
   ...CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES,
   ...CLAIM_ROUTE_TRANSITION_TIMING_ACTION_TYPES,
 ] as const;
+
+function assistantMessageIdForRunEvent(
+  runId: string,
+  runEventId: string,
+): string {
+  return uuidv5(`${runId}:${runEventId}`, ASSISTANT_MESSAGE_ID_NAMESPACE);
+}
+
 const RUNNER_POLL_TIMING_ACTION_TYPES = [
   "runner_poll_pending_job_lookup",
   "runner_poll_request_to_job_response",
@@ -324,25 +324,10 @@ function findFirewallEntry(
 }
 
 async function seedVm0ManagedDefaultModelKey(): Promise<string> {
-  const selectedModel = MODEL_PROVIDER_TYPES.vm0.defaultModel;
-  if (!selectedModel) {
-    throw new Error("Expected vm0 to define a default model");
-  }
-  await writeDb
-    .delete(vm0ApiKeys)
-    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_MANAGED_API_KEY));
   onTestFinished(async () => {
-    await writeDb
-      .delete(vm0ApiKeys)
-      .where(eq(vm0ApiKeys.apiKey, TEST_VM0_MANAGED_API_KEY));
+    await deleteVm0ManagedDefaultModelKey(context);
   });
-  await writeDb.insert(vm0ApiKeys).values({
-    vendor: getVm0Vendor(selectedModel),
-    model: getProviderRuntimeModel("vm0", selectedModel),
-    apiKey: TEST_VM0_MANAGED_API_KEY,
-    label: "run-lifecycle-bdd",
-  });
-  return selectedModel;
+  return await seedVm0ManagedDefaultModelKeyState(context);
 }
 
 function inlineFirewallApis(
@@ -624,17 +609,7 @@ function zeroBackedDirectRunBody(args: {
 }
 
 async function readAgentHeadVersionId(agentId: string): Promise<string> {
-  const [composeRow] = await writeDb
-    .select({ headVersionId: agentComposes.headVersionId })
-    .from(agentComposes)
-    .where(eq(agentComposes.id, agentId))
-    .limit(1);
-  if (!composeRow?.headVersionId) {
-    throw new Error(
-      "Expected Zero-backed direct run agent to have a head version",
-    );
-  }
-  return composeRow.headVersionId;
+  return await readAutomationComposeHeadVersion(context, agentId);
 }
 
 const CHAT_CALLBACK_URL = "http://localhost:3000/api/internal/callbacks/chat";
@@ -799,15 +774,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         },
       },
     });
-    const [composeRow] = await writeDb
-      .select({ headVersionId: agentComposes.headVersionId })
-      .from(agentComposes)
-      .where(eq(agentComposes.id, compose.composeId))
-      .limit(1);
-    const headVersionId = composeRow?.headVersionId;
-    if (!headVersionId) {
-      throw new Error("Expected created compose to have a head version id");
-    }
+    const headVersionId = await readAutomationComposeHeadVersion(
+      context,
+      compose.composeId,
+    );
 
     const created = await api.createDirectRun(actor, {
       agentComposeVersionId: headVersionId,
@@ -869,15 +839,10 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
         },
       },
     });
-    const [composeRow] = await writeDb
-      .select({ headVersionId: agentComposes.headVersionId })
-      .from(agentComposes)
-      .where(eq(agentComposes.id, compose.composeId))
-      .limit(1);
-    const headVersionId = composeRow?.headVersionId;
-    if (!headVersionId) {
-      throw new Error("Expected created compose to have a head version id");
-    }
+    const headVersionId = await readAutomationComposeHeadVersion(
+      context,
+      compose.composeId,
+    );
 
     const created = await api.createDirectRun(actor, {
       agentComposeVersionId: headVersionId,
@@ -2006,10 +1971,9 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       },
     });
 
-    const kms = fakeKmsClient();
-    setSecretKmsClientForTests(kms.client);
-    onTestFinished(() => {
-      resetSecretKmsClientForTests();
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
     });
 
     const run = await api.createDirectRun(actor, {
@@ -2017,10 +1981,9 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       prompt: "use overridden x connector secret",
       secrets: { X_TOKEN: "body-x-token" },
     });
-    const decryptCalls = kms.calls.filter((call) => {
-      return call instanceof DecryptCommand;
-    });
-    expect(decryptCalls).toHaveLength(0);
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      0,
+    );
 
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectApiDispatchActions(
@@ -2120,21 +2083,18 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       },
     });
 
-    const kms = fakeKmsClient();
-    setSecretKmsClientForTests(kms.client);
-    onTestFinished(() => {
-      resetSecretKmsClientForTests();
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
     });
 
     const run = await api.createDirectRun(actor, {
       agentComposeId: compose.composeId,
       prompt: "use compose-overridden agora certificate",
     });
-    expect(
-      kms.calls.filter((call) => {
-        return call instanceof DecryptCommand;
-      }),
-    ).toHaveLength(0);
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      0,
+    );
     const timingEvents = apiDispatchTimingEventsForRun(run.runId);
     expectNoApiDispatchActions(timingEvents, [
       "api_dispatch_prepare_context_decrypt_stored_connector_secrets",
@@ -2345,10 +2305,9 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
     });
     await api.enableAgentConnectors(actor, agentId, ["x", "gitlab", "figma"]);
 
-    const kms = fakeKmsClient();
-    setSecretKmsClientForTests(kms.client);
-    onTestFinished(() => {
-      resetSecretKmsClientForTests();
+    await enableAutomationsFakeKms(context);
+    onTestFinished(async () => {
+      await resetAutomationsFakeKms(context);
     });
 
     const run = await api.createRun(actor, {
@@ -2356,11 +2315,9 @@ describe("RUN-02: stored connector injection into claimed runs", () => {
       prompt: "use lazy connector auth credentials",
       modelProvider: "anthropic-api-key",
     });
-    expect(
-      kms.calls.filter((call) => {
-        return call instanceof DecryptCommand;
-      }),
-    ).toHaveLength(0);
+    await expect(readAutomationsFakeKmsDecryptCallCount(context)).resolves.toBe(
+      0,
+    );
 
     await api.requestCancelRun(actor, run.runId, [200]);
     const cancelled = await api.readRun(actor, run.runId);

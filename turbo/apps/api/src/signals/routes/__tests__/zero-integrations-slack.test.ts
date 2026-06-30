@@ -1,33 +1,22 @@
 import { randomUUID } from "node:crypto";
 import { createStore } from "ccstate";
+import type {
+  TestSlackStatePostBody,
+  TestSlackStatePostResponse,
+  TestSlackStateResponse,
+} from "@vm0/api-contracts/contracts/test-slack-state";
 import { zeroIntegrationsSlackContract } from "@vm0/api-contracts/contracts/zero-integrations-slack";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { http, HttpResponse } from "msw";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgCache } from "@vm0/db/schema/org-cache";
-import { secrets } from "@vm0/db/schema/secret";
-import { variables } from "@vm0/db/schema/variable";
-import { slackOrgInstallations } from "@vm0/db/schema/slack-org-installation";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { and, eq } from "drizzle-orm";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { server } from "../../../mocks/server";
 import { now } from "../../external/time";
-import { writeDb$ } from "../../external/db";
 import { signSandboxJwtForTests } from "../../auth/tokens";
 import { ROUTES } from "../../route";
 import { SlackFileFetchError } from "../../external/slack-file-fetcher";
-import {
-  deleteOrgMembership$,
-  seedOrgMembership$,
-  type OrgMembershipFixture,
-} from "./helpers/zero-org-membership";
+import { testSlackStateRoutes } from "../test-slack-state";
+import { seedOrgMembership$ } from "./helpers/zero-org-membership";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
@@ -41,7 +30,7 @@ import {
 
 const context = testContext();
 const store = createStore();
-const writeDb = store.set(writeDb$);
+const SLACK_STATE_ROUTE = "/api/test/slack-state";
 
 interface SlackFixture {
   readonly userId: string;
@@ -50,72 +39,97 @@ interface SlackFixture {
   readonly workspaceId: string;
 }
 
+function slackStateApp() {
+  return createApp({ signal: context.signal, routes: testSlackStateRoutes });
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+function expectOk(response: Response, operation: string): void {
+  if (response.ok) {
+    return;
+  }
+  throw new Error(`${operation} failed with ${response.status}`);
+}
+
+async function postSlackState(
+  body: TestSlackStatePostBody,
+): Promise<TestSlackStatePostResponse> {
+  const response = await slackStateApp().request(SLACK_STATE_ROUTE, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  expectOk(response, "post Slack test state");
+  return await readJson<TestSlackStatePostResponse>(response);
+}
+
+async function getSlackState(
+  workspaceId: string,
+): Promise<TestSlackStateResponse> {
+  const response = await slackStateApp().request(
+    `${SLACK_STATE_ROUTE}?${new URLSearchParams({
+      team_id: workspaceId,
+    }).toString()}`,
+  );
+  expectOk(response, "get Slack test state");
+  return await readJson<TestSlackStateResponse>(response);
+}
+
 async function seedSlackFixture(
-  _overrides: { orgRole?: "admin" | "member" } = {},
+  overrides: { readonly withConnection?: boolean } = {},
 ): Promise<SlackFixture> {
   const userId = `user_${randomUUID()}`;
   const orgId = `org_${randomUUID()}`;
-  const composeId = randomUUID();
   const workspaceId = `T_${randomUUID().replace(/-/g, "").slice(0, 10)}`;
 
-  await writeDb.insert(agentComposes).values({
-    id: composeId,
-    userId,
-    orgId,
-    name: `slack-agent`,
+  const seeded = await postSlackState({
+    team_id: workspaceId,
+    slack_user_id: "U_USER123",
+    org_id: orgId,
+    vm0_user_id: userId,
+    workspace_name: "Test Workspace",
+    bot_user_id: "U_BOT123",
+    bot_scopes: null,
+    seed_connection: overrides.withConnection !== false,
+    seed_default_agent: true,
+    default_agent_name: "slack-bot",
+    default_agent_display_name: "Slack Bot",
+    org_slug: "test-org-slug",
+    org_name: "Test Org",
   });
 
-  await writeDb.insert(zeroAgents).values({
-    id: composeId,
-    orgId,
-    owner: userId,
-    displayName: "Slack Bot",
-    name: "slack-bot",
-  });
-
-  await writeDb.insert(orgMetadata).values({
-    orgId,
-    defaultAgentId: composeId,
-    tier: "free",
-    credits: 10_000,
-  });
-
-  await writeDb.insert(orgCache).values({
-    orgId,
-    slug: "test-org-slug",
-    name: "Test Org",
-  });
-
-  await writeDb.insert(slackOrgInstallations).values({
-    slackWorkspaceId: workspaceId,
-    slackWorkspaceName: "Test Workspace",
-    orgId,
-    encryptedBotToken: "encrypted-token",
-    botUserId: "U_BOT123",
-  });
-
-  await writeDb.insert(slackOrgConnections).values({
-    slackUserId: "U_USER123",
-    slackWorkspaceId: workspaceId,
-    vm0UserId: userId,
-  });
-
-  return { userId, orgId, composeId, workspaceId };
+  if (!seeded.default_agent_id) {
+    throw new Error("Expected Slack fixture to include a default agent");
+  }
+  return {
+    userId: seeded.vm0_user_id,
+    orgId: seeded.org_id,
+    composeId: seeded.default_agent_id,
+    workspaceId: seeded.team_id,
+  };
 }
 
 async function cleanupSlackFixture(fixture: SlackFixture): Promise<void> {
-  await writeDb
-    .delete(slackOrgConnections)
-    .where(eq(slackOrgConnections.slackWorkspaceId, fixture.workspaceId));
-  await writeDb
-    .delete(slackOrgInstallations)
-    .where(eq(slackOrgInstallations.slackWorkspaceId, fixture.workspaceId));
-  await writeDb.delete(orgCache).where(eq(orgCache.orgId, fixture.orgId));
-  await writeDb.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
-  await writeDb.delete(zeroAgents).where(eq(zeroAgents.id, fixture.composeId));
-  await writeDb
-    .delete(agentComposes)
-    .where(eq(agentComposes.id, fixture.composeId));
+  const response = await slackStateApp().request(
+    `${SLACK_STATE_ROUTE}?${new URLSearchParams({
+      team_id: fixture.workspaceId,
+      org_id: fixture.orgId,
+    }).toString()}`,
+    { method: "DELETE" },
+  );
+  expectOk(response, "delete Slack fixture");
+}
+
+async function deleteSlackConnection(fixture: SlackFixture): Promise<void> {
+  await postSlackState({
+    team_id: fixture.workspaceId,
+    org_id: fixture.orgId,
+    vm0_user_id: fixture.userId,
+    delete_connection: true,
+  });
 }
 
 describe("GET /api/zero/integrations/slack", () => {
@@ -195,9 +209,7 @@ describe("GET /api/zero/integrations/slack", () => {
   });
 
   it("returns isConnected: false when user has no connection", async () => {
-    await writeDb
-      .delete(slackOrgConnections)
-      .where(eq(slackOrgConnections.slackWorkspaceId, fixture.workspaceId));
+    await deleteSlackConnection(fixture);
 
     context.mocks.clerk.authenticateRequest.mockResolvedValue({
       isAuthenticated: true,
@@ -236,37 +248,27 @@ describe("GET /api/zero/integrations/slack", () => {
   });
 
   describe("environment field", () => {
-    afterEach(async () => {
-      await writeDb.delete(variables).where(eq(variables.orgId, fixture.orgId));
-      await writeDb.delete(secrets).where(eq(secrets.orgId, fixture.orgId));
-    });
-
     const dol = "\x24";
     const composeContent = JSON.parse(
       `{"settings":{"api_key":"${dol}{{ secrets.SEC_A }}","region":"${dol}{{ vars.VAR_A }}"}}`,
     ) as Record<string, unknown>;
 
     async function seedEnvironmentVersion(): Promise<void> {
-      const versionId = randomUUID();
-      await writeDb.insert(agentComposeVersions).values({
-        id: versionId,
-        composeId: fixture.composeId,
-        content: composeContent,
-        createdBy: fixture.userId,
+      await postSlackState({
+        org_id: fixture.orgId,
+        vm0_user_id: fixture.userId,
+        seed_default_agent: true,
+        default_agent_name: "slack-bot",
+        default_agent_display_name: "Slack Bot",
+        compose_content: composeContent,
       });
-      await writeDb
-        .update(agentComposes)
-        .set({ headVersionId: versionId })
-        .where(eq(agentComposes.id, fixture.composeId));
     }
 
     async function seedUserSecret(name: string): Promise<void> {
-      await writeDb.insert(secrets).values({
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        name,
-        encryptedValue: `encrypted_${name}`,
-        type: "user",
+      await postSlackState({
+        org_id: fixture.orgId,
+        vm0_user_id: fixture.userId,
+        seed_secret_names: [name],
       });
     }
 
@@ -274,11 +276,10 @@ describe("GET /api/zero/integrations/slack", () => {
       name: string,
       value: string,
     ): Promise<void> {
-      await writeDb.insert(variables).values({
-        orgId: fixture.orgId,
-        userId: fixture.userId,
-        name,
-        value,
+      await postSlackState({
+        org_id: fixture.orgId,
+        vm0_user_id: fixture.userId,
+        seed_variables: { [name]: value },
       });
     }
 
@@ -346,9 +347,7 @@ describe("GET /api/zero/integrations/slack", () => {
     });
 
     it("omits environment when isConnected is false", async () => {
-      await writeDb
-        .delete(slackOrgConnections)
-        .where(eq(slackOrgConnections.slackWorkspaceId, fixture.workspaceId));
+      await deleteSlackConnection(fixture);
 
       await seedEnvironmentVersion();
       await seedUserSecret("SEC_A");
@@ -374,38 +373,25 @@ describe("GET /api/zero/integrations/slack", () => {
 async function findSlackConnection(args: {
   readonly workspaceId: string;
   readonly userId: string;
-}): Promise<typeof slackOrgConnections.$inferSelect | undefined> {
-  const [connection] = await writeDb
-    .select()
-    .from(slackOrgConnections)
-    .where(
-      and(
-        eq(slackOrgConnections.slackWorkspaceId, args.workspaceId),
-        eq(slackOrgConnections.vm0UserId, args.userId),
-      ),
-    )
-    .limit(1);
-  return connection;
+}): Promise<TestSlackStateResponse["connections"][number] | undefined> {
+  const state = await getSlackState(args.workspaceId);
+  return state.connections.find((connection) => {
+    return connection.vm0UserId === args.userId;
+  });
 }
 
 async function findSlackInstallation(
   workspaceId: string,
-): Promise<typeof slackOrgInstallations.$inferSelect | undefined> {
-  const [installation] = await writeDb
-    .select()
-    .from(slackOrgInstallations)
-    .where(eq(slackOrgInstallations.slackWorkspaceId, workspaceId))
-    .limit(1);
-  return installation;
+): Promise<TestSlackStateResponse["installation"] | undefined> {
+  const state = await getSlackState(workspaceId);
+  return state.installation ?? undefined;
 }
 
-function listWorkspaceSlackConnections(
+async function listWorkspaceSlackConnections(
   workspaceId: string,
-): Promise<readonly (typeof slackOrgConnections.$inferSelect)[]> {
-  return writeDb
-    .select()
-    .from(slackOrgConnections)
-    .where(eq(slackOrgConnections.slackWorkspaceId, workspaceId));
+): Promise<readonly TestSlackStateResponse["connections"][number][]> {
+  const state = await getSlackState(workspaceId);
+  return state.connections;
 }
 
 describe("DELETE /api/zero/integrations/slack", () => {
@@ -549,11 +535,6 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
       return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
     },
   );
-  const trackOrgMembership = createFixtureTracker<OrgMembershipFixture>(
-    (fixture) => {
-      return store.set(deleteOrgMembership$, fixture, context.signal);
-    },
-  );
   const mocks = createZeroRouteMocks(context);
 
   beforeEach(() => {
@@ -642,17 +623,14 @@ describe("DELETE /api/zero/integrations/slack?action=uninstall", () => {
 
   it("publishes uninstalled App Home then deletes installation and connections", async () => {
     const seeded = await seedUninstallContext();
-    await trackOrgMembership(
-      store.set(
-        seedOrgMembership$,
-        {
-          orgId: seeded.orgId,
-          userId: seeded.userId,
-          role: "admin",
-          seedOrgCache: false,
-        },
-        context.signal,
-      ),
+    await store.set(
+      seedOrgMembership$,
+      {
+        orgId: seeded.orgId,
+        userId: seeded.userId,
+        role: "admin",
+      },
+      context.signal,
     );
     mocks.clerk.session(seeded.userId, seeded.orgId, "org:admin");
     const client = setupApp({ context })(zeroIntegrationsSlackContract);
@@ -791,11 +769,6 @@ describe("GET /api/zero/integrations/slack/download-file", () => {
       return store.set(deleteSlackIntegrationFixture$, fixture, context.signal);
     },
   );
-  const trackMembership = createFixtureTracker<OrgMembershipFixture>(
-    (fixture) => {
-      return store.set(deleteOrgMembership$, fixture, context.signal);
-    },
-  );
   const mocks = createZeroRouteMocks(context);
 
   async function seedDownloadContext(
@@ -805,9 +778,7 @@ describe("GET /api/zero/integrations/slack/download-file", () => {
   ): Promise<{ readonly token: string }> {
     const orgId = `org_${randomUUID()}`;
     const userId = `user_${randomUUID()}`;
-    await trackMembership(
-      store.set(seedOrgMembership$, { orgId, userId }, context.signal),
-    );
+    await store.set(seedOrgMembership$, { orgId, userId }, context.signal);
 
     if (args.withInstallation !== false) {
       await trackSlackFixture(

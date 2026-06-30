@@ -1,43 +1,75 @@
 import { command } from "ccstate";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 
-import { writeDb$ } from "../../../external/db";
-import type { InternalRunCallbackKind } from "../../../services/internal-run-callback";
-import { encryptSecretForTests } from "./encrypt-secret";
+import { createAppWithRoutes } from "../../../../app-factory-core";
+import { testTelegramStateRoutes } from "../../test-telegram-state";
+
+const TELEGRAM_STATE_ACTION_ROUTE = "/api/test/telegram-state/action";
 
 interface SeedAgentRunCallbackOptions {
   readonly runId: string;
   readonly url?: string;
-  readonly internalKind?: InternalRunCallbackKind;
+  readonly internalKind?: string;
   readonly payload: Record<string, unknown>;
   readonly secret?: string;
   readonly status?: "pending" | "delivered" | "failed";
 }
 
+function requestTelegramState(
+  signal: AbortSignal,
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal,
+    routes: testTelegramStateRoutes,
+  });
+  return Promise.resolve(app.request(path, init));
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+function expectOk(response: Response, operation: string): void {
+  if (response.ok) {
+    return;
+  }
+  throw new Error(`${operation} failed with ${response.status}`);
+}
+
 export const seedAgentRunCallback$ = command(
   async (
-    { set },
+    _,
     options: SeedAgentRunCallbackOptions,
     signal: AbortSignal,
   ): Promise<{ readonly callbackId: string }> => {
-    const writeDb = set(writeDb$);
-    const [row] = await writeDb
-      .insert(agentRunCallbacks)
-      .values({
-        runId: options.runId,
-        url: options.url ?? null,
-        internalKind: options.internalKind ?? null,
-        encryptedSecret: encryptSecretForTests(
-          options.secret ?? "test-callback-secret",
-        ),
-        payload: options.payload,
-        status: options.status ?? "pending",
-      })
-      .returning({ id: agentRunCallbacks.id });
+    const response = await requestTelegramState(
+      signal,
+      TELEGRAM_STATE_ACTION_ROUTE,
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          action: "seed-agent-run-callback",
+          run_id: options.runId,
+          url: options.url ?? null,
+          internal_kind: options.internalKind ?? null,
+          payload: options.payload,
+          secret: options.secret,
+          status: options.status,
+        }),
+      },
+    );
     signal.throwIfAborted();
-    if (!row) {
-      throw new Error("seedAgentRunCallback$: insert returned no row");
+    expectOk(response, "seedAgentRunCallback$");
+    signal.throwIfAborted();
+    const body = await readJson<Record<string, unknown>>(response);
+    signal.throwIfAborted();
+    const callbackId =
+      typeof body.callback_id === "string" ? body.callback_id : null;
+    if (!callbackId) {
+      throw new Error("seedAgentRunCallback$: response missing callback_id");
     }
-    return { callbackId: row.id };
+    return { callbackId };
   },
 );

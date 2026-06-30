@@ -241,6 +241,8 @@ export function mockSlackConnectorOAuth(): void {
 const GOOGLE_OAUTH_TOKEN_URL = "https://oauth2.googleapis.com/token";
 const GOOGLE_USERINFO_URL = "https://www.googleapis.com/oauth2/v2/userinfo";
 const GOOGLE_DRIVE_FILES_URL = "https://www.googleapis.com/drive/v3/files";
+const GMAIL_PROFILE_URL =
+  "https://www.googleapis.com/gmail/v1/users/me/profile";
 
 interface GoogleDriveConnectorOAuthOptions {
   /**
@@ -292,6 +294,52 @@ export function mockGoogleDriveConnectorOAuth(
         id: "bdd-drive-user-id",
         email: "bdd-drive@example.test",
         name: "BDD Drive User",
+      });
+    }),
+  );
+}
+
+interface GmailConnectorOAuthOptions {
+  readonly accessToken?: string;
+  readonly refreshToken?: string;
+  readonly email?: string;
+}
+
+export function mockGmailConnectorOAuth(
+  options: GmailConnectorOAuthOptions = {},
+): void {
+  mockEnv("VM0_WEB_URL", "https://www.vm0.ai");
+  mockOptionalEnv("GOOGLE_OAUTH_CLIENT_ID", "google-client-id");
+  mockOptionalEnv("GOOGLE_OAUTH_CLIENT_SECRET", "google-client-secret");
+
+  server.use(
+    http.post(GOOGLE_OAUTH_TOKEN_URL, async ({ request }) => {
+      const body = new URLSearchParams(await request.text());
+      if (body.get("grant_type") !== "authorization_code") {
+        return HttpResponse.json(
+          {
+            error: "invalid_grant",
+            error_description: "Refresh is not granted by this fixture",
+          },
+          { status: 400 },
+        );
+      }
+
+      return HttpResponse.json({
+        access_token: options.accessToken ?? "gmail-access-token",
+        refresh_token: options.refreshToken ?? "gmail-refresh-token",
+        expires_in: 3600,
+        token_type: "Bearer",
+        scope: "https://www.googleapis.com/auth/gmail.modify",
+      });
+    }),
+    http.get(GMAIL_PROFILE_URL, () => {
+      const email = options.email ?? "bdd-gmail@example.test";
+      return HttpResponse.json({
+        emailAddress: email,
+        messagesTotal: 10,
+        threadsTotal: 3,
+        historyId: "100",
       });
     }),
   );

@@ -1,30 +1,9 @@
 import { randomUUID } from "node:crypto";
 
 import { Webhook } from "svix";
-import { createStore, command } from "ccstate";
 import { describe, expect, it, beforeEach } from "vitest";
 import { http, HttpResponse } from "msw";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { emailOutbox } from "@vm0/db/schema/email-outbox";
-import { emailSuppressions } from "@vm0/db/schema/email-suppression";
-import { emailThreadSessions } from "@vm0/db/schema/email-thread-session";
-import { orgCache } from "@vm0/db/schema/org-cache";
-import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { userCache } from "@vm0/db/schema/user-cache";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
-import { users } from "@vm0/db/schema/user";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, inArray, or } from "drizzle-orm";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { testContext } from "../../../__tests__/test-context";
@@ -33,20 +12,21 @@ import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { nowDate } from "../../../lib/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { writeDb$ } from "../../external/db";
 import { now } from "../../external/time";
-import { generateReplyToken } from "../../services/zero-email-common.service";
+import { testEmailStateRoutes } from "../test-email-state";
 import { zeroEmailCallbackRoutes } from "../zero-email-callbacks";
 import { zeroEmailInboundRoutes } from "../zero-email-inbound";
-import { seedAgentRunCallback$ } from "./helpers/agent-run-callback";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
+import {
+  deleteFeatureSwitchesForUser,
+  updateFeatureSwitchesForUser,
+} from "./helpers/zero-feature-switches";
 
 const context = testContext();
 const resendMocks = context.mocks.resend;
-const store = createStore();
 const routeMocks = createZeroRouteMocks(context);
 
 const CALLBACK_SECRET = "test-callback-secret";
@@ -54,9 +34,11 @@ const INBOUND_SECRET = "whsec_test";
 const REPLY_PATH = "/api/zero/email/callbacks/reply";
 const TRIGGER_PATH = "/api/zero/email/callbacks/trigger";
 const INBOUND_PATH = "/api/zero/email/inbound";
+const EMAIL_STATE_PATH = "/api/test/email-state/action";
 const emailRoutes = [
   ...zeroEmailCallbackRoutes,
   ...zeroEmailInboundRoutes,
+  ...testEmailStateRoutes,
 ] as const;
 
 interface EmailFixture {
@@ -69,205 +51,67 @@ interface EmailFixture {
   readonly versionId: string;
 }
 
-const deleteEmailFixture$ = command(
-  async (
-    { set },
-    fixture: EmailFixture,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const db = set(writeDb$);
-    await db
-      .delete(emailOutbox)
-      .where(
-        or(
-          eq(
-            emailOutbox.fromAddress,
-            `Zero <${fixture.orgSlug}@mail.example.com>`,
-          ),
-          eq(emailOutbox.fromAddress, "Zero <vm0@mail.example.com>"),
-        ),
-      );
-    signal.throwIfAborted();
-    await db
-      .delete(emailSuppressions)
-      .where(
-        or(
-          eq(emailSuppressions.emailAddress, fixture.userEmail),
-          eq(
-            emailSuppressions.emailAddress,
-            `bounce-${fixture.orgSlug}@example.com`,
-          ),
-          eq(
-            emailSuppressions.emailAddress,
-            `complaint-${fixture.orgSlug}@example.com`,
-          ),
-        ),
-      );
-    signal.throwIfAborted();
-    await db
-      .delete(emailThreadSessions)
-      .where(eq(emailThreadSessions.userId, fixture.userId));
-    signal.throwIfAborted();
+interface EmailThreadState {
+  readonly id: string;
+  readonly replyToken: string;
+  readonly agentSessionId?: string;
+  readonly lastEmailMessageId?: string | null;
+}
 
-    const runRows = await db
-      .select({ id: agentRuns.id })
-      .from(agentRuns)
-      .where(
-        and(
-          eq(agentRuns.orgId, fixture.orgId),
-          eq(agentRuns.userId, fixture.userId),
-        ),
-      );
-    signal.throwIfAborted();
-    const runIds = runRows.map((row) => {
-      return row.id;
-    });
-    if (runIds.length > 0) {
-      await db
-        .delete(agentRunCallbacks)
-        .where(inArray(agentRunCallbacks.runId, runIds));
-      signal.throwIfAborted();
-      await db
-        .delete(runnerJobQueue)
-        .where(inArray(runnerJobQueue.runId, runIds));
-      signal.throwIfAborted();
-      await db.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
-      signal.throwIfAborted();
-      await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
-      signal.throwIfAborted();
-    }
-    await db
-      .delete(agentSessions)
-      .where(
-        and(
-          eq(agentSessions.orgId, fixture.orgId),
-          eq(agentSessions.userId, fixture.userId),
-        ),
-      );
-    signal.throwIfAborted();
-    await db.delete(zeroAgents).where(eq(zeroAgents.id, fixture.agentId));
-    signal.throwIfAborted();
-    await db
-      .delete(agentComposeVersions)
-      .where(eq(agentComposeVersions.composeId, fixture.agentId));
-    signal.throwIfAborted();
-    await db.delete(agentComposes).where(eq(agentComposes.id, fixture.agentId));
-    signal.throwIfAborted();
-    await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await db
-      .delete(userFeatureSwitches)
-      .where(
-        and(
-          eq(userFeatureSwitches.orgId, fixture.orgId),
-          eq(userFeatureSwitches.userId, fixture.userId),
-        ),
-      );
-    signal.throwIfAborted();
-    await db.delete(orgCache).where(eq(orgCache.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await db
-      .delete(orgMembersCache)
-      .where(
-        and(
-          eq(orgMembersCache.orgId, fixture.orgId),
-          eq(orgMembersCache.userId, fixture.userId),
-        ),
-      );
-    signal.throwIfAborted();
-    await db.delete(userCache).where(eq(userCache.userId, fixture.userId));
-    signal.throwIfAborted();
-    await db.delete(users).where(eq(users.id, fixture.userId));
-  },
-);
+interface EmailRunState {
+  readonly id: string;
+  readonly sessionId: string;
+  readonly prompt: string;
+  readonly triggerSource?: string | null;
+  readonly callbacks: readonly {
+    readonly url: string | null;
+    readonly payload: Record<string, unknown> | null;
+  }[];
+}
 
-const seedEmailFixture$ = command(
-  async ({ set }, _input: void, signal: AbortSignal): Promise<EmailFixture> => {
-    const db = set(writeDb$);
-    const id = randomUUID().slice(0, 8);
-    const orgId = `org_${randomUUID()}`;
-    const orgSlug = `email-${id}`;
-    const userId = `user_${randomUUID()}`;
-    const userEmail = `${orgSlug}@example.com`;
-    const agentId = randomUUID();
-    const versionId = randomUUID();
-    const agentName = `agent-${id}`;
+interface EmailOutboxState {
+  readonly toAddresses: string | readonly string[];
+  readonly subject: string;
+  readonly template: Record<string, unknown>;
+}
 
-    await db.insert(orgCache).values({
-      orgId,
-      slug: orgSlug,
-      name: "Email Test Org",
-      createdBy: userId,
-      cachedAt: nowDate(),
-    });
-    signal.throwIfAborted();
-    await db.insert(userCache).values({
-      userId,
-      email: userEmail,
-      name: "Email User",
-      cachedAt: nowDate(),
-    });
-    signal.throwIfAborted();
-    await db.insert(orgMembersCache).values({
-      orgId,
-      userId,
-      role: "member",
-      cachedAt: nowDate(),
-    });
-    signal.throwIfAborted();
-    await db.insert(agentComposes).values({
-      id: agentId,
-      orgId,
-      userId,
-      name: agentName,
-    });
-    signal.throwIfAborted();
-    await db.insert(agentComposeVersions).values({
-      id: versionId,
-      composeId: agentId,
-      createdBy: userId,
-      content: {
-        version: "1.0",
-        agents: {
-          main: {
-            framework: "claude-code",
-            environment: { ANTHROPIC_API_KEY: "test-key" },
-          },
-        },
-      },
-    });
-    signal.throwIfAborted();
-    await db
-      .update(agentComposes)
-      .set({ headVersionId: versionId })
-      .where(eq(agentComposes.id, agentId));
-    signal.throwIfAborted();
-    await db.insert(zeroAgents).values({
-      id: agentId,
-      orgId,
-      owner: userId,
-      name: agentName,
-      visibility: "public",
-    });
-    signal.throwIfAborted();
-    await db.insert(orgMetadata).values({
-      orgId,
-      defaultAgentId: agentId,
-      tier: "free",
-      credits: 10_000,
-    });
-    signal.throwIfAborted();
-    return { orgId, orgSlug, userId, userEmail, agentId, agentName, versionId };
-  },
-);
+async function emailStateAction(
+  body: Record<string, unknown>,
+): Promise<Record<string, unknown>> {
+  const response = await requestEmailApp(EMAIL_STATE_PATH, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  expect(response.status).toBe(200);
+  return (await response.json()) as Record<string, unknown>;
+}
 
-const track = createFixtureTracker<EmailFixture>((fixture) => {
-  return store.set(deleteEmailFixture$, fixture, context.signal);
+function actionFixture(result: Record<string, unknown>): EmailFixture {
+  const fixture = result.fixture;
+  expect(fixture).toBeDefined();
+  return fixture as EmailFixture;
+}
+
+function actionThread(result: Record<string, unknown>): EmailThreadState {
+  const thread = result.thread;
+  expect(thread).toBeDefined();
+  return thread as EmailThreadState;
+}
+
+function actionRuns(result: Record<string, unknown>): readonly EmailRunState[] {
+  expect(Array.isArray(result.runs)).toBeTruthy();
+  return result.runs as readonly EmailRunState[];
+}
+
+const track = createFixtureTracker<EmailFixture>(async (fixture) => {
+  await deleteFeatureSwitchesForUser(context, fixture);
+  await emailStateAction({ action: "delete-fixture", fixture });
 });
 
 async function fixture(): Promise<EmailFixture> {
   const created = await track(
-    store.set(seedEmailFixture$, undefined, context.signal),
+    emailStateAction({ action: "seed-fixture" }).then(actionFixture),
   );
   routeMocks.clerk.session(created.userId, created.orgId);
   context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
@@ -279,76 +123,27 @@ async function fixture(): Promise<EmailFixture> {
 }
 
 async function seedAgentSession(fx: EmailFixture): Promise<string> {
-  const db = store.set(writeDb$);
-  const [session] = await db
-    .insert(agentSessions)
-    .values({
-      orgId: fx.orgId,
-      userId: fx.userId,
-      agentComposeId: fx.agentId,
-    })
-    .returning({ id: agentSessions.id });
-  if (!session) {
-    throw new Error("Failed to seed agent session");
-  }
-  return session.id;
-}
-
-async function seedRun(args: {
-  readonly fixture: EmailFixture;
-  readonly status: "completed" | "failed" | "running";
-  readonly result?: Record<string, unknown> | null;
-  readonly error?: string | null;
-  readonly prompt?: string;
-}): Promise<{ readonly runId: string; readonly sessionId: string }> {
-  const sessionId = await seedAgentSession(args.fixture);
-  const db = store.set(writeDb$);
-  const [run] = await db
-    .insert(agentRuns)
-    .values({
-      orgId: args.fixture.orgId,
-      userId: args.fixture.userId,
-      agentComposeVersionId: args.fixture.versionId,
-      sessionId,
-      prompt: args.prompt ?? "email prompt",
-      status: args.status,
-      result: args.result ?? null,
-      error: args.error ?? null,
-      lastEventSequence: 3,
-    })
-    .returning({ id: agentRuns.id });
-  if (!run) {
-    throw new Error("Failed to seed agent run");
-  }
-  await db.insert(zeroRuns).values({
-    id: run.id,
-    triggerSource: "email",
+  const result = await emailStateAction({
+    action: "seed-agent-session",
+    fixture: fx,
   });
-  return { runId: run.id, sessionId };
+  expect(typeof result.agentSessionId).toBe("string");
+  return result.agentSessionId as string;
 }
 
 async function seedThread(args: {
   readonly fixture: EmailFixture;
   readonly agentSessionId: string;
   readonly lastEmailMessageId?: string | null;
-}): Promise<{ readonly id: string; readonly replyToken: string }> {
-  const replyToken = generateReplyToken(args.agentSessionId);
-  const db = store.set(writeDb$);
-  const [thread] = await db
-    .insert(emailThreadSessions)
-    .values({
-      orgId: args.fixture.orgId,
-      userId: args.fixture.userId,
-      agentId: args.fixture.agentId,
-      agentSessionId: args.agentSessionId,
-      replyToToken: replyToken,
-      lastEmailMessageId: args.lastEmailMessageId ?? null,
-    })
-    .returning({ id: emailThreadSessions.id });
-  if (!thread) {
-    throw new Error("Failed to seed email thread");
-  }
-  return { id: thread.id, replyToken };
+}): Promise<EmailThreadState> {
+  return actionThread(
+    await emailStateAction({
+      action: "seed-thread",
+      fixture: args.fixture,
+      agent_session_id: args.agentSessionId,
+      last_email_message_id: args.lastEmailMessageId,
+    }),
+  );
 }
 
 interface CallbackPostOptions {
@@ -542,29 +337,23 @@ async function seedReplyCallback(args: {
 }): Promise<{
   readonly callbackId: string;
   readonly runId: string;
-  readonly thread: { readonly id: string; readonly replyToken: string };
+  readonly thread: EmailThreadState;
 }> {
-  const run = await seedRun({
+  const result = await emailStateAction({
+    action: "seed-reply-callback",
     fixture: args.fixture,
     status: args.status ?? "completed",
     result: args.result,
     prompt: args.prompt,
+    last_email_message_id: args.lastEmailMessageId,
   });
-  const thread = await seedThread({
-    fixture: args.fixture,
-    agentSessionId: run.sessionId,
-    lastEmailMessageId: args.lastEmailMessageId,
-  });
-  const { callbackId } = await store.set(
-    seedAgentRunCallback$,
-    {
-      runId: run.runId,
-      url: `http://localhost${REPLY_PATH}`,
-      payload: { emailThreadSessionId: thread.id },
-    },
-    context.signal,
-  );
-  return { callbackId, runId: run.runId, thread };
+  expect(typeof result.callbackId).toBe("string");
+  expect(typeof result.runId).toBe("string");
+  return {
+    callbackId: result.callbackId as string,
+    runId: result.runId as string,
+    thread: actionThread(result),
+  };
 }
 
 async function seedTriggerCallback(args: {
@@ -577,23 +366,21 @@ async function seedTriggerCallback(args: {
   readonly runId: string;
   readonly replyToken: string;
 }> {
-  const run = await seedRun({
+  const result = await emailStateAction({
+    action: "seed-trigger-callback",
     fixture: args.fixture,
     status: args.status ?? "completed",
     result: args.result,
     prompt: args.prompt,
   });
-  const replyToken = generateReplyToken(randomUUID());
-  const { callbackId } = await store.set(
-    seedAgentRunCallback$,
-    {
-      runId: run.runId,
-      url: `http://localhost${TRIGGER_PATH}`,
-      payload: { agentId: args.fixture.agentId },
-    },
-    context.signal,
-  );
-  return { callbackId, runId: run.runId, replyToken };
+  expect(typeof result.callbackId).toBe("string");
+  expect(typeof result.runId).toBe("string");
+  expect(typeof result.replyToken).toBe("string");
+  return {
+    callbackId: result.callbackId as string,
+    runId: result.runId as string,
+    replyToken: result.replyToken as string,
+  };
 }
 
 beforeEach(() => {
@@ -613,26 +400,15 @@ beforeEach(() => {
 describe("POST /api/zero/email/callbacks/reply", () => {
   it("rejects invalid callback signatures", async () => {
     const fx = await fixture();
-    const run = await seedRun({ fixture: fx, status: "completed" });
-    const thread = await seedThread({
+    const { callbackId, runId, thread } = await seedReplyCallback({
       fixture: fx,
-      agentSessionId: run.sessionId,
     });
-    const { callbackId } = await store.set(
-      seedAgentRunCallback$,
-      {
-        runId: run.runId,
-        url: `http://localhost${REPLY_PATH}`,
-        payload: { emailThreadSessionId: thread.id },
-      },
-      context.signal,
-    );
 
     const response = await postCallback(
       REPLY_PATH,
       {
         callbackId,
-        runId: run.runId,
+        runId,
         status: "completed",
         payload: {
           emailThreadSessionId: thread.id,
@@ -651,31 +427,17 @@ describe("POST /api/zero/email/callbacks/reply", () => {
   it("sends a reply email and updates thread state after completion", async () => {
     const fx = await fixture();
     const nextSessionId = await seedAgentSession(fx);
-    const run = await seedRun({
+    const { callbackId, runId, thread } = await seedReplyCallback({
       fixture: fx,
-      status: "completed",
       result: { agentSessionId: nextSessionId },
       prompt: "summarize email",
-    });
-    const thread = await seedThread({
-      fixture: fx,
-      agentSessionId: run.sessionId,
       lastEmailMessageId: "<previous@example.com>",
     });
-    const { callbackId } = await store.set(
-      seedAgentRunCallback$,
-      {
-        runId: run.runId,
-        url: `http://localhost${REPLY_PATH}`,
-        payload: { emailThreadSessionId: thread.id },
-      },
-      context.signal,
-    );
     mockRunOutput("final email answer");
 
     const response = await postCallback(REPLY_PATH, {
       callbackId,
-      runId: run.runId,
+      runId,
       status: "completed",
       payload: {
         emailThreadSessionId: thread.id,
@@ -704,13 +466,11 @@ describe("POST /api/zero/email/callbacks/reply", () => {
     );
     const email = lastSentEmail();
     expect(email.html).toContain("final email answer");
-    expect(email.html).not.toContain(`/activities/${run.runId}`);
+    expect(email.html).not.toContain(`/activities/${runId}`);
 
-    const db = store.set(writeDb$);
-    const [updatedThread] = await db
-      .select()
-      .from(emailThreadSessions)
-      .where(eq(emailThreadSessions.id, thread.id));
+    const updatedThread = actionThread(
+      await emailStateAction({ action: "get-thread", id: thread.id }),
+    );
     expect(updatedThread).toMatchObject({
       agentSessionId: nextSessionId,
       lastEmailMessageId: "<sent@example.com>",
@@ -722,11 +482,8 @@ describe("POST /api/zero/email/callbacks/reply", () => {
     const { callbackId, runId, thread } = await seedReplyCallback({
       fixture: fx,
     });
-    const db = store.set(writeDb$);
-    await db.insert(userFeatureSwitches).values({
-      orgId: fx.orgId,
-      userId: fx.userId,
-      switches: { [FeatureSwitchKey.ZeroDebug]: true },
+    await updateFeatureSwitchesForUser(context, fx, {
+      [FeatureSwitchKey.ZeroDebug]: true,
     });
     mockRunOutput("audited email answer");
 
@@ -925,27 +682,16 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
   it("sends a response email and creates the thread session", async () => {
     const fx = await fixture();
     const agentSessionId = await seedAgentSession(fx);
-    const run = await seedRun({
+    const { callbackId, runId, replyToken } = await seedTriggerCallback({
       fixture: fx,
-      status: "completed",
       result: { agentSessionId },
       prompt: "trigger prompt",
     });
-    const { callbackId } = await store.set(
-      seedAgentRunCallback$,
-      {
-        runId: run.runId,
-        url: `http://localhost${TRIGGER_PATH}`,
-        payload: { agentId: fx.agentId },
-      },
-      context.signal,
-    );
-    const replyToken = generateReplyToken(randomUUID());
     mockRunOutput("trigger response");
 
     const response = await postCallback(TRIGGER_PATH, {
       callbackId,
-      runId: run.runId,
+      runId,
       status: "completed",
       payload: {
         senderEmail: fx.userEmail,
@@ -979,13 +725,14 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
     );
     const email = lastSentEmail();
     expect(email.html).toContain("trigger response");
-    expect(email.html).not.toContain(`/activities/${run.runId}`);
+    expect(email.html).not.toContain(`/activities/${runId}`);
 
-    const db = store.set(writeDb$);
-    const [thread] = await db
-      .select()
-      .from(emailThreadSessions)
-      .where(eq(emailThreadSessions.replyToToken, replyToken));
+    const thread = actionThread(
+      await emailStateAction({
+        action: "get-thread",
+        reply_token: replyToken,
+      }),
+    );
     expect(thread).toMatchObject({
       userId: fx.userId,
       agentId: fx.agentId,
@@ -1002,11 +749,8 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
       fixture: fx,
       result: { agentSessionId },
     });
-    const db = store.set(writeDb$);
-    await db.insert(userFeatureSwitches).values({
-      orgId: fx.orgId,
-      userId: fx.userId,
-      switches: { [FeatureSwitchKey.ZeroDebug]: true },
+    await updateFeatureSwitchesForUser(context, fx, {
+      [FeatureSwitchKey.ZeroDebug]: true,
     });
     mockRunOutput("audited trigger response");
 
@@ -1165,12 +909,11 @@ describe("POST /api/zero/email/callbacks/trigger", () => {
     expect(response.status).toBe(200);
     const email = lastSentEmail();
     expect(email.replyTo).toBeUndefined();
-    const db = store.set(writeDb$);
-    const [thread] = await db
-      .select()
-      .from(emailThreadSessions)
-      .where(eq(emailThreadSessions.replyToToken, replyToken));
-    expect(thread).toBeUndefined();
+    const { thread } = await emailStateAction({
+      action: "get-thread",
+      reply_token: replyToken,
+    });
+    expect(thread).toBeNull();
   });
 });
 
@@ -1204,23 +947,30 @@ describe("POST /api/zero/email/inbound", () => {
 
     expect(bounceResponse.status).toBe(200);
     expect(complaintResponse.status).toBe(200);
-    const db = store.set(writeDb$);
-    const suppressions = await db
-      .select()
-      .from(emailSuppressions)
-      .where(inArray(emailSuppressions.emailAddress, [bounced, complained]));
+    const { suppressions } = await emailStateAction({
+      action: "get-suppressions",
+      emails: [bounced, complained],
+    });
+    expect(Array.isArray(suppressions)).toBeTruthy();
     expect(
-      suppressions.map((row) => {
-        return { emailAddress: row.emailAddress, reason: row.reason };
-      }),
+      (suppressions as { emailAddress: string; reason: string }[]).map(
+        (row) => {
+          return { emailAddress: row.emailAddress, reason: row.reason };
+        },
+      ),
     ).toStrictEqual(
       expect.arrayContaining([
         { emailAddress: bounced, reason: "bounced" },
         { emailAddress: complained, reason: "complained" },
       ]),
     );
-    const [user] = await db.select().from(users).where(eq(users.id, fx.userId));
-    expect(user?.emailUnsubscribed).toBeTruthy();
+    const { user } = await emailStateAction({
+      action: "get-user",
+      user_id: fx.userId,
+    });
+    expect(
+      (user as { emailUnsubscribed?: boolean } | null)?.emailUnsubscribed,
+    ).toBeTruthy();
   });
 
   it("dispatches a Zero run for a new org-address email", async () => {
@@ -1246,26 +996,13 @@ describe("POST /api/zero/email/inbound", () => {
     await expect(response.json()).resolves.toStrictEqual({ received: true });
     await flushWaitUntilForTest();
 
-    const db = store.set(writeDb$);
-    const runs = await db
-      .select({ id: agentRuns.id, prompt: agentRuns.prompt })
-      .from(agentRuns)
-      .where(
-        and(eq(agentRuns.orgId, fx.orgId), eq(agentRuns.userId, fx.userId)),
-      );
+    const runs = actionRuns(
+      await emailStateAction({ action: "get-run-state", fixture: fx }),
+    );
     expect(runs).toHaveLength(1);
     expect(runs[0]?.prompt).toContain("Run a report");
-
-    const [zeroRun] = await db
-      .select({ triggerSource: zeroRuns.triggerSource })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, runs[0]!.id));
-    expect(zeroRun?.triggerSource).toBe("email");
-
-    const [callback] = await db
-      .select()
-      .from(agentRunCallbacks)
-      .where(eq(agentRunCallbacks.runId, runs[0]!.id));
+    expect(runs[0]?.triggerSource).toBe("email");
+    const callback = runs[0]?.callbacks[0];
     expect(callback?.url).toBe(
       "http://localhost:3000/api/zero/email/callbacks/trigger",
     );
@@ -1303,19 +1040,12 @@ describe("POST /api/zero/email/inbound", () => {
     expect(response.status).toBe(200);
     await flushWaitUntilForTest();
 
-    const db = store.set(writeDb$);
-    const runs = await db
-      .select({ id: agentRuns.id, sessionId: agentRuns.sessionId })
-      .from(agentRuns)
-      .where(
-        and(eq(agentRuns.orgId, fx.orgId), eq(agentRuns.userId, fx.userId)),
-      );
+    const runs = actionRuns(
+      await emailStateAction({ action: "get-run-state", fixture: fx }),
+    );
     expect(runs).toHaveLength(1);
     expect(runs[0]?.sessionId).toBe(agentSessionId);
-    const [callback] = await db
-      .select()
-      .from(agentRunCallbacks)
-      .where(eq(agentRunCallbacks.runId, runs[0]!.id));
+    const callback = runs[0]?.callbacks[0];
     expect(callback?.url).toBe(
       "http://localhost:3000/api/zero/email/callbacks/reply",
     );
@@ -1341,16 +1071,17 @@ describe("POST /api/zero/email/inbound", () => {
     expect(response.status).toBe(200);
     await flushWaitUntilForTest();
 
-    const db = store.set(writeDb$);
-    const [outbox] = await db
-      .select()
-      .from(emailOutbox)
-      .where(eq(emailOutbox.fromAddress, "Zero <vm0@mail.example.com>"));
-    expect(outbox).toMatchObject({
+    const { outbox } = await emailStateAction({
+      action: "get-outbox",
+      from_address: "Zero <vm0@mail.example.com>",
+    });
+    expect(Array.isArray(outbox)).toBeTruthy();
+    const [outboxItem] = outbox as EmailOutboxState[];
+    expect(outboxItem).toMatchObject({
       toAddresses: fx.userEmail,
       subject: "Re: Continue",
     });
-    expect(outbox?.template).toMatchObject({
+    expect(outboxItem?.template).toMatchObject({
       template: "inbound-error",
       props: {
         errorMessage: expect.stringContaining(
@@ -1415,13 +1146,9 @@ describe("POST /api/zero/email/inbound", () => {
 
     expect(response.status).toBe(200);
     await flushWaitUntilForTest();
-    const db = store.set(writeDb$);
-    const runs = await db
-      .select({ id: agentRuns.id })
-      .from(agentRuns)
-      .where(
-        and(eq(agentRuns.orgId, fx.orgId), eq(agentRuns.userId, fx.userId)),
-      );
+    const runs = actionRuns(
+      await emailStateAction({ action: "get-run-state", fixture: fx }),
+    );
     expect(runs).toHaveLength(0);
     const email = lastSentEmail();
     expect(email.to).toBe(fx.userEmail);
@@ -1435,12 +1162,11 @@ describe("POST /api/zero/email/inbound", () => {
     const thread = await seedThread({ fixture: fx, agentSessionId });
     const senderEmail = `other-${fx.orgSlug}@example.com`;
     const otherUserId = `user_${randomUUID()}`;
-    const db = store.set(writeDb$);
-    await db.insert(userCache).values({
-      userId: otherUserId,
+    await emailStateAction({
+      action: "seed-user-cache",
+      user_id: otherUserId,
       email: senderEmail,
       name: "Other User",
-      cachedAt: nowDate(),
     });
 
     const response = await postInbound({
@@ -1496,12 +1222,11 @@ describe("POST /api/zero/email/inbound", () => {
     const fx = await fixture();
     const senderEmail = `nonmember-${fx.orgSlug}@example.com`;
     const senderUserId = `user_${randomUUID()}`;
-    const db = store.set(writeDb$);
-    await db.insert(userCache).values({
-      userId: senderUserId,
+    await emailStateAction({
+      action: "seed-user-cache",
+      user_id: senderUserId,
       email: senderEmail,
       name: "Non Member",
-      cachedAt: nowDate(),
     });
     context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValueOnce(
       { data: [] },
@@ -1528,8 +1253,10 @@ describe("POST /api/zero/email/inbound", () => {
 
   it("sends an error reply when the workspace has no default agent", async () => {
     const fx = await fixture();
-    const db = store.set(writeDb$);
-    await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fx.orgId));
+    await emailStateAction({
+      action: "delete-org-metadata",
+      fixture: fx,
+    });
 
     const response = await postInbound({
       type: "email.received",
@@ -1573,13 +1300,9 @@ describe("POST /api/zero/email/inbound", () => {
 
     expect(response.status).toBe(200);
     await flushWaitUntilForTest();
-    const db = store.set(writeDb$);
-    const runs = await db
-      .select({ id: agentRuns.id })
-      .from(agentRuns)
-      .where(
-        and(eq(agentRuns.orgId, fx.orgId), eq(agentRuns.userId, fx.userId)),
-      );
+    const runs = actionRuns(
+      await emailStateAction({ action: "get-run-state", fixture: fx }),
+    );
     expect(runs).toHaveLength(0);
     const email = lastSentEmail();
     expect(email.to).toBe(fx.userEmail);
@@ -1609,13 +1332,9 @@ describe("POST /api/zero/email/inbound", () => {
 
     expect(response.status).toBe(200);
     await flushWaitUntilForTest();
-    const db = store.set(writeDb$);
-    const [run] = await db
-      .select({ prompt: agentRuns.prompt })
-      .from(agentRuns)
-      .where(
-        and(eq(agentRuns.orgId, fx.orgId), eq(agentRuns.userId, fx.userId)),
-      );
+    const [run] = actionRuns(
+      await emailStateAction({ action: "get-run-state", fixture: fx }),
+    );
     expect(run?.prompt).toContain("Newsletter\n\nRich content from newsletter");
   });
 
@@ -1675,13 +1394,9 @@ describe("POST /api/zero/email/inbound", () => {
 
     expect(response.status).toBe(200);
     await flushWaitUntilForTest();
-    const db = store.set(writeDb$);
-    const [run] = await db
-      .select({ prompt: agentRuns.prompt })
-      .from(agentRuns)
-      .where(
-        and(eq(agentRuns.orgId, fx.orgId), eq(agentRuns.userId, fx.userId)),
-      );
+    const [run] = actionRuns(
+      await emailStateAction({ action: "get-run-state", fixture: fx }),
+    );
     expect(run?.prompt).toContain("[attachment]: report.pdf");
     expect(run?.prompt).toContain("https://r2.example.com/upload?sig=test");
     expect(run?.prompt).toContain("video.mp4");
@@ -1738,13 +1453,9 @@ describe("POST /api/zero/email/inbound", () => {
 
     expect(response.status).toBe(200);
     await flushWaitUntilForTest();
-    const db = store.set(writeDb$);
-    const [run] = await db
-      .select({ prompt: agentRuns.prompt })
-      .from(agentRuns)
-      .where(
-        and(eq(agentRuns.orgId, fx.orgId), eq(agentRuns.userId, fx.userId)),
-      );
+    const [run] = actionRuns(
+      await emailStateAction({ action: "get-run-state", fixture: fx }),
+    );
     expect(run?.prompt).toContain("Look at this");
     expect(run?.prompt).toContain("[inline image: photo.jpg]");
     expect(run?.prompt).not.toContain("data:image/jpeg;base64");
@@ -1789,13 +1500,9 @@ describe("POST /api/zero/email/inbound", () => {
 
     expect(response.status).toBe(200);
     await flushWaitUntilForTest();
-    const db = store.set(writeDb$);
-    const [run] = await db
-      .select({ prompt: agentRuns.prompt, sessionId: agentRuns.sessionId })
-      .from(agentRuns)
-      .where(
-        and(eq(agentRuns.orgId, fx.orgId), eq(agentRuns.userId, fx.userId)),
-      );
+    const [run] = actionRuns(
+      await emailStateAction({ action: "get-run-state", fixture: fx }),
+    );
     expect(run?.sessionId).toBe(agentSessionId);
     expect(run?.prompt).toContain("Here is the file");
     expect(run?.prompt).toContain("[attachment]: data.csv");

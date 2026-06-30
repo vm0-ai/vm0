@@ -1,86 +1,47 @@
-import { randomUUID } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
-import { createStore } from "ccstate";
 import { WebClient } from "@slack/web-api";
 import {
   runnersHeartbeatContract,
   runnersJobClaimContract,
 } from "@vm0/api-contracts/contracts/runners";
 import type { TestSlackDispatchProbeResponse } from "@vm0/api-contracts/contracts/test-slack-dispatch-probe";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
-import { slackOrgConnections } from "@vm0/db/schema/slack-org-connection";
-import { slackOrgThreadSessions } from "@vm0/db/schema/slack-org-thread-session";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq } from "drizzle-orm";
-import { afterEach, beforeEach, describe, expect, it } from "vitest";
+import type {
+  TestSlackStatePostResponse,
+  TestSlackStateResponse,
+} from "@vm0/api-contracts/contracts/test-slack-state";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
+import { beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
 import { setupAppWithRoutes } from "../../../__tests__/test-app";
 import { accept, testContext } from "../../../__tests__/test-context";
 import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { verifyZeroToken } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
 import { runnersRoutes } from "../runners";
 import { testSlackDispatchProbeRoutes } from "../test-slack-dispatch-probe";
+import { testSlackStateRoutes } from "../test-slack-state";
+import type { ApiTestUser } from "./helpers/api-bdd";
+import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
+import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createFixtureTracker } from "./helpers/zero-route-test";
-import {
-  deleteSlackWebhookFixture$,
-  seedSlackWebhookFixture$,
-  type SlackWebhookFixture,
-} from "./helpers/zero-slack-webhooks";
 
 const context = testContext();
-const store = createStore();
+const computerUseApi = createComputerUseBddApi(context);
+const webhooksApi = createWebhookCallbackApi(context);
 const ROUTE = "/api/test/slack-dispatch-probe";
+const SLACK_STATE_ROUTE = "/api/test/slack-state";
 const OFFICIAL_RUNNER_AUTHORIZATION =
   "Bearer vm0_official_abcdef0123456789abcdef0123456789abcdef0123456789abcdef0123456789";
-const TEST_VM0_ANTHROPIC_KEY = "vm0-key-slack-dispatch-probe-claude-sonnet-4-6";
-const TEST_VM0_DEEPSEEK_KEY = "vm0-key-slack-dispatch-probe-deepseek-v4-pro";
-const TEST_VM0_MOONSHOT_KEY = "vm0-key-slack-dispatch-probe-kimi-k2-7-code";
 
-afterEach(async () => {
-  const db = store.set(writeDb$);
-  await db
-    .delete(vm0ApiKeys)
-    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_ANTHROPIC_KEY));
-  await db
-    .delete(vm0ApiKeys)
-    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_DEEPSEEK_KEY));
-  await db
-    .delete(vm0ApiKeys)
-    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_MOONSHOT_KEY));
-});
-
-async function seedVm0ManagedKeys(): Promise<void> {
-  const db = store.set(writeDb$);
-  await db
-    .delete(vm0ApiKeys)
-    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_ANTHROPIC_KEY));
-  await db
-    .delete(vm0ApiKeys)
-    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_DEEPSEEK_KEY));
-  await db
-    .delete(vm0ApiKeys)
-    .where(eq(vm0ApiKeys.apiKey, TEST_VM0_MOONSHOT_KEY));
-  await db.insert(vm0ApiKeys).values([
-    {
-      vendor: "anthropic",
-      model: "claude-sonnet-4-6",
-      apiKey: TEST_VM0_ANTHROPIC_KEY,
-    },
-    {
-      vendor: "deepseek",
-      model: "deepseek-v4-pro",
-      apiKey: TEST_VM0_DEEPSEEK_KEY,
-    },
-    {
-      vendor: "moonshot",
-      model: "kimi-k2.7-code",
-      apiKey: TEST_VM0_MOONSHOT_KEY,
-    },
-  ]);
+interface SlackProbeFixture {
+  readonly orgId: string;
+  readonly userId: string;
+  readonly slackWorkspaceId: string;
+  readonly slackUserId: string;
+  readonly defaultAgentId: string | null;
+  readonly connectionId: string | null;
 }
 
 function configureSlackProbeTest(): void {
@@ -130,12 +91,118 @@ function requestApp(path: string, init?: RequestInit): Promise<Response> {
   return Promise.resolve(app.request(path, init));
 }
 
+function requestSlackState(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: testSlackStateRoutes,
+  });
+  return Promise.resolve(app.request(path, init));
+}
+
 function postProbe(body: unknown): Promise<Response> {
   return requestApp(ROUTE, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
   });
+}
+
+function postSlackState(body: unknown): Promise<Response> {
+  return requestSlackState(SLACK_STATE_ROUTE, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  });
+}
+
+function mockTestUserMembership(userId: string, orgId: string): void {
+  context.mocks.clerk.users.getUserList.mockResolvedValue({
+    data: [{ id: userId }],
+  });
+  context.mocks.clerk.users.getOrganizationMembershipList.mockResolvedValue({
+    data: [{ createdAt: 10, organization: { id: orgId } }],
+  });
+}
+
+async function seedSlackProbeFixture(
+  options: {
+    readonly withConnection?: boolean;
+    readonly withDefaultAgent?: boolean;
+  } = {},
+): Promise<SlackProbeFixture> {
+  const suffix = randomUUID().replaceAll("-", "").slice(0, 12);
+  const orgId = `org_slack_probe_${suffix}`;
+  const userId = `user_slack_probe_${suffix}`;
+  const slackWorkspaceId = `T${suffix}`;
+  const slackUserId = `U${suffix}`;
+  mockTestUserMembership(userId, orgId);
+
+  const response = await postSlackState({
+    team_id: slackWorkspaceId,
+    slack_user_id: slackUserId,
+    workspace_name: "Slack Dispatch Probe",
+    seed_connection: options.withConnection ?? false,
+    seed_default_agent: options.withDefaultAgent ?? false,
+    email: `${userId}@example.test`,
+  });
+  const body = await readJson<TestSlackStatePostResponse>(response);
+  if (response.status !== 200) {
+    throw new Error(
+      `Expected Slack state seed to succeed, received ${
+        response.status
+      }: ${JSON.stringify(body)}`,
+    );
+  }
+
+  return {
+    orgId: body.org_id,
+    userId: body.vm0_user_id,
+    slackWorkspaceId: body.team_id,
+    slackUserId,
+    defaultAgentId: body.default_agent_id,
+    connectionId: body.connection_id,
+  };
+}
+
+async function deleteSlackProbeFixture(
+  fixture: SlackProbeFixture,
+): Promise<void> {
+  mockEnv("ENV", "development");
+  await requestSlackState(
+    `${SLACK_STATE_ROUTE}?team_id=${encodeURIComponent(
+      fixture.slackWorkspaceId,
+    )}`,
+    { method: "DELETE" },
+  );
+}
+
+function actorForFixture(fixture: SlackProbeFixture): ApiTestUser {
+  return {
+    userId: fixture.userId,
+    orgId: fixture.orgId,
+    orgRole: "org:admin",
+    email: `${fixture.userId}@example.test`,
+  };
+}
+
+async function enableComputerUseDelegatedAuthorization(
+  fixture: SlackProbeFixture,
+): Promise<void> {
+  await updateFeatureSwitchesForUser(
+    context,
+    {
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      orgRole: "org:admin",
+    },
+    {
+      [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: true,
+    },
+  );
+  mockTestUserMembership(fixture.userId, fixture.orgId);
 }
 
 async function heartbeatRunner() {
@@ -181,105 +248,82 @@ async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function readSingleRunForUser(userId: string): Promise<{
-  readonly id: string;
-  readonly prompt: string;
-  readonly appendSystemPrompt: string | null;
-}> {
-  const db = store.set(writeDb$);
-  const [run] = await db
-    .select({
-      id: agentRuns.id,
-      prompt: agentRuns.prompt,
-      appendSystemPrompt: agentRuns.appendSystemPrompt,
-    })
-    .from(agentRuns)
-    .where(eq(agentRuns.userId, userId))
-    .limit(1);
-  if (!run) {
-    throw new Error(`No run found for user ${userId}`);
+async function readSlackState(
+  fixture: SlackProbeFixture,
+): Promise<TestSlackStateResponse> {
+  const response = await requestSlackState(
+    `${SLACK_STATE_ROUTE}?team_id=${encodeURIComponent(
+      fixture.slackWorkspaceId,
+    )}`,
+  );
+  if (response.status !== 200) {
+    throw new Error(`Expected Slack state read to succeed: ${response.status}`);
   }
-  return run;
+  return await readJson<TestSlackStateResponse>(response);
 }
 
-async function readZeroRunTriggerSource(
-  runId: string,
-): Promise<string | null | undefined> {
-  const db = store.set(writeDb$);
-  const [zeroRun] = await db
-    .select({ triggerSource: zeroRuns.triggerSource })
-    .from(zeroRuns)
-    .where(eq(zeroRuns.id, runId))
-    .limit(1);
-  return zeroRun?.triggerSource;
-}
-
-async function createComputerUseHost(
-  fixture: SlackWebhookFixture,
-): Promise<string> {
-  const db = store.set(writeDb$);
-  const [host] = await db
-    .insert(computerUseHosts)
-    .values({
-      orgId: fixture.orgId,
-      userId: fixture.userId,
-      displayName: "Slack authorized host",
-      tokenHash: `test-computer-use-host-${randomUUID()}`,
-      appVersion: "1.0.0",
-      osVersion: "macOS test",
-      supportedCapabilities: ["computer-use"],
-      permissions: { accessibility: true, screenRecording: true },
-    })
-    .returning({ id: computerUseHosts.id });
-  if (!host) {
-    throw new Error("Computer use host insert returned no row");
-  }
-  return host.id;
-}
-
-async function readSlackConnectionId(
-  fixture: SlackWebhookFixture,
-): Promise<string> {
-  const db = store.set(writeDb$);
-  const [connection] = await db
-    .select({ id: slackOrgConnections.id })
-    .from(slackOrgConnections)
-    .where(
-      and(
-        eq(slackOrgConnections.slackWorkspaceId, fixture.slackWorkspaceId),
-        eq(slackOrgConnections.slackUserId, fixture.slackUserId),
-        eq(slackOrgConnections.vm0UserId, fixture.userId),
-      ),
-    )
-    .limit(1);
-  if (!connection) {
-    throw new Error("Slack connection fixture was not created");
-  }
-  return connection.id;
-}
-
-async function bindComputerUseHostToSlackThread(args: {
-  readonly connectionId: string;
-  readonly channelId: string;
-  readonly threadTs: string;
-  readonly computerUseHostId: string;
-}): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(slackOrgThreadSessions).values({
-    connectionId: args.connectionId,
-    slackChannelId: args.channelId,
-    slackThreadTs: args.threadTs,
-    computerUseHostId: args.computerUseHostId,
+async function claimSlackRunnerJob(
+  fixture: SlackProbeFixture,
+  expectedPrompt: string,
+) {
+  await heartbeatRunner();
+  const state = await readSlackState(fixture);
+  const run = state.recent_runs.find((recentRun) => {
+    return (
+      recentRun.triggerSource === "slack" &&
+      recentRun.promptPreview === expectedPrompt
+    );
   });
+  if (!run) {
+    throw new Error(
+      `Expected Slack dispatch probe to enqueue prompt ${JSON.stringify(
+        expectedPrompt,
+      )}: ${JSON.stringify(state.recent_runs)}`,
+    );
+  }
+  return await claimRunnerJob(run.id);
+}
+
+async function completeClaimedRun(
+  runId: string,
+  sandboxToken: string,
+): Promise<void> {
+  const headers = { authorization: `Bearer ${sandboxToken}` };
+  await webhooksApi.requestAgentCheckpoint(
+    {
+      runId,
+      cliAgentType: "claude-code",
+      cliAgentSessionId: `slack-probe-${runId}`,
+      cliAgentSessionHistoryHash: createHash("sha256")
+        .update(`slack dispatch probe ${runId}`)
+        .digest("hex"),
+    },
+    headers,
+    [200],
+  );
+  await webhooksApi.requestAgentComplete(
+    {
+      runId,
+      exitCode: 0,
+    },
+    headers,
+    [200],
+  );
+}
+
+function requestTokenFromUrl(authorizationUrl: string): string {
+  const url = new URL(authorizationUrl);
+  const prefix = "/computer-use/authorize/";
+  if (!url.pathname.startsWith(prefix)) {
+    throw new Error(`Unexpected authorization URL: ${authorizationUrl}`);
+  }
+  return decodeURIComponent(url.pathname.slice(prefix.length));
 }
 
 describe("POST /api/test/slack-dispatch-probe", () => {
-  const track = createFixtureTracker<SlackWebhookFixture>((fixture) => {
-    return store.set(deleteSlackWebhookFixture$, fixture, context.signal);
-  });
+  const track = createFixtureTracker(deleteSlackProbeFixture);
 
-  beforeEach(async () => {
-    await seedVm0ManagedKeys();
+  beforeEach(() => {
     configureSlackProbeTest();
   });
 
@@ -349,11 +393,7 @@ describe("POST /api/test/slack-dispatch-probe", () => {
     mockOptionalEnv("VERCEL_URL", "pr-13948-api.vm6.ai");
     mockOptionalEnv("VERCEL_AUTOMATION_BYPASS_SECRET", "preview-secret");
     const fixture = await track(
-      store.set(
-        seedSlackWebhookFixture$,
-        { withConnection: true, withDefaultAgent: true },
-        context.signal,
-      ),
+      seedSlackProbeFixture({ withConnection: true, withDefaultAgent: true }),
     );
 
     const response = await postProbe({
@@ -390,11 +430,7 @@ describe("POST /api/test/slack-dispatch-probe", () => {
 
   it("synchronously dispatches connected mention probes", async () => {
     const fixture = await track(
-      store.set(
-        seedSlackWebhookFixture$,
-        { withConnection: true, withDefaultAgent: true },
-        context.signal,
-      ),
+      seedSlackProbeFixture({ withConnection: true, withDefaultAgent: true }),
     );
 
     const response = await postProbe({
@@ -411,22 +447,23 @@ describe("POST /api/test/slack-dispatch-probe", () => {
       readJson<TestSlackDispatchProbeResponse>(response),
     ).resolves.toStrictEqual({ ok: true });
 
-    const run = await readSingleRunForUser(fixture.userId);
-    expect(run.prompt).toBe("summarize this channel");
-    expect(run.appendSystemPrompt).toContain(
+    const claim = await claimSlackRunnerJob(fixture, "summarize this channel");
+    expect(claim.prompt).toBe("summarize this channel");
+    expect(claim.appendSystemPrompt).toContain(
       "You are currently running inside: Slack",
     );
-    expect(run.appendSystemPrompt).toContain("Channel type: Channel");
-    await expect(readZeroRunTriggerSource(run.id)).resolves.toBe("slack");
+    expect(claim.appendSystemPrompt).toContain("Channel type: Channel");
+    const state = await readSlackState(fixture);
+    expect(state.recent_runs).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ id: claim.runId, triggerSource: "slack" }),
+      ]),
+    );
   });
 
   it("synchronously dispatches connected direct-message probes", async () => {
     const fixture = await track(
-      store.set(
-        seedSlackWebhookFixture$,
-        { withConnection: true, withDefaultAgent: true },
-        context.signal,
-      ),
+      seedSlackProbeFixture({ withConnection: true, withDefaultAgent: true }),
     );
 
     const response = await postProbe({
@@ -443,9 +480,9 @@ describe("POST /api/test/slack-dispatch-probe", () => {
       readJson<TestSlackDispatchProbeResponse>(response),
     ).resolves.toStrictEqual({ ok: true });
 
-    const run = await readSingleRunForUser(fixture.userId);
-    expect(run.prompt).toBe("hello in dm");
-    expect(run.appendSystemPrompt).toContain("Channel type: Direct message");
+    const claim = await claimSlackRunnerJob(fixture, "hello in dm");
+    expect(claim.prompt).toBe("hello in dm");
+    expect(claim.appendSystemPrompt).toContain("Channel type: Direct message");
     expect(
       context.mocks.slack.assistant.threads.setStatus,
     ).toHaveBeenCalledWith(
@@ -458,24 +495,50 @@ describe("POST /api/test/slack-dispatch-probe", () => {
 
   it("includes Slack thread computer use host bindings in queued zero tokens", async () => {
     const fixture = await track(
-      store.set(
-        seedSlackWebhookFixture$,
-        { withConnection: true, withDefaultAgent: true },
-        context.signal,
-      ),
+      seedSlackProbeFixture({ withConnection: true, withDefaultAgent: true }),
     );
     const channelId = "C-test";
     const threadTs = "1710000004.000000";
-    const computerUseHostId = await createComputerUseHost(fixture);
-    const connectionId = await readSlackConnectionId(fixture);
-    await bindComputerUseHostToSlackThread({
-      connectionId,
-      channelId,
-      threadTs,
-      computerUseHostId,
+    const actor = actorForFixture(fixture);
+    await enableComputerUseDelegatedAuthorization(fixture);
+    const host = await computerUseApi.startComputerUseHost(actor, {
+      hostName: "Slack authorized host",
     });
 
-    const response = await postProbe({
+    const firstResponse = await postProbe({
+      team_id: fixture.slackWorkspaceId,
+      channel_id: channelId,
+      user_id: fixture.slackUserId,
+      message_text: "authorize the browser",
+      message_ts: threadTs,
+      channel_type: "channel",
+    });
+
+    expect(firstResponse.status).toBe(200);
+    await expect(
+      readJson<TestSlackDispatchProbeResponse>(firstResponse),
+    ).resolves.toStrictEqual({ ok: true });
+
+    const firstClaim = await claimSlackRunnerJob(
+      fixture,
+      "authorize the browser",
+    );
+    const firstZeroToken = firstClaim.environment?.ZERO_TOKEN;
+    if (!firstZeroToken) {
+      throw new Error("Claimed runner job did not include ZERO_TOKEN");
+    }
+    const created = await computerUseApi.createComputerUseAuthorizationRequest({
+      bearer: firstZeroToken,
+    });
+    const requestToken = requestTokenFromUrl(created.authorizationUrl);
+    await computerUseApi.applyComputerUseAuthorizationRequest(
+      actor,
+      requestToken,
+      host.hostId,
+    );
+    await completeClaimedRun(firstClaim.runId, firstClaim.sandboxToken);
+
+    const secondResponse = await postProbe({
       team_id: fixture.slackWorkspaceId,
       channel_id: channelId,
       user_id: fixture.slackUserId,
@@ -483,31 +546,25 @@ describe("POST /api/test/slack-dispatch-probe", () => {
       message_ts: threadTs,
       channel_type: "channel",
     });
-
-    expect(response.status).toBe(200);
+    expect(secondResponse.status).toBe(200);
     await expect(
-      readJson<TestSlackDispatchProbeResponse>(response),
+      readJson<TestSlackDispatchProbeResponse>(secondResponse),
     ).resolves.toStrictEqual({ ok: true });
 
-    const run = await readSingleRunForUser(fixture.userId);
-    await heartbeatRunner();
-    const claim = await claimRunnerJob(run.id);
+    const claim = await claimSlackRunnerJob(fixture, "use the browser");
     const zeroToken = claim.environment?.ZERO_TOKEN;
     if (!zeroToken) {
       throw new Error("Claimed runner job did not include ZERO_TOKEN");
     }
     const zeroAuth = verifyZeroToken(zeroToken);
-    expect(zeroAuth).toMatchObject({ computerUseHostId });
+    expect(zeroAuth).toMatchObject({ computerUseHostId: host.hostId });
     expect(zeroAuth?.capabilities).toContain("computer-use:write");
+    await computerUseApi.deleteComputerUseHost(actor, host.hostId);
   });
 
   it("serializes synchronous dispatch errors as diagnostic 200 responses", async () => {
     const fixture = await track(
-      store.set(
-        seedSlackWebhookFixture$,
-        { withConnection: true, withDefaultAgent: true },
-        context.signal,
-      ),
+      seedSlackProbeFixture({ withConnection: true, withDefaultAgent: true }),
     );
     const statusError = Object.assign(new Error("status update failed"), {
       code: "slack_status_failed",
