@@ -90,13 +90,13 @@ function UnpinButton({
                 ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
                 : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
             }`}
-            aria-label="Remove from list"
+            aria-label="Unpin"
           >
             <IconX size={12} stroke={2} />
           </button>
         </TooltipTrigger>
         <TooltipContent side="right">
-          <p className="text-xs">Remove from list</p>
+          <p className="text-xs">Unpin</p>
         </TooltipContent>
       </Tooltip>
     </TooltipProvider>
@@ -121,7 +121,7 @@ function PinnedAgentMenu({
   const savingPinned = pinLoadable.state === "loading";
   const pageSignal = useGet(pageSignal$);
 
-  function removeFromList() {
+  function unpinAgent() {
     const next = pinnedIds.filter((id): id is string => {
       return id !== null && id !== agentId;
     });
@@ -161,9 +161,9 @@ function PinnedAgentMenu({
           </button>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="w-44">
-          <DropdownMenuItem onSelect={removeFromList} disabled={savingPinned}>
+          <DropdownMenuItem onSelect={unpinAgent} disabled={savingPinned}>
             <IconPinnedOff size={16} stroke={2} className="mr-2" />
-            Remove from list
+            Unpin
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

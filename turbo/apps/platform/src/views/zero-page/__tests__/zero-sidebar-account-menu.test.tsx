@@ -193,7 +193,7 @@ describe("zero sidebar account menu", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("New chat with Zero")).toBeInTheDocument();
+      expect(screen.getByLabelText("Open chat list menu")).toBeInTheDocument();
     });
     const accountName = await screen.findByText("Alex Rivera");
     const accountButton = accountName.closest("button");

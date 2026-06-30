@@ -305,7 +305,7 @@ function SortablePinnedAgent({
             hasUnread={hasUnread}
             action={
               <AgentDialogMenuAction
-                label="Remove from list"
+                label="Unpin"
                 disabled={disabled}
                 icon={<IconPinnedOff size={16} stroke={2} />}
                 onSelect={onUnpin}

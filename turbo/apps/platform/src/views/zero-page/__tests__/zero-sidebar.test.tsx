@@ -4,6 +4,8 @@ import { describe, expect, it } from "vitest";
 import {
   chatThreadByIdContract,
   chatThreadArtifactsContract,
+  chatThreadMarkReadContract,
+  chatThreadMessagesContract,
   chatThreadPinContract,
   chatThreadRenameContract,
   chatThreadUnpinContract,
@@ -184,6 +186,10 @@ function openThreadMenu(title: string): void {
   );
 }
 
+function openChatListMenu(): void {
+  click(within(sidebar()).getByLabelText("Open chat list menu"));
+}
+
 function mockSidebarThreadStory(
   firstPageThreads: SidebarThread[],
   extraThreads: SidebarThread[] = [],
@@ -307,10 +313,11 @@ describe("zero sidebar", () => {
 
     const newChatButton = await waitFor(() => {
       expect(screen.getByText("Existing conversation")).toBeInTheDocument();
-      return screen.getByLabelText("New chat with Zero");
+      return screen.getByLabelText("Open chat list menu");
     });
 
     click(newChatButton);
+    click(menuItemByText("New chat"));
 
     await waitFor(() => {
       const sidebar = screen.getByRole("navigation", { name: "Sidebar" });
@@ -381,17 +388,123 @@ describe("zero sidebar", () => {
       expect(
         within(sidebar()).getByText("Existing conversation"),
       ).toBeInTheDocument();
-      const button = screen.getByLabelText("New chat with Zero");
+      const button = screen.getByLabelText("Open chat list menu");
       expect(button).not.toBeDisabled();
       return button;
     });
 
     click(newChatButton);
+    click(menuItemByText("New chat"));
 
     await waitFor(() => {
       expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();
       expect(window.location.search).not.toContain("artifact=");
     });
+  });
+
+  it("filters chat threads to unread threads and the current chat from the menu", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+      createThread(ARCHIVED_THREAD_ID, "Archived context"),
+    ]);
+    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      return respond(200, {
+        unreads: [
+          { threadId: INCIDENT_THREAD_ID, unreadAt: "2026-03-10T00:05:00Z" },
+        ],
+      });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
+      expect(
+        within(sidebar()).getByText("Archived context"),
+      ).toBeInTheDocument();
+    });
+
+    openChatListMenu();
+    click(screen.getByRole("switch", { name: "Unread" }));
+    fireEvent.keyDown(document.body, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
+      expect(
+        within(sidebar()).queryByText("Archived context"),
+      ).not.toBeInTheDocument();
+    });
+  });
+
+  it("clears a thread unread marker optimistically before mark-read resolves", async () => {
+    prepareDefaultAgent();
+    const markReadDeferred = context.mocks.deferred<void>();
+    let markReadCalls = 0;
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(INCIDENT_THREAD_ID, "Incident notes"),
+    ]);
+    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      return respond(200, {
+        unreads: [
+          { threadId: INCIDENT_THREAD_ID, unreadAt: "2026-03-10T00:05:00Z" },
+        ],
+      });
+    });
+    context.mocks.api(
+      chatThreadMessagesContract.list,
+      ({ params, query, respond }) => {
+        if (query.sinceId || query.beforeId) {
+          return respond(200, { messages: [] });
+        }
+        return respond(200, {
+          messages:
+            params.threadId === INCIDENT_THREAD_ID
+              ? [
+                  {
+                    id: "incident-message-1",
+                    role: "assistant",
+                    content: "Incident update",
+                    createdAt: "2026-03-10T00:05:00Z",
+                  },
+                ]
+              : [],
+          hasHistoryBefore: false,
+        });
+      },
+    );
+    context.mocks.api(
+      chatThreadMarkReadContract.markRead,
+      async ({ respond }) => {
+        markReadCalls += 1;
+        await markReadDeferred.promise;
+        return respond(200, {
+          lastReadMessageId: "incident-message-1",
+          unreads: [],
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: `/chats/${INCIDENT_THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(markReadCalls).toBe(1);
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    });
+
+    click(threadLinkByTitle("Release plan"));
+
+    await waitFor(() => {
+      expect(
+        within(threadRowByTitle("Incident notes")).queryByLabelText("Unread"),
+      ).not.toBeInTheDocument();
+    });
+
+    markReadDeferred.resolve();
   });
 
   it("pins and unpins a chat thread from the sidebar menu", async () => {
@@ -819,12 +932,12 @@ describe("zero sidebar", () => {
         within(researchSidebarRow).getByLabelText("Open agent menu"),
       ).toBeInTheDocument();
       expect(
-        within(researchSidebarRow).queryByLabelText("Remove from list"),
+        within(researchSidebarRow).queryByLabelText("Unpin"),
       ).not.toBeInTheDocument();
     });
 
     click(within(researchSidebarRow).getByLabelText("Open agent menu"));
-    expect(menuItemByText("Remove from list")).toBeInTheDocument();
+    expect(menuItemByText("Unpin")).toBeInTheDocument();
     fireEvent.keyDown(document.body, { key: "Escape" });
 
     click(within(nav).getByLabelText("Open a conversation"));
