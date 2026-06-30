@@ -226,7 +226,7 @@ export const YOUTUBE_PERMISSION_MANIFEST: readonly YouTubeManifestPermission[] =
       name: "videos.read",
       category: "Videos",
       description: "Read YouTube videos.",
-      routeKeys: ["base:GET /v3/videos"],
+      routeKeys: ["base:GET /v3/videos", "base:GET /v3/videos:batchGetStats"],
     },
     {
       name: "videos.report-abuse",
@@ -298,11 +298,8 @@ export const YOUTUBE_PERMISSION_MANIFEST: readonly YouTubeManifestPermission[] =
     {
       name: "comment-threads.write",
       category: "Comments & Captions",
-      description: "Create and update YouTube comment threads.",
-      routeKeys: [
-        "base:POST /v3/commentThreads",
-        "base:PUT /v3/commentThreads",
-      ],
+      description: "Create YouTube comment threads.",
+      routeKeys: ["base:POST /v3/commentThreads"],
     },
     {
       name: "comments.delete",
