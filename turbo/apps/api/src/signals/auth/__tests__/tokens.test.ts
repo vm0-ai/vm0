@@ -120,9 +120,10 @@ describe("auth tokens", () => {
     expect(verifyZeroToken(token)?.capabilities).toContain("maps:read");
   });
 
-  it("includes chat thread write capability in zero-scoped tokens", () => {
+  it("includes chat thread read and write capabilities in zero-scoped tokens", () => {
     const token = generateZeroToken("user_zero", "run_zero", "org_zero");
 
+    expect(verifyZeroToken(token)?.capabilities).toContain("chat-thread:read");
     expect(verifyZeroToken(token)?.capabilities).toContain("chat-thread:write");
   });
 

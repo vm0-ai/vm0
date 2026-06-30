@@ -211,7 +211,11 @@ export { getZeroRunAgentEvents } from "./domains/zero-runs";
 export { listZeroLogs, searchZeroLogs } from "./domains/zero-logs";
 
 // Domain modules - Zero Chat
-export { renameZeroChatThread, searchZeroChat } from "./domains/zero-chat";
+export {
+  getZeroChatThread,
+  renameZeroChatThread,
+  searchZeroChat,
+} from "./domains/zero-chat";
 
 // Domain modules - Logs
 export {
