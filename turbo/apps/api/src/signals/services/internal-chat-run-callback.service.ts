@@ -1681,24 +1681,47 @@ async function claimQueuedUserMessage(args: {
   readonly runId: string;
   readonly threadId: string;
 }): Promise<boolean> {
-  const claimed = await args.db
-    .insert(chatMessages)
-    .values({
-      chatThreadId: args.threadId,
-      role: "user",
-      content: args.queuedMessage.content,
-      runId: args.runId,
-      attachFiles: args.queuedMessage.attachFiles
-        ? [...args.queuedMessage.attachFiles]
-        : null,
-      attachFileMetadata: args.queuedMessage.attachFileMetadata
-        ? [...args.queuedMessage.attachFileMetadata]
-        : null,
-      generationTemplate: args.queuedMessage.generationTemplate,
-      revokesMessageId: args.queuedMessage.id,
-    })
-    .onConflictDoNothing({ target: chatMessages.revokesMessageId })
-    .returning({ id: chatMessages.id });
+  const claimed = await args.db.transaction(async (tx) => {
+    const rows = await tx.execute<{
+      readonly status: string;
+      readonly chatThreadId: string | null;
+    }>(sql`
+      SELECT
+        ${agentRuns.status} AS "status",
+        ${zeroRuns.chatThreadId} AS "chatThreadId"
+      FROM ${agentRuns}
+      INNER JOIN ${zeroRuns} ON ${zeroRuns.id} = ${agentRuns.id}
+      WHERE ${agentRuns.id} = ${args.runId}
+      FOR UPDATE OF ${agentRuns}
+    `);
+    const run = rows.rows[0];
+    if (
+      !run ||
+      run.chatThreadId !== args.threadId ||
+      (run.status !== "queued" && run.status !== "pending")
+    ) {
+      return [];
+    }
+
+    return await tx
+      .insert(chatMessages)
+      .values({
+        chatThreadId: args.threadId,
+        role: "user",
+        content: args.queuedMessage.content,
+        runId: args.runId,
+        attachFiles: args.queuedMessage.attachFiles
+          ? [...args.queuedMessage.attachFiles]
+          : null,
+        attachFileMetadata: args.queuedMessage.attachFileMetadata
+          ? [...args.queuedMessage.attachFileMetadata]
+          : null,
+        generationTemplate: args.queuedMessage.generationTemplate,
+        revokesMessageId: args.queuedMessage.id,
+      })
+      .onConflictDoNothing({ target: chatMessages.revokesMessageId })
+      .returning({ id: chatMessages.id });
+  });
 
   return claimed.length > 0;
 }
@@ -1764,7 +1787,7 @@ async function autoSendQueuedMessageOnRunComplete(args: {
         threadId,
       });
       if (!claimed) {
-        log.warn("Auto-send created a run for an already-claimed message", {
+        log.warn("Auto-send could not claim queued message before dispatch", {
           threadId,
           runId,
           userMessageId: queuedMessage.id,
