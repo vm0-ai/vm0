@@ -1,7 +1,10 @@
 import { randomUUID } from "node:crypto";
 
 import { command } from "ccstate";
-import { testUsageStateContract } from "@vm0/api-contracts/contracts/test-usage-state";
+import {
+  testUsageStateContract,
+  type TestUsageStateActionBody,
+} from "@vm0/api-contracts/contracts/test-usage-state";
 import {
   agentComposes,
   agentComposeVersions,
@@ -14,6 +17,7 @@ import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
 import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { usageEvent } from "@vm0/db/schema/usage-event";
+import { usagePricing } from "@vm0/db/schema/usage-pricing";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -24,6 +28,7 @@ import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
 import type { RouteEntry } from "../route-entry";
+import { maybeEmitRunUsageMessage$ } from "../services/zero-chat-usage-message.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -476,6 +481,261 @@ function defaultInsightsData() {
   };
 }
 
+type UsageAction<TAction extends TestUsageStateActionBody["action"]> = Extract<
+  TestUsageStateActionBody,
+  { action: TAction }
+>;
+
+function actionOk() {
+  return { status: 200 as const, body: { ok: true as const } };
+}
+
+async function seedFixtureForAction(
+  db: Db,
+  body: UsageAction<"seed-fixture">,
+  signal: AbortSignal,
+) {
+  const fixture = await seedUsageFixture(db, {
+    currentPeriodEnd: parseOptionalDate(body.current_period_end),
+    tier: body.tier,
+  });
+  signal.throwIfAborted();
+  return {
+    status: 200 as const,
+    body: { ok: true as const, fixture: fixtureToWire(fixture) },
+  };
+}
+
+async function insertUsageEventForAction(
+  db: Db,
+  body: UsageAction<"insert-usage-event">,
+  signal: AbortSignal,
+) {
+  const id = await insertUsageEvent(db, {
+    orgId: body.org_id,
+    userId: body.user_id,
+    runId: body.run_id,
+    kind: body.kind,
+    provider: body.provider,
+    category: body.category,
+    quantity: body.quantity,
+    creditsCharged: body.credits_charged,
+    status: body.status,
+    createdAt: parseMaybeDate(body.created_at),
+    processedAt:
+      body.processed_at === undefined
+        ? undefined
+        : parseOptionalDate(body.processed_at),
+  });
+  signal.throwIfAborted();
+  return {
+    status: 200 as const,
+    body: { ok: true as const, usage_event_id: id },
+  };
+}
+
+async function seedUsagePricingForAction(
+  db: Db,
+  body: UsageAction<"seed-usage-pricing">,
+  signal: AbortSignal,
+) {
+  await db
+    .insert(usagePricing)
+    .values({
+      kind: "connector",
+      provider: body.provider,
+      category: body.category,
+      unitPrice: body.unit_price,
+      unitSize: body.unit_size,
+    })
+    .onConflictDoUpdate({
+      target: [usagePricing.kind, usagePricing.provider, usagePricing.category],
+      set: {
+        unitPrice: body.unit_price,
+        unitSize: body.unit_size,
+      },
+    });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function insertModelUsageForAction(
+  db: Db,
+  body: UsageAction<"insert-model-usage">,
+  signal: AbortSignal,
+) {
+  await insertModelUsage(db, {
+    orgId: body.org_id,
+    userId: body.user_id,
+    runId: body.run_id,
+    inputTokens: body.input_tokens,
+    outputTokens: body.output_tokens,
+    cacheReadInputTokens: body.cache_read_input_tokens,
+    cacheCreationInputTokens: body.cache_creation_input_tokens,
+    creditsCharged: body.credits_charged,
+    status: body.status,
+    createdAt: parseMaybeDate(body.created_at),
+    processedAt:
+      body.processed_at === undefined
+        ? undefined
+        : parseOptionalDate(body.processed_at),
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function seedRunForAction(
+  db: Db,
+  body: UsageAction<"seed-run">,
+  signal: AbortSignal,
+) {
+  const run = await seedRun(
+    db,
+    {
+      orgId: body.org_id,
+      userId: body.user_id,
+      displayName: body.display_name,
+      prompt: body.prompt,
+      status: body.status,
+      triggerSource: body.trigger_source,
+      createdAt: parseMaybeDate(body.created_at),
+      startedAt:
+        body.started_at === undefined
+          ? undefined
+          : parseOptionalDate(body.started_at),
+      completedAt:
+        body.completed_at === undefined
+          ? undefined
+          : parseOptionalDate(body.completed_at),
+    },
+    signal,
+  );
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      run_id: run.runId,
+      compose_id: run.composeId,
+    },
+  };
+}
+
+async function seedChatThreadRunForAction(
+  db: Db,
+  body: UsageAction<"seed-chat-thread-run">,
+  signal: AbortSignal,
+) {
+  const run = await seedChatThreadRun(
+    db,
+    {
+      orgId: body.org_id,
+      userId: body.user_id,
+      title: body.title,
+      triggerSource: body.trigger_source,
+      threadId: body.thread_id,
+      createdAt: parseMaybeDate(body.created_at),
+    },
+    signal,
+  );
+  return {
+    status: 200 as const,
+    body: {
+      ok: true as const,
+      run_id: run.runId,
+      compose_id: run.composeId,
+      thread_id: run.threadId,
+    },
+  };
+}
+
+async function setCreditBalanceForAction(
+  db: Db,
+  body: UsageAction<"set-credit-balance">,
+  signal: AbortSignal,
+) {
+  await db
+    .update(orgMetadata)
+    .set({ credits: body.credits })
+    .where(eq(orgMetadata.orgId, body.org_id));
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function setOrgTierForAction(
+  db: Db,
+  body: UsageAction<"set-org-tier">,
+  signal: AbortSignal,
+) {
+  await db
+    .update(orgMetadata)
+    .set({ tier: body.tier })
+    .where(eq(orgMetadata.orgId, body.org_id));
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function seedUserNameForAction(
+  db: Db,
+  body: UsageAction<"seed-user-name">,
+  signal: AbortSignal,
+) {
+  await db
+    .insert(userCache)
+    .values({
+      userId: body.user_id,
+      email: body.email,
+      name: body.name,
+      cachedAt: new Date(body.cached_at),
+    })
+    .onConflictDoUpdate({
+      target: userCache.userId,
+      set: {
+        email: body.email,
+        name: body.name,
+        cachedAt: new Date(body.cached_at),
+      },
+    });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function seedCachedOrgMemberForAction(
+  db: Db,
+  body: UsageAction<"seed-cached-org-member">,
+  signal: AbortSignal,
+) {
+  await db
+    .insert(orgMembersCache)
+    .values({
+      orgId: body.org_id,
+      userId: body.user_id,
+      role: "member",
+      cachedAt: new Date(body.cached_at),
+    })
+    .onConflictDoUpdate({
+      target: [orgMembersCache.orgId, orgMembersCache.userId],
+      set: { role: "member", cachedAt: new Date(body.cached_at) },
+    });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function seedExistingInsightsForAction(
+  db: Db,
+  body: UsageAction<"seed-existing-insights">,
+  signal: AbortSignal,
+) {
+  await db.insert(insightsDaily).values({
+    orgId: body.org_id,
+    userId: body.user_id,
+    date: body.date,
+    updatedAt: new Date(body.updated_at),
+    data: body.data ?? defaultInsightsData(),
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 const mutateUsageState$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!isTestEndpointAllowed(get(request$))) {
     return testEndpointNotFoundResponse();
@@ -492,171 +752,48 @@ const mutateUsageState$ = command(async ({ get, set }, signal: AbortSignal) => {
 
   switch (body.action) {
     case "seed-fixture": {
-      const fixture = await seedUsageFixture(db, {
-        currentPeriodEnd: parseOptionalDate(body.current_period_end),
-        tier: body.tier,
-      });
-      signal.throwIfAborted();
-      return {
-        status: 200 as const,
-        body: { ok: true as const, fixture: fixtureToWire(fixture) },
-      };
+      return await seedFixtureForAction(db, body, signal);
     }
     case "delete-fixture": {
       await deleteUsageFixture(db, fixtureFromWire(body.fixture), signal);
-      return { status: 200 as const, body: { ok: true as const } };
+      return actionOk();
     }
     case "insert-usage-event": {
-      const id = await insertUsageEvent(db, {
-        orgId: body.org_id,
-        userId: body.user_id,
-        runId: body.run_id,
-        kind: body.kind,
-        provider: body.provider,
-        category: body.category,
-        quantity: body.quantity,
-        creditsCharged: body.credits_charged,
-        status: body.status,
-        createdAt: parseMaybeDate(body.created_at),
-        processedAt:
-          body.processed_at === undefined
-            ? undefined
-            : parseOptionalDate(body.processed_at),
-      });
-      signal.throwIfAborted();
+      return await insertUsageEventForAction(db, body, signal);
+    }
+    case "seed-usage-pricing": {
+      return await seedUsagePricingForAction(db, body, signal);
+    }
+    case "emit-run-usage-message": {
+      const emitted = await set(maybeEmitRunUsageMessage$, body.run_id, signal);
       return {
         status: 200 as const,
-        body: { ok: true as const, usage_event_id: id },
+        body: { ok: true as const, emitted },
       };
     }
     case "insert-model-usage": {
-      await insertModelUsage(db, {
-        orgId: body.org_id,
-        userId: body.user_id,
-        runId: body.run_id,
-        inputTokens: body.input_tokens,
-        outputTokens: body.output_tokens,
-        cacheReadInputTokens: body.cache_read_input_tokens,
-        cacheCreationInputTokens: body.cache_creation_input_tokens,
-        creditsCharged: body.credits_charged,
-        status: body.status,
-        createdAt: parseMaybeDate(body.created_at),
-        processedAt:
-          body.processed_at === undefined
-            ? undefined
-            : parseOptionalDate(body.processed_at),
-      });
-      signal.throwIfAborted();
-      return { status: 200 as const, body: { ok: true as const } };
+      return await insertModelUsageForAction(db, body, signal);
     }
     case "seed-run": {
-      const run = await seedRun(
-        db,
-        {
-          orgId: body.org_id,
-          userId: body.user_id,
-          displayName: body.display_name,
-          prompt: body.prompt,
-          status: body.status,
-          triggerSource: body.trigger_source,
-          createdAt: parseMaybeDate(body.created_at),
-          startedAt:
-            body.started_at === undefined
-              ? undefined
-              : parseOptionalDate(body.started_at),
-          completedAt:
-            body.completed_at === undefined
-              ? undefined
-              : parseOptionalDate(body.completed_at),
-        },
-        signal,
-      );
-      return {
-        status: 200 as const,
-        body: {
-          ok: true as const,
-          run_id: run.runId,
-          compose_id: run.composeId,
-        },
-      };
+      return await seedRunForAction(db, body, signal);
     }
     case "seed-chat-thread-run": {
-      const run = await seedChatThreadRun(
-        db,
-        {
-          orgId: body.org_id,
-          userId: body.user_id,
-          title: body.title,
-          triggerSource: body.trigger_source,
-          threadId: body.thread_id,
-          createdAt: parseMaybeDate(body.created_at),
-        },
-        signal,
-      );
-      return {
-        status: 200 as const,
-        body: {
-          ok: true as const,
-          run_id: run.runId,
-          compose_id: run.composeId,
-          thread_id: run.threadId,
-        },
-      };
+      return await seedChatThreadRunForAction(db, body, signal);
     }
     case "set-credit-balance": {
-      await db
-        .update(orgMetadata)
-        .set({ credits: body.credits })
-        .where(eq(orgMetadata.orgId, body.org_id));
-      signal.throwIfAborted();
-      return { status: 200 as const, body: { ok: true as const } };
+      return await setCreditBalanceForAction(db, body, signal);
+    }
+    case "set-org-tier": {
+      return await setOrgTierForAction(db, body, signal);
     }
     case "seed-user-name": {
-      await db
-        .insert(userCache)
-        .values({
-          userId: body.user_id,
-          email: body.email,
-          name: body.name,
-          cachedAt: new Date(body.cached_at),
-        })
-        .onConflictDoUpdate({
-          target: userCache.userId,
-          set: {
-            email: body.email,
-            name: body.name,
-            cachedAt: new Date(body.cached_at),
-          },
-        });
-      signal.throwIfAborted();
-      return { status: 200 as const, body: { ok: true as const } };
+      return await seedUserNameForAction(db, body, signal);
     }
     case "seed-cached-org-member": {
-      await db
-        .insert(orgMembersCache)
-        .values({
-          orgId: body.org_id,
-          userId: body.user_id,
-          role: "member",
-          cachedAt: new Date(body.cached_at),
-        })
-        .onConflictDoUpdate({
-          target: [orgMembersCache.orgId, orgMembersCache.userId],
-          set: { role: "member", cachedAt: new Date(body.cached_at) },
-        });
-      signal.throwIfAborted();
-      return { status: 200 as const, body: { ok: true as const } };
+      return await seedCachedOrgMemberForAction(db, body, signal);
     }
     case "seed-existing-insights": {
-      await db.insert(insightsDaily).values({
-        orgId: body.org_id,
-        userId: body.user_id,
-        date: body.date,
-        updatedAt: new Date(body.updated_at),
-        data: body.data ?? defaultInsightsData(),
-      });
-      signal.throwIfAborted();
-      return { status: 200 as const, body: { ok: true as const } };
+      return await seedExistingInsightsForAction(db, body, signal);
     }
   }
 });

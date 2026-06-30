@@ -36,6 +36,13 @@ interface InsertUsageEventArgs {
   readonly processedAt?: Date | null;
 }
 
+interface SeedUsagePricingArgs {
+  readonly provider: string;
+  readonly category: string;
+  readonly unitPrice: number;
+  readonly unitSize: number;
+}
+
 interface InsertModelUsageArgs {
   readonly orgId: string;
   readonly userId: string;
@@ -144,7 +151,7 @@ async function readJson<T>(response: Response): Promise<T> {
   return (await response.json()) as T;
 }
 
-async function expectOk(response: Response, operation: string): Promise<void> {
+function expectOk(response: Response, operation: string): void {
   if (response.ok) {
     return;
   }
@@ -164,7 +171,7 @@ async function postAction(
       body: JSON.stringify(body),
     },
   );
-  await expectOk(response, `usage action ${body.action}`);
+  expectOk(response, `usage action ${body.action}`);
   return await readJson<TestUsageStateActionResponse>(response);
 }
 
@@ -219,6 +226,28 @@ export const insertUsageEvent$ = command(
       throw new Error("insertUsageEvent$: response missing usage_event_id");
     }
     return response.usage_event_id;
+  },
+);
+
+export const seedUsagePricing$ = command(
+  async (_, args: SeedUsagePricingArgs, signal: AbortSignal): Promise<void> => {
+    await postAction(signal, {
+      action: "seed-usage-pricing",
+      provider: args.provider,
+      category: args.category,
+      unit_price: args.unitPrice,
+      unit_size: args.unitSize,
+    });
+  },
+);
+
+export const emitRunUsageMessage$ = command(
+  async (_, runId: string, signal: AbortSignal): Promise<boolean> => {
+    const response = await postAction(signal, {
+      action: "emit-run-usage-message",
+      run_id: runId,
+    });
+    return response.emitted ?? false;
   },
 );
 
@@ -306,6 +335,20 @@ export const setUsageFixtureCreditBalance$ = command(
   },
 );
 
+export const setUsageOrgTier$ = command(
+  async (
+    _,
+    args: { readonly orgId: string; readonly tier: string },
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await postAction(signal, {
+      action: "set-org-tier",
+      org_id: args.orgId,
+      tier: args.tier,
+    });
+  },
+);
+
 export const seedUsageUserName$ = command(
   async (
     _,
@@ -384,7 +427,7 @@ export const findUsageInsights$ = command(
       `${USAGE_STATE_ROUTE}/insights?${query.toString()}`,
     );
     signal.throwIfAborted();
-    await expectOk(response, "findUsageInsights$");
+    expectOk(response, "findUsageInsights$");
     signal.throwIfAborted();
     const body = await readJson<TestUsageStateInsightsResponse>(response);
     signal.throwIfAborted();

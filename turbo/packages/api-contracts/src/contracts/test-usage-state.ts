@@ -48,6 +48,17 @@ export const testUsageStateActionBodySchema = z.discriminatedUnion("action", [
     processed_at: nullableDateStringSchema.optional(),
   }),
   z.object({
+    action: z.literal("seed-usage-pricing"),
+    provider: z.string(),
+    category: z.string(),
+    unit_price: z.number(),
+    unit_size: z.number(),
+  }),
+  z.object({
+    action: z.literal("emit-run-usage-message"),
+    run_id: z.string(),
+  }),
+  z.object({
     action: z.literal("insert-model-usage"),
     org_id: z.string(),
     user_id: z.string(),
@@ -88,6 +99,11 @@ export const testUsageStateActionBodySchema = z.discriminatedUnion("action", [
     credits: z.number(),
   }),
   z.object({
+    action: z.literal("set-org-tier"),
+    org_id: z.string(),
+    tier: z.string(),
+  }),
+  z.object({
     action: z.literal("seed-user-name"),
     user_id: z.string(),
     email: z.string(),
@@ -117,6 +133,7 @@ export const testUsageStateActionResponseSchema = z.object({
   run_id: z.string().optional(),
   compose_id: z.string().optional(),
   thread_id: z.string().optional(),
+  emitted: z.boolean().optional(),
 });
 
 export const testUsageStateInsightsResponseSchema = z.object({
