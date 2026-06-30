@@ -1238,7 +1238,7 @@ checksum = "e629b9b98ef3dd8afe6ca2bd0f89306cec16d43d907889945bc5d6687f2f13c7"
 
 [[package]]
 name = "guest-agent"
-version = "0.43.1"
+version = "0.43.2"
 dependencies = [
  "aho-corasick",
  "api-contracts",
@@ -1313,7 +1313,7 @@ dependencies = [
 
 [[package]]
 name = "guest-init"
-version = "0.16.97"
+version = "0.16.98"
 dependencies = [
  "libc",
  "nix",
@@ -1352,7 +1352,7 @@ dependencies = [
 
 [[package]]
 name = "guest-write-file"
-version = "0.1.12"
+version = "0.1.13"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -2522,7 +2522,7 @@ dependencies = [
 
 [[package]]
 name = "runner"
-version = "0.131.2"
+version = "0.131.3"
 dependencies = [
  "ably-subscriber",
  "api-contracts",
@@ -2742,7 +2742,7 @@ dependencies = [
 
 [[package]]
 name = "sandbox-fc"
-version = "0.37.81"
+version = "0.37.82"
 dependencies = [
  "async-trait",
  "base64",
@@ -3665,7 +3665,7 @@ checksum = "5c3082ca00d5a5ef149bb8b555a72ae84c9c59f7250f013ac822ac2e49b19c64"
 
 [[package]]
 name = "vsock-guest"
-version = "0.19.17"
+version = "0.19.18"
 dependencies = [
  "guest-contracts",
  "libc",
@@ -3676,7 +3676,7 @@ dependencies = [
 
 [[package]]
 name = "vsock-host"
-version = "0.17.46"
+version = "0.17.47"
 dependencies = [
  "nix",
  "shell-quote",
@@ -3690,11 +3690,11 @@ dependencies = [
 
 [[package]]
 name = "vsock-proto"
-version = "0.18.19"
+version = "0.18.20"
 
 [[package]]
 name = "vsock-test"
-version = "0.9.123"
+version = "0.9.124"
 dependencies = [
  "guest-write-file",
  "libc",
