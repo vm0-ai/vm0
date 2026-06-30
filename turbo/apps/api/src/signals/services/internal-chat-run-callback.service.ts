@@ -1781,6 +1781,16 @@ async function appendAutoSentQueuedRunMarker(args: {
   readonly threadId: string;
 }): Promise<void> {
   await args.db.transaction(async (tx) => {
+    const threadRows = await tx.execute<{ readonly id: string }>(sql`
+      SELECT ${chatThreads.id} AS "id"
+      FROM ${chatThreads}
+      WHERE ${chatThreads.id} = ${args.threadId}
+      FOR KEY SHARE
+    `);
+    if (!threadRows.rows[0]) {
+      return;
+    }
+
     const [message] = await tx
       .select({ createdAt: chatMessages.createdAt })
       .from(chatMessages)
