@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.509.1](https://github.com/vm0-ai/vm0/compare/app-v0.509.0...app-v0.509.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* restore chat unread sidebar controls ([#19387](https://github.com/vm0-ai/vm0/issues/19387)) ([e8d9925](https://github.com/vm0-ai/vm0/commit/e8d9925f7f48f5c448b5093583c1f55ff1c8bc6f))
+
 ## [0.509.0](https://github.com/vm0-ai/vm0/compare/app-v0.508.0...app-v0.509.0) (2026-06-30)
 
 
