@@ -1,28 +1,14 @@
-import { randomUUID } from "node:crypto";
-
 import { command } from "ccstate";
-import {
-  agentComposes,
-  agentComposeVersions,
-} from "@vm0/db/schema/agent-compose";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { chatThreads } from "@vm0/db/schema/chat-thread";
-import { connectors } from "@vm0/db/schema/connector";
-import { modelUsageObservation } from "@vm0/db/schema/model-usage-observation";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { secrets } from "@vm0/db/schema/secret";
-import { storages, storageVersions } from "@vm0/db/schema/storage";
-import { usageEvent } from "@vm0/db/schema/usage-event";
-import { userConnectors } from "@vm0/db/schema/user-connector";
-import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { automations } from "@vm0/db/schema/automation";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, eq, inArray } from "drizzle-orm";
+import type {
+  TestUsageInsightStateActionBody,
+  TestUsageInsightStateActionResponse,
+  TestUsageInsightStateFixture,
+} from "@vm0/api-contracts/contracts/test-usage-insight-state";
 
-import { writeDb$ } from "../../../external/db";
-import { nowDate } from "../../../../lib/time";
+import { createAppWithRoutes } from "../../../../app-factory-core";
+import { testUsageInsightStateRoutes } from "../../test-usage-insight-state";
+
+const USAGE_INSIGHT_STATE_ROUTE = "/api/test/usage-insight-state";
 
 export interface UsageInsightFixture {
   readonly orgId: string;
@@ -114,169 +100,108 @@ interface AutomationBatchArgs {
   readonly bonusUsageEventForIndex?: (index: number) => BonusUsageEvent | null;
 }
 
+function requestUsageInsightState(
+  signal: AbortSignal,
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal,
+    routes: testUsageInsightStateRoutes,
+  });
+  return Promise.resolve(app.request(path, init));
+}
+
+function dateToWire(value: Date | null | undefined): string | null | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+  if (value === null) {
+    return null;
+  }
+  return value.toISOString();
+}
+
+function fixtureFromWire(
+  fixture: TestUsageInsightStateFixture,
+): UsageInsightFixture {
+  return {
+    orgId: fixture.org_id,
+    userId: fixture.user_id,
+  };
+}
+
+function fixtureToWire(
+  fixture: UsageInsightFixture,
+): TestUsageInsightStateFixture {
+  return {
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+  };
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+async function expectOk(response: Response, operation: string): Promise<void> {
+  if (response.ok) {
+    return;
+  }
+  throw new Error(`${operation} failed with ${response.status}`);
+}
+
+async function postAction(
+  signal: AbortSignal,
+  body: TestUsageInsightStateActionBody,
+): Promise<TestUsageInsightStateActionResponse> {
+  const response = await requestUsageInsightState(
+    signal,
+    `${USAGE_INSIGHT_STATE_ROUTE}/action`,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  signal.throwIfAborted();
+  await expectOk(response, `usage insight action ${body.action}`);
+  signal.throwIfAborted();
+  const result = await readJson<TestUsageInsightStateActionResponse>(response);
+  signal.throwIfAborted();
+  return result;
+}
+
 export const seedUsageInsightFixture$ = command(
   async (
-    { set },
+    _,
     _input: void,
     signal: AbortSignal,
   ): Promise<UsageInsightFixture> => {
-    const db = set(writeDb$);
-    const fixture = {
-      orgId: `org_${randomUUID()}`,
-      userId: `user_${randomUUID()}`,
-    };
-    await db.insert(orgMetadata).values({
-      orgId: fixture.orgId,
-      tier: "free",
-      credits: 10_000,
-    });
-    signal.throwIfAborted();
-    return fixture;
+    const response = await postAction(signal, { action: "seed-fixture" });
+    if (!response.fixture) {
+      throw new Error("seedUsageInsightFixture$: response missing fixture");
+    }
+    return fixtureFromWire(response.fixture);
   },
 );
 
 export const deleteUsageInsightFixture$ = command(
   async (
-    { set },
+    _,
     fixture: UsageInsightFixture,
     signal: AbortSignal,
   ): Promise<void> => {
-    const db = set(writeDb$);
-    const orgId = fixture.orgId;
-    const userId = fixture.userId;
-
-    await db
-      .delete(usageEvent)
-      .where(and(eq(usageEvent.orgId, orgId), eq(usageEvent.userId, userId)));
-    signal.throwIfAborted();
-
-    await db
-      .delete(modelUsageObservation)
-      .where(
-        and(
-          eq(modelUsageObservation.orgId, orgId),
-          eq(modelUsageObservation.userId, userId),
-        ),
-      );
-    signal.throwIfAborted();
-
-    await db
-      .delete(userPermissionGrants)
-      .where(
-        and(
-          eq(userPermissionGrants.orgId, orgId),
-          eq(userPermissionGrants.userId, userId),
-        ),
-      );
-    signal.throwIfAborted();
-
-    await db
-      .delete(userConnectors)
-      .where(
-        and(eq(userConnectors.orgId, orgId), eq(userConnectors.userId, userId)),
-      );
-    signal.throwIfAborted();
-
-    await db
-      .delete(connectors)
-      .where(and(eq(connectors.orgId, orgId), eq(connectors.userId, userId)));
-    signal.throwIfAborted();
-
-    await db.delete(secrets).where(eq(secrets.orgId, orgId));
-    signal.throwIfAborted();
-
-    await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
-    signal.throwIfAborted();
-
-    const runRows = await db
-      .select({ id: agentRuns.id })
-      .from(agentRuns)
-      .where(and(eq(agentRuns.orgId, orgId), eq(agentRuns.userId, userId)));
-    signal.throwIfAborted();
-    const runIds = runRows.map((row) => {
-      return row.id;
+    await postAction(signal, {
+      action: "delete-fixture",
+      fixture: fixtureToWire(fixture),
     });
-    if (runIds.length > 0) {
-      await db.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
-      signal.throwIfAborted();
-    }
-
-    await db
-      .delete(automations)
-      .where(and(eq(automations.orgId, orgId), eq(automations.userId, userId)));
-    signal.throwIfAborted();
-
-    if (runIds.length > 0) {
-      await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
-      signal.throwIfAborted();
-    }
-
-    await db
-      .delete(agentSessions)
-      .where(
-        and(eq(agentSessions.orgId, orgId), eq(agentSessions.userId, userId)),
-      );
-    signal.throwIfAborted();
-
-    const composeRows = await db
-      .select({ id: agentComposes.id })
-      .from(agentComposes)
-      .where(
-        and(eq(agentComposes.orgId, orgId), eq(agentComposes.userId, userId)),
-      );
-    signal.throwIfAborted();
-    const composeIds = composeRows.map((row) => {
-      return row.id;
-    });
-    if (composeIds.length > 0) {
-      await db
-        .delete(agentComposeVersions)
-        .where(inArray(agentComposeVersions.composeId, composeIds));
-      signal.throwIfAborted();
-    }
-
-    await db.delete(chatThreads).where(eq(chatThreads.userId, userId));
-    signal.throwIfAborted();
-
-    if (composeIds.length > 0) {
-      await db.delete(zeroAgents).where(inArray(zeroAgents.id, composeIds));
-      signal.throwIfAborted();
-    }
-
-    await db
-      .delete(agentComposes)
-      .where(
-        and(eq(agentComposes.orgId, orgId), eq(agentComposes.userId, userId)),
-      );
-    signal.throwIfAborted();
-
-    const storageRows = await db
-      .select({ id: storages.id })
-      .from(storages)
-      .where(eq(storages.orgId, orgId));
-    signal.throwIfAborted();
-    const storageIds = storageRows.map((row) => {
-      return row.id;
-    });
-    if (storageIds.length > 0) {
-      await db
-        .update(storages)
-        .set({ headVersionId: null })
-        .where(inArray(storages.id, storageIds));
-      signal.throwIfAborted();
-      await db
-        .delete(storageVersions)
-        .where(inArray(storageVersions.storageId, storageIds));
-      signal.throwIfAborted();
-      await db.delete(storages).where(eq(storages.orgId, orgId));
-      signal.throwIfAborted();
-    }
   },
 );
 
 export const seedCompose$ = command(
   async (
-    { set },
+    _,
     args: {
       orgId: string;
       userId: string;
@@ -286,439 +211,191 @@ export const seedCompose$ = command(
     },
     signal: AbortSignal,
   ): Promise<ComposeResult> => {
-    const db = set(writeDb$);
-    const name = args.name ?? `compose-${randomUUID().slice(0, 8)}`;
-    const [row] = await db
-      .insert(agentComposes)
-      .values({ userId: args.userId, orgId: args.orgId, name })
-      .returning({ id: agentComposes.id });
-    signal.throwIfAborted();
-    if (!row) {
-      throw new Error("seedCompose$: insert returned no row");
+    const response = await postAction(signal, {
+      action: "seed-compose",
+      org_id: args.orgId,
+      user_id: args.userId,
+      name: args.name,
+      display_name: args.displayName,
+      visibility: args.visibility,
+    });
+    if (!response.compose_id || !response.agent_id) {
+      throw new Error("seedCompose$: response missing compose identifiers");
     }
-    await db
-      .insert(zeroAgents)
-      .values({
-        id: row.id,
-        orgId: args.orgId,
-        owner: args.userId,
-        name,
-        displayName: args.displayName ?? null,
-        visibility: args.visibility ?? "public",
-      })
-      .onConflictDoNothing();
-    signal.throwIfAborted();
-    return { composeId: row.id, agentId: row.id };
+    return {
+      composeId: response.compose_id,
+      agentId: response.agent_id,
+    };
   },
 );
 
 export const seedRun$ = command(
   async (
-    { set },
+    _,
     args: SeedRunArgs,
     signal: AbortSignal,
   ): Promise<{ runId: string }> => {
-    const db = set(writeDb$);
-    const versionId = randomUUID();
-    await db.insert(agentComposeVersions).values({
-      id: versionId,
-      composeId: args.composeId,
-      content: {
-        version: "1.0",
-        agents: { "test-agent": { framework: "claude-code" } },
-      },
-      createdBy: args.userId,
+    const response = await postAction(signal, {
+      action: "seed-run",
+      org_id: args.orgId,
+      user_id: args.userId,
+      compose_id: args.composeId,
+      trigger_source: args.triggerSource,
+      automation_id: args.automationId,
+      chat_thread_id: args.chatThreadId,
+      status: args.status,
+      prompt: args.prompt,
+      created_at: dateToWire(args.createdAt) ?? undefined,
+      started_at: dateToWire(args.startedAt),
+      completed_at: dateToWire(args.completedAt),
+      continued_from_session_id: args.continuedFromSessionId,
+      sandbox_reuse_result: args.sandboxReuseResult,
+      result: args.result,
+      error: args.error,
+      last_event_sequence: args.lastEventSequence,
+      selected_model: args.selectedModel,
     });
-    signal.throwIfAborted();
-    await db
-      .update(agentComposes)
-      .set({ headVersionId: versionId })
-      .where(eq(agentComposes.id, args.composeId));
-    signal.throwIfAborted();
-    const [session] = await db
-      .insert(agentSessions)
-      .values({
-        userId: args.userId,
-        orgId: args.orgId,
-        agentComposeId: args.composeId,
-      })
-      .returning({ id: agentSessions.id });
-    signal.throwIfAborted();
-    if (!session) {
-      throw new Error("seedRun$: session insert returned no row");
+    if (!response.run_id) {
+      throw new Error("seedRun$: response missing run_id");
     }
-    const [run] = await db
-      .insert(agentRuns)
-      .values({
-        userId: args.userId,
-        orgId: args.orgId,
-        agentComposeVersionId: versionId,
-        prompt: args.prompt ?? "test prompt",
-        status: args.status ?? "pending",
-        sessionId: session.id,
-        createdAt: args.createdAt,
-        startedAt: args.startedAt,
-        completedAt: args.completedAt,
-        continuedFromSessionId: args.continuedFromSessionId,
-        sandboxReuseResult: args.sandboxReuseResult ?? null,
-        result: args.result ?? null,
-        error: args.error ?? null,
-        lastEventSequence: args.lastEventSequence ?? null,
-      })
-      .returning({ id: agentRuns.id });
-    signal.throwIfAborted();
-    if (!run) {
-      throw new Error("seedRun$: run insert returned no row");
-    }
-    await db.insert(zeroRuns).values({
-      id: run.id,
-      triggerSource: args.triggerSource ?? "cli",
-      automationId: args.automationId ?? null,
-      chatThreadId: args.chatThreadId ?? null,
-      selectedModel: args.selectedModel ?? null,
-    });
-    signal.throwIfAborted();
-    return { runId: run.id };
+    return { runId: response.run_id };
   },
 );
 
 export const seedAutomation$ = command(
-  async (
-    { set },
-    args: SeedAutomationArgs,
-    signal: AbortSignal,
-  ): Promise<string> => {
-    const db = set(writeDb$);
-    const [thread] = await db
-      .insert(chatThreads)
-      .values({ userId: args.userId, agentComposeId: args.agentId })
-      .returning({ id: chatThreads.id });
-    signal.throwIfAborted();
-    if (!thread) {
-      throw new Error("seedAutomation$: chat thread insert returned no row");
+  async (_, args: SeedAutomationArgs, signal: AbortSignal): Promise<string> => {
+    const response = await postAction(signal, {
+      action: "seed-automation",
+      org_id: args.orgId,
+      user_id: args.userId,
+      agent_id: args.agentId,
+      name: args.name,
+      description: args.description,
+    });
+    if (!response.automation_id) {
+      throw new Error("seedAutomation$: response missing automation_id");
     }
-    const [row] = await db
-      .insert(automations)
-      .values({
-        agentId: args.agentId,
-        userId: args.userId,
-        orgId: args.orgId,
-        name: args.name ?? `sched-${randomUUID().slice(0, 8)}`,
-        description: args.description,
-        instruction: "test",
-        interpreterKind: "default",
-        chatThreadId: thread.id,
-      })
-      .returning({ id: automations.id });
-    signal.throwIfAborted();
-    if (!row) {
-      throw new Error("seedAutomation$: insert returned no row");
-    }
-    return row.id;
+    return response.automation_id;
   },
 );
 
 export const seedChatThread$ = command(
-  async (
-    { set },
-    args: SeedChatThreadArgs,
-    signal: AbortSignal,
-  ): Promise<string> => {
-    const db = set(writeDb$);
-    const [row] = await db
-      .insert(chatThreads)
-      .values({
-        userId: args.userId,
-        agentComposeId: args.composeId,
-        title: args.title ?? null,
-      })
-      .returning({ id: chatThreads.id });
-    signal.throwIfAborted();
-    if (!row) {
-      throw new Error("seedChatThread$: insert returned no row");
+  async (_, args: SeedChatThreadArgs, signal: AbortSignal): Promise<string> => {
+    const response = await postAction(signal, {
+      action: "seed-chat-thread",
+      user_id: args.userId,
+      compose_id: args.composeId,
+      title: args.title,
+    });
+    if (!response.chat_thread_id) {
+      throw new Error("seedChatThread$: response missing chat_thread_id");
     }
-    return row.id;
+    return response.chat_thread_id;
   },
 );
 
-const MODEL_TOKEN_CATEGORIES = [
-  "tokens.input",
-  "tokens.output",
-  "tokens.cache_read",
-  "tokens.cache_creation",
-] as const;
-
-interface ModelRowQuantity {
-  readonly category: (typeof MODEL_TOKEN_CATEGORIES)[number];
-  readonly quantity: number;
-}
-
-function buildModelUsageRows(args: ModelUsageEventArgs): {
-  rows: {
-    runId: string;
-    orgId: string;
-    userId: string;
-    kind: string;
-    provider: string;
-    category: string;
-    quantity: number;
-    creditsCharged: number | null;
-    status: string;
-    idempotencyKey: string;
-    createdAt: Date;
-    processedAt: Date | null;
-  }[];
-} {
-  const status = args.status ?? "pending";
-  const createdAt = nowDate();
-  const processedAt =
-    args.processedAt !== undefined
-      ? args.processedAt
-      : status === "processed"
-        ? createdAt
-        : null;
-  const provider = "claude-sonnet-4-6";
-  const quantities: readonly ModelRowQuantity[] = [
-    { category: "tokens.input", quantity: args.inputTokens ?? 0 },
-    { category: "tokens.output", quantity: args.outputTokens ?? 0 },
-    { category: "tokens.cache_read", quantity: args.cacheReadInputTokens ?? 0 },
-    {
-      category: "tokens.cache_creation",
-      quantity: args.cacheCreationInputTokens ?? 0,
-    },
-  ];
-  const billable = quantities.filter((entry, index) => {
-    return index === 0 || entry.quantity > 0;
-  });
-  const rows = billable.map((entry, index) => {
-    return {
-      runId: args.runId,
-      orgId: args.orgId,
-      userId: args.userId,
-      kind: "model",
-      provider,
-      category: entry.category,
-      quantity: entry.quantity,
-      creditsCharged: index === 0 ? (args.creditsCharged ?? null) : null,
-      status,
-      idempotencyKey: randomUUID(),
-      createdAt,
-      processedAt,
-    };
-  });
-  return { rows };
-}
-
 export const insertModelUsageEventForRun$ = command(
   async (
-    { set },
+    _,
     args: ModelUsageEventArgs,
     signal: AbortSignal,
   ): Promise<{ id: string }> => {
-    const db = set(writeDb$);
-    const { rows } = buildModelUsageRows({
-      ...args,
-      inputTokens: args.inputTokens ?? 100,
-      outputTokens: args.outputTokens ?? 50,
+    const response = await postAction(signal, {
+      action: "insert-model-usage-event-for-run",
+      org_id: args.orgId,
+      user_id: args.userId,
+      run_id: args.runId,
+      input_tokens: args.inputTokens,
+      output_tokens: args.outputTokens,
+      cache_read_input_tokens: args.cacheReadInputTokens,
+      cache_creation_input_tokens: args.cacheCreationInputTokens,
+      credits_charged: args.creditsCharged,
+      status: args.status,
+      processed_at: dateToWire(args.processedAt),
     });
-    const [row] = await db
-      .insert(usageEvent)
-      .values(rows)
-      .returning({ id: usageEvent.id });
-    signal.throwIfAborted();
-    if (!row) {
-      throw new Error("insertModelUsageEventForRun$: returned no row");
+    if (!response.usage_event_id) {
+      throw new Error(
+        "insertModelUsageEventForRun$: response missing usage_event_id",
+      );
     }
-    return { id: row.id };
+    return { id: response.usage_event_id };
   },
 );
 
 export const insertUsageEvent$ = command(
   async (
-    { set },
+    _,
     args: InsertUsageEventArgs,
     signal: AbortSignal,
   ): Promise<string> => {
-    const db = set(writeDb$);
-    const status = args.status ?? "pending";
-    const processedAt =
-      args.processedAt !== undefined
-        ? args.processedAt
-        : status === "processed"
-          ? nowDate()
-          : null;
-    const values: typeof usageEvent.$inferInsert = {
-      runId: args.runId ?? null,
-      orgId: args.orgId,
-      userId: args.userId ?? "test-user",
-      kind: args.kind ?? "connector",
-      provider: args.provider ?? "x",
-      category: args.category ?? "tweet.read",
-      quantity: args.quantity ?? 1,
-      status,
-      creditsCharged: args.creditsCharged ?? null,
-      idempotencyKey: args.idempotencyKey ?? randomUUID(),
-      processedAt,
-    };
-    if (args.createdAt) {
-      values.createdAt = args.createdAt;
+    const response = await postAction(signal, {
+      action: "insert-usage-event",
+      org_id: args.orgId,
+      user_id: args.userId,
+      run_id: args.runId,
+      kind: args.kind,
+      provider: args.provider,
+      category: args.category,
+      quantity: args.quantity,
+      status: args.status,
+      credits_charged: args.creditsCharged,
+      idempotency_key: args.idempotencyKey,
+      created_at: dateToWire(args.createdAt) ?? undefined,
+      processed_at: dateToWire(args.processedAt),
+    });
+    if (!response.usage_event_id) {
+      throw new Error("insertUsageEvent$: response missing usage_event_id");
     }
-    const [row] = await db
-      .insert(usageEvent)
-      .values(values)
-      .returning({ id: usageEvent.id });
-    signal.throwIfAborted();
-    if (!row) {
-      throw new Error("insertUsageEvent$: insert returned no row");
-    }
-    return row.id;
+    return response.usage_event_id;
   },
 );
 
 export const setUsageEventCreatedAt$ = command(
   async (
-    { set },
+    _,
     args: { id: string; createdAt: Date },
     signal: AbortSignal,
   ): Promise<void> => {
-    const db = set(writeDb$);
-    const [row] = await db
-      .select({
-        runId: usageEvent.runId,
-        originalCreatedAt: usageEvent.createdAt,
-      })
-      .from(usageEvent)
-      .where(eq(usageEvent.id, args.id))
-      .limit(1);
-    signal.throwIfAborted();
-    if (!row) {
-      return;
-    }
-    const where = row.runId
-      ? and(
-          eq(usageEvent.runId, row.runId),
-          eq(usageEvent.createdAt, row.originalCreatedAt),
-        )
-      : eq(usageEvent.id, args.id);
-    await db.update(usageEvent).set({ createdAt: args.createdAt }).where(where);
-    signal.throwIfAborted();
+    await postAction(signal, {
+      action: "set-usage-event-created-at",
+      id: args.id,
+      created_at: args.createdAt.toISOString(),
+    });
   },
 );
 
 export const seedAutomationBatch$ = command(
   async (
-    { set },
+    _,
     args: AutomationBatchArgs,
     signal: AbortSignal,
   ): Promise<{ automationIds: string[] }> => {
-    const db = set(writeDb$);
-    const indices = Array.from({ length: args.count }, (_, index) => {
-      return index;
+    const entries = Array.from({ length: args.count }, (_, index) => {
+      const bonus = args.bonusUsageEventForIndex?.(index);
+      return {
+        credits: args.creditsForIndex(index),
+        bonus: bonus
+          ? {
+              kind: bonus.kind,
+              provider: bonus.provider,
+              category: bonus.category,
+              quantity: bonus.quantity,
+              credits_charged: bonus.creditsCharged,
+              status: bonus.status,
+            }
+          : null,
+      };
     });
-    const results = await Promise.all(
-      indices.map(async (index) => {
-        const [thread] = await db
-          .insert(chatThreads)
-          .values({ userId: args.userId, agentComposeId: args.composeId })
-          .returning({ id: chatThreads.id });
-        if (!thread) {
-          throw new Error(
-            "seedAutomationBatch$: chat thread insert returned no row",
-          );
-        }
-        const [automationRow] = await db
-          .insert(automations)
-          .values({
-            agentId: args.composeId,
-            userId: args.userId,
-            orgId: args.orgId,
-            name: `sched-${randomUUID().slice(0, 8)}`,
-            instruction: "test",
-            interpreterKind: "default",
-            chatThreadId: thread.id,
-          })
-          .returning({ id: automations.id });
-        if (!automationRow) {
-          throw new Error(
-            "seedAutomationBatch$: automation insert returned no row",
-          );
-        }
-        const versionId = randomUUID();
-        await db.insert(agentComposeVersions).values({
-          id: versionId,
-          composeId: args.composeId,
-          content: {
-            version: "1.0",
-            agents: { "test-agent": { framework: "claude-code" } },
-          },
-          createdBy: args.userId,
-        });
-        const [session] = await db
-          .insert(agentSessions)
-          .values({
-            userId: args.userId,
-            orgId: args.orgId,
-            agentComposeId: args.composeId,
-          })
-          .returning({ id: agentSessions.id });
-        if (!session) {
-          throw new Error(
-            "seedAutomationBatch$: session insert returned no row",
-          );
-        }
-        const [run] = await db
-          .insert(agentRuns)
-          .values({
-            userId: args.userId,
-            orgId: args.orgId,
-            agentComposeVersionId: versionId,
-            prompt: "test prompt",
-            status: "completed",
-            sessionId: session.id,
-          })
-          .returning({ id: agentRuns.id });
-        if (!run) {
-          throw new Error("seedAutomationBatch$: run insert returned no row");
-        }
-        await db.insert(zeroRuns).values({
-          id: run.id,
-          triggerSource: "automation",
-          automationId: automationRow.id,
-        });
-        const credits = args.creditsForIndex(index);
-        await db.insert(usageEvent).values({
-          runId: run.id,
-          orgId: args.orgId,
-          userId: args.userId,
-          kind: "model",
-          provider: "claude-sonnet-4-6",
-          category: "tokens.input",
-          quantity: 100,
-          creditsCharged: credits,
-          status: "processed",
-          idempotencyKey: randomUUID(),
-          processedAt: nowDate(),
-        });
-        const bonus = args.bonusUsageEventForIndex?.(index);
-        if (bonus) {
-          await db.insert(usageEvent).values({
-            runId: run.id,
-            orgId: args.orgId,
-            userId: args.userId,
-            kind: bonus.kind,
-            provider: bonus.provider,
-            category: bonus.category,
-            quantity: bonus.quantity,
-            creditsCharged: bonus.creditsCharged,
-            status: bonus.status,
-            idempotencyKey: randomUUID(),
-            processedAt: bonus.status === "processed" ? nowDate() : null,
-          });
-        }
-        return automationRow.id;
-      }),
-    );
-    signal.throwIfAborted();
-    return { automationIds: results };
+    const response = await postAction(signal, {
+      action: "seed-automation-batch",
+      org_id: args.orgId,
+      user_id: args.userId,
+      compose_id: args.composeId,
+      entries,
+    });
+    if (!response.automation_ids) {
+      throw new Error("seedAutomationBatch$: response missing automation_ids");
+    }
+    return { automationIds: response.automation_ids };
   },
 );
