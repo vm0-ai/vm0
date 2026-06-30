@@ -171,6 +171,14 @@ function threadLinkByTitle(title: string): HTMLElement {
   return link;
 }
 
+function visibleThreadTitles(expectedTitles: readonly string[]): string[] {
+  const expected = new Set(expectedTitles);
+  return queryAllByRoleFast("link", sidebar()).flatMap((candidate) => {
+    const title = candidate.textContent?.replace(/\s+/g, " ").trim();
+    return title && expected.has(title) ? [title] : [];
+  });
+}
+
 function agentRowByName(container: HTMLElement, name: string): HTMLElement {
   const text = within(container).getByText(name);
   const row = text.closest(".group");
@@ -226,6 +234,8 @@ function mockSidebarThreadStory(
       draftAttachments: null,
       createdAt: "2026-03-10T00:00:00Z",
       updatedAt: "2026-03-10T00:00:00Z",
+      lastMessageAt: thread?.updatedAt ?? "2026-03-10T00:00:00Z",
+      pinnedAt: thread?.pinnedAt ?? null,
     });
   });
   context.mocks.api(chatThreadPinContract.pin, ({ params, respond }) => {
@@ -402,22 +412,77 @@ describe("zero sidebar", () => {
     });
   });
 
-  it("filters chat threads to unread threads and the current chat from the menu", async () => {
+  it("requests unread chat threads and keeps the current chat at the front of the unpinned section", async () => {
     prepareDefaultAgent();
-    mockSidebarThreadStory([
-      createThread(EXISTING_THREAD_ID, "Release plan"),
-      createThread(INCIDENT_THREAD_ID, "Incident notes"),
-      createThread(ARCHIVED_THREAD_ID, "Archived context"),
-    ]);
+    const pinnedUnreadThread = createThread(
+      AUTOMATION_THREAD_ID,
+      "Pinned incident",
+      {
+        pinnedAt: "2026-03-10T12:00:00Z",
+      },
+    );
+    const currentThread = createThread(EXISTING_THREAD_ID, "Release plan");
+    const unreadThread = createThread(INCIDENT_THREAD_ID, "Incident notes");
+    const archivedThread = createThread(ARCHIVED_THREAD_ID, "Archived context");
+    const listQueries: unknown[] = [];
+
+    context.mocks.api(chatThreadsContract.list, ({ query, respond }) => {
+      listQueries.push(query);
+      if (query.filter === "unread") {
+        return respond(
+          200,
+          splitChatThreadListResponse([pinnedUnreadThread, unreadThread]),
+        );
+      }
+      return respond(
+        200,
+        splitChatThreadListResponse([
+          pinnedUnreadThread,
+          currentThread,
+          unreadThread,
+          archivedThread,
+        ]),
+      );
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+      const thread = [
+        pinnedUnreadThread,
+        currentThread,
+        unreadThread,
+        archivedThread,
+      ].find((candidate) => {
+        return candidate.id === params.id;
+      });
+      return respond(200, {
+        id: params.id,
+        title: thread?.title ?? null,
+        agentId: thread?.agent.id ?? AGENT_ID,
+        activeRunIds: [],
+        draftContent: null,
+        draftAttachments: null,
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        lastMessageAt: thread?.updatedAt ?? "2026-03-10T00:00:00Z",
+        pinnedAt: thread?.pinnedAt ?? null,
+      });
+    });
     context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
       return respond(200, {
         unreads: [
+          {
+            threadId: AUTOMATION_THREAD_ID,
+            unreadAt: "2026-03-10T00:04:00Z",
+          },
           { threadId: INCIDENT_THREAD_ID, unreadAt: "2026-03-10T00:05:00Z" },
         ],
       });
     });
 
-    detachedSetupPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
+    detachedSetupPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
+    });
 
     await waitFor(() => {
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
@@ -432,11 +497,93 @@ describe("zero sidebar", () => {
     fireEvent.keyDown(document.body, { key: "Escape" });
 
     await waitFor(() => {
-      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
-      expect(within(sidebar()).getByText("Incident notes")).toBeInTheDocument();
+      expect(listQueries).toContainEqual(
+        expect.objectContaining({ filter: "unread" }),
+      );
+      expect(
+        visibleThreadTitles([
+          "Pinned incident",
+          "Release plan",
+          "Incident notes",
+        ]),
+      ).toStrictEqual(["Pinned incident", "Release plan", "Incident notes"]);
       expect(
         within(sidebar()).queryByText("Archived context"),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("hides the unread chat filter when unread indicators are disabled", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([createThread(EXISTING_THREAD_ID, "Release plan")]);
+    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      return respond(200, { unreads: [] });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    });
+
+    openChatListMenu();
+
+    expect(screen.queryByRole("switch", { name: "Unread" })).toBeNull();
+  });
+
+  it("keeps a missing pinned current chat at the front of the pinned section", async () => {
+    prepareDefaultAgent();
+    const pinnedCurrentThread = createThread(
+      EXISTING_THREAD_ID,
+      "Release plan",
+      {
+        pinnedAt: "2026-03-10T12:00:00Z",
+      },
+    );
+    const pinnedThread = createThread(AUTOMATION_THREAD_ID, "Pinned incident", {
+      pinnedAt: "2026-03-10T11:00:00Z",
+    });
+    const unpinnedThread = createThread(INCIDENT_THREAD_ID, "Incident notes");
+
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(
+        200,
+        splitChatThreadListResponse([pinnedThread, unpinnedThread]),
+      );
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+      const thread = [pinnedCurrentThread, pinnedThread, unpinnedThread].find(
+        (candidate) => {
+          return candidate.id === params.id;
+        },
+      );
+      return respond(200, {
+        id: params.id,
+        title: thread?.title ?? null,
+        agentId: thread?.agent.id ?? AGENT_ID,
+        activeRunIds: [],
+        draftContent: null,
+        draftAttachments: null,
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        lastMessageAt: thread?.updatedAt ?? "2026-03-10T00:00:00Z",
+        pinnedAt: thread?.pinnedAt ?? null,
+      });
+    });
+    context.mocks.api(chatThreadsContract.unreads, ({ respond }) => {
+      return respond(200, { unreads: [] });
+    });
+
+    detachedSetupPage({ context, path: `/chats/${EXISTING_THREAD_ID}` });
+
+    await waitFor(() => {
+      expect(
+        visibleThreadTitles([
+          "Release plan",
+          "Pinned incident",
+          "Incident notes",
+        ]),
+      ).toStrictEqual(["Release plan", "Pinned incident", "Incident notes"]);
     });
   });
 
