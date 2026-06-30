@@ -15,6 +15,11 @@ export interface ConnectorAgentAccessRow {
   readonly grants: readonly UserPermissionGrantResponse[];
 }
 
+interface ConnectorAgentAuthorizationRow {
+  readonly agent: TeamComposeItem;
+  readonly enabledTypes: readonly string[];
+}
+
 interface ConnectorAgentAccessRowsParams {
   readonly connectorType: ConnectorType;
 }
@@ -86,6 +91,54 @@ export const setConnectorAccessManagementPermissionAgentId$ = command(
   },
 );
 
+const connectorAgentAuthorizations$ = computed(
+  async (get): Promise<readonly ConnectorAgentAuthorizationRow[]> => {
+    get(internalConnectorAccessManagementReload$);
+    const allAgents = await get(agents$);
+    const client = get(zeroClient$)(zeroUserConnectorsContract);
+    return await Promise.all(
+      allAgents.map(async (agent) => {
+        const result = await accept(
+          client.get({ params: { id: agent.id } }),
+          [200],
+          { toast: false },
+        );
+        return {
+          agent,
+          enabledTypes: result.body.enabledTypes,
+        };
+      }),
+    );
+  },
+);
+
+function createConnectorAuthorizedAgentsFactory(): (
+  params: ConnectorAgentAccessRowsParams,
+) => Computed<Promise<readonly TeamComposeItem[]>> {
+  const cache = new Map<
+    string,
+    Computed<Promise<readonly TeamComposeItem[]>>
+  >();
+  return (params) => {
+    const existing = cache.get(params.connectorType);
+    if (existing) {
+      return existing;
+    }
+    const atom$ = computed(async (get): Promise<readonly TeamComposeItem[]> => {
+      const authorizations = await get(connectorAgentAuthorizations$);
+      return authorizations
+        .filter((row) => {
+          return row.enabledTypes.includes(params.connectorType);
+        })
+        .map((row) => {
+          return row.agent;
+        });
+    });
+    cache.set(params.connectorType, atom$);
+    return atom$;
+  };
+}
+
 function createConnectorAgentAccessRowsFactory(): (
   params: ConnectorAgentAccessRowsParams,
 ) => Computed<Promise<readonly ConnectorAgentAccessRow[]>> {
@@ -100,19 +153,10 @@ function createConnectorAgentAccessRowsFactory(): (
     }
     const atom$ = computed(
       async (get): Promise<readonly ConnectorAgentAccessRow[]> => {
-        get(internalConnectorAccessManagementReload$);
-        const allAgents = await get(agents$);
-        const client = get(zeroClient$)(zeroUserConnectorsContract);
+        const authorizations = await get(connectorAgentAuthorizations$);
         return await Promise.all(
-          allAgents.map(async (agent) => {
-            const result = await accept(
-              client.get({ params: { id: agent.id } }),
-              [200],
-              { toast: false },
-            );
-            const authorized = result.body.enabledTypes.includes(
-              params.connectorType,
-            );
+          authorizations.map(async ({ agent, enabledTypes }) => {
+            const authorized = enabledTypes.includes(params.connectorType);
             const grants = authorized
               ? await get(userPermissionGrantsByAgent({ agentId: agent.id }))
               : [];
@@ -129,6 +173,9 @@ function createConnectorAgentAccessRowsFactory(): (
     return atom$;
   };
 }
+
+export const connectorAuthorizedAgents =
+  createConnectorAuthorizedAgentsFactory();
 
 export const connectorAgentAccessRows = createConnectorAgentAccessRowsFactory();
 
