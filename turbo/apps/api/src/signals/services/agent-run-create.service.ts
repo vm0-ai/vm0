@@ -6002,12 +6002,13 @@ async function beforeDispatchResponse(args: {
     return null;
   }
 
+  // Do not bind the outer request signal here. A successful gate may have
+  // persisted pre-dispatch state that must be followed by queue/job persistence.
   const beforeDispatchResult = await settle(
     beforeDispatch({
       runId: args.run.id,
       status: args.run.status,
     }),
-    args.signal,
   );
   if (!beforeDispatchResult.ok) {
     const transitioned = await markRunFailed(
