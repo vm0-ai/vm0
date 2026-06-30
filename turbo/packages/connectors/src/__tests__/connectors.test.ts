@@ -270,6 +270,119 @@ function normalizePublicIdentifier(value: string): string {
   return value.replace(/[^A-Za-z0-9]/gu, "").toLowerCase();
 }
 
+function addValueRefPrivateName(
+  valueRef: string,
+  privateNames: Set<string>,
+): void {
+  const match = /^\$(?:secrets|vars)\.(.+)$/.exec(valueRef);
+  if (match?.[1]) {
+    privateNames.add(match[1]);
+  }
+}
+
+function addStoragePrivateNames(
+  method: ConnectorAuthMethodConfig,
+  privateNames: Set<string>,
+): void {
+  for (const secret of method.storage.secrets) {
+    privateNames.add(secret);
+  }
+  for (const variable of method.storage.variables) {
+    privateNames.add(variable);
+  }
+}
+
+function addGrantPrivateNames(
+  method: ConnectorAuthMethodConfig,
+  privateNames: Set<string>,
+): void {
+  if (method.grant.kind === "manual") {
+    for (const fieldName of Object.keys(method.grant.fields)) {
+      privateNames.add(fieldName);
+    }
+  }
+  if ("outputs" in method.grant) {
+    for (const valueRef of Object.values(method.grant.outputs)) {
+      addValueRefPrivateName(valueRef, privateNames);
+    }
+  }
+}
+
+function addAccessPrivateNames(
+  method: ConnectorAuthMethodConfig,
+  privateNames: Set<string>,
+): void {
+  if (method.access.kind !== "none") {
+    for (const [envName, binding] of Object.entries(
+      method.access.envBindings,
+    )) {
+      privateNames.add(envName);
+      addValueRefPrivateName(
+        typeof binding === "string" ? binding : binding.valueRef,
+        privateNames,
+      );
+    }
+    for (const platformSecret of method.access.platformSecrets ?? []) {
+      privateNames.add(platformSecret);
+    }
+  }
+}
+
+function addRefreshPrivateNames(
+  method: ConnectorAuthMethodConfig,
+  privateNames: Set<string>,
+): void {
+  if (method.access.kind === "refresh-token") {
+    for (const valueRef of Object.values(method.access.inputs)) {
+      addValueRefPrivateName(valueRef, privateNames);
+    }
+    for (const valueRef of Object.values(method.access.outputs)) {
+      addValueRefPrivateName(valueRef, privateNames);
+    }
+    for (const refreshableSecret of method.access.refreshableSecrets) {
+      privateNames.add(refreshableSecret);
+    }
+  }
+}
+
+function addRevokePrivateNames(
+  method: ConnectorAuthMethodConfig,
+  privateNames: Set<string>,
+): void {
+  if (method.revoke.kind === "token-revoke") {
+    for (const valueRef of Object.values(method.revoke.inputs)) {
+      addValueRefPrivateName(valueRef, privateNames);
+    }
+  }
+}
+
+function addClientPrivateNames(
+  method: ConnectorAuthMethodConfig,
+  privateNames: Set<string>,
+): void {
+  if ("client" in method && method.client) {
+    if ("clientIdEnv" in method.client) {
+      privateNames.add(method.client.clientIdEnv);
+    }
+    if ("clientSecretEnv" in method.client) {
+      privateNames.add(method.client.clientSecretEnv);
+    }
+  }
+}
+
+function connectorAuthMethodPrivateNames(
+  method: ConnectorAuthMethodConfig,
+): Set<string> {
+  const privateNames = new Set<string>();
+  addStoragePrivateNames(method, privateNames);
+  addGrantPrivateNames(method, privateNames);
+  addAccessPrivateNames(method, privateNames);
+  addRefreshPrivateNames(method, privateNames);
+  addRevokePrivateNames(method, privateNames);
+  addClientPrivateNames(method, privateNames);
+  return privateNames;
+}
+
 const manualAuthMethodConfig = {
   label: "API Token",
   helpText: "Enter an API token.",
@@ -650,26 +763,29 @@ describe("connector auth method config", () => {
 
         if (method.grant.kind === "manual") {
           const publicIds = new Map<string, string[]>();
-          const privateNames = new Set(Object.keys(method.grant.fields));
+          const privateNames = connectorAuthMethodPrivateNames(method);
           for (const [privateName, field] of Object.entries(
             method.grant.fields,
           )) {
+            const normalizedPublicId = normalizePublicIdentifier(
+              field.publicId,
+            );
             expect(
               field.publicId,
               `${type}/${authMethod}: ${privateName} must declare a public id`,
             ).toMatch(PUBLIC_CONNECTOR_FORM_ID_PATTERN);
             expect(
               privateNames.has(field.publicId),
-              `${type}/${authMethod}: public id must not equal a private field name`,
+              `${type}/${authMethod}: public id must not equal a private connector name`,
             ).toBe(false);
+            for (const privateName of privateNames) {
+              expect(
+                normalizedPublicId,
+                `${type}/${authMethod}: public id must not normalize to private connector name ${privateName}`,
+              ).not.toBe(normalizePublicIdentifier(privateName));
+            }
             expect(
-              normalizePublicIdentifier(field.publicId),
-              `${type}/${authMethod}: public id must not normalize to private field ${privateName}`,
-            ).not.toBe(normalizePublicIdentifier(privateName));
-            expect(
-              normalizePublicIdentifier(field.publicId).startsWith(
-                connectorPrefix,
-              ),
+              normalizedPublicId.startsWith(connectorPrefix),
               `${type}/${authMethod}: public id ${field.publicId} must not include connector prefix ${type}`,
             ).toBe(false);
             publicIds.set(field.publicId, [
@@ -689,17 +805,29 @@ describe("connector auth method config", () => {
 
         if (method.grant.kind === "device-auth") {
           const publicIds = new Map<string, string[]>();
+          const privateNames = connectorAuthMethodPrivateNames(method);
           for (const [optionName, option] of Object.entries(
             method.grant.startOptions ?? {},
           )) {
+            const normalizedPublicId = normalizePublicIdentifier(
+              option.publicId,
+            );
             expect(
               option.publicId,
               `${type}/${authMethod}: ${optionName} must declare a public id`,
             ).toMatch(PUBLIC_CONNECTOR_FORM_ID_PATTERN);
             expect(
-              normalizePublicIdentifier(option.publicId).startsWith(
-                connectorPrefix,
-              ),
+              privateNames.has(option.publicId),
+              `${type}/${authMethod}: public id must not equal a private connector name`,
+            ).toBe(false);
+            for (const privateName of privateNames) {
+              expect(
+                normalizedPublicId,
+                `${type}/${authMethod}: public id must not normalize to private connector name ${privateName}`,
+              ).not.toBe(normalizePublicIdentifier(privateName));
+            }
+            expect(
+              normalizedPublicId.startsWith(connectorPrefix),
               `${type}/${authMethod}: public id ${option.publicId} must not include connector prefix ${type}`,
             ).toBe(false);
             publicIds.set(option.publicId, [
