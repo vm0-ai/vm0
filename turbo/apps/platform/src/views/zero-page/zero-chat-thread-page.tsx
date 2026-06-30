@@ -5695,9 +5695,6 @@ function createPermissionActionCardStatus(params: {
   if (params.saveDone) {
     return { kind: "saved" };
   }
-  if (params.saveError) {
-    return { kind: "save-error" };
-  }
   if (params.loading) {
     return { kind: "loading" };
   }
@@ -5712,6 +5709,9 @@ function createPermissionActionCardStatus(params: {
   }
   if (params.alreadyApplied) {
     return { kind: "already-applied" };
+  }
+  if (params.saveError) {
+    return { kind: "save-error" };
   }
   return { kind: "ready" };
 }
