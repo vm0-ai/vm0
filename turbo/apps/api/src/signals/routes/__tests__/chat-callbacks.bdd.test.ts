@@ -8,8 +8,13 @@ import type {
   GenerationTemplateRequest,
   PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
+import type {
+  TestChatMessagesStateActionBody,
+  TestChatMessagesStateActionResponse,
+} from "@vm0/api-contracts/contracts/test-chat-messages-state";
 import { describe, expect, it, onTestFinished } from "vitest";
 
+import { createAppWithRoutes } from "../../../app-factory-core";
 import { mockOptionalEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
 import { flushWaitUntilForTest } from "../../context/wait-until";
@@ -21,6 +26,7 @@ import { createMiscRoutesApi } from "./helpers/api-bdd-misc";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
 import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
+import { testChatMessagesStateRoutes } from "../test-chat-messages-state";
 
 /**
  * CHAT-02 / HOOK-01: signed chat run callbacks through real dispatch.
@@ -344,6 +350,36 @@ function resultEvent(
 function pushPayload(call: readonly unknown[] | undefined): unknown {
   const raw = call?.[1];
   return JSON.parse(typeof raw === "string" ? raw : "{}");
+}
+
+function requestChatMessagesState(
+  path: string,
+  init?: RequestInit,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal: context.signal,
+    routes: testChatMessagesStateRoutes,
+  });
+  return Promise.resolve(app.request(path, init));
+}
+
+async function postChatMessagesStateAction(
+  body: TestChatMessagesStateActionBody,
+): Promise<TestChatMessagesStateActionResponse> {
+  const response = await requestChatMessagesState(
+    "/api/test/chat-messages-state/action",
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    },
+  );
+  if (!response.ok) {
+    throw new Error(
+      `chat messages state action ${body.action} failed with ${response.status}`,
+    );
+  }
+  return (await response.json()) as TestChatMessagesStateActionResponse;
 }
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -923,6 +959,58 @@ describe("CHAT-02: completed chat callback", () => {
 
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
+  }, 90_000);
+
+  it("excludes pre-dispatch cancelled rows without chat messages from later context", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "anchor before ghost",
+    });
+    const firstHeaders = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([assistantEvent(0, "anchor answer")]);
+    await completeChatRunOk(first.runId, firstHeaders, {
+      lastEventSequence: 0,
+    });
+    await waitForThreadMessages(actor, first.threadId, (messages) => {
+      return assistantMessages(messages).some((message) => {
+        return (
+          message.runId === first.runId && message.content === "anchor answer"
+        );
+      });
+    });
+
+    const ghost = await api.createRun(actor, {
+      agentId,
+      prompt: "ghost pre-dispatch queued prompt",
+      modelProvider: "anthropic-api-key",
+    });
+    await api.requestCancelRun(actor, ghost.runId, [200]);
+    await waitForRunStatus(actor, ghost.runId, "cancelled");
+    await postChatMessagesStateAction({
+      action: "attach-pre-dispatch-cancelled-run-to-thread",
+      run_id: ghost.runId,
+      thread_id: first.threadId,
+    });
+
+    const second = await startChatRun(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "continue after ghost",
+    });
+    const secondRun = await api.readRun(actor, second.runId);
+    const appended = secondRun.appendSystemPrompt ?? "";
+    expect(appended).toContain("# Web Chat Run Context");
+    expect(appended).toContain(`- RUN_ID: ${first.runId}`);
+    expect(appended).toContain("User: anchor before ghost");
+    expect(appended).toContain("Assistant: anchor answer");
+    expect(appended).not.toContain(`- RUN_ID: ${ghost.runId}`);
+    expect(appended).not.toContain("ghost pre-dispatch queued prompt");
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await waitForRunStatus(actor, second.runId, "cancelled");
   }, 90_000);
 });
 

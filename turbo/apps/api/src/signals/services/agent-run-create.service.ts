@@ -5014,7 +5014,7 @@ function failedRunResponse(
   };
 }
 
-const BEFORE_DISPATCH_CANCELLED_ERROR =
+export const BEFORE_DISPATCH_CANCELLED_ERROR =
   "Run dispatch cancelled before runner queue persistence";
 
 function cancelledBeforeDispatchRunResponse(
@@ -5036,20 +5036,29 @@ async function cancelRunBeforeDispatch(
   db: Db,
   runId: string,
 ): Promise<boolean> {
-  const [updated] = await db
-    .update(agentRuns)
-    .set({
-      status: "cancelled",
-      completedAt: nowDate(),
-      error: BEFORE_DISPATCH_CANCELLED_ERROR,
-    })
-    .where(
-      and(
-        eq(agentRuns.id, runId),
-        inArray(agentRuns.status, ["queued", "pending"]),
-      ),
-    )
-    .returning({ userId: agentRuns.userId });
+  const updated = await db.transaction(async (tx) => {
+    const [row] = await tx
+      .update(agentRuns)
+      .set({
+        status: "cancelled",
+        completedAt: nowDate(),
+        error: BEFORE_DISPATCH_CANCELLED_ERROR,
+      })
+      .where(
+        and(
+          eq(agentRuns.id, runId),
+          inArray(agentRuns.status, ["queued", "pending"]),
+        ),
+      )
+      .returning({ userId: agentRuns.userId });
+    if (!row) {
+      return undefined;
+    }
+
+    await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, runId));
+    await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
+    return row;
+  });
 
   if (!updated) {
     return false;

@@ -51,6 +51,7 @@ import {
   createZeroRun$,
   type ZeroPreCreateSource,
 } from "../services/zero-runs-create.service";
+import { BEFORE_DISPATCH_CANCELLED_ERROR } from "../services/agent-run-create.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
 import {
   ApiDispatchTimingCollector,
@@ -806,7 +807,12 @@ async function getLatestRunsByThreadId(
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(eq(zeroRuns.chatThreadId, threadId))
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, threadId),
+        sql`(${agentRuns.status} IS DISTINCT FROM ${"cancelled"} OR ${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR})`,
+      ),
+    )
     .orderBy(desc(agentRuns.createdAt))
     .limit(limit);
 

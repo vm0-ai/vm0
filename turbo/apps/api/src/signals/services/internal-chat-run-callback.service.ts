@@ -41,7 +41,10 @@ import {
   publishUserSignal,
 } from "../external/realtime";
 import { recordSandboxOperation } from "../external/sandbox-op-log";
-import type { DispatchFailedRunCallbacks } from "./agent-run-create.service";
+import {
+  BEFORE_DISPATCH_CANCELLED_ERROR,
+  type DispatchFailedRunCallbacks,
+} from "./agent-run-create.service";
 import type { InternalRunCallbackEnvelope } from "./internal-run-callback";
 import { formatRunErrorForRunOwner$ } from "./run-error-format.service";
 import { saveRunSummary, saveRunSummary$ } from "./run-summary.service";
@@ -1308,7 +1311,12 @@ async function getLatestRunsByThreadId(
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(eq(zeroRuns.chatThreadId, threadId))
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, threadId),
+        sql`(${agentRuns.status} IS DISTINCT FROM ${"cancelled"} OR ${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR})`,
+      ),
+    )
     .orderBy(desc(agentRuns.createdAt))
     .limit(limit);
 
