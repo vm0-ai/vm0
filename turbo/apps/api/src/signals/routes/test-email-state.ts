@@ -25,7 +25,7 @@ import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
 import { writeDb$, type Db } from "../external/db";
-import { nowDate } from "../external/time";
+import { now, nowDate } from "../external/time";
 import type { RouteEntry } from "../route-entry";
 import { encryptPersistentSecretValue } from "../services/crypto.utils";
 import { generateReplyToken } from "../services/zero-email-common.service";
@@ -38,6 +38,8 @@ const actionBody$ = bodyResultOf(testEmailStateContract.action);
 const CALLBACK_SECRET = "test-callback-secret";
 const REPLY_PATH = "/api/zero/email/callbacks/reply";
 const TRIGGER_PATH = "/api/zero/email/callbacks/trigger";
+const OUTBOX_TEST_FROM = "Zero <bdd-outbox@mail.example.com>";
+const OUTBOX_TEST_CREATED_AT_OFFSET_MS = 10 * 60 * 1000;
 
 interface EmailFixture {
   readonly orgId: string;
@@ -114,6 +116,24 @@ function readNullableRecord(
     return null;
   }
   return readRecord(body, key) ?? undefined;
+}
+
+function readOptionalNumber(
+  body: Record<string, unknown>,
+  key: string,
+): number | undefined {
+  const value = body[key];
+  return typeof value === "number" && Number.isFinite(value)
+    ? value
+    : undefined;
+}
+
+function parseMaybeDate(value: string | undefined): Date | undefined {
+  return value ? new Date(value) : undefined;
+}
+
+function parseNullableDate(value: string | null | undefined): Date | null {
+  return value ? new Date(value) : null;
 }
 
 function readRunStatus(body: Record<string, unknown>): RunStatus {
@@ -373,7 +393,10 @@ async function deleteFixtureForAction(
     .delete(emailOutbox)
     .where(
       or(
-        eq(emailOutbox.fromAddress, `Zero <${fixture.orgSlug}@mail.example.com>`),
+        eq(
+          emailOutbox.fromAddress,
+          `Zero <${fixture.orgSlug}@mail.example.com>`,
+        ),
         eq(emailOutbox.fromAddress, "Zero <vm0@mail.example.com>"),
       ),
     );
@@ -383,7 +406,10 @@ async function deleteFixtureForAction(
     .where(
       or(
         eq(emailSuppressions.emailAddress, fixture.userEmail),
-        eq(emailSuppressions.emailAddress, `bounce-${fixture.orgSlug}@example.com`),
+        eq(
+          emailSuppressions.emailAddress,
+          `bounce-${fixture.orgSlug}@example.com`,
+        ),
         eq(
           emailSuppressions.emailAddress,
           `complaint-${fixture.orgSlug}@example.com`,
@@ -414,7 +440,9 @@ async function deleteFixtureForAction(
       .delete(agentRunCallbacks)
       .where(inArray(agentRunCallbacks.runId, runIds));
     signal.throwIfAborted();
-    await db.delete(runnerJobQueue).where(inArray(runnerJobQueue.runId, runIds));
+    await db
+      .delete(runnerJobQueue)
+      .where(inArray(runnerJobQueue.runId, runIds));
     signal.throwIfAborted();
     await db.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
     signal.throwIfAborted();
@@ -654,6 +682,140 @@ async function deleteOrgMetadataForAction(
   return actionOk();
 }
 
+async function seedOutboxForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const subject = readString(body, "subject");
+  const to = readString(body, "to");
+  if (!subject || !to) {
+    return actionBadRequest("subject and to are required");
+  }
+  await db.insert(emailOutbox).values({
+    fromAddress: OUTBOX_TEST_FROM,
+    toAddresses: to,
+    subject: `Re: ${subject}`,
+    template: {
+      template: "inbound-error",
+      props: { errorMessage: "BDD outbox test email" },
+    },
+    status: readOptionalString(body, "status") ?? "pending",
+    attempts: readOptionalNumber(body, "attempts") ?? 0,
+    createdAt:
+      parseMaybeDate(readOptionalString(body, "created_at")) ??
+      new Date(now() - OUTBOX_TEST_CREATED_AT_OFFSET_MS),
+    nextRetryAt: parseNullableDate(readNullableString(body, "next_retry_at")),
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function deleteOutboxBySubjectForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const subject = readString(body, "subject");
+  if (!subject) {
+    return actionBadRequest("subject is required");
+  }
+  await db.delete(emailOutbox).where(eq(emailOutbox.subject, `Re: ${subject}`));
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function touchOutboxForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const subject = readString(body, "subject");
+  const createdAt = parseMaybeDate(readOptionalString(body, "created_at"));
+  if (!subject) {
+    return actionBadRequest("subject is required");
+  }
+  const updated = await db
+    .update(emailOutbox)
+    .set({ createdAt: createdAt ?? nowDate() })
+    .where(eq(emailOutbox.subject, `Re: ${subject}`))
+    .returning({ id: emailOutbox.id });
+  signal.throwIfAborted();
+  if (updated.length === 0) {
+    return actionBadRequest(`outbox row not found for ${subject}`);
+  }
+  return actionOk();
+}
+
+async function getOutboxBySubjectForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const subject = readString(body, "subject");
+  if (!subject) {
+    return actionBadRequest("subject is required");
+  }
+  const [row] = await db
+    .select({
+      status: emailOutbox.status,
+      attempts: emailOutbox.attempts,
+      lastError: emailOutbox.lastError,
+    })
+    .from(emailOutbox)
+    .where(eq(emailOutbox.subject, `Re: ${subject}`))
+    .limit(1);
+  signal.throwIfAborted();
+  return actionOk({
+    outbox_row: row
+      ? {
+          status: row.status,
+          attempts: row.attempts,
+          last_error: row.lastError,
+        }
+      : null,
+  });
+}
+
+async function seedSuppressionForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const email = readString(body, "email");
+  if (!email) {
+    return actionBadRequest("email is required");
+  }
+  await db
+    .delete(emailSuppressions)
+    .where(eq(emailSuppressions.emailAddress, email));
+  signal.throwIfAborted();
+  await db.insert(emailSuppressions).values({
+    emailAddress: email,
+    reason: readOptionalString(body, "reason") ?? "bounced",
+    resendEmailId:
+      readOptionalString(body, "resend_email_id") ?? `em_${randomUUID()}`,
+  });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function deleteSuppressionForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const email = readString(body, "email");
+  if (!email) {
+    return actionBadRequest("email is required");
+  }
+  await db
+    .delete(emailSuppressions)
+    .where(eq(emailSuppressions.emailAddress, email));
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 async function getThreadForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -863,6 +1025,24 @@ const mutateTestEmailState$ = command(
       }
       case "seed-user-cache": {
         return await seedUserCacheForAction(db, body, signal);
+      }
+      case "seed-outbox": {
+        return await seedOutboxForAction(db, body, signal);
+      }
+      case "delete-outbox-by-subject": {
+        return await deleteOutboxBySubjectForAction(db, body, signal);
+      }
+      case "touch-outbox": {
+        return await touchOutboxForAction(db, body, signal);
+      }
+      case "get-outbox-by-subject": {
+        return await getOutboxBySubjectForAction(db, body, signal);
+      }
+      case "seed-suppression": {
+        return await seedSuppressionForAction(db, body, signal);
+      }
+      case "delete-suppression": {
+        return await deleteSuppressionForAction(db, body, signal);
       }
       case "delete-org-metadata": {
         return await deleteOrgMetadataForAction(db, body, signal);

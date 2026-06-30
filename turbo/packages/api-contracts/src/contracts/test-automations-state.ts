@@ -159,10 +159,23 @@ export const testAutomationsStateActionBodySchema = z.discriminatedUnion(
       user_id: z.string(),
     }),
     z.object({
+      action: z.literal("read-compose-head-version"),
+      compose_id: z.string(),
+    }),
+    z.object({
+      action: z.literal("seed-vm0-managed-default-model-key"),
+    }),
+    z.object({
+      action: z.literal("delete-vm0-managed-default-model-key"),
+    }),
+    z.object({
       action: z.literal("enable-fake-kms"),
     }),
     z.object({
       action: z.literal("reset-fake-kms"),
+    }),
+    z.object({
+      action: z.literal("read-fake-kms-state"),
     }),
   ],
 );
@@ -171,6 +184,9 @@ export const testAutomationsStateActionResponseSchema = z.object({
   ok: z.literal(true),
   compose_id: z.string().optional(),
   run_id: z.string().optional(),
+  head_version_id: z.string().nullable().optional(),
+  selected_model: z.string().optional(),
+  decrypt_call_count: z.number().optional(),
 });
 
 export const testAutomationsStateContract = c.router({

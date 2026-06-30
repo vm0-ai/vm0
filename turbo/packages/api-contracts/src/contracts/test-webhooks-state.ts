@@ -65,6 +65,13 @@ export const testWebhooksStateActionBodySchema = z.discriminatedUnion(
       org_id: z.string(),
       stripe_subscription_id: z.string().optional(),
     }),
+    z.object({
+      action: z.literal("set-firewall-auth-refresh-timeout-ms"),
+      timeout_ms: z.number().int().positive(),
+    }),
+    z.object({
+      action: z.literal("reset-firewall-auth-refresh-timeout-ms"),
+    }),
   ],
 );
 

@@ -14,7 +14,9 @@ import { eq } from "drizzle-orm";
 import { bodyResultOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
+import { testOverride } from "../../lib/singleton";
 import type { RouteEntry } from "../route-entry";
+import { setFirewallAuthRefreshTimeoutMsForTests } from "../services/agent-webhook-firewall-auth.service";
 import {
   isTestEndpointAllowed,
   testEndpointNotFoundResponse,
@@ -24,6 +26,12 @@ const actionBody$ = bodyResultOf(testWebhooksStateContract.action);
 
 type WebhooksAction<TAction extends TestWebhooksStateActionBody["action"]> =
   Extract<TestWebhooksStateActionBody, { action: TAction }>;
+
+const restoreFirewallAuthRefreshTimeout = testOverride<(() => void) | null>(
+  () => {
+    return null;
+  },
+);
 
 function actionOk(extra: Record<string, unknown> = {}) {
   return { status: 200 as const, body: { ok: true as const, ...extra } };
@@ -187,6 +195,18 @@ const mutateWebhooksState$ = command(
       }
       case "read-billing-state": {
         return await readBillingStateForAction(db, body, signal);
+      }
+      case "set-firewall-auth-refresh-timeout-ms": {
+        restoreFirewallAuthRefreshTimeout.get()?.();
+        restoreFirewallAuthRefreshTimeout.set(
+          setFirewallAuthRefreshTimeoutMsForTests(body.timeout_ms),
+        );
+        return actionOk();
+      }
+      case "reset-firewall-auth-refresh-timeout-ms": {
+        restoreFirewallAuthRefreshTimeout.get()?.();
+        restoreFirewallAuthRefreshTimeout.clear();
+        return actionOk();
       }
     }
   },

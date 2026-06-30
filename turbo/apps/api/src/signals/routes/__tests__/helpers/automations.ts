@@ -302,6 +302,38 @@ export async function deleteOrgMembership(
   });
 }
 
+export async function readAutomationComposeHeadVersion(
+  context: TestContext,
+  composeId: string,
+): Promise<string> {
+  const response = await postAction(context, {
+    action: "read-compose-head-version",
+    compose_id: composeId,
+  });
+  if (!response.head_version_id) {
+    throw new Error("readAutomationComposeHeadVersion missing head_version_id");
+  }
+  return response.head_version_id;
+}
+
+export async function seedVm0ManagedDefaultModelKey(
+  context: TestContext,
+): Promise<string> {
+  const response = await postAction(context, {
+    action: "seed-vm0-managed-default-model-key",
+  });
+  if (!response.selected_model) {
+    throw new Error("seedVm0ManagedDefaultModelKey missing selected_model");
+  }
+  return response.selected_model;
+}
+
+export async function deleteVm0ManagedDefaultModelKey(
+  context: TestContext,
+): Promise<void> {
+  await postAction(context, { action: "delete-vm0-managed-default-model-key" });
+}
+
 export async function enableAutomationsFakeKms(
   context: TestContext,
 ): Promise<void> {
@@ -312,4 +344,11 @@ export async function resetAutomationsFakeKms(
   context: TestContext,
 ): Promise<void> {
   await postAction(context, { action: "reset-fake-kms" });
+}
+
+export async function readAutomationsFakeKmsDecryptCallCount(
+  context: TestContext,
+): Promise<number> {
+  const response = await postAction(context, { action: "read-fake-kms-state" });
+  return response.decrypt_call_count ?? 0;
 }

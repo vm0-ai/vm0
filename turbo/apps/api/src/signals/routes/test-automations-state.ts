@@ -1,6 +1,11 @@
 import { randomUUID } from "node:crypto";
 
 import {
+  getProviderRuntimeModel,
+  getVm0Vendor,
+  MODEL_PROVIDER_TYPES,
+} from "@vm0/api-contracts/contracts/model-providers";
+import {
   DecryptCommand,
   type DecryptCommandOutput,
   GenerateDataKeyCommand,
@@ -29,6 +34,7 @@ import { secrets } from "@vm0/db/schema/secret";
 import { userCache } from "@vm0/db/schema/user-cache";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { userPermissionGrants } from "@vm0/db/schema/user-permission-grant";
+import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { and, asc, eq, inArray } from "drizzle-orm";
@@ -36,6 +42,7 @@ import { and, asc, eq, inArray } from "drizzle-orm";
 import { bodyResultOf, queryOf } from "../context/request";
 import { request$ } from "../context/hono";
 import { writeDb$, type Db } from "../external/db";
+import { testOverride } from "../../lib/singleton";
 import type { RouteEntry } from "../route-entry";
 import {
   resetSecretKmsClientForTests,
@@ -53,6 +60,11 @@ const patchBody$ = bodyResultOf(testAutomationsStateContract.patch);
 const actionBody$ = bodyResultOf(testAutomationsStateContract.action);
 const deleteQuery$ = queryOf(testAutomationsStateContract.delete);
 const fakeKmsDataKey = Buffer.from("0123456789abcdef0123456789abcdef", "utf8");
+const RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY =
+  "vm0-key-run-lifecycle-bdd-default-model";
+const fakeKmsDecryptCallCount = testOverride<number>(() => {
+  return 0;
+});
 
 interface AutomationSeed {
   readonly name: string;
@@ -650,9 +662,56 @@ function fakeSecretKmsClient(): SecretKmsClient {
         Plaintext: fakeKmsDataKey,
       };
     }
+    fakeKmsDecryptCallCount.set(fakeKmsDecryptCallCount.get() + 1);
     return { $metadata: {}, Plaintext: fakeKmsDataKey };
   }
   return { send };
+}
+
+async function readComposeHeadVersion(
+  db: Db,
+  composeId: string,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const [composeRow] = await db
+    .select({ headVersionId: agentComposes.headVersionId })
+    .from(agentComposes)
+    .where(eq(agentComposes.id, composeId))
+    .limit(1);
+  signal.throwIfAborted();
+  return composeRow?.headVersionId ?? null;
+}
+
+async function seedVm0ManagedDefaultModelKey(
+  db: Db,
+  signal: AbortSignal,
+): Promise<string> {
+  const selectedModel = MODEL_PROVIDER_TYPES.vm0.defaultModel;
+  if (!selectedModel) {
+    throw new Error("Expected vm0 to define a default model");
+  }
+  await db
+    .delete(vm0ApiKeys)
+    .where(eq(vm0ApiKeys.apiKey, RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY));
+  signal.throwIfAborted();
+  await db.insert(vm0ApiKeys).values({
+    vendor: getVm0Vendor(selectedModel),
+    model: getProviderRuntimeModel("vm0", selectedModel),
+    apiKey: RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY,
+    label: "run-lifecycle-bdd",
+  });
+  signal.throwIfAborted();
+  return selectedModel;
+}
+
+async function deleteVm0ManagedDefaultModelKey(
+  db: Db,
+  signal: AbortSignal,
+): Promise<void> {
+  await db
+    .delete(vm0ApiKeys)
+    .where(eq(vm0ApiKeys.apiKey, RUN_LIFECYCLE_TEST_VM0_MANAGED_API_KEY));
+  signal.throwIfAborted();
 }
 
 const postAutomationsState$ = command(
@@ -833,12 +892,45 @@ const postAutomationsStateAction$ = command(
           );
         signal.throwIfAborted();
         return { status: 200 as const, body: { ok: true as const } };
+      case "read-compose-head-version":
+        return {
+          status: 200 as const,
+          body: {
+            ok: true as const,
+            head_version_id: await readComposeHeadVersion(
+              db,
+              body.compose_id,
+              signal,
+            ),
+          },
+        };
+      case "seed-vm0-managed-default-model-key":
+        return {
+          status: 200 as const,
+          body: {
+            ok: true as const,
+            selected_model: await seedVm0ManagedDefaultModelKey(db, signal),
+          },
+        };
+      case "delete-vm0-managed-default-model-key":
+        await deleteVm0ManagedDefaultModelKey(db, signal);
+        return { status: 200 as const, body: { ok: true as const } };
       case "enable-fake-kms":
+        fakeKmsDecryptCallCount.set(0);
         setSecretKmsClientForTests(fakeSecretKmsClient());
         return { status: 200 as const, body: { ok: true as const } };
       case "reset-fake-kms":
         resetSecretKmsClientForTests();
+        fakeKmsDecryptCallCount.set(0);
         return { status: 200 as const, body: { ok: true as const } };
+      case "read-fake-kms-state":
+        return {
+          status: 200 as const,
+          body: {
+            ok: true as const,
+            decrypt_call_count: fakeKmsDecryptCallCount.get(),
+          },
+        };
     }
   },
 );

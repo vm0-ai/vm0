@@ -184,3 +184,21 @@ export async function readWebhookBillingState(
   }
   return billingStateFromWire(response.billing_state);
 }
+
+export async function setFirewallAuthRefreshTimeoutMsState(
+  context: TestContext,
+  timeoutMs: number,
+): Promise<void> {
+  await postAction(context, {
+    action: "set-firewall-auth-refresh-timeout-ms",
+    timeout_ms: timeoutMs,
+  });
+}
+
+export async function resetFirewallAuthRefreshTimeoutMsState(
+  context: TestContext,
+): Promise<void> {
+  await postAction(context, {
+    action: "reset-firewall-auth-refresh-timeout-ms",
+  });
+}

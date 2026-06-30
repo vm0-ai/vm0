@@ -151,6 +151,8 @@ async function seedStorageForAction(
     id: headVersionId,
     storageId,
     s3Key: body.s3_key,
+    size: body.size ?? 0,
+    fileCount: body.file_count ?? 0,
     createdBy: body.user_id,
   });
   signal.throwIfAborted();

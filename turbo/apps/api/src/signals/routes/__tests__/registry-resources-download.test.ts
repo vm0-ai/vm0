@@ -9,20 +9,70 @@ import {
   findTool,
 } from "@vm0/core/resource-registry";
 import { VOLUME_ORG_USER_ID } from "@vm0/core/storage-names";
-// eslint-disable-next-line no-restricted-imports -- Private registry archives are pre-provisioned storage versions; no production endpoint creates this fixture state. See docs/testing/testing-external-behavior.md.
-import { storages, storageVersions } from "@vm0/db/schema/storage";
-import { createStore } from "ccstate";
-import { eq } from "drizzle-orm";
+import { command, createStore, state } from "ccstate";
 import { afterEach, describe, expect, it } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { mockEnv } from "../../../lib/env";
-import { writeDb$ } from "../../external/db";
+import {
+  deleteMemoryForFixture$,
+  seedMemoryStorage$,
+  type MemoryFixture,
+} from "./helpers/zero-memory";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 
 const context = testContext();
 const store = createStore();
 const routeMocks = createZeroRouteMocks(context);
+
+interface SeededStorageFixture {
+  readonly storageName: string;
+  readonly fixture: MemoryFixture;
+}
+
+const seededStorageFixtures$ = state<readonly SeededStorageFixture[]>([]);
+
+const takeSeededStorageFixture$ = command(
+  (
+    { get, set },
+    storageName: string,
+    _signal: AbortSignal,
+  ): MemoryFixture | null => {
+    const fixtures = get(seededStorageFixtures$);
+    set(
+      seededStorageFixtures$,
+      fixtures.filter((fixture) => {
+        return fixture.storageName !== storageName;
+      }),
+    );
+    return (
+      fixtures.find((fixture) => {
+        return fixture.storageName === storageName;
+      })?.fixture ?? null
+    );
+  },
+);
+
+const rememberSeededStorageFixture$ = command(
+  ({ get, set }, entry: SeededStorageFixture, _signal: AbortSignal): void => {
+    set(seededStorageFixtures$, [
+      ...get(seededStorageFixtures$).filter((fixture) => {
+        return fixture.storageName !== entry.storageName;
+      }),
+      entry,
+    ]);
+  },
+);
+
+const deleteStorageFixtures$ = command(
+  async ({ get, set }, _input: void, signal: AbortSignal): Promise<void> => {
+    const fixtures = get(seededStorageFixtures$);
+    for (const entry of fixtures) {
+      await set(deleteMemoryForFixture$, entry.fixture, signal);
+    }
+    set(seededStorageFixtures$, []);
+  },
+);
 
 const PRIVATE_ARCHIVE_FIXTURES = [
   {
@@ -397,57 +447,51 @@ function commandInput(command: unknown): Record<string, unknown> {
   return {};
 }
 
-async function deleteStorageFixture(storageName: string): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.delete(storages).where(eq(storages.name, storageName));
-}
-
 async function deleteStorageFixtures(): Promise<void> {
-  for (const fixture of PRIVATE_ARCHIVE_FIXTURES) {
-    await deleteStorageFixture(storageNameFor(fixture.id));
-  }
+  await store.set(deleteStorageFixtures$, undefined, context.signal);
 }
 
 async function seedPrivateArchiveStorage(
   fixture: (typeof PRIVATE_ARCHIVE_FIXTURES)[number],
 ): Promise<string> {
-  const writeDb = store.set(writeDb$);
   const storageName = storageNameFor(fixture.id);
-  await deleteStorageFixture(storageName);
+  const previousFixture = await store.set(
+    takeSeededStorageFixture$,
+    storageName,
+    context.signal,
+  );
+  if (previousFixture) {
+    await store.set(deleteMemoryForFixture$, previousFixture, context.signal);
+  }
 
   const orgId = `org_${randomUUID()}`;
   const s3Prefix = `${orgId}/volume/${storageName}`;
   const s3Key = `${s3Prefix}/${fixture.versionId}`;
-  const [storage] = await writeDb
-    .insert(storages)
-    .values({
+  await store.set(
+    seedMemoryStorage$,
+    {
       orgId,
       userId: VOLUME_ORG_USER_ID,
-      name: storageName,
-      type: "volume",
-      s3Prefix,
+      s3Key,
+      headVersionId: fixture.versionId,
       size: 1_433_248,
       fileCount: 19,
-    })
-    .returning({ id: storages.id });
-
-  if (!storage) {
-    throw new Error("Failed to seed registry resource storage");
-  }
-
-  await writeDb.insert(storageVersions).values({
-    id: fixture.versionId,
-    storageId: storage.id,
-    s3Key,
-    size: 1_433_248,
-    fileCount: 19,
-    message: "test private registry archive",
-    createdBy: "test",
-  });
-  await writeDb
-    .update(storages)
-    .set({ headVersionId: fixture.versionId })
-    .where(eq(storages.id, storage.id));
+      type: "volume",
+      name: storageName,
+    },
+    context.signal,
+  );
+  await store.set(
+    rememberSeededStorageFixture$,
+    {
+      storageName,
+      fixture: {
+        orgId,
+        userId: VOLUME_ORG_USER_ID,
+      },
+    },
+    context.signal,
+  );
 
   return s3Key;
 }
