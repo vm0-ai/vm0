@@ -185,6 +185,7 @@ import { testTelegramMockRoutes } from "./routes/test-telegram-mock";
 import { testTelegramStateRoutes } from "./routes/test-telegram-state";
 import { testUsageInsightStateRoutes } from "./routes/test-usage-insight-state";
 import { testUsageStateRoutes } from "./routes/test-usage-state";
+import { testWorkflowTriggerStateRoutes } from "./routes/test-workflow-trigger-state";
 
 export const ROUTES: readonly RouteEntry[] = [
   {
@@ -375,4 +376,5 @@ export const ROUTES: readonly RouteEntry[] = [
   ...testTelegramStateRoutes,
   ...testUsageInsightStateRoutes,
   ...testUsageStateRoutes,
+  ...testWorkflowTriggerStateRoutes,
 ];
