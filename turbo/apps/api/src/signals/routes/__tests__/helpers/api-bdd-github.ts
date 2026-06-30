@@ -14,10 +14,8 @@ import {
 } from "@vm0/api-contracts/contracts/composes";
 import {
   integrationsGithubContract,
-  type CreateGithubLabelListenerBody,
   type GithubConnectUserBody,
   type GithubInstallationResponse,
-  type UpdateGithubLabelListenerBody,
 } from "@vm0/api-contracts/contracts/integrations-github";
 import { orgDefaultAgentContract } from "@vm0/api-contracts/contracts/orgs";
 import { zeroConnectorsByTypeContract } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -718,105 +716,6 @@ export function createGithubBddApi(context: TestContext) {
       );
     },
 
-    async disconnectUser<TStatus extends 200 | 401 | 404 | 500>(
-      auth: GithubActorAuth,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        githubClient().disconnectUser({ headers: authenticate(auth) }),
-        statuses,
-      );
-    },
-
-    async deleteInstallation<TStatus extends 200 | 401 | 403 | 404 | 500>(
-      auth: GithubActorAuth,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        githubClient().deleteInstallation({ headers: authenticate(auth) }),
-        statuses,
-      );
-    },
-
-    async updateInstallation<TStatus extends 200 | 400 | 401 | 403 | 404 | 500>(
-      auth: GithubActorAuth,
-      agentName: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        githubClient().updateInstallation({
-          headers: authenticate(auth),
-          body: { agentName },
-        }),
-        statuses,
-      );
-    },
-
-    async rawUpdateInstallation(
-      actor: ApiTestUser,
-      rawBody: string,
-    ): Promise<RawRouteResponse> {
-      const headers = authenticate(actor);
-      return await rawRequest("/api/integrations/github", {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-          ...(headers.authorization
-            ? { authorization: headers.authorization }
-            : {}),
-        },
-        body: rawBody,
-      });
-    },
-
-    async createLabelListener<
-      TStatus extends 201 | 400 | 401 | 403 | 404 | 409 | 500,
-    >(
-      auth: GithubActorAuth,
-      body: CreateGithubLabelListenerBody,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        githubClient().createLabelListener({
-          headers: authenticate(auth),
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async updateLabelListener<
-      TStatus extends 200 | 400 | 401 | 403 | 404 | 409 | 500,
-    >(
-      auth: GithubActorAuth,
-      listenerId: string,
-      body: UpdateGithubLabelListenerBody,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        githubClient().updateLabelListener({
-          headers: authenticate(auth),
-          params: { listenerId },
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async deleteLabelListener<TStatus extends 200 | 401 | 403 | 404 | 500>(
-      auth: GithubActorAuth,
-      listenerId: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        githubClient().deleteLabelListener({
-          headers: authenticate(auth),
-          params: { listenerId },
-        }),
-        statuses,
-      );
-    },
-
     async readGithubConnector(actor: ApiTestUser) {
       const client = setupApp({ context })(zeroConnectorsByTypeContract);
       const response = await accept(
@@ -899,8 +798,7 @@ export function createGithubBddApi(context: TestContext) {
      * Composite Given: full GitHub App install through the real install
      * redirect and setup callback. With `oauthCode` set the setup callback
      * exchanges the code against the GitHub App OAuth client and links the
-     * installing admin (`github=connected`); without it the install stays
-     * unlinked (`github=installed`).
+     * installing admin; without it the install stays unlinked.
      */
     async installGithubApp(
       actor: ApiTestUser,

@@ -1330,9 +1330,17 @@ export {
   type PhoneUploadCompleteResponse,
 } from "./integrations";
 export {
-  deleteGithubInstallationResponseSchema,
+  githubConnectSignatureSchema,
+  githubConnectUserBodySchema,
+  githubInstallationNotFoundResponseSchema,
+  githubInstallationResponseSchema,
+  githubIntegrationActionResponseSchema,
   integrationsGithubContract,
-  type DeleteGithubInstallationResponse,
+  type GithubConnectSignature,
+  type GithubConnectUserBody,
+  type GithubInstallationNotFoundResponse,
+  type GithubInstallationResponse,
+  type GithubIntegrationActionResponse,
   type IntegrationsGithubContract,
 } from "./integrations-github";
 export {

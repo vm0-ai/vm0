@@ -3435,9 +3435,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
       { setup_action: "update" },
       [307],
     );
-    expect(updateSetup.headers.get("location") ?? "").toContain(
-      "/works?github=installed",
-    );
+    expect(updateSetup.headers.get("location") ?? "").toContain("/workflows");
 
     const setupError = await integrations.requestGithubAppSetupCallback(
       {
@@ -3553,7 +3551,7 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
     );
   });
 
-  it("keeps GitHub no-install management and upload-init surfaces visible through APIs", async () => {
+  it("keeps GitHub no-install read and upload-init surfaces visible through APIs", async () => {
     const actor = integrations.user();
 
     const installation = await integrations.readGithubInstallation(actor);
@@ -3563,16 +3561,6 @@ describe("INT-03: GitHub and AgentPhone integrations", () => {
         message: "No GitHub installation found",
         code: "NOT_FOUND",
       },
-    });
-
-    const unauthorizedPatch =
-      await integrations.requestUpdateGithubInstallation(
-        null,
-        { agentName: "bdd-agent" },
-        [401],
-      );
-    expect(unauthorizedPatch.body).toMatchObject({
-      error: { code: "UNAUTHORIZED" },
     });
 
     const upload = await integrations.requestGithubUploadInit(

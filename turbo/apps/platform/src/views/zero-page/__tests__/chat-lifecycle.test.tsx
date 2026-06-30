@@ -611,24 +611,7 @@ function mockGithubPrTrackingThread(): void {
     },
   ]);
   context.mocks.data.githubIntegration(
-    context.mocks.data.defaultGithubIntegration({
-      labelListeners: [
-        {
-          id: "b0000000-0000-4000-a000-000000000701",
-          labelName: "needs-review",
-          triggerMode: "created_by_me",
-          prompt: "Review the labeled pull request.",
-          enabled: true,
-          canManage: true,
-          agent: {
-            id: AGENT_ID,
-            name: "zero",
-          },
-          createdAt: "2026-06-09T10:00:00Z",
-          updatedAt: "2026-06-09T10:00:00Z",
-        },
-      ],
-    }),
+    context.mocks.data.defaultGithubIntegration(),
   );
   context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
     return respond(200, { enabledTypes: ["github"] });
@@ -4448,20 +4431,6 @@ describe("chat lifecycle", () => {
         "aria-pressed",
         "false",
       );
-    });
-  });
-
-  it("queues a GitHub PR label command from the tracking dock", async () => {
-    setupGithubPrTrackingPage();
-    await openGithubPrTracking();
-
-    click(await screen.findByLabelText("Add label to PR 123"));
-    click(await screen.findByText("needs-review"));
-
-    await waitFor(() => {
-      expect(
-        screen.getByText('add label "needs-review" to pr 123'),
-      ).toBeInTheDocument();
     });
   });
 

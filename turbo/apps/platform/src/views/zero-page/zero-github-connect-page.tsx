@@ -30,11 +30,11 @@ function signInHref(): string {
 function BackLink() {
   return (
     <Link
-      pathname="/settings/github"
+      pathname="/workflows"
       className="inline-flex items-center gap-1.5 text-sm text-muted-foreground hover:text-foreground transition-colors no-underline"
     >
       <IconArrowLeft size={14} />
-      Back to GitHub settings
+      Back to workflows
     </Link>
   );
 }

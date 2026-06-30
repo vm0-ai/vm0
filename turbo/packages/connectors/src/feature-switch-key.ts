@@ -32,7 +32,6 @@ export enum FeatureSwitchKey {
   PexelsConnector = "pexelsConnector",
   DataExport = "dataExport",
   SpotifyConnector = "spotifyConnector",
-  GitHubIntegration = "githubIntegration",
   ZeroDebug = "zeroDebug",
   Banking = "banking",
   Lab = "lab",
