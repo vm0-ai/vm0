@@ -81,8 +81,8 @@ mod signals;
 use active_sessions::new_active_cli_agent_sessions;
 use factory_lifecycle::{shutdown_factories, start_factories};
 use heartbeat::{
-    HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, collect_heartbeat_state,
-    send_heartbeat,
+    HEARTBEAT_PERIOD, HeartbeatContext, HeartbeatContextInit, HeldSessionStateSnapshot,
+    collect_heartbeat_state, send_heartbeat,
 };
 use identity::load_or_generate_runner_id;
 use idle_lifecycle::{
@@ -1242,6 +1242,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
     let park_notify = Arc::new(tokio::sync::Notify::new());
     let orphaned_active_runs = OrphanedActiveRuns::new();
     let active_cli_agent_sessions = new_active_cli_agent_sessions();
+    let held_session_snapshot = HeldSessionStateSnapshot::new();
     let mut orphan_reap_tick = tokio::time::interval_at(
         tokio::time::Instant::now() + Duration::from_secs(10),
         Duration::from_secs(10),
@@ -1258,6 +1259,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         provider: &*provider_state.provider,
         workspace_cache: exec_config.workspace_cache.clone(),
         active_cli_agent_sessions: &active_cli_agent_sessions,
+        held_session_snapshot: held_session_snapshot.clone(),
     });
 
     // Pin the discover future so it survives cancellation by other select!
@@ -1278,6 +1280,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
         park_notify: Arc::clone(&park_notify),
         usage_flush_tx,
         active_cli_agent_sessions: active_cli_agent_sessions.clone(),
+        held_session_snapshot,
         device_rate_limits: capacity.device_rate_limits.clone(),
         #[cfg(test)]
         outer_job_panic: test_hooks.outer_job_panic,
@@ -1388,7 +1391,7 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                 let Some(candidate) = discovered else { break };
                 // Future completed — create a new one for the next discovery.
                 discover_fut = Box::pin(provider_state.provider.discover());
-                handle_discovered_job(
+                let needs_session_affinity_refresh = handle_discovered_job(
                     DiscoveredJob { candidate },
                     DiscoveredJobContext {
                         profiles: &runner.profiles,
@@ -1403,6 +1406,16 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
                         jobs: &mut jobs,
                     },
                 ).await;
+                let live_mode = *mode_rx.borrow();
+                if needs_session_affinity_refresh
+                    && matches!(live_mode, RunnerMode::Running | RunnerMode::Draining)
+                {
+                    info!(
+                        source = "post_discovery",
+                        "session affinity state triggered immediate heartbeat"
+                    );
+                    send_heartbeat(&hb_ctx, live_mode).await;
+                }
             }
             // Mode changes (signals)
             _ = mode_rx.changed() => {}
@@ -1491,14 +1504,23 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             }
             // Heartbeat: report runner state to the server
             _ = heartbeat_tick.tick() => {
-                send_heartbeat(&hb_ctx, current_mode).await;
+                let live_mode = *mode_rx.borrow();
+                send_heartbeat(&hb_ctx, live_mode).await;
             }
             // Immediate heartbeat after session affinity state changes —
             // eliminates the up-to-10s blind spot for affinity routing.
-            _ = park_notify.notified(), if matches!(mode, RunnerMode::Running) => {
-                let source = if can_discover { "main" } else { "budget_exhausted" };
-                info!(source, "session affinity state triggered immediate heartbeat");
-                send_heartbeat(&hb_ctx, current_mode).await;
+            _ = park_notify.notified(), if matches!(mode, RunnerMode::Running | RunnerMode::Draining) => {
+                let live_mode = *mode_rx.borrow();
+                let source = match live_mode {
+                    RunnerMode::Running if can_discover => "main",
+                    RunnerMode::Running => "budget_exhausted",
+                    RunnerMode::Draining => "draining",
+                    RunnerMode::Stopping | RunnerMode::Stopped => "inactive",
+                };
+                if matches!(live_mode, RunnerMode::Running | RunnerMode::Draining) {
+                    info!(source, "session affinity state triggered immediate heartbeat");
+                    send_heartbeat(&hb_ctx, live_mode).await;
+                }
             }
         }
     }
