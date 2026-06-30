@@ -52,9 +52,8 @@ import {
 } from "../../signals/zero-page/zero-pinned-agents.ts";
 import { unreadAgentIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import { createNewChatThreadOptimistically$ } from "../../signals/chat-page/optimistic-chat-thread-page.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { rootSignal$ } from "../../signals/root-signal.ts";
+import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
@@ -213,18 +212,16 @@ function AgentListDialogContainer() {
       : "Zero";
   const subagents = useLastResolved(subagents$) ?? [];
   const defaultAgentId = useLastResolved(defaultAgentId$);
-  const createNewChat = useSet(createNewChatThreadOptimistically$);
+  const navigate = useSet(detachedNavigateTo$);
   const setExpanded = useSet(setSidebarExpanded$);
-  const rootSignal = useGet(rootSignal$);
-  const onNewChat = (agentId: string | null) => {
+  const openAgentChat = (agentId: string | null) => {
     const resolvedAgentId = agentId ?? defaultAgentId;
     if (!resolvedAgentId) {
       return;
     }
-    detach(
-      createNewChat(resolvedAgentId, "main", rootSignal),
-      Reason.DomCallback,
-    );
+    navigate("/agents/:agentId/chat", {
+      pathParams: { agentId: resolvedAgentId },
+    });
     setExpanded(false);
   };
   return (
@@ -233,7 +230,7 @@ function AgentListDialogContainer() {
       onOpenChange={onOpenChange}
       displayName={displayName}
       subagents={subagents}
-      onNewChat={onNewChat}
+      onSelectChatAgent={openAgentChat}
     />
   );
 }
