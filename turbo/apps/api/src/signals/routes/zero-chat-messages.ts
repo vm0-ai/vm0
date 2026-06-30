@@ -1688,6 +1688,7 @@ function appendRecallUserMessage(params: {
       .select({
         role: chatMessages.role,
         runId: chatMessages.runId,
+        content: chatMessages.content,
         createdAt: chatMessages.createdAt,
       })
       .from(chatMessages)
@@ -1699,7 +1700,11 @@ function appendRecallUserMessage(params: {
       )
       .limit(1);
     if (existingRevoker) {
-      if (existingRevoker.role === "user" && existingRevoker.runId === null) {
+      if (
+        existingRevoker.role === "user" &&
+        existingRevoker.runId === null &&
+        existingRevoker.content === null
+      ) {
         return { ok: true, createdAt: existingRevoker.createdAt };
       }
       return {
