@@ -566,6 +566,32 @@ describe("zero automations page", () => {
     });
   });
 
+  it("opens a workflow-trigger automation detail when the workflow-trigger switch is enabled", async () => {
+    mockWorkflowTriggerStory();
+
+    detachedSetupPage({
+      context,
+      path: `/automations/${intervalWorkflowTrigger().id}`,
+      featureSwitches: {
+        [FeatureSwitchKey.WorkflowAutomation]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Ops brief" }),
+      ).toBeInTheDocument();
+    });
+
+    expect(screen.queryByText("Automation not found")).not.toBeInTheDocument();
+    expect(screen.getByText("Active")).toBeInTheDocument();
+    expect(screen.getAllByText("Zero").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Schedule").length).toBeGreaterThan(0);
+    expect(screen.getAllByText("Every 15 minutes").length).toBeGreaterThan(0);
+    expect(screen.getByText(intervalWorkflowTrigger().id)).toBeInTheDocument();
+    linkByNameAndPath("View workflow", `/workflows/${workflowId}`);
+  });
+
   it("starts automation creation in chat after choosing an agent", async () => {
     const prompt =
       "Help me create a workflow automation for this agent. Use the workflow-setup skill, then ask me for the desired outcome, automation, and action before creating the workflow and automation.";
