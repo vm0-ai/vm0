@@ -6010,13 +6010,22 @@ async function beforeDispatchResponse(args: {
     args.signal,
   );
   if (!beforeDispatchResult.ok) {
-    await markRunFailed(
+    const transitioned = await markRunFailed(
       args.db,
       args.run.id,
       beforeDispatchResult.error,
       args.createArgs.dispatchFailedCallbacks,
     );
     args.signal.throwIfAborted();
+    if (transitioned && args.run.status === "pending") {
+      await tapError(args.drainOrgQueue(), (error) => {
+        L.error("Failed to drain org queue after run pre-dispatch failure", {
+          runId: args.run.id,
+          error,
+        });
+      });
+      args.signal.throwIfAborted();
+    }
     return failedRunResponse(args.run, beforeDispatchResult.error);
   }
   if (beforeDispatchResult.value) {
