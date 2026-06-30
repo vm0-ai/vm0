@@ -1,4 +1,4 @@
-//! Disabled Codex app-server execution backend.
+//! Experimental Codex app-server execution backend.
 //!
 //! This module owns only the experimental app-server runtime path. Ordinary
 //! Codex execution continues to use `codex exec --json` unless the explicit
@@ -209,12 +209,14 @@ async fn run_codex_app_server(
         .await?;
         let turn_id = turn_id_from_response(&turn_response)?;
         let mut active_input_open = active_input.is_enabled();
+        let mut turn_started_observed = false;
 
         let exit_code = loop {
             let event = next_codex_run_event(
                 &mut client,
                 &mut active_input,
                 active_input_open,
+                turn_started_observed,
                 heartbeat_monitor,
                 &mut heartbeat_done,
                 masker,
@@ -233,6 +235,8 @@ async fn run_codex_app_server(
                         thread_id: &thread_identity.canonical_id,
                         turn_id: &turn_id,
                     };
+                    let notification_ready_for_active_input =
+                        is_active_input_ready_notification(&notification, &turn_id);
                     let terminal_exit_code = ingest_run_notification(
                         notification,
                         &mut sink,
@@ -241,6 +245,8 @@ async fn run_codex_app_server(
                         &notification_scope,
                     )
                     .await?;
+                    turn_started_observed =
+                        turn_started_observed || notification_ready_for_active_input;
                     if let Some(exit_code) = terminal_exit_code {
                         active_input.close_terminal();
                         break exit_code;
@@ -463,13 +469,15 @@ async fn next_codex_run_event(
     client: &mut CodexAppServerClient,
     active_input: &mut ActiveInputWriter,
     active_input_open: bool,
+    active_input_ready: bool,
     heartbeat_monitor: &mut HeartbeatMonitor,
     heartbeat_done: &mut bool,
     masker: &SecretMasker,
 ) -> Result<CodexRunEvent, AgentError> {
+    let active_input_can_be_read = can_read_active_input(active_input_open, active_input_ready);
     // Do not let buffered terminal notifications overtake input the control
     // path already accepted.
-    if active_input_open && let Some(frame) = active_input.try_next_frame() {
+    if active_input_can_be_read && let Some(frame) = active_input.try_next_frame() {
         return Ok(CodexRunEvent::ActiveInput(Some(frame)));
     }
     if let Some(notification) = client.pop_notification() {
@@ -478,7 +486,7 @@ async fn next_codex_run_event(
 
     tokio::select! {
         biased;
-        frame = active_input.next_frame(), if active_input_open => {
+        frame = active_input.next_frame(), if active_input_can_be_read => {
             Ok(CodexRunEvent::ActiveInput(frame))
         }
         notification = client.next_notification(TURN_NOTIFICATION_LABEL) => {
@@ -491,6 +499,20 @@ async fn next_codex_run_event(
             Err(heartbeat_error(heartbeat_result))
         }
     }
+}
+
+fn can_read_active_input(active_input_open: bool, active_input_ready: bool) -> bool {
+    active_input_open && active_input_ready
+}
+
+fn is_active_input_ready_notification(notification: &ServerNotification, turn_id: &str) -> bool {
+    notification.method == "turn/started"
+        && notification
+            .params
+            .as_ref()
+            .and_then(|params| params.pointer("/turn/id"))
+            .and_then(Value::as_str)
+            == Some(turn_id)
 }
 
 async fn steer_active_input(
@@ -776,12 +798,26 @@ async fn ingest_event(event: Value, sink: &mut EventIngestSink<'_>) -> Result<()
         .await?
     {
         ParsedEventAction::Forward => {
+            if let Some(text) = codex_agent_message_text(&event) {
+                println!("{}", sink.masker.mask_string(text));
+            }
             sink.ingestor
                 .enqueue_event(event, sink.masker, sink.should_send_events, sink.event_tx);
         }
         ParsedEventAction::Skip => {}
     }
     Ok(())
+}
+
+fn codex_agent_message_text(event: &Value) -> Option<&str> {
+    if event.get("type").and_then(Value::as_str) != Some("item.completed") {
+        return None;
+    }
+    let item = event.get("item")?;
+    if item.get("type").and_then(Value::as_str) != Some("agent_message") {
+        return None;
+    }
+    item.get("text").and_then(Value::as_str)
 }
 
 fn is_duplicate_thread_started(
@@ -917,4 +953,91 @@ fn non_empty_string_at(
         .filter(|value| !value.is_empty())
         .map(ToString::to_string)
         .ok_or_else(|| AgentError::Execution(message.to_string()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn active_input_is_read_only_after_source_and_turn_are_ready() {
+        assert!(!can_read_active_input(false, false));
+        assert!(!can_read_active_input(false, true));
+        assert!(!can_read_active_input(true, false));
+        assert!(can_read_active_input(true, true));
+    }
+
+    #[test]
+    fn turn_started_notification_enables_active_input_for_matching_turn() {
+        let matching_notification = ServerNotification {
+            method: "turn/started".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-1",
+                    "status": "inProgress"
+                }
+            })),
+        };
+        let wrong_turn_notification = ServerNotification {
+            method: "turn/started".to_string(),
+            params: Some(json!({
+                "threadId": "thread-1",
+                "turn": {
+                    "id": "turn-2",
+                    "status": "inProgress"
+                }
+            })),
+        };
+        let thread_started_notification = ServerNotification {
+            method: "thread/started".to_string(),
+            params: Some(json!({
+                "thread": {
+                    "id": "thread-1"
+                }
+            })),
+        };
+
+        assert!(is_active_input_ready_notification(
+            &matching_notification,
+            "turn-1"
+        ));
+        assert!(!is_active_input_ready_notification(
+            &wrong_turn_notification,
+            "turn-1"
+        ));
+        assert!(!is_active_input_ready_notification(
+            &thread_started_notification,
+            "turn-1"
+        ));
+    }
+
+    #[test]
+    fn codex_agent_message_text_reads_completed_agent_message_only() {
+        let agent_message = json!({
+            "type": "item.completed",
+            "item": {
+                "type": "agent_message",
+                "text": "RESULT=ok"
+            }
+        });
+        let plan_message = json!({
+            "type": "item.completed",
+            "item": {
+                "type": "plan",
+                "text": "not final output"
+            }
+        });
+        let started_agent_message = json!({
+            "type": "item.started",
+            "item": {
+                "type": "agent_message",
+                "text": "not completed"
+            }
+        });
+
+        assert_eq!(codex_agent_message_text(&agent_message), Some("RESULT=ok"));
+        assert_eq!(codex_agent_message_text(&plan_message), None);
+        assert_eq!(codex_agent_message_text(&started_agent_message), None);
+    }
 }

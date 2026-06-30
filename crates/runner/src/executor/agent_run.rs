@@ -29,7 +29,7 @@ use super::diagnostics::{
     should_collect_agent_abnormal_exit_diagnostics,
     should_log_agent_bootstrap_abnormal_exit_diagnostics,
 };
-use super::env::{build_env_json, build_user_env_json, write_user_env_file};
+use super::env::{build_env_json_for_run, build_user_env_json, write_user_env_file};
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
 use super::session_history_download::{SessionHistoryMaterialization, SessionHistoryMaterializer};
 use super::session_restore::{MaterializedResumeSession, restore_session};
@@ -665,6 +665,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         spawn_timing,
         session_history_restore_plan,
     } = controls;
+    let has_active_input_source = active_input_source.is_some();
 
     // 1. Fix guest clock and reseed entropy (must happen before HTTPS calls).
     //    Needed after snapshot restore (frozen clock) and after idle reuse (drifted clock).
@@ -879,19 +880,24 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         }
     };
     let env_build_started = Instant::now();
-    let mut env_map =
-        match build_env_json(context, &config.api_url, sandbox.id(), start.reuse_result) {
-            Ok(env_map) => env_map,
-            Err(error) => {
-                telemetry.record(
-                    "runner_agent_env_build",
-                    env_build_started.elapsed(),
-                    false,
-                    None,
-                );
-                return Err(error);
-            }
-        };
+    let mut env_map = match build_env_json_for_run(
+        context,
+        &config.api_url,
+        sandbox.id(),
+        start.reuse_result,
+        has_active_input_source,
+    ) {
+        Ok(env_map) => env_map,
+        Err(error) => {
+            telemetry.record(
+                "runner_agent_env_build",
+                env_build_started.elapsed(),
+                false,
+                None,
+            );
+            return Err(error);
+        }
+    };
     if let Some(path) = user_env_file {
         env_map.insert(USER_ENV_FILE_ENV_KEY.into(), path);
     }

@@ -437,7 +437,7 @@ fn build_and_locate_mock_package(package: &str, binary: &str) -> Result<PathBuf,
     Ok(mock)
 }
 
-/// Configure one test binary for the disabled Codex app-server backend.
+/// Configure one test binary for the experimental Codex app-server backend.
 ///
 /// Must be called before any `guest_agent::env::*` accessor because those
 /// values are cached in process-wide `LazyLock`s.

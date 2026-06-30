@@ -406,7 +406,7 @@ pub async fn execute_cli(
 /// enabled, internally replayed initial-prompt and follow-up user events are
 /// filtered from outbound API event delivery.
 ///
-/// For the disabled Codex app-server backend, active input is delivered through
+/// For the experimental Codex app-server backend, active input is delivered through
 /// `turn/steer` for the active turn. Ordinary Codex execution still uses
 /// `codex exec --json` and does not consume active input.
 ///
