@@ -1413,6 +1413,13 @@ describe("CHAT-02: auto-send after failures", () => {
       })
       .toBe(1);
 
+    await failChatRun(second.runId, secondHeaders, "boom");
+    await expect
+      .poll(() => {
+        return context.mocks.webpush.sendNotification.mock.calls.length;
+      })
+      .toBe(1);
+
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);

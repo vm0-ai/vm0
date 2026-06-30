@@ -254,6 +254,7 @@ interface CompletedChatCallbackResult {
 
 interface FailedChatCallbackResult {
   readonly displayErrorMessage: string;
+  readonly inserted: boolean;
 }
 
 function generateCallbackSecret(): string {
@@ -509,7 +510,7 @@ async function insertAssistantErrorMessage(args: {
     return true;
   });
   if (!inserted) {
-    return { displayErrorMessage };
+    return { displayErrorMessage, inserted: false };
   }
 
   await publishUserSignal(
@@ -523,7 +524,7 @@ async function insertAssistantErrorMessage(args: {
       threadId: args.threadId,
     });
   }
-  return { displayErrorMessage };
+  return { displayErrorMessage, inserted: true };
 }
 
 async function insertRunLifecycleMarker(args: {
@@ -1898,14 +1899,16 @@ async function processTerminalChatCallback(args: {
         );
       },
     });
-    deferredSideEffects = () => {
-      return runFailedChatCallbackSideEffects({
-        db: args.db,
-        run,
-        chatThread,
-        displayErrorMessage: failed.displayErrorMessage,
-      });
-    };
+    if (failed.inserted) {
+      deferredSideEffects = () => {
+        return runFailedChatCallbackSideEffects({
+          db: args.db,
+          run,
+          chatThread,
+          displayErrorMessage: failed.displayErrorMessage,
+        });
+      };
+    }
   }
 
   const autoSendResult = await settle(
