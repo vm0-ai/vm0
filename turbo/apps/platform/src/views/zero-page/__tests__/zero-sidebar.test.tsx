@@ -345,6 +345,101 @@ describe("zero sidebar", () => {
     createDeferred.resolve();
   });
 
+  it("preserves server thread order while creating an optimistic new chat", async () => {
+    prepareDefaultAgent();
+    const createDeferred = context.mocks.deferred<void>();
+    const serverOrderedThreads = [
+      {
+        id: EXISTING_THREAD_ID,
+        title: "A server first",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-10T00:00:00Z",
+        running: false,
+        pinnedAt: null,
+      },
+      {
+        id: INCIDENT_THREAD_ID,
+        title: "B server second",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-11T00:00:00Z",
+        running: false,
+        pinnedAt: null,
+      },
+      {
+        id: AUTOMATION_THREAD_ID,
+        title: "C server third",
+        agent: { id: AGENT_ID, avatarUrl: null },
+        createdAt: "2026-03-10T00:00:00Z",
+        updatedAt: "2026-03-12T00:00:00Z",
+        running: false,
+        pinnedAt: null,
+      },
+    ];
+
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse(serverOrderedThreads));
+    });
+    context.mocks.api(chatThreadsContract.create, async ({ body, respond }) => {
+      await createDeferred.promise;
+      return respond(201, {
+        id: body.clientThreadId ?? "created-thread-id",
+        title: null,
+        createdAt: "2026-03-12T12:00:00Z",
+      });
+    });
+    context.mocks.api(chatThreadByIdContract.get, ({ params, respond }) => {
+      const thread = serverOrderedThreads.find((candidate) => {
+        return candidate.id === params.id;
+      });
+      return respond(200, {
+        id: params.id,
+        title: thread?.title ?? null,
+        agentId: AGENT_ID,
+        activeRunIds: [],
+        draftContent: null,
+        draftAttachments: null,
+        createdAt: thread?.createdAt ?? "2026-03-12T12:00:00Z",
+        updatedAt: thread?.updatedAt ?? "2026-03-12T12:00:00Z",
+      });
+    });
+
+    detachedSetupPage({ context, path: `/agents/${AGENT_ID}/chat` });
+
+    const newChatButton = await waitFor(() => {
+      expect(
+        visibleThreadTitles([
+          "A server first",
+          "B server second",
+          "C server third",
+        ]),
+      ).toStrictEqual(["A server first", "B server second", "C server third"]);
+      return screen.getByLabelText("Open chat list menu");
+    });
+
+    click(newChatButton);
+    click(menuItemByText("New chat"));
+
+    await waitFor(() => {
+      expect(
+        visibleThreadTitles([
+          "New chat",
+          "A server first",
+          "B server second",
+          "C server third",
+        ]),
+      ).toStrictEqual([
+        "New chat",
+        "A server first",
+        "B server second",
+        "C server third",
+      ]);
+    });
+
+    createDeferred.resolve();
+  });
+
   it("closes the artifact sidebar when creating a new main chat", async () => {
     prepareDefaultAgent();
     const artifactUrl = encodeURIComponent(
