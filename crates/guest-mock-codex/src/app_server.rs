@@ -41,6 +41,7 @@ enum Scenario {
     ExitOnTurnSteer,
     RuntimeTurnComplete,
     RuntimeTurnCompleteAfterSteer,
+    RuntimeTurnCompleteBeforeSteerResponse,
     RuntimeTurnCompleteWithoutThreadStarted,
     ResumeDifferentThreadId,
     ResumeRpcErrorWithThreadId,
@@ -82,6 +83,9 @@ impl Scenario {
                 "exit-on-turn-steer" => Ok(Self::ExitOnTurnSteer),
                 "runtime-turn-complete" => Ok(Self::RuntimeTurnComplete),
                 "runtime-turn-complete-after-steer" => Ok(Self::RuntimeTurnCompleteAfterSteer),
+                "runtime-turn-complete-before-steer-response" => {
+                    Ok(Self::RuntimeTurnCompleteBeforeSteerResponse)
+                }
                 "runtime-turn-complete-without-thread-started" => {
                     Ok(Self::RuntimeTurnCompleteWithoutThreadStarted)
                 }
@@ -512,6 +516,9 @@ impl AppServerState {
                     thread_request_has_runtime_workspace_roots,
                     params,
                 )?;
+                if self.scenario == Scenario::RuntimeTurnCompleteBeforeSteerResponse {
+                    write_turn_notifications(output, &thread_id, &active_turn_id)?;
+                }
                 write_success(output, id, json!({ "turnId": active_turn_id }))?;
                 if self.scenario == Scenario::RuntimeTurnCompleteAfterSteer {
                     write_turn_notifications(output, &thread_id, &active_turn_id)?;

@@ -33,6 +33,11 @@ const TURN_NOTIFICATION_LABEL: &str = "turn notification";
 
 struct NotificationIngestResult {
     emitted_thread_started: bool,
+}
+
+struct PreparedNotificationIngest {
+    event: Option<Value>,
+    emitted_thread_started: bool,
     terminal_exit_code: Option<i32>,
 }
 
@@ -576,16 +581,30 @@ async fn drain_queued_notifications(
     thread_started_emitted: &mut bool,
     scope: &CodexTurnScope<'_>,
 ) -> Result<Option<i32>, AgentError> {
+    let mut prepared_notifications = Vec::new();
+    let mut prepared_thread_started_emitted = *thread_started_emitted;
     while let Some(notification) = client.pop_notification() {
-        if let Some(exit_code) = ingest_run_notification(
+        let prepared = prepare_notification_ingest(
             notification,
-            sink,
-            active_input,
-            thread_started_emitted,
-            scope,
-        )
-        .await?
-        {
+            prepared_thread_started_emitted,
+            scope.thread_id,
+            scope.turn_id,
+        )?;
+        prepared_thread_started_emitted =
+            prepared_thread_started_emitted || prepared.emitted_thread_started;
+        let is_terminal = prepared.terminal_exit_code.is_some();
+        prepared_notifications.push(prepared);
+        if is_terminal {
+            active_input.close_terminal();
+            break;
+        }
+    }
+    for prepared in prepared_notifications {
+        if let Some(event) = prepared.event {
+            ingest_event(event, sink).await?;
+        }
+        *thread_started_emitted = *thread_started_emitted || prepared.emitted_thread_started;
+        if let Some(exit_code) = prepared.terminal_exit_code {
             return Ok(Some(exit_code));
         }
     }
@@ -599,17 +618,23 @@ async fn ingest_run_notification(
     thread_started_emitted: &mut bool,
     scope: &CodexTurnScope<'_>,
 ) -> Result<Option<i32>, AgentError> {
-    let ingest_result = ingest_notification(
+    let prepared = prepare_notification_ingest(
         notification,
-        sink,
         *thread_started_emitted,
         scope.thread_id,
         scope.turn_id,
-        Some(active_input),
-    )
-    .await?;
-    *thread_started_emitted = *thread_started_emitted || ingest_result.emitted_thread_started;
-    Ok(ingest_result.terminal_exit_code)
+    )?;
+    // Close before any ingest await so the control path cannot accept input
+    // after this run has already observed a terminal turn event.
+    if prepared.terminal_exit_code.is_some() {
+        active_input.close_terminal();
+    }
+    let terminal_exit_code = prepared.terminal_exit_code;
+    if let Some(event) = prepared.event {
+        ingest_event(event, sink).await?;
+    }
+    *thread_started_emitted = *thread_started_emitted || prepared.emitted_thread_started;
+    Ok(terminal_exit_code)
 }
 
 fn app_server_error(masker: &SecretMasker, error: impl std::fmt::Display) -> AgentError {
@@ -648,32 +673,52 @@ async fn ingest_notification(
     active_turn_id: &str,
     terminal_active_input: Option<&ActiveInputWriter>,
 ) -> Result<NotificationIngestResult, AgentError> {
+    let prepared = prepare_notification_ingest(
+        notification,
+        thread_started_emitted,
+        expected_thread_id,
+        active_turn_id,
+    )?;
+    if prepared.terminal_exit_code.is_some()
+        && let Some(active_input) = terminal_active_input
+    {
+        active_input.close_terminal();
+    }
+    if let Some(event) = prepared.event {
+        ingest_event(event, sink).await?;
+    }
+    Ok(NotificationIngestResult {
+        emitted_thread_started: prepared.emitted_thread_started,
+    })
+}
+
+fn prepare_notification_ingest(
+    notification: ServerNotification,
+    thread_started_emitted: bool,
+    expected_thread_id: &str,
+    active_turn_id: &str,
+) -> Result<PreparedNotificationIngest, AgentError> {
     let Some(event) = notification_to_codex_event(&notification)
         .map_err(|error| AgentError::Execution(error.to_string()))?
     else {
-        return Ok(NotificationIngestResult {
+        return Ok(PreparedNotificationIngest {
+            event: None,
             emitted_thread_started: false,
             terminal_exit_code: None,
         });
     };
     validate_event_scope(&event, expected_thread_id, active_turn_id)?;
     if is_duplicate_thread_started(&event, thread_started_emitted, expected_thread_id) {
-        return Ok(NotificationIngestResult {
+        return Ok(PreparedNotificationIngest {
+            event: None,
             emitted_thread_started: false,
             terminal_exit_code: None,
         });
     }
     let emitted_thread_started = is_thread_started_event(&event, expected_thread_id);
     let terminal_exit_code = terminal_exit_code(&event, expected_thread_id, active_turn_id);
-    // Close before any ingest await so the control path cannot accept input
-    // after this run has already observed a terminal turn event.
-    if terminal_exit_code.is_some()
-        && let Some(active_input) = terminal_active_input
-    {
-        active_input.close_terminal();
-    }
-    ingest_event(event, sink).await?;
-    Ok(NotificationIngestResult {
+    Ok(PreparedNotificationIngest {
+        event: Some(event),
         emitted_thread_started,
         terminal_exit_code,
     })
