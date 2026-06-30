@@ -708,6 +708,32 @@ function selectOptionByLabel(
 }
 
 describe("agent workflows tab", () => {
+  it("redirects direct workspace workflow routes when workflows are disabled", async () => {
+    detachedSetupPage({
+      context,
+      path: "/workflows",
+      featureSwitches: { [FeatureSwitchKey.WorkflowsViewer]: false },
+    });
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/");
+    });
+    expect(
+      screen.queryByRole("heading", { name: "Workflows" }),
+    ).not.toBeInTheDocument();
+
+    detachedSetupPage({
+      context,
+      path: `/workflows/${SALES_WORKFLOW_ID}`,
+      featureSwitches: { [FeatureSwitchKey.WorkflowsViewer]: false },
+    });
+
+    await waitFor(() => {
+      expect(pathname()).toBe("/");
+    });
+    expect(screen.queryByText("Workflow not found.")).not.toBeInTheDocument();
+  });
+
   it("shows all visible workflows on the workspace workflows page", async () => {
     mockAgentPageApis();
     mockWorkflowApis([
