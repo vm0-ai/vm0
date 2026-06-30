@@ -540,6 +540,7 @@ async fn reuse_take_preserves_cached_workspace_held_session_state() {
             .await,
         "workspace cache promotion should refresh the held-session snapshot before claim"
     );
+    let updates_before_claim = env.handle.held_session_state_updates().len();
 
     let run_id = RunId::new_v4();
     push_job(
@@ -558,14 +559,15 @@ async fn reuse_take_preserves_cached_workspace_held_session_state() {
     wait_idle_pool_session_states(&idle_pool, &["sess-refresh"], Duration::from_secs(5)).await;
 
     let updates = env.handle.held_session_state_updates();
+    let claim_updates = &updates[updates_before_claim..];
     assert!(
-        updates.iter().any(|states| {
+        claim_updates.iter().any(|states| {
             states.iter().any(|state| state.session_id == "sess-cached")
                 && states
                     .iter()
                     .all(|state| state.session_id != "sess-refresh")
         }),
-        "provider should keep cached workspace state while filtering the claimed idle session; updates: {updates:?}"
+        "provider should keep cached workspace state while filtering the claimed idle session after claim; updates: {updates:?}"
     );
 
     shutdown(&env, run_handle).await;
