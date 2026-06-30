@@ -764,11 +764,11 @@ describe("agent workflows tab", () => {
       `/workflows/${OTHER_WORKFLOW_ID}`,
     );
 
-    click(buttonByText(/create with chat/i));
+    click(buttonByText(/create in chat/i));
     await waitFor(() => {
-      expect(menuItemByText(/create with Zero/i)).toBeInTheDocument();
+      expect(menuItemByText(/create in chat/i)).toBeInTheDocument();
     });
-    click(menuItemByText(/create with Zero/i));
+    click(menuItemByText(/create in chat/i));
 
     const dialog = await screen.findByRole("dialog", {
       name: "Create workflow",

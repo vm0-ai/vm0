@@ -546,91 +546,69 @@ describe("zero automations page", () => {
     });
   });
 
-  it.each([
-    [
-      "Manual run",
-      "I'd like to create a workflow that I can run manually without an automatic trigger. Help me define the workflow.",
-    ],
-    [
-      "Fixed interval",
-      "I'd like to set up an interval workflow trigger that runs every few minutes or hours. Help me define the workflow.",
-    ],
-    [
-      "Fixed schedule",
-      "I'd like to set up a scheduled workflow trigger that runs on a daily, weekly, monthly, or custom cron schedule. Help me define the workflow.",
-    ],
-    [
-      "One-time run",
-      "I'd like to set up a one-time workflow trigger that runs at a specific date and time. Help me define the workflow.",
-    ],
-    [
-      "Web trigger",
-      "I'd like to set up a webhook workflow trigger that runs when an inbound webhook is received. Help me define the workflow.",
-    ],
-    [
-      "New email",
-      "I'd like to set up an email workflow trigger that runs when a Gmail message matches my criteria. Help me define the workflow.",
-    ],
-    [
-      "Email label",
-      "I'd like to set up an email-label workflow trigger that runs when a Gmail label is applied. Help me define the workflow.",
-    ],
-    [
-      "GitHub label",
-      "I'd like to set up a GitHub workflow trigger that runs when a label is applied. Help me define the workflow.",
-    ],
-  ])(
-    "starts workflow-trigger creation with the %s prompt",
-    async (triggerName, prompt) => {
-      mockWorkflowTriggerStory();
+  it("starts automation creation in chat after choosing an agent", async () => {
+    const prompt =
+      "I'd like to create a workflow automation. Help me define the reusable workflow and decide when it should run automatically. An automation can run on a schedule, every few minutes, when an email arrives, when a Gmail label is applied, from a webhook, from a GitHub label, or when a calendar event is created. Ask what the workflow should do each time it runs, what inputs or sources it should use, what output it should produce, what side effects are allowed, and whether it should be enabled immediately.";
+    mockWorkflowTriggerStory();
 
-      detachedSetupPage({
-        context,
-        path: "/automations",
-        featureSwitches: {
-          [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
-        },
-      });
+    detachedSetupPage({
+      context,
+      path: "/automations",
+      featureSwitches: {
+        [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
+      },
+    });
 
-      await waitFor(() => {
-        expect(
-          screen.getByRole("heading", { name: "Automations" }),
-        ).toBeInTheDocument();
-      });
-
-      click(buttonByText("Add automation"));
-      const dialog = await screen.findByRole("dialog");
-      expect(within(dialog).getByText("Create with Zero")).toBeInTheDocument();
-      expect(within(dialog).getByText("Ops brief")).toBeInTheDocument();
-      click(within(dialog).getByText("Create with Zero"));
-
-      expect(within(dialog).queryByText("1 Agent")).not.toBeInTheDocument();
-      expect(within(dialog).queryByText("2 Trigger")).not.toBeInTheDocument();
-      expect(within(dialog).getByText("Zero")).toBeInTheDocument();
+    await waitFor(() => {
       expect(
-        within(dialog).queryByLabelText("Pin to sidebar"),
-      ).not.toBeInTheDocument();
+        screen.getByRole("heading", { name: "Automations" }),
+      ).toBeInTheDocument();
+    });
 
-      click(buttonByText("Zero", dialog));
-      await waitFor(() => {
-        expect(within(dialog).queryByText("1 Agent")).not.toBeInTheDocument();
-        expect(within(dialog).queryByText("2 Trigger")).not.toBeInTheDocument();
-        expect(
-          within(dialog).getByText("What do you want me to do?"),
-        ).toBeInTheDocument();
-        expect(within(dialog).getByText(triggerName)).toBeInTheDocument();
-      });
+    click(buttonByText("Add automation"));
+    const dialog = await screen.findByRole("dialog");
+    expect(
+      within(dialog).getByText(
+        "Choose a workflow to automate, or create one in chat.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).getByText("Create in chat")).toBeInTheDocument();
+    expect(
+      within(dialog).getByText(
+        "Start from a conversation when no workflow fits yet.",
+      ),
+    ).toBeInTheDocument();
+    expect(within(dialog).queryByText("Create with Zero")).toBeNull();
+    expect(within(dialog).queryByText("Choose")).toBeNull();
+    expect(within(dialog).getByText("Ops brief")).toBeInTheDocument();
+    click(within(dialog).getByText("Create in chat"));
 
-      click(within(dialog).getByText(triggerName));
+    await waitFor(() => {
+      expect(
+        screen.getByRole("dialog", { name: "Create Automation" }),
+      ).toBeInTheDocument();
+    });
+    const createDialog = screen.getByRole("dialog", {
+      name: "Create Automation",
+    });
+    expect(
+      within(createDialog).getByText("Choose the agent for this automation"),
+    ).toBeInTheDocument();
+    expect(within(createDialog).getByText("Zero")).toBeInTheDocument();
+    expect(within(createDialog).queryByText("Manual run")).toBeNull();
+    expect(
+      within(createDialog).queryByText("What do you want me to do?"),
+    ).toBeNull();
 
-      await waitFor(() => {
-        expect(pathname()).toBe(`/agents/${zeroAgentId}/chat`);
-      });
-      await expect(
-        screen.findByDisplayValue(prompt),
-      ).resolves.toBeInTheDocument();
-    },
-  );
+    click(buttonByText("Zero", createDialog));
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/agents/${zeroAgentId}/chat`);
+    });
+    await expect(
+      screen.findByDisplayValue(prompt),
+    ).resolves.toBeInTheDocument();
+  });
 
   it("opens the selected workflow when adding an automation to an existing workflow", async () => {
     mockWorkflowTriggerStory();

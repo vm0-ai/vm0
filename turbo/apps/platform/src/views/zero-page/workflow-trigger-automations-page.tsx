@@ -11,7 +11,6 @@ import type {
   ZeroWorkflowTriggerSummary,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import {
-  IconArrowLeft,
   IconArrowUpRight,
   IconBrandGithub,
   IconCalendarTime,
@@ -39,16 +38,13 @@ import { Skeleton } from "@vm0/ui/components/ui/skeleton";
 import { agents$ } from "../../signals/agent.ts";
 import {
   selectedWorkflowAutomationAgentId$,
-  setSelectedWorkflowAutomationAgentId$,
   setWorkflowAutomationAgentQuery$,
   setWorkflowAutomationDialogOpen$,
-  setWorkflowAutomationDialogStep$,
   startCreateWorkflowFromAutomationDialog$,
   workflowAutomationAgentSelectionLocked$,
   workflowAutomationAgentQuery$,
   workflowAutomationDialogIntent$,
   workflowAutomationDialogOpen$,
-  workflowAutomationDialogStep$,
 } from "../../signals/automation-page/workflow-trigger-automation-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
@@ -75,7 +71,7 @@ import {
   AgentDialogSearch,
   AgentDialogSection,
 } from "./zero-sidebar-dialogs.tsx";
-import { AgentAvatarImg, AvatarFromUrl } from "./zero-sidebar-shared.tsx";
+import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import {
   agentLabel,
   formatWorkflowIntervalSeconds,
@@ -88,101 +84,11 @@ import {
   type WorkflowTriggerCardRow,
 } from "../workflows-page/workflow-trigger-card.tsx";
 
-type WorkflowAutomationKind =
-  | "manual"
-  | "interval"
-  | "scheduled"
-  | "once"
-  | "webhook"
-  | "google-calendar-event-created"
-  | "gmail-new-message"
-  | "gmail-label-applied"
-  | "github-label-applied";
+const CREATE_WORKFLOW_CHAT_PROMPT =
+  "I'd like to create a workflow that I can run manually without an automation schedule or event. Help me define the workflow.";
 
-interface WorkflowAutomationOption {
-  readonly kind: WorkflowAutomationKind;
-  readonly title: string;
-  readonly description: string;
-  readonly Icon: typeof IconClock;
-  readonly prompt: string;
-}
-
-const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
-  {
-    kind: "manual",
-    title: "Manual run",
-    description:
-      "Create a workflow you can run from chat or the workflows page.",
-    Icon: IconPlayerPlay,
-    prompt:
-      "I'd like to create a workflow that I can run manually without an automatic trigger. Help me define the workflow.",
-  },
-  {
-    kind: "interval",
-    title: "Fixed interval",
-    description: "Run a workflow every few minutes or hours.",
-    Icon: IconRepeat,
-    prompt:
-      "I'd like to set up an interval workflow trigger that runs every few minutes or hours. Help me define the workflow.",
-  },
-  {
-    kind: "scheduled",
-    title: "Fixed schedule",
-    description:
-      "Run a workflow on a daily, weekly, monthly, or custom cron schedule.",
-    Icon: IconCalendarTime,
-    prompt:
-      "I'd like to set up a scheduled workflow trigger that runs on a daily, weekly, monthly, or custom cron schedule. Help me define the workflow.",
-  },
-  {
-    kind: "once",
-    title: "One-time run",
-    description: "Run a workflow once at a specific date and time.",
-    Icon: IconClock,
-    prompt:
-      "I'd like to set up a one-time workflow trigger that runs at a specific date and time. Help me define the workflow.",
-  },
-  {
-    kind: "webhook",
-    title: "Web trigger",
-    description: "Run a workflow when an inbound webhook is received.",
-    Icon: IconLink,
-    prompt:
-      "I'd like to set up a webhook workflow trigger that runs when an inbound webhook is received. Help me define the workflow.",
-  },
-  {
-    kind: "google-calendar-event-created",
-    title: "Calendar event",
-    description: "Run a workflow when a Google Calendar event is created.",
-    Icon: IconCalendarTime,
-    prompt:
-      "I'd like to set up a Google Calendar workflow trigger that runs when a new calendar event is created. Help me define the workflow.",
-  },
-  {
-    kind: "gmail-new-message",
-    title: "New email",
-    description: "Run a workflow when a matching Gmail message arrives.",
-    Icon: IconMail,
-    prompt:
-      "I'd like to set up an email workflow trigger that runs when a Gmail message matches my criteria. Help me define the workflow.",
-  },
-  {
-    kind: "gmail-label-applied",
-    title: "Email label",
-    description: "Run a workflow when a Gmail label is applied.",
-    Icon: IconMail,
-    prompt:
-      "I'd like to set up an email-label workflow trigger that runs when a Gmail label is applied. Help me define the workflow.",
-  },
-  {
-    kind: "github-label-applied",
-    title: "GitHub label",
-    description: "Run a workflow when a GitHub label is applied.",
-    Icon: IconBrandGithub,
-    prompt:
-      "I'd like to set up a GitHub workflow trigger that runs when a label is applied. Help me define the workflow.",
-  },
-] as const;
+const CREATE_AUTOMATION_CHAT_PROMPT =
+  "I'd like to create a workflow automation. Help me define the reusable workflow and decide when it should run automatically. An automation can run on a schedule, every few minutes, when an email arrives, when a Gmail label is applied, from a webhook, from a GitHub label, or when a calendar event is created. Ask what the workflow should do each time it runs, what inputs or sources it should use, what output it should produce, what side effects are allowed, and whether it should be enabled immediately.";
 
 function formatClockTime(hour: number, minute: number): string {
   const ampm = hour >= 12 ? "PM" : "AM";
@@ -722,11 +628,13 @@ function EmptyTriggers({ onAdd }: { readonly onAdd: () => void }) {
 
 function WorkflowSelectionStep({
   workflows,
+  agents,
   loading,
   onSelectWorkflow,
   onCreateWorkflow,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[];
+  readonly agents: readonly TeamComposeItem[];
   readonly loading: boolean;
   readonly onSelectWorkflow: (workflow: ZeroWorkflowSummary) => void;
   readonly onCreateWorkflow: () => void;
@@ -761,10 +669,10 @@ function WorkflowSelectionStep({
         </span>
         <span className="min-w-0">
           <span className="block text-sm font-medium text-foreground">
-            Create with Zero
+            Create in chat
           </span>
           <span className="mt-0.5 block text-sm text-muted-foreground">
-            Build a new workflow in chat before adding a trigger.
+            Start from a conversation when no workflow fits yet.
           </span>
         </span>
       </button>
@@ -772,11 +680,15 @@ function WorkflowSelectionStep({
       {workflows.length > 0 ? (
         <div className="grid gap-2">
           {workflows.map((workflow) => {
+            const label = agentLabel(workflow);
+            const agent = agents.find((item) => {
+              return item.id === workflow.agentId;
+            });
             return (
               <button
                 key={workflow.id}
                 type="button"
-                className="flex min-w-0 items-start justify-between gap-3 rounded-lg border border-border/60 px-3 py-3 text-left transition-colors hover:bg-gray-50"
+                className="flex min-w-0 items-start gap-3 rounded-lg border border-border/60 px-3 py-3 text-left transition-colors hover:bg-gray-50"
                 onClick={() => {
                   onSelectWorkflow(workflow);
                 }}
@@ -785,13 +697,22 @@ function WorkflowSelectionStep({
                   <span className="block truncate text-sm font-medium text-foreground">
                     {workflowTitle(workflow)}
                   </span>
-                  <span className="mt-0.5 block truncate text-sm text-muted-foreground">
-                    {agentLabel(workflow)}
-                    {workflow.description ? ` · ${workflow.description}` : ""}
+                  <span className="mt-0.5 flex min-w-0 items-center gap-1.5 text-sm text-muted-foreground">
+                    <WorkflowAgentAvatar agent={agent} label={label} />
+                    <span className="max-w-[10rem] shrink-0 truncate">
+                      {label}
+                    </span>
+                    {workflow.description ? (
+                      <>
+                        <span className="select-none text-muted-foreground/50">
+                          ·
+                        </span>
+                        <span className="min-w-0 truncate">
+                          {workflow.description}
+                        </span>
+                      </>
+                    ) : null}
                   </span>
-                </span>
-                <span className="shrink-0 text-xs font-medium text-muted-foreground">
-                  Choose
                 </span>
               </button>
             );
@@ -799,7 +720,7 @@ function WorkflowSelectionStep({
         </div>
       ) : (
         <p className="px-1 py-2 text-sm text-muted-foreground">
-          No workflows yet. Create one with Zero to continue.
+          No workflows yet. Create one in chat to continue.
         </p>
       )}
     </div>
@@ -914,86 +835,13 @@ function AgentSelectionStep({
   );
 }
 
-function TriggerSelectionStep({
-  selectedAgent,
-  onSelectOption,
-}: {
-  readonly selectedAgent: TeamComposeItem | null;
-  readonly onSelectOption: (option: WorkflowAutomationOption) => void;
-}) {
-  const selectedAgentName = selectedAgent?.displayName ?? "Selected agent";
-  return (
-    <div className="grid gap-2">
-      <div className="mb-2 flex min-w-0 items-center gap-2 px-1 py-1">
-        {selectedAgent ? (
-          <AgentAvatarImg
-            name={selectedAgent.id}
-            alt={selectedAgentName}
-            className="h-8 w-8 shrink-0 rounded-lg bg-gray-100 object-cover object-top"
-          />
-        ) : (
-          <span className="h-8 w-8 shrink-0 rounded-lg bg-gray-100" />
-        )}
-        <span className="min-w-0">
-          <span className="block truncate text-sm font-medium text-foreground">
-            {selectedAgentName}
-          </span>
-          <span className="block truncate text-xs text-muted-foreground">
-            What do you want me to do?
-          </span>
-        </span>
-      </div>
-      {WORKFLOW_AUTOMATION_OPTIONS.map((option) => {
-        const Icon = option.Icon;
-        return (
-          <button
-            key={option.kind}
-            type="button"
-            className="flex min-w-0 items-start gap-3 rounded-lg border border-border/60 px-3 py-3 text-left transition-colors hover:bg-gray-50"
-            onClick={() => {
-              onSelectOption(option);
-            }}
-          >
-            <span className="mt-0.5 inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-lg bg-gray-50 text-muted-foreground">
-              <Icon size={16} stroke={1.6} />
-            </span>
-            <span className="min-w-0">
-              <span className="block text-sm font-medium text-foreground">
-                {option.title}
-              </span>
-              <span className="mt-0.5 block text-sm text-muted-foreground">
-                {option.description}
-              </span>
-            </span>
-          </button>
-        );
-      })}
-    </div>
-  );
-}
-
 function WorkflowAutomationDialogFooter({
-  showBack,
-  onBack,
   onCancel,
 }: {
-  readonly showBack: boolean;
-  readonly onBack: () => void;
   readonly onCancel: () => void;
 }) {
   return (
     <DialogFooter className="shrink-0 border-t border-border/60 bg-card px-5 py-4">
-      {showBack ? (
-        <Button
-          type="button"
-          variant="outline"
-          className="gap-1.5"
-          onClick={onBack}
-        >
-          <IconArrowLeft size={14} stroke={1.5} />
-          Back
-        </Button>
-      ) : null}
       <Button type="button" variant="outline" onClick={onCancel}>
         Cancel
       </Button>
@@ -1011,11 +859,8 @@ export function CreateWorkflowAutomationDialog() {
   const open = useGet(workflowAutomationDialogOpen$);
   const setOpen = useSet(setWorkflowAutomationDialogOpen$);
   const intent = useGet(workflowAutomationDialogIntent$);
-  const step = useGet(workflowAutomationDialogStep$);
-  const setStep = useSet(setWorkflowAutomationDialogStep$);
   const agentSelectionLocked = useGet(workflowAutomationAgentSelectionLocked$);
   const selectedAgentIdState = useGet(selectedWorkflowAutomationAgentId$);
-  const setSelectedAgentId = useSet(setSelectedWorkflowAutomationAgentId$);
   const startCreateWorkflow = useSet(startCreateWorkflowFromAutomationDialog$);
   const navigate = useSet(detachedNavigateTo$);
   const selectedAgentId = selectedAgentIdState;
@@ -1024,20 +869,21 @@ export function CreateWorkflowAutomationDialog() {
       return agent.id === selectedAgentId;
     }) ?? null;
 
-  const selectAgent = (agentId: string) => {
-    setSelectedAgentId(agentId);
-    setStep(2);
-  };
-
-  const startWorkflowCreation = (option: WorkflowAutomationOption) => {
-    if (!selectedAgentId) {
-      return;
-    }
+  const startChatCreation = (agentId: string, prompt: string) => {
     setOpen(false);
     navigate(ROUTES.agentChat, {
-      pathParams: { agentId: selectedAgentId },
-      searchParams: new URLSearchParams({ prompt: option.prompt }),
+      pathParams: { agentId },
+      searchParams: new URLSearchParams({ prompt }),
     });
+  };
+
+  const selectAgent = (agentId: string) => {
+    startChatCreation(
+      agentId,
+      intent === "automation-chat"
+        ? CREATE_AUTOMATION_CHAT_PROMPT
+        : CREATE_WORKFLOW_CHAT_PROMPT,
+    );
   };
 
   const openWorkflowTriggers = (workflow: ZeroWorkflowSummary) => {
@@ -1050,47 +896,48 @@ export function CreateWorkflowAutomationDialog() {
     });
   };
 
+  const creatingAutomationInChat = intent === "automation-chat";
   const creatingWorkflow = intent === "workflow";
+  const selectingExistingWorkflow = intent === "automation";
+  const agentChoices =
+    agentSelectionLocked && selectedAgent ? [selectedAgent] : agents;
 
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="zero-app !flex max-h-[min(720px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] !flex-col !overflow-hidden gap-0 p-0 sm:max-w-xl">
         <DialogHeader className="shrink-0 px-5 pb-3 pt-5">
           <DialogTitle className="text-base font-semibold">
-            {creatingWorkflow ? "Create workflow" : "Add automation"}
+            {creatingAutomationInChat
+              ? "Create Automation"
+              : creatingWorkflow
+                ? "Create workflow"
+                : "Add automation"}
           </DialogTitle>
           <DialogDescription className="mt-1 text-sm text-muted-foreground">
-            {creatingWorkflow
-              ? step === 1
-                ? "Choose the agent for this workflow."
-                : "Choose how this workflow should run."
-              : "Choose a workflow to automate, or create one with Zero."}
+            {selectingExistingWorkflow
+              ? "Choose a workflow to automate, or create one in chat."
+              : creatingAutomationInChat
+                ? "Choose the agent for this automation"
+                : "Choose the agent for this workflow."}
           </DialogDescription>
         </DialogHeader>
 
-        {!creatingWorkflow ? (
+        {selectingExistingWorkflow ? (
           <WorkflowSelectionStep
             workflows={workflows}
+            agents={agents}
             loading={workflowsLoading}
             onSelectWorkflow={openWorkflowTriggers}
             onCreateWorkflow={startCreateWorkflow}
           />
-        ) : step === 1 ? (
-          <AgentSelectionStep agents={agents} onSelectAgent={selectAgent} />
         ) : (
-          <div className="min-h-0 flex-1 overflow-y-auto px-5 pb-4">
-            <TriggerSelectionStep
-              selectedAgent={selectedAgent}
-              onSelectOption={startWorkflowCreation}
-            />
-          </div>
+          <AgentSelectionStep
+            agents={agentChoices}
+            onSelectAgent={selectAgent}
+          />
         )}
 
         <WorkflowAutomationDialogFooter
-          showBack={step === 2 && !agentSelectionLocked}
-          onBack={() => {
-            setStep(1);
-          }}
           onCancel={() => {
             setOpen(false);
           }}

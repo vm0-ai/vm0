@@ -260,7 +260,7 @@ export function WorkflowsPage() {
                 size="sm"
                 className="h-9 shrink-0 gap-2 rounded-lg bg-foreground px-3 text-background hover:bg-foreground/90"
               >
-                Create with chat
+                Create in chat
                 <IconChevronDown size={14} stroke={1.5} />
               </Button>
             </DropdownMenuTrigger>
@@ -272,7 +272,7 @@ export function WorkflowsPage() {
                 }}
               >
                 <IconMessageCircle size={14} stroke={1.5} />
-                Create with Zero
+                Create in chat
               </DropdownMenuItem>
             </DropdownMenuContent>
           </DropdownMenu>
