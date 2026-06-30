@@ -15,7 +15,10 @@ use super::support::{
     send_write_file_success, send_write_files_failure, send_write_files_success, spawn_write_file,
     spawn_write_files,
 };
-use crate::{FrameWriteObserver, WriteFileEntry, operation_tracker::NormalOperationReadiness};
+use crate::{
+    FrameWriteObserver, WriteFileEntry, file::test_support::WRITE_FILE_CHUNK_LIMIT,
+    operation_tracker::NormalOperationReadiness,
+};
 
 #[tokio::test]
 async fn test_write_file() {
@@ -335,6 +338,47 @@ async fn write_file_cancelled_before_frame_write_does_not_poison_or_send_frame()
 }
 
 #[tokio::test]
+async fn write_file_rejects_protocol_path_too_long_before_waiting_for_writer() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+    let path = format!("/{}", "a".repeat(u16::MAX as usize));
+
+    let err = tokio::time::timeout(Duration::from_secs(5), {
+        let write_start_count = Arc::clone(&write_start_count);
+        host.write_file_with_write_observer(
+            &path,
+            b"hello",
+            false,
+            FrameWriteObserver::new(move || {
+                write_start_count.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }),
+        )
+    })
+    .await
+    .unwrap()
+    .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("protocol-invalid write_file must not send frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after protocol-invalid write_file: {err}"),
+    }
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    drop(writer_guard);
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
 async fn write_file_rejects_invalid_path_before_sending_frame() {
     let (host, mut guest) = setup_host_and_guest().await;
     let host = Arc::new(host);
@@ -366,6 +410,57 @@ async fn write_file_rejects_invalid_path_before_sending_frame() {
         normal_operation_readiness(&host),
         NormalOperationReadiness::Idle
     );
+    assert_connection_accepts_exec_operation(&host, &mut guest).await;
+}
+
+#[tokio::test]
+async fn write_files_rejects_protocol_message_too_large_before_waiting_for_writer() {
+    let (host, mut guest) = setup_host_and_guest().await;
+    let host = Arc::new(host);
+    let write_start_count = Arc::new(AtomicUsize::new(0));
+    let writer_guard = host.shared.writer.lock().await;
+    let path = format!("/{}", "a".repeat(u16::MAX as usize - 1));
+    let content = vec![0u8; WRITE_FILE_CHUNK_LIMIT];
+    let mut files = Vec::new();
+    files.push(WriteFileEntry {
+        path: &path,
+        content: &content,
+    });
+    for _ in 1..17 {
+        files.push(WriteFileEntry {
+            path: &path,
+            content: b"",
+        });
+    }
+
+    let err = tokio::time::timeout(Duration::from_secs(5), {
+        let write_start_count = Arc::clone(&write_start_count);
+        host.write_files_with_write_observer(
+            &files,
+            FrameWriteObserver::new(move || {
+                write_start_count.fetch_add(1, Ordering::SeqCst);
+                Ok(())
+            }),
+        )
+    })
+    .await
+    .unwrap()
+    .unwrap_err();
+
+    assert_eq!(err.kind(), io::ErrorKind::InvalidInput);
+    assert_eq!(write_start_count.load(Ordering::SeqCst), 0);
+    match guest.try_read(&mut [0u8; 1]) {
+        Err(err) if err.kind() == io::ErrorKind::WouldBlock => {}
+        Ok(n) => panic!("protocol-invalid write_files must not send frame; read {n} bytes"),
+        Err(err) => panic!("unexpected read error after protocol-invalid write_files: {err}"),
+    }
+    assert_eq!(pending_request_count(&host), 0);
+    assert_eq!(
+        normal_operation_readiness(&host),
+        NormalOperationReadiness::Idle
+    );
+
+    drop(writer_guard);
     assert_connection_accepts_exec_operation(&host, &mut guest).await;
 }
 

@@ -5,16 +5,13 @@ use std::time::Duration;
 use std::{fmt, io};
 
 use shell_quote::quote_shell_arg;
-use vsock_proto::{
-    ExecTermination, MSG_ERROR, MSG_WRITE_FILE, MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES,
-    MSG_WRITE_FILES_RESULT,
-};
+use vsock_proto::{ExecTermination, MSG_ERROR, MSG_WRITE_FILE_RESULT, MSG_WRITE_FILES_RESULT};
 
 use crate::{
     CompositeNormalOperation, ExecCaptureRequest, ExecOperationResult, ExecOwnedCapturedOutput,
     FrameWriteObserver, Shared, VsockHost, exec_operation,
-    normal_request_on_shared_with_write_observer,
-    request_on_shared_with_composite_operation_and_observer,
+    normal_request_on_shared_with_write_observer_frame_builder,
+    request_on_shared_with_composite_operation_and_observer_frame_builder,
 };
 
 use super::{normalize_file_exec_stderr, validate_guest_file_path};
@@ -43,6 +40,7 @@ enum WriteFileChunkTracking<'a> {
     Composite(&'a mut CompositeNormalOperation),
 }
 
+#[derive(Clone, Copy)]
 struct WriteFileChunkRequest<'a> {
     path: &'a str,
     content: &'a [u8],
@@ -95,6 +93,10 @@ impl std::error::Error for WriteFileGuestError {}
 
 fn write_file_guest_error(message: impl Into<String>) -> io::Error {
     io::Error::other(WriteFileGuestError(message.into()))
+}
+
+fn protocol_invalid_input(error: impl ToString) -> io::Error {
+    io::Error::new(io::ErrorKind::InvalidInput, error.to_string())
 }
 
 fn error_is_write_file_guest_error(error: &io::Error) -> bool {
@@ -618,17 +620,18 @@ impl VsockHost {
                 ),
             ));
         }
+        vsock_proto::validate_write_files(&proto_entries).map_err(protocol_invalid_input)?;
 
-        let payload = vsock_proto::encode_write_files(&proto_entries)
-            .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
         let timeout = Duration::from_secs(300);
-        let resp = normal_request_on_shared_with_write_observer(
+        let resp = normal_request_on_shared_with_write_observer_frame_builder(
             &self.shared,
-            MSG_WRITE_FILES,
-            &payload,
             WRITE_FILES_TERMINAL_MSG_TYPES,
             timeout,
             write_observer,
+            move |seq, frame| {
+                vsock_proto::encode_write_files_frame_into(frame, seq, &proto_entries)
+                    .map_err(protocol_invalid_input)
+            },
         )
         .await?;
 
@@ -661,39 +664,28 @@ impl VsockHost {
         tracking: WriteFileChunkTracking<'_>,
         write_observer: FrameWriteObserver,
     ) -> io::Result<()> {
-        let payload = if request.private {
-            vsock_proto::encode_private_write_file(request.path, request.content, request.append)
-        } else {
-            vsock_proto::encode_write_file(
-                request.path,
-                request.content,
-                request.sudo,
-                request.append,
-            )
-        }
-        .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))?;
+        validate_write_file_chunk_request(request)?;
+
         let timeout = Duration::from_secs(300);
         let resp = match tracking {
             WriteFileChunkTracking::Tracked => {
-                normal_request_on_shared_with_write_observer(
+                normal_request_on_shared_with_write_observer_frame_builder(
                     &self.shared,
-                    MSG_WRITE_FILE,
-                    &payload,
                     WRITE_FILE_TERMINAL_MSG_TYPES,
                     timeout,
                     write_observer,
+                    move |seq, frame| encode_write_file_chunk_frame(frame, seq, request),
                 )
                 .await?
             }
             WriteFileChunkTracking::Composite(normal_operation) => {
-                request_on_shared_with_composite_operation_and_observer(
+                request_on_shared_with_composite_operation_and_observer_frame_builder(
                     &self.shared,
-                    MSG_WRITE_FILE,
-                    &payload,
                     WRITE_FILE_TERMINAL_MSG_TYPES,
                     timeout,
                     normal_operation,
                     write_observer,
+                    move |seq, frame| encode_write_file_chunk_frame(frame, seq, request),
                 )
                 .await?
             }
@@ -721,4 +713,44 @@ impl VsockHost {
 
         Ok(())
     }
+}
+
+fn validate_write_file_chunk_request(request: WriteFileChunkRequest<'_>) -> io::Result<()> {
+    if request.private {
+        vsock_proto::validate_private_write_file(request.path, request.content, request.append)
+    } else {
+        vsock_proto::validate_write_file(
+            request.path,
+            request.content,
+            request.sudo,
+            request.append,
+        )
+    }
+    .map_err(protocol_invalid_input)
+}
+
+fn encode_write_file_chunk_frame(
+    frame: &mut Vec<u8>,
+    seq: u32,
+    request: WriteFileChunkRequest<'_>,
+) -> io::Result<()> {
+    if request.private {
+        vsock_proto::encode_private_write_file_frame_into(
+            frame,
+            seq,
+            request.path,
+            request.content,
+            request.append,
+        )
+    } else {
+        vsock_proto::encode_write_file_frame_into(
+            frame,
+            seq,
+            request.path,
+            request.content,
+            request.sudo,
+            request.append,
+        )
+    }
+    .map_err(protocol_invalid_input)
 }

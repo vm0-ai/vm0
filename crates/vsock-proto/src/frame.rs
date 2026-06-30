@@ -67,16 +67,35 @@ pub enum DecodeWithError<E> {
 
 /// Encode a raw message: `[4-byte length][1-byte type][4-byte seq][payload]`.
 pub fn encode(msg_type: u8, seq: u32, payload: &[u8]) -> Result<Vec<u8>, ProtocolError> {
-    let body_len = 1 + 4 + payload.len();
+    let mut buf = Vec::new();
+    encode_into(&mut buf, msg_type, seq, payload.len(), |frame| {
+        frame.extend_from_slice(payload);
+    })?;
+    Ok(buf)
+}
+
+pub(crate) fn encode_into(
+    frame: &mut Vec<u8>,
+    msg_type: u8,
+    seq: u32,
+    payload_len: usize,
+    append_payload: impl FnOnce(&mut Vec<u8>),
+) -> Result<(), ProtocolError> {
+    frame.clear();
+    let body_len = MIN_BODY_SIZE
+        .checked_add(payload_len)
+        .ok_or(ProtocolError::MessageTooLarge(usize::MAX))?;
     if body_len > MAX_MESSAGE_SIZE {
         return Err(ProtocolError::MessageTooLarge(body_len));
     }
-    let mut buf = Vec::with_capacity(HEADER_SIZE + body_len);
-    buf.extend_from_slice(&(body_len as u32).to_be_bytes());
-    buf.push(msg_type);
-    buf.extend_from_slice(&seq.to_be_bytes());
-    buf.extend_from_slice(payload);
-    Ok(buf)
+
+    frame.reserve(HEADER_SIZE + body_len);
+    frame.extend_from_slice(&(body_len as u32).to_be_bytes());
+    frame.push(msg_type);
+    frame.extend_from_slice(&seq.to_be_bytes());
+    append_payload(frame);
+    debug_assert_eq!(frame.len(), HEADER_SIZE + body_len);
+    Ok(())
 }
 
 /// Buffered message decoder for streaming data.

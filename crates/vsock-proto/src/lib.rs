@@ -175,8 +175,10 @@ pub use payloads::exec_operation::{
 };
 pub use payloads::write_file::{
     WriteFileBatchEntry, decode_write_file, decode_write_file_result, decode_write_files,
-    decode_write_files_result, encode_private_write_file, encode_write_file,
-    encode_write_file_result, encode_write_files, encode_write_files_result,
+    decode_write_files_result, encode_private_write_file, encode_private_write_file_frame_into,
+    encode_write_file, encode_write_file_frame_into, encode_write_file_result, encode_write_files,
+    encode_write_files_frame_into, encode_write_files_result, validate_private_write_file,
+    validate_write_file, validate_write_files,
 };
 pub use wire::{
     EXEC_CAPTURED_OUTPUT_FLAG_TRUNCATED, EXEC_FLAG_SUDO, EXEC_OUTPUT_FLAG_TRUNCATED, HEADER_SIZE,

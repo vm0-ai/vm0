@@ -589,6 +589,29 @@ async fn write_request_frame(
     Ok(())
 }
 
+async fn write_request_frame_with_builder(
+    shared: &Arc<Shared>,
+    seq: u32,
+    build_frame: impl FnOnce(u32, &mut Vec<u8>) -> io::Result<()>,
+    before_write: impl FnOnce() -> io::Result<()>,
+) -> io::Result<()> {
+    let mut write_guard = RequestWriteGuard::new(Arc::clone(shared));
+    let mut writer = shared.writer.lock().await;
+    let mut frame = Vec::new();
+    build_frame(seq, &mut frame)?;
+    before_write()?;
+    write_guard.mark_started();
+    let result = writer.write_all(&frame).await;
+    drop(frame);
+    if let Err(error) = result {
+        write_guard.mark_returned();
+        shared.poison_connection();
+        return Err(error);
+    }
+    write_guard.mark_returned();
+    Ok(())
+}
+
 fn encode_request_frame(msg_type: u8, seq: u32, payload: &[u8]) -> io::Result<Vec<u8>> {
     vsock_proto::encode(msg_type, seq, payload)
         .map_err(|e| io::Error::new(io::ErrorKind::InvalidInput, e.to_string()))
@@ -637,6 +660,21 @@ async fn write_registered_request_and_wait(
     await_pending_response(rx, timeout).await
 }
 
+async fn write_registered_request_and_wait_with_frame_builder(
+    shared: &Arc<Shared>,
+    seq: u32,
+    build_frame: impl FnOnce(u32, &mut Vec<u8>) -> io::Result<()>,
+    timeout: Duration,
+    before_write: impl FnOnce() -> io::Result<()>,
+    rx: oneshot::Receiver<RawMessage>,
+) -> io::Result<RawMessage> {
+    let _pending_guard = PendingRequestGuard::new(Arc::clone(shared), seq);
+
+    write_request_frame_with_builder(shared, seq, build_frame, before_write).await?;
+
+    await_pending_response(rx, timeout).await
+}
+
 async fn await_pending_response(
     rx: oneshot::Receiver<RawMessage>,
     timeout: Duration,
@@ -678,37 +716,14 @@ async fn request_raw_on_shared(
     write_registered_request_and_wait(shared, seq, &data, timeout, || Ok(()), rx).await
 }
 
-async fn normal_request_on_shared_with_write_observer(
+async fn normal_request_on_shared_with_write_observer_frame_builder(
     shared: &Arc<Shared>,
-    msg_type: u8,
-    payload: &[u8],
     terminal_msg_types: &'static [u8],
     timeout: Duration,
     write_observer: FrameWriteObserver,
-) -> io::Result<RawMessage> {
-    normal_request_on_shared_with_pre_write_observer(
-        shared,
-        msg_type,
-        payload,
-        terminal_msg_types,
-        timeout,
-        |_| Ok(()),
-        write_observer,
-    )
-    .await
-}
-
-async fn normal_request_on_shared_with_pre_write_observer(
-    shared: &Arc<Shared>,
-    msg_type: u8,
-    payload: &[u8],
-    terminal_msg_types: &'static [u8],
-    timeout: Duration,
-    pre_write: impl FnOnce(&mut ConnectionState) -> io::Result<()>,
-    write_observer: FrameWriteObserver,
+    build_frame: impl FnOnce(u32, &mut Vec<u8>) -> io::Result<()>,
 ) -> io::Result<RawMessage> {
     let seq = shared.next_seq();
-    let data = encode_request_frame(msg_type, seq, payload)?;
     let normal_operation = shared.reserve_normal_operation()?;
     let rx = register_pending_response(shared, seq, |tx| {
         Ok(PendingResponse {
@@ -718,13 +733,13 @@ async fn normal_request_on_shared_with_pre_write_observer(
         })
     })?;
 
-    write_registered_request_and_wait(
+    write_registered_request_and_wait_with_frame_builder(
         shared,
         seq,
-        &data,
+        build_frame,
         timeout,
         || {
-            mark_pending_normal_operation_possible_guest_write(shared, seq, pre_write)?;
+            mark_pending_normal_operation_possible_guest_write(shared, seq, |_| Ok(()))?;
             write_observer.record_write_start()
         },
         rx,
@@ -732,17 +747,15 @@ async fn normal_request_on_shared_with_pre_write_observer(
     .await
 }
 
-async fn request_on_shared_with_composite_operation_and_observer(
+async fn request_on_shared_with_composite_operation_and_observer_frame_builder(
     shared: &Arc<Shared>,
-    msg_type: u8,
-    payload: &[u8],
     terminal_msg_types: &'static [u8],
     timeout: Duration,
     normal_operation: &mut CompositeNormalOperation,
     write_observer: FrameWriteObserver,
+    build_frame: impl FnOnce(u32, &mut Vec<u8>) -> io::Result<()>,
 ) -> io::Result<RawMessage> {
     let seq = shared.next_seq();
-    let data = encode_request_frame(msg_type, seq, payload)?;
     let rx = register_pending_response(shared, seq, |tx| {
         Ok(PendingResponse {
             response_tx: tx,
@@ -753,10 +766,10 @@ async fn request_on_shared_with_composite_operation_and_observer(
         })
     })?;
 
-    write_registered_request_and_wait(
+    write_registered_request_and_wait_with_frame_builder(
         shared,
         seq,
-        &data,
+        build_frame,
         timeout,
         || {
             normal_operation.mark_possible_guest_write_started()?;
