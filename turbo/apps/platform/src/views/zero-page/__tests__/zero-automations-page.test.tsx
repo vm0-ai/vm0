@@ -5,6 +5,8 @@ import {
   automationsMainContract,
 } from "@vm0/api-contracts/contracts/automations";
 import {
+  zeroWorkflowsCollectionContract,
+  zeroWorkflowsDetailContract,
   zeroWorkflowTriggersContract,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSummary,
@@ -22,7 +24,7 @@ import {
 import { mockNow } from "../../../__tests__/time.ts";
 import { toMockAutomationResponse } from "../../../mocks/handlers/api-automations.ts";
 import { createMockAutomationView } from "../../../mocks/handlers/automations-store.ts";
-import { pathname } from "../../../signals/location.ts";
+import { pathname, search } from "../../../signals/location.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
@@ -184,6 +186,28 @@ function mockWorkflowTriggerStory(): void {
     createAgent(researchAgentId, "Research Agent"),
   ]);
   context.mocks.data.userPreferences({ timezone: "UTC" });
+  context.mocks.api(
+    zeroWorkflowsCollectionContract.list,
+    ({ query, respond }) => {
+      const visible = query.agentId
+        ? workflows.filter((workflow) => {
+            return workflow.agentId === query.agentId;
+          })
+        : workflows;
+      return respond(200, visible.map(workflowSummary));
+    },
+  );
+  context.mocks.api(zeroWorkflowsDetailContract.get, ({ params, respond }) => {
+    const detail = workflows.find((workflow) => {
+      return workflow.id === params.workflowId;
+    });
+    if (!detail) {
+      return respond(404, {
+        error: { code: "NOT_FOUND", message: "missing" },
+      });
+    }
+    return respond(200, detail);
+  });
   context.mocks.api(
     zeroWorkflowTriggersContract.listWorkspace,
     ({ respond }) => {
@@ -425,6 +449,10 @@ describe("zero automations page", () => {
 
   it.each([
     [
+      "Manual run",
+      "I'd like to create a workflow that I can run manually without an automatic trigger. Help me define the workflow.",
+    ],
+    [
       "Fixed interval",
       "I'd like to set up an interval workflow trigger that runs every few minutes or hours. Help me define the workflow.",
     ],
@@ -448,6 +476,10 @@ describe("zero automations page", () => {
       "Email label",
       "I'd like to set up an email-label workflow trigger that runs when a Gmail label is applied. Help me define the workflow.",
     ],
+    [
+      "GitHub label",
+      "I'd like to set up a GitHub workflow trigger that runs when a label is applied. Help me define the workflow.",
+    ],
   ])(
     "starts workflow-trigger creation with the %s prompt",
     async (triggerName, prompt) => {
@@ -469,6 +501,10 @@ describe("zero automations page", () => {
 
       click(buttonByText("Add automation"));
       const dialog = await screen.findByRole("dialog");
+      expect(within(dialog).getByText("Create with Zero")).toBeInTheDocument();
+      expect(within(dialog).getByText("Ops brief")).toBeInTheDocument();
+      click(within(dialog).getByText("Create with Zero"));
+
       expect(within(dialog).queryByText("1 Agent")).not.toBeInTheDocument();
       expect(within(dialog).queryByText("2 Trigger")).not.toBeInTheDocument();
       expect(within(dialog).getByText("Zero")).toBeInTheDocument();
@@ -496,6 +532,33 @@ describe("zero automations page", () => {
       ).resolves.toBeInTheDocument();
     },
   );
+
+  it("opens the selected workflow when adding an automation to an existing workflow", async () => {
+    mockWorkflowTriggerStory();
+
+    detachedSetupPage({
+      context,
+      path: "/automations",
+      featureSwitches: {
+        [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByRole("heading", { name: "Automations" }),
+      ).toBeInTheDocument();
+    });
+
+    click(buttonByText("Add automation"));
+    const dialog = await screen.findByRole("dialog");
+    click(within(dialog).getByText("Ops brief"));
+
+    await waitFor(() => {
+      expect(pathname()).toBe(`/workflows/${workflowId}`);
+      expect(search()).toBe("?tab=triggers");
+    });
+  });
 
   it("shows scheduled work in the calendar", async () => {
     mockAutomationsPageStory();

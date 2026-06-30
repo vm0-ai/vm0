@@ -1,6 +1,6 @@
-// Agent-scoped workflow detail at /agents/:agentId/workflows/:workflowId. Hosts
-// the instruction editor, supplementary file manager (SKILL.md is never shown),
-// triggers, visibility controls, metadata editing, slash use, copy, and delete.
+// Workflow detail for workspace and agent-scoped routes. Hosts the instruction
+// editor, supplementary file manager (SKILL.md is never shown), triggers,
+// visibility controls, metadata editing, slash use, copy, and delete.
 import type { FormEvent, ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
@@ -36,6 +36,7 @@ import {
   IconPlayerPlay,
   IconPlus,
   IconRepeat,
+  IconRoute,
   IconTrash,
   IconUpload,
   IconUsers,
@@ -125,6 +126,7 @@ import {
   workflowMetadataPatch$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { activeRoute$ } from "../../signals/active-route.ts";
 import {
   orgMembers$,
   type OrgMember,
@@ -321,15 +323,19 @@ function WorkflowDetailContent({
       ? detailLoadable.data
       : (lastResolvedDetail ?? null);
   const activeTab = useGet(workflowDetailActiveTab$);
+  const activeRoute = useGet(activeRoute$);
   const setActiveTab = useSet(setWorkflowDetailActiveTab$);
 
   if (!detail && detailLoadable.state !== "hasData") {
-    return <DetailSkeleton />;
+    return <DetailSkeleton workspaceRoute={activeRoute === "workflowDetail"} />;
   }
 
   return (
     <DetailPageShell>
-      <WorkflowBreadcrumb detail={detail} />
+      <WorkflowBreadcrumb
+        detail={detail}
+        workspaceRoute={activeRoute === "workflowDetail"}
+      />
       <DetailHeader
         detail={detail}
         activeTab={activeTab}
@@ -348,8 +354,10 @@ function WorkflowDetailContent({
 
 function WorkflowBreadcrumb({
   detail,
+  workspaceRoute,
 }: {
   readonly detail: ZeroWorkflowDetailResponse | null;
+  readonly workspaceRoute: boolean;
 }) {
   if (!detail) {
     return (
@@ -361,26 +369,37 @@ function WorkflowBreadcrumb({
 
   return (
     <DetailPageBreadcrumbBar>
-      <BreadcrumbLink
-        pathname={ROUTES.agents}
-        icon={<IconUsers size={14} stroke={1.5} className="shrink-0" />}
-      >
-        Agents
-      </BreadcrumbLink>
-      <span className="select-none text-muted-foreground/40">/</span>
-      <BreadcrumbLink
-        pathname={ROUTES.agentDetail}
-        options={{ pathParams: { agentId: detail.agentId } }}
-      >
-        {agentLabel(detail)}
-      </BreadcrumbLink>
-      <span className="select-none text-muted-foreground/40">/</span>
-      <BreadcrumbLink
-        pathname={ROUTES.agentWorkflows}
-        options={{ pathParams: { agentId: detail.agentId } }}
-      >
-        workflows
-      </BreadcrumbLink>
+      {workspaceRoute ? (
+        <BreadcrumbLink
+          pathname={ROUTES.workflows}
+          icon={<IconRoute size={14} stroke={1.5} className="shrink-0" />}
+        >
+          Workflows
+        </BreadcrumbLink>
+      ) : (
+        <>
+          <BreadcrumbLink
+            pathname={ROUTES.agents}
+            icon={<IconUsers size={14} stroke={1.5} className="shrink-0" />}
+          >
+            Agents
+          </BreadcrumbLink>
+          <span className="select-none text-muted-foreground/40">/</span>
+          <BreadcrumbLink
+            pathname={ROUTES.agentDetail}
+            options={{ pathParams: { agentId: detail.agentId } }}
+          >
+            {agentLabel(detail)}
+          </BreadcrumbLink>
+          <span className="select-none text-muted-foreground/40">/</span>
+          <BreadcrumbLink
+            pathname={ROUTES.agentWorkflows}
+            options={{ pathParams: { agentId: detail.agentId } }}
+          >
+            workflows
+          </BreadcrumbLink>
+        </>
+      )}
       <span className="select-none text-muted-foreground/40">/</span>
       <span className="min-w-0 truncate rounded-md px-1.5 py-0.5 font-medium text-foreground">
         {workflowTitle(detail)}
@@ -4862,10 +4881,14 @@ function UpdateGithubLabelAppliedTriggerForm({
   );
 }
 
-function DetailSkeleton() {
+function DetailSkeleton({
+  workspaceRoute,
+}: {
+  readonly workspaceRoute: boolean;
+}) {
   return (
     <DetailPageShell scroll={false}>
-      <WorkflowBreadcrumb detail={null} />
+      <WorkflowBreadcrumb detail={null} workspaceRoute={workspaceRoute} />
       <DetailPageHeader className="pb-3">
         <div className="animate-pulse space-y-3">
           <div className="h-5 w-48 rounded bg-muted" />

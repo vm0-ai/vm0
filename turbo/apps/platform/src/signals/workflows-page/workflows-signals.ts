@@ -126,7 +126,8 @@ interface WorkflowMetadataPatch {
  * The workflow uuid for the active detail route, or null elsewhere.
  */
 export const currentWorkflowId$ = computed((get): string | null => {
-  if (get(activeRoute$) !== "agentWorkflowDetail") {
+  const route = get(activeRoute$);
+  if (route !== "agentWorkflowDetail" && route !== "workflowDetail") {
     return null;
   }
   const workflowId = get(pathParams$)?.workflowId;
@@ -411,6 +412,22 @@ export const composerWorkflows$ = computed(
       return [];
     }
     return get(agentWorkflows(agentId));
+  },
+);
+
+export const allVisibleWorkflows$ = computed(
+  async (get): Promise<readonly ZeroWorkflowSummary[]> => {
+    get(internalWorkflowReload$);
+    const client = get(zeroClient$)(zeroWorkflowsCollectionContract);
+    const result = await accept(client.list({ query: {} }), [200]);
+    return [...result.body].sort((a, b) => {
+      if (a.visibility !== b.visibility) {
+        return a.visibility === "public" ? -1 : 1;
+      }
+      const aTitle = a.displayName ?? a.name;
+      const bTitle = b.displayName ?? b.name;
+      return aTitle.localeCompare(bTitle);
+    });
   },
 );
 

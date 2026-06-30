@@ -708,6 +708,48 @@ function selectOptionByLabel(
 }
 
 describe("agent workflows tab", () => {
+  it("shows all visible workflows on the workspace workflows page", async () => {
+    mockAgentPageApis();
+    mockWorkflowApis([
+      salesResearch(),
+      opsPlaybook(),
+      pendingReviewWorkflow(),
+      otherAgentWorkflow(),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: "/workflows",
+      featureSwitches: { [FeatureSwitchKey.WorkflowsViewer]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Sales Research")).toBeInTheDocument();
+    });
+    expect(screen.getByText("Ops Playbook")).toBeInTheDocument();
+    expect(screen.getByText("Launch Checklist")).toBeInTheDocument();
+    expect(screen.getByText("Support Intake")).toBeInTheDocument();
+
+    const supportLink = screen.getByText("Support Intake").closest("a");
+    expect(supportLink).toHaveAttribute(
+      "href",
+      `/workflows/${OTHER_WORKFLOW_ID}`,
+    );
+
+    click(buttonByText(/create with chat/i));
+    await waitFor(() => {
+      expect(menuItemByText(/create with Zero/i)).toBeInTheDocument();
+    });
+    click(menuItemByText(/create with Zero/i));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Create workflow",
+    });
+    expect(dialog).toBeInTheDocument();
+    expect(within(dialog).getByText("Research Bot")).toBeInTheDocument();
+    expect(within(dialog).getByText("Support Bot")).toBeInTheDocument();
+  });
+
   it("shows the agent's workflows and links into the detail page", async () => {
     mockAgentPageApis();
     mockWorkflowApis([
