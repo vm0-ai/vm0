@@ -1,16 +1,14 @@
 import { randomUUID } from "node:crypto";
 
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { createStore } from "ccstate";
-import { and, eq } from "drizzle-orm";
 import { afterEach } from "vitest";
 
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { now } from "../../../lib/time";
 import { signSandboxJwtForTests } from "../../auth/tokens";
-import { writeDb$ } from "../../external/db";
 import {
   deleteOrgMembership$,
   seedOrgMembership$,
@@ -28,12 +26,27 @@ async function enableFeatureSwitches(
   userId: string,
   switches: Partial<Record<FeatureSwitchKey, boolean>>,
 ): Promise<void> {
-  const writeDb = store.set(writeDb$);
-  await writeDb.insert(userFeatureSwitches).values({
-    orgId,
-    userId,
-    switches,
-  });
+  mocks.clerk.session(userId, orgId);
+  const client = setupApp({ context })(zeroFeatureSwitchesContract);
+  await accept(
+    client.update({
+      headers: { authorization: "Bearer clerk-session" },
+      body: { switches },
+    }),
+    [200],
+  );
+}
+
+async function deleteFeatureSwitches(
+  orgId: string,
+  userId: string,
+): Promise<void> {
+  mocks.clerk.session(userId, orgId);
+  const client = setupApp({ context })(zeroFeatureSwitchesContract);
+  await accept(
+    client.delete({ headers: { authorization: "Bearer clerk-session" } }),
+    [200],
+  );
 }
 
 function currentSecond(): number {
@@ -60,18 +73,10 @@ describe("GET /api/zero/connector-catalog", () => {
   }
 
   afterEach(async () => {
-    const writeDb = store.set(writeDb$);
     while (seededFeatureSwitches.length > 0) {
       const fixture = seededFeatureSwitches.pop();
       if (fixture) {
-        await writeDb
-          .delete(userFeatureSwitches)
-          .where(
-            and(
-              eq(userFeatureSwitches.orgId, fixture.orgId),
-              eq(userFeatureSwitches.userId, fixture.userId),
-            ),
-          );
+        await deleteFeatureSwitches(fixture.orgId, fixture.userId);
       }
     }
     while (seededOrgs.length > 0) {
