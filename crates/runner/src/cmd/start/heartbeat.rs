@@ -169,6 +169,9 @@ fn merge_held_session_states(
 ) -> Vec<HeldSessionState> {
     let mut by_session = std::collections::BTreeMap::<String, HeldSessionState>::new();
     for state in idle_states {
+        if active_cli_agent_sessions.contains(&state.session_id) {
+            continue;
+        }
         by_session.insert(state.session_id.clone(), state);
     }
     for state in cache_states {
@@ -528,13 +531,19 @@ mod tests {
     }
 
     #[test]
-    fn merge_held_session_states_filters_active_cache_sessions() {
-        let idle = vec![];
+    fn merge_held_session_states_filters_active_sessions() {
+        let idle = vec![HeldSessionState {
+            session_id: "sess-active-idle".into(),
+            last_completed_at: "2026-06-01T00:00:01.000Z".into(),
+        }];
         let cache = vec![HeldSessionState {
             session_id: "sess-active".into(),
             last_completed_at: "2026-06-01T00:00:00.000Z".into(),
         }];
-        let active = std::collections::HashSet::from(["sess-active".to_string()]);
+        let active = std::collections::HashSet::from([
+            "sess-active".to_string(),
+            "sess-active-idle".to_string(),
+        ]);
 
         let merged = merge_held_session_states(idle, cache, &active);
 
