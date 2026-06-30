@@ -253,7 +253,7 @@ function AgentAccessRow({
     row.authorized && hasFirewallMetadataPermissions(connectorType);
 
   return (
-    <div className="flex flex-col gap-3 border-b border-border/50 px-1 py-4 last:border-b-0">
+    <div className="flex flex-col gap-3 px-1 py-4">
       <div className="flex items-center gap-3">
         <AvatarFromUrl
           avatarUrl={row.agent.avatarUrl}
