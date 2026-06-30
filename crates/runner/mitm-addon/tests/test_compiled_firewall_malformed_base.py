@@ -59,6 +59,27 @@ def test_star_greedy_host_param_base_authority_is_valid():
 
 
 @pytest.mark.parametrize(
+    "url",
+    [
+        "https://*.example.com/repos/org/repo",
+        "https://api*.example.com/repos/org/repo",
+    ],
+)
+def test_raw_wildcard_runtime_authority_does_not_match_parameterized_base(url):
+    compiled_firewalls = compile_firewalls_or_fail(_github_firewalls("https://{sub}.example.com"))
+    policies = _github_policies()
+
+    result = matching.match_compiled_firewall_request(
+        url,
+        "GET",
+        compiled_firewalls,
+        policies,
+    )
+
+    assert result is None
+
+
+@pytest.mark.parametrize(
     "base",
     [
         "https://\u0668.\u0668.\u0668.\u0668",

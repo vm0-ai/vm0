@@ -65,7 +65,7 @@ const VALID_RULE_METHODS = new Set([
   "OPTIONS",
   "ANY",
 ]);
-const FORBIDDEN_RUNTIME_HOST_CHARS = new Set("#%,/<>?@\\^|{}".split(""));
+const FORBIDDEN_RUNTIME_HOST_CHARS = new Set("#%*,/<>?@\\^|{}".split(""));
 const FORBIDDEN_BASE_PATTERN_HOST_CHARS = new Set("#%,/<>?@\\^|".split(""));
 const PERCENT_ESCAPE_LENGTH = 3;
 const HEX_DIGITS = new Set("0123456789abcdefABCDEF".split(""));
@@ -80,6 +80,7 @@ const STATIC_BASE_SCORE_BONUS = 1;
 const PERCENT_DECODED_AUTHORITY_SYNTAX_CHARS = new Set([
   "{",
   "}",
+  "*",
   ".",
   "\u3002",
   "\uff0e",

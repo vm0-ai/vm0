@@ -237,6 +237,9 @@ class TestAuthBaseForwarderSecurity:
             "https://\u212a.example/path",
             "https://%E2%84%AA.example/path",
             "https://example%2ecom/path",
+            "https://*.example.com/path",
+            "https://api*.example.com/path",
+            "https://%2A.example.com/path",
         ],
     )
     async def test_rejects_unsafe_raw_host_before_dns(self, url: str):

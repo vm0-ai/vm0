@@ -105,7 +105,7 @@ MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
 MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
 MAX_ADMITTED_AUTH_BASE_FORWARDS = 16
 MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES = 128 * 1024 * 1024
-_PERCENT_DECODED_UPSTREAM_HOST_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61,")
+_PERCENT_DECODED_UPSTREAM_HOST_SYNTAX_CHARS = frozenset("{}*.\u3002\uff0e\uff61,")
 _forward_request_executor_state: tuple[int, ThreadPoolExecutor] | None = None
 _forward_request_admission_state: (
     tuple[asyncio.AbstractEventLoop, int, asyncio.Semaphore] | None
@@ -427,6 +427,8 @@ def _normalized_forward_request_host(parsed: urllib.parse.SplitResult) -> str:
         syntax_chars=_PERCENT_DECODED_UPSTREAM_HOST_SYNTAX_CHARS,
     )
     if decoded.invalid_encoding or decoded.decoded_syntax:
+        raise ValueError("Invalid upstream URL: invalid host")
+    if "*" in decoded.value:
         raise ValueError("Invalid upstream URL: invalid host")
 
     if raw_host.bracketed:

@@ -107,6 +107,28 @@ class TestTrustedAuthorityRejection:
             fallback_url="https://203.0.113.10/repos",
         )
 
+    def test_rejects_wildcard_sni(self, real_flow, headers):
+        flow = real_flow(
+            with_response=False,
+            host="203.0.113.10",
+            sni="*.github.com",
+            path="/repos",
+            request_headers=headers(("Host", "*.github.com")),
+        )
+
+        with pytest.raises(AuthorityValidationError) as exc_info:
+            get_trusted_authority(flow)
+
+        _assert_authority_error(
+            exc_info,
+            reason="invalid_sni",
+            sni="*.github.com",
+            request_host="203.0.113.10",
+            host_header="*.github.com",
+            request_port=443,
+            fallback_url="https://203.0.113.10/repos",
+        )
+
     def test_rejects_idna_compatibility_host_alias(self, real_flow, headers):
         flow = real_flow(
             with_response=False,
@@ -212,6 +234,20 @@ class TestTrustedAuthorityRejection:
                 "invalid_authority",
                 "https://api.github.com/repos",
                 id="template-braces",
+            ),
+            pytest.param(
+                443,
+                "*.github.com",
+                "invalid_authority",
+                "https://api.github.com/repos",
+                id="wildcard-label",
+            ),
+            pytest.param(
+                443,
+                "api*.github.com",
+                "invalid_authority",
+                "https://api.github.com/repos",
+                id="mixed-wildcard-label",
             ),
             pytest.param(
                 443,

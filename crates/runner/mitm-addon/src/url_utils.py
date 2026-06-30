@@ -35,7 +35,7 @@ from url_syntax import (
     strip_optional_terminal_slash,
 )
 
-_FORBIDDEN_HOST_CHARS = frozenset("#%,/<>?@[\\]^|{}")
+_FORBIDDEN_HOST_CHARS = frozenset("#%*,/<>?@[\\]^|{}")
 _PERCENT_DECODED_HOST_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61,")
 _URL_PATH_SAFE_CHARS = "/%:@!$&'()*+,;="
 _URL_QUERY_SAFE_CHARS = "/?%:@!$&'()*+,;="

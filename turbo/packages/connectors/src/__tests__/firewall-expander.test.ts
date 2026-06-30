@@ -1248,6 +1248,14 @@ describe("expandHostWildcardsInBaseUrl", () => {
     }).toThrow("must not contain backslash");
   });
 
+  it("does not expand wildcard characters inside bracketed authorities", () => {
+    const expanded = expandHostWildcardsInBaseUrl("https://[::*]/v1/");
+    expect(expanded).toBe("https://[::*]/v1/");
+    expect(() => {
+      return validateBaseUrl(expanded, "fw");
+    }).toThrow("not a valid URL");
+  });
+
   it("converts mixed-label host wildcards and leaves path wildcards literal", () => {
     expect(
       expandHostWildcardsInBaseUrl("https://api-*.example.com/files/*/"),

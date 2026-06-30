@@ -1898,11 +1898,7 @@ function splitRawWildcardAuthority(
   }
 
   if (authority.startsWith("[")) {
-    const closeBracket = authority.indexOf("]");
-    if (closeBracket === -1) return null;
-    const portSuffix = authority.slice(closeBracket + 1);
-    if (portSuffix !== "" && !portSuffix.startsWith(":")) return null;
-    return { host: authority.slice(0, closeBracket + 1), portSuffix };
+    return null;
   }
 
   const portSeparator = authority.lastIndexOf(":");
