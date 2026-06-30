@@ -138,7 +138,7 @@ const ZERO_COMMAND_DEFINITIONS: readonly ZeroCommandDefinition[] = [
   },
   {
     name: "github",
-    description: "Manage GitHub integration files and label listeners",
+    description: "Upload and download GitHub files",
     load: async () => {
       return (await import("./commands/zero/github")).zeroGithubCommand;
     },

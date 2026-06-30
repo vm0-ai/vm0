@@ -1,23 +1,15 @@
 import { Buffer } from "node:buffer";
-import {
-  createHmac,
-  generateKeyPairSync,
-  randomInt,
-  randomUUID,
-} from "node:crypto";
+import { generateKeyPairSync, randomInt } from "node:crypto";
 
 import {
   composesByIdContract,
   composesMainContract,
   agentComposeApiContentSchema,
-  type ZeroCapability,
 } from "@vm0/api-contracts/contracts/composes";
 import {
   integrationsGithubContract,
-  type CreateGithubLabelListenerBody,
   type GithubConnectUserBody,
   type GithubInstallationResponse,
-  type UpdateGithubLabelListenerBody,
 } from "@vm0/api-contracts/contracts/integrations-github";
 import { orgDefaultAgentContract } from "@vm0/api-contracts/contracts/orgs";
 import { zeroConnectorsByTypeContract } from "@vm0/api-contracts/contracts/zero-connectors";
@@ -31,26 +23,21 @@ import { HttpResponse, http } from "msw";
 import { z } from "zod";
 
 import { createApp } from "../../../../app-factory";
-import { env, mockOptionalEnv } from "../../../../lib/env";
-import { now } from "../../../../lib/time";
+import { mockOptionalEnv } from "../../../../lib/env";
 import { server } from "../../../../mocks/server";
 import {
   accept,
   setupApp,
   type TestContext,
 } from "../../../../__tests__/test-helpers";
-import { signSandboxJwtForTests } from "../../../auth/tokens";
 import type { ApiTestUser } from "./api-bdd";
 import { mockClerkMembership } from "./api-bdd-clerk";
-import { sessionHistoryBlobBodyForKey } from "./api-bdd-session-history";
 import { createZeroRouteMocks } from "./zero-route-test";
 export { mockClerkMembership } from "./api-bdd-clerk";
 
-export const GITHUB_APP_SLUG = "vm0-test";
-export const GITHUB_APP_CLIENT_ID = "github-app-client-id";
-export const GITHUB_APP_CLIENT_SECRET = "github-app-client-secret";
-export const GH_OAUTH_CLIENT_ID = "github-oauth-client-id";
-export const GH_OAUTH_CLIENT_SECRET = "github-oauth-client-secret";
+const GITHUB_APP_SLUG = "vm0-test";
+const GITHUB_APP_CLIENT_ID = "github-app-client-id";
+const GITHUB_APP_CLIENT_SECRET = "github-app-client-secret";
 
 const GITHUB_APP_ID = "123456";
 const DEFAULT_TEST_ORIGIN = "http://localhost:3000";
@@ -63,7 +50,7 @@ interface GithubBearerAuth {
 
 type GithubActorAuth = ApiTestUser | GithubBearerAuth | null;
 
-export interface RawRouteResponse {
+interface RawRouteResponse {
   readonly status: number;
   readonly location: string | null;
   readonly cacheControl: string | null;
@@ -79,43 +66,6 @@ interface RecordedTokenExchange {
   calls: number;
 }
 
-interface RecordedRemoteUninstall {
-  installationId: string | null;
-  authorization: string | null;
-}
-
-interface CapturedIssueComment {
-  readonly repo: string;
-  readonly issueNumber: string;
-  readonly id: string;
-  readonly body: string;
-}
-
-interface CapturedReactionDelete {
-  readonly commentId: string;
-  readonly reactionId: string;
-}
-
-interface GithubIssueApiCapture {
-  readonly comments: CapturedIssueComment[];
-  readonly reactionDeletes: CapturedReactionDelete[];
-  lastCommentId(): string;
-}
-
-interface GithubIssueHistoryComment {
-  readonly id: number;
-  readonly login: string;
-  readonly body: string;
-}
-
-interface SignedConnectLink {
-  readonly installationId: string;
-  readonly githubUserId: string;
-  readonly githubUsername: string;
-  readonly timestamp: number;
-  readonly signature: string;
-}
-
 interface ClerkUserProfile {
   readonly id: string;
   readonly emailAddresses: readonly {
@@ -126,33 +76,6 @@ interface ClerkUserProfile {
   readonly firstName: string;
   readonly lastName: string;
 }
-
-function normalizeGithubUsername(
-  githubUsername: string | null | undefined,
-): string {
-  return githubUsername?.trim().replace(/^@+/, "") || "";
-}
-
-function signGithubConnectParamsForTests(args: {
-  readonly installationId: string;
-  readonly githubUserId: string;
-  readonly timestamp: number;
-  readonly secretsEncryptionKey: string;
-  readonly githubUsername?: string | null;
-}): string {
-  return createHmac("sha256", args.secretsEncryptionKey)
-    .update(
-      [
-        args.installationId,
-        args.githubUserId,
-        String(args.timestamp),
-        normalizeGithubUsername(args.githubUsername),
-      ].join(":"),
-    )
-    .digest("hex");
-}
-
-const issueCommentRequestSchema = z.object({ body: z.string() });
 
 function clerkUserProfile(actor: ApiTestUser): ClerkUserProfile {
   const emailId = `email_${actor.userId}`;
@@ -169,52 +92,13 @@ function isBearerAuth(auth: GithubActorAuth): auth is GithubBearerAuth {
   return auth !== null && "bearer" in auth;
 }
 
-function commandInput(command: unknown): Record<string, unknown> {
-  if (
-    typeof command === "object" &&
-    command !== null &&
-    "input" in command &&
-    typeof command.input === "object" &&
-    command.input !== null
-  ) {
-    return command.input as Record<string, unknown>;
-  }
-  return {};
-}
-
-/**
- * Object-storage fake for GitHub run chains: checkpointed session-history
- * blobs download with deterministic content (so issue-session resume works
- * end to end) and every other storage command acks like the plain
- * storage-write mock.
- */
-export function acceptGithubRunObjectStorage(context: TestContext): void {
-  context.mocks.s3.send.mockImplementation((command: unknown) => {
-    const input = commandInput(command);
-    const key = typeof input.Key === "string" ? input.Key : "";
-    if (key.startsWith("blobs/") && key.endsWith(".blob")) {
-      const body = sessionHistoryBlobBodyForKey(context, key);
-      return Promise.resolve({
-        Body: {
-          async *[Symbol.asyncIterator](): AsyncGenerator<Uint8Array> {
-            if (body) {
-              yield body;
-            }
-          },
-        },
-      });
-    }
-    return Promise.resolve({});
-  });
-}
-
 function newPrivateKeyBase64(): string {
   const { privateKey } = generateKeyPairSync("rsa", { modulusLength: 2048 });
   const pem = privateKey.export({ type: "pkcs8", format: "pem" });
   return Buffer.from(pem).toString("base64");
 }
 
-export function newRemoteInstallationId(): string {
+function newRemoteInstallationId(): string {
   return String(randomInt(1_000_000_000, 9_999_999_999));
 }
 
@@ -222,7 +106,7 @@ export function newGithubUserId(): string {
   return String(randomInt(1_000_000_000, 9_999_999_999));
 }
 
-export function mockGithubAppEnv(
+function mockGithubAppEnv(
   args: {
     readonly slug?: boolean;
     readonly credentials?: boolean;
@@ -249,12 +133,7 @@ export function mockGithubAppEnv(
   }
 }
 
-export function mockGithubUserOauthEnv(): void {
-  mockOptionalEnv("GH_OAUTH_CLIENT_ID", GH_OAUTH_CLIENT_ID);
-  mockOptionalEnv("GH_OAUTH_CLIENT_SECRET", GH_OAUTH_CLIENT_SECRET);
-}
-
-export function mockGithubInstallationsList(
+function mockGithubInstallationsList(
   installations: readonly {
     readonly id: string;
     readonly targetId: string;
@@ -280,7 +159,7 @@ export function mockGithubInstallationsList(
   );
 }
 
-export function mockGithubInstallationApi(args: {
+function mockGithubInstallationApi(args: {
   readonly installationId: string;
   readonly targetId: string;
   readonly login?: string;
@@ -313,15 +192,7 @@ export function mockGithubInstallationApi(args: {
   );
 }
 
-export function mockGithubInstallationInfoFailure(status: number): void {
-  server.use(
-    http.get("https://api.github.com/app/installations/:installationId", () => {
-      return HttpResponse.json({ message: "Bad credentials" }, { status });
-    }),
-  );
-}
-
-export function mockGithubUserOAuthExchange(args: {
+function mockGithubUserOAuthExchange(args: {
   readonly code: string;
   readonly githubUserId: string;
   readonly accessToken?: string;
@@ -373,192 +244,6 @@ export function mockGithubUserOAuthExchange(args: {
   );
 
   return recorded;
-}
-
-export function mockGithubRemoteUninstall(): RecordedRemoteUninstall {
-  const recorded: RecordedRemoteUninstall = {
-    installationId: null,
-    authorization: null,
-  };
-  server.use(
-    http.delete(
-      "https://api.github.com/app/installations/:installationId",
-      ({ params, request }) => {
-        recorded.installationId = String(params.installationId);
-        recorded.authorization = request.headers.get("authorization");
-        return HttpResponse.text("boom", { status: 500 });
-      },
-    ),
-  );
-  return recorded;
-}
-
-/**
- * GitHub issue API surface used by webhook-created runs: installation access
- * tokens, comment history, posted comments (with incrementing ids), and
- * reaction add/remove. All issue comments observed by the test flow through
- * the returned capture arrays.
- */
-export function captureGithubIssueApi(
-  remoteInstallationId: string,
-  options: {
-    readonly commentHistory?: readonly GithubIssueHistoryComment[];
-  } = {},
-): GithubIssueApiCapture {
-  const comments: CapturedIssueComment[] = [];
-  const reactionDeletes: CapturedReactionDelete[] = [];
-  let nextCommentId = randomInt(10_000, 99_999);
-  let nextReactionId = randomInt(1000, 9999);
-
-  server.use(
-    http.post(
-      `https://api.github.com/app/installations/${remoteInstallationId}/access_tokens`,
-      () => {
-        return HttpResponse.json({
-          token: "ghs_bdd_issue_token",
-          expires_at: "2099-01-01T00:00:00Z",
-        });
-      },
-    ),
-    http.get(
-      "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
-      () => {
-        return HttpResponse.json(
-          (options.commentHistory ?? []).map((comment) => {
-            return {
-              id: comment.id,
-              user: { login: comment.login, type: "User" },
-              body: comment.body,
-              created_at: "2026-05-20T00:00:00Z",
-            };
-          }),
-        );
-      },
-    ),
-    http.post(
-      "https://api.github.com/repos/:owner/:repo/issues/:issueNumber/comments",
-      async ({ params, request }) => {
-        const payload = issueCommentRequestSchema.parse(await request.json());
-        const id = nextCommentId;
-        nextCommentId += 1;
-        comments.push({
-          repo: `${String(params.owner)}/${String(params.repo)}`,
-          issueNumber: String(params.issueNumber),
-          id: String(id),
-          body: payload.body,
-        });
-        return HttpResponse.json({ id });
-      },
-    ),
-    http.post(
-      "https://api.github.com/repos/:owner/:repo/issues/comments/:commentId/reactions",
-      () => {
-        const id = nextReactionId;
-        nextReactionId += 1;
-        return HttpResponse.json({ id });
-      },
-    ),
-    http.delete(
-      "https://api.github.com/repos/:owner/:repo/issues/comments/:commentId/reactions/:reactionId",
-      ({ params }) => {
-        reactionDeletes.push({
-          commentId: String(params.commentId),
-          reactionId: String(params.reactionId),
-        });
-        return HttpResponse.json({});
-      },
-    ),
-  );
-
-  return {
-    comments,
-    reactionDeletes,
-    lastCommentId(): string {
-      const lastComment = comments[comments.length - 1];
-      if (!lastComment) {
-        throw new Error("No GitHub issue comment captured yet");
-      }
-      return lastComment.id;
-    },
-  };
-}
-
-export function buildLegacySignedState(args: {
-  readonly userId: string;
-  readonly composeId: string;
-}): string {
-  const sig = createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
-    .update(`${args.userId}:${args.composeId}`)
-    .digest("hex");
-  return JSON.stringify({
-    vm0UserId: args.userId,
-    composeId: args.composeId,
-    sig,
-  });
-}
-
-export function buildUserConnectState(args: {
-  readonly userId: string;
-  readonly orgId: string;
-}): string {
-  const sig = createHmac("sha256", env("SECRETS_ENCRYPTION_KEY"))
-    .update(`${args.userId}:${args.orgId}:`)
-    .digest("hex");
-  return JSON.stringify({
-    vm0UserId: args.userId,
-    orgId: args.orgId,
-    sig,
-  });
-}
-
-export function signedConnectLink(args: {
-  readonly installationId: string;
-  readonly githubUserId: string;
-  readonly githubUsername?: string;
-  readonly ageSeconds?: number;
-}): SignedConnectLink {
-  const timestamp = Math.floor(now() / 1000) - (args.ageSeconds ?? 0);
-  const githubUsername = args.githubUsername ?? "octocat";
-  return {
-    installationId: args.installationId,
-    githubUserId: args.githubUserId,
-    githubUsername,
-    timestamp,
-    signature: signGithubConnectParamsForTests({
-      installationId: args.installationId,
-      githubUserId: args.githubUserId,
-      githubUsername,
-      timestamp,
-      secretsEncryptionKey: env("SECRETS_ENCRYPTION_KEY"),
-    }),
-  };
-}
-
-export function connectLinkQuery(link: SignedConnectLink): string {
-  return new URLSearchParams({
-    installation: link.installationId,
-    ghUser: link.githubUserId,
-    ghLogin: link.githubUsername,
-    ts: String(link.timestamp),
-    sig: link.signature,
-  }).toString();
-}
-
-export function zeroCapabilityToken(args: {
-  readonly userId: string;
-  readonly orgId: string;
-  readonly capabilities: readonly ZeroCapability[];
-}): string {
-  const seconds = Math.floor(now() / 1000);
-  return signSandboxJwtForTests({
-    scope: "zero",
-    userId: args.userId,
-    orgId: args.orgId,
-    runId: randomUUID(),
-    capabilities: [...args.capabilities],
-    iat: seconds,
-    exp: seconds + 300,
-  });
 }
 
 export function createGithubBddApi(context: TestContext) {
@@ -718,105 +403,6 @@ export function createGithubBddApi(context: TestContext) {
       );
     },
 
-    async disconnectUser<TStatus extends 200 | 401 | 404 | 500>(
-      auth: GithubActorAuth,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        githubClient().disconnectUser({ headers: authenticate(auth) }),
-        statuses,
-      );
-    },
-
-    async deleteInstallation<TStatus extends 200 | 401 | 403 | 404 | 500>(
-      auth: GithubActorAuth,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        githubClient().deleteInstallation({ headers: authenticate(auth) }),
-        statuses,
-      );
-    },
-
-    async updateInstallation<TStatus extends 200 | 400 | 401 | 403 | 404 | 500>(
-      auth: GithubActorAuth,
-      agentName: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        githubClient().updateInstallation({
-          headers: authenticate(auth),
-          body: { agentName },
-        }),
-        statuses,
-      );
-    },
-
-    async rawUpdateInstallation(
-      actor: ApiTestUser,
-      rawBody: string,
-    ): Promise<RawRouteResponse> {
-      const headers = authenticate(actor);
-      return await rawRequest("/api/integrations/github", {
-        method: "PATCH",
-        headers: {
-          "content-type": "application/json",
-          ...(headers.authorization
-            ? { authorization: headers.authorization }
-            : {}),
-        },
-        body: rawBody,
-      });
-    },
-
-    async createLabelListener<
-      TStatus extends 201 | 400 | 401 | 403 | 404 | 409 | 500,
-    >(
-      auth: GithubActorAuth,
-      body: CreateGithubLabelListenerBody,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        githubClient().createLabelListener({
-          headers: authenticate(auth),
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async updateLabelListener<
-      TStatus extends 200 | 400 | 401 | 403 | 404 | 409 | 500,
-    >(
-      auth: GithubActorAuth,
-      listenerId: string,
-      body: UpdateGithubLabelListenerBody,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        githubClient().updateLabelListener({
-          headers: authenticate(auth),
-          params: { listenerId },
-          body,
-        }),
-        statuses,
-      );
-    },
-
-    async deleteLabelListener<TStatus extends 200 | 401 | 403 | 404 | 500>(
-      auth: GithubActorAuth,
-      listenerId: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        githubClient().deleteLabelListener({
-          headers: authenticate(auth),
-          params: { listenerId },
-        }),
-        statuses,
-      );
-    },
-
     async readGithubConnector(actor: ApiTestUser) {
       const client = setupApp({ context })(zeroConnectorsByTypeContract);
       const response = await accept(
@@ -899,8 +485,7 @@ export function createGithubBddApi(context: TestContext) {
      * Composite Given: full GitHub App install through the real install
      * redirect and setup callback. With `oauthCode` set the setup callback
      * exchanges the code against the GitHub App OAuth client and links the
-     * installing admin (`github=connected`); without it the install stays
-     * unlinked (`github=installed`).
+     * installing admin; without it the install stays unlinked.
      */
     async installGithubApp(
       actor: ApiTestUser,
@@ -978,14 +563,10 @@ export function createGithubBddApi(context: TestContext) {
           `Expected GitHub setup callback redirect, received ${callback.status}`,
         );
       }
-      const works = new URL(callback.location);
-      const expected = options.oauthCode ? "connected" : "installed";
-      if (
-        works.pathname !== "/works" ||
-        works.searchParams.get("github") !== expected
-      ) {
+      const redirectUrl = new URL(callback.location);
+      if (redirectUrl.pathname !== "/workflows") {
         throw new Error(
-          `Expected GitHub setup to finish with github=${expected}: ${callback.location}`,
+          `Expected GitHub setup to finish at /workflows: ${callback.location}`,
         );
       }
 

@@ -59,7 +59,7 @@ export const githubOauthContract = c.router({
       401: apiErrorSchema,
       503: jsonErrorSchema,
     },
-    summary: "Start GitHub user OAuth for the GitHub integration",
+    summary: "Start GitHub user OAuth for the GitHub App",
   },
   connectCallback: {
     method: "GET",
@@ -68,7 +68,7 @@ export const githubOauthContract = c.router({
     responses: {
       307: c.noBody(),
     },
-    summary: "Handle GitHub user OAuth for the GitHub integration",
+    summary: "Handle GitHub user OAuth for the GitHub App",
   },
   setupCallback: {
     method: "GET",
