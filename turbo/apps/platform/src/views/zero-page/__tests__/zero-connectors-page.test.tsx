@@ -4,7 +4,10 @@ import {
   zeroCustomConnectorsContract,
   type CustomConnectorResponse,
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
-import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroConnectorOauthStartContract,
+  zeroConnectorScopeDiffContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
@@ -362,6 +365,61 @@ describe("connectors page", () => {
     expect(
       reconnectReasonHelpButton(connectorCardByLabel("GitHub")),
     ).not.toBeInTheDocument();
+  });
+
+  it("moves scope review into the connector options menu", async () => {
+    const storedScopes = ["https://www.googleapis.com/auth/adwords"];
+    const addedScopes = [
+      "https://www.googleapis.com/auth/datamanager",
+      "https://www.googleapis.com/auth/userinfo.email",
+    ];
+    mockConnectors([
+      {
+        type: "google-ads",
+        oauthScopes: storedScopes,
+      },
+    ]);
+    context.mocks.api(
+      zeroConnectorScopeDiffContract.getScopeDiff,
+      ({ params, respond }) => {
+        expect(params.type).toBe("google-ads");
+        return respond(200, {
+          addedScopes,
+          removedScopes: [],
+          currentScopes: [...storedScopes, ...addedScopes],
+          storedScopes,
+        });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+    });
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("Google Ads");
+      expect(within(card).getByText("Update permissions")).toBeInTheDocument();
+      expect(
+        within(card).queryByText("Permissions update available"),
+      ).not.toBeInTheDocument();
+      expect(queryButtonByText("Review", card)).not.toBeInTheDocument();
+    });
+
+    click(
+      within(connectorCardByLabel("Google Ads")).getByLabelText("More options"),
+    );
+
+    await waitFor(() => {
+      expect(menuItemByText("Review permissions")).toBeInTheDocument();
+    });
+    click(menuItemByText("Review permissions"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Google Ads permissions update",
+    });
+    expect(within(dialog).getByText("New permissions")).toBeInTheDocument();
+    expect(within(dialog).getByText(addedScopes[0])).toBeInTheDocument();
   });
 
   it("navigates connector categories and opens a connector from the keyboard", async () => {
