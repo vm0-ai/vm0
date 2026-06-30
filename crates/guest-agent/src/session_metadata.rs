@@ -49,9 +49,15 @@ fn claude_history_path_payload_for_home(home: &str, session_id: &str) -> Option<
         .strip_prefix('/')
         .unwrap_or(paths::CANONICAL_WORKING_DIR)
         .replace('/', "-");
-    Some(format!(
-        "{home}/.claude/projects/-{project_name}/{session_id}.jsonl"
-    ))
+    Some(
+        Path::new(home)
+            .join(".claude")
+            .join("projects")
+            .join(format!("-{project_name}"))
+            .join(format!("{session_id}.jsonl"))
+            .to_string_lossy()
+            .into_owned(),
+    )
 }
 
 fn codex_history_marker_payload_for_home(home_dir: &Path, thread_id: &str) -> String {
@@ -201,6 +207,21 @@ mod tests {
         assert!(
             marker.starts_with("CODEX_SEARCH:15:.codex/sessions:"),
             "marker should use relative .codex sessions dir for empty HOME, got {marker}"
+        );
+    }
+
+    #[test]
+    fn claude_history_marker_payload_for_empty_home_uses_path_join_semantics() {
+        let marker = history_marker_payload_for_session_id_with_home(
+            Framework::ClaudeCode,
+            "",
+            "session-123",
+        )
+        .expect("safe Claude session id should produce marker");
+
+        assert_eq!(
+            marker, ".claude/projects/-home-user-workspace/session-123.jsonl",
+            "marker should use relative .claude history dir for empty HOME"
         );
     }
 }
