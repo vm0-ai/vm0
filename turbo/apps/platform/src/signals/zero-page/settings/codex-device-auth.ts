@@ -142,7 +142,7 @@ function activeFlowOrExpired(
 const startCodexDeviceAuth$ = command(
   async ({ get }, scope: CodexDeviceAuthScope, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroCodexDeviceAuthContract, {
-      apiBase: "www",
+      apiBase: "api",
     });
     const result = await accept(
       client.start({
@@ -159,7 +159,7 @@ const startCodexDeviceAuth$ = command(
 const completeCodexDeviceAuth$ = command(
   async ({ get }, sessionToken: string, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroCodexDeviceAuthContract, {
-      apiBase: "www",
+      apiBase: "api",
     });
     const result = await accept(
       client.complete({
@@ -177,7 +177,7 @@ const completeCodexDeviceAuth$ = command(
 const cancelCodexDeviceAuth$ = command(
   async ({ get }, sessionToken: string, signal: AbortSignal) => {
     const client = get(zeroClient$)(zeroCodexDeviceAuthContract, {
-      apiBase: "www",
+      apiBase: "api",
     });
     const result = await accept(
       client.cancel({

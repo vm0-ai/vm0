@@ -1,5 +1,5 @@
 import { createElement } from "react";
-import { IconPointer2 } from "@tabler/icons-react";
+import { IconPointer } from "@tabler/icons-react";
 import { renderToStaticMarkup } from "react-dom/server";
 import { command, computed, state } from "ccstate";
 import {
@@ -120,7 +120,7 @@ const FRAME_COMMENT_COLLISION_GAP = 6;
 const FRAME_COMMENT_NUDGE_STEP = 12;
 const FRAME_COMMENT_NUDGE_STEPS = [0, 1, -1, 2, -2] as const;
 const FRAME_NAVIGATION_CURSOR_SVG = renderToStaticMarkup(
-  createElement(IconPointer2, {
+  createElement(IconPointer, {
     "aria-hidden": "true",
     color: "#2563eb",
     size: 20,
