@@ -81,17 +81,19 @@ const RECENT_CHAT_RUN_LIMIT = 10;
 const PRIOR_MESSAGE_CHAR_CAP = 4000;
 const INCOMPLETE_MESSAGE_CHAR_CAP = 4000;
 
+function errorCode(value: unknown): string | undefined {
+  if (typeof value !== "object" || value === null || !("code" in value)) {
+    return undefined;
+  }
+  return typeof value.code === "string" ? value.code : undefined;
+}
+
 function isForeignKeyViolation(error: unknown): boolean {
-  if (!(error instanceof Error)) {
-    return false;
-  }
-
-  const { cause } = error;
-  if (typeof cause !== "object" || cause === null || !("code" in cause)) {
-    return false;
-  }
-
-  return cause.code === PG_FOREIGN_KEY_VIOLATION;
+  return (
+    errorCode(error) === PG_FOREIGN_KEY_VIOLATION ||
+    (error instanceof Error &&
+      errorCode(error.cause) === PG_FOREIGN_KEY_VIOLATION)
+  );
 }
 
 const chatCallbackPayloadSchema = z
