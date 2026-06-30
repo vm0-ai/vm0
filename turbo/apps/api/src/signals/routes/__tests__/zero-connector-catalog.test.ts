@@ -187,6 +187,7 @@ describe("GET /api/zero/connector-catalog", () => {
   it("rejects a ZERO_TOKEN missing the connector:read capability with 403", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
+    await enablePublicCatalog(orgId, userId);
     seededOrgs.push(
       await store.set(
         seedOrgMembership$,
@@ -212,6 +213,9 @@ describe("GET /api/zero/connector-catalog", () => {
     );
 
     expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(response.body.error.message).toBe(
+      "Missing required capability: connector:read",
+    );
   });
 
   it("returns connector detail without leaking manual field storage names", async () => {
