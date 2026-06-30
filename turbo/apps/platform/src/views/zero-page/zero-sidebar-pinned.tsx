@@ -32,7 +32,7 @@ import {
 } from "../../signals/zero-page/zero-nav.ts";
 import { activeRoute$ } from "../../signals/active-route.ts";
 import { currentChatAgentId$ } from "../../signals/agent-chat.ts";
-import { pathParams$ } from "../../signals/route.ts";
+import { detachedNavigateTo$, pathParams$ } from "../../signals/route.ts";
 import {
   chatListOpen$,
   setChatListOpen$,
@@ -53,7 +53,6 @@ import {
 import { unreadAgentIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { detachedNavigateTo$ } from "../../signals/route.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
