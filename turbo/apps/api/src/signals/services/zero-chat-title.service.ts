@@ -71,8 +71,7 @@ function completedConversationContextMessageCondition() {
       AND ${chatMessages.error} IS NULL
     )
     AND NOT (
-      ${chatMessages.role} = 'user'
-      AND ${chatMessages.runId} IS NOT NULL
+      ${chatMessages.runId} IS NOT NULL
       AND EXISTS (
         SELECT 1
         FROM ${agentRuns}
