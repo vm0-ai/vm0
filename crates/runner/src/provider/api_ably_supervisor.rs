@@ -1166,6 +1166,72 @@ mod tests {
         assert_eq!(poll_reason(wait.await.unwrap()), Some(PollReason::Slow));
     }
 
+    #[tokio::test(start_paused = true)]
+    async fn pending_connected_wait_switches_to_fast_after_disconnect() {
+        let wakeups = Arc::new(PollWakeups::new(true));
+        let due = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+        wakeups
+            .record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5))
+            .await;
+
+        let wakeups_for_wait = Arc::clone(&wakeups);
+        let cancel = CancellationToken::new();
+        let wait = tokio::spawn(async move {
+            wakeups_for_wait
+                .wait_for_poll_due(&cancel, Duration::from_secs(30), Duration::from_secs(5))
+                .await
+        });
+        tokio::time::sleep(Duration::from_secs(4)).await;
+        assert!(!wait.is_finished());
+
+        wakeups.mark_ably_disconnected().await;
+        tokio::time::sleep(Duration::from_secs(4)).await;
+        assert!(!wait.is_finished());
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        assert_eq!(poll_reason(wait.await.unwrap()), Some(PollReason::Fast));
+    }
+
+    #[tokio::test(start_paused = true)]
+    async fn pending_disconnected_wait_switches_to_slow_after_connect() {
+        let wakeups = Arc::new(PollWakeups::new(false));
+        let due = wakeups
+            .wait_for_poll_due(
+                &CancellationToken::new(),
+                Duration::from_secs(30),
+                Duration::from_secs(5),
+            )
+            .await
+            .unwrap();
+        wakeups
+            .record_poll_result(due, PollOutcome::Empty, Duration::from_secs(5))
+            .await;
+
+        let wakeups_for_wait = Arc::clone(&wakeups);
+        let cancel = CancellationToken::new();
+        let wait = tokio::spawn(async move {
+            wakeups_for_wait
+                .wait_for_poll_due(&cancel, Duration::from_secs(30), Duration::from_secs(5))
+                .await
+        });
+        tokio::time::sleep(Duration::from_secs(4)).await;
+        assert!(!wait.is_finished());
+
+        wakeups.mark_ably_connected().await;
+        tokio::time::sleep(Duration::from_secs(29)).await;
+        assert!(!wait.is_finished());
+        tokio::time::sleep(Duration::from_secs(1)).await;
+
+        assert_eq!(poll_reason(wait.await.unwrap()), Some(PollReason::Slow));
+    }
+
     #[tokio::test]
     async fn job_found_rearms_immediate_poll_for_backlog_drain() {
         let wakeups = PollWakeups::new(true);
