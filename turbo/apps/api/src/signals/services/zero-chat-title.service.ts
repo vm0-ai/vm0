@@ -62,14 +62,24 @@ export function isChatTitleGenerationConfigured(): boolean {
   return Boolean(optionalEnv("OPENROUTER_API_KEY"));
 }
 
-function nonQueuedContextMessageCondition() {
+function completedConversationContextMessageCondition() {
   return sql<boolean>`NOT (
-    ${chatMessages.role} = 'user'
-    AND ${chatMessages.runId} IS NULL
-    AND ${chatMessages.revokesMessageId} IS NULL
-    AND ${chatMessages.interruptsRunId} IS NULL
-    AND ${chatMessages.error} IS NULL
-  )`;
+      ${chatMessages.role} = 'user'
+      AND ${chatMessages.runId} IS NULL
+      AND ${chatMessages.revokesMessageId} IS NULL
+      AND ${chatMessages.interruptsRunId} IS NULL
+      AND ${chatMessages.error} IS NULL
+    )
+    AND NOT (
+      ${chatMessages.role} = 'user'
+      AND ${chatMessages.runId} IS NOT NULL
+      AND EXISTS (
+        SELECT 1
+        FROM ${agentRuns}
+        WHERE ${agentRuns.id} = ${chatMessages.runId}
+          AND ${agentRuns.status} IN ('queued', 'pending', 'running')
+      )
+    )`;
 }
 
 function stripMarkdown(text: string): string {
@@ -176,7 +186,7 @@ async function getLatestTitleContextMessages(
     isNotNull(chatMessages.content),
     inArray(chatMessages.role, ["user", "assistant"]),
     visibleChatMessageCondition(),
-    nonQueuedContextMessageCondition(),
+    completedConversationContextMessageCondition(),
   ];
   if (options?.excludeRunId !== undefined) {
     filters.push(
@@ -455,7 +465,7 @@ async function getLatestFollowupContextMessages(
         isNotNull(chatMessages.content),
         inArray(chatMessages.role, ["user", "assistant"]),
         visibleChatMessageCondition(),
-        nonQueuedContextMessageCondition(),
+        completedConversationContextMessageCondition(),
       ),
     )
     .orderBy(desc(chatMessages.createdAt), desc(chatMessages.sequenceNumber))
@@ -579,36 +589,12 @@ export async function generateChatThreadWorkflowAutomationSuggestionFromContext(
   readonly messages: readonly ChatCompletionContextMessage[];
   readonly threadId?: string;
 }): Promise<ChatMessageRecommendedFollowup | null> {
-  const result = await settle(generateWorkflowAutomationSuggestion(args.messages));
-  if (!result.ok) {
-    log.warn("Workflow automation suggestion generation failed", {
-      ...(args.threadId ? { threadId: args.threadId } : {}),
-      err: result.error,
-    });
-    return null;
-  }
-  return result.value;
-}
-
-export async function generateChatThreadWorkflowAutomationSuggestion(args: {
-  readonly db: SelectDb;
-  readonly threadId: string;
-}): Promise<ChatMessageRecommendedFollowup | null> {
   const result = await settle(
-    (async () => {
-      const messages = await getLatestFollowupContextMessages(
-        args.db,
-        args.threadId,
-      );
-      return generateChatThreadWorkflowAutomationSuggestionFromContext({
-        messages,
-        threadId: args.threadId,
-      });
-    })(),
+    generateWorkflowAutomationSuggestion(args.messages),
   );
   if (!result.ok) {
     log.warn("Workflow automation suggestion generation failed", {
-      threadId: args.threadId,
+      ...(args.threadId ? { threadId: args.threadId } : {}),
       err: result.error,
     });
     return null;

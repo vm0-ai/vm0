@@ -790,6 +790,7 @@ describe("CHAT-02: completed chat callback", () => {
     }
 
     const openRouterGate = deferredGate();
+    const titlePrompts: string[] = [];
     mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
     chatCallbacks.mockOpenRouterCompletions(async (body) => {
       await openRouterGate.wait();
@@ -802,6 +803,7 @@ describe("CHAT-02: completed chat callback", () => {
         ]);
       }
       if (systemContent.includes("Generate a short, descriptive title")) {
+        titlePrompts.push(body.messages[1]?.content ?? "");
         return "Deferred Side Effects";
       }
       return "Deferred summary";
@@ -873,6 +875,9 @@ describe("CHAT-02: completed chat callback", () => {
     expect(markerAfterRelease?.recommendedFollowups).toStrictEqual([
       { prompt: "Review the queued result", kind: "talk" },
     ]);
+    expect(titlePrompts).toHaveLength(1);
+    expect(titlePrompts[0]).toContain("finish the current turn");
+    expect(titlePrompts[0]).not.toContain("queued while side effects wait");
 
     await flushWaitUntilForTest();
 
