@@ -112,10 +112,11 @@ const scheduleAutomationToWorkflowTriggerEnabled$ = command(async ({ get }) => {
   const overrides = await get(
     userFeatureSwitchOverrides(auth.orgId, auth.userId),
   );
-  return isFeatureEnabled(
-    FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger,
-    { orgId: auth.orgId, userId: auth.userId, overrides },
-  );
+  return isFeatureEnabled(FeatureSwitchKey.WorkflowAutomation, {
+    orgId: auth.orgId,
+    userId: auth.userId,
+    overrides,
+  });
 });
 
 function scheduleAutomationDisabled() {

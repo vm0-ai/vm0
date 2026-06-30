@@ -101,7 +101,7 @@ async function enableWebhookWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
+    [FeatureSwitchKey.WorkflowAutomation]: true,
   });
 }
 

@@ -81,6 +81,25 @@ function workflowSummary(
   };
 }
 
+async function findComposerEditor(): Promise<HTMLElement> {
+  return await waitFor(() => {
+    const editor = document.querySelector(
+      '.zero-composer [contenteditable="true"]',
+    );
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error("Composer editor not found");
+    }
+    return editor;
+  });
+}
+
+async function expectComposerText(text: string): Promise<void> {
+  const editor = await findComposerEditor();
+  await waitFor(() => {
+    expect(editor.textContent).toContain(text);
+  });
+}
+
 function intervalWorkflowTrigger(): ScheduleWorkflowTrigger {
   return {
     id: "e0000000-0000-4000-a000-000000000301",
@@ -423,7 +442,7 @@ describe("zero automations page", () => {
       context,
       path: "/automations",
       featureSwitches: {
-        [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
+        [FeatureSwitchKey.WorkflowAutomation]: true,
       },
     });
 
@@ -489,7 +508,7 @@ describe("zero automations page", () => {
         context,
         path: "/automations",
         featureSwitches: {
-          [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
+          [FeatureSwitchKey.WorkflowAutomation]: true,
         },
       });
 
@@ -531,9 +550,7 @@ describe("zero automations page", () => {
       await waitFor(() => {
         expect(pathname()).toBe(`/agents/${zeroAgentId}/chat`);
       });
-      await expect(
-        screen.findByDisplayValue(prompt),
-      ).resolves.toBeInTheDocument();
+      await expectComposerText(prompt);
     },
   );
 
@@ -544,7 +561,7 @@ describe("zero automations page", () => {
       context,
       path: "/automations",
       featureSwitches: {
-        [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
+        [FeatureSwitchKey.WorkflowAutomation]: true,
       },
     });
 

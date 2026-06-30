@@ -200,9 +200,10 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
-  [FeatureSwitchKey.WorkflowsViewer]: {
+  [FeatureSwitchKey.WorkflowAutomation]: {
     maintainer: "lancy@vm0.ai",
-    description: "Show the workflows viewer in the Zero sidebar and page UI",
+    description:
+      "Enable workflow automation surfaces, slash workflow commands, event triggers, automation-to-workflow routing, persistent goals, and workflow-driven ZERO_TOKEN capabilities.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
@@ -274,55 +275,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description:
       "Enable the HTML artifact comment-editing workflow for collecting DOM comments and preparing instrumented working-copy edits.",
     enabled: false,
-  },
-  [FeatureSwitchKey.ChatSlashWorkflowCommands]: {
-    maintainer: "bingjie@vm0.ai",
-    description:
-      "Enable slash command suggestions for the current agent's workflows in the Zero chat composer.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.WorkflowGmailEventTriggers]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Allow Gmail new-message workflow event triggers. Creating/enabling requires a connected Gmail connector and Pub/Sub watch setup; matched inbound messages run the linked workflow.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.WorkflowGithubLabelEventTriggers]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Allow GitHub label workflow event triggers. Matching GitHub issue and pull request label events run the linked workflow.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.WorkflowGoogleCalendarEventTriggers]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Allow Google Calendar event-created workflow triggers. Creating/enabling requires a connected Google Calendar connector and Calendar watch setup; newly observed calendar events run the linked workflow.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.WorkflowWebhookTriggers]: {
-    maintainer: "lancy@vm0.ai",
-    description:
-      "Allow signed inbound webhook workflow event triggers. Creating a trigger mints a workflow-native endpoint and signing secret; valid deliveries run the linked workflow.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Replace the /automations schedule list and calendar with a workflow-trigger surface and route new automation setup into triggered workflow creation.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
-  [FeatureSwitchKey.GoalWorkflows]: {
-    maintainer: "ethan@vm0.ai",
-    description:
-      "Enable persistent thread goals, the zero goal CLI, and run-terminal goal continuation for staff orgs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.ComputerUseDelegatedAuthorization]: {
     maintainer: "lancy@vm0.ai",

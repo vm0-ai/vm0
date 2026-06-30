@@ -50,7 +50,7 @@ export const SEED_SKILLS: readonly string[] = [
 
 /**
  * The `goal` skill is NOT an unconditional seed. It is injected only when the
- * `GoalWorkflows` feature switch is enabled (see agent-run-create.service.ts).
+ * workflow automation feature switch is enabled (see agent-run-create.service.ts).
  * Its body is still synced to storage by cron-sync-skills like every other
  * skill in the repo, so a conditional mount resolves without listing it here.
  */

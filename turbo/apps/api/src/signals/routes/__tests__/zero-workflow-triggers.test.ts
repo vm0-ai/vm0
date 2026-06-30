@@ -114,7 +114,7 @@ async function enableGmailWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowGmailEventTriggers]: true,
+    [FeatureSwitchKey.WorkflowAutomation]: true,
   });
 }
 
@@ -122,7 +122,7 @@ async function enableGoogleCalendarWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowGoogleCalendarEventTriggers]: true,
+    [FeatureSwitchKey.WorkflowAutomation]: true,
   });
 }
 
@@ -130,7 +130,7 @@ async function enableWebhookWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowWebhookTriggers]: true,
+    [FeatureSwitchKey.WorkflowAutomation]: true,
   });
 }
 
@@ -138,7 +138,7 @@ async function enableGithubWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowGithubLabelEventTriggers]: true,
+    [FeatureSwitchKey.WorkflowAutomation]: true,
   });
 }
 

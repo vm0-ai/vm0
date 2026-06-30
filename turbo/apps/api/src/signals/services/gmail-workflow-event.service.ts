@@ -1,7 +1,7 @@
 import { Buffer } from "node:buffer";
 
 import { OAuth2Client } from "google-auth-library";
-import { command, computed } from "ccstate";
+import { command } from "ccstate";
 import { and, eq, inArray, lte, or } from "drizzle-orm";
 import { z } from "zod";
 
@@ -13,8 +13,6 @@ import {
   type GmailWorkflowEventConfig,
 } from "@vm0/api-contracts/contracts/zero-workflows";
 import { refreshGoogleToken } from "@vm0/connectors/auth-providers/oauth/google";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import { connectors } from "@vm0/db/schema/connector";
 import {
   gmailProcessedEvents,
@@ -38,7 +36,7 @@ import {
   decryptStoredSecretValue,
   encryptStoredSecretValue,
 } from "./crypto.utils";
-import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
 import {
   buildChatOnlyWorkflowTriggerCallbacks,
   runWorkflowTriggerNow$,
@@ -1043,20 +1041,6 @@ function decodePubSubPush(rawBody: string):
   };
 }
 
-export function gmailWorkflowEventTriggersEnabledForOwner(
-  orgId: string,
-  userId: string,
-) {
-  return computed(async (get) => {
-    const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
-    return isFeatureEnabled(FeatureSwitchKey.WorkflowGmailEventTriggers, {
-      orgId,
-      userId,
-      overrides,
-    });
-  });
-}
-
 type GmailPubSubPushResult =
   | {
       readonly kind: "ok";
@@ -1801,9 +1785,7 @@ export const dispatchGmailPubSubPush$ = command(
       orgId,
       userId,
     ) => {
-      return await get(
-        gmailWorkflowEventTriggersEnabledForOwner(orgId, userId),
-      );
+      return await get(workflowAutomationEnabledForOwner(orgId, userId));
     };
     const runStarterOverride = gmailRunStarterOverride.get();
     const startRun: GmailRunStarter = runStarterOverride

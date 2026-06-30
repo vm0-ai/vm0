@@ -48,7 +48,7 @@ async function enableGoogleCalendarWorkflowTriggers(
   fixture: WorkflowsFixture,
 ): Promise<void> {
   await updateFeatureSwitchesForUser(context, fixture, {
-    [FeatureSwitchKey.WorkflowGoogleCalendarEventTriggers]: true,
+    [FeatureSwitchKey.WorkflowAutomation]: true,
   });
 }
 
