@@ -5,7 +5,10 @@ import { Toaster } from "@vm0/ui/components/ui/sonner";
 import { ErrorBoundary } from "./error-boundary.tsx";
 import { Router } from "./router.tsx";
 import { VM0ClerkProvider } from "./clerk/clerk-provider.tsx";
-import { subscribeThreadListChanged$ } from "../signals/chat-thread-list-reload.ts";
+import {
+  subscribeChatThreadReadCursorUpdated$,
+  subscribeThreadListChanged$,
+} from "../signals/chat-thread-list-reload.ts";
 import { subscribeBackgroundChatThreadRunFinished$ } from "../signals/chat-page/background-chat-thread-cache.ts";
 import { rootSignal$ } from "../signals/root-signal.ts";
 import { detach, Reason } from "../signals/utils.ts";
@@ -18,6 +21,10 @@ export const setupRouter = (
 ) => {
   const signal = store.get(rootSignal$);
   detach(store.set(subscribeThreadListChanged$, signal), Reason.Daemon);
+  detach(
+    store.set(subscribeChatThreadReadCursorUpdated$, signal),
+    Reason.Daemon,
+  );
   detach(
     store.set(subscribeBackgroundChatThreadRunFinished$, signal),
     Reason.Daemon,

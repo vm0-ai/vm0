@@ -1,6 +1,6 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import type { ReactNode } from "react";
+import type { MouseEvent, ReactNode } from "react";
 import { useGet, useSet, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
@@ -8,7 +8,10 @@ import {
   IconX,
   IconArrowsMove,
   IconPin,
+  IconDots,
+  IconPinnedOff,
 } from "@tabler/icons-react";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   DndContext,
   closestCenter,
@@ -36,16 +39,26 @@ import {
   DialogHeader,
   DialogTitle,
   Input,
+  DropdownMenu,
+  DropdownMenuTrigger,
+  DropdownMenuContent,
+  DropdownMenuItem,
 } from "@vm0/ui";
 import {
   chatListQuery$,
   setChatListQuery$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
-import { leadAgentAvatarUrl$, type SubagentInfo } from "../../signals/agent.ts";
+import {
+  defaultAgentId$,
+  leadAgentAvatarUrl$,
+  type SubagentInfo,
+} from "../../signals/agent.ts";
 import {
   pinnedAgentIds$,
   updatePinnedAgentIds$,
 } from "../../signals/zero-page/zero-pinned-agents.ts";
+import { unreadAgentIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { AgentAvatarImg, AvatarFromUrl } from "./zero-sidebar-shared.tsx";
@@ -166,16 +179,88 @@ export function AgentDialogAgentButton({
   );
 }
 
+function AgentUnreadIndicator() {
+  return (
+    <span aria-label="Unread" className="h-2 w-2 rounded-full bg-sky-600" />
+  );
+}
+
+function AgentDialogMenuAction({
+  label,
+  disabled,
+  icon,
+  onSelect,
+}: {
+  readonly label: string;
+  readonly disabled?: boolean;
+  readonly icon: ReactNode;
+  readonly onSelect: () => void;
+}) {
+  function handleMenuTriggerClick(e: MouseEvent) {
+    e.preventDefault();
+    e.stopPropagation();
+  }
+
+  return (
+    <DropdownMenu>
+      <DropdownMenuTrigger asChild>
+        <button
+          type="button"
+          className="peer absolute inset-0 flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground invisible transition-colors duration-150 group-hover:visible group-focus-within:visible data-[state=open]:visible hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18 disabled:cursor-not-allowed disabled:opacity-50"
+          onClick={handleMenuTriggerClick}
+          aria-label="Open agent menu"
+          disabled={disabled}
+        >
+          <IconDots size={16} stroke={2} />
+        </button>
+      </DropdownMenuTrigger>
+      <DropdownMenuContent align="end" className="w-44">
+        <DropdownMenuItem onSelect={onSelect} disabled={disabled}>
+          <span className="mr-2">{icon}</span>
+          {label}
+        </DropdownMenuItem>
+      </DropdownMenuContent>
+    </DropdownMenu>
+  );
+}
+
+function AgentDialogSideDecorator({
+  hasUnread,
+  action,
+}: {
+  readonly hasUnread: boolean;
+  readonly action?: ReactNode;
+}) {
+  if (!hasUnread && !action) {
+    return null;
+  }
+
+  return (
+    <div className="relative flex h-8 w-8 shrink-0 items-center justify-center">
+      {action}
+      {hasUnread && (
+        <span className="flex items-center justify-center group-hover:hidden group-focus-within:hidden peer-data-[state=open]:hidden">
+          <AgentUnreadIndicator />
+        </span>
+      )}
+    </div>
+  );
+}
+
 function SortablePinnedAgent({
   agent,
   onUnpin,
   onChat,
   disabled,
+  unreadIndicatorsEnabled,
+  hasUnread,
 }: {
   agent: SubagentInfo;
   onUnpin: () => void;
   onChat?: () => void;
   disabled?: boolean;
+  unreadIndicatorsEnabled: boolean;
+  hasUnread: boolean;
 }) {
   const { attributes, listeners, setNodeRef, transform, transition } =
     useSortable({ id: agent.id });
@@ -204,27 +289,53 @@ function SortablePinnedAgent({
           </span>
         </>
       )}
-      <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
-        <button
-          type="button"
-          className="flex h-8 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted-foreground/12 hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-muted-foreground/18"
-          aria-label={`Reorder ${agent.displayName ?? agent.id}`}
-          disabled={disabled}
-          {...attributes}
-          {...listeners}
-        >
-          <IconArrowsMove size={16} stroke={2} />
-        </button>
-        <button
-          type="button"
-          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted-foreground/12 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-muted-foreground/18"
-          onClick={onUnpin}
-          aria-label={`Unpin ${agent.displayName ?? agent.id}`}
-          disabled={disabled}
-        >
-          <IconX size={16} stroke={2} />
-        </button>
-      </div>
+      {unreadIndicatorsEnabled ? (
+        <div className="flex shrink-0 items-center gap-0.5">
+          <button
+            type="button"
+            className="flex h-8 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-colors duration-150 group-hover:opacity-100 group-focus-within:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-muted-foreground/18"
+            aria-label={`Reorder ${agent.displayName ?? agent.id}`}
+            disabled={disabled}
+            {...attributes}
+            {...listeners}
+          >
+            <IconArrowsMove size={16} stroke={2} />
+          </button>
+          <AgentDialogSideDecorator
+            hasUnread={hasUnread}
+            action={
+              <AgentDialogMenuAction
+                label="Remove from list"
+                disabled={disabled}
+                icon={<IconPinnedOff size={16} stroke={2} />}
+                onSelect={onUnpin}
+              />
+            }
+          />
+        </div>
+      ) : (
+        <div className="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity duration-150 group-hover:opacity-100 group-focus-within:opacity-100">
+          <button
+            type="button"
+            className="flex h-8 w-8 shrink-0 cursor-grab touch-none items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted-foreground/12 hover:text-foreground active:cursor-grabbing disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-muted-foreground/18"
+            aria-label={`Reorder ${agent.displayName ?? agent.id}`}
+            disabled={disabled}
+            {...attributes}
+            {...listeners}
+          >
+            <IconArrowsMove size={16} stroke={2} />
+          </button>
+          <button
+            type="button"
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted-foreground/12 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-50 dark:hover:bg-muted-foreground/18"
+            onClick={onUnpin}
+            aria-label={`Unpin ${agent.displayName ?? agent.id}`}
+            disabled={disabled}
+          >
+            <IconX size={16} stroke={2} />
+          </button>
+        </div>
+      )}
     </div>
   );
 }
@@ -243,9 +354,14 @@ export function AgentListDialog({
   onNewChat?: (agentId: string | null) => void;
 }) {
   const zeroAvatarUrl = useLastResolved(leadAgentAvatarUrl$) ?? null;
+  const defaultAgentId = useLastResolved(defaultAgentId$);
   const query = useGet(chatListQuery$);
   const setQuery = useSet(setChatListQuery$);
   const pinnedIds = useLastResolved(pinnedAgentIds$) ?? [];
+  const features = useGet(featureSwitch$);
+  const unreadIndicatorsEnabled =
+    features[FeatureSwitchKey.AgentUnreadIndicators] ?? false;
+  const unreadAgentIds = useLastResolved(unreadAgentIds$);
   const pageSignal = useGet(pageSignal$);
   const [pinLoadable, savePinnedIds] = useLoadableSet(updatePinnedAgentIds$);
   const saving = pinLoadable.state === "loading";
@@ -347,6 +463,15 @@ export function AgentListDialog({
                   }
                   subtitle="Your lead assistant, always here for you"
                 />
+                {unreadIndicatorsEnabled && (
+                  <AgentDialogSideDecorator
+                    hasUnread={
+                      defaultAgentId
+                        ? (unreadAgentIds?.has(defaultAgentId) ?? false)
+                        : false
+                    }
+                  />
+                )}
               </div>
             </AgentDialogSection>
           )}
@@ -378,6 +503,8 @@ export function AgentListDialog({
                             return handleChat(agent.id);
                           }}
                           disabled={saving}
+                          unreadIndicatorsEnabled={unreadIndicatorsEnabled}
+                          hasUnread={unreadAgentIds?.has(agent.id) ?? false}
                         />
                       );
                     })}
@@ -402,26 +529,42 @@ export function AgentListDialog({
                         return handleChat(agent.id);
                       }}
                     />
-                    <TooltipProvider delayDuration={200}>
-                      <Tooltip>
-                        <TooltipTrigger asChild>
-                          <button
-                            type="button"
-                            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18 disabled:cursor-not-allowed disabled:opacity-50"
-                            onClick={() => {
+                    {unreadIndicatorsEnabled ? (
+                      <AgentDialogSideDecorator
+                        hasUnread={unreadAgentIds?.has(agent.id) ?? false}
+                        action={
+                          <AgentDialogMenuAction
+                            label="Pin to sidebar"
+                            disabled={saving}
+                            icon={<IconPin size={16} stroke={2} />}
+                            onSelect={() => {
                               return togglePin(agent.id);
                             }}
-                            aria-label="Pin to sidebar"
-                            disabled={saving}
-                          >
-                            <IconPin size={16} stroke={2} />
-                          </button>
-                        </TooltipTrigger>
-                        <TooltipContent side="right">
-                          <p className="text-xs">Pin to sidebar</p>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                          />
+                        }
+                      />
+                    ) : (
+                      <TooltipProvider delayDuration={200}>
+                        <Tooltip>
+                          <TooltipTrigger asChild>
+                            <button
+                              type="button"
+                              className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground opacity-0 transition-all duration-150 group-hover:opacity-100 group-focus-within:opacity-100 [@media(hover:none)]:opacity-100 hover:bg-muted-foreground/12 hover:text-foreground dark:hover:bg-muted-foreground/18 disabled:cursor-not-allowed disabled:opacity-50"
+                              onClick={() => {
+                                return togglePin(agent.id);
+                              }}
+                              aria-label="Pin to sidebar"
+                              disabled={saving}
+                            >
+                              <IconPin size={16} stroke={2} />
+                            </button>
+                          </TooltipTrigger>
+                          <TooltipContent side="right">
+                            <p className="text-xs">Pin to sidebar</p>
+                          </TooltipContent>
+                        </Tooltip>
+                      </TooltipProvider>
+                    )}
                   </div>
                 );
               })}

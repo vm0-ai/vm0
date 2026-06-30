@@ -96,9 +96,7 @@ const persistedAttachmentSchema = z.object({
 
 /**
  * Per-agent unread snapshot. `unreadAt` is the creation time of the latest
- * visible message — the one that made the thread unread. Clients keep local
- * optimistic mark-read timestamps and drop them whenever a snapshot reports
- * an `unreadAt` newer than the local mark.
+ * visible message — the one that made the thread unread.
  */
 const chatThreadUnreadsSchema = z.object({
   unreads: z.array(
@@ -107,6 +105,10 @@ const chatThreadUnreadsSchema = z.object({
       unreadAt: z.string(),
     }),
   ),
+});
+
+const chatThreadUnreadAgentsSchema = z.object({
+  agentIds: z.array(z.string()),
 });
 
 const chatThreadListItemSchema = z.object({
@@ -451,7 +453,19 @@ export const chatThreadsContract = c.router({
       401: apiErrorSchema,
     },
     summary:
-      "List the caller's unread chat threads under an agent, each with the timestamp of the message that made it unread. Fetched separately from the thread list; mark-read returns the same snapshot so read state needs no broadcast.",
+      "List the caller's unread chat threads under an agent, each with the timestamp of the message that made it unread.",
+  },
+  unreadAgents: {
+    method: "GET",
+    path: "/api/zero/chat-thread-unread-agents",
+    headers: authHeadersSchema,
+    responses: {
+      200: chatThreadUnreadAgentsSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary:
+      "List agent IDs with at least one unread chat thread for the caller.",
   },
 });
 
@@ -530,8 +544,8 @@ export const chatThreadMarkReadContract = c.router({
         lastReadMessageId: z.string().nullable(),
         /**
          * Fresh unread snapshot for the thread's agent (same shape as the
-         * unreads endpoint), so the caller syncs read state from the response
-         * instead of a broadcast-triggered refetch.
+         * unreads endpoint). Kept for response compatibility; clients should
+         * treat `chatThreadReadCursorUpdated` as read-state invalidation.
          */
         unreads: chatThreadUnreadsSchema.shape.unreads,
       }),
@@ -539,8 +553,7 @@ export const chatThreadMarkReadContract = c.router({
       401: apiErrorSchema,
       404: apiErrorSchema,
     },
-    summary:
-      "Mark a chat thread as read up to the latest message and return the agent's unread snapshot",
+    summary: "Mark a chat thread as read up to the latest message",
   },
 });
 

@@ -169,6 +169,15 @@ function threadLinkByTitle(title: string): HTMLElement {
   return link;
 }
 
+function agentRowByName(container: HTMLElement, name: string): HTMLElement {
+  const text = within(container).getByText(name);
+  const row = text.closest(".group");
+  if (!(row instanceof HTMLElement)) {
+    throw new Error(`${name} agent row not found`);
+  }
+  return row;
+}
+
 function openThreadMenu(title: string): void {
   click(
     within(threadRowByTitle(title)).getByTestId("chat-thread-menu-trigger"),
@@ -772,6 +781,92 @@ describe("zero sidebar", () => {
     });
 
     createDeferred.resolve();
+  });
+
+  it("shows agent unread indicators and dropdown actions behind the feature switch", async () => {
+    prepareAgentTeam();
+    context.mocks.data.userPreferences({
+      pinnedAgentIds: [RESEARCH_AGENT_ID],
+    });
+    context.mocks.api(chatThreadsContract.list, ({ respond }) => {
+      return respond(200, splitChatThreadListResponse([]));
+    });
+
+    let unreadAgentIds = [RESEARCH_AGENT_ID, SUPPORT_AGENT_ID];
+    let unreadAgentRequests = 0;
+    context.mocks.api(chatThreadsContract.unreadAgents, ({ respond }) => {
+      unreadAgentRequests += 1;
+      return respond(200, { agentIds: unreadAgentIds });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/agents/${AGENT_ID}/chat`,
+      featureSwitches: { [FeatureSwitchKey.AgentUnreadIndicators]: true },
+    });
+
+    const nav = await waitFor(() => {
+      const current = sidebar();
+      expect(within(current).getByText("Research Agent")).toBeInTheDocument();
+      return current;
+    });
+    const researchSidebarRow = agentRowByName(nav, "Research Agent");
+    await waitFor(() => {
+      expect(
+        within(researchSidebarRow).getByLabelText("Unread"),
+      ).toBeInTheDocument();
+      expect(
+        within(researchSidebarRow).getByLabelText("Open agent menu"),
+      ).toBeInTheDocument();
+      expect(
+        within(researchSidebarRow).queryByLabelText("Remove from list"),
+      ).not.toBeInTheDocument();
+    });
+
+    click(within(researchSidebarRow).getByLabelText("Open agent menu"));
+    expect(menuItemByText("Remove from list")).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+
+    click(within(nav).getByLabelText("Open a conversation"));
+    const dialog = await screen.findByRole("dialog", { name: "Talk to" });
+    const researchDialogRow = agentRowByName(dialog, "Research Agent");
+    const supportDialogRow = agentRowByName(dialog, "Support Agent");
+    expect(
+      within(researchDialogRow).getByLabelText("Unread"),
+    ).toBeInTheDocument();
+    expect(
+      within(supportDialogRow).getByLabelText("Unread"),
+    ).toBeInTheDocument();
+    expect(
+      within(supportDialogRow).queryByLabelText("Pin to sidebar"),
+    ).not.toBeInTheDocument();
+
+    click(within(supportDialogRow).getByLabelText("Open agent menu"));
+    expect(menuItemByText("Pin to sidebar")).toBeInTheDocument();
+    fireEvent.keyDown(document.body, { key: "Escape" });
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("chatThreadReadCursorUpdated"),
+      ).toBeTruthy();
+    });
+    unreadAgentIds = [SUPPORT_AGENT_ID];
+    context.mocks.ably.trigger("chatThreadReadCursorUpdated", {
+      agentId: RESEARCH_AGENT_ID,
+    });
+
+    await waitFor(() => {
+      expect(unreadAgentRequests).toBeGreaterThan(1);
+      expect(
+        within(researchSidebarRow).queryByLabelText("Unread"),
+      ).not.toBeInTheDocument();
+      expect(
+        within(researchDialogRow).queryByLabelText("Unread"),
+      ).not.toBeInTheDocument();
+      expect(
+        within(supportDialogRow).getByLabelText("Unread"),
+      ).toBeInTheDocument();
+    });
   });
 
   it("collapses and reopens the sidebar", async () => {

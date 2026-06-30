@@ -524,6 +524,28 @@ export function createChatFilesBddApi(context: TestContext) {
       return response.body.unreads;
     },
 
+    async requestListUnreadAgents(
+      actor: ApiTestUser | null,
+      statuses: readonly (200 | 401 | 403)[],
+    ) {
+      return await accept(
+        threadsClient().unreadAgents({
+          headers: authenticate(context, actor),
+        }),
+        statuses,
+      );
+    },
+
+    async listUnreadAgents(actor: ApiTestUser): Promise<readonly string[]> {
+      const response = await accept(
+        threadsClient().unreadAgents({
+          headers: authenticate(context, actor),
+        }),
+        [200],
+      );
+      return response.body.agentIds;
+    },
+
     async readThread(
       actor: ApiTestUser,
       threadId: string,
