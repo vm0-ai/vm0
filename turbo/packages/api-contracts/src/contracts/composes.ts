@@ -56,6 +56,7 @@ export const ZERO_CAPABILITIES = [
   "telegram:read",
   "telegram:write",
   "chat-message:read",
+  "chat-thread:write",
   "connector:read",
   "billing:read",
   "billing:write",
@@ -135,6 +136,10 @@ export const ZERO_CAPABILITY_META: Record<ZeroCapability, ZeroCapabilityMeta> =
     "chat-message:read": {
       group: "Integrations",
       label: "Read chat messages",
+    },
+    "chat-thread:write": {
+      group: "Chat Threads",
+      label: "Update chat thread metadata",
     },
     "connector:read": { group: "Connectors", label: "View connected services" },
     "billing:read": { group: "Billing", label: "View billing and credits" },

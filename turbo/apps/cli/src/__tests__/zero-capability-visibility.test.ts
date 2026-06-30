@@ -20,6 +20,7 @@ function buildCommands(): Command[] {
     new Command("connector"),
     new Command("credit"),
     new Command("logs"),
+    new Command("chat"),
     new Command("resource"),
     new Command("preference"),
     new Command("schedule"),
@@ -156,6 +157,7 @@ describe("registerZeroCommands", () => {
       "connector",
       "credit",
       "logs",
+      "chat",
       "preference",
       "schedule",
       "secret",
@@ -259,6 +261,19 @@ describe("registerZeroCommands", () => {
     const prog = buildProgram();
 
     expect(visibleCommandNames(prog)).toContain("github");
+    expect(visibleCommandNames(prog)).toContain("whoami");
+  });
+
+  it("should show chat when chat-thread:write capability is present", () => {
+    const token = buildZeroToken({
+      scope: "zero",
+      capabilities: ["chat-thread:write"],
+    });
+    vi.stubEnv("ZERO_TOKEN", token);
+
+    const prog = buildProgram();
+
+    expect(visibleCommandNames(prog)).toContain("chat");
     expect(visibleCommandNames(prog)).toContain("whoami");
   });
 
