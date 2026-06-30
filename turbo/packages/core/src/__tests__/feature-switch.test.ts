@@ -147,6 +147,7 @@ describe("getAllFeatureStates", () => {
       ],
     ).toBe(true);
     expect(staffOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
+    expect(staffOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
     expect(staffOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
     );
@@ -167,6 +168,7 @@ describe("getAllFeatureStates", () => {
       ],
     ).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.ChatGithubPrTracking]).toBe(false);
+    expect(otherOrgStates[FeatureSwitchKey.AgentUnreadIndicators]).toBe(false);
     expect(otherOrgStates[FeatureSwitchKey.HtmlArtifactCommentEditing]).toBe(
       false,
     );
