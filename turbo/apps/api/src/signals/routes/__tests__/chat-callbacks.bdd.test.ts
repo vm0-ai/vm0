@@ -1462,12 +1462,47 @@ describe("CHAT-02: auto-send after failures", () => {
       })
       .toBe(1);
 
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "queued after duplicate failed callback",
+    });
+    const afterFailureSecondQueue = await chat.listThreadMessages(
+      actor,
+      first.threadId,
+    );
+    const duplicateFailureProbeQueued = userMessages(
+      afterFailureSecondQueue.messages,
+    ).find((message) => {
+      return message.content === "queued after duplicate failed callback";
+    });
+    if (!duplicateFailureProbeQueued) {
+      throw new Error("Expected the duplicate failure probe message to queue");
+    }
+
     await failChatRun(second.runId, secondHeaders, "boom");
+    await flushWaitUntilForTest();
     await expect
       .poll(() => {
         return context.mocks.webpush.sendNotification.mock.calls.length;
       })
       .toBe(1);
+    const afterDuplicateFailure = await chat.listThreadMessages(
+      actor,
+      first.threadId,
+    );
+    const duplicateFailureProbeClaimed = userMessages(
+      afterDuplicateFailure.messages,
+    ).filter((message) => {
+      return message.revokesMessageId === duplicateFailureProbeQueued.id;
+    });
+    expect(duplicateFailureProbeClaimed).toHaveLength(0);
+    const duplicateFailureProbeStillQueued = userMessages(
+      afterDuplicateFailure.messages,
+    ).find((message) => {
+      return message.id === duplicateFailureProbeQueued.id;
+    });
+    expect(duplicateFailureProbeStillQueued?.runId).toBeUndefined();
 
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
