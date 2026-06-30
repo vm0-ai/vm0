@@ -10,7 +10,7 @@ from firewall_auth_config import (
 )
 from url_syntax import has_raw_whitespace, has_unsafe_url_codepoint
 
-BUILTIN_HOST_POLICY_RUNTIME_MARKER = "_vm0BuiltinHostPolicy"
+BUILTIN_HOST_POLICY_RUNTIME_MARKER = "_builtinHostPolicyRuntime"
 _DEFAULT_HTTPS_PORT = 443
 _MIN_FIXED_HOST_OWNERSHIP_LABELS = 2
 _HOST_DOT_EQUIVALENT_TRANSLATION = str.maketrans(
