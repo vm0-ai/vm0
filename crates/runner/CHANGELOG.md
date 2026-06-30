@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.130.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.9...runner-rs-v0.130.10) (2026-06-30)
+
+
+### Bug Fixes
+
+* enforce runtime builtin host policies ([#19385](https://github.com/vm0-ai/vm0/issues/19385)) ([89c05a9](https://github.com/vm0-ai/vm0/commit/89c05a908553736cb903a7fb4ad7fa8697acf1a8))
+
 ## [0.130.9](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.8...runner-rs-v0.130.9) (2026-06-30)
 
 ## [0.130.8](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.7...runner-rs-v0.130.8) (2026-06-29)
