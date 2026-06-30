@@ -372,6 +372,15 @@ export {
   type TestWorkflowTriggerStateContract,
 } from "./test-workflow-trigger-state";
 export {
+  testEmailStateActionBodySchema,
+  testEmailStateActionResponseSchema,
+  testEmailStateContract,
+  testEmailStateErrorSchema,
+  type TestEmailStateActionBody,
+  type TestEmailStateActionResponse,
+  type TestEmailStateContract,
+} from "./test-email-state";
+export {
   testSlackDispatchProbeBodySchema,
   testSlackDispatchProbeContract,
   testSlackDispatchProbeErrorSchema,
