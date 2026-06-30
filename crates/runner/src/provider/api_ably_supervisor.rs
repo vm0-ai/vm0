@@ -1,11 +1,12 @@
 //! Ably control-plane supervisor for API-backed runner job discovery.
 //!
 //! `ApiProvider` uses this module as the low-latency side of discovery while
-//! keeping HTTP polling as the correctness fallback. Ably job notifications can
-//! become direct candidates when they include enough profile and targeting data;
-//! otherwise they are converted into poll wakeups so the server remains the
-//! source of truth for job selection. Ably cancel notifications bypass discovery
-//! and only signal local cancellation handles.
+//! keeping HTTP polling as the correctness fallback. Supported Ably job
+//! notifications become direct candidates when they include enough profile and
+//! targeting data; incomplete notifications and direct-queue fallback become
+//! poll wakeups so the server remains the source of truth for job selection.
+//! Ably cancel notifications bypass discovery and only signal local
+//! cancellation handles.
 //!
 //! The direct candidate queues are an optimization, not the only delivery path:
 //! incomplete notifications, full or closed direct queues, Ably disconnects,
