@@ -3,6 +3,7 @@ import type {
   GithubConnectUserBody,
   GithubInstallationResponse,
 } from "@vm0/api-contracts/contracts/integrations-github";
+import { connectors } from "@vm0/db/schema/connector";
 import { githubInstallations } from "@vm0/db/schema/github-installation";
 import { githubUserLinks } from "@vm0/db/schema/github-user-link";
 import { and, eq } from "drizzle-orm";
@@ -84,6 +85,26 @@ async function loadUserGithubLink(args: {
     .limit(1);
 
   return link ?? null;
+}
+
+async function loadUserGithubConnectorUsername(args: {
+  readonly db: ReadonlyDb;
+  readonly orgId: string;
+  readonly userId: string;
+}): Promise<string | null> {
+  const [connector] = await args.db
+    .select({ externalUsername: connectors.externalUsername })
+    .from(connectors)
+    .where(
+      and(
+        eq(connectors.orgId, args.orgId),
+        eq(connectors.userId, args.userId),
+        eq(connectors.type, "github"),
+      ),
+    )
+    .limit(1);
+
+  return connector?.externalUsername ?? null;
 }
 
 export const connectGithubUser$ = command(
@@ -180,6 +201,16 @@ export const getGithubInstallation$ = command(
     });
     signal.throwIfAborted();
 
+    const connectedGithubUsername =
+      link === null
+        ? null
+        : await loadUserGithubConnectorUsername({
+            db,
+            orgId: auth.orgId,
+            userId: auth.userId,
+          });
+    signal.throwIfAborted();
+
     const connectUrl =
       link === null
         ? ((await buildGithubUserConnectAuthorizationUrl({
@@ -204,7 +235,7 @@ export const getGithubInstallation$ = command(
       },
       isConnected: link !== null,
       connectedGithubUserId: link?.githubUserId ?? null,
-      connectedGithubUsername: null,
+      connectedGithubUsername,
       connectUrl,
     };
 
