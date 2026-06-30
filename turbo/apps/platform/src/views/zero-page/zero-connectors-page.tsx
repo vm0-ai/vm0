@@ -913,7 +913,7 @@ export function ZeroConnectorsPage() {
     filteredCount: filteredConnectors.length,
     renderCard,
     search,
-    connectionFilter: showConnectorAccessManagement ? connectionFilter : "all",
+    connectionFilter,
   });
   return (
     <div
@@ -975,7 +975,7 @@ export function ZeroConnectorsPage() {
                 </TabsList>
               </Tabs>
               <div className="flex items-center gap-2">
-                {activeTab === "builtin" && showConnectorAccessManagement && (
+                {activeTab === "builtin" && (
                   <ConnectorConnectionFilter
                     value={connectionFilter}
                     onChange={setConnectionFilter}
