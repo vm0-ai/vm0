@@ -687,7 +687,7 @@ describe("team page navigation", () => {
 
     const dialog = await screen.findByRole("dialog");
     expect(
-      within(dialog).getByText("Choose the trigger type for this workflow."),
+      within(dialog).getByText("Choose how this workflow should run."),
     ).toBeInTheDocument();
     expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
     expect(within(dialog).getByText("Fixed interval")).toBeInTheDocument();
