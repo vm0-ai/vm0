@@ -611,6 +611,13 @@ impl ActiveInputWriter {
         self.controller.clone()
     }
 
+    pub(crate) fn try_next_frame(&mut self) -> Option<ActiveInputFrame> {
+        if *self.close_rx.borrow() {
+            return None;
+        }
+        self.rx.try_recv().ok()
+    }
+
     pub async fn next_frame(&mut self) -> Option<ActiveInputFrame> {
         loop {
             if *self.close_rx.borrow() {

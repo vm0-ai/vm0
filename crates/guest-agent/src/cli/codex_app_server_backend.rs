@@ -459,19 +459,24 @@ async fn next_codex_run_event(
     heartbeat_done: &mut bool,
     masker: &SecretMasker,
 ) -> Result<CodexRunEvent, AgentError> {
+    // Do not let buffered terminal notifications overtake input the control
+    // path already accepted.
+    if active_input_open && let Some(frame) = active_input.try_next_frame() {
+        return Ok(CodexRunEvent::ActiveInput(Some(frame)));
+    }
     if let Some(notification) = client.pop_notification() {
         return Ok(CodexRunEvent::Notification(notification));
     }
 
     tokio::select! {
         biased;
+        frame = active_input.next_frame(), if active_input_open => {
+            Ok(CodexRunEvent::ActiveInput(frame))
+        }
         notification = client.next_notification(TURN_NOTIFICATION_LABEL) => {
             notification
                 .map(CodexRunEvent::Notification)
                 .map_err(|error| app_server_error(masker, error))
-        }
-        frame = active_input.next_frame(), if active_input_open => {
-            Ok(CodexRunEvent::ActiveInput(frame))
         }
         heartbeat_result = wait_for_heartbeat(heartbeat_monitor), if !*heartbeat_done => {
             *heartbeat_done = true;
