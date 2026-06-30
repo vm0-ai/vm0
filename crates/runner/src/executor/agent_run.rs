@@ -16,7 +16,6 @@ use sandbox::{
     EXEC_OUTPUT_LIMIT_64_KIB, ExecRequest, ExecTermination, ProcessControlMode, ProcessOutputMode,
     Sandbox, StartProcessRequest,
 };
-use sha2::{Digest, Sha256};
 use shell_quote::quote_shell_arg;
 use tokio_util::sync::CancellationToken;
 use tracing::{debug, info, warn};
@@ -93,10 +92,6 @@ enum SessionHistoryIdentityReason {
     VerifyRequestMissing,
     VerifyRequestMismatch,
     VerifyMissingVerifier,
-    VerifyMissingFile,
-    VerifyReadFailed,
-    VerifySizeMismatch,
-    VerifyHashMismatch,
     VerifyHelperFailed,
     VerifyHelperTimedOut,
     VerifyHelperInvalidArgs,
@@ -131,10 +126,6 @@ impl SessionHistoryIdentityReason {
             Self::VerifyRequestMissing => "session_history_identity_verify_request_missing",
             Self::VerifyRequestMismatch => "session_history_identity_verify_request_mismatch",
             Self::VerifyMissingVerifier => "session_history_identity_verify_missing_verifier",
-            Self::VerifyMissingFile => "session_history_identity_verify_missing_file",
-            Self::VerifyReadFailed => "session_history_identity_verify_read_failed",
-            Self::VerifySizeMismatch => "session_history_identity_verify_size_mismatch",
-            Self::VerifyHashMismatch => "session_history_identity_verify_hash_mismatch",
             Self::VerifyHelperFailed => "session_history_identity_verify_helper_failed",
             Self::VerifyHelperTimedOut => "session_history_identity_verify_helper_timed_out",
             Self::VerifyHelperInvalidArgs => "session_history_identity_verify_helper_invalid_args",
@@ -254,93 +245,27 @@ async fn verify_restored_session_identity_for_reuse(
         return Err(SessionHistoryIdentityReason::VerifyRequestMismatch);
     }
 
-    match verification {
-        RestoredSessionHistoryVerification::GuestHistoryPath {
-            expected_size,
-            guest_history_path,
-            read_limit,
-        } => {
-            let guest_history_path = guest_history_path.to_owned();
-            verify_guest_history_path_identity(
-                sandbox,
-                context,
-                identity,
-                expected_size,
-                &guest_history_path,
-                read_limit,
-            )
-            .await
-        }
-        RestoredSessionHistoryVerification::FinalIdentityMetadata {
-            metadata_path,
-            runtime_dir,
-            framework,
-            session_id_hash,
-            history_ref_kind,
-            history_hash,
-            history_size_bytes,
-        } => {
-            let metadata_path = metadata_path.to_owned();
-            let runtime_dir = runtime_dir.to_owned();
-            let command = build_final_identity_verify_command(
-                guest::RUN_AGENT,
-                &metadata_path,
-                framework.as_str(),
-                session_id_hash,
-                history_ref_kind.as_str(),
-                history_hash,
-                history_size_bytes,
-            );
-            verify_final_identity_metadata(sandbox, context, identity, command, &runtime_dir).await
-        }
-    }
-}
-
-async fn verify_guest_history_path_identity(
-    sandbox: &dyn Sandbox,
-    context: &ExecutionContext,
-    identity: RestoredSessionIdentity,
-    expected_size: u64,
-    guest_history_path: &str,
-    read_limit: u64,
-) -> Result<RestoredSessionIdentity, SessionHistoryIdentityReason> {
-    let read_result = sandbox.read_file(guest_history_path, read_limit).await;
-    let bytes = match read_result {
-        Ok(Some(bytes)) => bytes,
-        Ok(None) => {
-            debug!(
-                run_id = %context.run_id,
-                "restored session identity invalidated because history file is missing"
-            );
-            return Err(SessionHistoryIdentityReason::VerifyMissingFile);
-        }
-        Err(_) => {
-            debug!(
-                run_id = %context.run_id,
-                "restored session identity verification failed"
-            );
-            return Err(SessionHistoryIdentityReason::VerifyReadFailed);
-        }
-    };
-    if bytes.len() as u64 != expected_size {
-        debug!(
-            run_id = %context.run_id,
-            expected_size = expected_size,
-            actual_size = bytes.len(),
-            "restored session identity invalidated because history size changed"
-        );
-        return Err(SessionHistoryIdentityReason::VerifySizeMismatch);
-    }
-    let actual_hash = hex::encode(Sha256::digest(&bytes));
-    if actual_hash != identity.history_hash() {
-        debug!(
-            run_id = %context.run_id,
-            "restored session identity invalidated because history hash changed"
-        );
-        return Err(SessionHistoryIdentityReason::VerifyHashMismatch);
-    }
-
-    Ok(identity)
+    let RestoredSessionHistoryVerification {
+        metadata_path,
+        runtime_dir,
+        framework,
+        session_id_hash,
+        history_ref_kind,
+        history_hash,
+        history_size_bytes,
+    } = verification;
+    let metadata_path = metadata_path.to_owned();
+    let runtime_dir = runtime_dir.to_owned();
+    let command = build_final_identity_verify_command(
+        guest::RUN_AGENT,
+        &metadata_path,
+        framework.as_str(),
+        session_id_hash,
+        history_ref_kind.as_str(),
+        history_hash,
+        history_size_bytes,
+    );
+    verify_final_identity_metadata(sandbox, context, identity, command, &runtime_dir).await
 }
 
 async fn verify_final_identity_metadata(
@@ -807,7 +732,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
 
     let mut session_restore_diagnostics = None;
     let mut restored_session_identity = None;
-    let mut produced_restored_session_identity = false;
     let session_history_materializer = match session_history_restore_plan {
         SessionHistoryRestorePlan::SkipVerified(identity) => {
             match verify_restored_session_identity_for_reuse(sandbox, context, identity).await {
@@ -925,8 +849,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                 err.as_deref(),
             );
             let diagnostics = result?;
-            restored_session_identity = diagnostics.restored_session_identity.clone();
-            produced_restored_session_identity = restored_session_identity.is_some();
             session_restore_diagnostics = Some(diagnostics);
         }
     }
@@ -1390,14 +1312,6 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     .await
                     {
                         Ok(verified_restored_session_identity) => {
-                            if produced_restored_session_identity {
-                                telemetry.record(
-                                    "session_history_identity_restored",
-                                    Duration::ZERO,
-                                    true,
-                                    None,
-                                );
-                            }
                             restored_session_identity = Some(verified_restored_session_identity);
                         }
                         Err(reason) => {

@@ -8,7 +8,6 @@ use super::{
 };
 use crate::helper_exec::{format_helper_exec_failure, helper_exec_succeeded};
 use crate::paths::diagnostic_session_fingerprint;
-use crate::restored_session_identity::RestoredSessionIdentity;
 use crate::types::ExecutionContext;
 
 use super::super::{DEFAULT_EXEC_TIMEOUT, RunnerError, RunnerResult};
@@ -127,9 +126,6 @@ pub(super) async fn restore_codex_session(
         framework: "codex",
         session_fingerprint: diagnostic_session_fingerprint(session_id),
         bytes_in: session_history.len(),
-        restored_session_identity: RestoredSessionIdentity::from_context(context).map(|identity| {
-            identity.with_guest_history(session_history.len() as u64, session_path.clone())
-        }),
     };
     info!(
         run_id = %context.run_id,

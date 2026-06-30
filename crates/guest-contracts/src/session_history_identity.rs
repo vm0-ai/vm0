@@ -13,9 +13,6 @@ pub const FINAL_SESSION_HISTORY_IDENTITY_VERSION: u8 = 1;
 /// Maximum size of the serialized final identity metadata file.
 pub const FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES: u64 = 16 * 1024;
 
-/// Maximum raw session-history bytes the runner may read from a guest path.
-pub const SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES: u64 = 1024 * 1024;
-
 /// Maximum decoded session-history bytes the guest helper may verify locally.
 pub const SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES: u64 = 32 * 1024 * 1024;
 

@@ -217,6 +217,8 @@ mod tests {
     use super::*;
     use std::io::Write;
 
+    const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
+
     fn write_metadata(
         dir: &tempfile::TempDir,
         identity: &FinalSessionHistoryIdentity,
@@ -348,22 +350,20 @@ mod tests {
     }
 
     #[test]
-    fn build_allows_history_above_host_read_cap() {
+    fn build_allows_large_history_metadata() {
         let identity = FinalSessionHistoryIdentity::new(
             FinalSessionHistoryFramework::ClaudeCode,
             "a".repeat(64),
             FinalSessionHistoryRefKind::Blob,
             "b".repeat(64),
-            guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES
-                + 1,
+            LARGE_SESSION_HISTORY_SIZE_BYTES as u64,
             "/history.jsonl",
         )
         .unwrap();
 
         assert_eq!(
             identity.history_size_bytes,
-            guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES
-                + 1
+            LARGE_SESSION_HISTORY_SIZE_BYTES as u64
         );
     }
 
@@ -371,12 +371,7 @@ mod tests {
     fn verifies_large_claude_literal_history() {
         let dir = tempfile::tempdir().unwrap();
         let history_path = dir.path().join("history.jsonl");
-        let history = vec![
-            b'a';
-            guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES
-                as usize
-                + 1
-        ];
+        let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
         std::fs::write(&history_path, &history).unwrap();
         let identity = FinalSessionHistoryIdentity::new(
             FinalSessionHistoryFramework::ClaudeCode,
@@ -396,17 +391,8 @@ mod tests {
     fn rejects_current_history_larger_than_identity_size() {
         let dir = tempfile::tempdir().unwrap();
         let history_path = dir.path().join("history.jsonl");
-        let expected_history = vec![
-            b'a';
-            guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES
-                as usize
-        ];
-        let oversized_history = vec![
-            b'a';
-            guest_contracts::session_history_identity::SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES
-                as usize
-                + 1
-        ];
+        let expected_history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES - 1];
+        let oversized_history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
         std::fs::write(&history_path, oversized_history).unwrap();
         let identity = FinalSessionHistoryIdentity::new(
             FinalSessionHistoryFramework::ClaudeCode,

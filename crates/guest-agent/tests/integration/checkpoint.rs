@@ -1,11 +1,12 @@
 use crate::support::*;
 use guest_contracts::session_history_identity::{
     FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-    SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES,
 };
 use httpmock::prelude::*;
 use serde_json::json;
 use sha2::{Digest, Sha256};
+
+const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
 
 fn write_derived_claude_history(session_id: &str, history: &str) -> Result<(), String> {
     guest_agent::paths::write_private(guest_agent::paths::session_id_file(), session_id)
@@ -127,7 +128,7 @@ async fn success_checkpoint_writes_large_final_identity_metadata() {
     let server = api.server();
 
     let _files_guard = SessionCheckpointFilesGuard::new();
-    let history = vec![b'a'; SESSION_HISTORY_IDENTITY_HOST_READ_MAX_BYTES as usize + 1];
+    let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
     let _history_dir = write_literal_session_history("success-large-session", &history).unwrap();
 
     let history_hash = hex::encode(Sha256::digest(&history));
