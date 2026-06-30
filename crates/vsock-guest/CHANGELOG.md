@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.19.17](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.16...vsock-guest-v0.19.17) (2026-06-30)
+
+
+### Performance Improvements
+
+* avoid guest write-file payload copy ([#19494](https://github.com/vm0-ai/vm0/issues/19494)) ([6857ce9](https://github.com/vm0-ai/vm0/commit/6857ce9d1c9e6329d67b1c154e852fcc6cc8e393))
+
 ## [0.19.16](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.15...vsock-guest-v0.19.16) (2026-06-30)
 
 ## [0.19.15](https://github.com/vm0-ai/vm0/compare/vsock-guest-v0.19.14...vsock-guest-v0.19.15) (2026-06-30)
