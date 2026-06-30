@@ -690,6 +690,28 @@ function mergeRecommendedFollowups(
   return merged.length > 0 ? merged : undefined;
 }
 
+async function loadRecommendedFollowupContextForCompletedRun(args: {
+  readonly db: Db;
+  readonly threadId: string;
+  readonly signal: AbortSignal;
+}): Promise<readonly ChatCompletionContextMessage[]> {
+  const result = await settle(
+    loadChatThreadRecommendedFollowupContext({
+      db: args.db,
+      threadId: args.threadId,
+    }),
+    args.signal,
+  );
+  if (!result.ok) {
+    log.warn("Recommended follow-up context load failed", {
+      threadId: args.threadId,
+      err: result.error,
+    });
+    return [];
+  }
+  return result.value;
+}
+
 async function handleCompletedChatCallback(args: {
   readonly db: Db;
   readonly runId: string;
@@ -751,9 +773,10 @@ async function handleCompletedChatCallback(args: {
   });
   args.signal.throwIfAborted();
 
-  const followupContext = await loadChatThreadRecommendedFollowupContext({
+  const followupContext = await loadRecommendedFollowupContextForCompletedRun({
     db: args.db,
     threadId: args.chatThread.chatThreadId,
+    signal: args.signal,
   });
   args.signal.throwIfAborted();
 
