@@ -257,13 +257,15 @@ export function getConnectorManualGrantFieldNames(
 }
 
 function addValueRefPrivateName(
-  valueRef: string,
+  valueRef: ConnectorOutputValueRef,
   privateNames: Set<string>,
 ): void {
-  const match = /^\$(?:secrets|vars)\.(.+)$/.exec(valueRef);
-  if (match?.[1]) {
-    privateNames.add(match[1]);
+  if (isConnectorSecretValueRef(valueRef)) {
+    privateNames.add(connectorSecretNameFromValueRef(valueRef));
+    return;
   }
+
+  privateNames.add(connectorVariableNameFromValueRef(valueRef));
 }
 
 function addStoragePrivateNames(
