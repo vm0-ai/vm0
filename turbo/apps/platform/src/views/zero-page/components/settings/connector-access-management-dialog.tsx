@@ -416,8 +416,8 @@ function ConnectorAccessDialog({
       <DialogContent className="!flex h-[min(720px,calc(100dvh-2rem))] w-[calc(100vw-2rem)] max-w-[720px] !flex-col !overflow-hidden">
         <DialogHeader className="shrink-0 gap-2">
           <div className="flex items-center gap-3">
-            <span className="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-muted">
-              <ConnectorIcon type={connectorType} size={22} />
+            <span className="flex h-10 w-10 shrink-0 items-center justify-center">
+              <ConnectorIcon type={connectorType} size={28} />
             </span>
             <div className="min-w-0">
               <DialogTitle className="text-base">
