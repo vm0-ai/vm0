@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.130.12](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.11...runner-rs-v0.130.12) (2026-06-30)
+
+
+### Bug Fixes
+
+* add youtube batch stats firewall route ([#19436](https://github.com/vm0-ai/vm0/issues/19436)) ([65f41cc](https://github.com/vm0-ai/vm0/commit/65f41cc4df675880b47f99e65e6d946add16708a))
+
+
+### Performance Improvements
+
+* avoid quadratic mitm firewall prefix lookup ([#19435](https://github.com/vm0-ai/vm0/issues/19435)) ([432c902](https://github.com/vm0-ai/vm0/commit/432c902ede6c4ac8d1072a1c40489fbc46e86d97))
+
 ## [0.130.11](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.10...runner-rs-v0.130.11) (2026-06-30)
 
 ## [0.130.10](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.9...runner-rs-v0.130.10) (2026-06-30)

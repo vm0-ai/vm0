@@ -1,5 +1,19 @@
 # Changelog
 
+## [0.511.1](https://github.com/vm0-ai/vm0/compare/app-v0.511.0...app-v0.511.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* remove agent workflow routes ([#19421](https://github.com/vm0-ai/vm0/issues/19421)) ([9985c0c](https://github.com/vm0-ai/vm0/commit/9985c0cae761f1c614f78ce45945714455b6c66f))
+* show users icon for empty connector access ([#19430](https://github.com/vm0-ai/vm0/issues/19430)) ([0824944](https://github.com/vm0-ai/vm0/commit/0824944e5b77aa5a108363de1dea3e724939b30c))
+* simplify workflow chat creation ([#19429](https://github.com/vm0-ai/vm0/issues/19429)) ([3742c84](https://github.com/vm0-ai/vm0/commit/3742c84665888c4f179b943621de64c26e86663b))
+
+
+### Refactoring
+
+* restrict www api base to oauth flows ([#19453](https://github.com/vm0-ai/vm0/issues/19453)) ([2689068](https://github.com/vm0-ai/vm0/commit/2689068b85abc3fd4e1e1137919af3c74ec1b382))
+
 ## [0.511.0](https://github.com/vm0-ai/vm0/compare/app-v0.510.0...app-v0.511.0) (2026-06-30)
 
 
