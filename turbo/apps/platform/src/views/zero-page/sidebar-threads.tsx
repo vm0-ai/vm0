@@ -567,6 +567,33 @@ function ChatThreadRenameDialog() {
   const renameChatThread = useSet(renameChatThread$);
   const pageSignal = useGet(pageSignal$);
 
+  function chatThreadContainer(threadId: string) {
+    return (
+      Array.from(
+        document.querySelectorAll<HTMLElement>(
+          "[data-chat-thread-container-id]",
+        ),
+      ).find((candidate) => {
+        return candidate.dataset.chatThreadContainerId === threadId;
+      }) ?? null
+    );
+  }
+
+  function focusChatThreadContainer(threadId: string) {
+    chatThreadContainer(threadId)?.focus({ preventScroll: true });
+  }
+
+  function closeRenameDialog() {
+    const threadId = renameDialogThreadId;
+    setRenameDialogThreadId(null);
+    setRenameDialogInput("");
+    if (threadId) {
+      queueMicrotask(() => {
+        focusChatThreadContainer(threadId);
+      });
+    }
+  }
+
   function handleRename() {
     if (!renameDialogThreadId || !renameDialogInput.trim()) {
       return;
@@ -578,8 +605,7 @@ function ChatThreadRenameDialog() {
       ),
       Reason.DomCallback,
     );
-    setRenameDialogThreadId(null);
-    setRenameDialogInput("");
+    closeRenameDialog();
   }
 
   return (
@@ -587,12 +613,21 @@ function ChatThreadRenameDialog() {
       open={renameDialogThreadId !== null}
       onOpenChange={(open) => {
         if (!open) {
-          setRenameDialogThreadId(null);
-          setRenameDialogInput("");
+          closeRenameDialog();
         }
       }}
     >
-      <DialogContent>
+      <DialogContent
+        onCloseAutoFocus={(event) => {
+          const threadContainer = renameDialogThreadId
+            ? chatThreadContainer(renameDialogThreadId)
+            : null;
+          if (threadContainer) {
+            event.preventDefault();
+            threadContainer.focus({ preventScroll: true });
+          }
+        }}
+      >
         <DialogHeader>
           <DialogTitle>Rename chat</DialogTitle>
           <DialogDescription>
@@ -619,8 +654,7 @@ function ChatThreadRenameDialog() {
           <Button
             variant="outline"
             onClick={() => {
-              setRenameDialogThreadId(null);
-              setRenameDialogInput("");
+              closeRenameDialog();
             }}
           >
             Cancel
@@ -784,11 +818,15 @@ function ChatThreads() {
 
   if (chatThreads.length === 0) {
     return (
-      <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
-        {unreadOnly
-          ? "No unread chats"
-          : "Start a conversation and it'll show up here"}
-      </p>
+      <>
+        <p className="px-2 py-2 text-xs text-muted-foreground/70 leading-relaxed">
+          {unreadOnly
+            ? "No unread chats"
+            : "Start a conversation and it'll show up here"}
+        </p>
+        <ChatThreadRenameDialog />
+        <DeleteChatThreadDialog />
+      </>
     );
   }
   return (
