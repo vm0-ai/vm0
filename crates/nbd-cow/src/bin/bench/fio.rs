@@ -98,8 +98,13 @@ fn fio_jobs(root: &Value) -> Result<&[Value], String> {
 
 enum ActiveFioSource<'a> {
     Mixed(Vec<&'a Value>),
-    Directions(Vec<ActiveDirectionSections<'a>>),
+    Directions(ActiveDirections<'a>),
     None,
+}
+
+struct ActiveDirections<'a> {
+    sections_in_iops_order: Vec<&'a Value>,
+    by_direction: Vec<ActiveDirectionSections<'a>>,
 }
 
 struct ActiveDirectionSections<'a> {
@@ -115,7 +120,7 @@ fn select_active_fio_source(jobs: &[Value]) -> ActiveFioSource<'_> {
         return ActiveFioSource::Mixed(mixed_sections);
     }
 
-    let direction_sections = DIRECTIONS
+    let by_direction = DIRECTIONS
         .iter()
         .copied()
         .filter_map(|direction| {
@@ -127,11 +132,25 @@ fn select_active_fio_source(jobs: &[Value]) -> ActiveFioSource<'_> {
         })
         .collect::<Vec<_>>();
 
-    if direction_sections.is_empty() {
+    if by_direction.is_empty() {
         ActiveFioSource::None
     } else {
-        ActiveFioSource::Directions(direction_sections)
+        ActiveFioSource::Directions(ActiveDirections {
+            sections_in_iops_order: active_direction_sections_in_iops_order(jobs),
+            by_direction,
+        })
     }
+}
+
+fn active_direction_sections_in_iops_order(jobs: &[Value]) -> Vec<&Value> {
+    jobs.iter()
+        .flat_map(|job| {
+            DIRECTIONS
+                .iter()
+                .filter_map(move |direction| job.get(*direction))
+        })
+        .filter(|section| section_is_active(section))
+        .collect()
 }
 
 fn active_sections<'a>(jobs: &'a [Value], section_name: &str) -> Vec<&'a Value> {
@@ -148,11 +167,7 @@ fn active_source_vm_iops(
     match active_source {
         ActiveFioSource::Mixed(sections) => sum_section_iops(sections, "mixed"),
         ActiveFioSource::Directions(directions) => {
-            let sections = directions
-                .iter()
-                .flat_map(|direction| direction.sections.iter().copied())
-                .collect::<Vec<_>>();
-            sum_section_iops(&sections, "active direction")
+            sum_section_iops(&directions.sections_in_iops_order, "active direction")
         }
         ActiveFioSource::None => fallback_direction_iops(jobs),
     }
@@ -182,7 +197,7 @@ fn active_source_latency_us(active_source: &ActiveFioSource<'_>) -> Result<(u64,
         ActiveFioSource::None => {
             Err("fio JSON has no active read/write/trim direction".to_string())
         }
-        ActiveFioSource::Directions(directions) => match directions.as_slice() {
+        ActiveFioSource::Directions(directions) => match directions.by_direction.as_slice() {
             [] => Err("fio JSON has no active read/write/trim direction".to_string()),
             [direction] => single_latency_section(&direction.sections, direction.name),
             directions => {
@@ -334,6 +349,29 @@ mod tests {
         assert_eq!(
             active_source_vm_iops(&active_source, jobs).unwrap() as u64,
             1000
+        );
+    }
+
+    #[test]
+    fn active_source_vm_iops_preserves_job_direction_sum_order() {
+        let root = json!({
+            "jobs": [
+                fio_job(vec![
+                    ("read", section_without_latency(1.0, 1)),
+                    (
+                        "write",
+                        section_without_latency(10_000_000_000_000_000.0, 1),
+                    ),
+                ]),
+                fio_job(vec![("read", section_without_latency(1.0, 1))]),
+            ],
+        });
+        let jobs = fio_jobs(&root).unwrap();
+        let active_source = select_active_fio_source(jobs);
+
+        assert_eq!(
+            active_source_vm_iops(&active_source, jobs).unwrap(),
+            10_000_000_000_000_000.0
         );
     }
 
