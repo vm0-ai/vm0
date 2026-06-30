@@ -13,9 +13,10 @@
 #   VM0_AUTH_URL   - Target auth URL (e.g., https://staging-so.vm6.ai)
 #
 # Optional env vars:
-#   VM0_API_URL     - API URL, used as a local fallback for auth URL
-#   VM0_AUTH_DOMAIN - API domain override for auth callbacks
-#   E2E_ACCOUNT     - Test email (auto-generated if empty)
+#   VM0_API_URL            - API URL, used as a local fallback for auth URL
+#   VM0_AUTH_DOMAIN        - API domain override for auth callbacks
+#   VM0_AUTH_REDIRECT_URL  - Post-auth app URL to verify Clerk completion
+#   E2E_ACCOUNT            - Test email (auto-generated if empty)
 
 load '../../helpers/setup'
 load '../../helpers/browser'
@@ -30,6 +31,7 @@ setup_file() {
   echo "# Clerk UI E2E (sign-up and sign-in)" >&3
   echo "#   Auth URL: ${VM0_AUTH_URL:-${VM0_API_URL:-}}" >&3
   echo "#   Auth domain: ${VM0_AUTH_DOMAIN:-<default>}" >&3
+  echo "#   Auth redirect URL: ${VM0_AUTH_REDIRECT_URL:-<default>}" >&3
   echo "#   Email: $E2E_ACCOUNT" >&3
 }
 
@@ -42,15 +44,50 @@ auth_url() {
   local base="${VM0_AUTH_URL:-${VM0_API_URL:-}}"
   local url="${base%/}${path}"
 
+  if [[ -n "${VM0_AUTH_REDIRECT_URL:-}" ]]; then
+    local separator="?"
+    if [[ "$url" == *\?* ]]; then
+      separator="&"
+    fi
+    url="${url}${separator}redirect_url=$(encode_uri_component "$VM0_AUTH_REDIRECT_URL")"
+  fi
+
   if [[ -n "${VM0_AUTH_DOMAIN:-}" ]]; then
     local separator="?"
     if [[ "$url" == *\?* ]]; then
       separator="&"
     fi
-    url="${url}${separator}domain=${VM0_AUTH_DOMAIN}"
+    url="${url}${separator}domain=$(encode_uri_component "$VM0_AUTH_DOMAIN")"
   fi
 
   printf '%s' "$url"
+}
+
+encode_uri_component() {
+  node -e 'process.stdout.write(encodeURIComponent(process.argv[1]))' "$1"
+}
+
+wait_for_auth_completion() {
+  local stuck_pattern="$1"
+  local current_url snap
+
+  for _i in $(seq 1 30); do
+    current_url=$(agent-browser get url 2>/dev/null || true)
+    if [[ -n "${VM0_AUTH_REDIRECT_URL:-}" && "$current_url" == "${VM0_AUTH_REDIRECT_URL}"* ]]; then
+      return 0
+    fi
+
+    snap=$(full_snapshot)
+    if [[ -z "${VM0_AUTH_REDIRECT_URL:-}" ]] && ! contains "$snap" "$stuck_pattern"; then
+      return 0
+    fi
+
+    sleep 1
+  done
+
+  current_url=$(agent-browser get url 2>/dev/null || true)
+  echo "# Auth flow did not complete; current URL: ${current_url:-<unknown>}" >&3
+  return 1
 }
 
 # ===========================================================================
@@ -102,17 +139,7 @@ auth_url() {
     step_screenshot "after-sign-up-otp"
   fi
 
-  # Wait for sign-up to complete
-  for _i in $(seq 1 30); do
-    snap=$(full_snapshot)
-    if ! contains "$snap" "sign.up\|Create your account\|verification code"; then
-      break
-    fi
-    sleep 1
-  done
-
-  snap=$(full_snapshot)
-  assert [ "$(contains "$snap" "sign.up\|Create your account" && echo "stuck" || echo "ok")" = "ok" ]
+  wait_for_auth_completion "sign.up\|Create your account\|verification code"
   echo "# Sign-up successful!" >&3
 }
 
@@ -194,16 +221,6 @@ auth_url() {
   enter_otp "$OTP"
   step_screenshot "after-sign-in-otp"
 
-  # Wait for sign-in to complete
-  for _i in $(seq 1 30); do
-    snap=$(full_snapshot)
-    if ! contains "$snap" "sign.in\|password\|verification code"; then
-      break
-    fi
-    sleep 1
-  done
-
-  snap=$(full_snapshot)
-  assert [ "$(contains "$snap" "sign.in\|password" && echo "stuck" || echo "ok")" = "ok" ]
+  wait_for_auth_completion "sign.in\|password\|verification code"
   echo "# Sign-in successful!" >&3
 }
