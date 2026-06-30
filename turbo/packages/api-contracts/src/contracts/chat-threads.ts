@@ -620,6 +620,7 @@ export const chatThreadRenameContract = c.router({
       204: c.noBody(),
       400: apiErrorSchema,
       401: apiErrorSchema,
+      403: apiErrorSchema,
       404: apiErrorSchema,
     },
     summary: "Rename a chat thread (suppresses automated title generation)",
