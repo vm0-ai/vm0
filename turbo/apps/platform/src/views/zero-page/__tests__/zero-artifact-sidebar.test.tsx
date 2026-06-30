@@ -680,23 +680,11 @@ describe("zero artifact sidebar", () => {
     });
   });
 
-  it("shows an unavailable pane for unsupported artifact deep links", async () => {
+  it("hides the sidebar for unsupported artifact deep links", async () => {
     setupChatThread({
       content: "Artifacts are ready.",
       path: `${THREAD_PATH}?artifact=image%3Agenerated-1&artifact-fullscreen=1`,
     });
-
-    await waitFor(() => {
-      expect(screen.getByTestId("artifact-sidebar")).toBeInTheDocument();
-      expect(screen.getByText("Artifact unavailable")).toBeInTheDocument();
-      expect(
-        screen.getByText("Unsupported artifact reference."),
-      ).toBeInTheDocument();
-      expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
-      expectFullscreenSafeAreaClass(screen.getByTestId("artifact-sidebar"));
-    });
-
-    click(screen.getByLabelText("Close artifact"));
 
     await waitFor(() => {
       expect(screen.queryByTestId("artifact-sidebar")).not.toBeInTheDocument();

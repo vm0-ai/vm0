@@ -50,18 +50,43 @@ interface FrameCleanup {
   readonly run: () => void;
 }
 
+export type HtmlDomStyleProperty = "backgroundColor" | "color";
+
+export interface HtmlDomSelectedStyle {
+  readonly backgroundColor: string;
+  readonly color: string;
+}
+
+export interface HtmlDomColorPopoverOffset {
+  readonly left: number;
+  readonly top: number;
+}
+
+type HtmlDomStyleEdits = Partial<Record<HtmlDomStyleProperty, string>>;
+
+type HtmlDomOriginalInlineStyles = Partial<
+  Record<HtmlDomStyleProperty, string>
+>;
+type FrameStyleElement = HTMLElement | SVGElement;
+
 export interface HtmlDomCommentEditorModel {
+  readonly activeColorPanelProperty: HtmlDomStyleProperty | null;
+  readonly canApplyStyleEdits: boolean;
   readonly canAddComment: boolean;
+  readonly canEditSelectedStyle: boolean;
   readonly canSend: boolean;
+  readonly colorPopoverOffset: HtmlDomColorPopoverOffset;
   readonly commentsOpen: boolean;
   readonly commentText: string;
   readonly commentPopoverAnchor: CommentPopoverAnchor | null;
   readonly comments: readonly HtmlDomEditComment[];
   readonly currentComment: HtmlDomEditComment | null;
+  readonly editableStyleProperties: readonly HtmlDomStyleProperty[];
   readonly editingCommentId: string | null;
   readonly loadState: EditorLoadState;
   readonly popoverTextAreaKey: string;
   readonly prepared: boolean;
+  readonly selectedStyle: HtmlDomSelectedStyle;
   readonly submitting: boolean;
 }
 
@@ -80,6 +105,12 @@ interface SendHtmlDomEditRequestParams {
   readonly onFailed?: () => void;
   readonly onGenerated?: (draft: HtmlDomEditDraft) => Promise<void>;
   readonly onPrepared?: (payload: HtmlDomEditPayload) => Promise<void>;
+  readonly onStarted?: () => void;
+}
+
+interface ApplyHtmlDomStyleEditsParams {
+  readonly onApplied?: (html: string) => Promise<void>;
+  readonly onFailed?: () => void;
   readonly onStarted?: () => void;
 }
 
@@ -130,7 +161,6 @@ const FRAME_NAVIGATION_CURSOR_SVG = renderToStaticMarkup(
 const FRAME_NAVIGATION_CURSOR = `url("data:image/svg+xml,${encodeURIComponent(
   FRAME_NAVIGATION_CURSOR_SVG,
 )}") 3 3, pointer`;
-
 const internalLoadState$ = state<EditorLoadState>({ status: "loading" });
 const internalStageElement$ = state<HTMLDivElement | null>(null);
 const internalIframeElement$ = state<HTMLIFrameElement | null>(null);
@@ -144,6 +174,19 @@ const internalCommentsOpen$ = state(false);
 const internalSubmitting$ = state(false);
 const internalPreparedPayload$ = state<HtmlDomEditPayload | null>(null);
 const internalFrameCleanup$ = state<FrameCleanup | null>(null);
+const internalActiveColorPanelProperty$ = state<HtmlDomStyleProperty | null>(
+  null,
+);
+const internalColorPopoverOffset$ = state<HtmlDomColorPopoverOffset>({
+  left: 0,
+  top: 0,
+});
+const internalStyleEditsByNodeId$ = state<
+  Readonly<Record<string, HtmlDomStyleEdits>>
+>({});
+const internalOriginalStylesByNodeId$ = state<
+  Readonly<Record<string, HtmlDomOriginalInlineStyles>>
+>({});
 const resetHtmlDomEditRequestSignal$ = resetSignal();
 
 async function uploadHtmlDomEditSnapshot(
@@ -264,6 +307,71 @@ function closestCommentNode(target: EventTarget | null): Element | null {
     return null;
   }
   return (target as Element).closest(`[${HTML_DOM_NODE_ID_ATTR}]`);
+}
+
+function isElementLike(value: EventTarget | null): value is Element {
+  return (
+    value !== null && typeof value === "object" && "ownerDocument" in value
+  );
+}
+
+function isMousePointEvent(event: Event): event is MouseEvent {
+  return "clientX" in event && "clientY" in event;
+}
+
+function isFrameHtmlElement(
+  element: Element | null | undefined,
+): element is HTMLElement {
+  if (!element) {
+    return false;
+  }
+  const FrameHTMLElement = element.ownerDocument.defaultView?.HTMLElement;
+  return FrameHTMLElement
+    ? element instanceof FrameHTMLElement
+    : element instanceof HTMLElement;
+}
+
+function isFrameSvgElement(
+  element: Element | null | undefined,
+): element is SVGElement {
+  if (!element) {
+    return false;
+  }
+  const FrameSVGElement = element.ownerDocument.defaultView?.SVGElement;
+  return FrameSVGElement
+    ? element instanceof FrameSVGElement
+    : typeof SVGElement !== "undefined" && element instanceof SVGElement;
+}
+
+function isFrameStyleElement(
+  element: Element | null | undefined,
+): element is FrameStyleElement {
+  return isFrameHtmlElement(element) || isFrameSvgElement(element);
+}
+
+function smallestCommentNodeAtPoint(event: MouseEvent): Element | null {
+  const doc =
+    event.view?.document ??
+    (isElementLike(event.target) ? event.target.ownerDocument : null);
+  const elements = doc?.elementsFromPoint?.(event.clientX, event.clientY) ?? [];
+  const candidates = elements
+    .map((element) => {
+      return element.closest(`[${HTML_DOM_NODE_ID_ATTR}]`);
+    })
+    .filter((element): element is Element => {
+      return element !== null;
+    });
+  const uniqueCandidates = Array.from(new Set(candidates));
+  return (
+    uniqueCandidates.sort((first, second) => {
+      const firstRect = first.getBoundingClientRect();
+      const secondRect = second.getBoundingClientRect();
+      return (
+        firstRect.width * firstRect.height -
+        secondRect.width * secondRect.height
+      );
+    })[0] ?? null
+  );
 }
 
 function closestCommentMarker(target: EventTarget | null): HTMLElement | null {
@@ -391,6 +499,305 @@ function htmlWithEditOverlaysRemoved(params: {
     return params.fallbackHtml;
   }
   return stripHtmlDomEditOverlaysFromDocument(params.frameDocument);
+}
+
+function hasStyleEdits(
+  styleEditsByNodeId: Readonly<Record<string, HtmlDomStyleEdits>>,
+): boolean {
+  return Object.values(styleEditsByNodeId).some((edits) => {
+    return edits.backgroundColor !== undefined || edits.color !== undefined;
+  });
+}
+
+function selectedStyleForNodes(params: {
+  readonly doc: Document | null;
+  readonly selectedNodeIds: readonly string[];
+}): HtmlDomSelectedStyle {
+  const firstNodeId = params.selectedNodeIds[0];
+  const element = firstNodeId
+    ? params.doc?.querySelector(nodeSelector(firstNodeId))
+    : null;
+  return {
+    backgroundColor: isFrameStyleElement(element)
+      ? elementBackgroundColor(element)
+      : "#FFFFFF",
+    color: isFrameStyleElement(element) ? elementTextColor(element) : "#111827",
+  };
+}
+
+function editableStylePropertiesForSelectedNodes(params: {
+  readonly doc: Document | null;
+  readonly selectedNodeIds: readonly string[];
+}): readonly HtmlDomStyleProperty[] {
+  const properties: HtmlDomStyleProperty[] = [];
+  if (
+    canEditStylePropertyForSelectedNodes({
+      ...params,
+      property: "color",
+    })
+  ) {
+    properties.push("color");
+  }
+  if (
+    canEditStylePropertyForSelectedNodes({
+      ...params,
+      property: "backgroundColor",
+    })
+  ) {
+    properties.push("backgroundColor");
+  }
+  return properties;
+}
+
+function canEditStylePropertyForSelectedNodes(params: {
+  readonly doc: Document | null;
+  readonly property: HtmlDomStyleProperty;
+  readonly selectedNodeIds: readonly string[];
+}): boolean {
+  const firstNodeId = params.selectedNodeIds[0];
+  const element = firstNodeId
+    ? params.doc?.querySelector(nodeSelector(firstNodeId))
+    : null;
+  if (
+    !isFrameStyleElement(element) ||
+    isStyleControlUnsupportedTagName(element.tagName)
+  ) {
+    return false;
+  }
+  if (params.property === "backgroundColor") {
+    return isFrameHtmlElement(element);
+  }
+  return editableTextColorTargets(element).length > 0;
+}
+
+function isStyleControlUnsupportedTagName(tagName: string): boolean {
+  switch (tagName.toUpperCase()) {
+    case "AUDIO":
+    case "BR":
+    case "CANVAS":
+    case "EMBED":
+    case "HR":
+    case "IFRAME":
+    case "IMG":
+    case "OBJECT":
+    case "PICTURE":
+    case "SOURCE":
+    case "TRACK":
+    case "VIDEO": {
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
+}
+
+function elementTextColor(element: FrameStyleElement): string {
+  const textTarget = editableTextColorTargets(element)[0] ?? element;
+  const computedStyle =
+    textTarget.ownerDocument.defaultView?.getComputedStyle(textTarget);
+  if (isFrameSvgElement(textTarget)) {
+    const fillColor = cssColorToHex(
+      computedStyle?.getPropertyValue("fill") ||
+        textTarget.style.getPropertyValue("fill") ||
+        textTarget.getAttribute("fill") ||
+        undefined,
+      "",
+      textTarget.ownerDocument,
+    );
+    if (fillColor) {
+      return fillColor;
+    }
+  }
+
+  return cssColorToHex(
+    computedStyle?.getPropertyValue("color") ||
+      textTarget.style.getPropertyValue("color"),
+    "#111827",
+    textTarget.ownerDocument,
+  );
+}
+
+function editableTextColorTargets(
+  element: FrameStyleElement,
+): readonly FrameStyleElement[] {
+  const candidates = [
+    element,
+    ...Array.from(element.querySelectorAll("*")),
+  ].filter(isFrameStyleElement);
+  return candidates.filter((candidate) => {
+    return (
+      !isStyleControlUnsupportedTagName(candidate.tagName) &&
+      hasEditableTextColor(candidate)
+    );
+  });
+}
+
+function hasEditableTextColor(element: FrameStyleElement): boolean {
+  if (isFrameSvgElement(element)) {
+    return hasUsefulTextContent(element);
+  }
+  if (isTextControlElement(element)) {
+    return true;
+  }
+  return hasDirectUsefulText(element);
+}
+
+function hasUsefulTextContent(element: Element): boolean {
+  return (element.textContent ?? "").replace(/\s+/g, " ").trim().length > 0;
+}
+
+function hasDirectUsefulText(element: Element): boolean {
+  return Array.from(element.childNodes).some((node) => {
+    return (
+      node.nodeType === 3 &&
+      (node.textContent ?? "").replace(/\s+/g, " ").trim().length > 0
+    );
+  });
+}
+
+function isTextControlElement(element: HTMLElement): boolean {
+  switch (element.tagName.toUpperCase()) {
+    case "BUTTON":
+    case "INPUT":
+    case "SELECT":
+    case "TEXTAREA": {
+      return true;
+    }
+    default: {
+      return false;
+    }
+  }
+}
+
+function elementBackgroundColor(element: FrameStyleElement): string {
+  let current: Element | null = element;
+  while (current) {
+    if (!isFrameStyleElement(current)) {
+      current = current.parentElement;
+      continue;
+    }
+    const computedStyle =
+      current.ownerDocument.defaultView?.getComputedStyle(current);
+    const color = cssColorToHex(
+      computedStyle?.getPropertyValue("background-color") ||
+        current.style.getPropertyValue("background-color"),
+      "",
+      current.ownerDocument,
+    );
+    if (color) {
+      return color;
+    }
+    current = current.parentElement;
+  }
+  return "#FFFFFF";
+}
+
+function stylePropertyNameForElement(
+  element: FrameStyleElement,
+  property: HtmlDomStyleProperty,
+): string {
+  if (property === "color" && isFrameSvgElement(element)) {
+    return "fill";
+  }
+  return property === "backgroundColor" ? "background-color" : "color";
+}
+
+function cssColorToHex(
+  value: string | undefined,
+  fallback: string,
+  doc: Document | undefined,
+): string {
+  const color = value?.trim();
+  if (!color) {
+    return fallback;
+  }
+  if (/^#[0-9a-f]{6}$/i.test(color)) {
+    return color.toUpperCase();
+  }
+  if (/^#[0-9a-f]{3}$/i.test(color)) {
+    return `#${color
+      .slice(1)
+      .split("")
+      .map((char) => {
+        return `${char}${char}`;
+      })
+      .join("")
+      .toUpperCase()}`;
+  }
+
+  const rgb = rgbColorToHex(color);
+  if (rgb) {
+    return rgb;
+  }
+
+  return browserParsedCssColorToHex(color, doc) ?? fallback;
+}
+
+function rgbColorToHex(color: string): string | null {
+  const rgbMatch = /^rgba?\(([^)]+)\)$/i.exec(color);
+  if (!rgbMatch) {
+    return null;
+  }
+
+  const [channelsSource, alphaSource] = rgbMatch[1].split("/");
+  const parts = channelsSource
+    ?.trim()
+    .split(/[,\s]+/)
+    .filter(Boolean);
+  const [red, green, blue, commaAlpha] = parts ?? [];
+  const alpha = alphaSource?.trim() ?? commaAlpha;
+  if (alpha !== undefined && Number(alpha) === 0) {
+    return null;
+  }
+  if (red === undefined || green === undefined || blue === undefined) {
+    return null;
+  }
+  const channels = [red, green, blue].map((channel) => {
+    return Number(channel);
+  });
+  if (
+    channels.some((channel) => {
+      return !Number.isFinite(channel);
+    })
+  ) {
+    return null;
+  }
+
+  return rgbChannelsToHex(channels[0], channels[1], channels[2]);
+}
+
+function browserParsedCssColorToHex(
+  color: string,
+  doc: Document | undefined,
+): string | null {
+  const parent = doc?.body ?? doc?.documentElement;
+  const view = doc?.defaultView;
+  if (!parent || !view) {
+    return null;
+  }
+
+  const probe = doc.createElement("span");
+  probe.style.color = color;
+  if (!probe.style.color) {
+    return null;
+  }
+  probe.style.display = "none";
+  parent.append(probe);
+  const parsed = rgbColorToHex(view.getComputedStyle(probe).color);
+  probe.remove();
+  return parsed;
+}
+
+function rgbChannelsToHex(red: number, green: number, blue: number): string {
+  return `#${[red, green, blue]
+    .map((channel) => {
+      return Math.max(0, Math.min(255, Math.round(channel)))
+        .toString(16)
+        .padStart(2, "0");
+    })
+    .join("")
+    .toUpperCase()}`;
 }
 
 function restoreFrameDocumentHtml(params: {
@@ -765,7 +1172,7 @@ function ensureFrameCommentLayer(doc: Document): HTMLElement {
   for (const candidate of Array.from(
     doc.querySelectorAll(`#${HTML_DOM_COMMENT_LAYER_ID}`),
   )) {
-    if (candidate instanceof HTMLElement && layer === null) {
+    if (isFrameHtmlElement(candidate) && layer === null) {
       layer = candidate;
       continue;
     }
@@ -1115,6 +1522,48 @@ function shouldHideCommittedCommentMarkers(params: {
   );
 }
 
+const restoreOriginalStylesForNodes$ = command(
+  ({ get, set }, nodeIds: readonly string[]) => {
+    if (nodeIds.length === 0) {
+      return;
+    }
+
+    const doc = currentFrameDocument(get(internalIframeElement$));
+    const originalStylesByNodeId = get(internalOriginalStylesByNodeId$);
+    const nextStyleEditsByNodeId = { ...get(internalStyleEditsByNodeId$) };
+    const nextOriginalStylesByNodeId = { ...originalStylesByNodeId };
+
+    for (const nodeId of nodeIds) {
+      const originalStyles = originalStylesByNodeId[nodeId];
+      if (!originalStyles) {
+        continue;
+      }
+
+      const element = doc?.querySelector(nodeSelector(nodeId));
+      if (isFrameStyleElement(element)) {
+        for (const property of Object.keys(
+          originalStyles,
+        ) as HtmlDomStyleProperty[]) {
+          const styleProperty = stylePropertyNameForElement(element, property);
+          const originalValue = originalStyles[property];
+          if (originalValue) {
+            element.style.setProperty(styleProperty, originalValue);
+          } else {
+            element.style.removeProperty(styleProperty);
+          }
+        }
+      }
+
+      delete nextStyleEditsByNodeId[nodeId];
+      delete nextOriginalStylesByNodeId[nodeId];
+    }
+
+    set(internalStyleEditsByNodeId$, nextStyleEditsByNodeId);
+    set(internalOriginalStylesByNodeId$, nextOriginalStylesByNodeId);
+    set(internalPreparedPayload$, null);
+  },
+);
+
 export const deleteHtmlDomComment$ = command(
   ({ get, set }, commentId: string) => {
     const comments = get(internalComments$);
@@ -1137,6 +1586,7 @@ export const deleteHtmlDomComment$ = command(
       });
     const doc = currentFrameDocument(get(internalIframeElement$));
 
+    set(restoreOriginalStylesForNodes$, deletedComment.targetNodeIds);
     set(internalComments$, nextComments);
     set(internalPreparedPayload$, null);
 
@@ -1234,6 +1684,10 @@ const resetHtmlDomCommentEditor$ = command(({ set }) => {
   set(internalCommentsOpen$, false);
   set(internalSubmitting$, false);
   set(internalPreparedPayload$, null);
+  set(internalActiveColorPanelProperty$, null);
+  set(internalColorPopoverOffset$, { left: 0, top: 0 });
+  set(internalStyleEditsByNodeId$, {});
+  set(internalOriginalStylesByNodeId$, {});
 });
 
 export const setHtmlDomCommentStageRef$ = onRef(
@@ -1385,9 +1839,12 @@ function bindFrameCommentEvents(params: FrameCommentBindingParams): () => void {
       return;
     }
 
-    const nodeId = closestCommentNode(event.target)?.getAttribute(
-      HTML_DOM_NODE_ID_ATTR,
-    );
+    const nodeId = (
+      isMousePointEvent(event)
+        ? (smallestCommentNodeAtPoint(event) ??
+          closestCommentNode(event.target))
+        : closestCommentNode(event.target)
+    )?.getAttribute(HTML_DOM_NODE_ID_ATTR);
     params.setHoveredNodeId(nodeId ?? null);
     if (nodeId && commentForNodeId(params.getComments(), nodeId)) {
       openPopoverForNode(nodeId, "view");
@@ -1438,7 +1895,9 @@ function bindFrameCommentEvents(params: FrameCommentBindingParams): () => void {
       return;
     }
 
-    const element = closestCommentNode(event.target);
+    const element = isMousePointEvent(event)
+      ? (smallestCommentNodeAtPoint(event) ?? closestCommentNode(event.target))
+      : closestCommentNode(event.target);
     const nodeId = element?.getAttribute(HTML_DOM_NODE_ID_ATTR);
     if (!element || !nodeId) {
       return;
@@ -1559,6 +2018,10 @@ export const bindHtmlDomCommentFrame$ = command(
           editingCommentId,
           selectedNodeIds: value,
         });
+        if (previousSelectedNodeIds.join(":") !== value.join(":")) {
+          set(internalActiveColorPanelProperty$, null);
+          set(internalColorPopoverOffset$, { left: 0, top: 0 });
+        }
         set(internalSelectedNodeIds$, value);
         syncFrameEditState(doc, {
           hoveredNodeId: get(internalHoveredNodeId$),
@@ -1604,6 +2067,106 @@ export const setHtmlDomCommentText$ = command(({ set }, value: string) => {
   set(internalPreparedPayload$, null);
 });
 
+export const toggleHtmlDomColorPanel$ = command(
+  ({ get, set }, property: HtmlDomStyleProperty) => {
+    const doc = currentFrameDocument(get(internalIframeElement$));
+    const selectedNodeIds = get(internalSelectedNodeIds$);
+    if (
+      !canEditStylePropertyForSelectedNodes({
+        doc,
+        property,
+        selectedNodeIds,
+      })
+    ) {
+      set(internalActiveColorPanelProperty$, null);
+      set(internalColorPopoverOffset$, { left: 0, top: 0 });
+      return;
+    }
+    const activeProperty = get(internalActiveColorPanelProperty$);
+    set(
+      internalActiveColorPanelProperty$,
+      activeProperty === property ? null : property,
+    );
+    set(internalColorPopoverOffset$, { left: 0, top: 0 });
+  },
+);
+
+export const closeHtmlDomColorPanel$ = command(({ set }) => {
+  set(internalActiveColorPanelProperty$, null);
+  set(internalColorPopoverOffset$, { left: 0, top: 0 });
+});
+
+export const setHtmlDomColorPopoverOffset$ = command(
+  ({ set }, offset: HtmlDomColorPopoverOffset) => {
+    set(internalColorPopoverOffset$, offset);
+  },
+);
+
+export const applyHtmlDomColorStyle$ = command(
+  (
+    { get, set },
+    params: {
+      readonly property: HtmlDomStyleProperty;
+      readonly value: string;
+    },
+  ) => {
+    const selectedNodeIds = get(internalSelectedNodeIds$);
+    if (selectedNodeIds.length === 0) {
+      return;
+    }
+
+    const iframe = get(internalIframeElement$);
+    const doc = currentFrameDocument(iframe);
+    if (
+      !canEditStylePropertyForSelectedNodes({
+        doc,
+        property: params.property,
+        selectedNodeIds,
+      })
+    ) {
+      set(internalActiveColorPanelProperty$, null);
+      return;
+    }
+    const styleEditsByNodeId = { ...get(internalStyleEditsByNodeId$) };
+    const originalStylesByNodeId = { ...get(internalOriginalStylesByNodeId$) };
+
+    for (const nodeId of selectedNodeIds) {
+      const element = doc?.querySelector(nodeSelector(nodeId));
+      if (!isFrameStyleElement(element)) {
+        continue;
+      }
+      const targets =
+        params.property === "color"
+          ? editableTextColorTargets(element)
+          : [element];
+      for (const target of targets) {
+        const targetNodeId =
+          target.getAttribute(HTML_DOM_NODE_ID_ATTR) ?? nodeId;
+        const styleProperty = stylePropertyNameForElement(
+          target,
+          params.property,
+        );
+
+        originalStylesByNodeId[targetNodeId] = {
+          ...originalStylesByNodeId[targetNodeId],
+          [params.property]:
+            originalStylesByNodeId[targetNodeId]?.[params.property] ??
+            target.style.getPropertyValue(styleProperty),
+        };
+        target.style.setProperty(styleProperty, params.value);
+        styleEditsByNodeId[targetNodeId] = {
+          ...styleEditsByNodeId[targetNodeId],
+          [params.property]: params.value,
+        };
+      }
+    }
+
+    set(internalOriginalStylesByNodeId$, originalStylesByNodeId);
+    set(internalStyleEditsByNodeId$, styleEditsByNodeId);
+    set(internalPreparedPayload$, null);
+  },
+);
+
 export const beginEditingCurrentHtmlDomComment$ = command(({ get, set }) => {
   const currentComment = commentForSelectedNodes({
     comments: get(internalComments$),
@@ -1628,6 +2191,8 @@ const resetHtmlDomCommentDraft$ = command(({ get, set }) => {
   set(internalSelectedNodeIds$, []);
   set(internalCommentPopoverAnchor$, null);
   set(internalEditingCommentId$, null);
+  set(internalActiveColorPanelProperty$, null);
+  set(internalColorPopoverOffset$, { left: 0, top: 0 });
   set(internalPreparedPayload$, null);
   syncFrameEditState(currentFrameDocument(get(internalIframeElement$)), {
     hoveredNodeId: get(internalHoveredNodeId$),
@@ -1692,6 +2257,10 @@ export const discardHtmlDomComments$ = command(({ get, set }) => {
 
   set(internalComments$, []);
   set(internalCommentsOpen$, false);
+  set(internalActiveColorPanelProperty$, null);
+  set(internalColorPopoverOffset$, { left: 0, top: 0 });
+  set(internalStyleEditsByNodeId$, {});
+  set(internalOriginalStylesByNodeId$, {});
   if (readyLoadState.status === "ready" && doc) {
     restoreFrameDocumentHtml({
       doc,
@@ -1798,6 +2367,59 @@ export const sendHtmlDomEditRequest$ = command(
   },
 );
 
+export const applyHtmlDomStyleEdits$ = command(
+  async (
+    { get, set },
+    params: ApplyHtmlDomStyleEditsParams,
+    _parentSignal: AbortSignal,
+  ) => {
+    const readyLoadState = get(internalLoadState$);
+    if (
+      readyLoadState.status !== "ready" ||
+      get(internalComments$).length > 0 ||
+      !hasStyleEdits(get(internalStyleEditsByNodeId$)) ||
+      get(internalSubmitting$)
+    ) {
+      return;
+    }
+
+    const signal = set(resetHtmlDomEditRequestSignal$);
+    set(internalSubmitting$, true);
+    set(internalPreparedPayload$, null);
+
+    const apply = async () => {
+      const html = htmlWithEditOverlaysRemoved({
+        fallbackHtml: readyLoadState.html,
+        frameDocument: currentFrameDocument(get(internalIframeElement$)),
+      });
+      params.onStarted?.();
+      if (params.onApplied) {
+        const applied = await tapError(
+          (async () => {
+            await params.onApplied?.(html);
+            return true;
+          })(),
+          (error) => {
+            toast.error(htmlDomEditErrorMessage(error, "Failed to apply edit"));
+          },
+        );
+        signal.throwIfAborted();
+        if (!applied) {
+          params.onFailed?.();
+        }
+        return;
+      }
+      toast.success("Edit applied");
+    };
+
+    await withCleanup(apply(), () => {
+      if (!signal.aborted) {
+        set(internalSubmitting$, false);
+      }
+    });
+  },
+);
+
 export const htmlDomCommentEditorModel$ = computed(
   (get): HtmlDomCommentEditorModel => {
     const comments = get(internalComments$);
@@ -1806,24 +2428,39 @@ export const htmlDomCommentEditorModel$ = computed(
     const selectedNodeIds = get(internalSelectedNodeIds$);
     const loadState = get(internalLoadState$);
     const submitting = get(internalSubmitting$);
+    const styleEditsByNodeId = get(internalStyleEditsByNodeId$);
+    const doc = currentFrameDocument(get(internalIframeElement$));
+    const editableStyleProperties = editableStylePropertiesForSelectedNodes({
+      doc,
+      selectedNodeIds,
+    });
     const currentComment = commentForSelectedNodes({
       comments,
       selectedNodeIds,
     });
 
     return {
+      activeColorPanelProperty: get(internalActiveColorPanelProperty$),
+      canApplyStyleEdits:
+        loadState.status === "ready" &&
+        comments.length === 0 &&
+        hasStyleEdits(styleEditsByNodeId) &&
+        !submitting,
       canAddComment: editingCommentId
         ? commentText.trim() !== ""
         : selectedNodeIds.length > 0 &&
           commentText.trim() !== "" &&
           !hasCommentForSelectedNodes({ comments, selectedNodeIds }),
+      canEditSelectedStyle: editableStyleProperties.length > 0,
       canSend:
         loadState.status === "ready" && comments.length > 0 && !submitting,
+      colorPopoverOffset: get(internalColorPopoverOffset$),
       commentsOpen: get(internalCommentsOpen$),
       commentText,
       commentPopoverAnchor: get(internalCommentPopoverAnchor$),
       comments,
       currentComment,
+      editableStyleProperties,
       editingCommentId,
       loadState,
       popoverTextAreaKey: [
@@ -1832,6 +2469,7 @@ export const htmlDomCommentEditorModel$ = computed(
         currentComment?.id ?? "draft",
       ].join("|"),
       prepared: get(internalPreparedPayload$) !== null,
+      selectedStyle: selectedStyleForNodes({ doc, selectedNodeIds }),
       submitting,
     };
   },
