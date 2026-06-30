@@ -574,6 +574,28 @@ export const chatThreadMarkReadContract = c.router({
 });
 
 /**
+ * Mark every unread chat thread under an agent as read.
+ * Separate sibling route so it cannot collide with the `:id` thread routes.
+ */
+export const chatThreadMarkAgentReadContract = c.router({
+  markAgentRead: {
+    method: "POST",
+    path: "/api/zero/chat-thread-unreads/mark-read",
+    headers: authHeadersSchema,
+    body: z.object({
+      agentId: z.string().min(1),
+    }),
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      403: apiErrorSchema,
+    },
+    summary: "Mark all unread chat threads under an agent as read",
+  },
+});
+
+/**
  * Pin / unpin a chat thread. Two separate POST endpoints (no body) instead
  * of widening `chatThreadByIdContract.patch`, which is intentionally narrow
  * (draft fields only). Mirrors the `mark-read` precedent.
@@ -975,6 +997,8 @@ export const chatThreadGithubPrsContract = c.router({
 export type ChatThreadsContract = typeof chatThreadsContract;
 export type ChatThreadByIdContract = typeof chatThreadByIdContract;
 export type ChatThreadMarkReadContract = typeof chatThreadMarkReadContract;
+export type ChatThreadMarkAgentReadContract =
+  typeof chatThreadMarkAgentReadContract;
 export type ChatThreadPinContract = typeof chatThreadPinContract;
 export type ChatThreadUnpinContract = typeof chatThreadUnpinContract;
 export type ChatThreadRenameContract = typeof chatThreadRenameContract;
