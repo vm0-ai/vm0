@@ -239,6 +239,8 @@ class TestAuthBaseForwarderSecurity:
             "https://example%2ecom/path",
             "https://*.example.com/path",
             "https://api*.example.com/path",
+            "https://{env}.example.com/path",
+            "https://api{env}.example.com/path",
             "https://%2A.example.com/path",
         ],
     )
