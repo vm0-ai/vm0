@@ -370,6 +370,35 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     await expect(findRunnerJob(fixture.runId)).resolves.toBeNull();
   });
 
+  it("cleans up pending runs without runner jobs after the pending timeout", async () => {
+    const fixture = await trackRun(
+      insertRunFixture({ status: "pending", createdAt: minutesAgo(6) }),
+    );
+
+    const response = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.cleaned).toBe(1);
+    expect(response.body.results).toContainEqual(
+      expect.objectContaining({
+        runId: fixture.runId,
+        status: "cleaned",
+        reason: "Run timed out while pending (never started)",
+      }),
+    );
+    await expect(findRun(fixture.runId)).resolves.toMatchObject({
+      status: "timeout",
+      error: "Run timed out while pending (never started)",
+    });
+    await expect(findRunnerJob(fixture.runId)).resolves.toBeNull();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `run:changed:${fixture.runId}`,
+      { status: "failed" },
+    );
+  });
+
   it("deletes expired runner job queue entries", async () => {
     const expired = await trackRun(
       insertRunFixture({ status: "completed", createdAt: minutesAgo(1) }),
@@ -506,12 +535,85 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
       [200],
     );
 
-    expect(response.body.cleaned).toBe(0);
+    expect(response.body.cleaned).toBe(1);
+    expect(response.body.results).toContainEqual(
+      expect.objectContaining({
+        runId: fixture.runId,
+        sandboxId: null,
+        status: "cleaned",
+        reason: "Queued run expired (exceeded queue TTL)",
+      }),
+    );
     await expect(findRun(fixture.runId)).resolves.toMatchObject({
       status: "timeout",
       error: "Queued run expired (exceeded queue TTL)",
     });
     await expect(findQueueEntry(fixture.runId)).resolves.toBeNull();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `run:changed:${fixture.runId}`,
+      { status: "failed" },
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "queue:changed",
+      null,
+    );
+  });
+
+  it("cleans up queued runs missing queue entries after the grace threshold", async () => {
+    const fixture = await trackRun(
+      insertRunFixture({ status: "queued", createdAt: minutesAgo(6) }),
+    );
+
+    const response = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.cleaned).toBe(1);
+    expect(response.body.results).toContainEqual(
+      expect.objectContaining({
+        runId: fixture.runId,
+        sandboxId: null,
+        status: "cleaned",
+        reason: "Queued run timed out before queue entry was persisted",
+      }),
+    );
+    await expect(findRun(fixture.runId)).resolves.toMatchObject({
+      status: "timeout",
+      error: "Queued run timed out before queue entry was persisted",
+    });
+    await expect(findQueueEntry(fixture.runId)).resolves.toBeNull();
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `run:changed:${fixture.runId}`,
+      { status: "failed" },
+    );
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      "queue:changed",
+      null,
+    );
+  });
+
+  it("does not clean up fresh queued runs missing queue entries", async () => {
+    const fixture = await trackRun(
+      insertRunFixture({ status: "queued", createdAt: minutesAgo(1) }),
+    );
+
+    const response = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.cleaned).toBe(0);
+    expect(response.body.results).toHaveLength(0);
+    await expect(findRun(fixture.runId)).resolves.toMatchObject({
+      status: "queued",
+      error: null,
+    });
+    await expect(findQueueEntry(fixture.runId)).resolves.toBeNull();
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `run:changed:${fixture.runId}`,
+      expect.anything(),
+    );
   });
 
   it("deletes expired stale queue entries without changing terminal runs", async () => {
