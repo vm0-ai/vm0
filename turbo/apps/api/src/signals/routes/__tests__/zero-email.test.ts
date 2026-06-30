@@ -1076,7 +1076,11 @@ describe("POST /api/zero/email/inbound", () => {
       from_address: "Zero <vm0@mail.example.com>",
     });
     expect(Array.isArray(outbox)).toBeTruthy();
-    const [outboxItem] = outbox as EmailOutboxState[];
+    const outboxItem = (outbox as EmailOutboxState[]).find((item) => {
+      return (
+        item.toAddresses === fx.userEmail && item.subject === "Re: Continue"
+      );
+    });
     expect(outboxItem).toMatchObject({
       toAddresses: fx.userEmail,
       subject: "Re: Continue",
