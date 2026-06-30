@@ -1,5 +1,8 @@
-//! Build a fabricated, well-formed-but-placeholder `~/.codex/auth.json`
-//! for the ChatGPT-OAuth bootstrap path.
+//! Reconcile Codex `~/.codex/auth.json` before launching the CLI.
+//!
+//! The guest-agent owns the complete local Codex auth state because sandboxes
+//! can be reused across runs. Each run must therefore write the desired auth
+//! mode or remove stale auth from a previous run before `codex exec` starts.
 //!
 //! Codex (`openai/codex`) decides between API-key mode and ChatGPT mode at
 //! load time from `auth.json` contents. By writing an `auth.json` with
@@ -58,6 +61,16 @@ const FAR_FUTURE_EXP_SECS: i64 = 100 * 365 * 24 * 3600;
 pub(crate) const REFRESH_TOKEN_NOOP_URL: &str = "http://127.0.0.1:1/blocked";
 const CODEX_HOME_MODE: u32 = 0o700;
 const AUTH_JSON_MODE: u32 = 0o600;
+
+pub(crate) enum DesiredCodexAuth<'a> {
+    ChatGpt { now: DateTime<Utc> },
+    ApiKey { api_key: &'a str },
+    None,
+}
+
+pub(crate) fn codex_home_path(home_dir: &Path) -> PathBuf {
+    home_dir.join(".codex")
+}
 
 // ---------------------------------------------------------------------------
 // JWT builder
@@ -128,7 +141,7 @@ fn build_id_token_claims(now: DateTime<Utc>) -> Value {
 //   3. `tokens` populated with valid placeholder JWTs
 // ---------------------------------------------------------------------------
 
-fn build_auth_json(now: DateTime<Utc>) -> Result<Value, AgentError> {
+fn build_chatgpt_auth_json(now: DateTime<Utc>) -> Result<Value, AgentError> {
     let access_jwt = make_placeholder_jwt(&build_access_token_claims(now))?;
     let id_jwt = make_placeholder_jwt(&build_id_token_claims(now))?;
 
@@ -149,10 +162,17 @@ fn build_auth_json(now: DateTime<Utc>) -> Result<Value, AgentError> {
     }))
 }
 
+fn build_api_key_auth_json(api_key: &str) -> Value {
+    json!({
+        "auth_mode": "apikey",
+        "OPENAI_API_KEY": api_key,
+    })
+}
+
 fn prepare_codex_home(home_dir: &Path) -> Result<PathBuf, AgentError> {
     use std::os::unix::fs::PermissionsExt;
 
-    let codex_home = home_dir.join(".codex");
+    let codex_home = codex_home_path(home_dir);
     let metadata = match std::fs::symlink_metadata(&codex_home) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -180,6 +200,25 @@ fn prepare_codex_home(home_dir: &Path) -> Result<PathBuf, AgentError> {
     )?;
 
     Ok(codex_home)
+}
+
+fn remove_auth_json(codex_home: &Path) -> Result<(), AgentError> {
+    let auth_path = codex_home.join("auth.json");
+    let metadata = match std::fs::symlink_metadata(&auth_path) {
+        Ok(metadata) => metadata,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(()),
+        Err(error) => return Err(error.into()),
+    };
+
+    if metadata.is_dir() {
+        return Err(AgentError::Execution(format!(
+            "codex auth path is a directory: {}",
+            auth_path.display()
+        )));
+    }
+
+    std::fs::remove_file(&auth_path)?;
+    Ok(())
 }
 
 fn write_auth_json_atomic(codex_home: &Path, serialized: &str) -> Result<(), AgentError> {
@@ -212,33 +251,41 @@ fn write_auth_json_atomic(codex_home: &Path, serialized: &str) -> Result<(), Age
 // ---------------------------------------------------------------------------
 // Setup function
 //
-// Inputs are explicit (`home_dir`, `now`) so this function is fully
-// testable without touching env or the real clock. The thin wrapper in
-// `cli.rs` reads `env::home_dir()` and `Utc::now()` and calls this.
+// Inputs are explicit so file-state transitions remain testable without
+// touching env or the real clock. The thin wrapper in `cli::codex_setup`
+// reads env and selects the desired auth state.
 // ---------------------------------------------------------------------------
 
-pub(crate) fn setup_codex_chatgpt_inner(
+pub(crate) fn reconcile_codex_auth_state(
     home_dir: &Path,
-    now: DateTime<Utc>,
+    desired: DesiredCodexAuth<'_>,
 ) -> Result<(), AgentError> {
     let codex_home = prepare_codex_home(home_dir)?;
 
-    let auth_json = build_auth_json(now)?;
-    let serialized = serde_json::to_string(&auth_json)?;
-    write_auth_json_atomic(&codex_home, &serialized)?;
-
-    Ok(())
+    match desired {
+        DesiredCodexAuth::ChatGpt { now } => {
+            let auth_json = build_chatgpt_auth_json(now)?;
+            let serialized = serde_json::to_string(&auth_json)?;
+            write_auth_json_atomic(&codex_home, &serialized)
+        }
+        DesiredCodexAuth::ApiKey { api_key } => {
+            let auth_json = build_api_key_auth_json(api_key);
+            let serialized = serde_json::to_string(&auth_json)?;
+            write_auth_json_atomic(&codex_home, &serialized)
+        }
+        DesiredCodexAuth::None => remove_auth_json(&codex_home),
+    }
 }
 
 #[cfg(test)]
 mod tests {
-    //! Integration tests against the single public entry point
-    //! `setup_codex_chatgpt_inner`. We deliberately avoid testing the
+    //! Integration tests against the single auth reconciliation entry point.
+    //! We deliberately avoid testing the
     //! private builders (`make_placeholder_jwt`, `build_access_token_claims`,
     //! etc.) directly: every property they care about (3-segment JWTs,
     //! HS256 header, ChatGPT-namespace claims, far-future `exp`,
     //! plan_type ≠ free, id_token shape, no real-token shapes) is asserted
-    //! against the file the public function writes. This keeps the internal
+    //! against the reconciled file. This keeps the internal
     //! shape of the builders refactorable without churning tests, per the
     //! project's "Integration Tests Only" rule.
     use super::*;
@@ -261,14 +308,32 @@ mod tests {
         serde_json::from_slice(&bytes).expect("JWT segment must be JSON")
     }
 
-    /// Run `setup_codex_chatgpt_inner` against a temp dir and return the
+    fn reconcile_chatgpt_auth(
+        home_dir: &std::path::Path,
+        now: DateTime<Utc>,
+    ) -> Result<(), AgentError> {
+        reconcile_codex_auth_state(home_dir, DesiredCodexAuth::ChatGpt { now })
+    }
+
+    /// Reconcile ChatGPT auth against a temp dir and return the
     /// parsed `auth.json` plus the path it was written to.
     fn run_setup_and_parse(tmp: &TempDir, now: DateTime<Utc>) -> (Value, std::path::PathBuf) {
-        setup_codex_chatgpt_inner(tmp.path(), now).unwrap();
+        reconcile_chatgpt_auth(tmp.path(), now).unwrap();
         let auth_path = tmp.path().join(".codex").join("auth.json");
         let body = std::fs::read_to_string(&auth_path).unwrap();
         let parsed: Value = serde_json::from_str(&body).unwrap();
         (parsed, auth_path)
+    }
+
+    fn read_auth_json(tmp: &TempDir) -> Value {
+        let auth_path = tmp.path().join(".codex").join("auth.json");
+        let body = std::fs::read_to_string(auth_path).unwrap();
+        serde_json::from_str(&body).unwrap()
+    }
+
+    #[test]
+    fn codex_home_path_handles_empty_home_consistently() {
+        assert_eq!(codex_home_path(Path::new("")), PathBuf::from(".codex"));
     }
 
     /// Asserts the three independent ChatGPT-mode signals, the placeholder
@@ -279,7 +344,7 @@ mod tests {
     /// the private builders previously asserted in isolation, asserted
     /// here against the fabricated file.
     #[test]
-    fn setup_codex_chatgpt_inner_writes_well_formed_chatgpt_auth_json() {
+    fn reconcile_chatgpt_auth_writes_well_formed_chatgpt_auth_json() {
         let tmp = TempDir::new().unwrap();
         let now = fixed_now();
         let (auth, auth_path) = run_setup_and_parse(&tmp, now);
@@ -376,7 +441,7 @@ mod tests {
     /// refactor accidentally embedding live credentials in the
     /// fabricated bootstrap file.
     #[test]
-    fn setup_codex_chatgpt_inner_writes_no_real_token_shapes() {
+    fn reconcile_chatgpt_auth_writes_no_real_token_shapes() {
         let tmp = TempDir::new().unwrap();
         let (_, auth_path) = run_setup_and_parse(&tmp, fixed_now());
         let serialized = std::fs::read_to_string(&auth_path).unwrap();
@@ -389,14 +454,14 @@ mod tests {
     }
 
     #[test]
-    fn setup_codex_chatgpt_inner_overwrites_existing_auth_json() {
+    fn reconcile_chatgpt_auth_overwrites_existing_auth_json() {
         let tmp = TempDir::new().unwrap();
         let codex_home = tmp.path().join(".codex");
         std::fs::create_dir_all(&codex_home).unwrap();
         let auth_path = codex_home.join("auth.json");
         std::fs::write(&auth_path, b"STALE_CONTENT_FROM_PRIOR_RUN").unwrap();
 
-        setup_codex_chatgpt_inner(tmp.path(), fixed_now()).unwrap();
+        reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap();
 
         let body = std::fs::read_to_string(&auth_path).unwrap();
         assert!(
@@ -408,7 +473,113 @@ mod tests {
     }
 
     #[test]
-    fn setup_codex_chatgpt_inner_replaces_permissive_auth_json_with_private_file() {
+    fn reconcile_codex_auth_state_writes_api_key_auth_json() {
+        let tmp = TempDir::new().unwrap();
+
+        reconcile_codex_auth_state(
+            tmp.path(),
+            DesiredCodexAuth::ApiKey {
+                api_key: "sk-test-local",
+            },
+        )
+        .unwrap();
+
+        let auth = read_auth_json(&tmp);
+        assert_eq!(auth["auth_mode"], "apikey");
+        assert_eq!(auth["OPENAI_API_KEY"], "sk-test-local");
+        assert!(
+            auth.get("tokens").is_none(),
+            "API-key auth.json must not retain ChatGPT tokens: {auth}"
+        );
+    }
+
+    #[test]
+    fn reconcile_codex_auth_state_api_key_overwrites_chatgpt_auth_json() {
+        let tmp = TempDir::new().unwrap();
+        reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap();
+
+        reconcile_codex_auth_state(
+            tmp.path(),
+            DesiredCodexAuth::ApiKey {
+                api_key: "sk-test-next-run",
+            },
+        )
+        .unwrap();
+
+        let auth = read_auth_json(&tmp);
+        assert_eq!(auth["auth_mode"], "apikey");
+        assert_eq!(auth["OPENAI_API_KEY"], "sk-test-next-run");
+        assert!(
+            auth.get("tokens").is_none(),
+            "API-key reconciliation must remove stale ChatGPT tokens: {auth}"
+        );
+    }
+
+    #[test]
+    fn reconcile_codex_auth_state_no_auth_removes_existing_auth_json() {
+        let tmp = TempDir::new().unwrap();
+        reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap();
+        let auth_path = tmp.path().join(".codex").join("auth.json");
+
+        reconcile_codex_auth_state(tmp.path(), DesiredCodexAuth::None).unwrap();
+
+        let err = std::fs::symlink_metadata(&auth_path).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn reconcile_codex_auth_state_no_auth_removes_auth_json_symlink_without_touching_target() {
+        let tmp = TempDir::new().unwrap();
+        let codex_home = tmp.path().join(".codex");
+        std::fs::create_dir_all(&codex_home).unwrap();
+        let auth_path = codex_home.join("auth.json");
+        let symlink_target = tmp.path().join("target-auth.json");
+        std::fs::write(&symlink_target, b"TARGET_CONTENT_MUST_SURVIVE").unwrap();
+        symlink(&symlink_target, &auth_path).unwrap();
+
+        reconcile_codex_auth_state(tmp.path(), DesiredCodexAuth::None).unwrap();
+
+        assert_eq!(
+            std::fs::read_to_string(&symlink_target).unwrap(),
+            "TARGET_CONTENT_MUST_SURVIVE",
+            "no-auth reconciliation must not touch the old symlink target"
+        );
+        let err = std::fs::symlink_metadata(&auth_path).unwrap_err();
+        assert_eq!(err.kind(), std::io::ErrorKind::NotFound);
+    }
+
+    #[test]
+    fn reconcile_codex_auth_state_no_auth_succeeds_when_auth_json_missing() {
+        let tmp = TempDir::new().unwrap();
+
+        reconcile_codex_auth_state(tmp.path(), DesiredCodexAuth::None).unwrap();
+
+        let codex_home = tmp.path().join(".codex");
+        assert!(
+            codex_home.is_dir(),
+            "no-auth reconciliation should still normalize .codex"
+        );
+        let mode = std::fs::metadata(&codex_home).unwrap().permissions().mode();
+        assert_eq!(mode & 0o7777, CODEX_HOME_MODE);
+    }
+
+    #[test]
+    fn reconcile_codex_auth_state_no_auth_rejects_auth_json_directory() {
+        let tmp = TempDir::new().unwrap();
+        let auth_path = tmp.path().join(".codex").join("auth.json");
+        std::fs::create_dir_all(&auth_path).unwrap();
+
+        let err = reconcile_codex_auth_state(tmp.path(), DesiredCodexAuth::None).unwrap_err();
+
+        assert!(
+            err.to_string().contains("auth.json"),
+            "unexpected error: {err}"
+        );
+        assert!(auth_path.is_dir(), "auth.json directory must be preserved");
+    }
+
+    #[test]
+    fn reconcile_chatgpt_auth_replaces_permissive_auth_json_with_private_file() {
         let tmp = TempDir::new().unwrap();
         let codex_home = tmp.path().join(".codex");
         std::fs::create_dir_all(&codex_home).unwrap();
@@ -416,7 +587,7 @@ mod tests {
         std::fs::write(&auth_path, b"STALE_CONTENT_FROM_PRIOR_RUN").unwrap();
         std::fs::set_permissions(&auth_path, std::fs::Permissions::from_mode(0o644)).unwrap();
 
-        setup_codex_chatgpt_inner(tmp.path(), fixed_now()).unwrap();
+        reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap();
 
         let mode = std::fs::metadata(&auth_path).unwrap().permissions().mode();
         assert_eq!(
@@ -434,7 +605,7 @@ mod tests {
     }
 
     #[test]
-    fn setup_codex_chatgpt_inner_replaces_auth_json_symlink_without_truncating_target() {
+    fn reconcile_chatgpt_auth_replaces_auth_json_symlink_without_truncating_target() {
         let tmp = TempDir::new().unwrap();
         let codex_home = tmp.path().join(".codex");
         std::fs::create_dir_all(&codex_home).unwrap();
@@ -443,7 +614,7 @@ mod tests {
         std::fs::write(&symlink_target, b"TARGET_CONTENT_MUST_SURVIVE").unwrap();
         symlink(&symlink_target, &auth_path).unwrap();
 
-        setup_codex_chatgpt_inner(tmp.path(), fixed_now()).unwrap();
+        reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap();
 
         assert_eq!(
             std::fs::read_to_string(&symlink_target).unwrap(),
@@ -465,13 +636,13 @@ mod tests {
     }
 
     #[test]
-    fn setup_codex_chatgpt_inner_normalizes_existing_codex_home_permissions() {
+    fn reconcile_chatgpt_auth_normalizes_existing_codex_home_permissions() {
         let tmp = TempDir::new().unwrap();
         let codex_home = tmp.path().join(".codex");
         std::fs::create_dir_all(&codex_home).unwrap();
         std::fs::set_permissions(&codex_home, std::fs::Permissions::from_mode(0o755)).unwrap();
 
-        setup_codex_chatgpt_inner(tmp.path(), fixed_now()).unwrap();
+        reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap();
 
         let mode = std::fs::metadata(&codex_home).unwrap().permissions().mode();
         assert_eq!(
@@ -482,13 +653,13 @@ mod tests {
     }
 
     #[test]
-    fn setup_codex_chatgpt_inner_rejects_symlinked_codex_home() {
+    fn reconcile_chatgpt_auth_rejects_symlinked_codex_home() {
         let tmp = TempDir::new().unwrap();
         let target = tmp.path().join("real-codex-home");
         std::fs::create_dir_all(&target).unwrap();
         symlink(&target, tmp.path().join(".codex")).unwrap();
 
-        let err = setup_codex_chatgpt_inner(tmp.path(), fixed_now()).unwrap_err();
+        let err = reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap_err();
         assert!(
             err.to_string().contains("symlinked directory"),
             "unexpected error: {err}"
@@ -496,12 +667,12 @@ mod tests {
     }
 
     #[test]
-    fn setup_codex_chatgpt_inner_rejects_file_at_codex_home_path() {
+    fn reconcile_chatgpt_auth_rejects_file_at_codex_home_path() {
         let tmp = TempDir::new().unwrap();
         let codex_home = tmp.path().join(".codex");
         std::fs::write(&codex_home, b"not a directory").unwrap();
 
-        let err = setup_codex_chatgpt_inner(tmp.path(), fixed_now()).unwrap_err();
+        let err = reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap_err();
         assert!(
             err.to_string().contains(".codex"),
             "unexpected error: {err}"
@@ -514,13 +685,13 @@ mod tests {
     }
 
     #[test]
-    fn setup_codex_chatgpt_inner_preserves_auth_json_directory_on_error() {
+    fn reconcile_chatgpt_auth_preserves_auth_json_directory_on_error() {
         let tmp = TempDir::new().unwrap();
         let codex_home = tmp.path().join(".codex");
         let auth_path = codex_home.join("auth.json");
         std::fs::create_dir_all(&auth_path).unwrap();
 
-        let err = setup_codex_chatgpt_inner(tmp.path(), fixed_now()).unwrap_err();
+        let err = reconcile_chatgpt_auth(tmp.path(), fixed_now()).unwrap_err();
         assert!(
             err.to_string().contains("auth.json"),
             "unexpected error: {err}"

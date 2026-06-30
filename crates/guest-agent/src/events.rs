@@ -594,7 +594,7 @@ fn raw_claude_session_id(event: &Value) -> Option<&str> {
 }
 
 /// Codex variant — matches `thread.started` and emits a session-history
-/// marker pointing at `${HOME}/.codex/sessions` plus the thread_id.
+/// marker pointing at the Codex home sessions directory plus the thread_id.
 fn extract_codex_thread_id(event: &Value) -> Option<(String, String)> {
     let thread_id = raw_codex_thread_id(event)?;
     let thread_id = guest_contracts::codex_thread_id::canonical_codex_thread_id(thread_id)?;

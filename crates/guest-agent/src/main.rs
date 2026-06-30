@@ -283,12 +283,23 @@ async fn execute(
     }
     record_sandbox_op("working_dir_setup", wd_start.elapsed(), true, None);
 
-    // Codex setup: best-effort `codex login`. Failure is non-fatal —
-    // `codex exec` also receives `OPENAI_API_KEY` through the curated CLI env.
+    // Codex auth reconciliation must complete before the CLI starts. On reused
+    // sandboxes, continuing after a setup failure can inherit stale auth state
+    // from an earlier run.
     if matches!(config.framework, env::Framework::Codex)
         && let Err(e) = cli::setup_codex(masker).await
     {
-        log_error!(LOG_TAG, "Codex setup failed (non-fatal, continuing): {e}");
+        let msg = format!(
+            "Codex auth setup failed: {}",
+            masker.mask_string(&e.to_string())
+        );
+        log_error!(LOG_TAG, "{msg}");
+        write_guest_error_file(&msg);
+        write_guest_failure_diagnostic(&base_failure_diagnostic_for_config(
+            config,
+            FailureClass::CliExecutionError,
+        ));
+        return 1;
     }
 
     // Memory is mounted directly through manifest.artifacts[] at the

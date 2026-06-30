@@ -5,7 +5,7 @@
 //! guest env flag selects this backend.
 
 use std::future::Future;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 
 use serde_json::{Map, Value, json};
 use tokio::sync::oneshot;
@@ -346,7 +346,7 @@ fn codex_app_server_config() -> CodexAppServerConfig {
     } else {
         PathBuf::from("codex")
     };
-    let codex_home = PathBuf::from(format!("{}/.codex", env::home_dir()));
+    let codex_home = crate::codex_auth::codex_home_path(Path::new(env::home_dir()));
     let mut config = CodexAppServerConfig::new(binary, codex_home)
         .with_current_dir(paths::CANONICAL_WORKING_DIR)
         .with_opt_out_notification_methods(IGNORED_NOTIFICATION_METHODS.iter().copied());
