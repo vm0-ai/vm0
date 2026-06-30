@@ -4,49 +4,27 @@ import {
   OFFICIAL_TELEGRAM_BOT_ID,
   zeroIntegrationsTelegramContract,
 } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
-import {
-  agentComposeVersions,
-  agentComposes,
-} from "@vm0/db/schema/agent-compose";
-import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
-import { agentRuns } from "@vm0/db/schema/agent-run";
-import { agentSessions } from "@vm0/db/schema/agent-session";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { orgMembersMetadata } from "@vm0/db/schema/org-members-metadata";
-import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
-import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramMessages } from "@vm0/db/schema/telegram-message";
-import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
-import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
-import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { command, createStore } from "ccstate";
-import { and, desc, eq, inArray } from "drizzle-orm";
+import type {
+  TestTelegramStateActionBody,
+  TestTelegramStateActionResponse,
+  TestTelegramStateResponse,
+} from "@vm0/api-contracts/contracts/test-telegram-state";
 import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createApp } from "../../../app-factory";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
+import { computeHmacSignature } from "../../../lib/event-consumer/hmac";
 import { clearMockedEnv, mockEnv, mockOptionalEnv } from "../../../lib/env";
+import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
-import { writeDb$ } from "../../external/db";
-import { nowDate } from "../../external/time";
 import { flushWaitUntilForTest } from "../../context/wait-until";
-import { dispatchRunCallbacks$ } from "../../services/agent-run-callback.service";
-import {
-  decryptSecretForTests,
-  encryptSecretForTests,
-} from "./helpers/encrypt-secret";
 import {
   createFixtureTracker,
   createZeroRouteMocks,
 } from "./helpers/zero-route-test";
 
 const context = testContext();
-const store = createStore();
 const mocks = createZeroRouteMocks(context);
 
 const TEST_BOT_TOKEN = "123456:test-bot-token";
@@ -54,6 +32,10 @@ const NEW_BOT_TOKEN = "123456:new-test-bot-token";
 const OFFICIAL_BOT_TOKEN = "987654:official-bot-token";
 const OFFICIAL_BOT_USERNAME = "official_zero_bot";
 const OFFICIAL_WEBHOOK_SECRET = "official-webhook-secret";
+const CALLBACK_SECRET = "test-callback-secret";
+const TELEGRAM_STATE_ACTION_ROUTE = "/api/test/telegram-state/action";
+const TELEGRAM_STATE_ROUTE = "/api/test/telegram-state";
+const TELEGRAM_CALLBACK_ROUTE = "/api/internal/callbacks/telegram";
 
 interface TelegramPostFixture {
   readonly orgId: string;
@@ -149,220 +131,122 @@ function telegramApiMocks(token = TEST_BOT_TOKEN): {
   return { chatActions, sentMessages };
 }
 
-const seedTelegramPostFixture$ = command(
-  async (
-    { set },
-    args: {
-      readonly orgId?: string;
-      readonly userId?: string;
-      readonly telegramBotId?: string;
-      readonly installBot?: boolean;
-      readonly linkTelegramUser?: boolean;
-      readonly seedOfficialLink?: boolean;
-      readonly seedDefaultAgent?: boolean;
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+async function expectOk(response: Response, operation: string): Promise<void> {
+  if (response.ok) {
+    return;
+  }
+  throw new Error(`${operation} failed with ${response.status}`);
+}
+
+async function postTelegramStateAction(
+  body: TestTelegramStateActionBody,
+): Promise<TestTelegramStateActionResponse> {
+  const response = await createApp({ signal: context.signal }).request(
+    TELEGRAM_STATE_ACTION_ROUTE,
+    {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
     },
-    signal: AbortSignal,
-  ): Promise<TelegramPostFixture> => {
-    const db = set(writeDb$);
-    const orgId = args.orgId ?? `org_${randomUUID().slice(0, 8)}`;
-    const userId = args.userId ?? `user_${randomUUID().slice(0, 8)}`;
-    const composeId = randomUUID();
-    const versionId = randomUUID();
-    const telegramBotId = args.telegramBotId ?? newTelegramBotId();
-    const webhookSecret = `whs_${randomUUID()}`;
-    const name = `telegram-agent-${composeId.slice(0, 8)}`;
+  );
+  await expectOk(response, `telegram state action ${body.action}`);
+  return await readJson<TestTelegramStateActionResponse>(response);
+}
 
-    await db.insert(agentComposes).values({
-      id: composeId,
-      userId,
-      orgId,
-      name,
-    });
-    signal.throwIfAborted();
-    await db.insert(agentComposeVersions).values({
-      id: versionId,
-      composeId,
-      content: {
-        version: "1.0",
-        agents: {
-          telegram: {
-            framework: "claude-code",
-            environment: { ANTHROPIC_API_KEY: "test-key" },
-          },
-        },
-      },
-      createdBy: userId,
-    });
-    signal.throwIfAborted();
-    await db
-      .update(agentComposes)
-      .set({ headVersionId: versionId })
-      .where(eq(agentComposes.id, composeId));
-    signal.throwIfAborted();
-    await db.insert(zeroAgents).values({
-      id: composeId,
-      orgId,
-      owner: userId,
-      name,
-      displayName: "Telegram Agent",
-      visibility: "public",
-    });
-    signal.throwIfAborted();
+async function readTelegramState(
+  botId: string,
+): Promise<TestTelegramStateResponse> {
+  const response = await createApp({ signal: context.signal }).request(
+    `${TELEGRAM_STATE_ROUTE}?bot_id=${encodeURIComponent(botId)}`,
+  );
+  await expectOk(response, "read telegram state");
+  return await readJson<TestTelegramStateResponse>(response);
+}
 
-    if (args.seedDefaultAgent ?? true) {
-      await db
-        .insert(orgMetadata)
-        .values({
-          orgId,
-          defaultAgentId: composeId,
-          tier: "free",
-          credits: 100_000,
-        })
-        .onConflictDoUpdate({
-          target: orgMetadata.orgId,
-          set: { defaultAgentId: composeId, tier: "free", credits: 100_000 },
-        });
-      signal.throwIfAborted();
-    }
-    await db.insert(vm0ApiKeys).values([
-      {
-        vendor: "anthropic",
-        model: "claude-sonnet-4-6",
-        apiKey: `vm0-key-anthropic-${composeId}`,
-        label: composeId,
-      },
-      {
-        vendor: "deepseek",
-        model: "deepseek-v4-pro",
-        apiKey: `vm0-key-deepseek-${composeId}`,
-        label: composeId,
-      },
-      {
-        vendor: "moonshot",
-        model: "kimi-k2.7-code",
-        apiKey: `vm0-key-moonshot-${composeId}`,
-        label: composeId,
-      },
-    ]);
-    signal.throwIfAborted();
+function signedHeaders(rawBody: string): Record<string, string> {
+  const timestamp = Math.floor(now() / 1000);
+  return {
+    "content-type": "application/json",
+    "x-vm0-signature": computeHmacSignature(
+      rawBody,
+      CALLBACK_SECRET,
+      timestamp,
+    ),
+    "x-vm0-timestamp": String(timestamp),
+  };
+}
 
-    if (args.installBot ?? true) {
-      await db.insert(telegramInstallations).values({
-        telegramBotId,
-        botUsername: `bot_${telegramBotId}`,
-        encryptedBotToken: encryptSecretForTests(TEST_BOT_TOKEN),
-        webhookSecret,
-        defaultComposeId: composeId,
-        ownerUserId: userId,
-        orgId,
-      });
-      signal.throwIfAborted();
-    }
+async function postTelegramCallback(body: Record<string, unknown>) {
+  const rawBody = JSON.stringify(body);
+  const response = await createApp({ signal: context.signal }).request(
+    TELEGRAM_CALLBACK_ROUTE,
+    {
+      method: "POST",
+      headers: signedHeaders(rawBody),
+      body: rawBody,
+    },
+  );
+  await expectOk(response, "telegram callback");
+  return await readJson<{ readonly success: true }>(response);
+}
 
-    const telegramUserId = args.linkTelegramUser ? "99001" : undefined;
-    if (telegramUserId) {
-      await db.insert(telegramUserLinks).values({
-        installationId: telegramBotId,
-        telegramUserId,
-        telegramUsername: "alice",
-        telegramDisplayName: "Alice",
-        vm0UserId: userId,
-      });
-      signal.throwIfAborted();
-    }
-
-    if (args.seedOfficialLink) {
-      await db.insert(telegramOfficialUserLinks).values({
-        orgId,
-        vm0UserId: userId,
-        telegramUserId: "99002",
-        telegramUsername: "bob",
-        telegramDisplayName: "Bob",
-      });
-      signal.throwIfAborted();
-    }
-
-    return {
-      orgId,
-      userId,
-      composeId,
-      versionId,
-      telegramBotId,
-      webhookSecret,
-      telegramUserId,
-    };
-  },
-);
+async function seedTelegramPostFixture(
+  args: {
+    readonly orgId?: string;
+    readonly userId?: string;
+    readonly telegramBotId?: string;
+    readonly installBot?: boolean;
+    readonly linkTelegramUser?: boolean;
+    readonly seedOfficialLink?: boolean;
+    readonly seedDefaultAgent?: boolean;
+  } = {},
+): Promise<TelegramPostFixture> {
+  const response = await postTelegramStateAction({
+    action: "seed-post-fixture",
+    org_id: args.orgId,
+    user_id: args.userId,
+    telegram_bot_id: args.telegramBotId,
+    install_bot: args.installBot,
+    link_telegram_user: args.linkTelegramUser,
+    seed_official_link: args.seedOfficialLink,
+    seed_default_agent: args.seedDefaultAgent,
+    bot_token: TEST_BOT_TOKEN,
+  });
+  const fixture =
+    typeof response.fixture === "object" && response.fixture !== null
+      ? (response.fixture as Record<string, unknown>)
+      : null;
+  if (!fixture) {
+    throw new Error("seedTelegramPostFixture: response missing fixture");
+  }
+  return {
+    orgId: String(fixture.org_id),
+    userId: String(fixture.user_id),
+    composeId: String(fixture.compose_id),
+    versionId: String(fixture.version_id),
+    telegramBotId: String(fixture.telegram_bot_id),
+    webhookSecret: String(fixture.webhook_secret),
+    telegramUserId:
+      typeof fixture.telegram_user_id === "string"
+        ? fixture.telegram_user_id
+        : undefined,
+  };
+}
 
 async function deleteTelegramPostFixture(
   fixture: TelegramPostFixture,
 ): Promise<void> {
-  const db = store.set(writeDb$);
-  const runRows = await db
-    .select({ id: agentRuns.id })
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.orgId, fixture.orgId),
-        eq(agentRuns.userId, fixture.userId),
-      ),
-    );
-  const runIds = runRows.map((row) => {
-    return row.id;
+  await postTelegramStateAction({
+    action: "delete-post-fixture",
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+    compose_id: fixture.composeId,
+    telegram_bot_id: fixture.telegramBotId,
   });
-
-  if (runIds.length > 0) {
-    await db
-      .delete(runnerJobQueue)
-      .where(inArray(runnerJobQueue.runId, runIds));
-    await db
-      .delete(agentRunCallbacks)
-      .where(inArray(agentRunCallbacks.runId, runIds));
-    await db.delete(zeroRuns).where(inArray(zeroRuns.id, runIds));
-    await db.delete(agentRuns).where(inArray(agentRuns.id, runIds));
-  }
-
-  await db
-    .delete(agentSessions)
-    .where(
-      and(
-        eq(agentSessions.orgId, fixture.orgId),
-        eq(agentSessions.userId, fixture.userId),
-      ),
-    );
-  await db
-    .delete(orgModelPolicies)
-    .where(eq(orgModelPolicies.orgId, fixture.orgId));
-  await db
-    .delete(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, fixture.orgId),
-        eq(orgMembersMetadata.userId, fixture.userId),
-      ),
-    );
-  await db.delete(vm0ApiKeys).where(eq(vm0ApiKeys.label, fixture.composeId));
-  await db
-    .delete(telegramMessages)
-    .where(eq(telegramMessages.installationId, fixture.telegramBotId));
-  await db
-    .delete(telegramMessages)
-    .where(eq(telegramMessages.officialOrgId, fixture.orgId));
-  await db
-    .delete(telegramOfficialUserLinks)
-    .where(eq(telegramOfficialUserLinks.orgId, fixture.orgId));
-  await db
-    .delete(telegramUserLinks)
-    .where(eq(telegramUserLinks.installationId, fixture.telegramBotId));
-  await db
-    .delete(telegramInstallations)
-    .where(eq(telegramInstallations.telegramBotId, fixture.telegramBotId));
-  await db.delete(orgMetadata).where(eq(orgMetadata.orgId, fixture.orgId));
-  await db
-    .delete(agentComposeVersions)
-    .where(eq(agentComposeVersions.composeId, fixture.composeId));
-  await db.delete(zeroAgents).where(eq(zeroAgents.id, fixture.composeId));
-  await db.delete(agentComposes).where(eq(agentComposes.id, fixture.composeId));
 }
 
 const trackFixture = createFixtureTracker<TelegramPostFixture>(
@@ -420,20 +304,137 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
-async function latestRunForFixture(fixture: TelegramPostFixture) {
-  const db = store.set(writeDb$);
-  const [run] = await db
-    .select()
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.orgId, fixture.orgId),
-        eq(agentRuns.userId, fixture.userId),
-      ),
-    )
-    .orderBy(desc(agentRuns.createdAt))
-    .limit(1);
-  return run;
+function requiredStringField(
+  record: Record<string, unknown>,
+  field: string,
+): string {
+  const value = record[field];
+  if (typeof value !== "string") {
+    throw new Error(`Expected ${field} to be a string`);
+  }
+  return value;
+}
+
+function nullableStringField(
+  record: Record<string, unknown>,
+  field: string,
+): string | null {
+  const value = record[field];
+  return typeof value === "string" ? value : null;
+}
+
+function stateRecord(value: unknown): Record<string, unknown> | null {
+  return isRecord(value) ? value : null;
+}
+
+function stateRecords(value: unknown): readonly Record<string, unknown>[] {
+  if (!Array.isArray(value)) {
+    return [];
+  }
+  return value.filter(isRecord);
+}
+
+interface TelegramRunSnapshot {
+  readonly id: string;
+  readonly status: string | null;
+  readonly error: string | null;
+  readonly prompt: string | null;
+  readonly appendSystemPrompt: string | null;
+  readonly continuedFromSessionId: string | null;
+  readonly sessionId: string | null;
+}
+
+interface TelegramZeroRunSnapshot {
+  readonly id: string;
+  readonly triggerSource: string | null;
+  readonly modelProvider: string | null;
+  readonly selectedModel: string | null;
+}
+
+interface TelegramCallbackSnapshot {
+  readonly id: string;
+  readonly url: string | null;
+  readonly internalKind: string | null;
+  readonly payload: unknown;
+  readonly status: string | null;
+}
+
+interface TelegramPostRunState {
+  readonly run: TelegramRunSnapshot | null;
+  readonly zeroRun: TelegramZeroRunSnapshot | null;
+  readonly callbacks: readonly TelegramCallbackSnapshot[];
+  readonly jobExists: boolean;
+}
+
+function runSnapshot(value: unknown): TelegramRunSnapshot | null {
+  const record = stateRecord(value);
+  if (!record) {
+    return null;
+  }
+  return {
+    id: requiredStringField(record, "id"),
+    status: nullableStringField(record, "status"),
+    error: nullableStringField(record, "error"),
+    prompt: nullableStringField(record, "prompt"),
+    appendSystemPrompt: nullableStringField(record, "appendSystemPrompt"),
+    continuedFromSessionId: nullableStringField(
+      record,
+      "continuedFromSessionId",
+    ),
+    sessionId: nullableStringField(record, "sessionId"),
+  };
+}
+
+function zeroRunSnapshot(value: unknown): TelegramZeroRunSnapshot | null {
+  const record = stateRecord(value);
+  if (!record) {
+    return null;
+  }
+  return {
+    id: requiredStringField(record, "id"),
+    triggerSource: nullableStringField(record, "triggerSource"),
+    modelProvider: nullableStringField(record, "modelProvider"),
+    selectedModel: nullableStringField(record, "selectedModel"),
+  };
+}
+
+function callbackSnapshot(value: unknown): TelegramCallbackSnapshot {
+  const record = stateRecord(value);
+  if (!record) {
+    throw new Error("Expected callback state to be an object");
+  }
+  return {
+    id: requiredStringField(record, "id"),
+    url: nullableStringField(record, "url"),
+    internalKind: nullableStringField(record, "internalKind"),
+    payload: record.payload,
+    status: nullableStringField(record, "status"),
+  };
+}
+
+async function telegramPostRunState(
+  fixture: TelegramPostFixture,
+  prompt?: string,
+): Promise<TelegramPostRunState> {
+  const response = await postTelegramStateAction({
+    action: "get-post-run-state",
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+    prompt,
+  });
+
+  return {
+    run: runSnapshot(response.run),
+    zeroRun: zeroRunSnapshot(response.zero_run),
+    callbacks: stateRecords(response.callbacks).map(callbackSnapshot),
+    jobExists: response.job_exists === true,
+  };
+}
+
+async function latestRunForFixture(
+  fixture: TelegramPostFixture,
+): Promise<TelegramRunSnapshot | null> {
+  return (await telegramPostRunState(fixture)).run;
 }
 
 function sandboxOperationEventsForRun(
@@ -457,41 +458,14 @@ function sandboxOperationEventsForRun(
 async function runForFixturePrompt(
   fixture: TelegramPostFixture,
   prompt: string,
-) {
-  const db = store.set(writeDb$);
-  const [run] = await db
-    .select()
-    .from(agentRuns)
-    .where(
-      and(
-        eq(agentRuns.orgId, fixture.orgId),
-        eq(agentRuns.userId, fixture.userId),
-        eq(agentRuns.prompt, prompt),
-      ),
-    )
-    .limit(1);
-  return run;
+): Promise<TelegramRunSnapshot | null> {
+  return (await telegramPostRunState(fixture, prompt)).run;
 }
 
-async function latestZeroRunForFixture(fixture: TelegramPostFixture) {
-  const db = store.set(writeDb$);
-  const [run] = await db
-    .select({
-      id: zeroRuns.id,
-      modelProvider: zeroRuns.modelProvider,
-      selectedModel: zeroRuns.selectedModel,
-    })
-    .from(zeroRuns)
-    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(
-      and(
-        eq(agentRuns.orgId, fixture.orgId),
-        eq(agentRuns.userId, fixture.userId),
-      ),
-    )
-    .orderBy(desc(agentRuns.createdAt))
-    .limit(1);
-  return run;
+async function latestZeroRunForFixture(
+  fixture: TelegramPostFixture,
+): Promise<TelegramZeroRunSnapshot | null> {
+  return (await telegramPostRunState(fixture)).zeroRun;
 }
 
 function mentionEntity(username: string) {
@@ -501,73 +475,63 @@ function mentionEntity(username: string) {
 async function linkedTelegramUserLinkId(
   fixture: TelegramPostFixture,
 ): Promise<string> {
-  const db = store.set(writeDb$);
-  const [link] = await db
-    .select({ id: telegramUserLinks.id })
-    .from(telegramUserLinks)
-    .where(
-      and(
-        eq(telegramUserLinks.installationId, fixture.telegramBotId),
-        eq(telegramUserLinks.vm0UserId, fixture.userId),
-      ),
-    )
-    .limit(1);
-  if (!link) {
+  const response = await postTelegramStateAction({
+    action: "get-telegram-link-id",
+    installation_id: fixture.telegramBotId,
+    user_id: fixture.userId,
+  });
+  if (typeof response.link_id !== "string") {
     throw new Error("Expected seeded Telegram user link");
   }
-  return link.id;
+  return response.link_id;
 }
 
 async function officialTelegramUserLinkId(
   fixture: TelegramPostFixture,
 ): Promise<string> {
-  const db = store.set(writeDb$);
-  const [link] = await db
-    .select({ id: telegramOfficialUserLinks.id })
-    .from(telegramOfficialUserLinks)
-    .where(
-      and(
-        eq(telegramOfficialUserLinks.orgId, fixture.orgId),
-        eq(telegramOfficialUserLinks.vm0UserId, fixture.userId),
-      ),
-    )
-    .limit(1);
-  if (!link) {
+  const response = await postTelegramStateAction({
+    action: "get-telegram-link-id",
+    kind: "official",
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+  });
+  if (typeof response.link_id !== "string") {
     throw new Error("Expected seeded official Telegram user link");
   }
-  return link.id;
+  return response.link_id;
 }
 
 async function seedAgentSession(fixture: TelegramPostFixture): Promise<string> {
-  const db = store.set(writeDb$);
-  const [session] = await db
-    .insert(agentSessions)
-    .values({
-      userId: fixture.userId,
-      orgId: fixture.orgId,
-      agentComposeId: fixture.composeId,
-    })
-    .returning({ id: agentSessions.id });
-  if (!session) {
+  const response = await postTelegramStateAction({
+    action: "seed-agent-session",
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+    compose_id: fixture.composeId,
+  });
+  if (typeof response.agent_session_id !== "string") {
     throw new Error("Failed to seed Telegram agent session");
   }
-  return session.id;
+  return response.agent_session_id;
 }
 
 async function seedTelegramThreadSession(args: {
+  readonly fixture: TelegramPostFixture;
   readonly telegramUserLinkId?: string;
   readonly telegramOfficialUserLinkId?: string;
   readonly chatId: string;
   readonly rootMessageId: string;
   readonly agentSessionId: string;
 }): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(telegramThreadSessions).values({
-    telegramUserLinkId: args.telegramUserLinkId,
-    telegramOfficialUserLinkId: args.telegramOfficialUserLinkId,
-    chatId: args.chatId,
-    rootMessageId: args.rootMessageId,
-    agentSessionId: args.agentSessionId,
+  await postTelegramStateAction({
+    action: "seed-thread-session",
+    org_id: args.fixture.orgId,
+    user_id: args.fixture.userId,
+    compose_id: args.fixture.composeId,
+    user_link_id: args.telegramUserLinkId,
+    official_user_link_id: args.telegramOfficialUserLinkId,
+    chat_id: args.chatId,
+    root_message_id: args.rootMessageId,
+    agent_session_id: args.agentSessionId,
   });
 }
 
@@ -576,34 +540,22 @@ async function hasTelegramThreadSession(args: {
   readonly chatId: string;
   readonly rootMessageId: string;
 }): Promise<boolean> {
-  const db = store.set(writeDb$);
-  const [thread] = await db
-    .select({ id: telegramThreadSessions.id })
-    .from(telegramThreadSessions)
-    .where(
-      and(
-        eq(telegramThreadSessions.telegramUserLinkId, args.telegramUserLinkId),
-        eq(telegramThreadSessions.chatId, args.chatId),
-        eq(telegramThreadSessions.rootMessageId, args.rootMessageId),
-      ),
-    )
-    .limit(1);
-  return thread !== undefined;
+  const response = await postTelegramStateAction({
+    action: "has-thread-session",
+    user_link_id: args.telegramUserLinkId,
+    chat_id: args.chatId,
+    root_message_id: args.rootMessageId,
+  });
+  return response.exists === true;
 }
 
 async function seedRunningRun(fixture: TelegramPostFixture): Promise<void> {
-  const db = store.set(writeDb$);
-  const sessionId = await seedAgentSession(fixture);
-  const startedAt = nowDate();
-  await db.insert(agentRuns).values({
-    userId: fixture.userId,
-    orgId: fixture.orgId,
-    agentComposeVersionId: fixture.versionId,
-    sessionId,
-    status: "running",
-    prompt: "existing running telegram run",
-    startedAt,
-    lastHeartbeatAt: startedAt,
+  await postTelegramStateAction({
+    action: "seed-running-run",
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+    version_id: fixture.versionId,
+    compose_id: fixture.composeId,
   });
 }
 
@@ -612,119 +564,66 @@ async function seedCompletedRun(args: {
   readonly modelProvider?: string | null;
   readonly selectedModel: string;
 }): Promise<string> {
-  const db = store.set(writeDb$);
-  const sessionId = await seedAgentSession(args.fixture);
-  const [run] = await db
-    .insert(agentRuns)
-    .values({
-      userId: args.fixture.userId,
-      orgId: args.fixture.orgId,
-      agentComposeVersionId: args.fixture.versionId,
-      sessionId,
-      status: "completed",
-      prompt: "previous telegram session",
-      createdAt: new Date("2026-01-01T00:00:00.000Z"),
-      startedAt: new Date("2026-01-01T00:00:00.000Z"),
-      completedAt: new Date("2026-01-01T00:01:00.000Z"),
-    })
-    .returning({ id: agentRuns.id });
-  if (!run) {
+  const response = await postTelegramStateAction({
+    action: "seed-completed-run",
+    org_id: args.fixture.orgId,
+    user_id: args.fixture.userId,
+    version_id: args.fixture.versionId,
+    compose_id: args.fixture.composeId,
+    model_provider: args.modelProvider,
+    selected_model: args.selectedModel,
+  });
+  if (typeof response.agent_session_id !== "string") {
     throw new Error("Failed to seed previous Telegram run");
   }
-  await db.insert(zeroRuns).values({
-    id: run.id,
-    triggerSource: "telegram",
-    modelProvider: args.modelProvider ?? null,
-    selectedModel: args.selectedModel,
-  });
-  return sessionId;
+  return response.agent_session_id;
 }
 
 async function seedModelPolicies(args: {
   readonly fixture: TelegramPostFixture;
   readonly selectedModel?: string | null;
 }): Promise<void> {
-  const db = store.set(writeDb$);
-  await db.insert(orgModelPolicies).values([
-    {
-      orgId: args.fixture.orgId,
-      model: "claude-sonnet-4-6",
-      isDefault: true,
-      defaultProviderType: "vm0",
-      credentialScope: "org",
-      createdByUserId: args.fixture.userId,
-      updatedByUserId: args.fixture.userId,
-    },
-    {
-      orgId: args.fixture.orgId,
-      model: "claude-opus-4-7",
-      defaultProviderType: "vm0",
-      credentialScope: "org",
-      createdByUserId: args.fixture.userId,
-      updatedByUserId: args.fixture.userId,
-    },
-    {
-      orgId: args.fixture.orgId,
-      model: "deepseek-v4-pro",
-      defaultProviderType: "vm0",
-      credentialScope: "org",
-      createdByUserId: args.fixture.userId,
-      updatedByUserId: args.fixture.userId,
-    },
-  ]);
-  await db.insert(vm0ApiKeys).values([
-    {
-      vendor: "anthropic",
-      model: "claude-sonnet-4-6",
-      apiKey: "vm0-key-claude-sonnet-4-6",
-      label: args.fixture.composeId,
-    },
-    {
-      vendor: "anthropic",
-      model: "claude-opus-4-7",
-      apiKey: "vm0-key-claude-opus-4-7",
-      label: args.fixture.composeId,
-    },
-  ]);
-  await db
-    .insert(orgMembersMetadata)
-    .values({
-      orgId: args.fixture.orgId,
-      userId: args.fixture.userId,
-      selectedModel: args.selectedModel ?? null,
-    })
-    .onConflictDoUpdate({
-      target: [orgMembersMetadata.orgId, orgMembersMetadata.userId],
-      set: { selectedModel: args.selectedModel ?? null },
-    });
+  await postTelegramStateAction({
+    action: "seed-model-policies",
+    org_id: args.fixture.orgId,
+    user_id: args.fixture.userId,
+    compose_id: args.fixture.composeId,
+    selected_model: args.selectedModel,
+  });
 }
 
 async function seedOrgCredits(
   fixture: TelegramPostFixture,
   credits: number,
 ): Promise<void> {
-  await store
-    .set(writeDb$)
-    .update(orgMetadata)
-    .set({ credits })
-    .where(eq(orgMetadata.orgId, fixture.orgId));
+  await postTelegramStateAction({
+    action: "seed-org-credits",
+    org_id: fixture.orgId,
+    credits,
+  });
 }
 
 async function selectedModelFor(
   fixture: TelegramPostFixture,
 ): Promise<string | null> {
-  const db = store.set(writeDb$);
-  const [row] = await db
-    .select({ selectedModel: orgMembersMetadata.selectedModel })
-    .from(orgMembersMetadata)
-    .where(
-      and(
-        eq(orgMembersMetadata.orgId, fixture.orgId),
-        eq(orgMembersMetadata.userId, fixture.userId),
-      ),
-    )
-    .limit(1);
-  return row?.selectedModel ?? null;
+  const response = await postTelegramStateAction({
+    action: "get-selected-model",
+    org_id: fixture.orgId,
+    user_id: fixture.userId,
+  });
+  return typeof response.selected_model === "string"
+    ? response.selected_model
+    : null;
+}
+
+async function seedPendingUserLink(
+  fixture: TelegramPostFixture,
+): Promise<void> {
+  await postTelegramStateAction({
+    action: "seed-pending-user-link",
+    installation_id: fixture.telegramBotId,
+    user_id: fixture.userId,
+  });
 }
 
 describe("POST /api/telegram/setup-status", () => {
@@ -810,11 +709,7 @@ describe("POST /api/telegram/setup-status", () => {
 
   it("rejects an already installed bot", async () => {
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { linkTelegramUser: false },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ linkTelegramUser: false }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockTelegramGetMe({ botId: fixture.telegramBotId });
@@ -874,11 +769,7 @@ describe("POST /api/telegram/register", () => {
   it("registers a custom Telegram bot and configures its webhook", async () => {
     const telegramBotId = newTelegramBotId();
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { telegramBotId, installBot: false },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ telegramBotId, installBot: false }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockEnv("VM0_API_URL", "https://api.example.test");
@@ -919,12 +810,8 @@ describe("POST /api/telegram/register", () => {
       expect.arrayContaining([expect.objectContaining({ command: "connect" })]),
     );
 
-    const db = store.set(writeDb$);
-    const [installation] = await db
-      .select()
-      .from(telegramInstallations)
-      .where(eq(telegramInstallations.telegramBotId, telegramBotId))
-      .limit(1);
+    const state = await readTelegramState(telegramBotId);
+    const installation = stateRecord(state.installation);
     expect(installation?.defaultComposeId).toBe(fixture.composeId);
     expect(installation?.botUsername).toBe("registered_bot");
   });
@@ -932,11 +819,7 @@ describe("POST /api/telegram/register", () => {
   it("uses the active org default agent when defaultAgentId is omitted", async () => {
     const telegramBotId = newTelegramBotId();
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { telegramBotId, installBot: false },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ telegramBotId, installBot: false }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockTelegramGetMe({
@@ -978,9 +861,7 @@ describe("POST /api/telegram/register", () => {
   });
 
   it("returns 409 when bot is already registered", async () => {
-    const fixture = await trackFixture(
-      store.set(seedTelegramPostFixture$, {}, context.signal),
-    );
+    const fixture = await trackFixture(seedTelegramPostFixture({}));
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockTelegramGetMe({ botId: fixture.telegramBotId });
 
@@ -1001,9 +882,7 @@ describe("POST /api/telegram/register", () => {
   });
 
   it("reinstalls an existing bot when reinstallBotId matches the token bot id", async () => {
-    const fixture = await trackFixture(
-      store.set(seedTelegramPostFixture$, {}, context.signal),
-    );
+    const fixture = await trackFixture(seedTelegramPostFixture({}));
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockTelegramGetMe({
       botId: fixture.telegramBotId,
@@ -1038,25 +917,16 @@ describe("POST /api/telegram/register", () => {
       expect.arrayContaining([expect.objectContaining({ command: "connect" })]),
     );
 
-    const db = store.set(writeDb$);
-    const [installation] = await db
-      .select()
-      .from(telegramInstallations)
-      .where(eq(telegramInstallations.telegramBotId, fixture.telegramBotId))
-      .limit(1);
-    expect(installation).toBeDefined();
-    if (!installation) {
-      throw new Error("Expected Telegram installation to exist");
-    }
-    expect(decryptSecretForTests(installation.encryptedBotToken)).toBe(
-      NEW_BOT_TOKEN,
+    const state = await readTelegramState(fixture.telegramBotId);
+    const installation = stateRecord(state.installation);
+    expect(installation?.telegramBotId).toBe(fixture.telegramBotId);
+    expect(installation?.botUsername).toBe(
+      `reinstall_bot_${fixture.telegramBotId}`,
     );
   });
 
   it("rejects reinstall when the token belongs to a different bot", async () => {
-    const fixture = await trackFixture(
-      store.set(seedTelegramPostFixture$, {}, context.signal),
-    );
+    const fixture = await trackFixture(seedTelegramPostFixture({}));
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockTelegramGetMe({ botId: newTelegramBotId() });
 
@@ -1079,11 +949,11 @@ describe("POST /api/telegram/register", () => {
   it("returns 400 when no default agent is available", async () => {
     const telegramBotId = newTelegramBotId();
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { telegramBotId, installBot: false, seedDefaultAgent: false },
-        context.signal,
-      ),
+      seedTelegramPostFixture({
+        telegramBotId,
+        installBot: false,
+        seedDefaultAgent: false,
+      }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockTelegramGetMe({ botId: telegramBotId });
@@ -1121,15 +991,11 @@ describe("POST /api/telegram/register", () => {
 
   it("returns 403 when defaultAgentId belongs to another org", async () => {
     const otherFixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        {
-          orgId: `org_other_${randomUUID().slice(0, 8)}`,
-          userId: `user_other_${randomUUID().slice(0, 8)}`,
-          installBot: false,
-        },
-        context.signal,
-      ),
+      seedTelegramPostFixture({
+        orgId: `org_other_${randomUUID().slice(0, 8)}`,
+        userId: `user_other_${randomUUID().slice(0, 8)}`,
+        installBot: false,
+      }),
     );
     mocks.clerk.session("user_register_cross_org", "org_register_cross");
     mockTelegramGetMe({ botId: newTelegramBotId() });
@@ -1151,11 +1017,7 @@ describe("POST /api/telegram/register", () => {
   it("rolls back a new installation when webhook registration fails", async () => {
     const telegramBotId = newTelegramBotId();
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { telegramBotId, installBot: false },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ telegramBotId, installBot: false }),
     );
     mocks.clerk.session(fixture.userId, fixture.orgId);
     mockTelegramGetMe({ botId: telegramBotId });
@@ -1175,20 +1037,14 @@ describe("POST /api/telegram/register", () => {
     );
 
     expect(response.body.error.code).toBe("BAD_GATEWAY");
-    const db = store.set(writeDb$);
-    const rows = await db
-      .select()
-      .from(telegramInstallations)
-      .where(eq(telegramInstallations.telegramBotId, telegramBotId));
-    expect(rows).toHaveLength(0);
+    const state = await readTelegramState(telegramBotId);
+    expect(state.installation).toBeNull();
   });
 });
 
 describe("POST /api/telegram/webhook/:telegramBotId", () => {
   it("validates bot ownership, webhook secret, and JSON payload", async () => {
-    const fixture = await trackFixture(
-      store.set(seedTelegramPostFixture$, {}, context.signal),
-    );
+    const fixture = await trackFixture(seedTelegramPostFixture({}));
 
     const missing = await postWebhook({
       telegramBotId: newTelegramBotId(),
@@ -1217,11 +1073,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
   it("creates a Zero run for a linked custom-bot private message", async () => {
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { linkTelegramUser: true },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ linkTelegramUser: true }),
     );
     const telegramMocks = telegramApiMocks();
 
@@ -1256,28 +1108,13 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(telegramMocks.chatActions).toHaveLength(1);
     expect(telegramMocks.sentMessages).toHaveLength(0);
 
-    const db = store.set(writeDb$);
-    const [zeroRun] = await db
-      .select({ triggerSource: zeroRuns.triggerSource })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, run!.id))
-      .limit(1);
-    expect(zeroRun?.triggerSource).toBe("telegram");
-    const [callback] = await db
-      .select()
-      .from(agentRunCallbacks)
-      .where(eq(agentRunCallbacks.runId, run!.id))
-      .limit(1);
-    expect(callback).toMatchObject({
+    const runState = await telegramPostRunState(fixture);
+    expect(runState.zeroRun?.triggerSource).toBe("telegram");
+    expect(runState.callbacks[0]).toMatchObject({
       url: null,
       internalKind: "telegram",
     });
-    const [job] = await db
-      .select()
-      .from(runnerJobQueue)
-      .where(eq(runnerJobQueue.runId, run!.id))
-      .limit(1);
-    expect(job).toBeDefined();
+    expect(runState.jobExists).toBe(true);
     const timingEvents = sandboxOperationEventsForRun(run!.id).filter(
       (event) => {
         return (
@@ -1331,11 +1168,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     mockEnv("VM0_API_URL", "https://www.vm0.ai");
     mockEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { linkTelegramUser: true },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ linkTelegramUser: true }),
     );
     telegramApiMocks();
 
@@ -1360,14 +1193,9 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(response.status).toBe(200);
     await flushWaitUntilForTest();
 
-    const run = await latestRunForFixture(fixture);
-    const db = store.set(writeDb$);
-    const [callback] = await db
-      .select()
-      .from(agentRunCallbacks)
-      .where(eq(agentRunCallbacks.runId, run!.id))
-      .limit(1);
-    expect(callback).toMatchObject({
+    const runState = await telegramPostRunState(fixture);
+    expect(runState.run).toBeDefined();
+    expect(runState.callbacks[0]).toMatchObject({
       url: null,
       internalKind: "telegram",
     });
@@ -1375,11 +1203,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
   it("formats generic failed callback errors for Telegram replies", async () => {
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { linkTelegramUser: true },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ linkTelegramUser: true }),
     );
     const telegramMocks = telegramApiMocks();
 
@@ -1405,43 +1229,37 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
     const run = await latestRunForFixture(fixture);
     expect(run?.id).toBeDefined();
-    const db = store.set(writeDb$);
-    const [callback] = await db
-      .update(agentRunCallbacks)
-      .set({
-        url: null,
-        internalKind: "telegram",
-        payload: {
-          installationId: fixture.telegramBotId,
-          chatId: "77002",
-          messageId: "43",
-          rootMessageId: null,
-          userLinkId: await linkedTelegramUserLinkId(fixture),
-          agentId: fixture.composeId,
-          existingSessionId: null,
-          isDM: true,
-        },
-      })
-      .where(eq(agentRunCallbacks.runId, run!.id))
-      .returning({ callbackId: agentRunCallbacks.id });
-    if (!callback) {
+    const payload = {
+      installationId: fixture.telegramBotId,
+      chatId: "77002",
+      messageId: "43",
+      rootMessageId: null,
+      userLinkId: await linkedTelegramUserLinkId(fixture),
+      agentId: fixture.composeId,
+      existingSessionId: null,
+      isDM: true,
+    };
+    const callback = await postTelegramStateAction({
+      action: "update-run-callback",
+      run_id: run!.id,
+      url: null,
+      internal_kind: "telegram",
+      payload,
+      secret: CALLBACK_SECRET,
+    });
+    if (typeof callback.callback_id !== "string") {
       throw new Error("Expected Telegram callback row");
     }
 
-    const results = await store.set(
-      dispatchRunCallbacks$,
-      {
-        db,
+    await expect(
+      postTelegramCallback({
+        callbackId: callback.callback_id,
         runId: run!.id,
         status: "failed",
         error: "thread/resume failed: rollout is empty",
-      },
-      context.signal,
-    );
-
-    expect(results).toStrictEqual([
-      { callbackId: callback.callbackId, success: true },
-    ]);
+        payload,
+      }),
+    ).resolves.toStrictEqual({ success: true });
     await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages.at(-1)?.text).toContain(
       "Oops, something went wrong. Please try again later.",
@@ -1449,9 +1267,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
   });
 
   it("stores non-addressed group messages without creating a run", async () => {
-    const fixture = await trackFixture(
-      store.set(seedTelegramPostFixture$, {}, context.signal),
-    );
+    const fixture = await trackFixture(seedTelegramPostFixture({}));
 
     const response = await postWebhook({
       telegramBotId: fixture.telegramBotId,
@@ -1470,29 +1286,16 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(response.status).toBe(200);
     await flushWaitUntilForTest();
 
-    const db = store.set(writeDb$);
-    const runs = await db
-      .select()
-      .from(agentRuns)
-      .where(
-        and(
-          eq(agentRuns.orgId, fixture.orgId),
-          eq(agentRuns.userId, fixture.userId),
-        ),
-      );
-    expect(runs).toHaveLength(0);
-    const messages = await db
-      .select()
-      .from(telegramMessages)
-      .where(eq(telegramMessages.installationId, fixture.telegramBotId));
+    await expect(latestRunForFixture(fixture)).resolves.toBeNull();
+    const messages = stateRecords(
+      (await readTelegramState(fixture.telegramBotId)).messages,
+    );
     expect(messages).toHaveLength(1);
     expect(messages[0]?.text).toBe("ambient group chatter");
   });
 
   it("stores custom-bot group replies to another bot without sending a prompt", async () => {
-    const fixture = await trackFixture(
-      store.set(seedTelegramPostFixture$, {}, context.signal),
-    );
+    const fixture = await trackFixture(seedTelegramPostFixture({}));
     const telegramMocks = telegramApiMocks();
 
     const response = await postWebhook({
@@ -1519,22 +1322,16 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     await flushWaitUntilForTest();
     expect(telegramMocks.sentMessages).toHaveLength(0);
 
-    const db = store.set(writeDb$);
-    const messages = await db
-      .select()
-      .from(telegramMessages)
-      .where(eq(telegramMessages.installationId, fixture.telegramBotId));
+    const messages = stateRecords(
+      (await readTelegramState(fixture.telegramBotId)).messages,
+    );
     expect(messages).toHaveLength(1);
     expect(messages[0]?.text).toBe("following up");
   });
 
   it("creates a Zero run for a linked custom-bot group mention", async () => {
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { linkTelegramUser: true },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ linkTelegramUser: true }),
     );
     const botUsername = `bot_${fixture.telegramBotId}`;
     telegramApiMocks();
@@ -1569,11 +1366,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
   it("creates a Zero run for a linked official-bot private message", async () => {
     configureOfficialBotEnv();
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { installBot: false, seedOfficialLink: true },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ installBot: false, seedOfficialLink: true }),
     );
     telegramApiMocks(OFFICIAL_BOT_TOKEN);
 
@@ -1604,23 +1397,15 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(run?.appendSystemPrompt).toContain(
       "Bot username: @official_zero_bot",
     );
-    const db = store.set(writeDb$);
-    const [zeroRun] = await db
-      .select({ triggerSource: zeroRuns.triggerSource })
-      .from(zeroRuns)
-      .where(eq(zeroRuns.id, run!.id))
-      .limit(1);
-    expect(zeroRun?.triggerSource).toBe("telegram");
+    await expect(latestZeroRunForFixture(fixture)).resolves.toMatchObject({
+      triggerSource: "telegram",
+    });
   });
 
   it("creates a Zero run for a linked official-bot group mention", async () => {
     configureOfficialBotEnv();
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { installBot: false, seedOfficialLink: true },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ installBot: false, seedOfficialLink: true }),
     );
     telegramApiMocks(OFFICIAL_BOT_TOKEN);
 
@@ -1654,9 +1439,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
   });
 
   it("routes custom-bot commands by username target", async () => {
-    const fixture = await trackFixture(
-      store.set(seedTelegramPostFixture$, {}, context.signal),
-    );
+    const fixture = await trackFixture(seedTelegramPostFixture({}));
     const botUsername = `bot_${fixture.telegramBotId}`;
     const telegramMocks = telegramApiMocks();
 
@@ -1705,11 +1488,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
   it("handles custom-bot connect and help command copy", async () => {
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { linkTelegramUser: true },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ linkTelegramUser: true }),
     );
     const telegramMocks = telegramApiMocks();
 
@@ -1787,11 +1566,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
   it("handles custom-bot disconnect command", async () => {
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { linkTelegramUser: true },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ linkTelegramUser: true }),
     );
     const telegramMocks = telegramApiMocks();
 
@@ -1816,11 +1591,9 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(response.status).toBe(200);
     await flushWaitUntilForTest();
 
-    const db = store.set(writeDb$);
-    const links = await db
-      .select()
-      .from(telegramUserLinks)
-      .where(eq(telegramUserLinks.installationId, fixture.telegramBotId));
+    const links = stateRecords(
+      (await readTelegramState(fixture.telegramBotId)).links,
+    );
     expect(links).toHaveLength(0);
     expect(telegramMocks.sentMessages[0]?.text).toContain(
       "You have been disconnected",
@@ -1828,17 +1601,8 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
   });
 
   it("completes a pending custom-bot link on the first private message", async () => {
-    const fixture = await trackFixture(
-      store.set(seedTelegramPostFixture$, {}, context.signal),
-    );
-    const db = store.set(writeDb$);
-    await db.insert(telegramUserLinks).values({
-      installationId: fixture.telegramBotId,
-      telegramUserId: "pending",
-      telegramUsername: null,
-      telegramDisplayName: null,
-      vm0UserId: fixture.userId,
-    });
+    const fixture = await trackFixture(seedTelegramPostFixture({}));
+    await seedPendingUserLink(fixture);
     telegramApiMocks();
 
     const response = await postWebhook({
@@ -1858,29 +1622,25 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(response.status).toBe(200);
     await flushWaitUntilForTest();
 
-    const links = await db
-      .select({
-        telegramUserId: telegramUserLinks.telegramUserId,
-        telegramUsername: telegramUserLinks.telegramUsername,
-      })
-      .from(telegramUserLinks)
-      .where(eq(telegramUserLinks.installationId, fixture.telegramBotId));
+    const links = stateRecords(
+      (await readTelegramState(fixture.telegramBotId)).links,
+    );
     expect(links).toStrictEqual([
-      { telegramUserId: "78901", telegramUsername: "admin_user" },
+      expect.objectContaining({
+        telegramUserId: "78901",
+        telegramUsername: "admin_user",
+      }),
     ]);
   });
 
   it("clears a custom-bot private thread with /new_session and ignores the command in groups", async () => {
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { linkTelegramUser: true },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ linkTelegramUser: true }),
     );
     const userLinkId = await linkedTelegramUserLinkId(fixture);
     const sessionId = await seedAgentSession(fixture);
     await seedTelegramThreadSession({
+      fixture,
       telegramUserLinkId: userLinkId,
       chatId: fixture.telegramUserId!,
       rootMessageId: "dm",
@@ -1949,11 +1709,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
   it("lists, updates, and rejects model command arguments", async () => {
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { linkTelegramUser: true },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ linkTelegramUser: true }),
     );
     await seedModelPolicies({
       fixture,
@@ -2037,11 +1793,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
   it("sends typing for accepted custom-bot runs and a queued message at the concurrency limit", async () => {
     const acceptedFixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { linkTelegramUser: true },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ linkTelegramUser: true }),
     );
     const acceptedTelegramMocks = telegramApiMocks();
 
@@ -2068,11 +1820,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
     expect(acceptedTelegramMocks.sentMessages).toHaveLength(0);
 
     const queuedFixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { linkTelegramUser: true },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ linkTelegramUser: true }),
     );
     await seedRunningRun(queuedFixture);
     const queuedTelegramMocks = telegramApiMocks();
@@ -2167,14 +1915,10 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
   it("starts a new official DM session when the selected model changed", async () => {
     configureOfficialBotEnv();
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        {
-          installBot: false,
-          seedOfficialLink: true,
-        },
-        context.signal,
-      ),
+      seedTelegramPostFixture({
+        installBot: false,
+        seedOfficialLink: true,
+      }),
     );
     await seedModelPolicies({
       fixture,
@@ -2186,6 +1930,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       selectedModel: "claude-sonnet-4-6",
     });
     await seedTelegramThreadSession({
+      fixture,
       telegramOfficialUserLinkId: await officialTelegramUserLinkId(fixture),
       chatId: "99002",
       rootMessageId: "dm",
@@ -2227,11 +1972,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
   it("starts a new custom DM session when the selected model provider changed", async () => {
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { linkTelegramUser: true },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ linkTelegramUser: true }),
     );
     await seedModelPolicies({
       fixture,
@@ -2244,6 +1985,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       selectedModel: "claude-sonnet-4-6",
     });
     await seedTelegramThreadSession({
+      fixture,
       telegramUserLinkId: await linkedTelegramUserLinkId(fixture),
       chatId: fixture.telegramUserId!,
       rootMessageId: "dm",
@@ -2290,11 +2032,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
 
   it("starts a new custom DM session when the default model provider changed", async () => {
     const fixture = await trackFixture(
-      store.set(
-        seedTelegramPostFixture$,
-        { linkTelegramUser: true },
-        context.signal,
-      ),
+      seedTelegramPostFixture({ linkTelegramUser: true }),
     );
     await seedModelPolicies({
       fixture,
@@ -2307,6 +2045,7 @@ describe("POST /api/telegram/webhook/:telegramBotId", () => {
       selectedModel: "claude-sonnet-4-6",
     });
     await seedTelegramThreadSession({
+      fixture,
       telegramUserLinkId: await linkedTelegramUserLinkId(fixture),
       chatId: fixture.telegramUserId!,
       rootMessageId: "dm",
