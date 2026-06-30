@@ -68,6 +68,10 @@ pub(crate) enum DesiredCodexAuth<'a> {
     None,
 }
 
+pub(crate) fn codex_home_path(home_dir: &Path) -> PathBuf {
+    home_dir.join(".codex")
+}
+
 // ---------------------------------------------------------------------------
 // JWT builder
 //
@@ -168,7 +172,7 @@ fn build_api_key_auth_json(api_key: &str) -> Value {
 fn prepare_codex_home(home_dir: &Path) -> Result<PathBuf, AgentError> {
     use std::os::unix::fs::PermissionsExt;
 
-    let codex_home = home_dir.join(".codex");
+    let codex_home = codex_home_path(home_dir);
     let metadata = match std::fs::symlink_metadata(&codex_home) {
         Ok(metadata) => metadata,
         Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
@@ -325,6 +329,11 @@ mod tests {
         let auth_path = tmp.path().join(".codex").join("auth.json");
         let body = std::fs::read_to_string(auth_path).unwrap();
         serde_json::from_str(&body).unwrap()
+    }
+
+    #[test]
+    fn codex_home_path_handles_empty_home_consistently() {
+        assert_eq!(codex_home_path(Path::new("")), PathBuf::from(".codex"));
     }
 
     /// Asserts the three independent ChatGPT-mode signals, the placeholder

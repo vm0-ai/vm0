@@ -487,7 +487,10 @@ async fn execute_cli_inner(
         env::Framework::Codex => {
             // Auth reconciliation and `codex exec` both honor CODEX_HOME;
             // pin it to $HOME/.codex so setup_codex state is visible to exec.
-            cmd.env("CODEX_HOME", format!("{}/.codex", env::home_dir()));
+            cmd.env(
+                "CODEX_HOME",
+                crate::codex_auth::codex_home_path(std::path::Path::new(env::home_dir())),
+            );
             // Test-only mock fixture selector; keep it explicit instead of
             // reopening inherited env for Codex children.
             if env::use_mock_codex()
