@@ -393,13 +393,26 @@ pub struct GuestConfig {
 
 impl GuestConfig {
     /// Build an owned config from the current process environment.
+    ///
+    /// This shares the one-time user-env loader with the legacy `env::*`
+    /// facade so transitional callers can build a `GuestConfig` and still use
+    /// existing accessors without racing on the private user-env file.
     pub fn from_process_env() -> Result<Self, String> {
-        Self::from_raw(GuestConfigRaw::from_process_env())
+        let raw = GuestConfigRaw::from_process_env();
+        let user_env = user_env_map_result()?.clone();
+        Self::from_raw_with_user_env(raw, user_env)
     }
 
     /// Build an owned config from explicit startup values.
     pub fn from_raw(raw: GuestConfigRaw) -> Result<Self, String> {
         let user_env = load_user_env_from_raw(&raw)?;
+        Self::from_raw_with_user_env(raw, user_env)
+    }
+
+    fn from_raw_with_user_env(
+        raw: GuestConfigRaw,
+        user_env: HashMap<String, String>,
+    ) -> Result<Self, String> {
         let home_dir = resolve_home_dir(&user_env, raw.home.as_deref())?;
         let artifacts = parse_artifacts_value(&raw.artifacts)
             .map_err(|e| format!("parse {} JSON: {e}", guest_contracts::env::ARTIFACTS_ENV))?;
@@ -685,11 +698,15 @@ fn resolve_home_dir(
 
 #[allow(clippy::panic)] // Entry points must call init_user_env; bypassing it is a code bug.
 fn user_env_map() -> &'static HashMap<String, String> {
+    user_env_map_result().unwrap_or_else(|message| {
+        panic!("{USER_ENV_FILE_ENV_KEY} failed to load before accessor use: {message}")
+    })
+}
+
+fn user_env_map_result() -> Result<&'static HashMap<String, String>, String> {
     match &*USER_ENV {
-        Ok(user_env) => user_env,
-        Err(message) => {
-            panic!("{USER_ENV_FILE_ENV_KEY} failed to load before accessor use: {message}")
-        }
+        Ok(user_env) => Ok(user_env),
+        Err(message) => Err(message.clone()),
     }
 }
 
