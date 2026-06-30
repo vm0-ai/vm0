@@ -5689,6 +5689,15 @@ function createPermissionActionCardStatus(params: {
   saveError: boolean;
   alreadyApplied: boolean;
 }): PermissionActionCardStatus {
+  if (params.saving) {
+    return { kind: "saving" };
+  }
+  if (params.saveDone) {
+    return { kind: "saved" };
+  }
+  if (params.saveError) {
+    return { kind: "save-error" };
+  }
   if (params.loading) {
     return { kind: "loading" };
   }
@@ -5700,15 +5709,6 @@ function createPermissionActionCardStatus(params: {
   }
   if (!params.hasPermission) {
     return { kind: "missing-permission" };
-  }
-  if (params.saving) {
-    return { kind: "saving" };
-  }
-  if (params.saveDone) {
-    return { kind: "saved" };
-  }
-  if (params.saveError) {
-    return { kind: "save-error" };
   }
   if (params.alreadyApplied) {
     return { kind: "already-applied" };

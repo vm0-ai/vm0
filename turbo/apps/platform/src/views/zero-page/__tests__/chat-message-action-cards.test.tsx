@@ -680,6 +680,100 @@ describe("chat message action cards", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("keeps permission success visible while permission grants reload", async () => {
+    const user = userEvent.setup({ delay: null });
+    const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=gmail&permission=messages.write&action=allow&expiresIn=1h`;
+    let listRequests = 0;
+    let storedGrants: UserPermissionGrantResponse[] = [];
+    let resolveReload: () => void = () => {
+      throw new Error("Permission grant reload request did not start");
+    };
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.list,
+      async ({ deferred, respond }) => {
+        listRequests += 1;
+        if (listRequests === 1) {
+          return respond(200, []);
+        }
+        if (listRequests === 2) {
+          const reloadDeferred = deferred<void>();
+          resolveReload = () => {
+            reloadDeferred.resolve();
+          };
+          await reloadDeferred.promise;
+        }
+        return respond(200, storedGrants);
+      },
+    );
+    context.mocks.api(
+      zeroUserPermissionGrantsContract.apply,
+      ({ body, respond }) => {
+        const grant = body.grants[0];
+        if (!grant) {
+          throw new Error("Expected a permission grant");
+        }
+        storedGrants = [
+          {
+            agentId: body.agentId,
+            connectorRef: body.connectorRef,
+            permission: grant.permission,
+            action: grant.action,
+            expiresAt: "2026-06-09T12:00:00.000Z",
+            createdAt: "2026-06-09T11:00:00Z",
+            updatedAt: "2026-06-09T11:01:00Z",
+          },
+        ];
+        return respond(200, storedGrants);
+      },
+    );
+
+    mockChatLifecycle(context, {
+      threadId: `${THREAD_ID}-permission-save-reload`,
+      threadTitle: "Permission save reload",
+      chatMessages: [
+        {
+          id: "msg-user-permission-save-reload",
+          role: "user",
+          content: "Allow Gmail message writes",
+          runId: "run-permission-save-reload",
+          createdAt: "2026-06-09T11:00:00Z",
+        },
+        {
+          id: "msg-assistant-permission-save-reload-card",
+          role: "assistant",
+          content: permissionAuthorizeUrl,
+          runId: "run-permission-save-reload",
+          createdAt: "2026-06-09T11:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}-permission-save-reload`,
+    });
+
+    const permissionCard = await screen.findByTestId("permission-action-card");
+    await confirmPermissionAction(user, permissionCard);
+
+    await waitFor(() => {
+      expect(listRequests).toBe(2);
+    });
+    expect(
+      within(permissionCard).getByText("Permissions updated"),
+    ).toBeInTheDocument();
+    expect(
+      within(permissionCard).queryByText("Checking permission status..."),
+    ).not.toBeInTheDocument();
+
+    resolveReload();
+    await waitFor(() => {
+      expect(
+        within(permissionCard).getByText("Permissions updated"),
+      ).toBeInTheDocument();
+    });
+  });
+
   it("lets users change permission duration before confirming", async () => {
     const user = userEvent.setup({ delay: null });
     const permissionAuthorizeUrl = `https://app.vm0.ai/agents/${AGENT_ID}/permissions?ref=slack&permission=admin.analytics%3Aread&action=allow&expiresIn=24h`;
