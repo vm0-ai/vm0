@@ -59,10 +59,10 @@ import {
   matchShortcut,
   Button,
   Skeleton,
-  DropdownMenu,
-  DropdownMenuContent,
-  DropdownMenuItem,
-  DropdownMenuTrigger,
+  DropdownMenu as UiDropdownMenu,
+  DropdownMenuContent as UiDropdownMenuContent,
+  DropdownMenuItem as UiDropdownMenuItem,
+  DropdownMenuTrigger as UiDropdownMenuTrigger,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -796,8 +796,8 @@ function GithubPrActions({
         </button>
       )}
       {showLabels && (
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
+        <UiDropdownMenu>
+          <UiDropdownMenuTrigger asChild>
             <button
               type="button"
               disabled={disabled}
@@ -807,25 +807,25 @@ function GithubPrActions({
               <IconTag size={13} />
               Add label
             </button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent
+          </UiDropdownMenuTrigger>
+          <UiDropdownMenuContent
             align="start"
             className="max-h-64 overflow-y-auto"
           >
             {labelOptions.map((labelName) => {
               return (
-                <DropdownMenuItem
+                <UiDropdownMenuItem
                   key={labelName}
                   onSelect={() => {
                     onPrompt(`add label "${labelName}" to pr ${pr.number}`);
                   }}
                 >
                   {labelName}
-                </DropdownMenuItem>
+                </UiDropdownMenuItem>
               );
             })}
-          </DropdownMenuContent>
-        </DropdownMenu>
+          </UiDropdownMenuContent>
+        </UiDropdownMenu>
       )}
     </div>
   );
@@ -1243,7 +1243,7 @@ function ChatThreadEmojiMenuButton({
 
   return (
     <TooltipProvider delayDuration={200}>
-      <DropdownMenu
+      <UiDropdownMenu
         open={open}
         onOpenChange={(nextOpen) => {
           if (nextOpen) {
@@ -1255,7 +1255,7 @@ function ChatThreadEmojiMenuButton({
       >
         <Tooltip>
           <TooltipTrigger asChild>
-            <DropdownMenuTrigger asChild>
+            <UiDropdownMenuTrigger asChild>
               <button
                 type="button"
                 aria-label="Change emoji"
@@ -1269,11 +1269,11 @@ function ChatThreadEmojiMenuButton({
                   <IconMoodSmile size={16} stroke={1.8} />
                 )}
               </button>
-            </DropdownMenuTrigger>
+            </UiDropdownMenuTrigger>
           </TooltipTrigger>
           <TooltipContent side="bottom">Change emoji</TooltipContent>
         </Tooltip>
-        <DropdownMenuContent
+        <UiDropdownMenuContent
           align="start"
           className="w-40"
           onKeyDown={(event) => {
@@ -1290,7 +1290,7 @@ function ChatThreadEmojiMenuButton({
         >
           {CHAT_THREAD_EMOJI_OPTIONS.map((option, index) => {
             return (
-              <DropdownMenuItem
+              <UiDropdownMenuItem
                 key={option.emoji}
                 aria-label={`${option.label} ${option.emoji}`}
                 onSelect={() => {
@@ -1304,11 +1304,11 @@ function ChatThreadEmojiMenuButton({
                 <span className="ml-auto text-xs text-muted-foreground">
                   {index + 1}
                 </span>
-              </DropdownMenuItem>
+              </UiDropdownMenuItem>
             );
           })}
-        </DropdownMenuContent>
-      </DropdownMenu>
+        </UiDropdownMenuContent>
+      </UiDropdownMenu>
     </TooltipProvider>
   );
 }
