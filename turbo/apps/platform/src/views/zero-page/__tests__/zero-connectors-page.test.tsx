@@ -432,6 +432,12 @@ describe("connectors page", () => {
 
   it("filters connectors by connected status when access management is enabled", async () => {
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    context.mocks.data.team([
+      teamAgent("c0000000-0000-4000-a000-000000000020", "Research", "preset:0"),
+    ]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: ["github"] });
+    });
 
     detachedSetupPage({
       context,
@@ -446,9 +452,7 @@ describe("connectors page", () => {
       expect(screen.getByText("Asana")).toBeInTheDocument();
     });
 
-    const filterTrigger = screen.getByRole("button", {
-      name: "Filter connectors",
-    });
+    const filterTrigger = screen.getByLabelText("Filter connectors");
 
     click(filterTrigger);
     click(menuItemByText("Connected"));
@@ -501,9 +505,7 @@ describe("connectors page", () => {
       expect(screen.getByText("Asana")).toBeInTheDocument();
     });
 
-    const filterTrigger = screen.getByRole("button", {
-      name: "Filter connectors",
-    });
+    const filterTrigger = screen.getByLabelText("Filter connectors");
     click(filterTrigger);
     click(menuItemByText("Research Agent"));
 
@@ -577,7 +579,7 @@ describe("connectors page", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(
-      screen.queryByRole("button", { name: "Filter connectors" }),
+      screen.queryByLabelText("Filter connectors"),
     ).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText("Manage GitHub access"),
