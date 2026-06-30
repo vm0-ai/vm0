@@ -24,6 +24,7 @@ from authority_utils import (
     is_default_scheme_port,
     parse_authority_port,
     percent_decode_host,
+    raw_authority_host,
 )
 from host_normalization import normalize_idna_hostname
 from path_security import has_unsafe_path
@@ -390,22 +391,8 @@ def _percent_decode_host(host: str) -> str:
 
 
 def _raw_rewrite_base_host(netloc: str) -> str | None:
-    authority = netloc.rsplit("@", maxsplit=1)[-1]
-    if authority.startswith("["):
-        close_index = authority.find("]")
-        if close_index == -1:
-            return None
-        rest = authority[close_index + 1 :]
-        if rest and not rest.startswith(":"):
-            return None
-        return authority[1:close_index]
-
-    if authority.count(":") > 1:
-        return None
-    if ":" in authority:
-        host, _, _port = authority.rpartition(":")
-        return host or None
-    return authority or None
+    raw_host = raw_authority_host(netloc)
+    return raw_host.hostname if raw_host is not None else None
 
 
 def _validated_rewrite_base(resolved_base: str) -> tuple[urllib.parse.SplitResult, str]:

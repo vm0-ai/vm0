@@ -3,10 +3,14 @@
 import ipaddress
 import re
 import urllib.parse
-from typing import NamedTuple
 
 import public_destination
-from authority_utils import IPV6_VERSION, percent_decode_host
+from authority_utils import (
+    IPV6_VERSION,
+    RawAuthorityHost,
+    percent_decode_host,
+    raw_authority_host,
+)
 from firewall_auth_config import (
     auth_config_injects_credentials,
     auth_config_injects_ordinary_upstream_credentials,
@@ -45,11 +49,6 @@ class BuiltinRuntimeHostPolicyError(ValueError):
         super().__init__(message)
         self.reason = reason
         self.message = message
-
-
-class _RawBaseHost(NamedTuple):
-    hostname: str
-    bracketed: bool
 
 
 def validate_credentialed_builtin_base(
@@ -110,42 +109,14 @@ def _invalid_resolved_base_url(firewall_name: str) -> BuiltinHostPolicyError:
     )
 
 
-def _raw_base_host(
-    *,
-    firewall_name: str,
-    parsed: urllib.parse.SplitResult,
-) -> _RawBaseHost:
-    authority = parsed.netloc.rsplit("@", maxsplit=1)[-1]
-    if authority.startswith("["):
-        close_index = authority.find("]")
-        if close_index == -1:
-            raise _invalid_resolved_base_url(firewall_name)
-        rest = authority[close_index + 1 :]
-        if rest and not rest.startswith(":"):
-            raise _invalid_resolved_base_url(firewall_name)
-        hostname = authority[1:close_index]
-        if not hostname:
-            raise _invalid_resolved_base_url(firewall_name)
-        return _RawBaseHost(hostname, bracketed=True)
-
-    if authority.count(":") > 1:
-        raise _invalid_resolved_base_url(firewall_name)
-    if ":" in authority:
-        hostname, _, _port = authority.rpartition(":")
-        if not hostname:
-            raise _invalid_resolved_base_url(firewall_name)
-        return _RawBaseHost(hostname, bracketed=False)
-    if not authority:
-        raise _invalid_resolved_base_url(firewall_name)
-    return _RawBaseHost(authority, bracketed=False)
-
-
 def _decoded_base_host(
     *,
     firewall_name: str,
     parsed: urllib.parse.SplitResult,
-) -> _RawBaseHost:
-    raw_host = _raw_base_host(firewall_name=firewall_name, parsed=parsed)
+) -> RawAuthorityHost:
+    raw_host = raw_authority_host(parsed.netloc)
+    if raw_host is None:
+        raise _invalid_resolved_base_url(firewall_name)
     decoded = percent_decode_host(
         raw_host.hostname,
         syntax_chars=_PERCENT_DECODED_HOST_SYNTAX_CHARS,
@@ -159,7 +130,7 @@ def _decoded_base_host(
             raise _invalid_resolved_base_url(firewall_name) from e
         if parsed_ip.version != IPV6_VERSION or parsed_ip.scope_id is not None:
             raise _invalid_resolved_base_url(firewall_name)
-    return _RawBaseHost(decoded.value, raw_host.bracketed)
+    return RawAuthorityHost(decoded.value, raw_host.bracketed)
 
 
 def _provider_owned_base_hostname(

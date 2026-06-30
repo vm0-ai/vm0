@@ -22,7 +22,13 @@ from mitmproxy import http
 
 import flow_metadata_keys as metadata_keys
 import public_destination
-from authority_utils import bracketed_authority_host_is_ipv6
+from authority_utils import (
+    IPV6_VERSION,
+    format_url_host,
+    percent_decode_host,
+    raw_authority_host,
+)
+from host_normalization import normalize_idna_hostname
 from http_header_syntax import has_forbidden_header_value_control, is_http_header_name
 
 HOP_BY_HOP: frozenset[str] = frozenset(
@@ -98,6 +104,7 @@ MAX_AUTH_BASE_RESPONSE_BODY_BYTES = 32 * 1024 * 1024
 MAX_CONCURRENT_AUTH_BASE_FORWARDS = 4
 MAX_ADMITTED_AUTH_BASE_FORWARDS = 16
 MAX_ADMITTED_AUTH_BASE_REQUEST_BODY_BYTES = 128 * 1024 * 1024
+_PERCENT_DECODED_UPSTREAM_HOST_SYNTAX_CHARS = frozenset("{}.\u3002\uff0e\uff61,")
 _forward_request_executor_state: tuple[int, ThreadPoolExecutor] | None = None
 _forward_request_admission_state: (
     tuple[asyncio.AbstractEventLoop, int, asyncio.Semaphore] | None
@@ -407,19 +414,40 @@ def _filter_response_headers(raw) -> http.Headers:
     return _headers_from_pairs(_filter_header_pairs(raw))
 
 
-def _host_header(parsed: urllib.parse.SplitResult) -> str:
-    host = parsed.hostname
-    if not host:
+def _normalized_forward_request_host(parsed: urllib.parse.SplitResult) -> str:
+    raw_host = raw_authority_host(parsed.netloc)
+    if raw_host is None:
+        if parsed.netloc:
+            raise ValueError("Invalid upstream URL: invalid host")
         raise ValueError("Invalid upstream URL: missing host")
-    if ":" in host and not host.startswith("["):
-        host = f"[{host}]"
+
+    decoded = percent_decode_host(
+        raw_host.hostname,
+        syntax_chars=_PERCENT_DECODED_UPSTREAM_HOST_SYNTAX_CHARS,
+    )
+    if decoded.invalid_encoding or decoded.decoded_syntax:
+        raise ValueError("Invalid upstream URL: invalid host")
+
+    if raw_host.bracketed:
+        try:
+            parsed_ip = ipaddress.ip_address(decoded.value)
+        except ValueError as exc:
+            raise ValueError("Invalid upstream URL: invalid host") from exc
+        if parsed_ip.version != IPV6_VERSION or parsed_ip.scope_id is not None:
+            raise ValueError("Invalid upstream URL: invalid host")
+        return parsed_ip.compressed.lower()
+
     try:
-        port = parsed.port
-    except ValueError as exc:
-        raise ValueError("Invalid upstream URL: invalid port") from exc
+        return normalize_idna_hostname(decoded.value)
+    except (UnicodeError, ValueError) as exc:
+        raise ValueError("Invalid upstream URL: invalid host") from exc
+
+
+def _host_header(host: str, port: int | None) -> str:
+    formatted_host = format_url_host(host)
     if port is None or port == DEFAULT_HTTPS_PORT:
-        return host
-    return f"{host}:{port}"
+        return formatted_host
+    return f"{formatted_host}:{port}"
 
 
 def _request_target(parsed: urllib.parse.SplitResult) -> str:
@@ -442,11 +470,12 @@ def _reject_userinfo(parsed: urllib.parse.SplitResult) -> None:
 
 def _outbound_request_headers(
     headers: list[tuple[str, str]],
-    parsed: urllib.parse.SplitResult,
+    host: str,
+    port: int | None,
     body: bytes | None,
 ) -> list[tuple[str, str]]:
     filtered = forwarded_request_header_pairs(headers)
-    outbound = [("Host", _host_header(parsed)), *filtered]
+    outbound = [("Host", _host_header(host, port)), *filtered]
     if body is not None:
         outbound.append(("Content-Length", str(len(body))))
     return outbound
@@ -597,11 +626,7 @@ def _forward_request_sync(
     parsed = urllib.parse.urlsplit(url)
     conn_factory = _connection_factory(parsed.scheme.lower())
     _reject_userinfo(parsed)
-    if not bracketed_authority_host_is_ipv6(parsed.netloc):
-        raise ValueError("Invalid upstream URL: invalid host")
-    host = parsed.hostname
-    if not host:
-        raise ValueError("Invalid upstream URL: missing host")
+    host = _normalized_forward_request_host(parsed)
     try:
         port = parsed.port
     except ValueError as exc:
@@ -617,7 +642,7 @@ def _forward_request_sync(
             skip_host=True,
             skip_accept_encoding=True,
         )
-        for header_name, header_value in _outbound_request_headers(headers, parsed, body):
+        for header_name, header_value in _outbound_request_headers(headers, host, port, body):
             conn.putheader(header_name, header_value)
         conn.endheaders(body)
         resp = conn.getresponse()

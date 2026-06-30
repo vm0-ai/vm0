@@ -226,6 +226,40 @@ class TestAuthBaseForwarderSecurity:
     @pytest.mark.parametrize(
         "url",
         [
+            "https://fa\u212a.example/path",
+            "https://\u212a.example/path",
+            "https://%E2%84%AA.example/path",
+            "https://example%2ecom/path",
+        ],
+    )
+    async def test_rejects_unsafe_raw_host_before_dns(self, url: str):
+        with (
+            patch.object(forwarder.socket, "getaddrinfo") as getaddrinfo,
+            pytest.raises(ValueError, match="Invalid upstream URL: invalid host"),
+        ):
+            await forwarder.forward_request(url, "GET", [], None)
+
+        getaddrinfo.assert_not_called()
+
+    @pytest.mark.parametrize(
+        ("url", "expected_host"),
+        [
+            ("https://b\u00fccher.example/path", "xn--bcher-kva.example"),
+            ("https://b%C3%BCcher.example/path", "xn--bcher-kva.example"),
+            ("https://fa\u00df.example/path", "xn--fa-hia.example"),
+        ],
+    )
+    async def test_normalizes_idna_host_before_forwarding(self, url: str, expected_host: str):
+        with fake_forwarder_upstream() as upstream:
+            await forwarder.forward_request(url, "GET", [], None)
+
+        assert upstream.getaddrinfo_calls == [(expected_host, 443)]
+        assert upstream.contexts[-1].server_hostnames == [expected_host]
+        assert upstream.socket.request_header_values("Host") == [expected_host]
+
+    @pytest.mark.parametrize(
+        "url",
+        [
             "https://user@example.com/path",
             "https://user:pass@example.com/path",
         ],

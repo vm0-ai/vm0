@@ -29,6 +29,11 @@ class PercentDecodedHost(NamedTuple):
     decoded_syntax: bool
 
 
+class RawAuthorityHost(NamedTuple):
+    hostname: str
+    bracketed: bool
+
+
 def has_ascii_space_or_control(value: str) -> bool:
     return any(
         char.isspace() or ord(char) < ASCII_CONTROL_MAX or ord(char) == ASCII_DELETE
@@ -86,20 +91,37 @@ def format_url_host(host: str) -> str:
     return candidate
 
 
-def bracketed_authority_host_is_ipv6(netloc: str) -> bool:
+def raw_authority_host(netloc: str) -> RawAuthorityHost | None:
     authority = netloc.rsplit("@", maxsplit=1)[-1]
-    if not authority.startswith("["):
+    if authority.startswith("["):
+        close_index = authority.find("]")
+        if close_index == -1:
+            return None
+        rest = authority[close_index + 1 :]
+        if rest and not rest.startswith(":"):
+            return None
+        hostname = authority[1:close_index]
+        if not hostname:
+            return None
+        return RawAuthorityHost(hostname, bracketed=True)
+
+    if authority.count(":") > 1:
+        return None
+    if ":" in authority:
+        hostname, _, _port = authority.rpartition(":")
+        return RawAuthorityHost(hostname, bracketed=False) if hostname else None
+    return RawAuthorityHost(authority, bracketed=False) if authority else None
+
+
+def bracketed_authority_host_is_ipv6(netloc: str) -> bool:
+    raw_host = raw_authority_host(netloc)
+    if raw_host is None:
+        return False
+    if not raw_host.bracketed:
         return True
 
-    close_index = authority.find("]")
-    if close_index == -1:
-        return False
-    rest = authority[close_index + 1 :]
-    if rest and not rest.startswith(":"):
-        return False
-
     try:
-        parsed = ipaddress.ip_address(authority[1:close_index])
+        parsed = ipaddress.ip_address(raw_host.hostname)
     except ValueError:
         return False
     return parsed.version == IPV6_VERSION
