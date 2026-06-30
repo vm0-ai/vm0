@@ -1,7 +1,7 @@
 import { IconBan, IconCheck, IconCircleHalf2 } from "@tabler/icons-react";
 
-export type PermissionPolicyToggleValue = "allow" | "deny";
-export type PermissionPolicyToggleState =
+type PermissionPolicyToggleValue = "allow" | "deny";
+type PermissionPolicyToggleState =
   | PermissionPolicyToggleValue
   | "ask"
   | "mixed";
@@ -15,7 +15,7 @@ export function PermissionPolicyMixedBadge() {
   );
 }
 
-export function permissionPolicyButtonClass({
+function permissionPolicyButtonClass({
   active,
   disabled,
   tone,

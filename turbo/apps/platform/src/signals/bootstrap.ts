@@ -172,20 +172,12 @@ const ROUTE_CONFIG = [
     setup: setupAuthPageWrapper(setupReportErrorPage$),
   },
   {
-    path: ROUTES.agentWorkflowDetail,
-    setup: setupAuthSidebarPageWrapper(setupWorkflowDetailPage$),
-  },
-  {
     path: ROUTES.workflowDetail,
     setup: setupAuthSidebarPageWrapper(setupWorkflowDetailPage$),
   },
   {
     path: ROUTES.workflows,
     setup: setupAuthSidebarPageWrapper(setupWorkflowsPage$),
-  },
-  {
-    path: ROUTES.agentWorkflows,
-    setup: setupAuthSidebarPageWrapper(setupAgentDetailPage$),
   },
   {
     path: ROUTES.agentDetail,

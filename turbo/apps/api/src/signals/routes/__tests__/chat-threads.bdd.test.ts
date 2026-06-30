@@ -762,6 +762,43 @@ describe("CHAT-01 chat thread list pagination and read state", () => {
       chat.listThreadUnreads(owner, agent.agentId),
     ).resolves.toStrictEqual([]);
 
+    const unreadFilterThreadId = await sendNoCreditMessage(owner, {
+      agentId: agent.agentId,
+      prompt: "visible in unread filter",
+    });
+    const unreadOnly = await chat.listThreads(owner, {
+      agentId: agent.agentId,
+      filter: "unread",
+    });
+    expect(unreadOnly.pinned).toStrictEqual([]);
+    expect(listedThreadIds(unreadOnly)).toStrictEqual([unreadFilterThreadId]);
+    expect(listedThreadIds(unreadOnly)).not.toContain(readStateThreadId);
+
+    await chat.pinThread(owner, unreadFilterThreadId);
+    const unreadPinned = await chat.listThreads(owner, {
+      agentId: agent.agentId,
+      filter: "unread",
+    });
+    expect(
+      unreadPinned.pinned.map((thread) => {
+        return thread.id;
+      }),
+    ).toStrictEqual([unreadFilterThreadId]);
+    expect(unreadPinned.threads).toStrictEqual([]);
+
+    await chat.markThreadRead(owner, unreadFilterThreadId);
+    await chat.unpinThread(owner, unreadFilterThreadId);
+    const unreadEmpty = await chat.listThreads(owner, {
+      agentId: agent.agentId,
+      filter: "unread",
+    });
+    expect(unreadEmpty).toStrictEqual({
+      pinned: [],
+      threads: [],
+      hasMore: false,
+      nextCursor: null,
+    });
+
     // Draft flags through PATCH surface via the drafts endpoint: text,
     // attachments-only, empty, cleared. Unknown ids are silently absent.
     await chat.patchThread(owner, readStateThreadId, {

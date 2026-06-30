@@ -19,7 +19,10 @@ import {
   IconChevronRight,
   IconDice,
 } from "@tabler/icons-react";
-import type { AvatarSvgConfig } from "./avatar-svg-utils.ts";
+import {
+  preloadAvatarSvgLayerAssets,
+  type AvatarSvgConfig,
+} from "./avatar-svg-utils.ts";
 import { AvatarSvgPreview } from "./avatar-svg-preview.tsx";
 import {
   bestEffort,
@@ -395,6 +398,16 @@ interface AvatarMakerProps {
   trigger?: (openMaker: () => void) => React.ReactNode;
 }
 
+function preloadAvatarSvgLayerAssetsOnRef(element: HTMLSpanElement | null) {
+  if (element) {
+    preloadAvatarSvgLayerAssets();
+  }
+}
+
+function AvatarSvgLayerPreloadTrigger() {
+  return <span hidden ref={preloadAvatarSvgLayerAssetsOnRef} />;
+}
+
 export function AvatarMaker({ onConfirm, trigger }: AvatarMakerProps) {
   const open = useGet(avatarMakerOpen$);
   const openMaker = useSet(openAvatarMaker$);
@@ -449,6 +462,7 @@ export function AvatarMaker({ onConfirm, trigger }: AvatarMakerProps) {
           }
         }}
       >
+        {open ? <AvatarSvgLayerPreloadTrigger /> : null}
         <AvatarMakerDialogBody onConfirm={onConfirm} />
       </Dialog>
     </>

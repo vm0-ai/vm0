@@ -106,7 +106,7 @@ interface WorkflowAutomationOption {
 }
 
 export const CREATE_WORKFLOW_WITH_CHAT_PROMPT =
-  "Help me create a Zero workflow for this agent. Use the workflow-setup skill, then ask me for the automation goal, trigger, action, and allowed side effects before creating the workflow and trigger.";
+  "Help me create a workflow for this agent. Use the workflow-setup skill, then ask me for the desired outcome, automation, and action before creating the workflow and automation.";
 
 const WORKFLOW_AUTOMATION_OPTIONS: readonly WorkflowAutomationOption[] = [
   {
@@ -333,10 +333,9 @@ function TriggerCardHeader({
         </p>
       </div>
       <Link
-        pathname={ROUTES.agentWorkflowDetail}
+        pathname={ROUTES.workflowDetail}
         options={{
           pathParams: {
-            agentId: entry.workflow.agentId,
             workflowId: entry.workflow.id,
           },
           searchParams: new URLSearchParams({
@@ -364,10 +363,9 @@ function WorkflowAutomationTriggerCard({
   const running = runLoadable.state === "loading";
   const editLink = (
     <Link
-      pathname={ROUTES.agentWorkflowDetail}
+      pathname={ROUTES.workflowDetail}
       options={{
         pathParams: {
-          agentId: entry.workflow.agentId,
           workflowId: entry.workflow.id,
         },
         searchParams: new URLSearchParams({
@@ -862,7 +860,7 @@ export function CreateWorkflowAutomationDialog() {
   );
 }
 
-export function WorkflowTriggerAutomationList({
+function WorkflowTriggerAutomationList({
   entries,
   displayTimezone,
   loading,

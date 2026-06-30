@@ -462,6 +462,7 @@ export function createChatFilesBddApi(context: TestContext) {
       query: {
         readonly agentId: string;
         readonly cursor?: string;
+        readonly filter?: "unread";
       },
     ): Promise<{
       readonly pinned: readonly ChatThreadListItem[];
@@ -484,6 +485,7 @@ export function createChatFilesBddApi(context: TestContext) {
       query: {
         readonly agentId: string;
         readonly cursor?: string;
+        readonly filter?: "unread";
       },
       statuses: readonly (200 | 401 | 404)[],
     ) {

@@ -305,6 +305,12 @@ const chatThreadDetailSchema = z.object({
   activeRunIds: z.array(z.string()),
   createdAt: z.string(),
   updatedAt: z.string(),
+  /**
+   * ISO timestamp at which the user pinned this thread. Exposed on detail so
+   * the current thread can be placed in the correct sidebar segment even when
+   * it is omitted from the paged list response.
+   */
+  pinnedAt: z.string().nullable().optional(),
   draftContent: z.string().nullable().optional(),
   draftAttachments: z.array(persistedAttachmentSchema).nullable().optional(),
   computerUseHostId: z.string().uuid().nullable().optional(),
@@ -391,6 +397,11 @@ export const chatThreadsContract = c.router({
        * page) and `threads` continues from the position after the cursor.
        */
       cursor: z.string().optional(),
+      /**
+       * Optional server-side list filter. `unread` returns only threads whose
+       * latest visible message is newer than the caller's read cursor.
+       */
+      filter: z.enum(["unread"]).optional(),
     }),
     responses: {
       200: z.object({
