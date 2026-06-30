@@ -1381,7 +1381,7 @@ describe("zero sidebar", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.WorkflowsViewer]: true },
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     const nav = await waitFor(() => {

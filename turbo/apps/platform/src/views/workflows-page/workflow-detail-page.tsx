@@ -2692,12 +2692,8 @@ function TriggersSection({
     userLoadable.state === "hasData" ? (userLoadable.data?.id ?? "") : "";
   const displayTimezone = preferences?.timezone ?? browserTimezone();
   const triggers = detail.triggers;
-  const webhookTriggersEnabled =
-    features[FeatureSwitchKey.WorkflowWebhookTriggers] ?? false;
-  const githubLabelTriggersEnabled =
-    features[FeatureSwitchKey.WorkflowGithubLabelEventTriggers] ?? false;
-  const googleCalendarTriggersEnabled =
-    features[FeatureSwitchKey.WorkflowGoogleCalendarEventTriggers] ?? false;
+  const workflowAutomationEnabled =
+    features[FeatureSwitchKey.WorkflowAutomation] ?? false;
 
   return (
     <section className="mx-auto flex max-w-[900px] flex-col gap-3">
@@ -2712,9 +2708,9 @@ function TriggersSection({
         </div>
         <TriggerCreateMenu
           onSelect={setCreateDialog}
-          githubLabelTriggersEnabled={githubLabelTriggersEnabled}
-          googleCalendarTriggersEnabled={googleCalendarTriggersEnabled}
-          webhookTriggersEnabled={webhookTriggersEnabled}
+          githubLabelTriggersEnabled={workflowAutomationEnabled}
+          googleCalendarTriggersEnabled={workflowAutomationEnabled}
+          webhookTriggersEnabled={workflowAutomationEnabled}
         />
       </div>
       <div className="flex flex-col gap-2">

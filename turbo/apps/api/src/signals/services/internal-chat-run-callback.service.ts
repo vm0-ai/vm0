@@ -615,7 +615,7 @@ async function generateWorkflowAutomationSuggestionForCompletedRun(args: {
 }): Promise<ChatMessageRecommendedFollowup | undefined> {
   args.signal.throwIfAborted();
   const enabled = isFeatureEnabled(
-    FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger,
+    FeatureSwitchKey.WorkflowAutomation,
     await loadUserFeatureSwitchContext(args.db, args.orgId, args.userId),
   );
   args.signal.throwIfAborted();

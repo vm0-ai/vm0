@@ -614,7 +614,7 @@ describe("CHAT-02: completed chat callback", () => {
       context,
       { userId: actor.userId, orgId: actor.orgId, orgRole: actor.orgRole },
       {
-        [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
+        [FeatureSwitchKey.WorkflowAutomation]: true,
       },
     );
 

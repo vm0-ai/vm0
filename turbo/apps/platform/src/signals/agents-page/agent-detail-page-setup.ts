@@ -57,7 +57,7 @@ export const setupAgentDetailPage$ = command(
     set(setChatAgentId$, agentId);
     set(rememberLastUsedAgentId$, agentId);
     const features = get(featureSwitch$);
-    if (features[FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]) {
+    if (features[FeatureSwitchKey.WorkflowAutomation]) {
       const params = get(searchParams$);
       const tab = params.get("tab");
       if (tab === "automations" || tab === "workflows") {

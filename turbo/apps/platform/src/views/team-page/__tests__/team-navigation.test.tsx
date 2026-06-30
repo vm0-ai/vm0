@@ -593,8 +593,7 @@ describe("team page navigation", () => {
       context,
       path: `/agents/${researchAgentId}?tab=automations`,
       featureSwitches: {
-        [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
-        [FeatureSwitchKey.WorkflowsViewer]: true,
+        [FeatureSwitchKey.WorkflowAutomation]: true,
       },
     });
 

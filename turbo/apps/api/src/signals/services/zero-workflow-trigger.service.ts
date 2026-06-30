@@ -39,17 +39,11 @@ import {
 } from "./zero-workflow-data.service";
 import {
   ensureGmailWatchForUser,
-  gmailWorkflowEventTriggersEnabledForOwner,
   resolveGmailLabelForUser,
 } from "./gmail-workflow-event.service";
-import {
-  ensureGoogleCalendarWatchForUser,
-  googleCalendarWorkflowEventTriggersEnabledForOwner,
-} from "./google-calendar-workflow-event.service";
-import {
-  prepareGithubLabelEventConfigForPersist,
-  workflowGithubLabelEventTriggersEnabledForOwner,
-} from "./github-workflow-event.service";
+import { ensureGoogleCalendarWatchForUser } from "./google-calendar-workflow-event.service";
+import { prepareGithubLabelEventConfigForPersist } from "./github-workflow-event.service";
+import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
 import {
   buildWorkflowWebhookSummaryFields,
   defaultWebhookReceivedEventConfig,
@@ -58,7 +52,6 @@ import {
   hashWorkflowWebhookToken,
   mintWorkflowWebhookSecret,
   mintWorkflowWebhookToken,
-  workflowWebhookTriggersEnabledForOwner,
 } from "./workflow-webhook-trigger.service";
 import { dispatchFailedRunCallbacks } from "./agent-run-callback.service";
 import {
@@ -1167,10 +1160,7 @@ const createEventTriggerForWorkflow$ = command(
     const { input } = args;
     if (input.eventType === "webhook-received") {
       const featureEnabled = await get(
-        workflowWebhookTriggersEnabledForOwner(
-          input.orgId,
-          input.member.userId,
-        ),
+        workflowAutomationEnabledForOwner(input.orgId, input.member.userId),
       );
       signal.throwIfAborted();
       if (!featureEnabled) {
@@ -1189,10 +1179,7 @@ const createEventTriggerForWorkflow$ = command(
 
     if (input.eventType === "github-label-applied") {
       const featureEnabled = await get(
-        workflowGithubLabelEventTriggersEnabledForOwner(
-          input.orgId,
-          input.member.userId,
-        ),
+        workflowAutomationEnabledForOwner(input.orgId, input.member.userId),
       );
       signal.throwIfAborted();
       if (!featureEnabled) {
@@ -1211,10 +1198,7 @@ const createEventTriggerForWorkflow$ = command(
 
     if (input.eventType === "google-calendar-event-created") {
       const featureEnabled = await get(
-        googleCalendarWorkflowEventTriggersEnabledForOwner(
-          input.orgId,
-          input.member.userId,
-        ),
+        workflowAutomationEnabledForOwner(input.orgId, input.member.userId),
       );
       signal.throwIfAborted();
       if (!featureEnabled) {
@@ -1232,10 +1216,7 @@ const createEventTriggerForWorkflow$ = command(
     }
 
     const featureEnabled = await get(
-      gmailWorkflowEventTriggersEnabledForOwner(
-        input.orgId,
-        input.member.userId,
-      ),
+      workflowAutomationEnabledForOwner(input.orgId, input.member.userId),
     );
     signal.throwIfAborted();
     if (!featureEnabled) {
@@ -1482,10 +1463,7 @@ const updateEventTriggerForWorkflow$ = command(
         };
       }
       const featureEnabled = await get(
-        workflowGithubLabelEventTriggersEnabledForOwner(
-          args.orgId,
-          args.member.userId,
-        ),
+        workflowAutomationEnabledForOwner(args.orgId, args.member.userId),
       );
       signal.throwIfAborted();
       if (!featureEnabled) {
@@ -1775,10 +1753,7 @@ const ensureEventTriggerCanBeEnabled$ = command(
   ): Promise<TriggerActionFailure | null> => {
     if (args.trigger.eventType === "gmail-new-message") {
       const featureEnabled = await get(
-        gmailWorkflowEventTriggersEnabledForOwner(
-          args.orgId,
-          args.member.userId,
-        ),
+        workflowAutomationEnabledForOwner(args.orgId, args.member.userId),
       );
       signal.throwIfAborted();
       if (!featureEnabled) {
@@ -1803,10 +1778,7 @@ const ensureEventTriggerCanBeEnabled$ = command(
 
     if (args.trigger.eventType === "github-label-applied") {
       const featureEnabled = await get(
-        workflowGithubLabelEventTriggersEnabledForOwner(
-          args.orgId,
-          args.member.userId,
-        ),
+        workflowAutomationEnabledForOwner(args.orgId, args.member.userId),
       );
       signal.throwIfAborted();
       if (!featureEnabled) {
@@ -1832,10 +1804,7 @@ const ensureEventTriggerCanBeEnabled$ = command(
 
     if (args.trigger.eventType === "google-calendar-event-created") {
       const featureEnabled = await get(
-        googleCalendarWorkflowEventTriggersEnabledForOwner(
-          args.orgId,
-          args.member.userId,
-        ),
+        workflowAutomationEnabledForOwner(args.orgId, args.member.userId),
       );
       signal.throwIfAborted();
       if (!featureEnabled) {
@@ -1863,7 +1832,7 @@ const ensureEventTriggerCanBeEnabled$ = command(
 
     if (args.trigger.eventType === "webhook-received") {
       const featureEnabled = await get(
-        workflowWebhookTriggersEnabledForOwner(args.orgId, args.member.userId),
+        workflowAutomationEnabledForOwner(args.orgId, args.member.userId),
       );
       signal.throwIfAborted();
       if (!featureEnabled) {

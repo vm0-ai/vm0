@@ -740,7 +740,7 @@ describe("chat composer models", () => {
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: {
-        [FeatureSwitchKey.ChatSlashWorkflowCommands]: true,
+        [FeatureSwitchKey.WorkflowAutomation]: true,
       },
     });
 
@@ -761,7 +761,7 @@ describe("chat composer models", () => {
       context,
       path: `/chats/${THREAD_ID}`,
       featureSwitches: {
-        [FeatureSwitchKey.ChatSlashWorkflowCommands]: true,
+        [FeatureSwitchKey.WorkflowAutomation]: true,
       },
     });
 
@@ -804,7 +804,7 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatSlashWorkflowCommands]: true },
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     const editor = await findComposerEditor();
@@ -866,7 +866,7 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatSlashWorkflowCommands]: true },
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     const editor = await findComposerEditor();
@@ -897,8 +897,7 @@ describe("chat composer models", () => {
       context,
       path: `/agents/${AGENT_ID}/chat`,
       featureSwitches: {
-        [FeatureSwitchKey.ChatSlashWorkflowCommands]: true,
-        [FeatureSwitchKey.WorkflowsViewer]: true,
+        [FeatureSwitchKey.WorkflowAutomation]: true,
       },
     });
 
@@ -933,7 +932,7 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatSlashWorkflowCommands]: false },
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
     });
 
     const textarea = await screen.findByPlaceholderText(PLACEHOLDER);
@@ -973,7 +972,7 @@ describe("chat composer models", () => {
     detachedSetupPage({
       context,
       path: `/agents/${AGENT_ID}/chat`,
-      featureSwitches: { [FeatureSwitchKey.ChatSlashWorkflowCommands]: true },
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
     });
 
     const editor = await findComposerEditor();
@@ -1005,7 +1004,7 @@ describe("chat composer models", () => {
       detachedSetupPage({
         context,
         path: `/agents/${AGENT_ID}/chat`,
-        featureSwitches: { [FeatureSwitchKey.ChatSlashWorkflowCommands]: true },
+        featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
       });
 
       const editor = await findComposerEditor();

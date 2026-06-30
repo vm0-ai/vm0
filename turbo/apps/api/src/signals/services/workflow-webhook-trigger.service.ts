@@ -1,12 +1,10 @@
 import { Buffer } from "node:buffer";
 import { createHash, randomBytes } from "node:crypto";
 
-import { command, computed } from "ccstate";
+import { command } from "ccstate";
 import { and, eq, gte } from "drizzle-orm";
 
 import type { WebhookReceivedEventConfig } from "@vm0/api-contracts/contracts/zero-workflows";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { isFeatureEnabled } from "@vm0/core/feature-switch";
 import {
   workflowUserTriggerThreads,
   zeroWorkflowTriggers,
@@ -26,7 +24,7 @@ import {
   decryptPersistentSecretValue,
   encryptPersistentSecretValue,
 } from "./crypto.utils";
-import { userFeatureSwitchOverrides } from "./feature-switches.service";
+import { workflowAutomationEnabledForOwner } from "./workflow-automation-feature-switch.service";
 import {
   buildChatOnlyWorkflowTriggerCallbacks,
   runWorkflowTriggerNow$,
@@ -70,20 +68,6 @@ function workflowWebhookUrlForToken(token: string): string {
   return `${baseUrl}/api/webhooks/workflow-triggers/${encodeURIComponent(
     token,
   )}`;
-}
-
-export function workflowWebhookTriggersEnabledForOwner(
-  orgId: string,
-  userId: string,
-) {
-  return computed(async (get) => {
-    const overrides = await get(userFeatureSwitchOverrides(orgId, userId));
-    return isFeatureEnabled(FeatureSwitchKey.WorkflowWebhookTriggers, {
-      orgId,
-      userId,
-      overrides,
-    });
-  });
 }
 
 export async function encryptWorkflowWebhookToken(
@@ -585,7 +569,7 @@ export const dispatchWorkflowWebhook$ = command(
     }
 
     const enabled = await get(
-      workflowWebhookTriggersEnabledForOwner(
+      workflowAutomationEnabledForOwner(
         row.trigger.orgId,
         row.trigger.ownerUserId,
       ),
