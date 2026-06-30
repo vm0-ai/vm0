@@ -44,7 +44,8 @@ use crate::paths::{SandboxPaths, SockPaths};
 
 #[async_trait]
 pub(super) trait CreateRollbackCleanup {
-    async fn destroy_cow_device(&self, cow_device: PooledNbdCowDevice) -> CowCleanupOutcome;
+    async fn destroy_cow_device(&self, cow_device: CreateTransactionCowDevice)
+    -> CowCleanupOutcome;
     async fn release_network(&self, network: &mut Option<NetnsLease>);
     fn start_filesystem_cleanup(
         &self,
@@ -141,8 +142,19 @@ pub(super) struct FactoryCreateRollbackCleanup {
 
 #[async_trait]
 impl CreateRollbackCleanup for FactoryCreateRollbackCleanup {
-    async fn destroy_cow_device(&self, cow_device: PooledNbdCowDevice) -> CowCleanupOutcome {
-        destroy_cow_device_with_retries(&self.id, cow_device).await
+    async fn destroy_cow_device(
+        &self,
+        cow_device: CreateTransactionCowDevice,
+    ) -> CowCleanupOutcome {
+        match cow_device {
+            CreateTransactionCowDevice::Real(cow_device) => {
+                destroy_cow_device_with_retries(&self.id, cow_device).await
+            }
+            #[cfg(test)]
+            CreateTransactionCowDevice::Test => {
+                panic!("factory cleanup should not receive a test COW device")
+            }
+        }
     }
 
     async fn release_network(&self, network: &mut Option<NetnsLease>) {
@@ -181,6 +193,32 @@ pub(super) struct SandboxCreateResources {
     pub(super) sock_paths: SockPaths,
     pub(super) network: NetnsLease,
     pub(super) cow_device: PooledNbdCowDevice,
+}
+
+pub(super) enum CreateTransactionCowDevice {
+    Real(PooledNbdCowDevice),
+    #[cfg(test)]
+    Test,
+}
+
+impl CreateTransactionCowDevice {
+    fn into_real(self, _context: &str) -> sandbox::Result<PooledNbdCowDevice> {
+        match self {
+            Self::Real(cow_device) => Ok(cow_device),
+            #[cfg(test)]
+            Self::Test => Err(create_transaction_invalid_state(&format!(
+                "test COW device cannot be used at {_context}"
+            ))),
+        }
+    }
+
+    fn into_leaked_real(self) -> Option<PooledNbdCowDevice> {
+        match self {
+            Self::Real(cow_device) => Some(cow_device),
+            #[cfg(test)]
+            Self::Test => None,
+        }
+    }
 }
 
 #[derive(Default)]
@@ -222,7 +260,7 @@ pub(super) struct SandboxCreateTransaction {
     workspace: WorkspaceOwnership,
     sock_dir: Option<PathBuf>,
     network: Option<NetnsLease>,
-    cow_device: Option<PooledNbdCowDevice>,
+    cow_device: Option<CreateTransactionCowDevice>,
     leak_tx: Option<tokio::sync::mpsc::UnboundedSender<LeakedResources>>,
     delete_workspace_on_leak_cleanup: bool,
 }
@@ -325,7 +363,7 @@ impl SandboxCreateTransaction {
     }
 
     pub(super) fn track_cow_device(&mut self, cow_device: PooledNbdCowDevice) {
-        self.cow_device = Some(cow_device);
+        self.cow_device = Some(CreateTransactionCowDevice::Real(cow_device));
     }
 
     pub(super) fn commit(&mut self) -> sandbox::Result<SandboxCreateResources> {
@@ -340,7 +378,8 @@ impl SandboxCreateTransaction {
         let cow_device = self
             .cow_device
             .take()
-            .ok_or_else(|| create_transaction_invalid_state("missing COW device at commit"))?;
+            .ok_or_else(|| create_transaction_invalid_state("missing COW device at commit"))?
+            .into_real("commit")?;
 
         Ok(SandboxCreateResources {
             sandbox_paths: SandboxPaths::new(workspace),
@@ -525,7 +564,10 @@ impl SandboxCreateTransaction {
 
         let leaked = LeakedResources {
             sandbox_id: self.id.clone(),
-            cow_device: self.cow_device.take(),
+            cow_device: self
+                .cow_device
+                .take()
+                .and_then(CreateTransactionCowDevice::into_leaked_real),
             network: self.network.take(),
             sock_dir,
             workspace,
@@ -535,7 +577,10 @@ impl SandboxCreateTransaction {
         match leak_tx.send(leaked) {
             Ok(()) => true,
             Err(tokio::sync::mpsc::error::SendError(mut leaked)) => {
-                self.cow_device = leaked.cow_device.take();
+                self.cow_device = leaked
+                    .cow_device
+                    .take()
+                    .map(CreateTransactionCowDevice::Real);
                 self.network = leaked.network.take();
                 self.sock_dir = Some(leaked.sock_dir);
                 self.workspace = WorkspaceOwnership::Workspace(leaked.workspace);

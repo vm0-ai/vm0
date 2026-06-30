@@ -28,6 +28,11 @@ impl SandboxCreateTransaction {
         Ok(())
     }
 
+    fn track_test_cow_device_for_test(&mut self) {
+        assert!(self.cow_device.is_none(), "test COW device already tracked");
+        self.cow_device = Some(CreateTransactionCowDevice::Test);
+    }
+
     fn commit_without_cow_for_test(&mut self) -> sandbox::Result<SandboxCreateResourcesWithoutCow> {
         self.validate_base_resources("test commit")?;
         let (workspace, sock_dir, network) = self.take_base_resources_after_validation()?;
@@ -156,6 +161,38 @@ impl FailingNetworkReleaseCleanup {
     }
 }
 
+struct CowOutcomeCreateRollbackCleanup {
+    events: CleanupEvents,
+    cow_outcome: CowCleanupOutcome,
+    release_network: bool,
+}
+
+impl CowOutcomeCreateRollbackCleanup {
+    fn releasing_network(cow_outcome: CowCleanupOutcome) -> Self {
+        Self {
+            events: CleanupEvents::default(),
+            cow_outcome,
+            release_network: true,
+        }
+    }
+
+    fn failing_network(cow_outcome: CowCleanupOutcome) -> Self {
+        Self {
+            events: CleanupEvents::default(),
+            cow_outcome,
+            release_network: false,
+        }
+    }
+
+    fn events(&self) -> Vec<String> {
+        self.events.events()
+    }
+
+    fn record(&self, event: String) {
+        self.events.record(event);
+    }
+}
+
 #[derive(Clone, Default)]
 struct BlockingRemoveDirCleanup {
     events: CleanupEvents,
@@ -240,9 +277,48 @@ impl BlockingRemoveDirCleanup {
     }
 }
 
+#[derive(Clone, Default)]
+struct BlockingCowCleanup {
+    events: CleanupEvents,
+    entered: Arc<AtomicBool>,
+    entered_notify: Arc<tokio::sync::Notify>,
+}
+
+impl BlockingCowCleanup {
+    fn events(&self) -> Vec<String> {
+        self.events.events()
+    }
+
+    fn record(&self, event: String) {
+        self.events.record(event);
+    }
+
+    async fn wait_entered(&self) {
+        loop {
+            let notified = self.entered_notify.notified();
+            if self.entered.load(Ordering::SeqCst) {
+                return;
+            }
+            notified.await;
+        }
+    }
+}
+
+fn assert_test_cow_device(cow_device: CreateTransactionCowDevice) {
+    match cow_device {
+        CreateTransactionCowDevice::Test => {}
+        CreateTransactionCowDevice::Real(_) => {
+            panic!("test cleanup should not receive a real COW device")
+        }
+    }
+}
+
 #[async_trait]
 impl CreateRollbackCleanup for BlockingRemoveDirCleanup {
-    async fn destroy_cow_device(&self, _cow_device: PooledNbdCowDevice) -> CowCleanupOutcome {
+    async fn destroy_cow_device(
+        &self,
+        _cow_device: CreateTransactionCowDevice,
+    ) -> CowCleanupOutcome {
         panic!("test cleanup should not receive a real COW device");
     }
 
@@ -279,7 +355,10 @@ impl CreateRollbackCleanup for BlockingRemoveDirCleanup {
 
 #[async_trait]
 impl CreateRollbackCleanup for FailingNetworkReleaseCleanup {
-    async fn destroy_cow_device(&self, _cow_device: PooledNbdCowDevice) -> CowCleanupOutcome {
+    async fn destroy_cow_device(
+        &self,
+        _cow_device: CreateTransactionCowDevice,
+    ) -> CowCleanupOutcome {
         panic!("test cleanup should not receive a real COW device");
     }
 
@@ -300,7 +379,10 @@ impl CreateRollbackCleanup for FailingNetworkReleaseCleanup {
 
 #[async_trait]
 impl CreateRollbackCleanup for RecordingCreateRollbackCleanup {
-    async fn destroy_cow_device(&self, _cow_device: PooledNbdCowDevice) -> CowCleanupOutcome {
+    async fn destroy_cow_device(
+        &self,
+        _cow_device: CreateTransactionCowDevice,
+    ) -> CowCleanupOutcome {
         panic!("test cleanup should not receive a real COW device");
     }
 
@@ -331,6 +413,79 @@ impl CreateRollbackCleanup for RecordingCreateRollbackCleanup {
             }
         }
         CreateRollbackFilesystemCleanupWaiter::ready()
+    }
+}
+
+#[async_trait]
+impl CreateRollbackCleanup for CowOutcomeCreateRollbackCleanup {
+    async fn destroy_cow_device(
+        &self,
+        cow_device: CreateTransactionCowDevice,
+    ) -> CowCleanupOutcome {
+        assert_test_cow_device(cow_device);
+        self.record("destroy_cow_device".into());
+        self.cow_outcome
+    }
+
+    async fn release_network(&self, network: &mut Option<NetnsLease>) {
+        let network_name = network
+            .as_ref()
+            .expect("test network lease")
+            .name()
+            .to_owned();
+        self.record(format!("release_network:{network_name}"));
+        if self.release_network {
+            let network = network.take().expect("test network lease");
+            let _ = network.into_info_for_test();
+        }
+    }
+
+    fn start_filesystem_cleanup(
+        &self,
+        cleanup: CreateRollbackFilesystemCleanup,
+    ) -> CreateRollbackFilesystemCleanupWaiter {
+        for step in cleanup.steps {
+            match step {
+                CreateRollbackFilesystemCleanupStep::RemoveDir { kind, path } => {
+                    let name = path
+                        .file_name()
+                        .and_then(|name| name.to_str())
+                        .unwrap_or("<unknown>");
+                    self.record(format!("remove_dir:{kind}:{name}"));
+                    remove_create_rollback_dir_sync("sandbox", kind, path);
+                }
+                CreateRollbackFilesystemCleanupStep::DestroySlot(slot) => {
+                    self.record(format!("destroy_slot:{}", slot.id()));
+                    crate::cow_pool::destroy_slot_sync(slot);
+                }
+            }
+        }
+        CreateRollbackFilesystemCleanupWaiter::ready()
+    }
+}
+
+#[async_trait]
+impl CreateRollbackCleanup for BlockingCowCleanup {
+    async fn destroy_cow_device(
+        &self,
+        cow_device: CreateTransactionCowDevice,
+    ) -> CowCleanupOutcome {
+        assert_test_cow_device(cow_device);
+        self.record("destroy_cow_device".into());
+        self.entered.store(true, Ordering::SeqCst);
+        self.entered_notify.notify_waiters();
+        std::future::pending::<CowCleanupOutcome>().await
+    }
+
+    async fn release_network(&self, _network: &mut Option<NetnsLease>) {
+        panic!("blocked COW cleanup should prevent network release");
+    }
+
+    fn start_filesystem_cleanup(
+        &self,
+        _cleanup: CreateRollbackFilesystemCleanup,
+    ) -> CreateRollbackFilesystemCleanupWaiter {
+        panic!("blocked COW cleanup should prevent filesystem cleanup");
     }
 }
 
@@ -602,6 +757,132 @@ async fn create_transaction_rollback_releases_network_before_dirs() {
             "remove_dir:workspace:workspace"
         ]
     );
+}
+
+#[tokio::test]
+async fn create_transaction_rollback_safe_cow_cleanup_removes_workspace() {
+    let fixture = WorkspaceSockFixture::new().await;
+
+    let mut tx = SandboxCreateTransaction::new("sandbox".into());
+    fixture.track_on(&mut tx);
+    tx.track_network(test_network());
+    tx.track_test_cow_device_for_test();
+    let cleanup = CowOutcomeCreateRollbackCleanup::releasing_network(
+        CowCleanupOutcome::BackingFilesSafeToDelete,
+    );
+
+    tx.rollback(&cleanup).await;
+
+    assert!(!fixture.workspace.exists());
+    assert!(!fixture.sock_dir.exists());
+    assert_eq!(
+        cleanup.events(),
+        vec![
+            "destroy_cow_device",
+            "release_network:test-ns",
+            "remove_dir:sock:sock",
+            "remove_dir:workspace:workspace"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn create_transaction_rollback_unsafe_cow_cleanup_preserves_workspace() {
+    let fixture = WorkspaceSockFixture::new().await;
+
+    let mut tx = SandboxCreateTransaction::new("sandbox".into());
+    fixture.track_on(&mut tx);
+    tx.track_network(test_network());
+    tx.track_test_cow_device_for_test();
+    let cleanup = CowOutcomeCreateRollbackCleanup::releasing_network(
+        CowCleanupOutcome::DeviceMayStillReferenceBackingFiles,
+    );
+
+    tx.rollback(&cleanup).await;
+
+    assert!(fixture.workspace.exists());
+    assert!(!fixture.sock_dir.exists());
+    assert_eq!(
+        cleanup.events(),
+        vec![
+            "destroy_cow_device",
+            "release_network:test-ns",
+            "remove_dir:sock:sock"
+        ]
+    );
+}
+
+#[tokio::test]
+async fn create_transaction_rollback_unsafe_cow_cleanup_marks_leaked_workspace_preserved() {
+    let fixture = WorkspaceSockFixture::new().await;
+
+    let (leak_tx, mut leak_rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
+    fixture.track_on(&mut tx);
+    tx.track_network(test_network());
+    tx.track_test_cow_device_for_test();
+    let cleanup = CowOutcomeCreateRollbackCleanup::failing_network(
+        CowCleanupOutcome::DeviceMayStillReferenceBackingFiles,
+    );
+
+    tx.rollback(&cleanup).await;
+
+    assert!(fixture.workspace.exists());
+    assert!(fixture.sock_dir.exists());
+    assert_eq!(
+        cleanup.events(),
+        vec!["destroy_cow_device", "release_network:test-ns"]
+    );
+
+    drop(tx);
+    let mut leaked = leak_rx.recv().await.unwrap();
+    assert!(leaked.cow_device.is_none());
+    assert!(!leaked.delete_workspace);
+    let network = leaked.network.take().unwrap();
+    assert_eq!(network.name(), "test-ns");
+    let _ = network.into_info_for_test();
+    assert_eq!(leaked.sock_dir, fixture.sock_dir);
+    assert_eq!(leaked.workspace, fixture.workspace);
+}
+
+#[tokio::test]
+async fn create_transaction_rollback_cancellation_during_cow_cleanup_preserves_workspace() {
+    let fixture = WorkspaceSockFixture::new().await;
+
+    let (leak_tx, mut leak_rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
+    fixture.track_on(&mut tx);
+    tx.track_network(test_network());
+    tx.track_test_cow_device_for_test();
+
+    let cleanup = BlockingCowCleanup::default();
+    let rollback_cleanup = cleanup.clone();
+    let rollback = tokio::spawn(async move {
+        let mut tx = tx;
+        tx.rollback(&rollback_cleanup).await;
+    });
+
+    tokio::time::timeout(std::time::Duration::from_secs(1), cleanup.wait_entered())
+        .await
+        .unwrap();
+    assert!(fixture.workspace.exists());
+    assert!(fixture.sock_dir.exists());
+
+    rollback.abort();
+    assert!(rollback.await.unwrap_err().is_cancelled());
+
+    let mut leaked = tokio::time::timeout(std::time::Duration::from_secs(1), leak_rx.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(leaked.cow_device.is_none());
+    assert!(!leaked.delete_workspace);
+    let network = leaked.network.take().unwrap();
+    assert_eq!(network.name(), "test-ns");
+    let _ = network.into_info_for_test();
+    assert_eq!(leaked.sock_dir, fixture.sock_dir);
+    assert_eq!(leaked.workspace, fixture.workspace);
+    assert_eq!(cleanup.events(), vec!["destroy_cow_device"]);
 }
 
 #[tokio::test]
