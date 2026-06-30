@@ -1,9 +1,10 @@
 use crate::error::ProtocolError;
+use crate::frame::encode_into;
 use crate::read::{
     checked_payload_len_add, ensure_payload_fits_message, ensure_u32_len, expect_consumed,
     read_slice, read_u8, read_u32,
 };
-use crate::wire::{EXEC_OUTPUT_FLAG_TRUNCATED, HEADER_SIZE, MIN_BODY_SIZE, MSG_EXEC_OUTPUT};
+use crate::wire::{EXEC_OUTPUT_FLAG_TRUNCATED, MSG_EXEC_OUTPUT};
 
 const EXEC_OUTPUT_STREAM_STDOUT: u8 = 0x00;
 const EXEC_OUTPUT_STREAM_STDERR: u8 = 0x01;
@@ -65,14 +66,9 @@ pub fn encode_exec_output_frame_into(
 ) -> Result<(), ProtocolError> {
     frame.clear();
     let (chunk_len, payload_len) = validate_exec_output_payload(chunk)?;
-    let body_len = MIN_BODY_SIZE + payload_len;
-
-    frame.reserve(HEADER_SIZE + body_len);
-    frame.extend_from_slice(&(body_len as u32).to_be_bytes());
-    frame.push(MSG_EXEC_OUTPUT);
-    frame.extend_from_slice(&seq.to_be_bytes());
-    append_exec_output_payload(frame, stream, output_seq, chunk, chunk_len, truncated);
-    Ok(())
+    encode_into(frame, MSG_EXEC_OUTPUT, seq, payload_len, |frame| {
+        append_exec_output_payload(frame, stream, output_seq, chunk, chunk_len, truncated);
+    })
 }
 
 fn validate_exec_output_payload(chunk: &[u8]) -> Result<(u32, usize), ProtocolError> {
