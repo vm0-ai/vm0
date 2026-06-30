@@ -130,11 +130,26 @@ fn assert_successful_action(ops: &[(String, bool, Option<String>)], action: &str
     );
 }
 
-fn assert_failed_action_error(ops: &[(String, bool, Option<String>)], action: &str, error: &str) {
-    assert!(
-        ops.iter()
-            .any(|op| op.0 == action && !op.1 && op.2.as_deref() == Some(error)),
-        "expected failed {action} telemetry with {error:?}, got: {ops:?}"
+fn assert_successful_action_once(ops: &[(String, bool, Option<String>)], action: &str) {
+    let matches = ops.iter().filter(|op| op.0 == action && op.1).count();
+    assert_eq!(
+        matches, 1,
+        "expected exactly one successful {action} telemetry, got: {ops:?}"
+    );
+}
+
+fn assert_failed_action_error_once(
+    ops: &[(String, bool, Option<String>)],
+    action: &str,
+    error: &str,
+) {
+    let matches = ops
+        .iter()
+        .filter(|op| op.0 == action && !op.1 && op.2.as_deref() == Some(error))
+        .count();
+    assert_eq!(
+        matches, 1,
+        "expected exactly one failed {action} telemetry with {error:?}, got: {ops:?}"
     );
 }
 
@@ -411,11 +426,11 @@ async fn run_in_sandbox_runs_guest_download_for_cached_instruction_normalization
         "cached instruction storage should still invoke guest-download; calls: {exec_calls:?}"
     );
     let ops = telemetry.pending_ops_snapshot();
-    assert_successful_action(&ops, "runner_storage_manifest_fingerprint_reuse");
-    assert_successful_action(&ops, "runner_storage_manifest_has_work");
-    assert_successful_action(&ops, "runner_storage_manifest_cache_populate");
-    assert_successful_action(&ops, "runner_storage_manifest_guest_download");
-    assert_successful_action(&ops, "runner_storage_manifest_apply");
+    assert_successful_action_once(&ops, "runner_storage_manifest_fingerprint_reuse");
+    assert_successful_action_once(&ops, "runner_storage_manifest_has_work");
+    assert_successful_action_once(&ops, "runner_storage_manifest_cache_populate");
+    assert_successful_action_once(&ops, "runner_storage_manifest_guest_download");
+    assert_successful_action_once(&ops, "runner_storage_manifest_apply");
     assert!(
         ops.iter()
             .all(|(action, _, _)| action != "storage_download"),
@@ -470,9 +485,9 @@ async fn run_in_sandbox_records_storage_manifest_no_work_timing_without_guest_do
         "fully cached storage without cleanup or instruction normalization should skip guest-download; calls: {exec_calls:?}"
     );
     let ops = telemetry.pending_ops_snapshot();
-    assert_successful_action(&ops, "runner_storage_manifest_fingerprint_reuse");
-    assert_successful_action(&ops, "runner_storage_manifest_has_work");
-    assert_successful_action(&ops, "runner_storage_manifest_apply");
+    assert_successful_action_once(&ops, "runner_storage_manifest_fingerprint_reuse");
+    assert_successful_action_once(&ops, "runner_storage_manifest_has_work");
+    assert_successful_action_once(&ops, "runner_storage_manifest_apply");
     assert_no_action(&ops, "runner_storage_manifest_cache_populate");
     assert_no_action(&ops, "runner_storage_manifest_guest_download");
 }
@@ -523,18 +538,21 @@ async fn run_in_sandbox_records_storage_manifest_guest_download_failure_timing()
         "guest-download failure should still fail the storage manifest phase"
     );
     let ops = telemetry.pending_ops_snapshot();
-    assert_successful_action(&ops, "runner_storage_manifest_fingerprint_reuse");
-    assert_successful_action(&ops, "runner_storage_manifest_has_work");
-    assert_successful_action(&ops, "runner_storage_manifest_cache_populate");
-    assert_failed_action_error(
+    assert_successful_action_once(&ops, "runner_storage_manifest_fingerprint_reuse");
+    assert_successful_action_once(&ops, "runner_storage_manifest_has_work");
+    assert_successful_action_once(&ops, "runner_storage_manifest_cache_populate");
+    assert_failed_action_error_once(
         &ops,
         "runner_storage_manifest_guest_download",
         "storage-download-failed",
     );
-    assert!(
-        ops.iter()
-            .any(|op| op.0 == "runner_storage_manifest_apply" && !op.1),
-        "top-level storage manifest apply failure should still be recorded, got: {ops:?}"
+    let apply_failures = ops
+        .iter()
+        .filter(|op| op.0 == "runner_storage_manifest_apply" && !op.1)
+        .count();
+    assert_eq!(
+        apply_failures, 1,
+        "top-level storage manifest apply failure should still be recorded once, got: {ops:?}"
     );
 }
 
