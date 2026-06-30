@@ -1,5 +1,21 @@
 # Changelog
 
+## [1.195.0](https://github.com/vm0-ai/vm0/compare/api-v1.194.0...api-v1.195.0) (2026-06-30)
+
+
+### Features
+
+* add teams installation connect flow ([#19499](https://github.com/vm0-ai/vm0/issues/19499)) ([c6ba311](https://github.com/vm0-ai/vm0/commit/c6ba311bbc015fdcda49aadbc3c26536aaefc4b0))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.132.0
+    * @vm0/core bumped to 8.379.2
+    * @vm0/db bumped to 1.79.3
+
 ## [1.194.0](https://github.com/vm0-ai/vm0/compare/api-v1.193.2...api-v1.194.0) (2026-06-30)
 
 

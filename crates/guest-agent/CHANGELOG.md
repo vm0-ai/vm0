@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.43.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.0...guest-agent-v0.43.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* **guest-agent:** reconcile codex auth state locally ([#19487](https://github.com/vm0-ai/vm0/issues/19487)) ([30d3b65](https://github.com/vm0-ai/vm0/commit/30d3b65e43d77b6cebf47181363480d2b9c0d6db))
+
 ## [0.43.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.42.2...guest-agent-v0.43.0) (2026-06-30)
 
 

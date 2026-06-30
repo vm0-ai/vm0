@@ -1,5 +1,26 @@
 # Changelog
 
+## [0.515.0](https://github.com/vm0-ai/vm0/compare/app-v0.514.0...app-v0.515.0) (2026-06-30)
+
+
+### Features
+
+* add chat thread emoji shortcut ([#19496](https://github.com/vm0-ai/vm0/issues/19496)) ([ab5d83b](https://github.com/vm0-ai/vm0/commit/ab5d83bc334f44f0e9264fa5b9d29abf7f11020e))
+* add teams installation connect flow ([#19499](https://github.com/vm0-ai/vm0/issues/19499)) ([c6ba311](https://github.com/vm0-ai/vm0/commit/c6ba311bbc015fdcda49aadbc3c26536aaefc4b0))
+
+
+### Bug Fixes
+
+* move connector reconnect into menu ([#19497](https://github.com/vm0-ai/vm0/issues/19497)) ([6b44ce9](https://github.com/vm0-ai/vm0/commit/6b44ce9f8309beefcf3ee9a77f59499dac691c6c))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.132.0
+    * @vm0/core bumped to 8.379.2
+
 ## [0.514.0](https://github.com/vm0-ai/vm0/compare/app-v0.513.0...app-v0.514.0) (2026-06-30)
 
 
