@@ -190,6 +190,12 @@ function agentRowByName(container: HTMLElement, name: string): HTMLElement {
   return row;
 }
 
+function openAgentRowMenu(container: HTMLElement, name: string): void {
+  click(
+    within(agentRowByName(container, name)).getByLabelText("Open agent menu"),
+  );
+}
+
 function openThreadMenu(title: string): void {
   click(
     within(threadRowByTitle(title)).getByTestId("chat-thread-menu-trigger"),
@@ -1084,31 +1090,35 @@ describe("zero sidebar", () => {
       expect(within(dialog).getByText("Research Agent")).toBeInTheDocument();
     });
 
-    click(within(dialog).getAllByLabelText("Pin to sidebar")[0]!);
+    openAgentRowMenu(dialog, "Research Agent");
+    click(menuItemByText("Pin to sidebar"));
 
     await waitFor(() => {
       expect(
-        within(dialog).getByLabelText("Unpin Research Agent"),
+        within(agentRowByName(dialog, "Research Agent")).getByLabelText(
+          "Open agent menu",
+        ),
       ).toBeInTheDocument();
       expect(within(sidebar).getByText("Research Agent")).toBeInTheDocument();
     });
 
-    click(within(dialog).getByLabelText("Unpin Research Agent"));
+    openAgentRowMenu(dialog, "Research Agent");
+    click(menuItemByText("Unpin"));
 
     await waitFor(() => {
-      expect(
-        within(dialog).queryByLabelText("Unpin Research Agent"),
-      ).not.toBeInTheDocument();
       expect(
         within(sidebar).queryByText("Research Agent"),
       ).not.toBeInTheDocument();
     });
 
-    click(within(dialog).getAllByLabelText("Pin to sidebar")[0]!);
+    openAgentRowMenu(dialog, "Research Agent");
+    click(menuItemByText("Pin to sidebar"));
 
     await waitFor(() => {
       expect(
-        within(dialog).getByLabelText("Unpin Research Agent"),
+        within(agentRowByName(dialog, "Research Agent")).getByLabelText(
+          "Open agent menu",
+        ),
       ).toBeInTheDocument();
       expect(within(sidebar).getByText("Research Agent")).toBeInTheDocument();
     });

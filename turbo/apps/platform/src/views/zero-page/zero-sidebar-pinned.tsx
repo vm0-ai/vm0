@@ -1,6 +1,5 @@
 // TODO(#8609): split large components to comply with max-lines-per-function (128)
 // oxlint-disable max-lines-per-function
-import type { MouseEvent } from "react";
 import {
   useGet,
   useSet,
@@ -11,7 +10,6 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconPlus,
   IconChevronRight,
-  IconDots,
   IconPinnedOff,
   IconChecks,
 } from "@tabler/icons-react";
@@ -21,10 +19,6 @@ import {
   TooltipContent,
   TooltipProvider,
   TooltipTrigger,
-  DropdownMenu,
-  DropdownMenuTrigger,
-  DropdownMenuContent,
-  DropdownMenuItem,
 } from "@vm0/ui";
 import {
   isChatRoute,
@@ -60,19 +54,16 @@ import { detach, Reason } from "../../signals/utils.ts";
 import { AgentAvatarImg } from "./zero-sidebar-shared.tsx";
 import { Link } from "../router/link.tsx";
 import { AgentListDialog } from "./zero-sidebar-dialogs.tsx";
+import { AgentRowSideActions } from "./zero-sidebar-agent-row-actions.tsx";
 
-function AgentUnreadIndicator() {
-  return (
-    <span aria-label="Unread" className="h-2 w-2 rounded-full bg-sky-600" />
-  );
-}
-
-function PinnedAgentMenu({
+function PinnedAgentSideDecorator({
   agentId,
+  isDefaultAgent,
   isPrimarySelected,
   hasUnread,
 }: {
   agentId: string;
+  isDefaultAgent: boolean;
   isPrimarySelected: boolean;
   hasUnread: boolean;
 }) {
@@ -100,91 +91,38 @@ function PinnedAgentMenu({
     );
   }
 
-  function handleMenuTriggerClick(e: MouseEvent) {
-    e.preventDefault();
-    e.stopPropagation();
-  }
-
-  return (
-    <TooltipProvider delayDuration={200}>
-      <DropdownMenu>
-        <DropdownMenuTrigger asChild>
-          <button
-            type="button"
-            onClick={handleMenuTriggerClick}
-            disabled={savingPinned || markingRead}
-            className={`peer pointer-events-auto absolute left-1 top-1 flex h-6 w-6 cursor-pointer items-center justify-center rounded-md opacity-0 transition-all duration-150 group-[:hover]:opacity-100 group-focus-within:opacity-100 data-[state=open]:opacity-100 disabled:cursor-not-allowed disabled:opacity-50 ${
-              isPrimarySelected
-                ? "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-300))]"
-                : "text-sidebar-foreground/80 hover:text-foreground hover:bg-[hsl(var(--gray-200))]"
-            }`}
-            aria-label="Open agent menu"
-          >
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <span>
-                  <IconDots size={16} stroke={2} />
-                </span>
-              </TooltipTrigger>
-              <TooltipContent side="bottom">
-                <p className="text-xs">More</p>
-              </TooltipContent>
-            </Tooltip>
-          </button>
-        </DropdownMenuTrigger>
-        <DropdownMenuContent align="end" className="w-44">
-          {hasUnread && (
-            <DropdownMenuItem onSelect={markAllRead} disabled={markingRead}>
-              <IconChecks size={16} stroke={2} className="mr-2" />
-              Mark all read
-            </DropdownMenuItem>
-          )}
-          <DropdownMenuItem onSelect={unpinAgent} disabled={savingPinned}>
-            <IconPinnedOff size={16} stroke={2} className="mr-2" />
-            Unpin
-          </DropdownMenuItem>
-        </DropdownMenuContent>
-      </DropdownMenu>
-    </TooltipProvider>
-  );
-}
-
-function PinnedAgentSideDecorator({
-  agentId,
-  isDefaultAgent,
-  isPrimarySelected,
-  hasUnread,
-}: {
-  agentId: string;
-  isDefaultAgent: boolean;
-  isPrimarySelected: boolean;
-  hasUnread: boolean;
-}) {
   if (isDefaultAgent && !hasUnread) {
     return null;
   }
 
   return (
-    <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
-      {!isDefaultAgent && (
-        <PinnedAgentMenu
-          agentId={agentId}
-          isPrimarySelected={isPrimarySelected}
-          hasUnread={hasUnread}
-        />
-      )}
-      {hasUnread && (
-        <span
-          className={
-            isDefaultAgent
-              ? "flex items-center justify-center"
-              : "flex items-center justify-center opacity-100 transition-opacity duration-150 group-[:hover]:opacity-0 group-focus-within:opacity-0 peer-data-[state=open]:opacity-0"
-          }
-        >
-          <AgentUnreadIndicator />
-        </span>
-      )}
-    </div>
+    <AgentRowSideActions
+      variant="sidebar"
+      isPrimarySelected={isPrimarySelected}
+      hasUnread={hasUnread}
+      actions={
+        isDefaultAgent
+          ? undefined
+          : [
+              ...(hasUnread
+                ? [
+                    {
+                      label: "Mark all read",
+                      disabled: markingRead,
+                      icon: <IconChecks size={16} stroke={2} />,
+                      onSelect: markAllRead,
+                    },
+                  ]
+                : []),
+              {
+                label: "Unpin",
+                disabled: savingPinned,
+                icon: <IconPinnedOff size={16} stroke={2} />,
+                onSelect: unpinAgent,
+              },
+            ]
+      }
+    />
   );
 }
 
@@ -305,6 +243,9 @@ export function PinnedAgentListSection() {
               const isFromChat = sidebarAgentId === agent.id;
               const hasUnread = unreadAgentIds?.has(agent.id) ?? false;
               const isDefaultAgent = agent.id === defaultAgentId;
+              const hasUnreadIndicator =
+                agentUnreadIndicatorsEnabled && hasUnread;
+              const hasSideActions = !isDefaultAgent || hasUnreadIndicator;
               return (
                 <div
                   key={agent.id}
@@ -315,9 +256,7 @@ export function PinnedAgentListSection() {
                     pathname="/agents/:agentId/chat"
                     options={{ pathParams: { agentId: agent.id } }}
                     className={`flex w-full h-8 shrink-0 items-center gap-2 rounded-lg text-left text-sm leading-5 no-underline transition-colors duration-200 ${
-                      agentUnreadIndicatorsEnabled || !isDefaultAgent
-                        ? "pl-2 pr-8"
-                        : "px-2"
+                      hasSideActions ? "pl-2 pr-8" : "px-2"
                     } ${
                       isPrimarySelected
                         ? "bg-gray-200 text-foreground font-medium"
@@ -335,12 +274,14 @@ export function PinnedAgentListSection() {
                       {agent.displayName ?? agent.id}
                     </span>
                   </Link>
-                  <PinnedAgentSideDecorator
-                    agentId={agent.id}
-                    isDefaultAgent={isDefaultAgent}
-                    isPrimarySelected={isPrimarySelected}
-                    hasUnread={agentUnreadIndicatorsEnabled && hasUnread}
-                  />
+                  {hasSideActions ? (
+                    <PinnedAgentSideDecorator
+                      agentId={agent.id}
+                      isDefaultAgent={isDefaultAgent}
+                      isPrimarySelected={isPrimarySelected}
+                      hasUnread={hasUnreadIndicator}
+                    />
+                  ) : null}
                 </div>
               );
             })}
