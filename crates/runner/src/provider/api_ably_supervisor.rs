@@ -7,7 +7,8 @@
 //! deferred poll wakeups; and incomplete notifications or direct-queue fallback
 //! request immediate poll wakeups so the server remains the source of truth for
 //! job selection. Ably cancel notifications bypass discovery and only signal
-//! local cancellation handles.
+//! local cancellation handles. Invalid job notifications and unsupported
+//! profiles are ignored without mutating discovery wakeup state.
 //!
 //! The direct candidate queues are an optimization, not the only delivery path:
 //! target-other deferrals, incomplete notifications, full or closed direct
