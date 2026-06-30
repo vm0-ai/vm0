@@ -862,7 +862,7 @@ export function CreateWorkflowAutomationDialog() {
   );
 }
 
-export function WorkflowTriggerAutomationList({
+function WorkflowTriggerAutomationList({
   entries,
   displayTimezone,
   loading,
