@@ -675,10 +675,11 @@ async function generateWorkflowAutomationSuggestionForCompletedRun(args: {
     return undefined;
   }
 
-  const suggestion = await generateChatThreadWorkflowAutomationSuggestionFromContext({
-    messages: args.followupContext,
-    threadId: args.threadId,
-  });
+  const suggestion =
+    await generateChatThreadWorkflowAutomationSuggestionFromContext({
+      messages: args.followupContext,
+      threadId: args.threadId,
+    });
   args.signal.throwIfAborted();
   return suggestion ?? undefined;
 }
@@ -2147,7 +2148,10 @@ function handleChatInternalCallback(args: {
   // The frontend learns about new messages through Ably realtime signals, not
   // this HTTP response. So acknowledge immediately and run the heavy terminal
   // processing (Axiom watermark wait, message persistence, LLM generation,
-  // push delivery) in the background, mirroring webhooks-agent-complete.
+  // push delivery) in the background, mirroring webhooks-agent-complete. Use a
+  // detached signal so request cancellation cannot interrupt the idempotency
+  // marker -> queued auto-send sequence after the callback is acknowledged.
+  const backgroundSignal = new AbortController().signal;
   waitUntil(
     tapError(
       processTerminalChatCallback({
@@ -2156,7 +2160,7 @@ function handleChatInternalCallback(args: {
         callback: args.callback,
         payload: payload.data,
         dependencies: args.dependencies,
-        signal: args.signal,
+        signal: backgroundSignal,
       }),
       (error) => {
         log.error("Failed to process terminal chat callback", {
