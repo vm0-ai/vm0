@@ -42,6 +42,11 @@ update_env_value() {
 start_stripe_webhook_forwarding() {
   local stripe_key stripe_webhook_secret
 
+  if ! command -v stripe >/dev/null 2>&1; then
+    echo "[stripe] Stripe CLI not found; skipping local webhook forwarding."
+    return 0
+  fi
+
   stripe_key="$(grep "^STRIPE_SECRET_KEY=" "$ENV_LOCAL_FILE" 2>/dev/null | cut -d= -f2-)"
   if [[ -z "$stripe_key" ]]; then
     echo "Error: STRIPE_SECRET_KEY not found in apps/api/.env.local. Run scripts/sync-env.sh first." >&2
