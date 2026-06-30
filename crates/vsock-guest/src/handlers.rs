@@ -7,8 +7,8 @@ use std::sync::Mutex;
 use std::sync::atomic::AtomicBool;
 
 use vsock_proto::{
-    self, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE_RESULT,
-    MSG_WRITE_FILES_RESULT, RawMessage,
+    self, BorrowedRawMessage, MSG_ERROR, MSG_PING, MSG_PONG, MSG_SHUTDOWN, MSG_WRITE_FILE_RESULT,
+    MSG_WRITE_FILES_RESULT,
 };
 
 use crate::drain::drain_into_vec_cancellable;
@@ -289,9 +289,9 @@ pub(crate) fn set_debug_guest_write_file_path(path: PathBuf) {
 }
 
 pub(crate) fn decode_write_file_message(
-    msg: &RawMessage,
+    payload: &[u8],
 ) -> Result<DecodedWriteFileMessage<'_>, vsock_proto::ProtocolError> {
-    let (path, content, use_sudo, append, private) = vsock_proto::decode_write_file(&msg.payload)?;
+    let (path, content, use_sudo, append, private) = vsock_proto::decode_write_file(payload)?;
     Ok(DecodedWriteFileMessage {
         path,
         content,
@@ -302,12 +302,12 @@ pub(crate) fn decode_write_file_message(
 }
 
 pub(crate) fn decode_write_files_message(
-    msg: &RawMessage,
+    payload: &[u8],
 ) -> Result<DecodedWriteFilesMessage<'_>, vsock_proto::ProtocolError> {
-    let files = vsock_proto::decode_write_files(&msg.payload)?;
+    let files = vsock_proto::decode_write_files(payload)?;
     let content_bytes = files.iter().map(|file| file.content.len()).sum();
     Ok(DecodedWriteFilesMessage {
-        payload: &msg.payload,
+        payload,
         file_count: files.len(),
         content_bytes,
     })
@@ -342,7 +342,7 @@ pub(crate) fn handle_decoded_write_files_message(
 ///
 /// Exec operation and guarded write-file operations are handled separately by
 /// the connection dispatcher.
-pub(crate) fn handle_basic_message(msg: &RawMessage) -> io::Result<MessageOutcome> {
+pub(crate) fn handle_basic_message(msg: BorrowedRawMessage<'_>) -> io::Result<MessageOutcome> {
     log(
         "INFO",
         &format!("Received: type=0x{:02X} seq={}", msg.msg_type, msg.seq),
@@ -354,7 +354,7 @@ pub(crate) fn handle_basic_message(msg: &RawMessage) -> io::Result<MessageOutcom
         )),
         MSG_SHUTDOWN => {
             if let Err(error) =
-                vsock_proto::decode_empty_payload("shutdown payload must be empty", &msg.payload)
+                vsock_proto::decode_empty_payload("shutdown payload must be empty", msg.payload)
             {
                 return encode_error_response(msg.seq, &error.to_string());
             }
