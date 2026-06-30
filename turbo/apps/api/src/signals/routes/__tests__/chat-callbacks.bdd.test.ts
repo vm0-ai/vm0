@@ -2,12 +2,14 @@ import { createHash } from "node:crypto";
 
 import { WebPushError } from "web-push";
 import { PRESENTATION_TEMPLATE_ITEMS } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   AttachFile,
   GenerationTemplateRequest,
   PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { orgMembersCache } from "@vm0/db/schema/org-members-cache";
+import { userFeatureSwitches } from "@vm0/db/schema/user-feature-switches";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { createStore } from "ccstate";
 import { eq } from "drizzle-orm";
@@ -617,6 +619,104 @@ describe("CHAT-02: completed chat callback", () => {
     await api.requestCancelRun(actor, claimed.runId, [200]);
     await waitForRunStatus(actor, claimed.runId, "cancelled");
   }, 90_000);
+
+  it("replaces a follow-up with a workflow automation discussion behind the workflow trigger switch", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    if (!actor.orgId) {
+      throw new Error("Expected an org-scoped actor");
+    }
+    await store
+      .set(writeDb$)
+      .insert(userFeatureSwitches)
+      .values({
+        orgId: actor.orgId,
+        userId: actor.userId,
+        switches: {
+          [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
+        },
+      });
+
+    const originalFollowups = [
+      { prompt: "Review the support summary", kind: "talk" },
+      { prompt: "Draft a customer update", kind: "talk" },
+      { prompt: "Check unresolved tickets", kind: "talk" },
+    ] as const;
+    const workflowFollowup = {
+      prompt:
+        "Discuss whether to save this as a workflow for daily support summaries.",
+      kind: "talk",
+    } as const;
+    const workflowSuggestionPrompts: string[] = [];
+    mockOptionalEnv("OPENROUTER_API_KEY", "bdd-openrouter-key");
+    chatCallbacks.mockOpenRouterCompletions((body) => {
+      const systemContent = body.messages[0]?.content ?? "";
+      if (systemContent.includes("Generate a short, descriptive title")) {
+        return "Daily Support Summary";
+      }
+      if (
+        systemContent.includes("Generate up to three concise follow-up prompts")
+      ) {
+        return JSON.stringify(originalFollowups);
+      }
+      if (systemContent.includes("reusable workflow or automation")) {
+        workflowSuggestionPrompts.push(body.messages[1]?.content ?? "");
+        return `[YES] ${workflowFollowup.prompt}`;
+      }
+      return "Generated summary";
+    });
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "Summarize the daily support queue every morning.",
+      selectedModel: "claude-sonnet-4-6",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, first.runId);
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "Daily support queue summary is ready."),
+    ]);
+    await completeChatRunOk(first.runId, sandboxHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const after = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (messages) => {
+        return lifecycleMarkers(messages, first.runId, "completed").some(
+          (message) => {
+            return (message.recommendedFollowups?.length ?? 0) === 3;
+          },
+        );
+      },
+    );
+    expect(workflowSuggestionPrompts).toHaveLength(1);
+    expect(workflowSuggestionPrompts[0]).toContain(
+      "Daily support queue summary is ready.",
+    );
+
+    const marker = lifecycleMarkers(
+      after.messages,
+      first.runId,
+      "completed",
+    )[0];
+    if (!marker) {
+      throw new Error("Expected a completed lifecycle marker");
+    }
+    const recommendedFollowups = marker.recommendedFollowups;
+    if (!recommendedFollowups) {
+      throw new Error("Expected completed marker follow-ups");
+    }
+    expect(recommendedFollowups).toHaveLength(3);
+    expect(recommendedFollowups).toContainEqual(workflowFollowup);
+    expect(
+      originalFollowups.filter((followup) => {
+        return recommendedFollowups.some((item) => {
+          return item.prompt === followup.prompt;
+        });
+      }),
+    ).toHaveLength(2);
+  });
 });
 
 describe("CHAT-02: chat output extraction and progress callbacks", () => {
