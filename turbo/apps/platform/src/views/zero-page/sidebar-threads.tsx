@@ -52,6 +52,7 @@ import {
   unpinChatThread$,
   renameChatThread$,
 } from "../../signals/chat-page/chat-message.ts";
+import { openRenameChatThreadDialogFromThreadData$ } from "../../signals/chat-page/chat-thread-rename.ts";
 import {
   SIDEBAR_PARAM,
   currentLeftThread$,
@@ -92,7 +93,6 @@ import {
   setChatThreadOnlyUnread$,
 } from "../../signals/chat-page/chat-thread-only-unread.ts";
 import {
-  openRenameChatThreadDialog$,
   pendingDeleteThreadId$,
   setPendingDeleteThreadId$,
   renameDialogThreadId$,
@@ -247,14 +247,12 @@ function handleChatThreadClick(
 
 function ChatThreadMenu({
   threadId,
-  title,
   isPinned,
   isHighlighted,
   hasOtherIndicator,
   usePinnedIndicatorTrigger,
 }: {
   threadId: string;
-  title: string | null;
   isPinned: boolean;
   isHighlighted: boolean;
   hasOtherIndicator: boolean;
@@ -264,7 +262,9 @@ function ChatThreadMenu({
   const reloadAutomations = useSet(reloadHeaderAutomationMenu$);
   const pinChatThread = useSet(pinChatThread$);
   const unpinChatThread = useSet(unpinChatThread$);
-  const openRenameChatThreadDialog = useSet(openRenameChatThreadDialog$);
+  const openRenameChatThreadDialog = useSet(
+    openRenameChatThreadDialogFromThreadData$,
+  );
   const pageSignal = useGet(pageSignal$);
 
   function handleTogglePin() {
@@ -281,7 +281,10 @@ function ChatThreadMenu({
   }
 
   function openRenameDialog() {
-    openRenameChatThreadDialog({ threadId, title });
+    detach(
+      openRenameChatThreadDialog(threadId, pageSignal),
+      Reason.DomCallback,
+    );
   }
 
   const showMobileTrigger = !hasOtherIndicator || usePinnedIndicatorTrigger;
@@ -372,13 +375,11 @@ function ChatThreadMenu({
 
 function ChatThreadSideDecorator({
   threadId,
-  title,
   isPinned,
   isHighlighted,
   indicatorState,
 }: {
   threadId: string;
-  title: string | null;
   isPinned: boolean;
   isHighlighted: boolean;
   indicatorState: IndicatorState | null;
@@ -398,7 +399,6 @@ function ChatThreadSideDecorator({
     <div className="pointer-events-none absolute right-0 top-0 flex h-8 w-8 items-center justify-center">
       <ChatThreadMenu
         threadId={threadId}
-        title={title}
         isPinned={isPinned}
         isHighlighted={isHighlighted}
         hasOtherIndicator={hasOtherIndicator}
@@ -493,7 +493,9 @@ function ChatThreadItemLink({
   session: ChatThreadListItem;
   state: ReturnType<typeof useChatThreadItemState>;
 }) {
-  const openRenameChatThreadDialog = useSet(openRenameChatThreadDialog$);
+  const openRenameChatThreadDialog = useSet(
+    openRenameChatThreadDialogFromThreadData$,
+  );
   const closeSidebarOnSelect = () => {
     state.setSidebarExpanded(false);
   };
@@ -519,10 +521,10 @@ function ChatThreadItemLink({
       }}
       onDoubleClick={(e) => {
         e.preventDefault();
-        openRenameChatThreadDialog({
-          threadId: session.id,
-          title: session.title,
-        });
+        detach(
+          openRenameChatThreadDialog(session.id, state.pageSignal),
+          Reason.DomCallback,
+        );
       }}
       className={`flex h-8 items-center gap-2 rounded-lg py-2 pl-2 pr-8 text-left text-sm leading-5 transition-colors ${
         state.isHighlighted
@@ -550,7 +552,6 @@ function ChatThreadItem({ session }: { session: ChatThreadListItem }) {
       <ChatThreadItemLink session={session} state={state} />
       <ChatThreadSideDecorator
         threadId={session.id}
-        title={session.title}
         isPinned={state.isPinned}
         isHighlighted={state.isHighlighted}
         indicatorState={state.indicatorState}

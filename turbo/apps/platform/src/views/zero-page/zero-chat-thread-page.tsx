@@ -236,7 +236,6 @@ import {
   emojiMenuThreadId$,
   emojiMenuTitle$,
   openChatThreadEmojiMenu$,
-  openRenameChatThreadDialog$,
 } from "../../signals/zero-page/zero-sidebar-state.ts";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
@@ -268,6 +267,7 @@ import {
   type PagedChatMessage,
 } from "../../signals/chat-page/chat-message.ts";
 import type { ChatThreadSignals } from "../../signals/chat-page/chat-thread-signals.ts";
+import { openRenameChatThreadDialogFromThreadData$ } from "../../signals/chat-page/chat-thread-rename.ts";
 import {
   applyChatThreadEmoji,
   chatThreadEmojiShortcutIndex,
@@ -3067,13 +3067,15 @@ function ChatThread({
 }
 
 function useOpenCurrentChatThreadRenameDialog(thread: ChatThreadSignals) {
-  const openRenameChatThreadDialog = useSet(openRenameChatThreadDialog$);
-  const title = useCurrentChatThreadDialogTitle(thread);
+  const openRenameChatThreadDialog = useSet(
+    openRenameChatThreadDialogFromThreadData$,
+  );
+  const pageSignal = useGet(pageSignal$);
   return () => {
-    openRenameChatThreadDialog({
-      threadId: thread.threadId,
-      title,
-    });
+    detach(
+      openRenameChatThreadDialog(thread.threadId, pageSignal),
+      Reason.DomCallback,
+    );
   };
 }
 

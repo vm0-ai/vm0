@@ -8,12 +8,10 @@ import {
   loadRightThread$,
 } from "./chat-thread-panes.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
+import { openRenameChatThreadDialogFromThreadData$ } from "./chat-thread-rename.ts";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onDomEventFn, onRef } from "../utils.ts";
-import {
-  openChatThreadEmojiMenu$,
-  openRenameChatThreadDialog$,
-} from "../zero-page/zero-sidebar-state.ts";
+import { openChatThreadEmojiMenu$ } from "../zero-page/zero-sidebar-state.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 
 /**
@@ -152,16 +150,19 @@ export const setChatKeyboardScrollRoot$ = onRef(
       }
 
       event.preventDefault();
-      const threadData = await get(mainThread.threadData$);
-      signal.throwIfAborted();
-      const dialogPayload = {
-        threadId: mainThread.threadId,
-        title: threadData?.title,
-      };
       if (emojiShortcut) {
-        set(openChatThreadEmojiMenu$, dialogPayload);
+        const threadData = await get(mainThread.threadData$);
+        signal.throwIfAborted();
+        set(openChatThreadEmojiMenu$, {
+          threadId: mainThread.threadId,
+          title: threadData?.title,
+        });
       } else {
-        set(openRenameChatThreadDialog$, dialogPayload);
+        await set(
+          openRenameChatThreadDialogFromThreadData$,
+          mainThread.threadId,
+          signal,
+        );
       }
     });
 
