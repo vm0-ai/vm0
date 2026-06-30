@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.195.1](https://github.com/vm0-ai/vm0/compare/api-v1.195.0...api-v1.195.1) (2026-06-30)
+
+
+### Bug Fixes
+
+* restore default agent mark all read menu ([#19515](https://github.com/vm0-ai/vm0/issues/19515)) ([aaa0aee](https://github.com/vm0-ai/vm0/commit/aaa0aee02f026554cf7d341e850ef76b3106048c))
+
 ## [1.195.0](https://github.com/vm0-ai/vm0/compare/api-v1.194.0...api-v1.195.0) (2026-06-30)
 
 
