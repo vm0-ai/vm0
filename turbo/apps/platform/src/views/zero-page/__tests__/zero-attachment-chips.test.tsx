@@ -14,7 +14,7 @@ import {
 } from "@testing-library/react";
 import { StoreProvider } from "ccstate-react";
 import userEvent from "@testing-library/user-event";
-import { beforeEach, describe, expect, it } from "vitest";
+import { beforeEach, describe, expect, it, vi } from "vitest";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -79,6 +79,7 @@ function setupHostedSiteArtifactPreview({
     [FeatureSwitchKey.HtmlArtifactCommentEditing]: true,
   },
   filename,
+  html,
   htmlUrl,
   label,
   path = `/chats/${THREAD_ID}`,
@@ -86,6 +87,7 @@ function setupHostedSiteArtifactPreview({
 }: {
   featureSwitches?: Parameters<typeof detachedSetupPage>[0]["featureSwitches"];
   filename: string;
+  html?: string;
   htmlUrl: string;
   label: string;
   path?: string;
@@ -94,7 +96,8 @@ function setupHostedSiteArtifactPreview({
   context.mocks.http.get("*/__vm0-dev-artifact-fetch", ({ request }) => {
     expect(new URL(request.url).searchParams.get("url")).toBe(htmlUrl);
     return new Response(
-      `<!doctype html>
+      html ??
+        `<!doctype html>
       <html>
         <head><title>${label}</title></head>
         <body>
@@ -1446,8 +1449,9 @@ describe("zero attachment chips", () => {
         screen.queryByLabelText("Close comment popover"),
       ).not.toBeInTheDocument();
       expect(popover.querySelectorAll("textarea")).toHaveLength(1);
-      expect(popover.querySelectorAll("button")).toHaveLength(1);
-      expect(popover).toHaveClass("flex");
+      expect(screen.getByTestId("html-dom-color-controls")).toBeInTheDocument();
+      expect(screen.queryByTestId("html-dom-color-popover")).toBeNull();
+      expect(popover).toHaveClass("rounded-[28px]");
     });
     fireEvent.click(screen.getByTestId("html-dom-comment-textarea"));
     await waitFor(() => {
@@ -1743,6 +1747,426 @@ describe("zero attachment chips", () => {
       expect(restoredEditFrame.contentDocument?.body.textContent).not.toContain(
         "Launch sooner",
       );
+    });
+  });
+
+  it("applies hosted-site HTML background and text color edits from the DOM popover", async () => {
+    const htmlUrl = "https://color-launch-site.sites.vm7.io";
+    let redeployedHtml: string | null = null;
+    vi.stubGlobal(
+      "EyeDropper",
+      class {
+        open(): Promise<{ readonly sRGBHex: string }> {
+          return Promise.resolve({ sRGBHex: "#123456" });
+        }
+      },
+    );
+
+    setupHostedSiteArtifactPreview({
+      filename: "color-launch-site.html",
+      htmlUrl,
+      label: "Color launch site",
+      runId: "run-hosted-site-color",
+    });
+    context.mocks.api(zeroHostContract.redeployHtml, ({ body, respond }) => {
+      expect(body.url).toBe(htmlUrl);
+      expect(body.html).toContain("background-color");
+      expect(body.html).toContain("color");
+      expect(body.html).toMatch(/#FDE68A|rgb\(253, 230, 138\)/i);
+      expect(body.html).toMatch(/#2563EB|rgb\(37, 99, 235\)/i);
+      redeployedHtml = body.html;
+      return respond(200, {
+        siteId: "7c82da29-6280-4d65-b078-e233c8ad14bf",
+        deploymentId: "dc8b4d42-5dc1-4769-ad8b-17bdf1ad035a",
+        publicSlug: "color-launch-site",
+        url: htmlUrl,
+        status: "ready",
+      });
+    });
+
+    click(
+      await screen.findByLabelText("Open html preview for Color launch site"),
+    );
+    click(await screen.findByLabelText("Edit page"));
+
+    const frame = (await screen.findByTestId(
+      "html-dom-comment-frame",
+    )) as HTMLIFrameElement;
+    await waitFor(() => {
+      expect(
+        frame.contentDocument
+          ?.querySelector("h1")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+    });
+    const title = frame.contentDocument?.querySelector("h1");
+    expect(title).not.toBeNull();
+    const main = frame.contentDocument?.querySelector("main");
+    expect(main).not.toBeNull();
+    title!.style.color = "#ff0000";
+    title!.style.backgroundColor = "rgb(0, 0, 0)";
+    const originalElementsFromPoint =
+      frame.contentDocument?.elementsFromPoint?.bind(frame.contentDocument);
+    frame.contentDocument!.elementsFromPoint = () => {
+      return [title!, main!, frame.contentDocument!.body];
+    };
+    fireEvent.click(main!, { clientX: 10, clientY: 10 });
+    frame.contentDocument!.elementsFromPoint = originalElementsFromPoint!;
+
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-color-controls")).toBeInTheDocument();
+      expect(screen.queryByTestId("html-dom-color-popover")).toBeNull();
+      expect(
+        screen.getByTestId("html-dom-color-control-color"),
+      ).toHaveTextContent("#ff0000");
+      expect(
+        screen.getByTestId("html-dom-color-control-backgroundColor"),
+      ).toHaveTextContent("#000000");
+    });
+    click(screen.getByTestId("html-dom-color-control-backgroundColor"));
+    expect(screen.getByTestId("html-dom-color-popover")).toBeInTheDocument();
+    expect(
+      screen.getByTestId("html-dom-floating-color-popover"),
+    ).toContainElement(screen.getByTestId("html-dom-color-popover"));
+    expect(screen.getByTestId("html-dom-comment-popover")).not.toContainElement(
+      screen.getByTestId("html-dom-color-popover"),
+    );
+    const colorPopover = screen.getByTestId("html-dom-floating-color-popover");
+    const initialColorPopoverLeft = Number.parseFloat(colorPopover.style.left);
+    const initialColorPopoverTop = Number.parseFloat(colorPopover.style.top);
+    fireEvent.pointerDown(
+      screen.getByTestId("html-dom-color-popover-drag-handle"),
+      {
+        buttons: 1,
+        clientX: 10,
+        clientY: 10,
+        pointerId: 3,
+      },
+    );
+    fireEvent.pointerMove(
+      screen.getByTestId("html-dom-color-popover-drag-handle"),
+      {
+        buttons: 1,
+        clientX: 34,
+        clientY: 28,
+        pointerId: 3,
+      },
+    );
+    await waitFor(() => {
+      expect(Number.parseFloat(colorPopover.style.left)).toBe(
+        initialColorPopoverLeft + 24,
+      );
+      expect(Number.parseFloat(colorPopover.style.top)).toBe(
+        initialColorPopoverTop + 18,
+      );
+    });
+    expect(screen.getByTestId("html-dom-color-field")).toBeInTheDocument();
+    expect(screen.getByTestId("html-dom-color-hue-slider")).toBeInTheDocument();
+    mockElementRect(screen.getByTestId("html-dom-color-field"), {
+      height: 100,
+      left: 0,
+      top: 0,
+      width: 100,
+    });
+    fireEvent.pointerDown(screen.getByTestId("html-dom-color-field"), {
+      buttons: 1,
+      clientX: 100,
+      clientY: 0,
+      pointerId: 1,
+    });
+    await waitFor(() => {
+      expect(title?.style.backgroundColor).toBe("#FF0000");
+    });
+    fireEvent.change(screen.getByLabelText("R"), { target: { value: "253" } });
+    fireEvent.change(screen.getByLabelText("G"), { target: { value: "230" } });
+    fireEvent.change(screen.getByLabelText("B"), { target: { value: "138" } });
+    await waitFor(() => {
+      expect(title?.style.backgroundColor).toBe("#FDE68A");
+    });
+    click(screen.getByTestId("html-dom-color-control-color"));
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("html-dom-color-control-color"),
+      ).toHaveAttribute("aria-expanded", "true");
+      expect(screen.getByTestId("html-dom-color-popover")).toBeInTheDocument();
+    });
+    mockElementRect(screen.getByTestId("html-dom-color-hue-slider"), {
+      height: 28,
+      left: 0,
+      top: 0,
+      width: 360,
+    });
+    fireEvent.pointerDown(screen.getByTestId("html-dom-color-hue-slider"), {
+      buttons: 1,
+      clientX: 180,
+      clientY: 14,
+      pointerId: 2,
+    });
+    await waitFor(() => {
+      expect(title?.style.color).toBe("#00FFFF");
+    });
+    click(screen.getByTestId("html-dom-color-eyedropper"));
+    await waitFor(() => {
+      expect(title?.style.color).toBe("#123456");
+    });
+    fireEvent.change(screen.getByLabelText("R"), { target: { value: "37" } });
+    fireEvent.change(screen.getByLabelText("G"), { target: { value: "99" } });
+    fireEvent.change(screen.getByLabelText("B"), { target: { value: "235" } });
+
+    await waitFor(() => {
+      expect(title?.style.backgroundColor).toBe("#FDE68A");
+      expect(title?.style.color).toBe("#2563EB");
+      expect(screen.getByTestId("html-dom-comment-textarea")).toHaveValue("");
+      expect(
+        screen.queryByTestId("html-dom-toolbar-comments-count"),
+      ).toBeNull();
+      expect(screen.getByTestId("html-dom-toolbar-send")).toHaveTextContent(
+        "Apply",
+      );
+    });
+
+    click(screen.getByTestId("html-dom-toolbar-send"));
+    await waitFor(() => {
+      expect(redeployedHtml).not.toBeNull();
+      expect(screen.queryByTestId("html-dom-comment-frame")).toBeNull();
+    });
+  });
+
+  it("hides hosted-site HTML color controls for selected images", async () => {
+    const htmlUrl = "https://image-launch-site.sites.vm7.io";
+
+    setupHostedSiteArtifactPreview({
+      filename: "image-launch-site.html",
+      html: `<!doctype html>
+      <html>
+        <head><title>Image launch site</title></head>
+        <body>
+          <main>
+            <h1>Launch faster</h1>
+            <img src="/hero.png" alt="Hero" />
+          </main>
+        </body>
+      </html>`,
+      htmlUrl,
+      label: "Image launch site",
+      runId: "run-hosted-site-image",
+    });
+
+    click(
+      await screen.findByLabelText("Open html preview for Image launch site"),
+    );
+    click(await screen.findByLabelText("Edit page"));
+
+    const frame = (await screen.findByTestId(
+      "html-dom-comment-frame",
+    )) as HTMLIFrameElement;
+    await waitFor(() => {
+      expect(
+        frame.contentDocument
+          ?.querySelector("img")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+    });
+    fireEvent.click(frame.contentDocument!.querySelector("img")!);
+
+    await waitFor(() => {
+      expect(
+        screen.getByTestId("html-dom-comment-popover"),
+      ).toBeInTheDocument();
+      expect(screen.queryByTestId("html-dom-color-controls")).toBeNull();
+    });
+  });
+
+  it("shows hosted-site HTML color controls for text inputs and textareas", async () => {
+    const htmlUrl = "https://form-launch-site.sites.vm7.io";
+
+    setupHostedSiteArtifactPreview({
+      filename: "form-launch-site.html",
+      html: `<!doctype html>
+      <html>
+        <head><title>Form launch site</title></head>
+        <body>
+          <main>
+            <input type="text" value="Launch faster" />
+            <textarea>Ship the first version today.</textarea>
+          </main>
+        </body>
+      </html>`,
+      htmlUrl,
+      label: "Form launch site",
+      runId: "run-hosted-site-form",
+    });
+
+    click(
+      await screen.findByLabelText("Open html preview for Form launch site"),
+    );
+    click(await screen.findByLabelText("Edit page"));
+
+    const frame = (await screen.findByTestId(
+      "html-dom-comment-frame",
+    )) as HTMLIFrameElement;
+    await waitFor(() => {
+      expect(
+        frame.contentDocument
+          ?.querySelector("input")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+      expect(
+        frame.contentDocument
+          ?.querySelector("textarea")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+    });
+
+    fireEvent.click(frame.contentDocument!.querySelector("input")!);
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-color-controls")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("html-dom-color-control-color"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId("html-dom-color-control-backgroundColor"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(frame.contentDocument!.querySelector("textarea")!);
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-color-controls")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("html-dom-color-control-color"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId("html-dom-color-control-backgroundColor"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("shows hosted-site HTML color controls for semantic, select, and SVG text elements", async () => {
+    const htmlUrl = "https://styleable-launch-site.sites.vm7.io";
+
+    setupHostedSiteArtifactPreview({
+      filename: "styleable-launch-site.html",
+      html: `<!doctype html>
+      <html>
+        <head><title>Styleable launch site</title></head>
+        <body>
+          <main>
+            <figure>
+              <figcaption>Launch metrics</figcaption>
+            </figure>
+            <div class="text-card">
+              <h2 style="color: #111827;">Nested title</h2>
+            </div>
+            <select>
+              <option>Weekly plan</option>
+            </select>
+            <svg viewBox="0 0 200 40" width="200" height="40">
+              <text x="0" y="24" style="fill: #ff0000;">SVG label</text>
+            </svg>
+          </main>
+        </body>
+      </html>`,
+      htmlUrl,
+      label: "Styleable launch site",
+      runId: "run-hosted-site-styleable",
+    });
+
+    click(
+      await screen.findByLabelText(
+        "Open html preview for Styleable launch site",
+      ),
+    );
+    click(await screen.findByLabelText("Edit page"));
+
+    const frame = (await screen.findByTestId(
+      "html-dom-comment-frame",
+    )) as HTMLIFrameElement;
+    await waitFor(() => {
+      expect(
+        frame.contentDocument
+          ?.querySelector("figure")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+      expect(
+        frame.contentDocument
+          ?.querySelector(".text-card")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+      expect(
+        frame.contentDocument
+          ?.querySelector("select")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+      expect(
+        frame.contentDocument
+          ?.querySelector("text")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+    });
+
+    fireEvent.click(frame.contentDocument!.querySelector("figure")!);
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-color-controls")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("html-dom-color-control-color"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId("html-dom-color-control-backgroundColor"),
+      ).toBeInTheDocument();
+    });
+
+    fireEvent.click(frame.contentDocument!.querySelector("select")!);
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-color-controls")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("html-dom-color-control-color"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId("html-dom-color-control-backgroundColor"),
+      ).toBeInTheDocument();
+    });
+
+    const textCard = frame.contentDocument!.querySelector(".text-card");
+    const nestedTitle = frame.contentDocument!.querySelector("h2");
+    expect(textCard).not.toBeNull();
+    expect(nestedTitle).not.toBeNull();
+    fireEvent.click(textCard!);
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-color-controls")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("html-dom-color-control-color"),
+      ).toBeInTheDocument();
+      expect(
+        screen.getByTestId("html-dom-color-control-backgroundColor"),
+      ).toBeInTheDocument();
+    });
+    click(screen.getByTestId("html-dom-color-control-color"));
+    fireEvent.change(screen.getByLabelText("R"), { target: { value: "37" } });
+    fireEvent.change(screen.getByLabelText("G"), { target: { value: "99" } });
+    fireEvent.change(screen.getByLabelText("B"), { target: { value: "235" } });
+    await waitFor(() => {
+      expect(nestedTitle?.style.color).toBe("#2563EB");
+    });
+
+    const svgText = frame.contentDocument!.querySelector("text");
+    expect(svgText).not.toBeNull();
+    fireEvent.click(svgText!);
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-color-controls")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("html-dom-color-control-color"),
+      ).toHaveTextContent("#ff0000");
+      expect(
+        screen.queryByTestId("html-dom-color-control-backgroundColor"),
+      ).toBeNull();
+    });
+
+    click(screen.getByTestId("html-dom-color-control-color"));
+    fireEvent.change(screen.getByLabelText("R"), { target: { value: "37" } });
+    fireEvent.change(screen.getByLabelText("G"), { target: { value: "99" } });
+    fireEvent.change(screen.getByLabelText("B"), { target: { value: "235" } });
+    await waitFor(() => {
+      expect(svgText?.style.getPropertyValue("fill")).toBe("#2563EB");
     });
   });
 
