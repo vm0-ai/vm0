@@ -54,10 +54,6 @@ fn claude_history_path_payload_for_home(home: &str, session_id: &str) -> Option<
     ))
 }
 
-pub(crate) fn codex_history_marker_payload(thread_id: &str) -> String {
-    codex_history_marker_payload_for_home(Path::new(env::home_dir()), thread_id)
-}
-
 fn codex_history_marker_payload_for_home(home_dir: &Path, thread_id: &str) -> String {
     let sessions_dir = codex_sessions_dir(home_dir);
     session_history::codex_marker_payload(&sessions_dir, thread_id)

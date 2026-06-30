@@ -34,13 +34,6 @@ pub(super) fn apply_to_tokio_command(cmd: &mut tokio::process::Command) {
     apply_to_tokio_command_with_values(cmd, env::home_dir(), env::user_env(), &api_url);
 }
 
-pub(super) fn apply_to_tokio_command_for_config(
-    cmd: &mut tokio::process::Command,
-    config: &env::GuestConfig,
-) {
-    apply_to_tokio_command_with_values(cmd, &config.home_dir, &config.user_env, &config.api_url);
-}
-
 pub(super) fn apply_to_tokio_command_for_runtime(
     cmd: &mut tokio::process::Command,
     runtime: &CliRuntimeConfig<'_>,
