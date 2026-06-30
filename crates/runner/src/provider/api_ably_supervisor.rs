@@ -1,17 +1,17 @@
 //! Ably control-plane supervisor for API-backed runner job discovery.
 //!
 //! `ApiProvider` uses this module as the low-latency side of discovery while
-//! keeping HTTP polling as the correctness fallback. Job notifications for this
-//! runner become direct candidates when they include a supported profile;
-//! notifications targeted to another runner schedule deferred poll wakeups; and
-//! incomplete notifications or direct-queue fallback request immediate poll
-//! wakeups so the server remains the source of truth for job selection. Ably
-//! cancel notifications bypass discovery and only signal local cancellation
-//! handles.
+//! keeping HTTP polling as the correctness fallback. Untargeted or
+//! matching-target job notifications become direct candidates when they include
+//! a supported profile; notifications targeted to another runner schedule
+//! deferred poll wakeups; and incomplete notifications or direct-queue fallback
+//! request immediate poll wakeups so the server remains the source of truth for
+//! job selection. Ably cancel notifications bypass discovery and only signal
+//! local cancellation handles.
 //!
 //! The direct candidate queues are an optimization, not the only delivery path:
 //! target-other deferrals, incomplete notifications, full or closed direct
-//! queues, Ably disconnects, and backlog draining all route through
+//! queues, backlog draining, and Ably connection state all route through
 //! `PollWakeups` so a runner can still discover work through HTTP polling.
 
 use std::collections::HashMap;
