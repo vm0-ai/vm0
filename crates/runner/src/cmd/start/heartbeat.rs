@@ -65,7 +65,13 @@ impl<'a> HeartbeatContext<'a> {
 
 #[derive(Clone, Default)]
 pub(super) struct HeldSessionStateSnapshot {
-    workspace_cache_states: Arc<Mutex<Vec<HeldSessionState>>>,
+    inner: Arc<Mutex<HeldSessionStateSnapshotInner>>,
+}
+
+#[derive(Default)]
+struct HeldSessionStateSnapshotInner {
+    workspace_cache_states: Vec<HeldSessionState>,
+    workspace_cache_loaded: bool,
 }
 
 impl HeldSessionStateSnapshot {
@@ -74,13 +80,18 @@ impl HeldSessionStateSnapshot {
     }
 
     fn update_workspace_cache_states(&self, states: Vec<HeldSessionState>) {
-        *self.lock_workspace_cache_states() = states;
+        let mut inner = self.lock_inner();
+        inner.workspace_cache_states = states;
+        inner.workspace_cache_loaded = true;
     }
 
-    pub(super) fn contains_workspace_cache_session(&self, session_id: &str) -> bool {
-        self.lock_workspace_cache_states()
-            .iter()
-            .any(|state| state.session_id == session_id)
+    pub(super) fn might_contain_workspace_cache_session(&self, session_id: &str) -> bool {
+        let inner = self.lock_inner();
+        !inner.workspace_cache_loaded
+            || inner
+                .workspace_cache_states
+                .iter()
+                .any(|state| state.session_id == session_id)
     }
 
     pub(super) fn current_held_session_states(
@@ -89,7 +100,7 @@ impl HeldSessionStateSnapshot {
         active_cli_agent_sessions: &ActiveCliAgentSessions,
         extra_active_session: Option<&str>,
     ) -> Vec<HeldSessionState> {
-        let workspace_cache_states = self.lock_workspace_cache_states().clone();
+        let workspace_cache_states = self.lock_inner().workspace_cache_states.clone();
         merge_current_held_session_states(
             idle_states,
             workspace_cache_states,
@@ -98,8 +109,8 @@ impl HeldSessionStateSnapshot {
         )
     }
 
-    fn lock_workspace_cache_states(&self) -> MutexGuard<'_, Vec<HeldSessionState>> {
-        self.workspace_cache_states
+    fn lock_inner(&self) -> MutexGuard<'_, HeldSessionStateSnapshotInner> {
+        self.inner
             .lock()
             .unwrap_or_else(std::sync::PoisonError::into_inner)
     }
@@ -533,6 +544,31 @@ mod tests {
                     last_completed_at: "2026-06-01T00:00:05.000Z".into(),
                 },
             ]
+        );
+    }
+
+    #[test]
+    fn held_session_snapshot_treats_unloaded_workspace_cache_as_unknown() {
+        let snapshot = HeldSessionStateSnapshot::new();
+
+        assert!(
+            snapshot.might_contain_workspace_cache_session("sess-cache"),
+            "unloaded snapshot should trigger one refresh for cache-enabled runners"
+        );
+
+        snapshot.update_workspace_cache_states(Vec::new());
+        assert!(
+            !snapshot.might_contain_workspace_cache_session("sess-cache"),
+            "loaded empty snapshot should not keep triggering cache refreshes"
+        );
+
+        snapshot.update_workspace_cache_states(vec![HeldSessionState {
+            session_id: "sess-cache".into(),
+            last_completed_at: "2026-06-01T00:00:02.000Z".into(),
+        }]);
+        assert!(
+            snapshot.might_contain_workspace_cache_session("sess-cache"),
+            "loaded matching snapshot should trigger refresh when that session is claimed"
         );
     }
 

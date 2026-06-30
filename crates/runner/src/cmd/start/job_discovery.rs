@@ -410,10 +410,11 @@ async fn try_reuse_from_pool(
     let took_idle_session = taken.is_some();
     pre_spawn_timing.record_phase_elapsed(RunnerPreSpawnPhase::IdleReuseLookup, started_at);
     let started_at = Instant::now();
-    let claimed_workspace_cache_session = ctx
-        .spawn_ctx
-        .held_session_snapshot
-        .contains_workspace_cache_session(cli_agent_session_id);
+    let claimed_workspace_cache_session = ctx.spawn_ctx.exec_config.workspace_cache.is_some()
+        && ctx
+            .spawn_ctx
+            .held_session_snapshot
+            .might_contain_workspace_cache_session(cli_agent_session_id);
     let held_session_states = ctx
         .spawn_ctx
         .held_session_snapshot

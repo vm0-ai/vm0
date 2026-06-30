@@ -65,6 +65,34 @@ fn device_rate_limits() -> sandbox::DeviceRateLimits {
     }
 }
 
+async fn wait_heartbeat_with_session_after(
+    handle: &crate::provider::mock::MockProviderHandle,
+    mut cursor: usize,
+    session_id: &str,
+    timeout: Duration,
+) -> bool {
+    let deadline = tokio::time::Instant::now() + timeout;
+    loop {
+        {
+            let heartbeats = handle.heartbeats.lock().unwrap_or_else(|e| e.into_inner());
+            if heartbeats[cursor..].iter().any(|state| {
+                state
+                    .held_session_states
+                    .iter()
+                    .any(|state| state.session_id == session_id)
+            }) {
+                return true;
+            }
+            cursor = heartbeats.len();
+        }
+
+        let remaining = deadline.saturating_duration_since(tokio::time::Instant::now());
+        if remaining.is_zero() || !handle.wait_heartbeat_past(cursor, remaining).await {
+            return false;
+        }
+    }
+}
+
 #[tokio::test(start_paused = true)]
 async fn job_with_session_parks_vm() {
     let (config, env) = mock_run_config(test_profiles(), 8, 32768, 4);
@@ -293,24 +321,8 @@ async fn workspace_cache_promotion_triggers_immediate_heartbeat_without_park() {
     );
 
     assert!(
-        env.handle
-            .wait_heartbeat_past(before, Duration::from_secs(5))
+        wait_heartbeat_with_session_after(&env.handle, before, session_id, Duration::from_secs(5))
             .await,
-        "workspace cache promotion should trigger an immediate heartbeat after baseline={before}",
-    );
-    let heartbeats = env
-        .handle
-        .heartbeats
-        .lock()
-        .unwrap_or_else(|e| e.into_inner())
-        .clone();
-    assert!(
-        heartbeats[before..].iter().any(|state| {
-            state
-                .held_session_states
-                .iter()
-                .any(|state| state.session_id == session_id)
-        }),
         "immediate heartbeat should advertise the promoted workspace cache session",
     );
 
