@@ -372,8 +372,14 @@ impl<'a> CliRuntimeConfig<'a> {
     }
 
     fn codex_home(&self) -> String {
-        format!("{}/.codex", self.home_dir)
+        codex_home_for_home_dir(self.home_dir.as_ref())
     }
+}
+
+fn codex_home_for_home_dir(home_dir: &str) -> String {
+    crate::codex_auth::codex_home_path(Path::new(home_dir))
+        .to_string_lossy()
+        .into_owned()
 }
 
 fn user_env_value<'a>(user_env: &'a HashMap<String, String>, key: &str) -> &'a str {
@@ -1390,8 +1396,9 @@ fn with_carried_failure_reason(
 mod tests {
     use super::termination::CliTerminationRuntime;
     use super::{
-        CliExitObservation, CliFailureDiagnostic, claude_initial_prompt_frame, record_cli_exit,
-        select_failure_diagnostic, set_cli_current_dir, with_carried_failure_reason,
+        CliExitObservation, CliFailureDiagnostic, claude_initial_prompt_frame,
+        codex_home_for_home_dir, record_cli_exit, select_failure_diagnostic, set_cli_current_dir,
+        with_carried_failure_reason,
     };
     use crate::active_input::ActiveInputRuntime;
     use guest_contracts::diagnostics::{FailureDetailSource, FailureReason};
@@ -1430,6 +1437,12 @@ mod tests {
             .and_then(serde_json::Value::as_str)
             .expect("uuid");
         uuid::Uuid::parse_str(uuid).expect("valid uuid");
+    }
+
+    #[test]
+    fn codex_home_uses_shared_path_semantics_for_empty_home() {
+        assert_eq!(codex_home_for_home_dir(""), ".codex");
+        assert_eq!(codex_home_for_home_dir("/tmp/home"), "/tmp/home/.codex");
     }
 
     #[tokio::test]
