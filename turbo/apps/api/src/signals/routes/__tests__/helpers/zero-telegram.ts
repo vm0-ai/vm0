@@ -1,17 +1,13 @@
-import { randomUUID } from "node:crypto";
-
 import { command } from "ccstate";
-import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { orgMetadata } from "@vm0/db/schema/org-metadata";
-import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
-import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
-import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
-import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
-import { eq, inArray } from "drizzle-orm";
+import type {
+  TestTelegramStateActionBody,
+  TestTelegramStateActionResponse,
+} from "@vm0/api-contracts/contracts/test-telegram-state";
 
-import { writeDb$ } from "../../../external/db";
-import { encryptSecretForTests } from "./encrypt-secret";
+import { createAppWithRoutes } from "../../../../app-factory-core";
+import { testTelegramStateRoutes } from "../../test-telegram-state";
+
+const TELEGRAM_STATE_ACTION_ROUTE = "/api/test/telegram-state/action";
 
 export interface TelegramFixture {
   readonly orgId: string;
@@ -67,91 +63,97 @@ interface SeedUserAgentPreferenceValues {
   readonly composeId: string;
 }
 
+function requestTelegramStateAction(
+  signal: AbortSignal,
+  body: TestTelegramStateActionBody,
+): Promise<Response> {
+  const app = createAppWithRoutes({
+    signal,
+    routes: testTelegramStateRoutes,
+  });
+  return Promise.resolve(
+    app.request(TELEGRAM_STATE_ACTION_ROUTE, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  );
+}
+
+async function readJson<T>(response: Response): Promise<T> {
+  return (await response.json()) as T;
+}
+
+async function expectOk(response: Response, operation: string): Promise<void> {
+  if (response.ok) {
+    return;
+  }
+  throw new Error(`${operation} failed with ${response.status}`);
+}
+
+async function postAction(
+  signal: AbortSignal,
+  body: TestTelegramStateActionBody,
+): Promise<TestTelegramStateActionResponse> {
+  const response = await requestTelegramStateAction(signal, body);
+  signal.throwIfAborted();
+  await expectOk(response, `telegram state action ${body.action}`);
+  signal.throwIfAborted();
+  return await readJson<TestTelegramStateActionResponse>(response);
+}
+
 export const seedTelegramInstallation$ = command(
   async (
-    { set },
+    _,
     values: SeedTelegramInstallationValues,
     signal: AbortSignal,
   ): Promise<{
     readonly composeId: string;
     readonly telegramBotId: string;
   }> => {
-    const writeDb = set(writeDb$);
-    const composeId = values.defaultComposeId ?? randomUUID();
-    const composeUserId = values.composeUserId ?? values.ownerUserId;
-    const composeName = values.composeName ?? `agent-${composeId.slice(0, 8)}`;
-    const agentName = values.agentName ?? composeName;
+    const response = await postAction(signal, {
+      action: "seed-installation",
+      org_id: values.orgId,
+      owner_user_id: values.ownerUserId,
+      telegram_bot_id: values.telegramBotId,
+      bot_username: values.botUsername,
+      default_compose_id: values.defaultComposeId,
+      compose_user_id: values.composeUserId,
+      compose_name: values.composeName,
+      agent_name: values.agentName,
+    });
+    const composeId =
+      typeof response.compose_id === "string" ? response.compose_id : null;
+    const telegramBotId =
+      typeof response.telegram_bot_id === "string"
+        ? response.telegram_bot_id
+        : null;
+    if (!composeId || !telegramBotId) {
+      throw new Error("seedTelegramInstallation$: response missing ids");
+    }
 
-    await writeDb.insert(agentComposes).values({
-      id: composeId,
-      userId: composeUserId,
-      orgId: values.orgId,
-      name: composeName,
-    });
-    signal.throwIfAborted();
-    await writeDb.insert(zeroAgents).values({
-      id: composeId,
-      orgId: values.orgId,
-      owner: composeUserId,
-      name: agentName,
-    });
-    signal.throwIfAborted();
-    await writeDb.insert(telegramInstallations).values({
-      telegramBotId: values.telegramBotId,
-      botUsername:
-        values.botUsername === undefined
-          ? `bot_${values.telegramBotId}`
-          : values.botUsername,
-      encryptedBotToken: encryptSecretForTests("test-bot-token"),
-      webhookSecret: `whs_${randomUUID()}`,
-      defaultComposeId: composeId,
-      ownerUserId: values.ownerUserId,
-      orgId: values.orgId,
-    });
-    signal.throwIfAborted();
-
-    return { composeId, telegramBotId: values.telegramBotId };
+    return { composeId, telegramBotId };
   },
 );
 
 export const seedOrgDefaultAgent$ = command(
   async (
-    { set },
+    _,
     values: SeedOrgDefaultAgentValues,
     signal: AbortSignal,
   ): Promise<{ readonly composeId: string }> => {
-    const writeDb = set(writeDb$);
-    const composeId = randomUUID();
-    const composeName = values.composeName ?? `agent-${composeId.slice(0, 8)}`;
-    const agentName = values.agentName ?? composeName;
-
-    await writeDb.insert(agentComposes).values({
-      id: composeId,
-      userId: values.userId,
-      orgId: values.orgId,
-      name: composeName,
+    const response = await postAction(signal, {
+      action: "seed-org-default-agent",
+      org_id: values.orgId,
+      user_id: values.userId,
+      compose_name: values.composeName,
+      agent_name: values.agentName,
     });
-    signal.throwIfAborted();
-    await writeDb.insert(zeroAgents).values({
-      id: composeId,
-      orgId: values.orgId,
-      owner: values.userId,
-      name: agentName,
-    });
-    signal.throwIfAborted();
-    await writeDb
-      .insert(orgMetadata)
-      .values({
-        orgId: values.orgId,
-        defaultAgentId: composeId,
-        tier: "free",
-        credits: 10_000,
-      })
-      .onConflictDoUpdate({
-        target: orgMetadata.orgId,
-        set: { defaultAgentId: composeId, tier: "free", credits: 10_000 },
-      });
-    signal.throwIfAborted();
+    const composeId =
+      typeof response.compose_id === "string" ? response.compose_id : null;
+    if (!composeId) {
+      throw new Error("seedOrgDefaultAgent$: response missing compose_id");
+    }
 
     return { composeId };
   },
@@ -159,104 +161,73 @@ export const seedOrgDefaultAgent$ = command(
 
 export const seedOfficialUserLink$ = command(
   async (
-    { set },
+    _,
     values: SeedOfficialUserLinkValues,
     signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb.insert(telegramOfficialUserLinks).values({
-      orgId: values.orgId,
-      vm0UserId: values.userId,
-      telegramUserId: values.telegramUserId,
-      telegramUsername: values.telegramUsername ?? null,
-      telegramDisplayName: values.telegramDisplayName ?? null,
+  ): Promise<{ readonly userLinkId: string | null }> => {
+    const response = await postAction(signal, {
+      action: "seed-official-user-link",
+      org_id: values.orgId,
+      user_id: values.userId,
+      telegram_user_id: values.telegramUserId,
+      telegram_username: values.telegramUsername,
+      telegram_display_name: values.telegramDisplayName,
     });
-    signal.throwIfAborted();
+    return {
+      userLinkId:
+        typeof response.user_link_id === "string"
+          ? response.user_link_id
+          : null,
+    };
   },
 );
 
 export const seedTelegramUserLink$ = command(
   async (
-    { set },
+    _,
     values: SeedTelegramUserLinkValues,
     signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb.insert(telegramUserLinks).values({
-      installationId: values.installationId,
-      telegramUserId: values.telegramUserId,
-      vm0UserId: values.vm0UserId,
-      telegramUsername: values.telegramUsername ?? null,
-      telegramDisplayName: values.telegramDisplayName ?? null,
+  ): Promise<{ readonly userLinkId: string | null }> => {
+    const response = await postAction(signal, {
+      action: "seed-user-link",
+      installation_id: values.installationId,
+      telegram_user_id: values.telegramUserId,
+      vm0_user_id: values.vm0UserId,
+      telegram_username: values.telegramUsername,
+      telegram_display_name: values.telegramDisplayName,
     });
-    signal.throwIfAborted();
+    return {
+      userLinkId:
+        typeof response.user_link_id === "string"
+          ? response.user_link_id
+          : null,
+    };
   },
 );
 
 export const seedUserAgentPreference$ = command(
   async (
-    { set },
+    _,
     values: SeedUserAgentPreferenceValues,
     signal: AbortSignal,
   ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb
-      .insert(telegramUserAgentPreferences)
-      .values({
-        orgId: values.orgId,
-        vm0UserId: values.userId,
-        selectedComposeId: values.composeId,
-      })
-      .onConflictDoUpdate({
-        target: [
-          telegramUserAgentPreferences.vm0UserId,
-          telegramUserAgentPreferences.orgId,
-        ],
-        set: { selectedComposeId: values.composeId },
-      });
-    signal.throwIfAborted();
+    await postAction(signal, {
+      action: "seed-user-agent-preference",
+      org_id: values.orgId,
+      user_id: values.userId,
+      compose_id: values.composeId,
+    });
   },
 );
 
 export const deleteTelegramFixture$ = command(
-  async (
-    { set },
-    fixture: TelegramFixture,
-    signal: AbortSignal,
-  ): Promise<void> => {
-    const writeDb = set(writeDb$);
-    await writeDb
-      .delete(telegramOfficialUserLinks)
-      .where(eq(telegramOfficialUserLinks.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    await writeDb
-      .delete(telegramUserAgentPreferences)
-      .where(eq(telegramUserAgentPreferences.orgId, fixture.orgId));
-    signal.throwIfAborted();
-    if (fixture.telegramBotIds.length > 0) {
-      await writeDb
-        .delete(telegramInstallations)
-        .where(
-          inArray(telegramInstallations.telegramBotId, [
-            ...fixture.telegramBotIds,
-          ]),
-        );
-      signal.throwIfAborted();
-    }
-    if (fixture.composeIds.length > 0) {
-      await writeDb
-        .delete(zeroAgents)
-        .where(inArray(zeroAgents.id, [...fixture.composeIds]));
-      signal.throwIfAborted();
-      await writeDb
-        .delete(agentComposes)
-        .where(inArray(agentComposes.id, [...fixture.composeIds]));
-      signal.throwIfAborted();
-    }
-    await writeDb
-      .delete(orgMetadata)
-      .where(eq(orgMetadata.orgId, fixture.orgId));
-    signal.throwIfAborted();
+  async (_, fixture: TelegramFixture, signal: AbortSignal): Promise<void> => {
+    await postAction(signal, {
+      action: "delete-fixture",
+      org_id: fixture.orgId,
+      compose_ids: [...fixture.composeIds],
+      telegram_bot_ids: [...fixture.telegramBotIds],
+    });
   },
 );
 

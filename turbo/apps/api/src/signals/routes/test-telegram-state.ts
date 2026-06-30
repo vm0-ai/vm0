@@ -1,4 +1,4 @@
-import { createHash } from "node:crypto";
+import { createHash, randomUUID } from "node:crypto";
 
 import { command, computed } from "ccstate";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
@@ -7,12 +7,18 @@ import {
   agentComposes,
   agentComposeVersions,
 } from "@vm0/db/schema/agent-compose";
+import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { agentSessions } from "@vm0/db/schema/agent-session";
 import { creditExpiresRecord } from "@vm0/db/schema/credit-expires-record";
 import { e2eTelegramMockCallLog } from "@vm0/db/schema/e2e-telegram-mock-call-log";
+import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { telegramMessages } from "@vm0/db/schema/telegram-message";
+import { telegramOfficialUserLinks } from "@vm0/db/schema/telegram-official-user-link";
+import { telegramThreadSessions } from "@vm0/db/schema/telegram-thread-session";
+import { telegramUserAgentPreferences } from "@vm0/db/schema/telegram-user-agent-preference";
 import { telegramUserLinks } from "@vm0/db/schema/telegram-user-link";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
@@ -20,7 +26,7 @@ import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { optionalEnv } from "../../lib/env";
 import { clerk$ } from "../external/clerk";
 import { request$ } from "../context/hono";
-import { queryOf } from "../context/request";
+import { bodyResultOf, queryOf } from "../context/request";
 import { db$, writeDb$, type Db, type ReadonlyDb } from "../external/db";
 import { nowDate } from "../external/time";
 import type { RouteEntry } from "../route-entry";
@@ -33,6 +39,7 @@ import {
 
 const testTelegramStateQuery$ = queryOf(testTelegramStateContract.get);
 const deleteTestTelegramStateQuery$ = queryOf(testTelegramStateContract.delete);
+const actionBody$ = bodyResultOf(testTelegramStateContract.action);
 const DEFAULT_TEST_EMAIL = "dev+clerk_test+serial@vm0-e2e.ai";
 const DEFAULT_TEST_AGENT_NAME = "e2e-slack-agent";
 const STARTER_GRANT_AMOUNT = 10_000;
@@ -213,6 +220,55 @@ async function countMessages(db: ReadonlyDb, botId: string): Promise<number> {
   return row?.count ?? 0;
 }
 
+function loadMessages(db: ReadonlyDb, botId: string) {
+  return db
+    .select({
+      id: telegramMessages.id,
+      text: telegramMessages.text,
+      isBot: telegramMessages.isBot,
+      chatId: telegramMessages.chatId,
+      messageId: telegramMessages.messageId,
+      createdAt: telegramMessages.createdAt,
+    })
+    .from(telegramMessages)
+    .where(eq(telegramMessages.installationId, botId))
+    .orderBy(telegramMessages.createdAt);
+}
+
+function loadOfficialMessages(db: ReadonlyDb, orgId: string | undefined) {
+  if (!orgId) {
+    return [];
+  }
+  return db
+    .select({
+      id: telegramMessages.id,
+      text: telegramMessages.text,
+      isBot: telegramMessages.isBot,
+      officialOrgId: telegramMessages.officialOrgId,
+      officialUserLinkId: telegramMessages.officialUserLinkId,
+      createdAt: telegramMessages.createdAt,
+    })
+    .from(telegramMessages)
+    .where(eq(telegramMessages.officialOrgId, orgId))
+    .orderBy(telegramMessages.createdAt);
+}
+
+function loadThreadSessions(db: ReadonlyDb, botId: string) {
+  return db
+    .select({
+      telegramUserLinkId: telegramThreadSessions.telegramUserLinkId,
+      chatId: telegramThreadSessions.chatId,
+      rootMessageId: telegramThreadSessions.rootMessageId,
+      agentSessionId: telegramThreadSessions.agentSessionId,
+    })
+    .from(telegramThreadSessions)
+    .innerJoin(
+      telegramUserLinks,
+      eq(telegramUserLinks.id, telegramThreadSessions.telegramUserLinkId),
+    )
+    .where(eq(telegramUserLinks.installationId, botId));
+}
+
 function loadMockCalls(db: ReadonlyDb) {
   return db
     .select({
@@ -274,6 +330,512 @@ async function insertTelegramLinkIfMissing(
     .returning({ id: telegramUserLinks.id });
   signal.throwIfAborted();
   return row?.id ?? null;
+}
+
+function actionBadRequest(message: string) {
+  return { status: 400 as const, body: { error: message } };
+}
+
+function actionOk(body: Record<string, unknown> = {}) {
+  return { status: 200 as const, body: { ok: true as const, ...body } };
+}
+
+function readActionString(
+  body: Record<string, unknown>,
+  key: string,
+): string | null {
+  return typeof body[key] === "string" && body[key].length > 0
+    ? body[key]
+    : null;
+}
+
+function readActionOptionalString(
+  body: Record<string, unknown>,
+  key: string,
+): string | undefined {
+  return typeof body[key] === "string" && body[key].length > 0
+    ? body[key]
+    : undefined;
+}
+
+function readActionNullableString(
+  body: Record<string, unknown>,
+  key: string,
+): string | null | undefined {
+  if (!(key in body)) {
+    return undefined;
+  }
+  return typeof body[key] === "string" ? body[key] : null;
+}
+
+function readActionStringArray(
+  body: Record<string, unknown>,
+  key: string,
+): string[] {
+  const value = body[key];
+  return Array.isArray(value)
+    ? value.filter((item): item is string => {
+        return typeof item === "string" && item.length > 0;
+      })
+    : [];
+}
+
+function readActionRecord(
+  body: Record<string, unknown>,
+  key: string,
+): Record<string, unknown> {
+  const value = body[key];
+  return typeof value === "object" && value !== null && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function requiredActionStrings(
+  body: Record<string, unknown>,
+  keys: readonly string[],
+): Record<string, string> | null {
+  const values: Record<string, string> = {};
+  for (const key of keys) {
+    const value = readActionString(body, key);
+    if (!value) {
+      return null;
+    }
+    values[key] = value;
+  }
+  return values;
+}
+
+async function seedTelegramCompose(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly composeId?: string;
+    readonly composeName?: string;
+    readonly agentName?: string;
+  },
+): Promise<string> {
+  const composeId = args.composeId ?? randomUUID();
+  const composeName = args.composeName ?? `agent-${composeId.slice(0, 8)}`;
+  const agentName = args.agentName ?? composeName;
+
+  await db.insert(agentComposes).values({
+    id: composeId,
+    userId: args.userId,
+    orgId: args.orgId,
+    name: composeName,
+  });
+  await db.insert(zeroAgents).values({
+    id: composeId,
+    orgId: args.orgId,
+    owner: args.userId,
+    name: agentName,
+    displayName: agentName,
+  });
+  return composeId;
+}
+
+async function seedTelegramInstallationForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const required = requiredActionStrings(body, [
+    "org_id",
+    "owner_user_id",
+    "telegram_bot_id",
+  ]);
+  if (!required) {
+    return actionBadRequest(
+      "org_id, owner_user_id, and telegram_bot_id are required",
+    );
+  }
+  const orgId = required.org_id!;
+  const ownerUserId = required.owner_user_id!;
+  const telegramBotId = required.telegram_bot_id!;
+  const skipCompose = body.skip_compose === true;
+  const defaultComposeId = readActionOptionalString(body, "default_compose_id");
+  if (skipCompose && !defaultComposeId) {
+    return actionBadRequest("default_compose_id is required with skip_compose");
+  }
+  const composeId = skipCompose
+    ? defaultComposeId!
+    : await seedTelegramCompose(db, {
+        orgId,
+        userId:
+          readActionOptionalString(body, "compose_user_id") ?? ownerUserId,
+        composeId: defaultComposeId,
+        composeName: readActionOptionalString(body, "compose_name"),
+        agentName: readActionOptionalString(body, "agent_name"),
+      });
+  signal.throwIfAborted();
+
+  const encryptedBotToken = await encryptPersistentSecretValue(
+    readActionOptionalString(body, "bot_token") ?? "test-bot-token",
+    { orgId, userId: ownerUserId },
+  );
+  signal.throwIfAborted();
+
+  await db.insert(telegramInstallations).values({
+    telegramBotId,
+    botUsername:
+      readActionNullableString(body, "bot_username") ?? `bot_${telegramBotId}`,
+    encryptedBotToken,
+    webhookSecret:
+      readActionOptionalString(body, "webhook_secret") ?? `whs_${randomUUID()}`,
+    defaultComposeId: composeId,
+    ownerUserId,
+    orgId,
+  });
+  signal.throwIfAborted();
+
+  return actionOk({ compose_id: composeId, telegram_bot_id: telegramBotId });
+}
+
+async function seedOrgDefaultAgentForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const required = requiredActionStrings(body, ["org_id", "user_id"]);
+  if (!required) {
+    return actionBadRequest("org_id and user_id are required");
+  }
+  const orgId = required.org_id!;
+  const userId = required.user_id!;
+  const composeId = await seedTelegramCompose(db, {
+    orgId,
+    userId,
+    composeName: readActionOptionalString(body, "compose_name"),
+    agentName: readActionOptionalString(body, "agent_name"),
+  });
+  signal.throwIfAborted();
+
+  await db
+    .insert(orgMetadata)
+    .values({
+      orgId,
+      defaultAgentId: composeId,
+      tier: "free",
+      credits: 10_000,
+    })
+    .onConflictDoUpdate({
+      target: orgMetadata.orgId,
+      set: { defaultAgentId: composeId, tier: "free", credits: 10_000 },
+    });
+  signal.throwIfAborted();
+
+  return actionOk({ compose_id: composeId });
+}
+
+async function seedOfficialUserLinkForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const required = requiredActionStrings(body, [
+    "org_id",
+    "user_id",
+    "telegram_user_id",
+  ]);
+  if (!required) {
+    return actionBadRequest(
+      "org_id, user_id, and telegram_user_id are required",
+    );
+  }
+  const [row] = await db
+    .insert(telegramOfficialUserLinks)
+    .values({
+      orgId: required.org_id!,
+      vm0UserId: required.user_id!,
+      telegramUserId: required.telegram_user_id!,
+      telegramUsername: readActionNullableString(body, "telegram_username"),
+      telegramDisplayName: readActionNullableString(
+        body,
+        "telegram_display_name",
+      ),
+    })
+    .returning({ id: telegramOfficialUserLinks.id });
+  signal.throwIfAborted();
+  return actionOk({ user_link_id: row?.id ?? null });
+}
+
+async function seedUserLinkForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const required = requiredActionStrings(body, [
+    "installation_id",
+    "telegram_user_id",
+    "vm0_user_id",
+  ]);
+  if (!required) {
+    return actionBadRequest(
+      "installation_id, telegram_user_id, and vm0_user_id are required",
+    );
+  }
+  const [row] = await db
+    .insert(telegramUserLinks)
+    .values({
+      installationId: required.installation_id!,
+      telegramUserId: required.telegram_user_id!,
+      vm0UserId: required.vm0_user_id!,
+      telegramUsername: readActionNullableString(body, "telegram_username"),
+      telegramDisplayName: readActionNullableString(
+        body,
+        "telegram_display_name",
+      ),
+    })
+    .returning({ id: telegramUserLinks.id });
+  signal.throwIfAborted();
+  return actionOk({ user_link_id: row?.id ?? null });
+}
+
+async function seedUserAgentPreferenceForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const required = requiredActionStrings(body, [
+    "org_id",
+    "user_id",
+    "compose_id",
+  ]);
+  if (!required) {
+    return actionBadRequest("org_id, user_id, and compose_id are required");
+  }
+  await db
+    .insert(telegramUserAgentPreferences)
+    .values({
+      orgId: required.org_id!,
+      vm0UserId: required.user_id!,
+      selectedComposeId: required.compose_id!,
+    })
+    .onConflictDoUpdate({
+      target: [
+        telegramUserAgentPreferences.vm0UserId,
+        telegramUserAgentPreferences.orgId,
+      ],
+      set: { selectedComposeId: required.compose_id! },
+    });
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function seedAgentRunCallbackForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readActionString(body, "run_id");
+  if (!runId) {
+    return actionBadRequest("run_id is required");
+  }
+  const encryptedSecret = await encryptPersistentSecretValue(
+    readActionOptionalString(body, "secret") ?? "test-callback-secret",
+    {},
+  );
+  signal.throwIfAborted();
+  const [row] = await db
+    .insert(agentRunCallbacks)
+    .values({
+      runId,
+      url: readActionNullableString(body, "url") ?? null,
+      internalKind: readActionNullableString(body, "internal_kind") ?? null,
+      encryptedSecret,
+      payload: readActionRecord(body, "payload"),
+      status:
+        readActionOptionalString(body, "status") === "delivered" ||
+        readActionOptionalString(body, "status") === "failed"
+          ? readActionOptionalString(body, "status")
+          : "pending",
+    })
+    .returning({ id: agentRunCallbacks.id });
+  signal.throwIfAborted();
+  return actionOk({ callback_id: row?.id ?? null });
+}
+
+async function updateRunForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readActionString(body, "run_id");
+  if (!runId) {
+    return actionBadRequest("run_id is required");
+  }
+  await db
+    .update(zeroRuns)
+    .set({ selectedModel: readActionNullableString(body, "selected_model") })
+    .where(eq(zeroRuns.id, runId));
+  signal.throwIfAborted();
+  return actionOk();
+}
+
+async function getRunForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const runId = readActionString(body, "run_id");
+  if (!runId) {
+    return actionBadRequest("run_id is required");
+  }
+  const [run] = await db
+    .select({
+      sessionId: agentRuns.sessionId,
+      selectedModel: zeroRuns.selectedModel,
+    })
+    .from(agentRuns)
+    .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
+    .where(eq(agentRuns.id, runId))
+    .limit(1);
+  signal.throwIfAborted();
+  return actionOk({
+    run: run
+      ? { session_id: run.sessionId, selected_model: run.selectedModel }
+      : null,
+  });
+}
+
+async function seedThreadSessionForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const required = requiredActionStrings(body, [
+    "user_link_id",
+    "chat_id",
+    "root_message_id",
+    "org_id",
+    "user_id",
+    "compose_id",
+  ]);
+  if (!required) {
+    return actionBadRequest(
+      "user_link_id, chat_id, root_message_id, org_id, user_id, and compose_id are required",
+    );
+  }
+  const [session] = await db
+    .insert(agentSessions)
+    .values({
+      userId: required.user_id!,
+      orgId: required.org_id!,
+      agentComposeId: required.compose_id!,
+    })
+    .returning({ id: agentSessions.id });
+  signal.throwIfAborted();
+  if (!session) {
+    return actionBadRequest("failed to create agent session");
+  }
+  await db.insert(telegramThreadSessions).values({
+    telegramUserLinkId: required.user_link_id!,
+    chatId: required.chat_id!,
+    rootMessageId: required.root_message_id!,
+    agentSessionId: session.id,
+  });
+  signal.throwIfAborted();
+  return actionOk({ agent_session_id: session.id });
+}
+
+async function findThreadSessionForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const required = requiredActionStrings(body, [
+    "user_link_id",
+    "chat_id",
+    "root_message_id",
+  ]);
+  if (!required) {
+    return actionBadRequest(
+      "user_link_id, chat_id, and root_message_id are required",
+    );
+  }
+  const [row] = await db
+    .select({ agentSessionId: telegramThreadSessions.agentSessionId })
+    .from(telegramThreadSessions)
+    .where(
+      and(
+        eq(telegramThreadSessions.telegramUserLinkId, required.user_link_id!),
+        eq(telegramThreadSessions.chatId, required.chat_id!),
+        eq(telegramThreadSessions.rootMessageId, required.root_message_id!),
+      ),
+    )
+    .limit(1);
+  signal.throwIfAborted();
+  return actionOk({
+    thread_session: row ? { agent_session_id: row.agentSessionId } : null,
+  });
+}
+
+async function deleteTelegramFixtureForAction(
+  db: Db,
+  body: Record<string, unknown>,
+  signal: AbortSignal,
+) {
+  const orgId = readActionString(body, "org_id");
+  const composeIds = readActionStringArray(body, "compose_ids");
+  const telegramBotIds = readActionStringArray(body, "telegram_bot_ids");
+
+  if (telegramBotIds.length > 0) {
+    const linkRows = await db
+      .select({ id: telegramUserLinks.id })
+      .from(telegramUserLinks)
+      .where(inArray(telegramUserLinks.installationId, telegramBotIds));
+    signal.throwIfAborted();
+    const linkIds = linkRows.map((row) => {
+      return row.id;
+    });
+    if (linkIds.length > 0) {
+      await db
+        .delete(telegramThreadSessions)
+        .where(inArray(telegramThreadSessions.telegramUserLinkId, linkIds));
+      signal.throwIfAborted();
+    }
+    await db
+      .delete(telegramMessages)
+      .where(inArray(telegramMessages.installationId, telegramBotIds));
+    signal.throwIfAborted();
+    await db
+      .delete(telegramUserLinks)
+      .where(inArray(telegramUserLinks.installationId, telegramBotIds));
+    signal.throwIfAborted();
+    await db
+      .delete(telegramInstallations)
+      .where(inArray(telegramInstallations.telegramBotId, telegramBotIds));
+    signal.throwIfAborted();
+  }
+
+  if (orgId) {
+    await db
+      .delete(telegramMessages)
+      .where(eq(telegramMessages.officialOrgId, orgId));
+    signal.throwIfAborted();
+    await db
+      .delete(telegramOfficialUserLinks)
+      .where(eq(telegramOfficialUserLinks.orgId, orgId));
+    signal.throwIfAborted();
+    await db
+      .delete(telegramUserAgentPreferences)
+      .where(eq(telegramUserAgentPreferences.orgId, orgId));
+    signal.throwIfAborted();
+    await db.delete(modelProviders).where(eq(modelProviders.orgId, orgId));
+    signal.throwIfAborted();
+    await db.delete(orgMetadata).where(eq(orgMetadata.orgId, orgId));
+    signal.throwIfAborted();
+  }
+
+  if (composeIds.length > 0) {
+    await db.delete(zeroAgents).where(inArray(zeroAgents.id, composeIds));
+    signal.throwIfAborted();
+    await db.delete(agentComposes).where(inArray(agentComposes.id, composeIds));
+    signal.throwIfAborted();
+  }
+
+  return actionOk();
 }
 
 async function ensureStarterCreditGrant(
@@ -500,15 +1062,27 @@ const getTestTelegramState$ = computed(async (get) => {
 
   const db = get(db$);
   const installation = await loadInstallation(db, query.bot_id);
-  const [links, recentRuns, orgMeta, defaultAgent, compose, messageCount] =
-    await Promise.all([
-      loadLinks(db, query.bot_id),
-      loadRecentRuns(db, installation?.orgId),
-      loadOrgMeta(db, installation?.orgId),
-      loadDefaultAgent(db, installation?.defaultComposeId),
-      loadCompose(db, installation?.defaultComposeId),
-      countMessages(db, query.bot_id),
-    ]);
+  const [
+    links,
+    recentRuns,
+    orgMeta,
+    defaultAgent,
+    compose,
+    messageCount,
+    messages,
+    officialMessages,
+    threadSessions,
+  ] = await Promise.all([
+    loadLinks(db, query.bot_id),
+    loadRecentRuns(db, installation?.orgId),
+    loadOrgMeta(db, installation?.orgId),
+    loadDefaultAgent(db, installation?.defaultComposeId),
+    loadCompose(db, installation?.defaultComposeId),
+    countMessages(db, query.bot_id),
+    loadMessages(db, query.bot_id),
+    loadOfficialMessages(db, installation?.orgId),
+    loadThreadSessions(db, query.bot_id),
+  ]);
   const [composeVersion, mockCalls] = await Promise.all([
     loadComposeVersion(db, compose?.headVersionId),
     loadMockCalls(db),
@@ -534,6 +1108,9 @@ const getTestTelegramState$ = computed(async (get) => {
         : null,
       resolved_telegram_api_url: resolveTelegramApiUrlForDiagnostics(),
       mock_calls: mockCalls,
+      messages,
+      official_messages: officialMessages,
+      thread_sessions: threadSessions,
     },
   };
 });
@@ -728,6 +1305,59 @@ const deleteTestTelegramState$ = command(
   },
 );
 
+const mutateTestTelegramState$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    if (!isTestEndpointAllowed(get(request$))) {
+      return testEndpointNotFoundResponse();
+    }
+
+    const bodyResult = await get(actionBody$);
+    signal.throwIfAborted();
+    if (!bodyResult.ok) {
+      return bodyResult.response;
+    }
+
+    const body = bodyResult.data as Record<string, unknown>;
+    const db = set(writeDb$);
+
+    switch (bodyResult.data.action) {
+      case "seed-installation": {
+        return await seedTelegramInstallationForAction(db, body, signal);
+      }
+      case "seed-org-default-agent": {
+        return await seedOrgDefaultAgentForAction(db, body, signal);
+      }
+      case "seed-official-user-link": {
+        return await seedOfficialUserLinkForAction(db, body, signal);
+      }
+      case "seed-user-link": {
+        return await seedUserLinkForAction(db, body, signal);
+      }
+      case "seed-user-agent-preference": {
+        return await seedUserAgentPreferenceForAction(db, body, signal);
+      }
+      case "seed-agent-run-callback": {
+        return await seedAgentRunCallbackForAction(db, body, signal);
+      }
+      case "seed-thread-session": {
+        return await seedThreadSessionForAction(db, body, signal);
+      }
+      case "update-run": {
+        return await updateRunForAction(db, body, signal);
+      }
+      case "get-run": {
+        return await getRunForAction(db, body, signal);
+      }
+      case "find-thread-session": {
+        return await findThreadSessionForAction(db, body, signal);
+      }
+      case "delete-fixture": {
+        return await deleteTelegramFixtureForAction(db, body, signal);
+      }
+    }
+  },
+);
+
 export const testTelegramStateRoutes: readonly RouteEntry[] = [
   {
     route: testTelegramStateContract.get,
@@ -740,5 +1370,9 @@ export const testTelegramStateRoutes: readonly RouteEntry[] = [
   {
     route: testTelegramStateContract.delete,
     handler: deleteTestTelegramState$,
+  },
+  {
+    route: testTelegramStateContract.action,
+    handler: mutateTestTelegramState$,
   },
 ];

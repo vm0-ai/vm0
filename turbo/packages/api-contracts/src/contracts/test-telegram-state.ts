@@ -23,6 +23,24 @@ export const testTelegramStateSeedBodySchema = z
   })
   .passthrough();
 
+export const testTelegramStateActionBodySchema = z
+  .object({
+    action: z.enum([
+      "seed-installation",
+      "seed-org-default-agent",
+      "seed-official-user-link",
+      "seed-user-link",
+      "seed-user-agent-preference",
+      "seed-agent-run-callback",
+      "seed-thread-session",
+      "update-run",
+      "get-run",
+      "find-thread-session",
+      "delete-fixture",
+    ]),
+  })
+  .passthrough();
+
 export const testTelegramStateComposeVersionSchema = z.object({
   id: z.string(),
   content_keys: z.array(z.string()),
@@ -39,11 +57,20 @@ export const testTelegramStateResponseSchema = z.object({
   default_compose_version: testTelegramStateComposeVersionSchema.nullable(),
   resolved_telegram_api_url: z.string().nullable(),
   mock_calls: z.array(z.unknown()),
+  messages: z.array(z.unknown()),
+  official_messages: z.array(z.unknown()),
+  thread_sessions: z.array(z.unknown()),
 });
 
 export const testTelegramStateDeleteResponseSchema = z.object({
   ok: z.literal(true),
 });
+
+export const testTelegramStateActionResponseSchema = z
+  .object({
+    ok: z.literal(true),
+  })
+  .passthrough();
 
 export const testTelegramStateSeedResponseSchema = z.object({
   ok: z.literal(true),
@@ -88,6 +115,17 @@ export const testTelegramStateContract = c.router({
     },
     summary: "Seed Telegram E2E test state",
   },
+  action: {
+    method: "POST",
+    path: "/api/test/telegram-state/action",
+    body: testTelegramStateActionBodySchema,
+    responses: {
+      200: testTelegramStateActionResponseSchema,
+      400: testTelegramStateErrorSchema,
+      404: z.string(),
+    },
+    summary: "Mutate Telegram API test state",
+  },
 });
 
 export type TestTelegramStateContract = typeof testTelegramStateContract;
@@ -99,4 +137,10 @@ export type TestTelegramStateSeedBody = z.infer<
 >;
 export type TestTelegramStateSeedResponse = z.infer<
   typeof testTelegramStateSeedResponseSchema
+>;
+export type TestTelegramStateActionBody = z.infer<
+  typeof testTelegramStateActionBodySchema
+>;
+export type TestTelegramStateActionResponse = z.infer<
+  typeof testTelegramStateActionResponseSchema
 >;
