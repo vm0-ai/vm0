@@ -1498,8 +1498,13 @@ async fn run(config: RunConfig) -> RunnerResult<()> {
             }
             // Immediate heartbeat after session affinity state changes —
             // eliminates the up-to-10s blind spot for affinity routing.
-            _ = park_notify.notified(), if matches!(mode, RunnerMode::Running) => {
-                let source = if can_discover { "main" } else { "budget_exhausted" };
+            _ = park_notify.notified(), if matches!(mode, RunnerMode::Running | RunnerMode::Draining) => {
+                let source = match mode {
+                    RunnerMode::Running if can_discover => "main",
+                    RunnerMode::Running => "budget_exhausted",
+                    RunnerMode::Draining => "draining",
+                    RunnerMode::Stopping | RunnerMode::Stopped => "inactive",
+                };
                 info!(source, "session affinity state triggered immediate heartbeat");
                 send_heartbeat(&hb_ctx, current_mode).await;
             }
