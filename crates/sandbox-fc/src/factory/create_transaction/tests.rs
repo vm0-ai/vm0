@@ -1076,6 +1076,29 @@ async fn create_transaction_commit_disarms_rollback() {
 }
 
 #[tokio::test]
+async fn create_transaction_commit_rejects_test_cow_without_losing_base_resources() {
+    let fixture = WorkspaceSockFixture::new().await;
+    let (leak_tx, mut leak_rx) = tokio::sync::mpsc::unbounded_channel();
+
+    let mut tx = SandboxCreateTransaction::new_with_leak_tx("sandbox".into(), Some(leak_tx));
+    fixture.track_on(&mut tx);
+    tx.track_network(test_network());
+    tx.track_test_cow_device_for_test();
+
+    assert!(tx.commit().is_err());
+
+    drop(tx);
+    let mut leaked = leak_rx.recv().await.unwrap();
+    assert!(leaked.cow_device.is_none());
+    assert!(leaked.delete_workspace);
+    let network = leaked.network.take().unwrap();
+    assert_eq!(network.name(), "test-ns");
+    let _ = network.into_info_for_test();
+    assert_eq!(leaked.sock_dir, fixture.sock_dir);
+    assert_eq!(leaked.workspace, fixture.workspace);
+}
+
+#[tokio::test]
 async fn create_transaction_drop_before_rename_destroys_slot_workspace() {
     let fixture = SlotWorkspaceFixture::new().await;
 

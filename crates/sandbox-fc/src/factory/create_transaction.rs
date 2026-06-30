@@ -202,6 +202,16 @@ pub(super) enum CreateTransactionCowDevice {
 }
 
 impl CreateTransactionCowDevice {
+    fn validate_real(&self, _context: &str) -> sandbox::Result<()> {
+        match self {
+            Self::Real(_) => Ok(()),
+            #[cfg(test)]
+            Self::Test => Err(create_transaction_invalid_state(&format!(
+                "test COW device cannot be used at {_context}"
+            ))),
+        }
+    }
+
     fn into_real(self, _context: &str) -> sandbox::Result<PooledNbdCowDevice> {
         match self {
             Self::Real(cow_device) => Ok(cow_device),
@@ -368,11 +378,10 @@ impl SandboxCreateTransaction {
 
     pub(super) fn commit(&mut self) -> sandbox::Result<SandboxCreateResources> {
         self.validate_base_resources("commit")?;
-        if self.cow_device.is_none() {
-            return Err(create_transaction_invalid_state(
-                "missing COW device at commit",
-            ));
-        }
+        self.cow_device
+            .as_ref()
+            .ok_or_else(|| create_transaction_invalid_state("missing COW device at commit"))?
+            .validate_real("commit")?;
 
         let (workspace, sock_dir, network) = self.take_base_resources_after_validation()?;
         let cow_device = self
