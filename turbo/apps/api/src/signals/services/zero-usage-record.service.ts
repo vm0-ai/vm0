@@ -30,6 +30,7 @@ const USAGE_RECORD_KINDS = ["model", "image", "video", "connector"] as const;
 const PASSTHROUGH_TRIGGER_SOURCES = [
   "automation",
   "slack",
+  "teams",
   "telegram",
   "email",
   "agentphone",

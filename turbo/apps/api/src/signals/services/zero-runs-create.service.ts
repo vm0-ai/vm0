@@ -86,6 +86,9 @@ interface UserInfo {
   readonly timezone: string | null;
   readonly slackDisplayName?: string;
   readonly slackUserId?: string;
+  readonly teamsUserDisplayName?: string;
+  readonly teamsUserPrincipalName?: string;
+  readonly teamsUserId?: string;
   readonly telegramDisplayName?: string;
   readonly telegramUsername?: string;
   readonly telegramUserId?: string;
@@ -136,6 +139,9 @@ interface CreateZeroRunCommandArgs {
     UserInfo,
     | "slackDisplayName"
     | "slackUserId"
+    | "teamsUserDisplayName"
+    | "teamsUserPrincipalName"
+    | "teamsUserId"
     | "telegramDisplayName"
     | "telegramUsername"
     | "telegramUserId"
@@ -167,6 +173,9 @@ interface CreateZeroIntegrationRunCommandArgs {
     UserInfo,
     | "slackDisplayName"
     | "slackUserId"
+    | "teamsUserDisplayName"
+    | "teamsUserPrincipalName"
+    | "teamsUserId"
     | "telegramDisplayName"
     | "telegramUsername"
     | "telegramUserId"
@@ -243,6 +252,12 @@ function buildIntegrationToolsPrompt(
         ...localFileContextLines,
       ];
     }
+    case "teams": {
+      return [
+        "- Microsoft Teams messaging and files: normal replies are automatically sent to the originating conversation, so extra messaging commands are only for explicit additional delivery targets. Do not use Slack or Telegram commands for Microsoft Teams delivery.",
+        ...localFileContextLines,
+      ];
+    }
     case "github": {
       return [
         "- GitHub issue/PR files: use `zero github --help`. Normal replies are automatically sent to the originating issue or pull request, so GitHub commands are for explicit extra file delivery. Use `zero github download-file -h` for `[GitHub file]` blocks. `zero github upload-file -h` can share a local file back to the issue or pull request when file delivery is needed.",
@@ -311,6 +326,15 @@ function buildCurrentUserPrompt(userInfo: UserInfo): string {
   }
   if (userInfo.slackUserId) {
     lines.push(`Slack user ID: ${userInfo.slackUserId}`);
+  }
+  if (userInfo.teamsUserDisplayName) {
+    lines.push(`Teams display name: ${userInfo.teamsUserDisplayName}`);
+  }
+  if (userInfo.teamsUserPrincipalName) {
+    lines.push(`Teams user principal name: ${userInfo.teamsUserPrincipalName}`);
+  }
+  if (userInfo.teamsUserId) {
+    lines.push(`Teams user ID: ${userInfo.teamsUserId}`);
   }
   if (userInfo.telegramDisplayName) {
     lines.push(`Telegram display name: ${userInfo.telegramDisplayName}`);
