@@ -131,6 +131,7 @@ type ChatThreadRow = {
   readonly lastReadAt: Date | null;
   readonly lastReadMessageId: string | null;
   readonly lastMessageAt: Date;
+  readonly pinnedAt: Date | null;
   readonly renamedAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
@@ -377,6 +378,7 @@ function ownedChatThread(
         lastReadAt: chatThreads.lastReadAt,
         lastReadMessageId: chatThreads.lastReadMessageId,
         lastMessageAt: chatThreads.lastMessageAt,
+        pinnedAt: chatThreads.pinnedAt,
         renamedAt: chatThreads.renamedAt,
         createdAt: chatThreads.createdAt,
         updatedAt: chatThreads.updatedAt,
@@ -408,6 +410,7 @@ function ownedChatThread(
       lastReadAt: thread.lastReadAt ?? null,
       lastReadMessageId: thread.lastReadMessageId ?? null,
       lastMessageAt: thread.lastMessageAt,
+      pinnedAt: thread.pinnedAt ?? null,
       renamedAt: thread.renamedAt ?? null,
       createdAt: thread.createdAt,
       updatedAt: thread.updatedAt,
@@ -713,6 +716,7 @@ export function zeroChatThreadDetail(args: {
       activeRunIds: [...pickActiveRunIds(runSummaries)],
       createdAt: thread.createdAt.toISOString(),
       updatedAt: thread.updatedAt.toISOString(),
+      pinnedAt: thread.pinnedAt?.toISOString() ?? null,
       draftContent: thread.draftContent,
       draftAttachments: thread.draftAttachments
         ? [...thread.draftAttachments]
@@ -864,10 +868,13 @@ export function zeroChatThreadList(args: {
   readonly orgId: string;
   readonly agentComposeId: string;
   readonly cursor?: string;
+  readonly filter?: "unread";
 }): Computed<Promise<ChatThreadListPage>> {
   return computed(async (get): Promise<ChatThreadListPage> => {
     const db = get(db$);
     const cursor = decodeChatThreadListCursor(args.cursor);
+    const lastMessage =
+      args.filter === "unread" ? lastVisibleMessageSubquery(db) : null;
 
     const projection = chatThreadListProjection();
 
@@ -876,6 +883,15 @@ export function zeroChatThreadList(args: {
       eq(zeroAgents.orgId, args.orgId),
       eq(chatThreads.agentComposeId, args.agentComposeId),
     ];
+    if (lastMessage) {
+      scopedFilters.push(
+        isNotNull(lastMessage.id),
+        or(
+          isNull(chatThreads.lastReadMessageId),
+          sql`${chatThreads.lastReadMessageId} <> ${lastMessage.id}`,
+        )!,
+      );
+    }
 
     const nonPinnedFilters = [...scopedFilters, isNull(chatThreads.pinnedAt)];
     if (cursor) {
@@ -890,6 +906,38 @@ export function zeroChatThreadList(args: {
     const [pinnedRows, nonPinnedRows] = await Promise.all([
       cursor
         ? []
+        : lastMessage
+          ? db
+              .select(projection)
+              .from(chatThreads)
+              .innerJoin(
+                zeroAgents,
+                eq(zeroAgents.id, chatThreads.agentComposeId),
+              )
+              .leftJoinLateral(lastMessage, sql`true`)
+              .where(and(...scopedFilters, isNotNull(chatThreads.pinnedAt)))
+              .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id))
+          : db
+              .select(projection)
+              .from(chatThreads)
+              .innerJoin(
+                zeroAgents,
+                eq(zeroAgents.id, chatThreads.agentComposeId),
+              )
+              .where(and(...scopedFilters, isNotNull(chatThreads.pinnedAt)))
+              .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id)),
+      lastMessage
+        ? db
+            .select(projection)
+            .from(chatThreads)
+            .innerJoin(
+              zeroAgents,
+              eq(zeroAgents.id, chatThreads.agentComposeId),
+            )
+            .leftJoinLateral(lastMessage, sql`true`)
+            .where(and(...nonPinnedFilters))
+            .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id))
+            .limit(SIDEBAR_CHAT_THREAD_LIMIT + 1)
         : db
             .select(projection)
             .from(chatThreads)
@@ -897,15 +945,9 @@ export function zeroChatThreadList(args: {
               zeroAgents,
               eq(zeroAgents.id, chatThreads.agentComposeId),
             )
-            .where(and(...scopedFilters, isNotNull(chatThreads.pinnedAt)))
-            .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id)),
-      db
-        .select(projection)
-        .from(chatThreads)
-        .innerJoin(zeroAgents, eq(zeroAgents.id, chatThreads.agentComposeId))
-        .where(and(...nonPinnedFilters))
-        .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id))
-        .limit(SIDEBAR_CHAT_THREAD_LIMIT + 1),
+            .where(and(...nonPinnedFilters))
+            .orderBy(desc(chatThreads.lastMessageAt), desc(chatThreads.id))
+            .limit(SIDEBAR_CHAT_THREAD_LIMIT + 1),
     ]);
 
     const hasMore = nonPinnedRows.length > SIDEBAR_CHAT_THREAD_LIMIT;

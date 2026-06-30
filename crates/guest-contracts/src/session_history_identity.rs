@@ -13,8 +13,29 @@ pub const FINAL_SESSION_HISTORY_IDENTITY_VERSION: u8 = 1;
 /// Maximum size of the serialized final identity metadata file.
 pub const FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES: u64 = 16 * 1024;
 
-/// Maximum session-history bytes verified for idle restore skip.
-pub const SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES: u64 = 1024 * 1024;
+/// Maximum decoded session-history bytes the guest helper may verify locally.
+pub const SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES: u64 = 32 * 1024 * 1024;
+
+/// Guest helper exit code for successful final identity verification.
+pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_SUCCESS: i32 = 0;
+/// Guest helper exit code for uncategorized final identity verification failure.
+pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FAILURE: i32 = 1;
+/// Guest helper exit code for invalid command arguments.
+pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_ARGS: i32 = 2;
+/// Guest helper exit code for metadata read failure.
+pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_METADATA_READ: i32 = 3;
+/// Guest helper exit code for invalid metadata.
+pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_INVALID_METADATA: i32 = 4;
+/// Guest helper exit code for framework/marker mismatch.
+pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH: i32 = 5;
+/// Guest helper exit code for expected identity mismatch.
+pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH: i32 = 6;
+/// Guest helper exit code for local history read failure.
+pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_READ: i32 = 7;
+/// Guest helper exit code for local history size/hash mismatch.
+pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH: i32 = 8;
+/// Guest helper exit code for local history exceeding the guest verification budget.
+pub const SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_TOO_LARGE: i32 = 9;
 
 /// Framework that owns a final session-history file.
 #[derive(Clone, Copy, Debug, Deserialize, Eq, PartialEq, Serialize)]
@@ -112,9 +133,6 @@ impl FinalSessionHistoryIdentity {
         }
         if self.history_size_bytes == 0 {
             return Err(FinalSessionHistoryIdentityError::InvalidHistorySize);
-        }
-        if self.history_size_bytes > SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES {
-            return Err(FinalSessionHistoryIdentityError::HistoryTooLarge);
         }
         if self.history_marker_payload.trim().is_empty() {
             return Err(FinalSessionHistoryIdentityError::MissingHistoryMarker);
@@ -232,9 +250,6 @@ impl FinalSessionHistoryIdentityExpectation {
         if self.history_size_bytes == 0 {
             return Err(FinalSessionHistoryIdentityError::InvalidHistorySize);
         }
-        if self.history_size_bytes > SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES {
-            return Err(FinalSessionHistoryIdentityError::HistoryTooLarge);
-        }
         Ok(())
     }
 
@@ -281,7 +296,7 @@ pub enum FinalSessionHistoryIdentityError {
     InvalidHistoryHash,
     /// History size is zero.
     InvalidHistorySize,
-    /// History size exceeds the verification cap.
+    /// History size exceeds a verifier work budget.
     HistoryTooLarge,
     /// History marker payload is missing.
     MissingHistoryMarker,
@@ -382,7 +397,7 @@ mod tests {
     }
 
     #[test]
-    fn final_identity_rejects_zero_and_oversized_history() {
+    fn final_identity_rejects_zero_history() {
         let err = FinalSessionHistoryIdentity::new(
             FinalSessionHistoryFramework::ClaudeCode,
             "a".repeat(64),
@@ -393,17 +408,28 @@ mod tests {
         )
         .unwrap_err();
         assert_eq!(err, FinalSessionHistoryIdentityError::InvalidHistorySize);
+    }
 
-        let err = FinalSessionHistoryIdentity::new(
+    #[test]
+    fn final_identity_accepts_large_history_size() {
+        let identity = FinalSessionHistoryIdentity::new(
             FinalSessionHistoryFramework::ClaudeCode,
             "a".repeat(64),
             FinalSessionHistoryRefKind::Blob,
             "b".repeat(64),
-            SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES + 1,
+            SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES + 1,
             "/history.jsonl",
         )
-        .unwrap_err();
-        assert_eq!(err, FinalSessionHistoryIdentityError::HistoryTooLarge);
+        .unwrap();
+
+        assert_eq!(
+            identity.history_size_bytes,
+            SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES + 1
+        );
+        assert_eq!(
+            FinalSessionHistoryIdentity::from_json_slice(&identity.to_json_vec().unwrap()).unwrap(),
+            identity
+        );
     }
 
     #[test]
@@ -444,6 +470,23 @@ mod tests {
         .unwrap();
 
         assert!(expectation.matches_identity(&identity));
+    }
+
+    #[test]
+    fn final_identity_expectation_accepts_large_history_size() {
+        let expectation = FinalSessionHistoryIdentityExpectation::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            "a".repeat(64),
+            FinalSessionHistoryRefKind::Blob,
+            "b".repeat(64),
+            SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES + 1,
+        )
+        .unwrap();
+
+        assert_eq!(
+            expectation.history_size_bytes,
+            SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES + 1
+        );
     }
 
     #[test]

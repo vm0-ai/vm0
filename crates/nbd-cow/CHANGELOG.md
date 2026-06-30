@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.4.52](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.51...nbd-cow-v0.4.52) (2026-06-30)
+
+
+### Bug Fixes
+
+* **nbd-cow:** coalesce contiguous cow reads ([#19380](https://github.com/vm0-ai/vm0/issues/19380)) ([6fbfef3](https://github.com/vm0-ai/vm0/commit/6fbfef39c78451fe52ec1fae80fdf8cd298305e5))
+
 ## [0.4.51](https://github.com/vm0-ai/vm0/compare/nbd-cow-v0.4.50...nbd-cow-v0.4.51) (2026-06-29)
 
 

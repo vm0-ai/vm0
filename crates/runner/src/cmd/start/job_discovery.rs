@@ -243,7 +243,7 @@ fn build_session_history_restore_plan(
                         return SessionHistoryRestorePlan::SkipVerified(restored_identity.clone());
                     }
                     Some(restored_identity) if restored_identity == &requested_identity => {
-                        if restored_identity.has_guest_history_verification() {
+                        if restored_identity.has_final_metadata_verification() {
                             Some(SessionHistoryRestoreFallback::IdentityMismatch)
                         } else {
                             Some(SessionHistoryRestoreFallback::UnverifiedIdleIdentity)
@@ -563,7 +563,6 @@ mod tests {
         codex_thread_id::canonical_codex_thread_id,
         session_history_identity::{
             FinalSessionHistoryFramework, FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-            SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES,
         },
     };
     use sandbox::SandboxFactory;
@@ -758,43 +757,6 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_plan_skips_matching_reused_identity() {
-        let http = test_http_client();
-        let context = context_with_history_ref("history-hash-a");
-        let requested_identity = RestoredSessionIdentity::from_context(&context).unwrap();
-        let restored_identity = requested_identity.clone().with_guest_history(
-            12,
-            "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
-        );
-        let reusable_sandbox =
-            reusable_sandbox_with_identity(Some(restored_identity.clone())).await;
-        let cancel = RunCancellationHandle::new();
-        let mut timing = RunnerPreSpawnTiming::start_after_claim();
-
-        let plan = build_session_history_restore_plan(
-            &http,
-            &context,
-            true,
-            &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
-            &mut timing,
-        );
-
-        match plan {
-            SessionHistoryRestorePlan::SkipVerified(identity) => {
-                assert_eq!(identity, restored_identity);
-                assert_eq!(identity.history_size_bytes(), Some(12));
-                assert_eq!(
-                    identity.guest_history_path(),
-                    Some("/home/user/.claude/projects/-home-user-workspace/session.jsonl")
-                );
-            }
-            _ => panic!("matching reused identity should skip restore"),
-        }
-    }
-
-    #[tokio::test]
     async fn restore_plan_skips_matching_checkpointed_final_identity() {
         let http = test_http_client();
         let history_hash = "a".repeat(64);
@@ -833,7 +795,6 @@ mod tests {
             SessionHistoryRestorePlan::SkipVerified(identity) => {
                 assert_eq!(identity, restored_identity);
                 assert_eq!(identity.history_size_bytes(), Some(12));
-                assert_eq!(identity.guest_history_path(), None);
                 assert_eq!(identity.final_metadata_path(), Some(metadata_path));
             }
             _ => panic!("matching checkpointed final identity should skip restore"),
@@ -893,7 +854,6 @@ mod tests {
             SessionHistoryRestorePlan::SkipVerified(identity) => {
                 assert_eq!(identity, restored_identity);
                 assert_eq!(identity.history_size_bytes(), Some(12));
-                assert_eq!(identity.guest_history_path(), None);
                 assert_eq!(identity.final_metadata_path(), Some(metadata_path));
             }
             _ => panic!("matching Codex checkpointed final identity should skip restore"),
@@ -903,13 +863,23 @@ mod tests {
     #[tokio::test]
     async fn restore_plan_skips_identity_parked_by_finalizer() {
         let http = test_http_client();
-        let context = context_with_history_ref("history-hash-a");
-        let restored_identity = RestoredSessionIdentity::from_context(&context)
-            .unwrap()
-            .with_guest_history(
-                12,
-                "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
-            );
+        let history_hash = "a".repeat(64);
+        let context = context_with_history_ref(&history_hash);
+        let metadata = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            hex::encode(Sha256::digest(b"sess-restore-plan")),
+            FinalSessionHistoryRefKind::Blob,
+            history_hash,
+            12,
+            "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
+        )
+        .unwrap();
+        let restored_identity = RestoredSessionIdentity::from_final_metadata(
+            metadata,
+            "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json",
+            "/home/user/.vm0/guest-agent/runs/previous",
+        )
+        .expect("checkpointed final identity");
         let reusable_sandbox =
             reusable_sandbox_parked_by_finalizer(Some(restored_identity.clone())).await;
         let cancel = RunCancellationHandle::new();
@@ -936,12 +906,23 @@ mod tests {
     #[tokio::test]
     async fn restore_plan_skips_matching_reused_identity_without_requested_size() {
         let http = test_http_client();
-        let context = context_with_history_ref_and_size("history-hash-a", None);
-        let requested_identity = RestoredSessionIdentity::from_context(&context).unwrap();
-        let restored_identity = requested_identity.clone().with_guest_history(
+        let history_hash = "a".repeat(64);
+        let context = context_with_history_ref_and_size(&history_hash, None);
+        let metadata = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            hex::encode(Sha256::digest(b"sess-restore-plan")),
+            FinalSessionHistoryRefKind::Blob,
+            history_hash,
             12,
             "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
-        );
+        )
+        .unwrap();
+        let restored_identity = RestoredSessionIdentity::from_final_metadata(
+            metadata,
+            "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json",
+            "/home/user/.vm0/guest-agent/runs/previous",
+        )
+        .expect("checkpointed final identity");
         let reusable_sandbox =
             reusable_sandbox_with_identity(Some(restored_identity.clone())).await;
         let cancel = RunCancellationHandle::new();
@@ -961,10 +942,6 @@ mod tests {
             SessionHistoryRestorePlan::SkipVerified(identity) => {
                 assert_eq!(identity, restored_identity);
                 assert_eq!(identity.history_size_bytes(), Some(12));
-                assert_eq!(
-                    identity.guest_history_path(),
-                    Some("/home/user/.claude/projects/-home-user-workspace/session.jsonl")
-                );
             }
             _ => panic!("missing requested size should still allow verified skip"),
         }
@@ -1001,51 +978,25 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn restore_plan_falls_back_when_matching_reused_identity_has_invalid_history_path() {
-        for guest_history_path in ["", "relative/session.jsonl"] {
-            let http = test_http_client();
-            let context = context_with_history_ref("history-hash-a");
-            let restored_identity = RestoredSessionIdentity::from_context(&context)
-                .unwrap()
-                .with_guest_history(12, guest_history_path);
-            let reusable_sandbox = reusable_sandbox_with_identity(Some(restored_identity)).await;
-            let cancel = RunCancellationHandle::new();
-            let mut timing = RunnerPreSpawnTiming::start_after_claim();
-
-            let plan = build_session_history_restore_plan(
-                &http,
-                &context,
-                true,
-                &cancel,
-                Some(&reusable_sandbox),
-                SandboxReuseResult::Reused,
-                &mut timing,
-            );
-
-            match plan {
-                SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
-                    assert_eq!(
-                        fallback,
-                        Some(SessionHistoryRestoreFallback::UnverifiedIdleIdentity)
-                    );
-                }
-                _ => {
-                    panic!("reused identity with invalid history path should fall back to restore")
-                }
-            }
-        }
-    }
-
-    #[tokio::test]
     async fn restore_plan_falls_back_when_matching_reused_identity_size_mismatches() {
         let http = test_http_client();
-        let context = context_with_history_ref("history-hash-a");
-        let restored_identity = RestoredSessionIdentity::from_context(&context)
-            .unwrap()
-            .with_guest_history(
-                13,
-                "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
-            );
+        let history_hash = "a".repeat(64);
+        let context = context_with_history_ref(&history_hash);
+        let metadata = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            hex::encode(Sha256::digest(b"sess-restore-plan")),
+            FinalSessionHistoryRefKind::Blob,
+            history_hash,
+            13,
+            "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
+        )
+        .unwrap();
+        let restored_identity = RestoredSessionIdentity::from_final_metadata(
+            metadata,
+            "/home/user/.vm0/guest-agent/runs/previous/final-session-history-identity.json",
+            "/home/user/.vm0/guest-agent/runs/previous",
+        )
+        .expect("checkpointed final identity");
         let reusable_sandbox = reusable_sandbox_with_identity(Some(restored_identity)).await;
         let cancel = RunCancellationHandle::new();
         let mut timing = RunnerPreSpawnTiming::start_after_claim();
@@ -1068,44 +1019,6 @@ mod tests {
                 );
             }
             _ => panic!("reused identity with mismatched size should fall back to restore"),
-        }
-    }
-
-    #[tokio::test]
-    async fn restore_plan_falls_back_when_matching_reused_identity_is_too_large_to_verify() {
-        let http = test_http_client();
-        let context = context_with_history_ref_and_size(
-            "history-hash-a",
-            Some(SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES),
-        );
-        let restored_identity = RestoredSessionIdentity::from_context(&context)
-            .unwrap()
-            .with_guest_history(
-                SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES,
-                "/home/user/.claude/projects/-home-user-workspace/session.jsonl",
-            );
-        let reusable_sandbox = reusable_sandbox_with_identity(Some(restored_identity)).await;
-        let cancel = RunCancellationHandle::new();
-        let mut timing = RunnerPreSpawnTiming::start_after_claim();
-
-        let plan = build_session_history_restore_plan(
-            &http,
-            &context,
-            true,
-            &cancel,
-            Some(&reusable_sandbox),
-            SandboxReuseResult::Reused,
-            &mut timing,
-        );
-
-        match plan {
-            SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
-                assert_eq!(
-                    fallback,
-                    Some(SessionHistoryRestoreFallback::UnverifiedIdleIdentity)
-                );
-            }
-            _ => panic!("oversized reused identity should fall back to prestarted restore"),
         }
     }
 

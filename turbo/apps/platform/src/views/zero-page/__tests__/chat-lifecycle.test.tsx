@@ -843,6 +843,14 @@ function chatComposerTextarea(): HTMLTextAreaElement {
   return element;
 }
 
+function activeElementIsInside(element: HTMLElement): boolean {
+  return (
+    document.activeElement === element ||
+    (document.activeElement instanceof Node &&
+      element.contains(document.activeElement))
+  );
+}
+
 function setScrollMetrics(
   element: HTMLElement,
   metrics: { scrollHeight: number; clientHeight: number },
@@ -2876,7 +2884,7 @@ describe("chat lifecycle", () => {
     );
   });
 
-  it("returns document focus to the main chat thread after rename", async () => {
+  it("keeps F2 rename available after renaming the current chat", async () => {
     const user = userEvent.setup({ delay: null });
     mockResizeObserver();
     mockKeyboardNavigationThreads();
@@ -2910,20 +2918,9 @@ describe("chat lifecycle", () => {
       ).not.toBeInTheDocument();
     });
 
-    const previousBodyTabIndex = document.body.getAttribute("tabindex");
-    try {
-      document.body.tabIndex = -1;
-      document.body.focus();
-      await waitFor(() => {
-        expect(document.activeElement).toBe(threadRegion);
-      });
-    } finally {
-      if (previousBodyTabIndex === null) {
-        document.body.removeAttribute("tabindex");
-      } else {
-        document.body.setAttribute("tabindex", previousBodyTabIndex);
-      }
-    }
+    await waitFor(() => {
+      expect(activeElementIsInside(threadRegion)).toBeTruthy();
+    });
 
     await user.keyboard("{F2}");
 
@@ -2933,6 +2930,60 @@ describe("chat lifecycle", () => {
     expect(
       within(reopenedDialog).getByPlaceholderText("Chat title"),
     ).toHaveValue("Current keyboard thread");
+  });
+
+  it("keeps F2 rename available after creating a chat from the agent composer", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockResizeObserver();
+    mockChatLifecycle(context);
+
+    detachedSetupPage({ context, path: AGENT_CHAT_PATH });
+
+    const textarea = await waitFor(() => {
+      return screen.getByPlaceholderText(PLACEHOLDER) as HTMLTextAreaElement;
+    });
+    await sendMessageInUI(user, textarea, "Name this thread from F2");
+
+    await waitFor(() => {
+      expect(screen.getByText("Name this thread from F2")).toBeInTheDocument();
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    expect(activeElementIsInside(threadRegion)).toBeTruthy();
+
+    await user.keyboard("{F2}");
+
+    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue("");
+  });
+
+  it("renames the main chat with F2 when a side chat is focused", async () => {
+    const user = userEvent.setup({ delay: null });
+    mockResizeObserver();
+    mockKeyboardNavigationThreads();
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread?sidebar=keyboard-next-thread",
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Next thread launch note")).toBeInTheDocument();
+    });
+
+    const threadRegions = screen.getAllByLabelText("Chat thread");
+    expect(threadRegions).toHaveLength(2);
+    threadRegions[1]?.focus();
+
+    await user.keyboard("{F2}");
+
+    const dialog = await screen.findByRole("dialog", { name: "Rename chat" });
+    expect(within(dialog).getByPlaceholderText("Chat title")).toHaveValue(
+      "Current keyboard thread",
+    );
   });
 
   it("opens run logs from assistant message actions", async () => {
@@ -3033,7 +3084,9 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Scheduled launch review")).toBeInTheDocument();
+      expect(
+        screen.getAllByText("Scheduled launch review").length,
+      ).toBeGreaterThan(0);
       expect(buttonByLabel("Automations")).toBeInTheDocument();
     });
 
@@ -3105,7 +3158,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("lists workflow triggers in the sidebar", async () => {
+  it("lists workflow automations in the sidebar", async () => {
     mockAutomationThread();
     setMockWorkflowTriggers([
       createMockWorkflowTrigger({
@@ -3159,10 +3212,12 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(
-        screen.getByRole("dialog", { name: "Edit trigger" }),
+        screen.getByRole("dialog", { name: "Edit automation" }),
       ).toBeInTheDocument();
     });
-    const editDialog = screen.getByRole("dialog", { name: "Edit trigger" });
+    const editDialog = screen.getByRole("dialog", {
+      name: "Edit automation",
+    });
     expect(
       within(editDialog).getByRole("combobox", { name: "Every" }),
     ).toHaveTextContent("1 minute");
@@ -3171,7 +3226,7 @@ describe("chat lifecycle", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("updates a schedule workflow trigger from the sidebar", async () => {
+  it("updates a schedule workflow automation from the sidebar", async () => {
     const updateBodies: {
       readonly triggerId: string;
       readonly body: ZeroWorkflowTriggerUpdateRequest;
@@ -3191,9 +3246,11 @@ describe("chat lifecycle", () => {
 
     click(within(sidebar).getAllByText("Edit").at(-1)!);
 
-    const dialog = await screen.findByRole("dialog", { name: "Edit trigger" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Edit automation",
+    });
     selectOptionByLabel("Every", "30 minutes", dialog);
-    click(buttonByText("Save trigger", dialog));
+    click(buttonByText("Save automation", dialog));
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
@@ -3208,7 +3265,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("updates a Gmail workflow trigger match from the sidebar", async () => {
+  it("updates a Gmail workflow automation match from the sidebar", async () => {
     const updateBodies: {
       readonly triggerId: string;
       readonly body: ZeroWorkflowTriggerUpdateRequest;
@@ -3234,10 +3291,12 @@ describe("chat lifecycle", () => {
 
     click(within(sidebar).getAllByText("Edit").at(-1)!);
 
-    const dialog = await screen.findByRole("dialog", { name: "Edit trigger" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Edit automation",
+    });
     await fill(within(dialog).getByLabelText("From contains"), "@acme.com");
     await fill(within(dialog).getByLabelText("Body contains"), "invoice");
-    click(buttonByText("Save trigger", dialog));
+    click(buttonByText("Save automation", dialog));
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({
@@ -3257,7 +3316,7 @@ describe("chat lifecycle", () => {
     });
   });
 
-  it("updates a Gmail label workflow trigger from the sidebar", async () => {
+  it("updates a Gmail label workflow automation from the sidebar", async () => {
     const updateBodies: {
       readonly triggerId: string;
       readonly body: ZeroWorkflowTriggerUpdateRequest;
@@ -3281,9 +3340,11 @@ describe("chat lifecycle", () => {
 
     click(within(sidebar).getAllByText("Edit").at(-1)!);
 
-    const dialog = await screen.findByRole("dialog", { name: "Edit trigger" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Edit automation",
+    });
     await fill(within(dialog).getByLabelText("Label name"), "Escalated");
-    click(buttonByText("Save trigger", dialog));
+    click(buttonByText("Save automation", dialog));
 
     await waitFor(() => {
       expect(updateBodies.at(-1)).toStrictEqual({

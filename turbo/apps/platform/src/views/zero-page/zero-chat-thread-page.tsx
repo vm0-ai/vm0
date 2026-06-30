@@ -2147,7 +2147,7 @@ function headerWorkflowTriggerRows(
 ): readonly WorkflowTriggerCardRow[] {
   const rows: WorkflowTriggerCardRow[] = [
     {
-      label: trigger.trigger.kind === "schedule" ? "Schedule" : "Trigger",
+      label: trigger.trigger.kind === "schedule" ? "Schedule" : "Automation",
       value: headerWorkflowTriggerRule(trigger),
     },
     {
@@ -2316,7 +2316,7 @@ function HeaderWorkflowTriggerCard({
               workflowId: trigger.workflowId,
             },
             searchParams: new URLSearchParams({
-              [WORKFLOW_DETAIL_TAB_PARAM]: "triggers",
+              [WORKFLOW_DETAIL_TAB_PARAM]: "automations",
             }),
           }}
           className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
@@ -2401,8 +2401,10 @@ function HeaderWorkflowTriggerEditDialog({
         }
       >
         <DialogHeader>
-          <DialogTitle>Edit trigger</DialogTitle>
-          <DialogDescription>Update this workflow trigger.</DialogDescription>
+          <DialogTitle>Edit automation</DialogTitle>
+          <DialogDescription>
+            Update this workflow automation.
+          </DialogDescription>
         </DialogHeader>
         {trigger.kind === "schedule" ? (
           <HeaderScheduleTriggerEditForm
@@ -2572,7 +2574,7 @@ function HeaderScheduleTriggerEditForm({
         </Button>
         <Button type="submit" disabled={saving}>
           {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
-          Save trigger
+          Save automation
         </Button>
       </DialogFooter>
     </form>
@@ -2697,7 +2699,7 @@ function HeaderGmailNewMessageTriggerEditForm({
         </Button>
         <Button type="submit" disabled={saving}>
           {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
-          Save trigger
+          Save automation
         </Button>
       </DialogFooter>
     </form>
@@ -2767,7 +2769,7 @@ function HeaderGmailLabelTriggerEditForm({
         </Button>
         <Button type="submit" disabled={saving}>
           {saving ? <IconLoader2 size={14} className="animate-spin" /> : null}
-          Save trigger
+          Save automation
         </Button>
       </DialogFooter>
     </form>

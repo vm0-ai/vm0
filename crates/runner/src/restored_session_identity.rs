@@ -3,7 +3,6 @@ use std::fmt;
 use guest_contracts::session_history_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
     FinalSessionHistoryIdentity, FinalSessionHistoryRefKind,
-    SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES,
 };
 use sha2::{Digest, Sha256};
 
@@ -40,30 +39,20 @@ pub(crate) struct RestoredSessionIdentity {
 
 #[derive(Clone, Eq, PartialEq)]
 enum RestoredSessionIdentityVerifier {
-    GuestHistoryPath {
-        guest_history_path: String,
-    },
     FinalIdentityMetadata {
         metadata_path: String,
         runtime_dir: String,
     },
 }
 
-pub(crate) enum RestoredSessionHistoryVerification<'a> {
-    GuestHistoryPath {
-        expected_size: u64,
-        guest_history_path: &'a str,
-        read_limit: u64,
-    },
-    FinalIdentityMetadata {
-        metadata_path: &'a str,
-        runtime_dir: &'a str,
-        framework: FinalSessionHistoryFramework,
-        session_id_hash: &'a str,
-        history_ref_kind: FinalSessionHistoryRefKind,
-        history_hash: &'a str,
-        history_size_bytes: u64,
-    },
+pub(crate) struct RestoredSessionFinalMetadataVerification<'a> {
+    pub(crate) metadata_path: &'a str,
+    pub(crate) runtime_dir: &'a str,
+    pub(crate) framework: FinalSessionHistoryFramework,
+    pub(crate) session_id_hash: &'a str,
+    pub(crate) history_ref_kind: FinalSessionHistoryRefKind,
+    pub(crate) history_hash: &'a str,
+    pub(crate) history_size_bytes: u64,
 }
 
 impl RestoredSessionIdentity {
@@ -73,7 +62,6 @@ impl RestoredSessionIdentity {
         history_ref_kind: ResumeSessionHistoryRefKind,
         history_hash: impl Into<String>,
         history_size_bytes: Option<u64>,
-        guest_history_path: Option<String>,
     ) -> Self {
         // Callers pass the framework-normalized identity id. Claude Code uses
         // the raw session id; Codex uses the canonical thread id.
@@ -84,9 +72,7 @@ impl RestoredSessionIdentity {
             history_ref_kind,
             history_hash: history_hash.into(),
             history_size_bytes,
-            verifier: guest_history_path.map(|guest_history_path| {
-                RestoredSessionIdentityVerifier::GuestHistoryPath { guest_history_path }
-            }),
+            verifier: None,
         }
     }
 
@@ -111,7 +97,7 @@ impl RestoredSessionIdentity {
             }),
         };
         identity
-            .has_guest_history_verification()
+            .has_final_metadata_verification()
             .then_some(identity)
     }
 
@@ -123,22 +109,10 @@ impl RestoredSessionIdentity {
             ResumeSessionHistoryRefKind::Blob,
             history_hash,
             None,
-            None,
         )
     }
 
-    pub(crate) fn with_guest_history(
-        mut self,
-        history_size_bytes: u64,
-        guest_history_path: impl Into<String>,
-    ) -> Self {
-        self.history_size_bytes = Some(history_size_bytes);
-        self.verifier = Some(RestoredSessionIdentityVerifier::GuestHistoryPath {
-            guest_history_path: guest_history_path.into(),
-        });
-        self
-    }
-
+    #[cfg(test)]
     pub(crate) fn history_hash(&self) -> &str {
         &self.history_hash
     }
@@ -146,16 +120,6 @@ impl RestoredSessionIdentity {
     #[cfg(test)]
     pub(crate) fn history_size_bytes(&self) -> Option<u64> {
         self.history_size_bytes
-    }
-
-    #[cfg(test)]
-    pub(crate) fn guest_history_path(&self) -> Option<&str> {
-        match &self.verifier {
-            Some(RestoredSessionIdentityVerifier::GuestHistoryPath { guest_history_path }) => {
-                Some(guest_history_path)
-            }
-            _ => None,
-        }
     }
 
     #[cfg(test)]
@@ -168,28 +132,11 @@ impl RestoredSessionIdentity {
         }
     }
 
-    pub(crate) fn guest_history_verification(
+    pub(crate) fn final_metadata_verification(
         &self,
-    ) -> Option<RestoredSessionHistoryVerification<'_>> {
+    ) -> Option<RestoredSessionFinalMetadataVerification<'_>> {
         let expected_size = self.history_size_bytes?;
-        if expected_size > SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES {
-            return None;
-        }
         match self.verifier.as_ref()? {
-            RestoredSessionIdentityVerifier::GuestHistoryPath { guest_history_path } => {
-                if !guest_history_path.starts_with('/') {
-                    return None;
-                }
-                let read_limit = expected_size.checked_add(1)?;
-                if read_limit > SESSION_HISTORY_IDENTITY_VERIFY_MAX_BYTES {
-                    return None;
-                }
-                Some(RestoredSessionHistoryVerification::GuestHistoryPath {
-                    expected_size,
-                    guest_history_path,
-                    read_limit,
-                })
-            }
             RestoredSessionIdentityVerifier::FinalIdentityMetadata {
                 metadata_path,
                 runtime_dir,
@@ -197,7 +144,7 @@ impl RestoredSessionIdentity {
                 if !metadata_path.starts_with('/') || !runtime_dir.starts_with('/') {
                     return None;
                 }
-                Some(RestoredSessionHistoryVerification::FinalIdentityMetadata {
+                Some(RestoredSessionFinalMetadataVerification {
                     metadata_path,
                     runtime_dir,
                     framework: final_session_history_framework(self.framework),
@@ -210,13 +157,13 @@ impl RestoredSessionIdentity {
         }
     }
 
-    pub(crate) fn has_guest_history_verification(&self) -> bool {
-        self.guest_history_verification().is_some()
+    pub(crate) fn has_final_metadata_verification(&self) -> bool {
+        self.final_metadata_verification().is_some()
     }
 
     pub(crate) fn is_verified_match_for_request(&self, requested: &Self) -> bool {
         self == requested
-            && self.has_guest_history_verification()
+            && self.has_final_metadata_verification()
             && requested
                 .history_size_bytes
                 .is_none_or(|requested_size| self.history_size_bytes == Some(requested_size))
@@ -245,9 +192,6 @@ impl fmt::Debug for RestoredSessionIdentity {
             .field(
                 "verifier",
                 &self.verifier.as_ref().map(|verifier| match verifier {
-                    RestoredSessionIdentityVerifier::GuestHistoryPath { .. } => {
-                        "[redacted-guest-history-path]"
-                    }
                     RestoredSessionIdentityVerifier::FinalIdentityMetadata { .. } => {
                         "[redacted-final-identity-metadata]"
                     }

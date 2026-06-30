@@ -7,6 +7,7 @@ import { accept } from "../../lib/accept.ts";
 import { zeroClient$ } from "../api-client.ts";
 import { currentChatAgentId$ } from "../agent-chat.ts";
 import { reloadChatThreadsCounter$ } from "../chat-thread-list-reload.ts";
+import { chatThreadOnlyUnread$ } from "./chat-thread-only-unread.ts";
 
 interface ExtraPage {
   readonly threads: readonly ChatThreadListItem[];
@@ -16,12 +17,14 @@ interface ExtraPage {
 
 interface PaginationState {
   readonly agentId: string;
+  readonly onlyUnread: boolean;
   readonly reloadKey: number;
   readonly pages: readonly ExtraPage[];
 }
 
 interface PaginationKey {
   readonly agentId: string;
+  readonly onlyUnread: boolean;
   readonly reloadKey: number;
 }
 
@@ -30,12 +33,14 @@ const extraPagesState$ = state<PaginationState | null>(null);
 function matchesKey<T extends PaginationKey>(
   state: T | null,
   agentId: string | null,
+  onlyUnread: boolean,
   reloadKey: number,
 ): state is T {
   return (
     !!state &&
     !!agentId &&
     state.agentId === agentId &&
+    state.onlyUnread === onlyUnread &&
     state.reloadKey === reloadKey
   );
 }
@@ -48,13 +53,18 @@ export const loadMoreSidebarChatThreads$ = command(
     if (!agentId) {
       return;
     }
+    const onlyUnread = get(chatThreadOnlyUnread$);
 
-    const key = { agentId, reloadKey };
+    const key = { agentId, onlyUnread, reloadKey };
 
     const client = get(zeroClient$)(chatThreadsContract);
     const result = await accept(
       client.list({
-        query: { agentId, cursor },
+        query: {
+          agentId,
+          cursor,
+          ...(onlyUnread ? { filter: "unread" as const } : {}),
+        },
         fetchOptions: { signal },
       }),
       [200],
@@ -63,13 +73,20 @@ export const loadMoreSidebarChatThreads$ = command(
 
     const latestAgentId = await get(currentChatAgentId$);
     signal.throwIfAborted();
+    const latestOnlyUnread = get(chatThreadOnlyUnread$);
     const latestReloadKey = get(reloadChatThreadsCounter$);
-    if (latestAgentId !== agentId || latestReloadKey !== reloadKey) {
+    if (
+      latestAgentId !== agentId ||
+      latestOnlyUnread !== onlyUnread ||
+      latestReloadKey !== reloadKey
+    ) {
       return;
     }
 
     set(extraPagesState$, (prev) => {
-      const pages = matchesKey(prev, agentId, reloadKey) ? prev.pages : [];
+      const pages = matchesKey(prev, agentId, onlyUnread, reloadKey)
+        ? prev.pages
+        : [];
       return {
         ...key,
         pages: [
@@ -87,9 +104,10 @@ export const loadMoreSidebarChatThreads$ = command(
 
 export const sidebarChatThreadsExtraThreads$ = computed(async (get) => {
   const agentId = await get(currentChatAgentId$);
+  const onlyUnread = get(chatThreadOnlyUnread$);
   const reloadKey = get(reloadChatThreadsCounter$);
   const state = get(extraPagesState$);
-  if (!matchesKey(state, agentId, reloadKey)) {
+  if (!matchesKey(state, agentId, onlyUnread, reloadKey)) {
     return [];
   }
   return state.pages.flatMap((p) => {
@@ -99,16 +117,23 @@ export const sidebarChatThreadsExtraThreads$ = computed(async (get) => {
 
 export const sidebarChatThreadsHasLoadedExtraPages$ = computed(async (get) => {
   const agentId = await get(currentChatAgentId$);
+  const onlyUnread = get(chatThreadOnlyUnread$);
   const reloadKey = get(reloadChatThreadsCounter$);
   const state = get(extraPagesState$);
-  return matchesKey(state, agentId, reloadKey) && state.pages.length > 0;
+  return (
+    matchesKey(state, agentId, onlyUnread, reloadKey) && state.pages.length > 0
+  );
 });
 
 export const sidebarChatThreadsLatestCursor$ = computed(async (get) => {
   const agentId = await get(currentChatAgentId$);
+  const onlyUnread = get(chatThreadOnlyUnread$);
   const reloadKey = get(reloadChatThreadsCounter$);
   const state = get(extraPagesState$);
-  if (!matchesKey(state, agentId, reloadKey) || state.pages.length === 0) {
+  if (
+    !matchesKey(state, agentId, onlyUnread, reloadKey) ||
+    state.pages.length === 0
+  ) {
     return null;
   }
   return state.pages[state.pages.length - 1]!.nextCursor;
@@ -116,9 +141,13 @@ export const sidebarChatThreadsLatestCursor$ = computed(async (get) => {
 
 export const sidebarChatThreadsExtraHasMore$ = computed(async (get) => {
   const agentId = await get(currentChatAgentId$);
+  const onlyUnread = get(chatThreadOnlyUnread$);
   const reloadKey = get(reloadChatThreadsCounter$);
   const state = get(extraPagesState$);
-  if (!matchesKey(state, agentId, reloadKey) || state.pages.length === 0) {
+  if (
+    !matchesKey(state, agentId, onlyUnread, reloadKey) ||
+    state.pages.length === 0
+  ) {
     return false;
   }
   return state.pages[state.pages.length - 1]!.hasMore;

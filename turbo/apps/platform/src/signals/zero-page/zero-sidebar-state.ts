@@ -78,19 +78,6 @@ export const setSessionListCollapsed$ = command(
 );
 
 // ---------------------------------------------------------------------------
-// Session list unread filter (RecentChatSection)
-// ---------------------------------------------------------------------------
-const internalSessionListUnreadOnly$ = state(false);
-export const sessionListUnreadOnly$ = computed((get) => {
-  return get(internalSessionListUnreadOnly$);
-});
-export const setSessionListUnreadOnly$ = command(
-  ({ set }, unreadOnly: boolean) => {
-    set(internalSessionListUnreadOnly$, unreadOnly);
-  },
-);
-
-// ---------------------------------------------------------------------------
 // Manage section collapse state (ZeroSidebar) — persisted in localStorage
 // ---------------------------------------------------------------------------
 const {
