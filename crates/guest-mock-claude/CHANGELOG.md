@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.21.4](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.3...guest-mock-claude-v0.21.4) (2026-06-30)
+
+
+### Refactoring
+
+* share mock claude process-group lifecycle ([#19481](https://github.com/vm0-ai/vm0/issues/19481)) ([0e0f6a8](https://github.com/vm0-ai/vm0/commit/0e0f6a81792bc5ef20d345e3f6bd0869e4bb9bab))
+
 ## [0.21.3](https://github.com/vm0-ai/vm0/compare/guest-mock-claude-v0.21.2...guest-mock-claude-v0.21.3) (2026-06-26)
 
 

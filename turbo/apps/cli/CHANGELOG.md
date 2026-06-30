@@ -1,5 +1,21 @@
 # Changelog
 
+## [9.217.3](https://github.com/vm0-ai/vm0/compare/cli-v9.217.2...cli-v9.217.3) (2026-06-30)
+
+
+### Refactoring
+
+* **cli:** remove workflow run command ([#19459](https://github.com/vm0-ai/vm0/issues/19459)) ([04961b5](https://github.com/vm0-ai/vm0/commit/04961b50759c67a96833e7553210413d62fb2951))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * devDependencies
+    * @vm0/api-contracts bumped to 1.131.0
+    * @vm0/connectors bumped to 1.117.1
+    * @vm0/core bumped to 8.379.1
+
 ## [9.217.2](https://github.com/vm0-ai/vm0/compare/cli-v9.217.1...cli-v9.217.2) (2026-06-30)
 
 
