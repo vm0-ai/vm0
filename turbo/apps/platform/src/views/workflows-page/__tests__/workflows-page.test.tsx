@@ -708,7 +708,7 @@ function selectOptionByLabel(
 }
 
 describe("agent workflows tab", () => {
-  it("redirects direct workspace workflow routes when workflows are disabled", async () => {
+  it("redirects the workspace workflows index when workflows are disabled", async () => {
     detachedSetupPage({
       context,
       path: "/workflows",
@@ -721,7 +721,9 @@ describe("agent workflows tab", () => {
     expect(
       screen.queryByRole("heading", { name: "Workflows" }),
     ).not.toBeInTheDocument();
+  });
 
+  it("redirects the workspace workflow detail when workflows are disabled", async () => {
     detachedSetupPage({
       context,
       path: `/workflows/${SALES_WORKFLOW_ID}`,
