@@ -1456,6 +1456,20 @@ export {
   type ZeroTeamsBotContract,
 } from "./zero-teams-bot";
 export {
+  zeroTeamsConnectContract,
+  type TeamsConnectBody,
+  type TeamsConnectResponse,
+  type TeamsConnectStatus,
+  type TeamsDisconnectResponse,
+  type ZeroTeamsConnectContract,
+} from "./zero-teams-connect";
+export {
+  zeroTeamsBrowserConnectContract,
+  zeroTeamsBrowserConnectQuerySchema,
+  type ZeroTeamsBrowserConnectContract,
+  type ZeroTeamsBrowserConnectQuery,
+} from "./zero-teams-browser-connect";
+export {
   zeroSlackInteractiveContract,
   type ZeroSlackInteractiveContract,
 } from "./zero-slack-interactive";

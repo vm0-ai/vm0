@@ -57,6 +57,10 @@
       "destination": "https://api.vm0.ai/api/zero/teams/bot"
     },
     {
+      "source": "/api/zero/teams/connect",
+      "destination": "https://api.vm0.ai/api/zero/teams/connect"
+    },
+    {
       "source": "/((?!assets/|.*\\..*).*)",
       "destination": "/index.html"
     }

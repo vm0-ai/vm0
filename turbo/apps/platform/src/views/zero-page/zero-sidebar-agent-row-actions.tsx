@@ -11,7 +11,7 @@ import {
   DropdownMenuItem,
 } from "@vm0/ui";
 
-export interface AgentRowMenuAction {
+interface AgentRowMenuAction {
   readonly label: string;
   readonly disabled?: boolean | undefined;
   readonly icon: ReactNode;
