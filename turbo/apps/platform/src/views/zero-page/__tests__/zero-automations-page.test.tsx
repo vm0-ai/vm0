@@ -573,7 +573,7 @@ describe("zero automations page", () => {
       context,
       path: `/automations/${intervalWorkflowTrigger().id}`,
       featureSwitches: {
-        [FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]: true,
+        [FeatureSwitchKey.WorkflowAutomation]: true,
       },
     });
 

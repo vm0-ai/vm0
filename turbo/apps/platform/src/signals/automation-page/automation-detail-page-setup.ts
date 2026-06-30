@@ -25,7 +25,7 @@ export const setupAutomationDetailPage$ = command(
 
     set(updatePage$, createElement(ZeroAutomationDetailPage), "sidebar");
     const features = get(featureSwitch$);
-    if (features[FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]) {
+    if (features[FeatureSwitchKey.WorkflowAutomation]) {
       set(reloadWorkflows$);
       signal.throwIfAborted();
       await set(hideAppSkeleton$, signal);

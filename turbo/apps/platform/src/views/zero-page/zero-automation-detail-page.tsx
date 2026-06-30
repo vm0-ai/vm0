@@ -1021,7 +1021,7 @@ function AutomationActionsContainer({
 
 export function ZeroAutomationDetailPage() {
   const features = useGet(featureSwitch$);
-  if (features[FeatureSwitchKey.SwitchScheduleAutomationToWorkflowTrigger]) {
+  if (features[FeatureSwitchKey.WorkflowAutomation]) {
     return <WorkflowTriggerAutomationDetailPage />;
   }
 
