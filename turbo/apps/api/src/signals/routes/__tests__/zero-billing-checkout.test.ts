@@ -614,7 +614,7 @@ describe("POST /api/zero/billing/checkout", () => {
     });
   });
 
-  it("accepts successUrl on a first-party so.vm0.ai origin", async () => {
+  it("accepts successUrl on a first-party www.vm0.ai origin", async () => {
     const fixture = await trackedPendingSeed();
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
 
@@ -631,8 +631,8 @@ describe("POST /api/zero/billing/checkout", () => {
         body: {
           tier: "pro",
           trialDays: 7,
-          successUrl: "https://so.vm0.ai/onboarding?billing=pro",
-          cancelUrl: "https://so.vm0.ai/onboarding?billing=canceled",
+          successUrl: "https://www.vm0.ai/onboarding?billing=pro",
+          cancelUrl: "https://www.vm0.ai/onboarding?billing=canceled",
         },
         headers: { authorization: "Bearer clerk-session" },
       }),
