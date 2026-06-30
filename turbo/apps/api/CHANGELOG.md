@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.195.3](https://github.com/vm0-ai/vm0/compare/api-v1.195.2...api-v1.195.3) (2026-06-30)
+
+
+### Refactoring
+
+* reduce fallback slop in axiom telemetry ([#19537](https://github.com/vm0-ai/vm0/issues/19537)) ([55a11c0](https://github.com/vm0-ai/vm0/commit/55a11c0c6246cd8f84a466baeeb8b138650cd70c))
+
 ## [1.195.2](https://github.com/vm0-ai/vm0/compare/api-v1.195.1...api-v1.195.2) (2026-06-30)
 
 
