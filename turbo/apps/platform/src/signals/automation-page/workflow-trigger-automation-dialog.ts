@@ -1,7 +1,7 @@
 import { command, computed, state } from "ccstate";
 
 type WorkflowAutomationDialogStep = 1 | 2;
-export type WorkflowAutomationDialogIntent =
+type WorkflowAutomationDialogIntent =
   | "automation"
   | "workflow"
   | "workflow-chat";
@@ -60,17 +60,6 @@ export const openCreateWorkflowDialog$ = command(({ set }) => {
   set(workflowAutomationAgentSelectionLockedState$, false);
   set(workflowAutomationDialogIntentState$, "workflow-chat");
 });
-
-export const openWorkflowAutomationDialogForAgent$ = command(
-  ({ set }, agentId: string) => {
-    set(workflowAutomationDialogOpenState$, true);
-    set(workflowAutomationDialogStepState$, 2);
-    set(selectedWorkflowAutomationAgentIdState$, agentId);
-    set(workflowAutomationAgentQueryState$, "");
-    set(workflowAutomationAgentSelectionLockedState$, true);
-    set(workflowAutomationDialogIntentState$, "workflow");
-  },
-);
 
 export const startCreateWorkflowFromAutomationDialog$ = command(({ set }) => {
   set(workflowAutomationDialogStepState$, 1);
