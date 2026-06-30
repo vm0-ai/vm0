@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.131.0](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.14...runner-rs-v0.131.0) (2026-06-30)
+
+
+### Features
+
+* enable codex local active input ([#19463](https://github.com/vm0-ai/vm0/issues/19463)) ([5a34420](https://github.com/vm0-ai/vm0/commit/5a34420314311d9a290c195f33539d8359303660))
+
+
+### Documentation
+
+* **runner:** document session history materializer contract ([#19493](https://github.com/vm0-ai/vm0/issues/19493)) ([dac914a](https://github.com/vm0-ai/vm0/commit/dac914ab5ceb017e38addc3c065f82f12d28ee2e))
+
 ## [0.130.14](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.130.13...runner-rs-v0.130.14) (2026-06-30)
 
 

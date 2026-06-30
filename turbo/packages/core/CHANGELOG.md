@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.379.1](https://github.com/vm0-ai/vm0/compare/core-v8.379.0...core-v8.379.1) (2026-06-30)
+
+
+### Refactoring
+
+* unify workflow automation feature switch ([#19476](https://github.com/vm0-ai/vm0/issues/19476)) ([7af9712](https://github.com/vm0-ai/vm0/commit/7af97127c1b742c1d7e4e3ba20b96bfccc5e08ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.131.0
+    * @vm0/connectors bumped to 1.117.1
+
 ## [8.379.0](https://github.com/vm0-ai/vm0/compare/core-v8.378.0...core-v8.379.0) (2026-06-30)
 
 

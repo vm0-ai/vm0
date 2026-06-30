@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.43.0](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.42.2...guest-agent-v0.43.0) (2026-06-30)
+
+
+### Features
+
+* enable codex local active input ([#19463](https://github.com/vm0-ai/vm0/issues/19463)) ([5a34420](https://github.com/vm0-ai/vm0/commit/5a34420314311d9a290c195f33539d8359303660))
+
 ## [0.42.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.42.1...guest-agent-v0.42.2) (2026-06-30)
 
 

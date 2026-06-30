@@ -1,5 +1,33 @@
 # Changelog
 
+## [0.514.0](https://github.com/vm0-ai/vm0/compare/app-v0.513.0...app-v0.514.0) (2026-06-30)
+
+
+### Features
+
+* add Teams bot ingress verification ([#19483](https://github.com/vm0-ai/vm0/issues/19483)) ([457f8db](https://github.com/vm0-ai/vm0/commit/457f8dbe04ff4bff402deef852adfa9a7222ffc4))
+
+
+### Bug Fixes
+
+* move connector permission review into menu ([#19488](https://github.com/vm0-ai/vm0/issues/19488)) ([d9df991](https://github.com/vm0-ai/vm0/commit/d9df9914151d834ceb3c48fc3eab87e1274d7b8d))
+* open workflow trigger automation detail ([#19486](https://github.com/vm0-ai/vm0/issues/19486)) ([a6c89da](https://github.com/vm0-ai/vm0/commit/a6c89da432b8ebbbfab19f971dfefbff3613bca6))
+* suppress agent unread during active chat runs ([#19444](https://github.com/vm0-ai/vm0/issues/19444)) ([19035cb](https://github.com/vm0-ai/vm0/commit/19035cb011d144ae04cecced717f004a57e59534))
+
+
+### Refactoring
+
+* unify workflow automation feature switch ([#19476](https://github.com/vm0-ai/vm0/issues/19476)) ([7af9712](https://github.com/vm0-ai/vm0/commit/7af97127c1b742c1d7e4e3ba20b96bfccc5e08ad))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.131.0
+    * @vm0/connectors bumped to 1.117.1
+    * @vm0/core bumped to 8.379.1
+
 ## [0.513.0](https://github.com/vm0-ai/vm0/compare/app-v0.512.0...app-v0.513.0) (2026-06-30)
 
 
