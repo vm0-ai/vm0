@@ -667,6 +667,31 @@ describe("connectors page", () => {
     expect(dialog).toBeInTheDocument();
   });
 
+  it("shows a stable placeholder when no agents are authorized", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000001";
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccessManagement]: true,
+      },
+    });
+
+    await waitFor(() => {
+      const card = connectorCardByLabel("GitHub");
+      const placeholder = within(card).getByTestId(
+        "connector-card-agent-avatar-placeholder",
+      );
+      expect(placeholder).toHaveClass("block", "h-7", "w-7");
+    });
+  });
+
   it("hides permission controls for connectors without firewall rules", async () => {
     const mediaAgentId = "c0000000-0000-4000-a000-000000000003";
     mockConnectors([

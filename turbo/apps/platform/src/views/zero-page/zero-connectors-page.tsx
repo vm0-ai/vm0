@@ -410,7 +410,7 @@ function ConnectorAccessAvatarButton({
             onClick={onClick}
           >
             {loading ? (
-              <span className="h-7 w-7 animate-pulse rounded-full bg-muted zero-border" />
+              <span className="block h-7 w-7 animate-pulse rounded-full bg-muted zero-border" />
             ) : visibleAgents.length > 0 ? (
               <span className="flex items-center -space-x-1.5">
                 {visibleAgents.map((agent) => {
@@ -419,7 +419,7 @@ function ConnectorAccessAvatarButton({
               </span>
             ) : (
               <span
-                className="h-7 w-7 rounded-full bg-muted/80 zero-border"
+                className="block h-7 w-7 rounded-full bg-muted/80 zero-border"
                 data-testid="connector-card-agent-avatar-placeholder"
               />
             )}
