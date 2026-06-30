@@ -47,7 +47,11 @@ import {
 import { env } from "../../lib/env";
 import { buildArtifactKey, sanitizeArtifactFilename } from "../../lib/file-url";
 import type { AuthContext } from "../../types/auth";
-import { createZeroRun$ } from "../services/zero-runs-create.service";
+import {
+  createZeroRun$,
+  type ZeroPreCreateSource,
+} from "../services/zero-runs-create.service";
+import { BEFORE_DISPATCH_CANCELLED_ERROR } from "../services/agent-run-create.service";
 import { dispatchFailedRunCallbacks } from "../services/agent-run-callback.service";
 import {
   ApiDispatchTimingCollector,
@@ -184,6 +188,7 @@ interface NormalSendArgs {
   readonly orgId: string;
   readonly apiStartTime: number;
   readonly timing?: ApiDispatchTimingCollector;
+  readonly zeroPreCreateSource?: ZeroPreCreateSource;
 }
 
 interface PreparedNormalSend {
@@ -802,7 +807,12 @@ async function getLatestRunsByThreadId(
     })
     .from(zeroRuns)
     .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
-    .where(eq(zeroRuns.chatThreadId, threadId))
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, threadId),
+        sql`(${agentRuns.status} IS DISTINCT FROM ${"cancelled"} OR ${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR})`,
+      ),
+    )
     .orderBy(desc(agentRuns.createdAt))
     .limit(limit);
 
@@ -1684,6 +1694,7 @@ function appendRecallUserMessage(params: {
       .select({
         role: chatMessages.role,
         runId: chatMessages.runId,
+        content: chatMessages.content,
         createdAt: chatMessages.createdAt,
       })
       .from(chatMessages)
@@ -1695,7 +1706,11 @@ function appendRecallUserMessage(params: {
       )
       .limit(1);
     if (existingRevoker) {
-      if (existingRevoker.role === "user" && existingRevoker.runId === null) {
+      if (
+        existingRevoker.role === "user" &&
+        existingRevoker.runId === null &&
+        existingRevoker.content === null
+      ) {
         return { ok: true, createdAt: existingRevoker.createdAt };
       }
       return {
@@ -2443,6 +2458,9 @@ function buildCreateZeroRunArgs(params: {
       prepared.computerUseHostGrant?.displayName ?? null,
     ),
     ...(args.timing ? { timing: args.timing } : {}),
+    ...(args.zeroPreCreateSource
+      ? { zeroPreCreateSource: args.zeroPreCreateSource }
+      : {}),
   };
 }
 

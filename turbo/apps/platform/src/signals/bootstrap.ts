@@ -22,7 +22,6 @@ import { setupLoggers$ } from "./bootstrap/loggers.ts";
 import { setupSlackConnectPage$ } from "./zero-page/slack-connect-page.ts";
 import { setupAgentPhoneConnectPage$ } from "./zero-page/agentphone-connect-page.ts";
 import { setupGithubConnectPage$ } from "./zero-page/github-connect-page.ts";
-import { setupGithubSettingsPage$ } from "./zero-page/github-settings-page.ts";
 import { setupTelegramConnectPage$ } from "./zero-page/telegram-connect-page.ts";
 import { setupTelegramSettingsPage$ } from "./zero-page/telegram-settings-page.ts";
 import { setupActivityPage$ } from "./activity-page/activity-page-setup.ts";
@@ -212,10 +211,6 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.settingsSlack,
     setup: setupAuthSidebarPageWrapper(setupSlackConnectPage$),
-  },
-  {
-    path: ROUTES.settingsGithub,
-    setup: setupAuthSidebarPageWrapper(setupGithubSettingsPage$),
   },
   {
     path: ROUTES.settingsTelegram,

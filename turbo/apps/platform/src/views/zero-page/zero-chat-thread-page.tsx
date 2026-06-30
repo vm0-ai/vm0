@@ -45,7 +45,6 @@ import {
   IconPresentation,
   IconRoute,
   IconSearch,
-  IconTag,
   IconTarget,
   IconX,
   IconClock,
@@ -202,7 +201,6 @@ import {
   agentGithubPrTrackingAvailable$,
   githubPrTrackingOpenThreadId$,
   chatThreadGithubPrs$,
-  githubPrTrackingLabelOptions$,
   setGithubPrTrackingOpenThreadId$,
 } from "../../signals/chat-page/github-pr-tracking.ts";
 import {
@@ -764,19 +762,16 @@ function GithubPrCheckRunRow({
 
 function GithubPrActions({
   pr,
-  labelOptions,
   disabled,
   onPrompt,
 }: {
   pr: ChatThreadGithubPr;
-  labelOptions: readonly string[];
   disabled: boolean;
   onPrompt: (prompt: string) => void;
 }) {
   const showFixConflict = pr.mergeStatus === "conflicts";
-  const showLabels = labelOptions.length > 0;
 
-  if (!showFixConflict && !showLabels) {
+  if (!showFixConflict) {
     return null;
   }
 
@@ -794,38 +789,6 @@ function GithubPrActions({
           <IconGitBranch size={13} />
           Fix conflict
         </button>
-      )}
-      {showLabels && (
-        <UiDropdownMenu>
-          <UiDropdownMenuTrigger asChild>
-            <button
-              type="button"
-              disabled={disabled}
-              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-border bg-background px-2 text-xs font-medium text-foreground hover:bg-accent disabled:pointer-events-none disabled:opacity-60"
-              aria-label={`Add label to PR ${pr.number}`}
-            >
-              <IconTag size={13} />
-              Add label
-            </button>
-          </UiDropdownMenuTrigger>
-          <UiDropdownMenuContent
-            align="start"
-            className="max-h-64 overflow-y-auto"
-          >
-            {labelOptions.map((labelName) => {
-              return (
-                <UiDropdownMenuItem
-                  key={labelName}
-                  onSelect={() => {
-                    onPrompt(`add label "${labelName}" to pr ${pr.number}`);
-                  }}
-                >
-                  {labelName}
-                </UiDropdownMenuItem>
-              );
-            })}
-          </UiDropdownMenuContent>
-        </UiDropdownMenu>
       )}
     </div>
   );
@@ -873,12 +836,9 @@ function GithubPrTrackingContent({ thread }: { thread: ChatThreadSignals }) {
   const githubPrs$ = chatThreadGithubPrs$(thread.threadId);
   const loadable = useLoadable(githubPrs$);
   const lastResolvedPrs = useLastResolved(githubPrs$);
-  const labelsLoadable = useLastLoadable(githubPrTrackingLabelOptions$);
   const modelSelection = useLastResolved(thread.modelSelection$);
   const [sendActionLoadable, sendAction] = useLoadableSet(thread.sendMessage$);
   const rootSignal = useGet(rootSignal$);
-  const labelOptions =
-    labelsLoadable.state === "hasData" ? labelsLoadable.data : [];
   const actionDisabled =
     sendActionLoadable.state === "loading" || modelSelection === undefined;
   const sendPrompt = (prompt: string) => {
@@ -951,7 +911,6 @@ function GithubPrTrackingContent({ thread }: { thread: ChatThreadSignals }) {
             </div>
             <GithubPrActions
               pr={pr}
-              labelOptions={labelOptions}
               disabled={actionDisabled}
               onPrompt={sendPrompt}
             />

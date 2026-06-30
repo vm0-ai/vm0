@@ -170,12 +170,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     description: "Enable the Spotify connector integration",
     enabled: false,
   },
-  [FeatureSwitchKey.GitHubIntegration]: {
-    maintainer: "linghan@vm0.ai",
-    description:
-      "Show the GitHub integration card on the Works page for installing GitHub, connecting users, and managing label listeners. Off by default; individuals opt in via the feature-switch overrides API.",
-    enabled: false,
-  },
   [FeatureSwitchKey.DataExport]: {
     maintainer: "ethan@vm0.ai",
     description: "Show the data export option in account menu",

@@ -56,6 +56,8 @@ const AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
 const SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR: &str = "session history download failed";
 const SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR: &str =
     "session history materialization failed";
+const STORAGE_CACHE_POPULATE_FAILED: &str = "storage-cache-populate-failed";
+const STORAGE_DOWNLOAD_FAILED: &str = "storage-download-failed";
 const SESSION_HISTORY_IDENTITY_VERIFY_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -693,12 +695,29 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
     if let Some(manifest) = &context.storage_manifest {
         let guest_manifest = GuestDownloadManifest::from(manifest);
         let mut effective: GuestDownloadManifest = match start.prev_storage {
-            Some(prev) => apply_storage_fingerprint_reuse(&guest_manifest, prev),
+            Some(prev) => {
+                let t = Instant::now();
+                let effective = apply_storage_fingerprint_reuse(&guest_manifest, prev);
+                telemetry.record(
+                    "runner_storage_manifest_fingerprint_reuse",
+                    t.elapsed(),
+                    true,
+                    None,
+                );
+                effective
+            }
             None => guest_manifest,
         };
         // Short-circuit: skip the vsock exec if no downloads, cleanup, or
         // guest-side instruction normalization remain.
+        let has_work_t = Instant::now();
         let has_work = guest_download_has_work(&effective);
+        telemetry.record(
+            "runner_storage_manifest_has_work",
+            has_work_t.elapsed(),
+            true,
+            None,
+        );
         if !has_work {
             info!(run_id = %context.run_id, "storage manifest has no download work, skipping download");
         }
@@ -708,14 +727,33 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
             // `archive_url` to `file:///tmp/vm0-storage-cache/...` so the guest
             // reads from its tmpfs instead of hitting R2 per turn.
             async {
-                crate::storage_cache::populate_cache(
+                let cache_t = Instant::now();
+                let cache_result = crate::storage_cache::populate_cache(
                     &mut effective,
                     sandbox,
                     &config.home,
                     telemetry,
                 )
-                .await?;
-                download_storages(sandbox, context, &effective).await
+                .await;
+                telemetry.record(
+                    "runner_storage_manifest_cache_populate",
+                    cache_t.elapsed(),
+                    cache_result.is_ok(),
+                    cache_result
+                        .is_err()
+                        .then_some(STORAGE_CACHE_POPULATE_FAILED),
+                );
+                cache_result?;
+
+                let download_t = Instant::now();
+                let download_result = download_storages(sandbox, context, &effective).await;
+                telemetry.record(
+                    "runner_storage_manifest_guest_download",
+                    download_t.elapsed(),
+                    download_result.is_ok(),
+                    download_result.is_err().then_some(STORAGE_DOWNLOAD_FAILED),
+                );
+                download_result
             }
             .await
         } else {

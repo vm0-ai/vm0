@@ -11,10 +11,6 @@ import {
   watchSlackConnection$,
 } from "../zero-page/zero-slack.ts";
 import {
-  initGithubIntegration$,
-  watchGithubIntegration$,
-} from "../zero-page/zero-github.ts";
-import {
   resetAgentPhoneConnectUi$,
   setAgentPhoneConnectDialogOpen$,
   watchAgentPhoneConnection$,
@@ -42,14 +38,12 @@ export const setupWorksPage$ = command(async ({ set }, signal: AbortSignal) => {
   set(updateDocumentTitle$, "Works");
   set(initWorksRedirect$);
   set(initSlackOrg$);
-  set(initGithubIntegration$);
 
   // confirmed by ethan@vm0.ai
   // eslint-disable-next-line ccstate/no-detach-in-signals -- route-scoped realtime subscriptions run until the /works route signal aborts
   detach(
     Promise.all([
       set(watchSlackConnection$, signal),
-      set(watchGithubIntegration$, signal),
       set(watchAgentPhoneConnection$, signal),
     ]),
     Reason.Entrance,

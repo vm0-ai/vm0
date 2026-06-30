@@ -25,6 +25,7 @@ import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import {
   createAgentRun$,
+  type BeforeRunDispatch,
   type CreateAgentRunArgs,
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
@@ -45,6 +46,10 @@ type ZeroRunOrigin =
   | "workflow_trigger"
   | "goal_continuation"
   | "zero_integration";
+export type ZeroPreCreateSource =
+  | "chat_callback_auto_send"
+  | "chat_thread_v1_send"
+  | "workflow_slash_command";
 
 const DISALLOWED_TOOLS = [
   "CronCreate",
@@ -150,7 +155,9 @@ interface CreateZeroRunCommandArgs {
   readonly selectedModelOverride?: string;
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
+  readonly beforeDispatch?: BeforeRunDispatch;
   readonly timing?: ApiDispatchTimingCollector;
+  readonly zeroPreCreateSource?: ZeroPreCreateSource;
 }
 
 interface CreateZeroIntegrationRunCommandArgs {
@@ -428,10 +435,14 @@ function buildZeroRunExtraEnvironment(args: {
   };
 }
 
-function zeroRunTimingDimensions(
-  origin: ZeroRunOrigin,
-): ApiDispatchTimingDimensions {
-  return { zero_run_origin: origin };
+function zeroRunTimingDimensions(args: {
+  readonly origin: ZeroRunOrigin;
+  readonly source?: ZeroPreCreateSource;
+}): ApiDispatchTimingDimensions {
+  return {
+    zero_run_origin: args.origin,
+    ...(args.source ? { zero_pre_create_source: args.source } : {}),
+  };
 }
 
 function zeroRunOrigin(args: {
@@ -744,12 +755,14 @@ function buildZeroCreateAgentRunArgs(args: {
       triggerAgentId: args.triggerAgentId,
     },
     dispatchFailedCallbacks: command.dispatchFailedCallbacks,
+    beforeDispatch: command.beforeDispatch,
     timing: args.timing,
-    timingDimensions: zeroRunTimingDimensions(
-      zeroRunOrigin({
+    timingDimensions: zeroRunTimingDimensions({
+      origin: zeroRunOrigin({
         command,
       }),
-    ),
+      source: command.zeroPreCreateSource,
+    }),
   };
 }
 
@@ -793,7 +806,7 @@ function buildZeroIntegrationCreateAgentRunArgs(args: {
     validateEnvironmentReferences: false,
     dispatchFailedCallbacks: command.dispatchFailedCallbacks,
     timing: args.timing,
-    timingDimensions: zeroRunTimingDimensions("zero_integration"),
+    timingDimensions: zeroRunTimingDimensions({ origin: "zero_integration" }),
   };
 }
 

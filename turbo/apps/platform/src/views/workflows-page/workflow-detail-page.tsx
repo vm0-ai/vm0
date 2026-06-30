@@ -3733,16 +3733,6 @@ function GithubNotInstalledNotice() {
   return (
     <div className="rounded-lg border border-border/60 bg-muted/30 px-3 py-2 text-xs text-muted-foreground">
       GitHub is not installed for this workspace.
-      <Button
-        asChild
-        type="button"
-        variant="link"
-        className="ml-1 h-auto p-0 text-xs"
-      >
-        <Link pathname={ROUTES.works} title="Open integrations">
-          Open integrations
-        </Link>
-      </Button>
     </div>
   );
 }

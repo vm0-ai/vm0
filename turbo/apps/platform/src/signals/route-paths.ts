@@ -24,7 +24,6 @@ export const ROUTES = {
   directedAuthorize: "/connectors/:type/authorize",
   settings: "/settings",
   settingsSlack: "/settings/slack",
-  settingsGithub: "/settings/github",
   settingsTelegram: "/settings/telegram",
   githubConnect: "/github/connect",
   telegramConnect: "/telegram/connect",
