@@ -485,9 +485,8 @@ async fn execute_cli_inner(
             cmd.env("DISABLE_TELEMETRY", "1");
         }
         env::Framework::Codex => {
-            // `codex login` and `codex exec` both honor CODEX_HOME; pin
-            // it to $HOME/.codex so the login state from setup_codex
-            // is visible to exec.
+            // Auth reconciliation and `codex exec` both honor CODEX_HOME;
+            // pin it to $HOME/.codex so setup_codex state is visible to exec.
             cmd.env("CODEX_HOME", format!("{}/.codex", env::home_dir()));
             // Test-only mock fixture selector; keep it explicit instead of
             // reopening inherited env for Codex children.
