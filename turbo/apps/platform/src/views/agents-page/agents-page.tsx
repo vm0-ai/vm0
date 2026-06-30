@@ -2,6 +2,7 @@ import type { ReactNode } from "react";
 import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { IconLoader2, IconLock, IconPlus, IconWand } from "@tabler/icons-react";
 import {
   Card,
@@ -28,6 +29,8 @@ import {
   orgMembers$,
   type OrgMember,
 } from "../../signals/external/org-members.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
+import { unreadAgentIds$ } from "../../signals/chat-page/sidebar-unread-threads.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { onDomEventFn } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
@@ -140,6 +143,10 @@ function AgentSplitView({
 }) {
   const agentsLoadable = useLoadable(sortedAgents$);
   const membersLoadable = useLoadable(orgMembers$);
+  const features = useGet(featureSwitch$);
+  const agentUnreadIndicatorsEnabled =
+    features[FeatureSwitchKey.AgentUnreadIndicators] ?? false;
+  const unreadAgentIds = useLastResolved(unreadAgentIds$);
   const loading = agentsLoadable.state === "loading";
   const agents =
     agentsLoadable.state === "hasData" ? agentsLoadable.data : null;
@@ -167,6 +174,8 @@ function AgentSplitView({
         title="Public"
         agents={publicAgents}
         membersById={membersById}
+        unreadAgentIds={unreadAgentIds}
+        unreadIndicatorsEnabled={agentUnreadIndicatorsEnabled}
         skeleton={skeleton}
         headerAction={
           <div className="flex items-center gap-3">
@@ -203,6 +212,8 @@ function AgentSplitView({
         title="Private"
         agents={privateAgents}
         membersById={membersById}
+        unreadAgentIds={unreadAgentIds}
+        unreadIndicatorsEnabled={agentUnreadIndicatorsEnabled}
         skeleton={skeleton}
         headerAction={
           <Button
@@ -226,12 +237,16 @@ function AgentSplitSection({
   title,
   agents,
   membersById,
+  unreadAgentIds,
+  unreadIndicatorsEnabled,
   skeleton,
   headerAction,
 }: {
   title: string;
   agents: AgentProps["agent"][];
   membersById: ReadonlyMap<string, OrgMember>;
+  unreadAgentIds: ReadonlySet<string> | undefined;
+  unreadIndicatorsEnabled: boolean;
   skeleton: boolean;
   headerAction: ReactNode;
 }) {
@@ -244,7 +259,12 @@ function AgentSplitSection({
       {skeleton ? (
         <AgentSplitSkeleton />
       ) : agents.length > 0 ? (
-        <AgentSplitBody agents={agents} membersById={membersById} />
+        <AgentSplitBody
+          agents={agents}
+          membersById={membersById}
+          unreadAgentIds={unreadAgentIds}
+          unreadIndicatorsEnabled={unreadIndicatorsEnabled}
+        />
       ) : null}
     </section>
   );
@@ -253,9 +273,13 @@ function AgentSplitSection({
 function AgentSplitBody({
   agents,
   membersById,
+  unreadAgentIds,
+  unreadIndicatorsEnabled,
 }: {
   agents: AgentProps["agent"][];
   membersById: ReadonlyMap<string, OrgMember>;
+  unreadAgentIds: ReadonlySet<string> | undefined;
+  unreadIndicatorsEnabled: boolean;
 }) {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
@@ -270,6 +294,10 @@ function AgentSplitBody({
             <AgentCard
               agent={agent}
               creator={agentCreator(agent, membersById)}
+              hasUnread={
+                unreadIndicatorsEnabled &&
+                (unreadAgentIds?.has(agent.id) ?? false)
+              }
             />
           </Link>
         );
@@ -460,6 +488,7 @@ type AgentProps = {
     visibility?: "public" | "private" | null;
   };
   creator: AgentCreator;
+  hasUnread: boolean;
 };
 
 interface AgentCreator {
@@ -530,7 +559,16 @@ function CreatorBadge({ creator }: { creator: AgentCreator }) {
   );
 }
 
-function AgentCard({ agent, creator }: AgentProps) {
+function AgentUnreadIndicator() {
+  return (
+    <span
+      aria-label="Unread"
+      className="absolute -right-0.5 -top-0.5 h-3 w-3 rounded-full border-2 border-card bg-sky-600"
+    />
+  );
+}
+
+function AgentCard({ agent, creator, hasUnread }: AgentProps) {
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const lead = agent.id === defaultAgentId;
   const displayName = agent.displayName ?? agent.id;
@@ -548,11 +586,14 @@ function AgentCard({ agent, creator }: AgentProps) {
             : "pl-5 pr-12 py-4 flex items-center gap-3"
         }
       >
-        <AgentAvatarImg
-          name={agent.id}
-          alt={displayName}
-          className="h-10 w-10 shrink-0 rounded-full object-cover object-top"
-        />
+        <span className="relative h-10 w-10 shrink-0">
+          <AgentAvatarImg
+            name={agent.id}
+            alt={displayName}
+            className="h-10 w-10 rounded-full object-cover object-top"
+          />
+          {hasUnread && <AgentUnreadIndicator />}
+        </span>
         <div className="flex-1 min-w-0">
           <div className="flex items-center gap-1.5 min-w-0">
             <span className="text-sm font-medium text-foreground truncate">
