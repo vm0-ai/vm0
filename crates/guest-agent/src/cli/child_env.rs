@@ -53,7 +53,7 @@ pub(super) fn apply_to_tokio_command_for_runtime(
     );
 }
 
-fn apply_to_tokio_command_with_values(
+pub(super) fn apply_to_tokio_command_with_values(
     cmd: &mut tokio::process::Command,
     home_dir: &str,
     user_env: &HashMap<String, String>,
@@ -106,7 +106,7 @@ fn apply_runner_visible_env(api_url: &str, mut apply: impl FnMut(&'static str, S
     }
 }
 
-fn runner_visible_api_url_from_process_env() -> String {
+pub(super) fn runner_visible_api_url_from_process_env() -> String {
     std::env::var(RUNNER_VISIBLE_API_URL_ENV_KEY)
         .ok()
         .filter(|value| !value.is_empty())

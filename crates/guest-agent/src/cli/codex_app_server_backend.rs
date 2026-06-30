@@ -354,6 +354,11 @@ fn codex_app_server_config(runtime: &CliRuntimeConfig<'_>) -> CodexAppServerConf
     };
     let codex_home = PathBuf::from(runtime.codex_home());
     let mut config = CodexAppServerConfig::new(binary, codex_home)
+        .with_child_env(
+            runtime.home_dir.as_ref(),
+            runtime.user_env,
+            runtime.api_url.as_ref(),
+        )
         .with_current_dir(paths::CANONICAL_WORKING_DIR)
         .with_opt_out_notification_methods(IGNORED_NOTIFICATION_METHODS.iter().copied());
     if runtime.use_mock_codex

@@ -353,7 +353,7 @@ impl<'a> CliRuntimeConfig<'a> {
             },
             home_dir: Cow::Borrowed(env::home_dir()),
             api_url: if use_codex_app_server_backend {
-                Cow::Borrowed("")
+                Cow::Owned(child_env::runner_visible_api_url_from_process_env())
             } else {
                 Cow::Borrowed(env::api_url())
             },
