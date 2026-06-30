@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.18.21](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.20...vsock-proto-v0.18.21) (2026-06-30)
+
+
+### Performance Improvements
+
+* reduce host write-file frame copies ([#19524](https://github.com/vm0-ai/vm0/issues/19524)) ([6f60605](https://github.com/vm0-ai/vm0/commit/6f6060531fe3b0d15a60f223b636edec310358ee))
+
 ## [0.18.20](https://github.com/vm0-ai/vm0/compare/vsock-proto-v0.18.19...vsock-proto-v0.18.20) (2026-06-30)
 
 
