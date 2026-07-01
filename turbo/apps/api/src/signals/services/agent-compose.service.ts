@@ -127,9 +127,6 @@ export const recomposeAgentIfStale$ = command(
   ): Promise<RecomposeAgentIfStaleResult> => {
     const content = buildZeroAgentComposeContent(args.agentName);
     const versionId = computeComposeVersionId(content);
-    if (versionId === args.currentHeadVersionId) {
-      return { status: "unchanged", versionId };
-    }
 
     const writeDb = set(writeDb$);
     const result = await writeDb.transaction(async (tx) => {
@@ -141,6 +138,9 @@ export const recomposeAgentIfStale$ = command(
         .limit(1);
       if (!compose) {
         return { status: "missing" as const, versionId };
+      }
+      if (compose.headVersionId === versionId) {
+        return { status: "unchanged" as const, versionId };
       }
       if (compose.headVersionId !== args.currentHeadVersionId) {
         return { status: "changed" as const, versionId };

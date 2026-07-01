@@ -1,4 +1,4 @@
-import { and, eq, inArray } from "drizzle-orm";
+import { and, eq } from "drizzle-orm";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
@@ -70,22 +70,25 @@ async function lockCustomConnectorsForReplace(
     return [];
   }
 
-  const lockedRows = await db
-    .select({ id: orgCustomConnectors.id })
-    .from(orgCustomConnectors)
-    .where(
-      and(
-        eq(orgCustomConnectors.orgId, args.orgId),
-        inArray(orgCustomConnectors.id, [...args.enabledIds]),
-      ),
-    )
-    .orderBy(orgCustomConnectors.id)
-    .for("update");
-  const lockedIds = new Set(
-    lockedRows.map((row) => {
-      return row.id;
-    }),
-  );
+  const sortedIds = [...args.enabledIds].sort();
+  const lockedIds = new Set<string>();
+  for (const id of sortedIds) {
+    const [locked] = await db
+      .select({ id: orgCustomConnectors.id })
+      .from(orgCustomConnectors)
+      .where(
+        and(
+          eq(orgCustomConnectors.orgId, args.orgId),
+          eq(orgCustomConnectors.id, id),
+        ),
+      )
+      .for("update")
+      .limit(1);
+    if (locked) {
+      lockedIds.add(locked.id);
+    }
+  }
+
   return args.enabledIds.filter((id) => {
     return !lockedIds.has(id);
   });
@@ -157,6 +160,11 @@ export async function replaceUserCustomConnectors(
   const enabledIds = Array.from(new Set(args.enabledIds));
 
   return await db.transaction(async (tx) => {
+    const composeLocked = await lockAgentComposeForConnectorReplace(tx, args);
+    if (!composeLocked) {
+      return { status: "agentNotFound" };
+    }
+
     const missingIds = await lockCustomConnectorsForReplace(tx, {
       orgId: args.orgId,
       enabledIds,
