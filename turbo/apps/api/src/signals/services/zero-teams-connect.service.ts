@@ -105,6 +105,11 @@ function buildTeamsInstallUrl(tenantId?: string | null): string | null {
     return null;
   }
   const url = new URL(`https://teams.microsoft.com/l/app/${appId}`);
+  const appTenantId = env("MICROSOFT_TEAMS_APP_TENANT_ID");
+  if (appTenantId) {
+    url.searchParams.set("installAppPackage", "true");
+    url.searchParams.set("appTenantId", appTenantId);
+  }
   setOptionalParam(url.searchParams, "tenantId", tenantId);
   return url.toString();
 }

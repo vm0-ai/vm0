@@ -6,7 +6,6 @@ import {
   IconCircleCheck,
   IconDotsVertical,
   IconDownload,
-  IconMessageCircle,
   IconSettings,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
@@ -46,6 +45,7 @@ import { now } from "../../lib/time.ts";
 import { AgentPhoneCard } from "./agentphone-card.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import slackIconImg from "./components/settings/icons/slack.svg";
+import teamsIconImg from "./components/settings/icons/teams.svg";
 import telegramIconImg from "./components/settings/icons/telegram.svg";
 
 /** Append a cache-busting timestamp and forward ?prompt= so the OAuth flow can
@@ -328,7 +328,7 @@ function TeamsCardActions({
       {isConnected ? (
         <TeamsConnectedIndicator connectedDetail={connectedDetail} />
       ) : null}
-      {!isInstalled && isAdmin && installUrl && (
+      {isAdmin && installUrl && (
         <Button
           data-testid="teams-install-button"
           variant="outline"
@@ -342,7 +342,7 @@ function TeamsCardActions({
           Install in Teams
         </Button>
       )}
-      {isInstalled && !isConnected && installUrl && (
+      {!isAdmin && isInstalled && !isConnected && installUrl && (
         <Button
           variant="outline"
           size="sm"
@@ -425,8 +425,8 @@ function TeamsCard({ displayName }: { displayName: string }) {
     <>
       <div className="zero-card flex flex-col">
         <div className="flex items-center gap-4 p-4">
-          <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center rounded bg-[#6264a7]/10 text-[#6264a7]">
-            <IconMessageCircle size={18} stroke={1.7} />
+          <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
+            <img src={teamsIconImg} alt="" className="h-7 w-7" />
           </div>
           <div className="flex flex-1 flex-col gap-1 min-w-0">
             <div className="text-sm font-medium text-foreground">

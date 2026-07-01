@@ -133,6 +133,16 @@ describe("works page", () => {
     expect(installButton).toHaveTextContent("Install in Teams");
   });
 
+  it("keeps Microsoft Teams install controls available after installation", async () => {
+    mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
+    mockTeamsAPI({ isConnected: false, isInstalled: true, isAdmin: true });
+
+    setupWorksPage({ teamsEnabled: true });
+
+    const installButton = await screen.findByTestId("teams-install-button");
+    expect(installButton).toHaveTextContent("Install in Teams");
+  });
+
   it("shows Microsoft Teams admin uninstall confirmation", async () => {
     mockSlackAPI({ isConnected: true, isInstalled: true, isAdmin: true });
     mockTeamsAPI({ isConnected: false, isInstalled: true, isAdmin: true });

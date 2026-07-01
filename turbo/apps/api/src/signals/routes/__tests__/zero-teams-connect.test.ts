@@ -16,8 +16,19 @@ import {
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
-const TEAMS_INSTALL_URL =
-  "https://teams.microsoft.com/l/app/00000000-0000-0000-0000-000000000001";
+const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
+
+function teamsInstallUrl(tenantId?: string): string {
+  const url = new URL(
+    "https://teams.microsoft.com/l/app/00000000-0000-0000-0000-000000000001",
+  );
+  url.searchParams.set("installAppPackage", "true");
+  url.searchParams.set("appTenantId", TEAMS_APP_TENANT_ID);
+  if (tenantId) {
+    url.searchParams.set("tenantId", tenantId);
+  }
+  return url.toString();
+}
 
 function connectBody(
   fixture: TeamsConnectFixture,
@@ -83,7 +94,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
       isInstalled: false,
       isConnected: false,
       isAdmin: true,
-      installUrl: TEAMS_INSTALL_URL,
+      installUrl: teamsInstallUrl(),
     });
   });
 
@@ -117,7 +128,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
       isInstalled: true,
       isConnected: false,
       isAdmin: true,
-      installUrl: `${TEAMS_INSTALL_URL}?tenantId=${fixture.teamsTenantId}`,
+      installUrl: teamsInstallUrl(fixture.teamsTenantId),
       tenantId: fixture.teamsTenantId,
       tenantName: fixture.teamsTenantName,
       teamId: fixture.teamsTeamId,
@@ -152,7 +163,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
       isInstalled: true,
       isConnected: true,
       isAdmin: false,
-      installUrl: `${TEAMS_INSTALL_URL}?tenantId=${fixture.teamsTenantId}`,
+      installUrl: teamsInstallUrl(fixture.teamsTenantId),
       tenantId: fixture.teamsTenantId,
       tenantName: fixture.teamsTenantName,
       teamId: fixture.teamsTeamId,
@@ -376,7 +387,7 @@ describe("DELETE /api/zero/integrations/teams/connect", () => {
       isInstalled: false,
       isConnected: false,
       isAdmin: true,
-      installUrl: TEAMS_INSTALL_URL,
+      installUrl: teamsInstallUrl(),
     });
   });
 });
