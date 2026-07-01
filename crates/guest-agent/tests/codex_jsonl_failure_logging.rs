@@ -9,12 +9,12 @@ use common::SystemLogOverrideGuard;
 use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use guest_contracts::diagnostics::{FailureDetailSource, FailureReason};
-use std::path::{Path, PathBuf};
+use std::path::Path;
 use std::time::Duration;
 
 #[tokio::test]
 async fn codex_jsonl_failure_events_are_reported() -> Result<(), Box<dyn std::error::Error>> {
-    let mock = build_and_locate_mock_codex()?;
+    let mock = common::build_and_locate_mock_codex()?;
     let tmp = tempfile::tempdir()?;
     let system_log_path = tmp.path().join("system.log");
 
@@ -86,48 +86,6 @@ async fn codex_jsonl_failure_events_are_reported() -> Result<(), Box<dyn std::er
     );
 
     Ok(())
-}
-
-fn build_and_locate_mock_codex() -> Result<PathBuf, String> {
-    let exe = std::env::current_exe().map_err(|e| format!("current_exe: {e}"))?;
-    let target_profile_dir = exe
-        .parent()
-        .and_then(|p| p.parent())
-        .ok_or_else(|| "target/<profile> dir".to_string())?;
-    let target_dir = target_profile_dir
-        .parent()
-        .ok_or_else(|| "target dir".to_string())?;
-    let profile_dir_name = target_profile_dir
-        .file_name()
-        .and_then(|n| n.to_str())
-        .ok_or_else(|| "profile dir name".to_string())?;
-
-    let mut cmd = std::process::Command::new("cargo");
-    cmd.args(["build", "-p", "guest-mock-codex", "--quiet"])
-        .arg("--target-dir")
-        .arg(target_dir);
-    match profile_dir_name {
-        "debug" => {}
-        "release" => {
-            cmd.arg("--release");
-        }
-        other => {
-            cmd.args(["--profile", other]);
-        }
-    }
-
-    let status = cmd
-        .status()
-        .map_err(|e| format!("invoke cargo build: {e}"))?;
-    if !status.success() {
-        return Err("cargo build -p guest-mock-codex failed".into());
-    }
-
-    let mock = target_profile_dir.join("guest-mock-codex");
-    if !mock.exists() {
-        return Err(format!("mock binary not found at {}", mock.display()));
-    }
-    Ok(mock)
 }
 
 unsafe fn setup_codex_env(

@@ -1,6 +1,6 @@
 import { computed } from "ccstate";
 import type { RoutePath } from "../../types/route.ts";
-import { ROUTES } from "../route-paths.ts";
+import { isWorkflowDetailRouteKey, ROUTES } from "../route-paths.ts";
 import { pathParams$, type RouterPathParams } from "../route.ts";
 import { activeRoute$ } from "../active-route.ts";
 import { agents$, defaultAgentId$ } from "../agent.ts";
@@ -169,7 +169,7 @@ export const mobileBreadcrumb$ = computed(
       return await get(automationBreadcrumb$);
     }
 
-    if (route === "workflows" || route === "workflowDetail") {
+    if (route === "workflows" || isWorkflowDetailRouteKey(route)) {
       return await get(workflowsBreadcrumb$);
     }
 

@@ -280,6 +280,7 @@ pub(super) struct CliRuntimeConfig<'a> {
     agent_log_file: Cow<'a, str>,
     session_id_file: Cow<'a, str>,
     session_history_path_file: Cow<'a, str>,
+    event_error_flag: Cow<'a, str>,
     user_env: &'a HashMap<String, String>,
 }
 
@@ -307,6 +308,7 @@ impl<'a> CliRuntimeConfig<'a> {
             agent_log_file: Cow::Borrowed(paths.agent_log_file()),
             session_id_file: Cow::Borrowed(paths.session_id_file()),
             session_history_path_file: Cow::Borrowed(paths.session_history_path_file()),
+            event_error_flag: Cow::Borrowed(paths.event_error_flag()),
             user_env: &config.user_env,
         }
     }
@@ -367,6 +369,7 @@ impl<'a> CliRuntimeConfig<'a> {
             agent_log_file: Cow::Borrowed(paths::agent_log_file()),
             session_id_file: Cow::Borrowed(paths::session_id_file()),
             session_history_path_file: Cow::Borrowed(paths::session_history_path_file()),
+            event_error_flag: Cow::Borrowed(paths::event_error_flag()),
             user_env: env::user_env(),
         }
     }
@@ -763,12 +766,19 @@ async fn execute_cli_inner(
     let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
     let should_send_events = http.has_api();
     let event_http = http.clone();
+    let event_error_flag = runtime.event_error_flag.to_string();
     let event_sender = tokio::spawn(async move {
         let mut acked_prefix = AckedEventPrefix::default();
         while let Some(event) = event_rx.recv().await {
             match event {
                 PreparedEvent::Webhook { sequence, payload } => {
-                    match events::post_event(&event_http, &payload).await {
+                    match events::post_event_with_error_flag(
+                        &event_http,
+                        &payload,
+                        &event_error_flag,
+                    )
+                    .await
+                    {
                         Ok(()) => {
                             acked_prefix.record_success(sequence);
                         }

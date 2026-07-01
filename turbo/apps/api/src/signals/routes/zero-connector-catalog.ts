@@ -1,9 +1,5 @@
 import { zeroConnectorCatalogContract } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import {
-  getAllFeatureStates,
-  isFeatureEnabled,
-} from "@vm0/core/feature-switch";
+import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { command } from "ccstate";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -24,16 +20,6 @@ const connectorCatalogAuth = {
   requiredCapability: "connector:read",
 } as const;
 
-const connectorCatalogApiDisabled = Object.freeze({
-  status: 403 as const,
-  body: Object.freeze({
-    error: Object.freeze({
-      message: "Connector catalog API is not enabled",
-      code: "FORBIDDEN",
-    }),
-  }),
-});
-
 function connectorCatalogNotFound() {
   return notFound("Connector catalog item not found");
 }
@@ -49,10 +35,6 @@ const connectorCatalogRequestContext$ = command(async ({ get }) => {
     overrides,
   };
   return {
-    enabled: isFeatureEnabled(
-      FeatureSwitchKey.ConnectorCatalogApi,
-      featureSwitchContext,
-    ),
     featureStates: getAllFeatureStates(featureSwitchContext),
   };
 });
@@ -61,9 +43,6 @@ const listConnectorCatalogInner$ = command(
   async ({ set }, signal: AbortSignal) => {
     const context = await set(connectorCatalogRequestContext$);
     signal.throwIfAborted();
-    if (!context.enabled) {
-      return connectorCatalogApiDisabled;
-    }
 
     const connectors = await listPublicConnectorCatalog({
       featureStates: context.featureStates,
@@ -79,9 +58,6 @@ const getConnectorCatalogInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const context = await set(connectorCatalogRequestContext$);
     signal.throwIfAborted();
-    if (!context.enabled) {
-      return connectorCatalogApiDisabled;
-    }
 
     const params = get(pathParamsOf(zeroConnectorCatalogContract.get));
     const connector = await getPublicConnectorCatalogDetail({
@@ -102,9 +78,6 @@ const getConnectorCatalogPermissionsInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     const context = await set(connectorCatalogRequestContext$);
     signal.throwIfAborted();
-    if (!context.enabled) {
-      return connectorCatalogApiDisabled;
-    }
 
     const params = get(pathParamsOf(zeroConnectorCatalogContract.permissions));
     const permissions = await getPublicConnectorCatalogPermissionDetail({

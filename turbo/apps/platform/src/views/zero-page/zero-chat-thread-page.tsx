@@ -237,7 +237,6 @@ import {
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
-import { WORKFLOW_DETAIL_TAB_PARAM } from "../../signals/workflows-page/workflows-signals.ts";
 import {
   atTimeInTimezone,
   cronWallTimeInTimezone,
@@ -1236,11 +1235,14 @@ function ChatThreadEmojiMenuButton({
               </button>
             </UiDropdownMenuTrigger>
           </TooltipTrigger>
-          <TooltipContent side="bottom">Change emoji</TooltipContent>
+          <TooltipContent side="bottom">Chat thread icon</TooltipContent>
         </Tooltip>
         <UiDropdownMenuContent
           align="start"
           className="w-40"
+          onCloseAutoFocus={(event) => {
+            event.preventDefault();
+          }}
           onKeyDown={(event) => {
             const index = chatThreadEmojiShortcutIndex(event);
             if (index === null) {
@@ -2430,14 +2432,11 @@ function HeaderWorkflowTriggerCard({
           {title}
         </p>
         <Link
-          pathname={ROUTES.workflowDetail}
+          pathname={ROUTES.workflowDetailAutomations}
           options={{
             pathParams: {
               workflowId: trigger.workflowId,
             },
-            searchParams: new URLSearchParams({
-              [WORKFLOW_DETAIL_TAB_PARAM]: "automations",
-            }),
           }}
           className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-1.5 text-xs font-medium text-muted-foreground transition-colors hover:bg-gray-50 hover:text-foreground"
         >
@@ -7032,7 +7031,7 @@ function WorkflowUserMessage({
           </div>
           {linked ? (
             <Link
-              pathname={ROUTES.workflowDetail}
+              pathname={ROUTES.workflowDetailAutomations}
               options={{
                 pathParams: {
                   workflowId,

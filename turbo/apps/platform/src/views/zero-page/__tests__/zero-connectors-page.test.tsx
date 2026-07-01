@@ -766,7 +766,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("shows up to three authorized agent avatars on connector cards", async () => {
+  it("shows authorized agent names with an overflow count on connector cards", async () => {
     const agentIds = [
       "c0000000-0000-4000-a000-000000000001",
       "c0000000-0000-4000-a000-000000000002",
@@ -781,10 +781,10 @@ describe("connectors page", () => {
 
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
     context.mocks.data.team([
-      teamAgent(agentIds[0], "Research Agent", "preset:0"),
-      teamAgent(agentIds[1], "Support Agent", "preset:1"),
-      teamAgent(agentIds[2], "Growth Agent"),
-      teamAgent(agentIds[3], "Ops Agent", "preset:3"),
+      teamAgent(agentIds[0], "Research", "preset:0"),
+      teamAgent(agentIds[1], "Support", "preset:1"),
+      teamAgent(agentIds[2], "Growth"),
+      teamAgent(agentIds[3], "Ops", "preset:3"),
     ]);
     context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
       return respond(200, {
@@ -802,11 +802,11 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       const card = connectorCardByLabel("GitHub");
-      const avatars = within(card).getAllByTestId(
-        "connector-card-agent-avatar",
-      );
-      expect(avatars).toHaveLength(3);
-      expect(avatars[2]).toHaveClass("block", "h-7", "w-7");
+      const access = within(card).getByLabelText("Manage GitHub access");
+      expect(access).toHaveTextContent("Used by");
+      expect(access).toHaveTextContent("Research, Support");
+      expect(access).toHaveTextContent("+2");
+      expect(access).not.toHaveTextContent("Growth");
     });
 
     click(
@@ -821,7 +821,7 @@ describe("connectors page", () => {
     expect(dialog).toBeInTheDocument();
   });
 
-  it("shows a users icon when no agents are authorized", async () => {
+  it("shows an add-access affordance when no agents are authorized", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000001";
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
     context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
@@ -839,11 +839,8 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       const card = connectorCardByLabel("GitHub");
-      const placeholder = within(card).getByTestId(
-        "connector-card-agent-avatar-placeholder",
-      );
-      expect(placeholder).toHaveClass("flex", "h-7", "w-7");
-      expect(placeholder.querySelector(".tabler-icon-users")).not.toBeNull();
+      const empty = within(card).getByTestId("connector-card-access-empty");
+      expect(empty).toHaveTextContent("Add access");
     });
 
     click(

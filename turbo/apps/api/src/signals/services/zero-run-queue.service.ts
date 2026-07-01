@@ -42,6 +42,9 @@ import {
 const L = logger("ZeroRunQueue");
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
+const QUEUED_RUN_EXPIRED_REASON = "Queued run expired (exceeded queue TTL)";
+const QUEUED_RUN_LAUNCH_ORPHAN_REASON =
+  "Queued run timed out before queue entry was persisted";
 
 const TIER_CONCURRENCY_LIMITS: Readonly<Record<OrgTier, number>> =
   Object.freeze({
@@ -96,8 +99,46 @@ type PromoteQueuedCandidateResult =
   | { readonly status: "removed-stale" }
   | { readonly status: "lost" };
 
+interface TimedOutQueuedRunRow {
+  readonly runId: string;
+  readonly orgId: string;
+  readonly userId: string;
+}
+
+export interface QueuedRunMaintenanceTimeout {
+  readonly runId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly error: string;
+  readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
+}
+
+interface QueuedRunMaintenanceResult {
+  readonly deletedCount: number;
+  readonly timedOutRuns: readonly QueuedRunMaintenanceTimeout[];
+}
+
 interface LockedQueueRunRow extends Record<string, unknown> {
   readonly status: string;
+}
+
+async function timedOutQueuedRunsWithMarkerNotifications(
+  tx: DbTransaction,
+  rows: readonly TimedOutQueuedRunRow[],
+  error: string,
+): Promise<QueuedRunMaintenanceTimeout[]> {
+  const timedOutRuns: QueuedRunMaintenanceTimeout[] = [];
+  for (const row of rows) {
+    timedOutRuns.push({
+      ...row,
+      error,
+      queueMarkerNotification: await revokeQueuedRunAssistantMarkers(tx, {
+        runId: row.runId,
+        userId: row.userId,
+      }),
+    });
+  }
+  return timedOutRuns;
 }
 
 async function activeConcurrencyCount(
@@ -452,7 +493,7 @@ export const drainOrgQueueToCapacity$ = command(
 );
 
 export const cleanupExpiredQueueEntries$ = command(
-  async ({ set }, signal: AbortSignal): Promise<number> => {
+  async ({ set }, signal: AbortSignal): Promise<QueuedRunMaintenanceResult> => {
     const writeDb = set(writeDb$);
     const currentTime = nowDate();
 
@@ -462,20 +503,51 @@ export const cleanupExpiredQueueEntries$ = command(
         .from(agentRunQueue)
         .where(lt(agentRunQueue.expiresAt, currentTime));
 
-      const timedOut = await tx
-        .update(agentRuns)
-        .set({
-          status: "timeout",
-          completedAt: currentTime,
-          error: "Queued run expired (exceeded queue TTL)",
+      const candidates = await tx
+        .select({
+          runId: agentRuns.id,
         })
+        .from(agentRuns)
         .where(
           and(
             inArray(agentRuns.id, expiredRunIds),
             eq(agentRuns.status, "queued"),
           ),
         )
-        .returning({ runId: agentRuns.id });
+        .orderBy(agentRuns.createdAt, agentRuns.id)
+        .for("update");
+      signal.throwIfAborted();
+
+      const candidateRunIds = candidates.map((candidate) => {
+        return candidate.runId;
+      });
+
+      const timedOut =
+        candidateRunIds.length === 0
+          ? []
+          : await tx
+              .update(agentRuns)
+              .set({
+                status: "timeout",
+                completedAt: currentTime,
+                error: QUEUED_RUN_EXPIRED_REASON,
+              })
+              .where(
+                and(
+                  inArray(agentRuns.id, candidateRunIds),
+                  eq(agentRuns.status, "queued"),
+                ),
+              )
+              .returning({
+                runId: agentRuns.id,
+                orgId: agentRuns.orgId,
+                userId: agentRuns.userId,
+              });
+      const timedOutRuns = await timedOutQueuedRunsWithMarkerNotifications(
+        tx,
+        timedOut,
+        QUEUED_RUN_EXPIRED_REASON,
+      );
 
       const deletableRows = await tx
         .select({ runId: agentRunQueue.runId })
@@ -489,7 +561,7 @@ export const cleanupExpiredQueueEntries$ = command(
         );
 
       if (deletableRows.length === 0) {
-        return { deletedCount: 0, timedOutCount: timedOut.length };
+        return { deletedCount: 0, timedOutRuns };
       }
 
       const deleted = await tx
@@ -506,20 +578,103 @@ export const cleanupExpiredQueueEntries$ = command(
 
       return {
         deletedCount: deleted.length,
-        timedOutCount: timedOut.length,
+        timedOutRuns,
       };
     });
     signal.throwIfAborted();
 
-    if (result.deletedCount === 0) {
-      return 0;
+    if (result.deletedCount > 0 || result.timedOutRuns.length > 0) {
+      L.debug("Cleaned up expired queue entries", {
+        count: result.deletedCount,
+        timedOut: result.timedOutRuns.length,
+      });
     }
+    return result;
+  },
+);
 
-    L.debug("Cleaned up expired queue entries", {
-      count: result.deletedCount,
-      timedOut: result.timedOutCount,
+export const cleanupQueuedRunLaunchOrphans$ = command(
+  async (
+    { set },
+    cutoff: Date,
+    signal: AbortSignal,
+  ): Promise<QueuedRunMaintenanceResult> => {
+    const writeDb = set(writeDb$);
+    const currentTime = nowDate();
+
+    const result = await writeDb.transaction(async (tx) => {
+      const candidates = await tx
+        .select({
+          runId: agentRuns.id,
+          orgId: agentRuns.orgId,
+          userId: agentRuns.userId,
+        })
+        .from(agentRuns)
+        .where(
+          and(
+            eq(agentRuns.status, "queued"),
+            lt(agentRuns.createdAt, cutoff),
+            sql<boolean>`NOT EXISTS (
+              SELECT 1
+              FROM ${agentRunQueue}
+              WHERE ${agentRunQueue.runId} = ${agentRuns.id}
+            )`,
+          ),
+        )
+        .orderBy(agentRuns.createdAt, agentRuns.id)
+        .for("update");
+      signal.throwIfAborted();
+
+      if (candidates.length === 0) {
+        return { deletedCount: 0, timedOutRuns: [] };
+      }
+
+      const candidateRunIds = candidates.map((candidate) => {
+        return candidate.runId;
+      });
+
+      // Queue persistence locks the run before inserting agent_run_queue. If
+      // this transaction waited for that lock, re-check the queue table with a
+      // fresh statement before timing out the run.
+      const timedOut = await tx
+        .update(agentRuns)
+        .set({
+          status: "timeout",
+          completedAt: currentTime,
+          error: QUEUED_RUN_LAUNCH_ORPHAN_REASON,
+        })
+        .where(
+          and(
+            eq(agentRuns.status, "queued"),
+            inArray(agentRuns.id, candidateRunIds),
+            sql<boolean>`NOT EXISTS (
+              SELECT 1
+              FROM ${agentRunQueue}
+              WHERE ${agentRunQueue.runId} = ${agentRuns.id}
+            )`,
+          ),
+        )
+        .returning({
+          runId: agentRuns.id,
+          orgId: agentRuns.orgId,
+          userId: agentRuns.userId,
+        });
+      const timedOutRuns = await timedOutQueuedRunsWithMarkerNotifications(
+        tx,
+        timedOut,
+        QUEUED_RUN_LAUNCH_ORPHAN_REASON,
+      );
+
+      return { deletedCount: 0, timedOutRuns };
     });
-    return result.deletedCount;
+    signal.throwIfAborted();
+
+    if (result.timedOutRuns.length > 0) {
+      L.debug("Cleaned up queued run launch orphans", {
+        timedOut: result.timedOutRuns.length,
+      });
+    }
+    return result;
   },
 );
 
