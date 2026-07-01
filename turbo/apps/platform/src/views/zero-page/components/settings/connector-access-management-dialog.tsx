@@ -7,7 +7,6 @@ import {
   IconX,
 } from "@tabler/icons-react";
 import {
-  Button,
   Dialog,
   DialogContent,
   DialogDescription,
@@ -22,10 +21,8 @@ import {
 import {
   hasFirewallMetadataPermissions,
   permissionGrantsToFirewallPolicies,
-  resolveFirewallMetadataPolicies,
   type FirewallPermissionDetailMetadata,
 } from "@vm0/connectors/firewall-metadata";
-import type { UserPermissionGrantResponse } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
 import { firewallPermissionMetadataByConnector } from "../../../../signals/firewall-permission-metadata.ts";
@@ -52,8 +49,6 @@ import { AvatarFromUrl } from "../../zero-sidebar-shared.tsx";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { PermissionsDialog } from "./permissions-dialog.tsx";
 
-const VISIBLE_PERMISSION_CHIPS = 3;
-
 interface ConnectorAccessManagementDialogProps {
   readonly connectorType: ConnectorType;
   readonly onClose: () => void;
@@ -74,28 +69,6 @@ function filterRows(
   return rows.filter((row) => {
     return agentName(row.agent).toLowerCase().includes(normalizedSearch);
   });
-}
-
-function allowedPermissionNames({
-  connectorType,
-  grants,
-  metadata,
-}: {
-  readonly connectorType: ConnectorType;
-  readonly grants: readonly UserPermissionGrantResponse[];
-  readonly metadata: FirewallPermissionDetailMetadata;
-}): readonly string[] {
-  const resolved = resolveFirewallMetadataPolicies(
-    permissionGrantsToFirewallPolicies(grants),
-    [metadata],
-  )?.[connectorType];
-  return metadata.permissions
-    .filter((permission) => {
-      return resolved?.policies[permission.name] === "allow";
-    })
-    .map((permission) => {
-      return permission.name;
-    });
 }
 
 function ConnectorAccessSearch({
@@ -137,99 +110,11 @@ function ConnectorAccessSearch({
   );
 }
 
-function PermissionChips({
-  connectorType,
-  grants,
-  metadata,
-}: {
-  readonly connectorType: ConnectorType;
-  readonly grants: readonly UserPermissionGrantResponse[];
-  readonly metadata: FirewallPermissionDetailMetadata;
-}) {
-  const allowed = allowedPermissionNames({ connectorType, grants, metadata });
-  const visible = allowed.slice(0, VISIBLE_PERMISSION_CHIPS);
-  const remaining = allowed.length - visible.length;
-
-  if (allowed.length === 0) {
-    return (
-      <span className="text-xs text-muted-foreground">
-        No allow permissions
-      </span>
-    );
-  }
-
-  return (
-    <div className="flex min-w-0 flex-wrap items-center gap-1.5">
-      {visible.map((name) => {
-        return (
-          <span
-            key={name}
-            className="max-w-[180px] truncate rounded-md bg-muted px-2 py-1 text-xs text-foreground"
-            title={name}
-          >
-            {name}
-          </span>
-        );
-      })}
-      {remaining > 0 && (
-        <span className="rounded-md bg-muted px-2 py-1 text-xs text-muted-foreground">
-          +{remaining} more
-        </span>
-      )}
-    </div>
-  );
-}
-
-function AuthorizedPermissionsPreview({
-  connectorType,
-  grants,
-  metadata,
-  metadataLoading,
-  metadataError,
-}: {
-  readonly connectorType: ConnectorType;
-  readonly grants: readonly UserPermissionGrantResponse[];
-  readonly metadata: FirewallPermissionDetailMetadata | null;
-  readonly metadataLoading: boolean;
-  readonly metadataError: boolean;
-}) {
-  if (metadataLoading) {
-    return (
-      <span className="text-xs text-muted-foreground">
-        Loading permissions...
-      </span>
-    );
-  }
-  if (metadataError) {
-    return (
-      <span className="text-xs text-destructive">
-        Failed to load permissions
-      </span>
-    );
-  }
-  if (!metadata) {
-    return (
-      <span className="text-xs text-muted-foreground">
-        No configurable permissions
-      </span>
-    );
-  }
-  return (
-    <PermissionChips
-      connectorType={connectorType}
-      grants={grants}
-      metadata={metadata}
-    />
-  );
-}
-
 function AgentAccessRow({
   row,
   connectorType,
   connectorLabel,
   metadata,
-  metadataLoading,
-  metadataError,
   saving,
   onToggle,
   onManage,
@@ -238,8 +123,6 @@ function AgentAccessRow({
   readonly connectorType: ConnectorType;
   readonly connectorLabel: string;
   readonly metadata: FirewallPermissionDetailMetadata | null;
-  readonly metadataLoading: boolean;
-  readonly metadataError: boolean;
   readonly saving: boolean;
   readonly onToggle: (
     row: ConnectorAgentAccessRow,
@@ -248,61 +131,44 @@ function AgentAccessRow({
   readonly onManage: (row: ConnectorAgentAccessRow) => void;
 }) {
   const name = agentName(row.agent);
-  const canManage = row.authorized && metadata !== null;
-  const showPermissions =
-    row.authorized && hasFirewallMetadataPermissions(connectorType);
+  const canManage =
+    row.authorized &&
+    metadata !== null &&
+    hasFirewallMetadataPermissions(connectorType);
 
   return (
-    <div className="flex flex-col gap-3 px-1 py-4">
-      <div className="flex items-center gap-2">
-        <AvatarFromUrl
-          avatarUrl={row.agent.avatarUrl}
-          alt={name}
-          className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
-        />
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-sm font-medium text-foreground">{name}</p>
-        </div>
-        <p className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
-          {row.authorized ? "Authorized" : "Not authorized"}
-        </p>
-        <LoadingSwitch
-          checked={row.authorized}
-          loading={saving}
-          onCheckedChange={(checked) => {
-            onToggle(row, checked);
-          }}
-          ariaLabel={`${row.authorized ? "Revoke" : "Authorize"} ${connectorLabel} access for ${name}`}
-        />
+    <div className="flex items-center gap-2 px-1 py-4">
+      <AvatarFromUrl
+        avatarUrl={row.agent.avatarUrl}
+        alt={name}
+        className="h-8 w-8 shrink-0 rounded-lg object-cover object-top"
+      />
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-sm font-medium text-foreground">{name}</p>
       </div>
-
-      {showPermissions && (
-        <div className="ml-12 flex items-center justify-between gap-3">
-          <div className="min-w-0 flex-1">
-            <AuthorizedPermissionsPreview
-              connectorType={connectorType}
-              grants={row.grants}
-              metadata={metadata}
-              metadataLoading={metadataLoading}
-              metadataError={metadataError}
-            />
-          </div>
-          {canManage && (
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-8 shrink-0 gap-1.5"
-              onClick={() => {
-                onManage(row);
-              }}
-            >
-              <IconAdjustmentsHorizontal size={14} stroke={1.5} />
-              Manage
-            </Button>
-          )}
-        </div>
+      <p className="shrink-0 whitespace-nowrap text-xs text-muted-foreground">
+        {row.authorized ? "Authorized" : "Not authorized"}
+      </p>
+      {canManage && (
+        <button
+          type="button"
+          onClick={() => {
+            onManage(row);
+          }}
+          aria-label={`Manage ${connectorLabel} permissions for ${name}`}
+          className="flex h-8 w-8 shrink-0 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+        >
+          <IconAdjustmentsHorizontal size={16} stroke={1.5} />
+        </button>
       )}
+      <LoadingSwitch
+        checked={row.authorized}
+        loading={saving}
+        onCheckedChange={(checked) => {
+          onToggle(row, checked);
+        }}
+        ariaLabel={`${row.authorized ? "Revoke" : "Authorize"} ${connectorLabel} access for ${name}`}
+      />
     </div>
   );
 }
@@ -312,8 +178,6 @@ function AgentAccessList({
   connectorType,
   connectorLabel,
   metadata,
-  metadataLoading,
-  metadataError,
   savingAgentId,
   search,
   onToggle,
@@ -323,8 +187,6 @@ function AgentAccessList({
   readonly connectorType: ConnectorType;
   readonly connectorLabel: string;
   readonly metadata: FirewallPermissionDetailMetadata | null;
-  readonly metadataLoading: boolean;
-  readonly metadataError: boolean;
   readonly savingAgentId: string | null;
   readonly search: string;
   readonly onToggle: (
@@ -353,8 +215,6 @@ function AgentAccessList({
             connectorType={connectorType}
             connectorLabel={connectorLabel}
             metadata={metadata}
-            metadataLoading={metadataLoading}
-            metadataError={metadataError}
             saving={savingAgentId === row.agent.id}
             onToggle={onToggle}
             onManage={onManage}
@@ -381,8 +241,6 @@ function ConnectorAccessDialog({
   rows,
   rowsLoaded,
   metadata,
-  metadataLoading,
-  metadataError,
   savingAgentId,
   search,
   onSearchChange,
@@ -395,8 +253,6 @@ function ConnectorAccessDialog({
   readonly rows: readonly ConnectorAgentAccessRow[];
   readonly rowsLoaded: boolean;
   readonly metadata: FirewallPermissionDetailMetadata | null;
-  readonly metadataLoading: boolean;
-  readonly metadataError: boolean;
   readonly savingAgentId: string | null;
   readonly search: string;
   readonly onSearchChange: (value: string) => void;
@@ -447,8 +303,6 @@ function ConnectorAccessDialog({
               connectorType={connectorType}
               connectorLabel={connectorLabel}
               metadata={metadata}
-              metadataLoading={metadataLoading}
-              metadataError={metadataError}
               savingAgentId={savingAgentId}
               search={search}
               onToggle={onToggle}
@@ -572,8 +426,6 @@ export function ConnectorAccessManagementDialog({
         rows={filterRows(rows, search)}
         rowsLoaded={rowsLoadable.state === "hasData"}
         metadata={metadata}
-        metadataLoading={metadataLoadable.state === "loading"}
-        metadataError={metadataLoadable.state === "hasError"}
         savingAgentId={savingAgentId}
         search={search}
         onSearchChange={setSearch}
