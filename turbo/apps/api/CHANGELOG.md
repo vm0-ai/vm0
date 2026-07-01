@@ -1,5 +1,29 @@
 # Changelog
 
+## [1.198.0](https://github.com/vm0-ai/vm0/compare/api-v1.197.0...api-v1.198.0) (2026-07-01)
+
+
+### Features
+
+* make connector catalog api generally available ([#19560](https://github.com/vm0-ai/vm0/issues/19560)) ([797a756](https://github.com/vm0-ai/vm0/commit/797a756f36d59db010b3bc7171a8bee590bc115a))
+* post teams run callbacks ([#19553](https://github.com/vm0-ai/vm0/issues/19553)) ([c29c946](https://github.com/vm0-ai/vm0/commit/c29c946eeae86befb451538c750b1e8074e1b5ea))
+
+
+### Bug Fixes
+
+* add telegram callback rate-limit retry ([#19559](https://github.com/vm0-ai/vm0/issues/19559)) ([d3b3ccc](https://github.com/vm0-ai/vm0/commit/d3b3ccc708107d1bf74d1838e5c20736a4440bc8))
+* clean up run launch orphans ([#19534](https://github.com/vm0-ai/vm0/issues/19534)) ([e405c2b](https://github.com/vm0-ai/vm0/commit/e405c2b20132bcebea9f4e2a2eb636639895783e))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.133.2
+    * @vm0/connectors bumped to 1.120.0
+    * @vm0/core bumped to 8.381.0
+    * @vm0/db bumped to 1.79.8
+
 ## [1.197.0](https://github.com/vm0-ai/vm0/compare/api-v1.196.1...api-v1.197.0) (2026-07-01)
 
 

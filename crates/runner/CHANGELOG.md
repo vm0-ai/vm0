@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.131.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.5...runner-rs-v0.131.6) (2026-07-01)
+
+
+### Refactoring
+
+* centralize usage reporting context ([#19555](https://github.com/vm0-ai/vm0/issues/19555)) ([4aee069](https://github.com/vm0-ai/vm0/commit/4aee069753fa9e57129ac2e1250e7a60c4cf3013))
+
 ## [0.131.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.4...runner-rs-v0.131.5) (2026-07-01)
 
 

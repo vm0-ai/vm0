@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.381.0](https://github.com/vm0-ai/vm0/compare/core-v8.380.2...core-v8.381.0) (2026-07-01)
+
+
+### Features
+
+* make connector catalog api generally available ([#19560](https://github.com/vm0-ai/vm0/issues/19560)) ([797a756](https://github.com/vm0-ai/vm0/commit/797a756f36d59db010b3bc7171a8bee590bc115a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.133.2
+    * @vm0/connectors bumped to 1.120.0
+
 ## [8.380.2](https://github.com/vm0-ai/vm0/compare/core-v8.380.1...core-v8.380.2) (2026-07-01)
 
 

@@ -1,5 +1,18 @@
 # Changelog
 
+## [0.43.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.4...guest-agent-v0.43.5) (2026-07-01)
+
+
+### Bug Fixes
+
+* align session history verification cap ([#19561](https://github.com/vm0-ai/vm0/issues/19561)) ([657cc42](https://github.com/vm0-ai/vm0/commit/657cc422cfe1e929e921a82e7bbd7ceec0d7861d))
+
+
+### Refactoring
+
+* reuse codex test setup helpers ([#19556](https://github.com/vm0-ai/vm0/issues/19556)) ([f7cd596](https://github.com/vm0-ai/vm0/commit/f7cd596258dadd281c035314fbddf4d3844ada93))
+* use guest runtime for checkpoint metadata ([#19550](https://github.com/vm0-ai/vm0/issues/19550)) ([18128ab](https://github.com/vm0-ai/vm0/commit/18128ab52ff14fd9b5545304b4d142b2eb2206f8))
+
 ## [0.43.4](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.3...guest-agent-v0.43.4) (2026-07-01)
 
 
