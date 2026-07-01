@@ -9,7 +9,6 @@ import {
   cliAuthTokenContract,
 } from "@vm0/api-contracts/contracts/cli-auth";
 import {
-  cliAuthTestApproveContract,
   cliAuthTestCodexOauthContract,
   cliAuthTestConnectorContract,
   cliAuthTestEnableConnectorContract,
@@ -510,19 +509,6 @@ export function createAuthDeviceApiActions(context: TestContext) {
         accessToken: response.body.access_token,
         userId: response.body.user_id,
       };
-    },
-
-    async requestTestApprove(
-      query: TestEmailQuery,
-      body: { readonly device_code?: string },
-      statuses: readonly (200 | 400 | 404)[],
-    ) {
-      const client = authDeviceApp(context)(cliAuthTestApproveContract);
-      return await accept(client.approve({ query, body }), statuses);
-    },
-
-    async requestTestApproveRaw(rawBody: string) {
-      return await postRawJson("/api/cli/auth/test-approve", rawBody);
     },
 
     async requestTestConnector(
