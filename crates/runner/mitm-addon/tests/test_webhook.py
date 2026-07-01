@@ -30,6 +30,13 @@ class _QueuedUsageExecutor:
         return future
 
 
+def _release_queued_pending_reports(executor: _QueuedUsageExecutor) -> None:
+    for _, args, _ in executor.submissions:
+        pending_report = args[5]
+        assert isinstance(pending_report, usage.counters.PendingReportLease)
+        pending_report.release()
+
+
 def _assert_body_free_webhook_entry(
     entry: dict,
     *,
@@ -407,7 +414,7 @@ class TestUsageWebhookDelivery:
                 )
             assert len(executor.submissions) == 1
         finally:
-            usage.counters.decrement_pending_reports()
+            _release_queued_pending_reports(executor)
             usage.webhook.reset_delivery_capacity_for_tests()
 
         [entry] = read_jsonl_entries_after_flush(proxy_log)
