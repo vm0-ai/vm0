@@ -1247,6 +1247,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
               content: [{ type: "text", text: "DB-complete streamed answer" }],
             },
           },
+          { type: "system", sequenceNumber: 1 },
         ],
       },
       firstHeaders,
@@ -1262,7 +1263,7 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     });
 
     await completeChatRunOk(first.runId, firstHeaders, {
-      lastEventSequence: 0,
+      lastEventSequence: 1,
     });
 
     const messages = await waitForThreadMessages(

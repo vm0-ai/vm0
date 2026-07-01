@@ -1071,7 +1071,9 @@ async function handleCompletedChatCallback(args: {
       "api_dispatch_pre_create_zero_chat_callback_lookup_existing_assistant",
       "nested",
       () => {
-        return latestEventBackedAssistantMessage(args.db, args.runId);
+        return latestEventBackedAssistantMessage(args.db, args.runId, {
+          maxSequenceNumber: args.run.lastEventSequence ?? undefined,
+        });
       },
     );
     args.signal.throwIfAborted();
