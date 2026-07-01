@@ -1,5 +1,20 @@
 # Changelog
 
+## [8.381.3](https://github.com/vm0-ai/vm0/compare/core-v8.381.2...core-v8.381.3) (2026-07-01)
+
+
+### Bug Fixes
+
+* align memory page layout ([#19635](https://github.com/vm0-ai/vm0/issues/19635)) ([fe7498a](https://github.com/vm0-ai/vm0/commit/fe7498a91a760509ca5e7031f594915ddbb5c593))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.136.0
+    * @vm0/connectors bumped to 1.120.1
+
 ## [8.381.2](https://github.com/vm0-ai/vm0/compare/core-v8.381.1...core-v8.381.2) (2026-07-01)
 
 
