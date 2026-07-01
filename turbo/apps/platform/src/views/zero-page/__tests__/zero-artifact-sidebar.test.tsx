@@ -1,6 +1,7 @@
 import { fireEvent, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { describe, expect, it } from "vitest";
 import JSZip from "jszip";
 
@@ -44,11 +45,19 @@ const SLIDE_REL_TYPE = `${OFFICE_RELATIONSHIPS_NS}/slide`;
 
 function setupChatThread({
   artifactFiles,
+  attachFiles,
   content,
   featureSwitches,
   path = THREAD_PATH,
 }: {
   artifactFiles?: ChatThreadArtifactFile[];
+  attachFiles?: {
+    id: string;
+    filename: string;
+    contentType: string;
+    size: number;
+    url: string;
+  }[];
   content: string;
   featureSwitches?: Parameters<typeof detachedSetupPage>[0]["featureSwitches"];
   path?: string;
@@ -74,6 +83,7 @@ function setupChatThread({
       content: "Show me the artifact",
       runId: "run-artifact",
       createdAt: "2026-03-10T00:00:00Z",
+      ...(attachFiles ? { attachFiles } : {}),
     },
     {
       id: "msg-artifact-assistant",
@@ -678,6 +688,270 @@ describe("zero artifact sidebar", () => {
     await waitFor(() => {
       expect(screen.getByLabelText("Enter fullscreen")).toBeInTheDocument();
     });
+  });
+
+  it("navigates sidebar image artifacts within the current run", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-image-navigation/first.png";
+    const notesUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-image-navigation/notes.md";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-image-navigation/second.png";
+    // A generated image artifact in the same run that was NOT attached to the
+    // message. It must be excluded from message-scoped navigation.
+    const generatedArtifactUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-image-navigation/generated.png";
+    setupChatThread({
+      artifactFiles: [
+        artifactFile(firstImageUrl, {
+          id: "artifact-sidebar-first-image",
+          filename: "first.png",
+          contentType: "image/png",
+          size: 128,
+        }),
+        artifactFile(notesUrl, {
+          id: "artifact-sidebar-notes",
+          filename: "notes.md",
+          contentType: "text/markdown",
+          size: 64,
+        }),
+        artifactFile(secondImageUrl, {
+          id: "artifact-sidebar-second-image",
+          filename: "second.png",
+          contentType: "image/png",
+          size: 256,
+        }),
+        artifactFile(generatedArtifactUrl, {
+          id: "artifact-sidebar-generated-image",
+          filename: "generated.png",
+          contentType: "image/png",
+          size: 512,
+        }),
+      ],
+      attachFiles: [
+        {
+          id: "artifact-sidebar-first-image",
+          filename: "first.png",
+          contentType: "image/png",
+          size: 128,
+          url: firstImageUrl,
+        },
+        {
+          id: "artifact-sidebar-notes",
+          filename: "notes.md",
+          contentType: "text/markdown",
+          size: 64,
+          url: notesUrl,
+        },
+        {
+          id: "artifact-sidebar-second-image",
+          filename: "second.png",
+          contentType: "image/png",
+          size: 256,
+          url: secondImageUrl,
+        },
+      ],
+      content: "Image artifacts are ready.",
+      featureSwitches: {
+        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
+      },
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(firstImageUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+    expect(screen.queryByLabelText("Previous image artifact")).toBeNull();
+    expect(screen.getByLabelText("Next image artifact")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+      "alt",
+      "first.png",
+    );
+
+    await user.click(screen.getByLabelText("Next image artifact"));
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "second.png",
+      );
+    });
+    expect(
+      screen.getByLabelText("Previous image artifact"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Next image artifact")).toBeNull();
+
+    // While an editable control is focused (e.g. the chat composer), arrow keys
+    // keep moving the caret instead of navigating images in the non-fullscreen
+    // sidebar.
+    const editable = document.createElement("input");
+    document.body.appendChild(editable);
+    editable.focus();
+    fireEvent.keyDown(editable, { key: "ArrowLeft" });
+    expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+      "alt",
+      "second.png",
+    );
+
+    // With focus released, arrow keys navigate again.
+    editable.remove();
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+  });
+
+  it("keeps the sidebar fullscreen state while navigating images", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-fullscreen-navigation/first.png";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-fullscreen-navigation/second.png";
+    setupChatThread({
+      artifactFiles: [
+        artifactFile(firstImageUrl, {
+          id: "artifact-sidebar-fs-first-image",
+          filename: "first.png",
+          contentType: "image/png",
+          size: 128,
+        }),
+        artifactFile(secondImageUrl, {
+          id: "artifact-sidebar-fs-second-image",
+          filename: "second.png",
+          contentType: "image/png",
+          size: 256,
+        }),
+      ],
+      attachFiles: [
+        {
+          id: "artifact-sidebar-fs-first-image",
+          filename: "first.png",
+          contentType: "image/png",
+          size: 128,
+          url: firstImageUrl,
+        },
+        {
+          id: "artifact-sidebar-fs-second-image",
+          filename: "second.png",
+          contentType: "image/png",
+          size: 256,
+          url: secondImageUrl,
+        },
+      ],
+      content: "Image artifacts are ready.",
+      featureSwitches: {
+        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
+      },
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(firstImageUrl)}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+
+    await user.click(screen.getByLabelText("Enter fullscreen"));
+    expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+
+    // In fullscreen the sidebar is immersive: arrow keys navigate even when a
+    // control is focused, and fullscreen is preserved.
+    const shareButton = screen.getByLabelText("Share artifact");
+    shareButton.focus();
+    fireEvent.keyDown(shareButton, { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "second.png",
+      );
+    });
+    // Navigating between images must not collapse fullscreen.
+    expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Enter fullscreen")).toBeNull();
+  });
+
+  it("lets the lightbox modal own arrow keys while the sidebar stays put", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-modal-coexist/first.png";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/sidebar-modal-coexist/second.png";
+    setupChatThread({
+      artifactFiles: [
+        artifactFile(firstImageUrl, {
+          id: "artifact-coexist-first-image",
+          filename: "first.png",
+          contentType: "image/png",
+          size: 128,
+        }),
+        artifactFile(secondImageUrl, {
+          id: "artifact-coexist-second-image",
+          filename: "second.png",
+          contentType: "image/png",
+          size: 256,
+        }),
+      ],
+      attachFiles: [
+        {
+          id: "artifact-coexist-first-image",
+          filename: "first.png",
+          contentType: "image/png",
+          size: 128,
+          url: firstImageUrl,
+        },
+        {
+          id: "artifact-coexist-second-image",
+          filename: "second.png",
+          contentType: "image/png",
+          size: 256,
+          url: secondImageUrl,
+        },
+      ],
+      content: "Image artifacts are ready.",
+      featureSwitches: {
+        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
+      },
+      path: `${THREAD_PATH}?artifact=${encodeURIComponent(firstImageUrl)}`,
+    });
+
+    // The sidebar shows the first image.
+    await waitFor(() => {
+      expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+
+    // Open the lightbox modal (on the first image) from the chat attachment.
+    await user.click(screen.getByLabelText("Preview first.png"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+
+    // Arrow keys drive the modal; the underlying sidebar must not also advance.
+    fireEvent.keyDown(document, { key: "ArrowRight" });
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "second.png",
+      );
+    });
+    expect(screen.getByTestId("artifact-sidebar-body-image")).toHaveAttribute(
+      "alt",
+      "first.png",
+    );
   });
 
   it("hides the sidebar for unsupported artifact deep links", async () => {

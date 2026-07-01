@@ -3,6 +3,8 @@ import {
   IconArrowLeft,
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
+  IconChevronLeft,
+  IconChevronRight,
   IconDots,
   IconEye,
   IconExternalLink,
@@ -39,6 +41,7 @@ import {
   htmlDomEditPendingUrl$,
   htmlDomEditPublishingUrl$,
   markHtmlDomEditPending$,
+  navigateArtifactSidebarImage$,
   openArtifactHtmlEditMode$,
   openPresentationEditor$,
   publishHtmlDomEditPreviewDraft$,
@@ -50,6 +53,7 @@ import {
   publicAttachmentUrl,
   TextPreviewLoader,
 } from "./zero-attachment-chips.tsx";
+import { lightboxDialogVisible$ } from "../../signals/zero-page/zero-attachment-chips.ts";
 import { Markdown } from "../components/markdown.tsx";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, jsonParseOr, Reason } from "../../signals/utils.ts";
@@ -72,6 +76,11 @@ import {
   artifactFallbackSubtitle,
   artifactTitleSubtitle,
 } from "./zero-artifact-display.ts";
+import {
+  currentMessageImageArtifactNavigation,
+  type ImageArtifactNavigationItem,
+  shouldIgnoreImageArtifactNavigationKey,
+} from "./zero-artifact-image-navigation.ts";
 import { AutoFocusedArtifactIframe } from "./auto-focused-artifact-iframe.tsx";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
@@ -128,9 +137,15 @@ type ArtifactSidebarItem = {
   file: ChatThreadArtifactFile;
 };
 
+type ArtifactImageNavigationActions = {
+  readonly onNext?: () => void;
+  readonly onPrevious?: () => void;
+};
+
 type ArtifactSidebarContentProps = {
   agentId?: string | null;
   artifactRef: ArtifactRef;
+  imageNavigation?: ArtifactImageNavigationActions;
   item?: ArtifactSidebarItem;
   onBack?: () => void;
   onClose?: () => void;
@@ -148,16 +163,48 @@ function ArtifactSidebarWithThreadData({
 }: ArtifactSidebarProps & { thread: ChatThreadSignals }) {
   const loadable = useLastLoadable(thread.artifacts$);
   const agentId = useLastResolved(thread.agentId$);
+  const messageGroups = useLastResolved(thread.groupedChatMessages$);
+  const features = useLastResolved(featureSwitch$);
+  const imageNavigationEnabled = Boolean(
+    features?.[FeatureSwitchKey.ImageArtifactKeyboardNavigation],
+  );
+  const navigateArtifactSidebarImage = useSet(navigateArtifactSidebarImage$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const item =
     artifactRef.source === "url" && loadable.state === "hasData"
       ? findArtifactItemForUrl(loadable.data, artifactRef.url)
       : undefined;
+  const imageNavigation =
+    imageNavigationEnabled &&
+    artifactRef.source === "url" &&
+    loadable.state === "hasData"
+      ? currentMessageImageArtifactNavigation(
+          loadable.data,
+          (messageGroups ?? []).flatMap((group) => {
+            return group.messages;
+          }),
+          artifactRef.url,
+        )
+      : {};
+  const imageNavigationAction = (
+    navigationItem: ImageArtifactNavigationItem | undefined,
+  ) => {
+    if (!navigationItem) {
+      return undefined;
+    }
+    return () => {
+      navigateArtifactSidebarImage(navigationItem.file.url);
+    };
+  };
 
   return (
     <ArtifactSidebarContent
       agentId={agentId}
       artifactRef={artifactRef}
+      imageNavigation={{
+        onNext: imageNavigationAction(imageNavigation.next),
+        onPrevious: imageNavigationAction(imageNavigation.previous),
+      }}
       item={item}
       onBack={onBack}
       onClose={onClose}
@@ -214,6 +261,7 @@ function isHtmlEditFeatureEnabled(
 function ArtifactSidebarContent({
   agentId,
   artifactRef,
+  imageNavigation,
   item,
   onBack,
   onClose,
@@ -311,14 +359,12 @@ function ArtifactSidebarContent({
         onEditHtml={editHtml}
         onExitHtmlEdit={exitHtmlEdit}
         onBack={onBack}
-        onToggleFullscreen={() => {
-          resetArtifactSidebarImageZoom({
-            display,
-            fullscreen,
-            resetZoomableImageCanvasZoom,
-          });
-          toggleFullscreen();
-        }}
+        onToggleFullscreen={artifactSidebarFullscreenToggleAction({
+          display,
+          fullscreen,
+          resetZoomableImageCanvasZoom,
+          toggleFullscreen,
+        })}
         onClose={closePreview}
       />
       <div className="min-h-0 flex-1 overflow-hidden bg-background">
@@ -330,6 +376,7 @@ function ArtifactSidebarContent({
           htmlEditStatus={htmlEditState.status}
           htmlPreviewHtml={htmlEditState.previewHtml}
           htmlCommentMode={htmlCommentMode}
+          imageNavigation={imageNavigation}
           onCloseHtmlCommentMode={closeHtmlCommentMode}
           onApplyHtmlEditDraft={htmlEditState.apply}
           onApplyHtmlStyleEdits={applyHtmlStyleEdits}
@@ -339,6 +386,62 @@ function ArtifactSidebarContent({
         />
       </div>
     </ArtifactSidebarSurface>
+  );
+}
+
+function ArtifactSidebarImageNavigationKeydown({
+  fullscreen,
+  modalOpen,
+  navigation,
+}: {
+  fullscreen: boolean;
+  modalOpen: boolean;
+  navigation?: ArtifactImageNavigationActions;
+}) {
+  let cleanup: (() => void) | null = null;
+
+  return (
+    <span
+      ref={(node) => {
+        cleanup?.();
+        cleanup = null;
+        if (!node || (!navigation?.onPrevious && !navigation?.onNext)) {
+          return;
+        }
+
+        const onKeyDown = (event: KeyboardEvent) => {
+          // When the lightbox modal is open it owns arrow-key navigation; the
+          // sidebar must not also react.
+          if (modalOpen) {
+            return;
+          }
+          // Focus is only considered in the non-fullscreen sidebar, where the
+          // chat composer and other controls remain reachable. In fullscreen
+          // the sidebar is immersive, so arrow keys always navigate.
+          if (
+            shouldIgnoreImageArtifactNavigationKey(event, {
+              considerFocus: !fullscreen,
+            })
+          ) {
+            return;
+          }
+          if (event.key === "ArrowLeft" && navigation.onPrevious) {
+            event.preventDefault();
+            navigation.onPrevious();
+          }
+          if (event.key === "ArrowRight" && navigation.onNext) {
+            event.preventDefault();
+            navigation.onNext();
+          }
+        };
+
+        document.addEventListener("keydown", onKeyDown);
+        cleanup = () => {
+          document.removeEventListener("keydown", onKeyDown);
+        };
+      }}
+      hidden
+    />
   );
 }
 
@@ -478,6 +581,27 @@ function resetArtifactSidebarImageZoom({
       fullscreen ? "sidebar" : "fullscreen",
     ),
   );
+}
+
+function artifactSidebarFullscreenToggleAction({
+  display,
+  fullscreen,
+  resetZoomableImageCanvasZoom,
+  toggleFullscreen,
+}: {
+  display: ArtifactDisplay;
+  fullscreen: boolean;
+  resetZoomableImageCanvasZoom: (key: string) => void;
+  toggleFullscreen: () => void;
+}) {
+  return () => {
+    resetArtifactSidebarImageZoom({
+      display,
+      fullscreen,
+      resetZoomableImageCanvasZoom,
+    });
+    toggleFullscreen();
+  };
 }
 
 function ArtifactSidebarSurface({
@@ -930,6 +1054,7 @@ function ArtifactBody({
   htmlEditStatus,
   htmlPreviewHtml,
   htmlCommentMode,
+  imageNavigation,
   onCloseHtmlCommentMode,
   onApplyHtmlEditDraft,
   onApplyHtmlStyleEdits,
@@ -944,6 +1069,7 @@ function ArtifactBody({
   htmlEditStatus?: "working";
   htmlPreviewHtml?: string;
   htmlCommentMode: boolean;
+  imageNavigation?: ArtifactImageNavigationActions;
   onCloseHtmlCommentMode: () => void;
   onApplyHtmlEditDraft?: (draft: HtmlDomEditDraft) => Promise<void>;
   onApplyHtmlStyleEdits?: (html: string) => Promise<void>;
@@ -961,7 +1087,13 @@ function ArtifactBody({
     return <ArtifactCsvBody url={url} signal={pageSignal} />;
   }
   if (kind === "image") {
-    return <ArtifactImageBody url={url} filename={filename} />;
+    return (
+      <ArtifactImageBody
+        imageNavigation={imageNavigation}
+        url={url}
+        filename={filename}
+      />
+    );
   }
   if (kind === "video") {
     return <ArtifactVideoBody url={url} filename={filename} />;
@@ -1231,34 +1363,84 @@ function ArtifactCsvBody({
 }
 
 function ArtifactImageBody({
+  imageNavigation,
   url,
   filename,
 }: {
+  imageNavigation?: ArtifactImageNavigationActions;
   url: string;
   filename: string;
 }) {
   const fullscreen = useGet(artifactFullscreen$);
+  const modalOpen = useGet(lightboxDialogVisible$);
 
   return (
     <ArtifactStageShell flush scrollable={false}>
       <ArtifactStageCard fillHeight>
-        <ZoomableArtifactImageCanvas
-          src={publicAttachmentUrl(url)}
-          alt={filename}
-          zoomKey={zoomableArtifactImageKey(
-            "artifact-sidebar",
-            url,
-            fullscreen ? "fullscreen" : "sidebar",
-          )}
-          imageTestId="artifact-sidebar-body-image"
-          contentClassName="p-6"
-        >
-          {(controls) => {
-            return <ArtifactImageZoomControls controls={controls} />;
-          }}
-        </ZoomableArtifactImageCanvas>
+        <div className="relative h-full min-h-0">
+          <ArtifactSidebarImageNavigationKeydown
+            fullscreen={fullscreen}
+            modalOpen={modalOpen}
+            navigation={imageNavigation}
+          />
+          <ZoomableArtifactImageCanvas
+            src={publicAttachmentUrl(url)}
+            alt={filename}
+            zoomKey={zoomableArtifactImageKey(
+              "artifact-sidebar",
+              url,
+              fullscreen ? "fullscreen" : "sidebar",
+            )}
+            imageTestId="artifact-sidebar-body-image"
+            contentClassName="p-6"
+          >
+            {(controls) => {
+              return <ArtifactImageZoomControls controls={controls} />;
+            }}
+          </ZoomableArtifactImageCanvas>
+          <ArtifactImageNavigationControls navigation={imageNavigation} />
+        </div>
       </ArtifactStageCard>
     </ArtifactStageShell>
+  );
+}
+
+function ArtifactImageNavigationControls({
+  navigation,
+}: {
+  navigation?: ArtifactImageNavigationActions;
+}) {
+  if (!navigation?.onPrevious && !navigation?.onNext) {
+    return null;
+  }
+
+  return (
+    <>
+      {navigation.onPrevious && (
+        <button
+          type="button"
+          onClick={navigation.onPrevious}
+          aria-label="Previous image artifact"
+          title="Previous image artifact"
+          data-testid="artifact-sidebar-previous-image"
+          className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
+        >
+          <IconChevronLeft size={22} stroke={1.8} />
+        </button>
+      )}
+      {navigation.onNext && (
+        <button
+          type="button"
+          onClick={navigation.onNext}
+          aria-label="Next image artifact"
+          title="Next image artifact"
+          data-testid="artifact-sidebar-next-image"
+          className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
+        >
+          <IconChevronRight size={22} stroke={1.8} />
+        </button>
+      )}
+    </>
   );
 }
 
