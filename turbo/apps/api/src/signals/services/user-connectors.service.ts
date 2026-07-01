@@ -15,7 +15,7 @@ type UpdateUserConnectorsResult =
     }
   | { readonly status: "agentNotFound" };
 
-export type UserConnectorUpdateOperation = "replace" | "add" | "remove";
+type UserConnectorUpdateOperation = "replace" | "add" | "remove";
 
 type UpdateUserCustomConnectorsResult =
   | {
@@ -28,7 +28,7 @@ type UpdateUserCustomConnectorsResult =
       readonly missingIds: readonly string[];
     };
 
-export type UserCustomConnectorUpdateOperation = "replace" | "add" | "remove";
+type UserCustomConnectorUpdateOperation = "replace" | "add" | "remove";
 
 type AddUserCustomConnectorResult =
   | { readonly status: "added" }

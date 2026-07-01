@@ -129,7 +129,7 @@ function ManualGrantForm({
   type: ConnectorType;
   connectorLabel: string;
   manualGrantMethod: ConnectorStatusAuthMethodDetail;
-  onSuccess: () => void;
+  onSuccess: () => void | Promise<void>;
 }) {
   const submit = useSet(submitManualGrant$);
   const setFormValue = useSet(setManualGrantFormValue$);
@@ -169,8 +169,8 @@ function ManualGrantForm({
             if (!connected) {
               return;
             }
+            await onSuccess();
             clearForm(type);
-            onSuccess();
           })(),
         ),
         () => {
@@ -230,7 +230,7 @@ function ManualGrantDialog({
   manualGrantMethod: ConnectorStatusAuthMethodDetail | null;
   open: boolean;
   onOpenChange: (open: boolean) => void;
-  onConnected?: () => void;
+  onConnected?: () => void | Promise<void>;
 }) {
   if (!manualGrantMethod) {
     return null;
@@ -248,9 +248,9 @@ function ManualGrantDialog({
           type={type}
           connectorLabel={connectorLabel}
           manualGrantMethod={manualGrantMethod}
-          onSuccess={() => {
+          onSuccess={async () => {
+            await onConnected?.();
             onOpenChange(false);
-            onConnected?.();
           }}
         />
       </DialogContent>
@@ -345,13 +345,7 @@ function DirectedConnectDialogs({
         manualGrantMethod={manualGrantMethod}
         open={manualGrantDialogOpen}
         onOpenChange={setManualGrantDialogOpen}
-        onConnected={
-          agentId
-            ? () => {
-                detach(runPostConnectActions(), Reason.DomCallback);
-              }
-            : undefined
-        }
+        onConnected={agentId ? runPostConnectActions : undefined}
       />
       <DirectedConnectModal
         open={selectedConnectorType === connectorType}

@@ -1,19 +1,25 @@
-import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroConnectorManualGrantContract,
+  zeroConnectorOauthStartContract,
+} from "@vm0/api-contracts/contracts/zero-connectors";
 import {
   zeroConnectorCatalogContract,
   type PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
-import { screen, waitFor } from "@testing-library/react";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
+import { screen, waitFor, within } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
 import {
   click,
   detachedSetupPage,
+  fill,
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+const AGENT_ID = "00000000-0000-0000-0000-000000000001";
 
 function mockPublicConnectorStatus(
   connector: PublicConnectorCatalogStatusItem,
@@ -102,6 +108,124 @@ describe("directed connector connect page", () => {
       expect(authWindow.location.href).toBe(
         "https://oauth.test/github/authorize",
       );
+    });
+  });
+
+  it("waits for manual grant agent authorization before closing", async () => {
+    mockPublicConnectorStatus({
+      connectorRef: "axiom",
+      label: "Public Axiom",
+      description: "Public Axiom description",
+      category: "data-automation-infrastructure",
+      generation: [],
+      tags: [],
+      authMethods: [
+        {
+          id: "api-token",
+          label: "Public API Token",
+          description: null,
+          grantKind: "manual",
+          manualFields: [
+            {
+              id: "apiToken",
+              label: "Public API token",
+              required: true,
+              placeholder: "public-xaat",
+              inputType: "password",
+            },
+          ],
+          startOptions: [],
+        },
+      ],
+      permissionSummary: {
+        hasPermissions: false,
+        permissionCount: 0,
+        hasCategories: false,
+        hasDefaultPolicyOverrides: false,
+      },
+      connection: null,
+      connected: false,
+      connectionStatus: "not-connected",
+      scopeMismatch: false,
+      authMethodSupportsRefresh: false,
+      tokenExpiresAt: null,
+      singleAuthCodeAuthMethodId: null,
+      connectNotice: null,
+    });
+    let submittedValues: Record<string, string> | null = null;
+    context.mocks.api(
+      zeroConnectorManualGrantContract.connect,
+      ({ body, params, respond }) => {
+        expect(params.type).toBe("axiom");
+        submittedValues = body.values;
+        return respond(200, {
+          id: crypto.randomUUID(),
+          type: "axiom",
+          authMethod: body.authMethod,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00Z",
+          updatedAt: "2026-01-01T00:00:00Z",
+        });
+      },
+    );
+    const authorizationResponse = Promise.withResolvers<void>();
+    let authorizedAgentId: string | null = null;
+    context.mocks.api(
+      zeroUserConnectorsContract.update,
+      async ({ body, params, respond }) => {
+        authorizedAgentId = params.id;
+        expect(body).toStrictEqual({
+          enabledTypes: ["axiom"],
+          operation: "add",
+        });
+        await authorizationResponse.promise;
+        return respond(200, { enabledTypes: body.enabledTypes });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/axiom/connect?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Public Axiom to proceed"),
+      ).toBeInTheDocument();
+    });
+    click(getButtonByText("Connect"));
+
+    const axiomDialog = await screen.findByRole("dialog", {
+      name: "Public Axiom",
+    });
+    await fill(
+      within(axiomDialog).getByPlaceholderText("public-xaat"),
+      "xaat-directed-connect",
+    );
+    click(getButtonByText("Save"));
+
+    await waitFor(() => {
+      expect(submittedValues).toStrictEqual({
+        apiToken: "xaat-directed-connect",
+      });
+      expect(authorizedAgentId).toBe(AGENT_ID);
+    });
+    expect(
+      screen.getByRole("dialog", { name: "Public Axiom" }),
+    ).toBeInTheDocument();
+
+    authorizationResponse.resolve();
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Public Axiom" }),
+      ).not.toBeInTheDocument();
     });
   });
 });
