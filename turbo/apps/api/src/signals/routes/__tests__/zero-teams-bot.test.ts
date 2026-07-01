@@ -5,20 +5,33 @@ import { HttpResponse, http } from "msw";
 import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { createAppWithRoutes } from "../../../app-factory-core";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { now } from "../../../lib/time";
 import { server } from "../../../mocks/server";
 import { accept, setupApp, testContext } from "../../../__tests__/test-helpers";
 import { zeroTeamsBotRoutes } from "../zero-teams-bot";
+import { createAuthOrgAgentsBddApi } from "./helpers/api-bdd-auth-org";
+import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import {
   removeTeamsForTest,
   setupTeamsConnectTestEnv,
   teamsConnectFixture,
   type TeamsConnectFixture,
 } from "./helpers/zero-teams-connect";
-import { createZeroRouteMocks } from "./helpers/zero-route-test";
+import {
+  createFixtureTracker,
+  createZeroRouteMocks,
+} from "./helpers/zero-route-test";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
+const authOrgApi = createAuthOrgAgentsBddApi(context);
+const runsApi = createRunsAutomationsApi(context);
+const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
+  async (fixture) => {
+    await removeTeamsForTest(context.signal, fixture);
+  },
+);
 const TEAMS_BOT_PATH = "http://api.test/api/zero/teams/bot";
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
@@ -111,26 +124,27 @@ function teamsToken(
 }
 
 function teamsMessageActivity(
+  fixture: TeamsConnectFixture = botFixture(),
   overrides: Readonly<Record<string, unknown>> = {},
 ): Record<string, unknown> {
   return {
     type: "message",
     id: "activity-1",
     timestamp: "2026-06-30T09:10:00.000Z",
-    serviceUrl: SERVICE_URL,
+    serviceUrl: fixture.serviceUrl,
     channelId: "msteams",
     conversation: {
       id: "19:thread@thread.tacv2",
       conversationType: "channel",
     },
     channelData: {
-      tenant: { id: "tenant-1", name: "Tenant One" },
-      team: { id: "team-1", name: "Team One" },
+      tenant: { id: fixture.teamsTenantId, name: fixture.teamsTenantName },
+      team: { id: fixture.teamsTeamId, name: fixture.teamsTeamName },
       channel: { id: "19:channel@thread.tacv2", name: "General" },
       teamsAppId: "teams-app-test",
     },
     from: {
-      id: "29:user-1",
+      id: fixture.teamsUserId,
       name: "Ada Lovelace",
       aadObjectId: "aad-user-1",
       userPrincipalName: "ada@example.com",
@@ -149,20 +163,22 @@ function teamsMessageActivity(
   };
 }
 
-function teamsBotRemovedActivity(): Record<string, unknown> {
+function teamsBotRemovedActivity(
+  fixture: TeamsConnectFixture = botFixture(),
+): Record<string, unknown> {
   return {
     type: "conversationUpdate",
     id: "activity-remove-1",
     timestamp: "2026-06-30T09:20:00.000Z",
-    serviceUrl: SERVICE_URL,
+    serviceUrl: fixture.serviceUrl,
     channelId: "msteams",
     conversation: {
       id: "19:thread@thread.tacv2",
       conversationType: "channel",
     },
     channelData: {
-      tenant: { id: "tenant-1", name: "Tenant One" },
-      team: { id: "team-1", name: "Team One" },
+      tenant: { id: fixture.teamsTenantId, name: fixture.teamsTenantName },
+      team: { id: fixture.teamsTeamId, name: fixture.teamsTeamName },
       channel: { id: "19:channel@thread.tacv2", name: "General" },
       teamsAppId: "teams-app-test",
     },
@@ -192,9 +208,44 @@ async function postTeamsActivity(args: {
   });
 }
 
+async function connectTeamsFixture(
+  fixture: TeamsConnectFixture,
+): Promise<void> {
+  mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+  const client = setupApp({ context })(zeroTeamsConnectContract);
+  await accept(
+    client.connect({
+      headers: { authorization: "Bearer clerk-session" },
+      body: {
+        tenantId: fixture.teamsTenantId,
+        teamsUserId: fixture.teamsUserId,
+        teamsUserDisplayName: "Ada Lovelace",
+        teamsUserPrincipalName: "ada@example.com",
+      },
+    }),
+    [200],
+  );
+}
+
+function dispatchRunId(dispatch: unknown): string {
+  if (typeof dispatch !== "object" || dispatch === null) {
+    throw new Error("Expected Teams dispatch object");
+  }
+  const kind = Reflect.get(dispatch, "kind");
+  expect(kind === "accepted" || kind === "queued").toBeTruthy();
+  const runId = Reflect.get(dispatch, "runId");
+  if (typeof runId !== "string") {
+    throw new Error("Expected Teams dispatch run id");
+  }
+  return runId;
+}
+
 describe("POST /api/zero/teams/bot", () => {
   beforeEach(() => {
     setupTeamsConnectTestEnv(APP_ORIGIN);
+    mockEnv("VM0_WEB_URL", "https://www.vm0.test");
+    mockEnv("VM0_API_URL", "https://api.vm0.test");
+    mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
   });
 
   afterEach(async () => {
@@ -277,6 +328,13 @@ describe("POST /api/zero/teams/bot", () => {
     expect(body.connectUrl).toContain(`${APP_ORIGIN}/api/zero/teams/connect`);
     expect(body.connectUrl).toContain("tenantId=tenant-1");
     expect(body.connectUrl).toContain("teamsUserId=29%3Auser-1");
+    expect(body.dispatch).toMatchObject({
+      kind: "notice",
+      connectUrl: expect.stringContaining(
+        `${APP_ORIGIN}/api/zero/teams/connect`,
+      ),
+      replyText: expect.stringContaining("Please connect"),
+    });
 
     mocks.clerk.session(
       "user_teams_bot_test",
@@ -309,6 +367,106 @@ describe("POST /api/zero/teams/bot", () => {
       tenantName: "Tenant One",
       teamId: "team-1",
       teamName: "Team One",
+    });
+  });
+
+  it("dispatches connected Teams messages to the org default agent", async () => {
+    const fixture = await trackTeamsFixture(
+      Promise.resolve(teamsConnectFixture()),
+    );
+    const actor = authOrgApi.user({
+      userId: fixture.userId,
+      orgId: fixture.orgId,
+      orgRole: "org:admin",
+    });
+    const runnerGroup = runsApi.configureRunnerGroup();
+    authOrgApi.acceptAgentStorageWrites();
+    const agent = await authOrgApi.createAgent(actor, {
+      displayName: "Teams default agent",
+      visibility: "public",
+    });
+    await authOrgApi.setDefaultAgent(actor, agent.agentId);
+    await runsApi.grantProEntitlement(actor);
+    await runsApi.ensureOrgModelProvider(actor);
+    botFrameworkHandlers();
+
+    const installResponse = await postTeamsActivity({
+      activity: teamsMessageActivity(fixture),
+      token: teamsToken(),
+    });
+    expect(installResponse.status).toBe(200);
+    await connectTeamsFixture(fixture);
+
+    const response = await postTeamsActivity({
+      activity: teamsMessageActivity(fixture, {
+        id: "activity-dispatch-1",
+        replyToId: "root-dispatch",
+        text: "<at>Zero</at> ship the Teams dispatch",
+      }),
+      token: teamsToken(),
+    });
+
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.dispatch).toMatchObject({
+      kind: expect.stringMatching(/^(accepted|queued)$/u),
+      runId: expect.any(String),
+    });
+
+    const runId = dispatchRunId(body.dispatch);
+    await runsApi.heartbeatRunner(runnerGroup);
+    const claim = await runsApi.claimRunnerJob(runId);
+    const appendSystemPrompt = claim.appendSystemPrompt ?? "";
+    expect(claim.prompt).toBe("ship the Teams dispatch");
+    expect(appendSystemPrompt).toContain(
+      "You are currently running inside: Microsoft Teams",
+    );
+    expect(appendSystemPrompt).toContain("Microsoft Teams messaging and files");
+    expect(appendSystemPrompt).toContain(`Tenant ID: ${fixture.teamsTenantId}`);
+    expect(appendSystemPrompt).toContain(`Team ID: ${fixture.teamsTeamId}`);
+    expect(appendSystemPrompt).toContain(
+      "Conversation ID: 19:thread@thread.tacv2",
+    );
+    expect(appendSystemPrompt).toContain("Thread ID: root-dispatch");
+    expect(appendSystemPrompt).toContain(
+      `Teams user ID: ${fixture.teamsUserId}`,
+    );
+    expect(appendSystemPrompt).toContain(
+      "Teams user principal name: ada@example.com",
+    );
+    expect(appendSystemPrompt).toContain("# Current User Info");
+    expect(appendSystemPrompt).toContain(
+      "Teams user display name: Ada Lovelace",
+    );
+  });
+
+  it("asks connected Teams users to configure a default agent", async () => {
+    const fixture = await trackTeamsFixture(
+      Promise.resolve(teamsConnectFixture()),
+    );
+    botFrameworkHandlers();
+
+    const installResponse = await postTeamsActivity({
+      activity: teamsMessageActivity(fixture),
+      token: teamsToken(),
+    });
+    expect(installResponse.status).toBe(200);
+    await connectTeamsFixture(fixture);
+
+    const response = await postTeamsActivity({
+      activity: teamsMessageActivity(fixture, {
+        id: "activity-no-default",
+        text: "<at>Zero</at> hello",
+      }),
+      token: teamsToken(),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toMatchObject({
+      dispatch: {
+        kind: "notice",
+        replyText: expect.stringContaining("No agent is configured"),
+      },
     });
   });
 

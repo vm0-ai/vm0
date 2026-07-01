@@ -11,6 +11,7 @@ export const usageRecordSourceSchema = z.enum([
   "chat",
   "automation",
   "slack",
+  "teams",
   "telegram",
   "email",
   "agentphone",

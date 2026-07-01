@@ -75,10 +75,33 @@ export const teamsInboundActivitySchema = z.discriminatedUnion("kind", [
   teamsUnsupportedActivitySchema,
 ]);
 
+const teamsBotDispatchResponseSchema = z.discriminatedUnion("kind", [
+  z.object({ kind: z.literal("ignored") }),
+  z.object({
+    kind: z.literal("notice"),
+    replyText: z.string(),
+    connectUrl: z.string().optional(),
+  }),
+  z.object({
+    kind: z.literal("accepted"),
+    runId: z.string(),
+  }),
+  z.object({
+    kind: z.literal("queued"),
+    runId: z.string(),
+  }),
+  z.object({
+    kind: z.literal("failed"),
+    replyText: z.string(),
+    runId: z.string().optional(),
+  }),
+]);
+
 export const teamsBotIngressResponseSchema = z.object({
   ok: z.literal(true),
   activity: teamsInboundActivitySchema,
   connectUrl: z.string().nullable().optional(),
+  dispatch: teamsBotDispatchResponseSchema.optional(),
 });
 
 export const zeroTeamsBotContract = c.router({
@@ -101,5 +124,8 @@ export type TeamsActor = z.infer<typeof teamsActorSchema>;
 export type TeamsInboundActivity = z.infer<typeof teamsInboundActivitySchema>;
 export type TeamsBotIngressResponse = z.infer<
   typeof teamsBotIngressResponseSchema
+>;
+export type TeamsBotDispatchResponse = z.infer<
+  typeof teamsBotDispatchResponseSchema
 >;
 export type ZeroTeamsBotContract = typeof zeroTeamsBotContract;
