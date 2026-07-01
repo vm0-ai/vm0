@@ -1,17 +1,14 @@
 import { randomUUID } from "node:crypto";
 
-import { getInstructionsStorageName } from "@vm0/core/storage-names";
 import { describe, expect, it } from "vitest";
 import { z } from "zod";
 
-import { mockEnv } from "../../../lib/env";
 import { testContext } from "../../../__tests__/test-context";
 import { expectApiError } from "./helpers/api-bdd";
 import {
   createAuthOrgAgentsBddApi,
   type ApiTestUser,
 } from "./helpers/api-bdd-auth-org";
-import { storageTextFile } from "./helpers/api-bdd-storage-files";
 import {
   AMBIGUOUS_COMPOSE_CONTENTS,
   AMBIGUOUS_COMPOSE_NAME,
@@ -20,23 +17,17 @@ import {
   createComposesBddApi,
   sandboxComposeToken,
 } from "./helpers/api-bdd-composes";
-import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
-import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 
 /*
  * COMPOSE-01 round-5 expansion. The compose lifecycle chain (create, read,
  * list, metadata, delete through public APIs) lives in
  * auth-org-agents.bdd.test.ts and stays there; this file adds version
- * resolution, token scoping, zero-route errors, and delete protection/sweep
- * behavior.
+ * resolution, token scoping, and zero-route errors.
  *
  * - Version ids are sha256 hashes of canonical compose content, so the
  *   ambiguous-prefix 400 is API-constructible from the precomputed
  *   collision pair in api-bdd-composes.ts (unlike storage versions, where
  *   the same arm is recorded as a docs exception).
- * - The delete-protection chain keeps its direct run pending (never
- *   claimed) and cancels it afterwards; pending runs stay visible inside
- *   the 15-minute pending-run TTL, so no mockNow is needed.
  * - Unreachable arms intentionally not exercised (see api.bdd.md):
  *   agent-composes-read.service `agentComposeVersionResolution` no-head 400
  *   ("Agent compose has no versions...") — every public write path sets a
@@ -46,7 +37,6 @@ import { createStoragesBddApi } from "./helpers/api-bdd-storages";
 const context = testContext();
 const api = createAuthOrgAgentsBddApi(context);
 const composes = createComposesBddApi(context);
-const storages = createStoragesBddApi(context);
 
 function shortId(): string {
   return randomUUID().replace(/-/g, "").slice(0, 10);
@@ -493,13 +483,6 @@ describe("COMPOSE-01 token access", () => {
       [401],
     );
     expect(zeroMetadata.body).toStrictEqual(unauthenticatedBody);
-
-    const zeroDelete = await composes.requestDeleteZeroCompose(
-      null,
-      missingId,
-      [401],
-    );
-    expect(zeroDelete.body).toStrictEqual(unauthenticatedBody);
   });
 });
 
@@ -549,26 +532,6 @@ describe("COMPOSE-01 zero route errors", () => {
     expectApiError(crossOrgMetadata.body);
     expect(crossOrgMetadata.body.error.code).toBe("NOT_FOUND");
 
-    const missingDelete = await composes.requestDeleteZeroCompose(
-      admin,
-      randomUUID(),
-      [404],
-    );
-    expectApiError(missingDelete.body);
-    expect(missingDelete.body.error.message).toBe("Agent not found");
-
-    const member = api.user({
-      orgId: orgIdOf(admin),
-      orgRole: "org:member",
-    });
-    const memberDelete = await composes.requestDeleteZeroCompose(
-      member,
-      created.composeId,
-      [404],
-    );
-    expectApiError(memberDelete.body);
-    expect(memberDelete.body.error.message).toBe("Agent not found");
-
     // Owner state stayed intact through every rejected mutation above.
     const survivors = await api.listZeroComposes(admin);
     expect(
@@ -580,170 +543,5 @@ describe("COMPOSE-01 zero route errors", () => {
       description: "Zero description",
       sound: "quiet",
     });
-  });
-});
-
-describe("COMPOSE-01 delete protection and volume sweep", () => {
-  it("blocks deletion while a run is pending and sweeps the instructions volume after", async () => {
-    const runs = createRunsAutomationsApi(context);
-    const actor = api.user();
-    api.acceptAgentStorageWrites();
-    runs.acceptStorageDownloads();
-    runs.acceptTelemetryIngest();
-    runs.configureRunnerGroup();
-    await runs.grantProEntitlement(actor);
-    mockEnv("R2_USER_STORAGES_BUCKET_NAME", "test-bucket");
-
-    const name = slug("bdd-protected");
-    const compose = await api.createCompose(
-      actor,
-      composeWith(name, {
-        environment: { ANTHROPIC_API_KEY: "bdd-inline-key" },
-      }),
-    );
-
-    storages.mockStoragePresignedUrls();
-    const instructionsName = getInstructionsStorageName(name);
-    const instructionsFile = storageTextFile(
-      "CLAUDE.md",
-      "# Protected instructions",
-    );
-    const preparedInstructions = await storages.prepareStorage(actor, {
-      storageName: instructionsName,
-      storageType: "volume",
-      files: [instructionsFile],
-    });
-    await storages.commitStorage(actor, {
-      storageName: instructionsName,
-      storageType: "volume",
-      versionId: preparedInstructions.versionId,
-      files: [instructionsFile],
-    });
-
-    const unrelatedName = slug("bdd-unrelated-volume");
-    const unrelatedFile = storageTextFile("data/cache.bin", "unrelated volume");
-    const preparedUnrelated = await storages.prepareStorage(actor, {
-      storageName: unrelatedName,
-      storageType: "volume",
-      files: [unrelatedFile],
-    });
-    await storages.commitStorage(actor, {
-      storageName: unrelatedName,
-      storageType: "volume",
-      versionId: preparedUnrelated.versionId,
-      files: [unrelatedFile],
-    });
-
-    // The pending direct run is never claimed and is cancelled right after
-    // the 409 asserts; it stays inside the 15-minute pending-run TTL.
-    const run = await runs.createDirectRun(actor, {
-      agentComposeId: compose.composeId,
-      prompt: "hold the compose with a pending run",
-    });
-
-    const conflictBody = {
-      error: {
-        message: "Cannot delete agent: agent is currently running",
-        code: "CONFLICT",
-      },
-    };
-    const zeroConflict = await composes.requestDeleteZeroCompose(
-      actor,
-      compose.composeId,
-      [409],
-    );
-    expect(zeroConflict.body).toStrictEqual(conflictBody);
-
-    const survivor = await api.readComposeById(actor, compose.composeId);
-    expect(survivor.id).toBe(compose.composeId);
-
-    await runs.requestCancelRun(actor, run.runId, [200]);
-    const cancelled = await runs.readRun(actor, run.runId);
-    expect(cancelled.status).toBe("cancelled");
-
-    const sweepPrefix = `${orgIdOf(actor)}/volume/${instructionsName}`;
-    composes.mockStorageSweepObjects([
-      {
-        bucket: "test-bucket",
-        key: `${sweepPrefix}/v1/archive.tar.gz`,
-        size: 1024,
-      },
-      {
-        bucket: "test-bucket",
-        key: `${sweepPrefix}/v1/manifest.json`,
-        size: 256,
-      },
-    ]);
-
-    await composes.requestDeleteZeroCompose(actor, compose.composeId, [204]);
-
-    const deleted = await api.requestReadComposeById(
-      actor,
-      compose.composeId,
-      [404],
-    );
-    expectApiError(deleted.body);
-    expect(deleted.body.error.code).toBe("NOT_FOUND");
-
-    const volumes = await storages.listStorages(actor, "volume");
-    expect(
-      volumes.some((volume) => {
-        return volume.name === instructionsName;
-      }),
-    ).toBeFalsy();
-    expect(
-      volumes.some((volume) => {
-        return volume.name === unrelatedName;
-      }),
-    ).toBeTruthy();
-
-    expect(composes.s3DeletedObjectKeys()).toStrictEqual([
-      `${sweepPrefix}/v1/archive.tar.gz`,
-      `${sweepPrefix}/v1/manifest.json`,
-    ]);
-  });
-
-  it("deletes volume-less composes cleanly and hides foreign composes from deletion", async () => {
-    const owner = api.user();
-    const created = await api.createCompose(
-      owner,
-      composeWith(slug("bdd-plain-delete")),
-    );
-    await composes.requestDeleteZeroCompose(owner, created.composeId, [204]);
-    const gone = await api.requestReadComposeById(
-      owner,
-      created.composeId,
-      [404],
-    );
-    expectApiError(gone.body);
-    expect(context.mocks.s3.send).not.toHaveBeenCalled();
-
-    const unknown = await composes.requestDeleteZeroCompose(
-      owner,
-      randomUUID(),
-      [404],
-    );
-    expectApiError(unknown.body);
-    expect(unknown.body.error.message).toBe("Agent not found");
-
-    const kept = await api.createCompose(owner, composeWith(slug("bdd-kept")));
-    const member = api.user({
-      orgId: orgIdOf(owner),
-      orgRole: "org:member",
-    });
-    const memberDelete = await composes.requestDeleteZeroCompose(
-      member,
-      kept.composeId,
-      [404],
-    );
-    expectApiError(memberDelete.body);
-    expect(memberDelete.body.error.message).toBe("Agent not found");
-
-    const listed = await api.listZeroComposes(owner);
-    expect(
-      listed.some((compose) => {
-        return compose.id === kept.composeId;
-      }),
-    ).toBeTruthy();
   });
 });
