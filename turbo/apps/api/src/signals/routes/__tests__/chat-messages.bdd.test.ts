@@ -887,6 +887,79 @@ describe("CHAT-02: interrupting active chat runs", () => {
 });
 
 describe("CHAT-02: queueing and recalling messages", () => {
+  it("queues a concurrent normal send when another run wins the thread", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    const thread = await chat.createThread(actor, {
+      agentId,
+      title: "Concurrent sends",
+    });
+
+    const firstMessageId = randomUUID();
+    const secondMessageId = randomUUID();
+    const [first, second] = await Promise.all([
+      chat.requestSendMessage(
+        actor,
+        {
+          agentId,
+          threadId: thread.id,
+          prompt: "first concurrent send",
+          clientMessageId: firstMessageId,
+        },
+        [201],
+      ),
+      chat.requestSendMessage(
+        actor,
+        {
+          agentId,
+          threadId: thread.id,
+          prompt: "second concurrent send",
+          clientMessageId: secondMessageId,
+        },
+        [201],
+      ),
+    ]);
+    if (first.status !== 201 || second.status !== 201) {
+      throw new Error("Expected both concurrent sends to be accepted");
+    }
+
+    const responses = [first.body, second.body];
+    const runResponses = responses.filter((response) => {
+      return response.runId !== null;
+    });
+    const queuedResponses = responses.filter((response) => {
+      return response.runId === null;
+    });
+    expect(runResponses).toHaveLength(1);
+    expect(queuedResponses).toHaveLength(1);
+
+    const messages = await chat.listThreadMessages(actor, thread.id);
+    const concurrentMessages = userMessages(messages.messages).filter(
+      (message) => {
+        return (
+          message.id === firstMessageId || message.id === secondMessageId
+        );
+      },
+    );
+    expect(concurrentMessages).toHaveLength(2);
+    expect(
+      concurrentMessages.filter((message) => {
+        return message.runId !== undefined;
+      }),
+    ).toHaveLength(1);
+    expect(
+      concurrentMessages.filter((message) => {
+        return message.runId === undefined;
+      }),
+    ).toHaveLength(1);
+
+    const runId = runResponses[0]?.runId;
+    if (!runId) {
+      throw new Error("Expected one concurrent send to create a run");
+    }
+    await cancelChatRun(actor, runId);
+  });
+
   it("queues, retries, and recalls messages behind an active run", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();

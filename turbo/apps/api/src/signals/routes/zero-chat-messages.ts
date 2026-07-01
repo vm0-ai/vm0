@@ -2501,18 +2501,11 @@ const createNormalChatRun$ = command(
       if (args.body.revokesMessageId) {
         return conflict("Recommended follow-up has already been used");
       }
-      if (args.body.clientMessageId) {
-        return duplicateClientMessageIdResponse();
-      }
-      return {
-        status: 201 as const,
-        body: {
-          runId: runResult.body.runId,
-          threadId: prepared.thread.threadId,
-          status: runResult.body.status,
-          createdAt: runResult.body.createdAt,
-        },
-      };
+      return await queueUnassociatedNormalMessage({
+        prepared,
+        body: args.body,
+        userId: args.userId,
+      });
     }
 
     scheduleCreatedChatRunSideEffects({

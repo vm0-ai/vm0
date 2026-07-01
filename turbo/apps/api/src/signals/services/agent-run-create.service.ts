@@ -5048,7 +5048,15 @@ async function lockChatLaunchThread(
       AND ${chatThreads.userId} = ${association.userId}
     FOR NO KEY UPDATE
   `);
-  return rows.rows[0] ? null : notFound("Chat thread not found");
+  if (!rows.rows[0]) {
+    return notFound("Chat thread not found");
+  }
+  // Serialize launch admission for one chat thread; org queue admission uses a
+  // separate lock so multi-thread runs in the same org can still progress.
+  await tx.execute(
+    sql`SELECT pg_advisory_xact_lock(hashtext('chat_launch_thread:' || ${association.threadId}))`,
+  );
+  return null;
 }
 
 async function writeNormalChatLaunchAssociation(
@@ -5063,6 +5071,24 @@ async function writeNormalChatLaunchAssociation(
   },
 ): Promise<boolean> {
   const association = args.association;
+  if (args.status === "queued" || args.status === "pending") {
+    const [competingRun] = await tx
+      .select({ id: zeroRuns.id })
+      .from(zeroRuns)
+      .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+      .where(
+        and(
+          eq(zeroRuns.chatThreadId, association.threadId),
+          ne(zeroRuns.id, args.run.id),
+          inArray(agentRuns.status, ["queued", "pending", "running"]),
+        ),
+      )
+      .limit(1);
+    if (competingRun) {
+      return false;
+    }
+  }
+
   const [inserted] = await tx
     .insert(chatMessages)
     .values({
