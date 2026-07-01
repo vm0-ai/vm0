@@ -556,6 +556,10 @@ function extractResultFallback(
   sequenceNumber: number,
   event: AxiomChatOutputEvent,
 ): ResultEventItem | null {
+  if (event.eventType !== "result") {
+    return null;
+  }
+
   const result = event.eventData?.result;
   if (typeof result !== "string") {
     return null;
@@ -578,9 +582,14 @@ async function queryChatOutputEvents(args: {
   args.signal.throwIfAborted();
 
   const dataset = getDatasetName(AGENT_RUN_EVENTS_DATASET);
+  const sequenceCap =
+    args.lastEventSequence === null
+      ? ""
+      : `\n| where sequenceNumber <= ${args.lastEventSequence}`;
   const apl = `['${dataset}']
 | where runId == "${escapeAplString(args.runId)}"
 | where eventType == "assistant" or eventType == "result" or eventType == "item.completed"
+${sequenceCap}
 | order by sequenceNumber asc
 | limit 200`;
 
@@ -595,6 +604,12 @@ async function queryChatOutputEvents(args: {
     const sequenceNumber =
       event.sequenceNumber ?? event.eventData?.sequenceNumber;
     if (typeof sequenceNumber !== "number") {
+      continue;
+    }
+    if (
+      args.lastEventSequence !== null &&
+      sequenceNumber > args.lastEventSequence
+    ) {
       continue;
     }
 

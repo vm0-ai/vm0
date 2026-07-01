@@ -1530,9 +1530,8 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
     expect(progressMessages.messages).toHaveLength(1);
     expect(progressMessages.messages[0]?.role).toBe("user");
 
-    // Blank assistant text and non-agent_message Codex items are skipped;
-    // the LAST result event wins, including one whose sequence number only
-    // exists inside eventData.
+    // Blank assistant text, non-agent_message Codex items, and result-shaped
+    // fields on non-result events are skipped.
     chatCallbacks.mockChatOutputEvents([
       assistantEvent(0, ""),
       {
@@ -1542,12 +1541,21 @@ describe("CHAT-02: chat output extraction and progress callbacks", () => {
       },
       {
         eventType: "result",
-        eventData: { sequenceNumber: 2, result: "draft answer" },
+        sequenceNumber: 2,
+        eventData: { result: "final fallback answer" },
       },
-      resultEvent(3, "final fallback answer"),
+      {
+        eventType: "item.completed",
+        sequenceNumber: 3,
+        eventData: {
+          item: { type: "tool_call", text: "internal tool text" },
+          result: "tool result must not become chat output",
+        },
+      },
+      resultEvent(4, "future result must not become chat output"),
     ]);
     await completeChatRunOk(first.runId, firstHeaders, {
-      lastEventSequence: 1,
+      lastEventSequence: 3,
     });
 
     let messages = await waitForThreadMessages(
