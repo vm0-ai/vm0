@@ -2,6 +2,11 @@ import { createHash } from "node:crypto";
 import type { createClerkClient } from "@clerk/backend";
 import { command, computed } from "ccstate";
 import {
+  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  getProviderRuntimeModel,
+  getVm0Vendor,
+} from "@vm0/api-contracts/contracts/model-providers";
+import {
   testSlackStateContract,
   type TestSlackStatePostBody,
 } from "@vm0/api-contracts/contracts/test-slack-state";
@@ -263,6 +268,15 @@ async function seedVm0ManagedKeys(db: Db, composeId: string): Promise<void> {
 
 function vm0ManagedKeyRows(composeId: string) {
   return [
+    {
+      vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
+      model: getProviderRuntimeModel(
+        "vm0",
+        DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      ),
+      apiKey: `vm0-key-default-${composeId}`,
+      label: composeId,
+    },
     {
       vendor: "anthropic",
       model: "claude-sonnet-4-6",

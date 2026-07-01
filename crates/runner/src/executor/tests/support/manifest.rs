@@ -29,7 +29,6 @@ pub(in crate::executor::tests) fn api_artifact(
         vas_storage_name: name.into(),
         vas_storage_id: storage_id.into(),
         vas_version_id: version.into(),
-        manifest_url: None,
         missing_root_policy: None,
     }
 }

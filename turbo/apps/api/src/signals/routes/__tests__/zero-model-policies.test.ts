@@ -480,7 +480,10 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = toUpdate(listResponse.body).map((policy) => {
+    const updates = [
+      ...toUpdate(listResponse.body),
+      makeVm0Policy("glm-5.2"),
+    ].map((policy) => {
       if (policy.model !== "glm-5.2") {
         return policy;
       }
@@ -622,7 +625,10 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = toUpdate(listResponse.body).map((policy) => {
+    const updates = [
+      ...toUpdate(listResponse.body),
+      makeVm0Policy("glm-5.2"),
+    ].map((policy) => {
       if (policy.model !== "glm-5.2") {
         return policy;
       }
@@ -653,7 +659,10 @@ describe("GET/PUT /api/zero/model-policies", () => {
       client.list({ headers: authHeaders() }),
       [200],
     );
-    const updates = toUpdate(listResponse.body).map((policy) => {
+    const updates = [
+      ...toUpdate(listResponse.body),
+      makeVm0Policy("glm-5.2"),
+    ].map((policy) => {
       if (policy.model !== "glm-5.2") {
         return policy;
       }

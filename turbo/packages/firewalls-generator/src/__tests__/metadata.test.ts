@@ -95,6 +95,23 @@ function dynamicImportSpecifiers(source: string): string[] {
   return specifiers;
 }
 
+function missingPermissionDescriptions(
+  source: ConnectorFirewallSource,
+): string[] {
+  return source.firewall.apis.flatMap((api) => {
+    return (api.permissions ?? [])
+      .filter((permission) => {
+        return (
+          permission.rules.length > 0 &&
+          (permission.description?.trim() ?? "") === ""
+        );
+      })
+      .map((permission) => {
+        return permission.name;
+      });
+  });
+}
+
 function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
 }
@@ -270,6 +287,29 @@ describe("firewall metadata generator", () => {
       expect(
         sourceSet.sources.find((source) => source.type === "slack")?.label,
       ).toBe("Slack");
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "keeps Sentry permission descriptions complete at the source boundary",
+    async () => {
+      const source = await loadGeneratedConnectorFirewallSource("sentry", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const missingDescriptions = source.firewall.apis.flatMap((api) => {
+        return (api.permissions ?? [])
+          .filter((permission) => {
+            return (
+              permission.rules.length > 0 && !permission.description?.trim()
+            );
+          })
+          .map((permission) => {
+            return permission.name;
+          });
+      });
+
+      expect(missingDescriptions).toStrictEqual([]);
     },
     FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
   );
@@ -522,20 +562,33 @@ describe("firewall metadata generator", () => {
       const source = await loadGeneratedConnectorFirewallSource("deel", {
         connectorsDir: CONNECTORS_DIR,
       });
-      const missingDescriptions = source.firewall.apis.flatMap((api) => {
-        return (api.permissions ?? [])
-          .filter((permission) => {
-            return (
-              permission.rules.length > 0 &&
-              (permission.description?.trim() ?? "") === ""
-            );
-          })
-          .map((permission) => {
-            return permission.name;
-          });
-      });
 
-      expect(missingDescriptions).toStrictEqual([]);
+      expect(missingPermissionDescriptions(source)).toStrictEqual([]);
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
+    "keeps Dropbox permission descriptions complete at the source boundary",
+    async () => {
+      const source = await loadGeneratedConnectorFirewallSource("dropbox", {
+        connectorsDir: CONNECTORS_DIR,
+      });
+      const permissions = new Map(
+        source.firewall.apis.flatMap((api) => {
+          return (api.permissions ?? []).map((permission) => {
+            return [permission.name, permission] as const;
+          });
+        }),
+      );
+
+      expect(missingPermissionDescriptions(source)).toStrictEqual([]);
+      expect(permissions.get("files.content.read")?.description).toBe(
+        "Download, export, preview, and read Dropbox file content.",
+      );
+      expect(permissions.get("team_data.governance.write")?.description).toBe(
+        "Create, update, release, and inspect Dropbox team legal hold policies and held revisions.",
+      );
     },
     FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
   );

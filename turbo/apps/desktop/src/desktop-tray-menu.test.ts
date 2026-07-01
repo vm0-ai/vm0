@@ -40,6 +40,29 @@ const signingInAuth: DesktopAuthState = {
   organization: null,
 };
 
+function localIso(
+  year: number,
+  monthIndex: number,
+  day: number,
+  hour: number,
+  minute: number,
+  second = 0,
+): string {
+  return new Date(year, monthIndex, day, hour, minute, second).toISOString();
+}
+
+function setCurrentLocalTime(
+  year: number,
+  monthIndex: number,
+  day: number,
+  hour: number,
+  minute: number,
+): void {
+  vi.spyOn(Date, "now").mockReturnValue(
+    new Date(year, monthIndex, day, hour, minute).getTime(),
+  );
+}
+
 function computerUseState(
   host: Partial<ComputerUseHostRuntimeState> = {},
   permissions: DesktopComputerUseState["permissions"] = {
@@ -71,8 +94,8 @@ function commandEntry(index: number): ComputerUseLocalCommandLogEntry {
     payload: {},
     result: null,
     error: null,
-    startedAt: `2026-06-09T04:0${index}:00.000Z`,
-    completedAt: index % 2 === 0 ? `2026-06-09T04:0${index}:01.000Z` : null,
+    startedAt: localIso(2026, 5, 9, 4, index),
+    completedAt: index % 2 === 0 ? localIso(2026, 5, 9, 4, index, 1) : null,
     durationMs: index % 2 === 0 ? 1_000 : null,
   };
 }
@@ -128,6 +151,10 @@ function click(item: DesktopTrayMenuItem): void {
 }
 
 describe("desktop tray menu", () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+  });
+
   it("shows the main window, status submenus, recent commands, and quit", () => {
     const menu = buildDesktopTrayMenuItems(
       {
@@ -472,7 +499,9 @@ describe("desktop tray menu", () => {
     ).toBe(false);
   });
 
-  it("limits recent commands to five and opens the main window from each row", () => {
+  it("limits today's recent commands to five and opens the main window from each row", () => {
+    setCurrentLocalTime(2026, 5, 9, 18, 0);
+
     const showMainWindow = vi.fn();
     const menu = buildDesktopTrayMenuItems(
       {
@@ -491,13 +520,13 @@ describe("desktop tray menu", () => {
 
     expect(findItem(menu, "Recent Commands").enabled).toBe(false);
     expect(commandItems).toHaveLength(5);
-    expect(commandItems[0]?.label).toMatch(
-      /^\d{2}:\d{2} - App 0 - command-0 - Succeeded$/,
+    expect(commandItems[0]?.label).toBe(
+      "04:00 - App 0 - command-0 - Succeeded",
     );
     expect(commandItems[0]?.label).toMatch(/ - Succeeded$/);
     expect(commandItems[1]?.label).toMatch(/ - Running$/);
-    expect(commandItems[4]?.label).toMatch(
-      /^\d{2}:\d{2} - App 4 - command-4 - Succeeded$/,
+    expect(commandItems[4]?.label).toBe(
+      "04:04 - App 4 - command-4 - Succeeded",
     );
     expect(commandItems[4]?.label).toMatch(/ - Succeeded$/);
     expect(
@@ -518,5 +547,43 @@ describe("desktop tray menu", () => {
 
     click(firstCommandItem);
     expect(showMainWindow).toHaveBeenCalledOnce();
+  });
+
+  it("shows the local date for recent commands from another day", () => {
+    setCurrentLocalTime(2026, 5, 10, 9, 0);
+
+    const menu = buildDesktopTrayMenuItems(
+      {
+        computerUse: computerUseState({
+          localCommandLog: [commandEntry(0)],
+        }),
+        auth: signedInAuth,
+        authError: null,
+      },
+      trayActions(),
+    );
+
+    expect(
+      findItem(menu, "06/09 - App 0 - command-0 - Succeeded"),
+    ).toBeDefined();
+  });
+
+  it("includes the year for recent commands from another year", () => {
+    setCurrentLocalTime(2027, 0, 1, 9, 0);
+
+    const menu = buildDesktopTrayMenuItems(
+      {
+        computerUse: computerUseState({
+          localCommandLog: [commandEntry(0)],
+        }),
+        auth: signedInAuth,
+        authError: null,
+      },
+      trayActions(),
+    );
+
+    expect(
+      findItem(menu, "2026/06/09 - App 0 - command-0 - Succeeded"),
+    ).toBeDefined();
   });
 });

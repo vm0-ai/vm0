@@ -68,13 +68,19 @@ export const zeroWorkflows = pgTable(
     return {
       agentIdx: index("idx_zero_workflows_agent").on(table.agentId, table.name),
       // Public workflow slugs are the shared namespace for an agent. Private
-      // workflows may still duplicate public or private slugs as user-specific
-      // forks/overrides; run-time picks the caller's private workflow first.
+      // workflows may duplicate public slugs as user-specific forks/overrides,
+      // but one owner cannot have two private workflows with the same slug on
+      // the same agent.
       publicAgentNameIdx: uniqueIndex(
         "idx_zero_workflows_public_agent_name_unique",
       )
         .on(table.orgId, table.agentId, table.name)
         .where(sql`visibility = 'public'`),
+      privateOwnerAgentNameIdx: uniqueIndex(
+        "idx_zero_workflows_private_owner_agent_name_unique",
+      )
+        .on(table.orgId, table.agentId, table.ownerUserId, table.name)
+        .where(sql`visibility = 'private'`),
       orgIdx: index("idx_zero_workflows_org").on(table.orgId),
       ownerIdx: index("idx_zero_workflows_org_owner").on(
         table.orgId,

@@ -74,6 +74,20 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     icon: IconUsers as NavIcon,
   },
   {
+    id: "workflows",
+    activeKeys: [
+      "workflows",
+      "workflowDetail",
+      "workflowDetailAutomations",
+      "workflowDetailInstructions",
+      "workflowDetailInfo",
+    ],
+    pathname: "/workflows",
+    label: "Workflows",
+    icon: IconRoute as NavIcon,
+    featureGate: FeatureSwitchKey.WorkflowAutomation,
+  },
+  {
     id: "connectors",
     activeKeys: ["connectors"],
     pathname: "/connectors",
@@ -87,20 +101,6 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     label: "Automations",
     icon: IconCalendar as NavIcon,
     hideWhenFeatureEnabled: FeatureSwitchKey.WorkflowAutomation,
-  },
-  {
-    id: "workflows",
-    activeKeys: [
-      "workflows",
-      "workflowDetail",
-      "workflowDetailAutomations",
-      "workflowDetailInstructions",
-      "workflowDetailInfo",
-    ],
-    pathname: "/workflows",
-    label: "Workflows",
-    icon: IconRoute as NavIcon,
-    featureGate: FeatureSwitchKey.WorkflowAutomation,
   },
   {
     id: "activities",
