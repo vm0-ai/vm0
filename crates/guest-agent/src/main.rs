@@ -1235,11 +1235,12 @@ mod tests {
 
     static TEST_STATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     static COMPLETE_EXECUTION_MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(MockServer::start);
-    static MAIN_TEST_RUNTIME_ROOT: LazyLock<tempfile::TempDir> = LazyLock::new(|| {
+    static MAIN_TEST_RUNTIME_ROOT: LazyLock<std::path::PathBuf> = LazyLock::new(|| {
         tempfile::Builder::new()
             .prefix("vm0-guest-agent-main-tests-")
             .tempdir()
             .expect("create guest-agent main test runtime root")
+            .keep()
     });
 
     fn lock_test_state() -> std::sync::MutexGuard<'static, ()> {
@@ -1274,9 +1275,7 @@ mod tests {
     }
 
     fn test_runtime_dir() -> std::path::PathBuf {
-        MAIN_TEST_RUNTIME_ROOT
-            .path()
-            .join("main-recovery-checkpoint")
+        MAIN_TEST_RUNTIME_ROOT.join("main-recovery-checkpoint")
     }
 
     struct EnvVarRestoreGuard {
