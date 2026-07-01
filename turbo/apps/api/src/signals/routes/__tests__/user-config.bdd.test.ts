@@ -313,6 +313,14 @@ describe("AUTH-03 agent user connectors", () => {
     );
     expectApiError(missingUpdate.body);
     expect(missingUpdate.body.error.code).toBe("NOT_FOUND");
+    const missingEmptyUpdate = await cfg.requestUpdateUserConnectors(
+      admin,
+      missingAgentId,
+      [],
+      [404],
+    );
+    expectApiError(missingEmptyUpdate.body);
+    expect(missingEmptyUpdate.body.error.code).toBe("NOT_FOUND");
 
     const crossOrgRead = await cfg.requestReadUserConnectors(
       otherAdmin,

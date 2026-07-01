@@ -436,8 +436,9 @@ async function replaceSelectedConnectors(
     userId: args.userId,
     agentId: args.agentId,
     enabledTypes: args.selectedConnectors,
+    allowMissingZeroAgentForEmptyReplace: false,
   });
-  if (!replaced) {
+  if (replaced.status === "agentNotFound") {
     throw new Error(`Default agent not found: ${args.agentId}`);
   }
 }

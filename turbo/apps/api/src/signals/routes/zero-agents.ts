@@ -792,6 +792,7 @@ const updateAgentUserConnectorsInner$ = command(
         id: agentComposes.id,
         name: agentComposes.name,
         headVersionId: agentComposes.headVersionId,
+        zeroAgentId: zeroAgents.id,
       })
       .from(agentComposes)
       .leftJoin(zeroAgents, eq(agentComposes.id, zeroAgents.id))
@@ -845,13 +846,15 @@ const updateAgentUserConnectorsInner$ = command(
       userId: auth.userId,
       agentId: params.id,
       enabledTypes: parsedTypes,
+      allowMissingZeroAgentForEmptyReplace:
+        agent.zeroAgentId === null && parsedTypes.length === 0,
     });
     signal.throwIfAborted();
-    if (!replaced) {
+    if (replaced.status === "agentNotFound") {
       return agentNotFound(params.id);
     }
 
-    await set(
+    const recomposed = await set(
       recomposeAgentIfStale$,
       {
         userId: auth.userId,
@@ -861,6 +864,9 @@ const updateAgentUserConnectorsInner$ = command(
       },
       signal,
     );
+    if (recomposed.status === "missing") {
+      return agentNotFound(params.id);
+    }
 
     return {
       status: 200 as const,

@@ -85,6 +85,12 @@ function computeComposeVersionId(content: Record<string, unknown>): string {
   return createHash("sha256").update(canonical).digest("hex");
 }
 
+type RecomposeAgentIfStaleResult =
+  | { readonly status: "unchanged"; readonly versionId: string }
+  | { readonly status: "recomposed"; readonly versionId: string }
+  | { readonly status: "changed"; readonly versionId: string }
+  | { readonly status: "missing"; readonly versionId: string };
+
 /**
  * Rebuild the agent's compose head if its current head version is stale.
  *
@@ -118,23 +124,26 @@ export const recomposeAgentIfStale$ = command(
       readonly currentHeadVersionId: string | null;
     },
     signal: AbortSignal,
-  ): Promise<{ recomposed: boolean; versionId: string }> => {
+  ): Promise<RecomposeAgentIfStaleResult> => {
     const content = buildZeroAgentComposeContent(args.agentName);
     const versionId = computeComposeVersionId(content);
     if (versionId === args.currentHeadVersionId) {
-      return { recomposed: false, versionId };
+      return { status: "unchanged", versionId };
     }
 
     const writeDb = set(writeDb$);
-    const recomposed = await writeDb.transaction(async (tx) => {
+    const result = await writeDb.transaction(async (tx) => {
       const [compose] = await tx
         .select({ headVersionId: agentComposes.headVersionId })
         .from(agentComposes)
         .where(eq(agentComposes.id, args.agentComposeId))
         .for("update")
         .limit(1);
-      if (!compose || compose.headVersionId !== args.currentHeadVersionId) {
-        return false;
+      if (!compose) {
+        return { status: "missing" as const, versionId };
+      }
+      if (compose.headVersionId !== args.currentHeadVersionId) {
+        return { status: "changed" as const, versionId };
       }
 
       await tx
@@ -151,11 +160,11 @@ export const recomposeAgentIfStale$ = command(
         .update(agentComposes)
         .set({ headVersionId: versionId, updatedAt: nowDate() })
         .where(eq(agentComposes.id, args.agentComposeId));
-      return true;
+      return { status: "recomposed" as const, versionId };
     });
     signal.throwIfAborted();
 
-    return { recomposed, versionId };
+    return result;
   },
 );
 

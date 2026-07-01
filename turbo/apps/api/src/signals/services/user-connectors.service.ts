@@ -1,11 +1,16 @@
 import { and, eq, inArray } from "drizzle-orm";
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import type { Db } from "../external/db";
+
+type ReplaceUserConnectorsResult =
+  | { readonly status: "replaced" }
+  | { readonly status: "agentNotFound" };
 
 type ReplaceUserCustomConnectorsResult =
   | { readonly status: "replaced" }
@@ -15,7 +20,28 @@ type ReplaceUserCustomConnectorsResult =
       readonly missingIds: readonly string[];
     };
 
-async function lockAgentForConnectorReplace(
+async function lockAgentComposeForConnectorReplace(
+  db: Pick<Db, "select">,
+  args: {
+    readonly orgId: string;
+    readonly agentId: string;
+  },
+): Promise<boolean> {
+  const [compose] = await db
+    .select({ id: agentComposes.id })
+    .from(agentComposes)
+    .where(
+      and(
+        eq(agentComposes.orgId, args.orgId),
+        eq(agentComposes.id, args.agentId),
+      ),
+    )
+    .for("update")
+    .limit(1);
+  return compose !== undefined;
+}
+
+async function lockZeroAgentForConnectorReplace(
   db: Pick<Db, "select">,
   args: {
     readonly orgId: string;
@@ -72,15 +98,23 @@ export async function replaceUserConnectors(
     readonly userId: string;
     readonly agentId: string;
     readonly enabledTypes: readonly ConnectorType[];
+    readonly allowMissingZeroAgentForEmptyReplace: boolean;
   },
-): Promise<boolean> {
+): Promise<ReplaceUserConnectorsResult> {
   const enabledTypes = Array.from(new Set(args.enabledTypes));
 
   return await db.transaction(async (tx) => {
-    // Serialize replace semantics for concurrent saves of the same agent.
-    const agentLocked = await lockAgentForConnectorReplace(tx, args);
-    if (!agentLocked && enabledTypes.length > 0) {
-      return false;
+    const composeLocked = await lockAgentComposeForConnectorReplace(tx, args);
+    if (!composeLocked) {
+      return { status: "agentNotFound" };
+    }
+
+    const agentLocked = await lockZeroAgentForConnectorReplace(tx, args);
+    if (
+      !agentLocked &&
+      (enabledTypes.length > 0 || !args.allowMissingZeroAgentForEmptyReplace)
+    ) {
+      return { status: "agentNotFound" };
     }
 
     await tx
@@ -94,7 +128,7 @@ export async function replaceUserConnectors(
       );
 
     if (enabledTypes.length === 0) {
-      return true;
+      return { status: "replaced" };
     }
 
     await tx.insert(userConnectors).values(
@@ -107,7 +141,7 @@ export async function replaceUserConnectors(
         };
       }),
     );
-    return true;
+    return { status: "replaced" };
   });
 }
 
@@ -132,7 +166,7 @@ export async function replaceUserCustomConnectors(
     }
 
     // Serialize replace semantics for concurrent saves of the same agent.
-    const agentLocked = await lockAgentForConnectorReplace(tx, args);
+    const agentLocked = await lockZeroAgentForConnectorReplace(tx, args);
     if (!agentLocked) {
       return { status: "agentNotFound" };
     }
