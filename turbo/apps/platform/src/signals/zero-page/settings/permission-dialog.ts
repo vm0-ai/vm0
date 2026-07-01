@@ -1,8 +1,5 @@
 import { command, computed, state } from "ccstate";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroClient$ } from "../../api-client.ts";
 import { toast } from "@vm0/ui/components/ui/sonner";
@@ -50,6 +47,7 @@ export const confirmPermissionDialog$ = command(
   async (
     { get, set },
     connectorType: ConnectorType,
+    connectorLabel: string,
     onClose: () => void,
     signal: AbortSignal,
   ): Promise<void> => {
@@ -86,9 +84,8 @@ export const confirmPermissionDialog$ = command(
       }),
     );
     signal.throwIfAborted();
-    const config = CONNECTOR_TYPES[connectorType];
     toast.success(
-      `${config.label} enabled for ${selected.size} agent${selected.size > 1 ? "s" : ""}`,
+      `${connectorLabel} enabled for ${selected.size} agent${selected.size > 1 ? "s" : ""}`,
     );
     set(reloadAgentConnectorAuthorizations$);
     onClose();

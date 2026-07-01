@@ -1,16 +1,16 @@
-import { useLoadable } from "ccstate-react";
+import { useLastResolved, useLoadable } from "ccstate-react";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
 } from "@vm0/ui/components/ui/dialog";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { ConnectorIcon } from "./connector-icons.tsx";
-import { scopeDiff$ } from "../../../../signals/zero-page/settings/connectors.ts";
+import {
+  allConnectorTypes$,
+  scopeDiff$,
+} from "../../../../signals/zero-page/settings/connectors.ts";
 
 interface ScopeReviewModalProps {
   connectorType: ConnectorType | null;
@@ -24,6 +24,7 @@ export function ScopeReviewModal({
   onReconnect,
 }: ScopeReviewModalProps) {
   const scopeDiffLoadable = useLoadable(scopeDiff$);
+  const connectorTypes = useLastResolved(allConnectorTypes$);
   const loading = scopeDiffLoadable.state === "loading";
   const scopeDiff =
     scopeDiffLoadable.state === "hasData" ? scopeDiffLoadable.data : null;
@@ -32,7 +33,10 @@ export function ScopeReviewModal({
     return null;
   }
 
-  const config = CONNECTOR_TYPES[connectorType];
+  const connectorLabel =
+    connectorTypes?.find((connector) => {
+      return connector.type === connectorType;
+    })?.label ?? connectorType;
 
   return (
     <Dialog
@@ -47,7 +51,7 @@ export function ScopeReviewModal({
             <div className="flex h-5 w-5 shrink-0 items-center justify-center">
               <ConnectorIcon type={connectorType} size={20} />
             </div>
-            <DialogTitle>{config.label} permissions update</DialogTitle>
+            <DialogTitle>{connectorLabel} permissions update</DialogTitle>
           </div>
         </DialogHeader>
 

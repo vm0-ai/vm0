@@ -11,10 +11,7 @@ import {
   DialogFooter,
 } from "@vm0/ui/components/ui/dialog";
 import { Button } from "@vm0/ui/components/ui/button";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { agents$ } from "../../../../signals/agent.ts";
 import { detach, Reason } from "../../../../signals/utils.ts";
 import { AvatarFromUrl } from "../../zero-sidebar-shared.tsx";
@@ -27,6 +24,7 @@ import {
   confirmPermissionDialog$,
 } from "../../../../signals/zero-page/settings/permission-dialog.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
+import { allConnectorTypes$ } from "../../../../signals/zero-page/settings/connectors.ts";
 
 const VISIBLE_AGENT_COUNT = 16;
 
@@ -46,10 +44,13 @@ export function ConnectorPermissionDialog({
   const setSearch = useSet(setPermissionDialogSearch$);
   const [confirmLoadable, confirm] = useLoadableSet(confirmPermissionDialog$);
   const pageSignal = useGet(pageSignal$);
+  const connectorTypes = useLastResolved(allConnectorTypes$);
 
   const submitting = confirmLoadable.state === "loading";
-
-  const config = CONNECTOR_TYPES[connectorType];
+  const connectorLabel =
+    connectorTypes?.find((connector) => {
+      return connector.type === connectorType;
+    })?.label ?? connectorType;
 
   const filtered = (() => {
     if (!allAgents) {
@@ -85,7 +86,7 @@ export function ConnectorPermissionDialog({
             <ConnectorIcon type={connectorType} size={20} />
           </div>
           <DialogTitle className="text-base font-medium">
-            {config.label}
+            {connectorLabel}
           </DialogTitle>
         </DialogHeader>
 
@@ -95,7 +96,7 @@ export function ConnectorPermissionDialog({
             <div className="flex flex-col items-center gap-6">
               <div className="flex flex-col items-center gap-2.5 text-center text-foreground">
                 <p className="text-lg font-medium leading-7">
-                  You&apos;ve successfully connected with {config.label}!
+                  You&apos;ve successfully connected with {connectorLabel}!
                 </p>
                 <p className="text-sm leading-5">
                   You can now let some of your agents to use this connector
@@ -179,7 +180,7 @@ export function ConnectorPermissionDialog({
             <Button
               onClick={() => {
                 detach(
-                  confirm(connectorType, onClose, pageSignal),
+                  confirm(connectorType, connectorLabel, onClose, pageSignal),
                   Reason.DomCallback,
                 );
               }}

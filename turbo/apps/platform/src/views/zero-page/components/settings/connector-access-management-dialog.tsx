@@ -18,10 +18,7 @@ import {
   TooltipTrigger,
   cn,
 } from "@vm0/ui";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import {
   hasFirewallMetadataPermissions,
   permissionGrantsToFirewallPolicies,
@@ -52,6 +49,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { AvatarFromUrl } from "../../zero-sidebar-shared.tsx";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { PermissionsDialog } from "./permissions-dialog.tsx";
+import { allConnectorTypes$ } from "../../../../signals/zero-page/settings/connectors.ts";
 
 interface ConnectorAccessManagementDialogProps {
   readonly connectorType: ConnectorType;
@@ -329,6 +327,7 @@ function AgentPermissionDialog({
   row,
   metadata,
   connectorType,
+  connectorLabel,
   pageSignal,
   applyGrantPolicies,
   onClose,
@@ -336,6 +335,7 @@ function AgentPermissionDialog({
   readonly row: ConnectorAgentAccessRow | undefined;
   readonly metadata: FirewallPermissionDetailMetadata | null;
   readonly connectorType: ConnectorType;
+  readonly connectorLabel: string;
   readonly pageSignal: AbortSignal;
   readonly applyGrantPolicies: ApplyUserPermissionGrants;
   readonly onClose: () => void;
@@ -349,6 +349,7 @@ function AgentPermissionDialog({
     <PermissionsDialog
       agentId={row.agent.id}
       connectorType={connectorType}
+      connectorLabel={connectorLabel}
       displayName={agentName(row.agent)}
       initialPolicies={initialPolicies}
       initialGrants={row.grants}
@@ -376,7 +377,13 @@ export function ConnectorAccessManagementDialog({
   connectorType,
   onClose,
 }: ConnectorAccessManagementDialogProps) {
-  const connector = CONNECTOR_TYPES[connectorType];
+  const connectorTypes = useLastLoadable(allConnectorTypes$);
+  const connectorLabel =
+    connectorTypes.state === "hasData"
+      ? (connectorTypes.data.find((connector) => {
+          return connector.type === connectorType;
+        })?.label ?? connectorType)
+      : connectorType;
   const rowsLoadable = useLastLoadable(
     connectorAgentAccessRows({ connectorType }),
   );
@@ -418,7 +425,7 @@ export function ConnectorAccessManagementDialog({
           { agentId: row.agent.id, connectorType, authorized },
           pageSignal,
         );
-        toast.success(`${connector.label} access updated`);
+        toast.success(`${connectorLabel} access updated`);
         setSavingAgentId(null);
       })(),
       Reason.DomCallback,
@@ -430,7 +437,7 @@ export function ConnectorAccessManagementDialog({
       <ConnectorAccessDialog
         onClose={onClose}
         connectorType={connectorType}
-        connectorLabel={connector.label}
+        connectorLabel={connectorLabel}
         rows={filterRows(rows, search)}
         rowsLoaded={rowsLoadable.state === "hasData"}
         metadata={metadata}
@@ -446,6 +453,7 @@ export function ConnectorAccessManagementDialog({
         row={selectedPermissionRow}
         metadata={metadata}
         connectorType={connectorType}
+        connectorLabel={connectorLabel}
         pageSignal={pageSignal}
         applyGrantPolicies={applyGrantPolicies}
         onClose={() => {

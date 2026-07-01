@@ -1,4 +1,8 @@
 import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogStatusItem,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { screen, waitFor } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
@@ -10,6 +14,14 @@ import {
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 
 const context = testContext();
+
+function mockPublicConnectorStatus(
+  connector: PublicConnectorCatalogStatusItem,
+): void {
+  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    return respond(200, { connectors: [connector] });
+  });
+}
 
 function mockConnectorOauthStart(): { readonly authWindow: Window } {
   const authWindow = context.mocks.browser.authWindow();
@@ -44,12 +56,44 @@ function getButtonByText(text: string): HTMLElement {
 describe("directed connector connect page", () => {
   it("starts an OAuth flow from a directed link", async () => {
     const { authWindow } = mockConnectorOauthStart();
+    mockPublicConnectorStatus({
+      connectorRef: "github",
+      label: "Public GitHub",
+      description: "Public GitHub description",
+      category: "engineering-team-execution",
+      generation: [],
+      tags: [],
+      authMethods: [
+        {
+          id: "oauth",
+          label: "Public OAuth",
+          description: "Public OAuth description",
+          grantKind: "auth-code",
+          manualFields: [],
+          startOptions: [],
+        },
+      ],
+      permissionSummary: {
+        hasPermissions: false,
+        permissionCount: 0,
+        hasCategories: false,
+        hasDefaultPolicyOverrides: false,
+      },
+      connection: null,
+      connected: false,
+      connectionStatus: "not-connected",
+      scopeMismatch: false,
+      authMethodSupportsRefresh: false,
+      tokenExpiresAt: null,
+      singleAuthCodeAuthMethodId: "oauth",
+      connectNotice: null,
+    });
 
     detachedSetupPage({ context, path: "/connectors/github/connect" });
 
     await waitFor(() => {
       expect(
-        screen.getByText("Zero needs GitHub to proceed"),
+        screen.getByText("Zero needs Public GitHub to proceed"),
       ).toBeInTheDocument();
     });
     click(getButtonByText("Connect"));

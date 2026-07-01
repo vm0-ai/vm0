@@ -10,7 +10,6 @@ import {
 import { useLoadableSet } from "ccstate-react/experimental";
 import {
   IconSearch,
-  IconPlug,
   IconPlus,
   IconLoader2,
   IconDotsVertical,
@@ -18,10 +17,7 @@ import {
   IconChevronDown,
   IconCheck,
 } from "@tabler/icons-react";
-import {
-  CONNECTOR_TYPES,
-  type ConnectorType,
-} from "@vm0/connectors/connectors";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
 import { Tabs, TabsList, TabsTrigger } from "@vm0/ui/components/ui/tabs";
 import {
@@ -31,7 +27,6 @@ import {
 } from "../../signals/zero-page/settings/custom-connectors.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { agents$ } from "../../signals/agent.ts";
-import { shouldShowGoogleSecurityWarningNotice } from "../../lib/google-security-warning.ts";
 import { CustomConnectorsPanel } from "./components/settings/custom-connectors-panel.tsx";
 import { ConnectorIcon } from "./components/settings/connector-icons.tsx";
 import {
@@ -85,6 +80,7 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { noConnectorImg } from "./platform-assets.ts";
 import { AvatarFromUrl } from "./zero-sidebar-shared.tsx";
 import { detach, onDomEventFn, Reason } from "../../signals/utils.ts";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import {
   Button,
   DropdownMenu,
@@ -687,15 +683,7 @@ function GlobalConnectorCard({
     <div className="zero-card flex flex-col">
       <div className="flex h-14 items-center gap-2.5 px-5">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-          {connector.type in CONNECTOR_TYPES ? (
-            <ConnectorIcon type={connector.type} size={20} />
-          ) : (
-            <IconPlug
-              size={18}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
-          )}
+          <ConnectorIcon type={connector.type} size={20} />
         </span>
         <span
           data-testid="connector-card-label"
@@ -779,15 +767,7 @@ function AvailableConnectorCard({
     >
       <div className="flex items-center gap-2.5 px-5 pt-4 pb-1">
         <span className="flex h-5 w-5 shrink-0 items-center justify-center">
-          {connector.type in CONNECTOR_TYPES ? (
-            <ConnectorIcon type={connector.type} size={20} />
-          ) : (
-            <IconPlug
-              size={18}
-              stroke={1.5}
-              className="text-muted-foreground"
-            />
-          )}
+          <ConnectorIcon type={connector.type} size={20} />
         </span>
         <span
           data-testid="connector-card-label"
@@ -816,7 +796,7 @@ function AvailableConnectorCard({
           data-testid="connector-help-text"
           className="text-xs text-muted-foreground line-clamp-2"
         >
-          {shouldShowGoogleSecurityWarningNotice(connector.type) ? (
+          {connector.connectNotice === "google-security-warning" ? (
             <>
               <TooltipProvider delayDuration={200}>
                 <Tooltip>
@@ -994,18 +974,26 @@ export function ZeroConnectorsPage() {
         return;
       }
       detach(
-        connect(type, authMethod, { showPermissionDialog: true }, signal),
+        connect(
+          type,
+          authMethod,
+          { showPermissionDialog: true, connectorLabel: ct.label },
+          signal,
+        ),
         Reason.DomCallback,
       );
     }
   };
 
-  const disconnectHandler = onDomEventFn(async (type: ConnectorType) => {
+  const disconnectHandler = async (
+    type: ConnectorType,
+    connectorLabel: string,
+  ) => {
     if (disconnecting) {
       return;
     }
-    await disconnect(type, signal);
-  });
+    await disconnect(type, connectorLabel, signal);
+  };
 
   const getOptimisticConnector = (c: ConnectorTypeWithStatus) => {
     return optimisticConnected.has(c.type) && !c.connected
@@ -1040,7 +1028,7 @@ export function ZeroConnectorsPage() {
           return connectHandler(c.type);
         }}
         onDisconnect={() => {
-          return disconnectHandler(c.type);
+          detach(disconnectHandler(c.type, c.label), Reason.DomCallback);
         }}
         onManageAccess={() => {
           setManagedConnectorType(c.type);

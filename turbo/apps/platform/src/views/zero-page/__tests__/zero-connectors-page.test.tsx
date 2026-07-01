@@ -6,8 +6,14 @@ import {
 } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import {
   zeroConnectorOauthStartContract,
+  zeroConnectorManualGrantContract,
+  zeroConnectorOauthDeviceAuthSessionContract,
   zeroConnectorScopeDiffContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogStatusItem,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
@@ -198,6 +204,48 @@ function customConnector(
     updatedAt: "2026-02-01T00:00:00Z",
     ...overrides,
   };
+}
+
+function publicStatusItem(args: {
+  readonly connectorRef: ConnectorType;
+  readonly label: string;
+  readonly description?: string;
+  readonly category?: string;
+  readonly authMethods: PublicConnectorCatalogStatusItem["authMethods"];
+  readonly singleAuthCodeAuthMethodId?: string | null;
+  readonly connectNotice?: PublicConnectorCatalogStatusItem["connectNotice"];
+}): PublicConnectorCatalogStatusItem {
+  return {
+    connectorRef: args.connectorRef,
+    label: args.label,
+    description: args.description ?? `${args.label} public description`,
+    category: args.category ?? "data-automation-infrastructure",
+    generation: [],
+    tags: [],
+    authMethods: args.authMethods,
+    permissionSummary: {
+      hasPermissions: false,
+      permissionCount: 0,
+      hasCategories: false,
+      hasDefaultPolicyOverrides: false,
+    },
+    connection: null,
+    connected: false,
+    connectionStatus: "not-connected",
+    scopeMismatch: false,
+    authMethodSupportsRefresh: false,
+    tokenExpiresAt: null,
+    singleAuthCodeAuthMethodId: args.singleAuthCodeAuthMethodId ?? null,
+    connectNotice: args.connectNotice ?? null,
+  };
+}
+
+function mockPublicConnectorStatus(
+  connectors: readonly PublicConnectorCatalogStatusItem[],
+): void {
+  context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
+    return respond(200, { connectors: [...connectors] });
+  });
 }
 
 function mockCustomConnectorStory(): void {
@@ -940,6 +988,43 @@ describe("connectors page", () => {
 
   it("starts Stripe OAuth from the connect dialog", async () => {
     mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "stripe",
+        label: "Public Stripe",
+        description: "Public Stripe description",
+        authMethods: [
+          {
+            id: "oauth",
+            label: "Public OAuth",
+            description: "Public OAuth description",
+            grantKind: "auth-code",
+            manualFields: [],
+            startOptions: [],
+          },
+          {
+            id: "cli",
+            label: "Public CLI",
+            description: "Public CLI description",
+            grantKind: "device-auth",
+            manualFields: [],
+            startOptions: [
+              {
+                id: "mode",
+                kind: "select",
+                label: "Public Mode",
+                required: true,
+                defaultValue: "test",
+                options: [
+                  { value: "test", label: "Test" },
+                  { value: "live", label: "Live" },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
     const authWindow = createMockAuthWindow();
     context.mocks.browser.open(authWindow);
     context.mocks.api(
@@ -960,10 +1045,14 @@ describe("connectors page", () => {
     });
 
     const searchInput = await screen.findByPlaceholderText("Find connectors");
-    await fill(searchInput, "stripe");
-    click(await screen.findByLabelText("Connect Stripe"));
+    await fill(searchInput, "public stripe");
+    click(await screen.findByLabelText("Connect Public Stripe"));
 
-    const dialog = await screen.findByRole("dialog", { name: "Stripe" });
+    const dialog = await screen.findByRole("dialog", {
+      name: "Public Stripe",
+    });
+    expect(within(dialog).getByText("Public OAuth")).toBeInTheDocument();
+    expect(within(dialog).getByText("Public CLI")).toBeInTheDocument();
     click(buttonByText("Connect", dialog));
 
     await waitFor(() => {
@@ -1065,27 +1154,144 @@ describe("connectors page", () => {
     });
   });
 
+  it("submits public device-auth start option ids", async () => {
+    mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "stripe",
+        label: "Stripe",
+        authMethods: [
+          {
+            id: "cli",
+            label: "Stripe CLI",
+            description: "Approve access with Stripe CLI.",
+            grantKind: "device-auth",
+            manualFields: [],
+            startOptions: [
+              {
+                id: "mode",
+                kind: "select",
+                label: "Mode",
+                required: true,
+                defaultValue: "test",
+                options: [
+                  { value: "test", label: "Test" },
+                  { value: "live", label: "Live" },
+                ],
+              },
+            ],
+          },
+        ],
+      }),
+    ]);
+    let capturedOptions: Record<string, string> | null = null;
+    context.mocks.api(
+      zeroConnectorOauthDeviceAuthSessionContract.create,
+      ({ body, params, respond }) => {
+        expect(params.type).toBe("stripe");
+        capturedOptions = body.options ?? null;
+        return respond(200, {
+          sessionId: "00000000-0000-4000-8000-000000000010",
+          sessionToken: "stripe-device-session-token",
+          type: "stripe",
+          status: "pending",
+          userCode: "STRIPE-DEVICE",
+          verificationUri: "https://oauth.test/stripe/device",
+          verificationUriComplete:
+            "https://oauth.test/stripe/device?user_code=STRIPE-DEVICE",
+          expiresIn: 300,
+          interval: 1,
+        });
+      },
+    );
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await fill(await screen.findByPlaceholderText("Find connectors"), "stripe");
+    click(await screen.findByLabelText("Connect Stripe"));
+
+    const dialog = await screen.findByRole("dialog", { name: "Stripe" });
+    click(buttonByText("Connect Stripe", dialog));
+
+    await waitFor(() => {
+      expect(capturedOptions).toStrictEqual({ mode: "test" });
+    });
+  });
+
   it("connects a manual token connector", async () => {
     mockConnectors([]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "axiom",
+        label: "Public Axiom",
+        description: "Public Axiom description",
+        authMethods: [
+          {
+            id: "api-token",
+            label: "Public API Token",
+            description: null,
+            grantKind: "manual",
+            manualFields: [
+              {
+                id: "apiToken",
+                label: "Public API token",
+                required: true,
+                placeholder: "public-xaat",
+                inputType: "password",
+              },
+            ],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+    let submittedValues: Record<string, string> | null = null;
+    context.mocks.api(
+      zeroConnectorManualGrantContract.connect,
+      ({ body, params, respond }) => {
+        expect(params.type).toBe("axiom");
+        submittedValues = body.values;
+        return respond(200, {
+          id: crypto.randomUUID(),
+          type: "axiom",
+          authMethod: body.authMethod,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        });
+      },
+    );
 
     detachedSetupPage({ context, path: "/connectors" });
 
     await waitFor(() => {
-      expect(screen.getByLabelText("Connect Axiom")).toBeInTheDocument();
+      expect(screen.getByLabelText("Connect Public Axiom")).toBeInTheDocument();
     });
 
-    click(screen.getByLabelText("Connect Axiom"));
+    click(screen.getByLabelText("Connect Public Axiom"));
 
-    const axiomDialog = await screen.findByRole("dialog", { name: "Axiom" });
+    const axiomDialog = await screen.findByRole("dialog", {
+      name: "Public Axiom",
+    });
+    expect(
+      within(axiomDialog).queryByText(/Settings > API Tokens/u),
+    ).not.toBeInTheDocument();
     await fill(
-      within(axiomDialog).getByPlaceholderText("xaat-..."),
+      within(axiomDialog).getByPlaceholderText("public-xaat"),
       "xaat-test",
     );
     click(buttonByText("Save", axiomDialog));
 
     await waitFor(() => {
+      expect(submittedValues).toStrictEqual({ apiToken: "xaat-test" });
       expect(
-        within(connectorCardByLabel("Axiom")).getByText("Connected"),
+        within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
       ).toBeInTheDocument();
     });
   });
