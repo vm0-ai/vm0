@@ -1159,7 +1159,8 @@ describe("chat composer models", () => {
     await expectComposerModel("Claude Sonnet 4.6");
   });
 
-  it("renders thread override before user default model selection resolves", async () => {
+  it("edits thread override before user default model selection resolves", async () => {
+    const user = userEvent.setup({ delay: null });
     const pendingPreference = context.mocks.deferred<void>();
     let preferenceRequestStarted = false;
 
@@ -1195,6 +1196,11 @@ describe("chat composer models", () => {
         expect(preferenceRequestStarted).toBeTruthy();
       });
       await expectComposerModel("GLM-5.1");
+      await user.click(screen.getByRole("combobox", { name: "GLM-5.1" }));
+      await user.click(
+        await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+      );
+      await expectComposerModel("Claude Sonnet 4.6");
     } finally {
       pendingPreference.resolve();
     }
