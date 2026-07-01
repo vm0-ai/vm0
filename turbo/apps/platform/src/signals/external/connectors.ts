@@ -3,6 +3,10 @@ import {
   zeroConnectorsMainContract,
   zeroConnectorsByTypeContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogStatusResponse,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { zeroClient$ } from "../api-client";
@@ -24,6 +28,18 @@ export const connectors$ = computed(async (get) => {
   const client = createClient(zeroConnectorsMainContract);
   const result = await accept(client.list(), [200]);
   return result.body as ConnectorListResponse;
+});
+
+/**
+ * Public connector catalog metadata joined with the current user's connector status.
+ */
+export const connectorCatalogStatus$ = computed(async (get) => {
+  get(internalReloadConnectors$);
+
+  const createClient = get(zeroClient$);
+  const client = createClient(zeroConnectorCatalogContract);
+  const result = await accept(client.status(), [200]);
+  return result.body as PublicConnectorCatalogStatusResponse;
 });
 
 /**

@@ -5,9 +5,10 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { accept } from "../../../lib/accept.ts";
 import { now } from "../../../lib/time.ts";
 import {
-  CONNECTOR_TYPE_KEYS,
+  CONNECTOR_DISPLAY_CATEGORY_ORDER,
   CONNECTOR_TYPES,
   connectorAuthMethodIdSchema,
+  connectorTypeSchema,
   type ConnectorAuthMethodId,
   type ConnectorDeviceAuthStartOptions,
   type ConnectorType,
@@ -15,11 +16,7 @@ import {
 } from "@vm0/connectors/connectors";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
-  getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethod,
-  getAvailableConnectorAuthMethodIds,
-  getConnectorTags,
-  hasRequiredConnectorAuthMethodScopes,
   hasConnectorDeviceAuthGrant,
   hasConnectorExternalCodeGrant,
 } from "@vm0/connectors/connector-utils";
@@ -38,8 +35,14 @@ import type {
   ConnectorReconnectReason,
   ConnectorResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
+import type {
+  PublicConnectorCatalogAuthMethodDetail,
+  PublicConnectorCatalogConnection,
+  PublicConnectorCatalogStatusItem,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
 import {
+  connectorCatalogStatus$,
   connectors$,
   deleteConnector$,
   reloadConnectors$,
@@ -82,19 +85,25 @@ export type ConnectorConnectionStatus =
 
 /**
  * All connector types with their connection status.
- * Merges the static CONNECTOR_TYPES registry with live data from the API.
+ * Uses server-authored public catalog/status data.
  */
 export interface ConnectorTypeWithStatus {
   type: ConnectorType;
   label: string;
   helpText: string;
   category: ConnectorDisplayCategory;
-  /** Lowercase aliases/keywords used by connector search (from CONNECTOR_TYPES). */
+  /** Lowercase aliases/keywords used by connector search. */
   tags: readonly string[];
   connected: boolean;
-  connector: ConnectorResponse | null;
+  connector: PublicConnectorCatalogConnection | null;
+  /** Public auth method metadata available after server-side filtering. */
+  authMethods: readonly PublicConnectorCatalogAuthMethodDetail[];
   /** Auth methods available for this connector after availability filtering. */
   availableAuthMethods: ConnectorAuthMethodId[];
+  /** Single available auth-code method if direct OAuth can be considered. */
+  singleAuthCodeAuthMethodId: ConnectorAuthMethodId | null;
+  /** Public notice shown before direct connect flows. */
+  connectNotice: "google-security-warning" | null;
   /** True if at least one agent references this connector (env mapping). */
   usedByAgent?: boolean;
   /** True if stored grant scopes don't cover all currently required scopes. */
@@ -166,14 +175,53 @@ export function getOnlyAvailableAuthCodeAuthMethod(
   return getAvailableAuthCodeAuthMethod(type, availableAuthMethods, authMethod);
 }
 
-function connectorAuthMethodSupportsRefresh(
-  type: ConnectorType,
+export function getConnectorStatusConnectLaunchMode(
+  connector: ConnectorTypeWithStatus,
+  {
+    preferModalForConnectorNotice = false,
+  }: { readonly preferModalForConnectorNotice?: boolean } = {},
+): ConnectorConnectLaunchMode {
+  if (
+    connector.availableAuthMethods.length !== 1 ||
+    !connector.singleAuthCodeAuthMethodId
+  ) {
+    return "modal";
+  }
+  if (preferModalForConnectorNotice && connector.connectNotice) {
+    return "modal";
+  }
+  return "oauth-auth-code";
+}
+
+export function getAvailableStatusAuthCodeAuthMethod(
+  connector: ConnectorTypeWithStatus,
   authMethod: string,
-): boolean {
-  return (
-    getConnectorAuthMethodAccessMetadata(type, authMethod)?.kind ===
-    "refresh-token"
-  );
+): ConnectorAuthMethodId | null {
+  const parsed = connectorAuthMethodIdSchema.safeParse(authMethod);
+  if (!parsed.success) {
+    return null;
+  }
+  if (!connector.availableAuthMethods.includes(parsed.data)) {
+    return null;
+  }
+  if (
+    !connector.authMethods.some((method) => {
+      return method.id === parsed.data && method.grantKind === "auth-code";
+    })
+  ) {
+    return null;
+  }
+  return parsed.data;
+}
+
+export function getOnlyAvailableStatusAuthCodeAuthMethod(
+  connector: ConnectorTypeWithStatus,
+): ConnectorAuthMethodId | null {
+  const [authMethod] = connector.availableAuthMethods;
+  if (connector.availableAuthMethods.length !== 1 || !authMethod) {
+    return null;
+  }
+  return getAvailableStatusAuthCodeAuthMethod(connector, authMethod);
 }
 
 function connectorTokenExpiresAtMs(
@@ -245,66 +293,54 @@ export function connectorReconnectReasonTooltipText(
   return reason ? reconnectReasonTooltipText[reason] : null;
 }
 
-function buildConnectorTypeStatus(params: {
-  readonly type: ConnectorType;
-  readonly connector: ConnectorResponse | null;
-  readonly features: Record<string, boolean> | null | undefined;
-}): ConnectorTypeWithStatus {
-  const config = CONNECTOR_TYPES[params.type];
-  const availableAuthMethods = getAvailableConnectorAuthMethodIds(
-    params.type,
-    params.features,
-  );
-  const hasManualGrant = availableAuthMethods.some((authMethod) => {
-    return (
-      getConnectorAuthMethod(params.type, authMethod)?.grant.kind === "manual"
-    );
+function isConnectorDisplayCategory(
+  value: string,
+): value is ConnectorDisplayCategory {
+  return CONNECTOR_DISPLAY_CATEGORY_ORDER.some((category) => {
+    return category === value;
   });
-  const showExperimentalLabel = availableAuthMethods.some((authMethod) => {
-    const method = getConnectorAuthMethod(params.type, authMethod);
-    return !!method?.featureFlag && method.showExperimentalLabel !== false;
-  });
-  const connected = params.connector !== null;
-  const apiConnectionStatus = params.connector?.connectionStatus ?? null;
-  const authMethodSupportsRefresh =
-    params.connector !== null &&
-    connectorAuthMethodSupportsRefresh(
-      params.type,
-      params.connector.authMethod,
-    );
-  const scopeMismatch =
-    params.connector !== null &&
-    !hasRequiredConnectorAuthMethodScopes(
-      params.type,
-      params.connector.authMethod,
-      params.connector.oauthScopes,
-    );
-  let connectionStatus: ConnectorConnectionStatus = "not-connected";
-  if (params.connector !== null) {
-    connectionStatus = "connected";
-    if (apiConnectionStatus === "reconnect-required") {
-      connectionStatus = "reconnect-required";
-    } else if (scopeMismatch) {
-      connectionStatus = "scope-mismatch";
-    }
+}
+
+function parseConnectorAuthMethodId(
+  value: string | null,
+): ConnectorAuthMethodId | null {
+  if (!value) {
+    return null;
   }
+  const parsed = connectorAuthMethodIdSchema.safeParse(value);
+  return parsed.success ? parsed.data : null;
+}
+
+function connectorCatalogStatusItemToConnectorType(
+  item: PublicConnectorCatalogStatusItem,
+): ConnectorTypeWithStatus | null {
+  const type = connectorTypeSchema.safeParse(item.connectorRef);
+  if (!type.success || !isConnectorDisplayCategory(item.category)) {
+    return null;
+  }
+  const availableAuthMethods = item.authMethods.flatMap((authMethod) => {
+    const parsed = parseConnectorAuthMethodId(authMethod.id);
+    return parsed ? [parsed] : [];
+  });
 
   return {
-    type: params.type,
-    label:
-      showExperimentalLabel && !hasManualGrant
-        ? `[Experimental] ${config.label}`
-        : config.label,
-    helpText: config.helpText,
-    category: config.category,
-    tags: getConnectorTags(params.type),
-    connected,
-    connector: params.connector,
+    type: type.data,
+    label: item.label,
+    helpText: item.description,
+    category: item.category,
+    tags: item.tags,
+    connected: item.connected,
+    connector: item.connection,
+    authMethods: item.authMethods,
     availableAuthMethods,
-    scopeMismatch,
-    connectionStatus,
-    tokenExpiresAt: params.connector?.tokenExpiresAt ?? null,
-    authMethodSupportsRefresh,
+    singleAuthCodeAuthMethodId: parseConnectorAuthMethodId(
+      item.singleAuthCodeAuthMethodId,
+    ),
+    connectNotice: item.connectNotice,
+    scopeMismatch: item.scopeMismatch,
+    connectionStatus: item.connectionStatus,
+    tokenExpiresAt: item.tokenExpiresAt,
+    authMethodSupportsRefresh: item.authMethodSupportsRefresh,
   };
 }
 
@@ -345,23 +381,10 @@ export function matchesConnectorSearch(
 }
 
 export const allConnectorTypes$ = computed(async (get) => {
-  const connectorListPromise = get(connectors$);
-  const features = get(featureSwitch$);
-  const { connectors } = await connectorListPromise;
-  const connectorMap = new Map(
-    connectors.map((c) => {
-      return [c.type, c];
-    }),
-  );
-
-  const items = CONNECTOR_TYPE_KEYS.filter((type) => {
-    return getAvailableConnectorAuthMethodIds(type, features).length > 0;
-  }).map((type) => {
-    return buildConnectorTypeStatus({
-      type,
-      connector: connectorMap.get(type) ?? null,
-      features,
-    });
+  const { connectors } = await get(connectorCatalogStatus$);
+  const items = connectors.flatMap((connector) => {
+    const item = connectorCatalogStatusItemToConnectorType(connector);
+    return item ? [item] : [];
   });
 
   // Sort connected connectors to the top of the list

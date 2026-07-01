@@ -2,6 +2,7 @@ import {
   CONNECTOR_TYPE_KEYS,
   type ConnectorAuthMethodId,
   type ConnectorType,
+  CONNECTOR_TYPES,
 } from "@vm0/connectors/connectors";
 import type {
   ConnectorExternalCodeSessionStartResponse,
@@ -10,6 +11,13 @@ import type {
   ConnectorResponse,
 } from "@vm0/api-contracts/contracts/connector-schemas";
 import {
+  zeroConnectorCatalogContract,
+  type PublicConnectorCatalogConnection,
+  type PublicConnectorCatalogConnectionStatus,
+  type PublicConnectorCatalogPermissionSummary,
+  type PublicConnectorCatalogStatusItem,
+} from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import {
   zeroConnectorExternalCodeSessionContract,
   zeroConnectorManualGrantContract,
   zeroConnectorOauthDeviceAuthSessionContract,
@@ -17,7 +25,21 @@ import {
   zeroConnectorScopeDiffContract,
   zeroConnectorsMainContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import { isGoogleOAuthConnector } from "@vm0/connectors/auth-providers/oauth/google-connectors";
+import {
+  getAvailableConnectorAuthMethodIds,
+  getConnectorAuthMethod,
+  getConnectorAuthMethodAccessMetadata,
+  getConnectorGenerationTypes,
+  getConnectorTags,
+  hasRequiredConnectorAuthMethodScopes,
+  type ConnectorFeatureStates,
+} from "@vm0/connectors/connector-utils";
+import { getFirewallPermissionSummary } from "@vm0/connectors/firewall-metadata";
+import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { mockApi } from "../msw-contract.ts";
+
+const FEATURE_SWITCH_CACHE_KEY = "vm0:feature-switch-cache:v1";
 
 let mockConnectors: ConnectorResponse[] = [];
 type MockOauthDeviceAuthSessionStartResponse = Omit<
@@ -151,6 +173,158 @@ function resetMockOauthDeviceAuth(): void {
   mockExternalCodeSessionStartResponse = undefined;
 }
 
+function mockFeatureStates(): ConnectorFeatureStates {
+  const raw = globalThis.localStorage?.getItem(FEATURE_SWITCH_CACHE_KEY);
+  return raw
+    ? (JSON.parse(raw) as Record<string, boolean>)
+    : getAllFeatureStates({});
+}
+
+function mockPermissionSummary(
+  type: ConnectorType,
+): PublicConnectorCatalogPermissionSummary {
+  const summary = getFirewallPermissionSummary(type);
+  return {
+    hasPermissions: summary?.hasPermissions ?? false,
+    permissionCount: summary?.permissionCount ?? 0,
+    hasCategories: summary?.hasCategories ?? false,
+    hasDefaultPolicyOverrides: summary?.hasDefaultPolicyOverrides ?? false,
+  };
+}
+
+function mockConnectionForCatalogStatus(
+  connector: ConnectorResponse | null,
+): PublicConnectorCatalogConnection | null {
+  if (!connector) {
+    return null;
+  }
+  return {
+    authMethod: connector.authMethod,
+    externalId: connector.externalId,
+    externalUsername: connector.externalUsername,
+    externalEmail: connector.externalEmail,
+    connectionStatus: connector.connectionStatus,
+    reconnectReason: connector.reconnectReason,
+    tokenExpiresAt: connector.tokenExpiresAt,
+    createdAt: connector.createdAt,
+    updatedAt: connector.updatedAt,
+  };
+}
+
+function mockSingleAuthCodeAuthMethodId(
+  type: ConnectorType,
+  authMethods: readonly ConnectorAuthMethodId[],
+): ConnectorAuthMethodId | null {
+  const [authMethod] = authMethods;
+  if (authMethods.length !== 1 || !authMethod) {
+    return null;
+  }
+  return getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code"
+    ? authMethod
+    : null;
+}
+
+function mockConnectorAuthMethodSupportsRefresh(
+  type: ConnectorType,
+  authMethod: string,
+): boolean {
+  return (
+    getConnectorAuthMethodAccessMetadata(type, authMethod)?.kind ===
+    "refresh-token"
+  );
+}
+
+function mockConnectorCatalogStatusItem(
+  type: ConnectorType,
+  authMethods: readonly ConnectorAuthMethodId[],
+  connector: ConnectorResponse | null,
+): PublicConnectorCatalogStatusItem {
+  const config = CONNECTOR_TYPES[type];
+  const scopeMismatch =
+    connector !== null &&
+    !hasRequiredConnectorAuthMethodScopes(
+      type,
+      connector.authMethod,
+      connector.oauthScopes,
+    );
+  let connectionStatus: PublicConnectorCatalogConnectionStatus =
+    "not-connected";
+  if (connector !== null) {
+    connectionStatus =
+      connector.connectionStatus === "reconnect-required"
+        ? "reconnect-required"
+        : scopeMismatch
+          ? "scope-mismatch"
+          : "connected";
+  }
+
+  return {
+    connectorRef: type,
+    label: config.label,
+    description: config.helpText,
+    category: config.category,
+    generation: [...getConnectorGenerationTypes(type)],
+    tags: [...getConnectorTags(type)],
+    authMethods: authMethods.flatMap((authMethod) => {
+      const method = getConnectorAuthMethod(type, authMethod);
+      return method
+        ? [
+            {
+              id: authMethod,
+              label: method.label,
+              description: method.helpText ?? null,
+              grantKind: method.grant.kind,
+              manualFields: [],
+              startOptions: [],
+            },
+          ]
+        : [];
+    }),
+    permissionSummary: mockPermissionSummary(type),
+    connection: mockConnectionForCatalogStatus(connector),
+    connected: connector !== null,
+    connectionStatus,
+    scopeMismatch,
+    authMethodSupportsRefresh:
+      connector !== null &&
+      mockConnectorAuthMethodSupportsRefresh(type, connector.authMethod),
+    tokenExpiresAt: connector?.tokenExpiresAt ?? null,
+    singleAuthCodeAuthMethodId: mockSingleAuthCodeAuthMethodId(
+      type,
+      authMethods,
+    ),
+    connectNotice: isGoogleOAuthConnector(type)
+      ? "google-security-warning"
+      : null,
+  };
+}
+
+function mockConnectorCatalogStatus(): PublicConnectorCatalogStatusItem[] {
+  const connectorsByType = new Map(
+    mockConnectors.map((connector) => {
+      return [connector.type, connector];
+    }),
+  );
+  const featureStates = mockFeatureStates();
+  return CONNECTOR_TYPE_KEYS.flatMap((type) => {
+    const authMethods = getAvailableConnectorAuthMethodIds(
+      type,
+      featureStates,
+      { apiAuthMethodPolicy: "include" },
+    );
+    if (authMethods.length === 0) {
+      return [];
+    }
+    return [
+      mockConnectorCatalogStatusItem(
+        type,
+        authMethods,
+        connectorsByType.get(type) ?? null,
+      ),
+    ];
+  });
+}
+
 export const apiConnectorsHandlers = [
   mockApi(zeroConnectorsMainContract.list, ({ respond }) => {
     return respond(200, {
@@ -158,6 +332,10 @@ export const apiConnectorsHandlers = [
       configuredTypes: [...CONNECTOR_TYPE_KEYS],
       connectorProvidedBindings: [],
     });
+  }),
+
+  mockApi(zeroConnectorCatalogContract.status, ({ respond }) => {
+    return respond(200, { connectors: mockConnectorCatalogStatus() });
   }),
 
   mockApi(zeroConnectorsByTypeContract.delete, ({ params, respond }) => {

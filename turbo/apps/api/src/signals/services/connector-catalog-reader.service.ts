@@ -1,14 +1,19 @@
 import type {
   PublicConnectorCatalogAuthMethodDetail,
   PublicConnectorCatalogAuthMethodSummary,
+  PublicConnectorCatalogConnection,
+  PublicConnectorCatalogConnectionStatus,
   PublicConnectorCatalogDetail,
   PublicConnectorCatalogItem,
   PublicConnectorCatalogManualField,
   PublicConnectorCatalogPermissionDetail,
   PublicConnectorCatalogPermissionSummary,
   PublicConnectorCatalogStartOption,
+  PublicConnectorCatalogStatusItem,
 } from "@vm0/api-contracts/contracts/zero-connector-catalog";
+import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorSearchItem } from "@vm0/api-contracts/contracts/zero-connectors";
+import { isGoogleOAuthConnector } from "@vm0/connectors/auth-providers/oauth/google-connectors";
 import {
   CONNECTOR_TYPE_KEYS,
   CONNECTOR_TYPES,
@@ -18,10 +23,12 @@ import {
 } from "@vm0/connectors/connectors";
 import {
   getAvailableConnectorAuthMethodIds,
+  getConnectorAuthMethodAccessMetadata,
   getConnectorAuthMethod,
   getConnectorPrivateNames,
   getConnectorGenerationTypes,
   getConnectorTags,
+  hasRequiredConnectorAuthMethodScopes,
   type ApiAuthMethodPolicy,
   type ConnectorFeatureStates,
 } from "@vm0/connectors/connector-utils";
@@ -222,6 +229,92 @@ function connectorCatalogDetail(
   };
 }
 
+function connectionForCatalogStatus(
+  connector: ConnectorResponse | null,
+): PublicConnectorCatalogConnection | null {
+  if (!connector) {
+    return null;
+  }
+  return {
+    authMethod: connector.authMethod,
+    externalId: connector.externalId,
+    externalUsername: connector.externalUsername,
+    externalEmail: connector.externalEmail,
+    connectionStatus: connector.connectionStatus,
+    reconnectReason: connector.reconnectReason,
+    tokenExpiresAt: connector.tokenExpiresAt,
+    createdAt: connector.createdAt,
+    updatedAt: connector.updatedAt,
+  };
+}
+
+function singleAuthCodeAuthMethodId(
+  type: ConnectorType,
+  authMethods: readonly ConnectorAuthMethodId[],
+): ConnectorAuthMethodId | null {
+  const [authMethod] = authMethods;
+  if (authMethods.length !== 1 || !authMethod) {
+    return null;
+  }
+  return getConnectorAuthMethod(type, authMethod)?.grant.kind === "auth-code"
+    ? authMethod
+    : null;
+}
+
+function connectorAuthMethodSupportsRefresh(
+  type: ConnectorType,
+  authMethod: string,
+): boolean {
+  return (
+    getConnectorAuthMethodAccessMetadata(type, authMethod)?.kind ===
+    "refresh-token"
+  );
+}
+
+function connectorCatalogStatusItem(args: {
+  readonly type: ConnectorType;
+  readonly authMethods: readonly ConnectorAuthMethodId[];
+  readonly connector: ConnectorResponse | null;
+}): PublicConnectorCatalogStatusItem {
+  const detail = connectorCatalogDetail(args.type, args.authMethods);
+  const scopeMismatch =
+    args.connector !== null &&
+    !hasRequiredConnectorAuthMethodScopes(
+      args.type,
+      args.connector.authMethod,
+      args.connector.oauthScopes,
+    );
+  let connectionStatus: PublicConnectorCatalogConnectionStatus =
+    "not-connected";
+  if (args.connector !== null) {
+    connectionStatus =
+      args.connector.connectionStatus === "reconnect-required"
+        ? "reconnect-required"
+        : scopeMismatch
+          ? "scope-mismatch"
+          : "connected";
+  }
+
+  return {
+    ...detail,
+    connection: connectionForCatalogStatus(args.connector),
+    connected: args.connector !== null,
+    connectionStatus,
+    scopeMismatch,
+    authMethodSupportsRefresh:
+      args.connector !== null &&
+      connectorAuthMethodSupportsRefresh(args.type, args.connector.authMethod),
+    tokenExpiresAt: args.connector?.tokenExpiresAt ?? null,
+    singleAuthCodeAuthMethodId: singleAuthCodeAuthMethodId(
+      args.type,
+      args.authMethods,
+    ),
+    connectNotice: isGoogleOAuthConnector(args.type)
+      ? "google-security-warning"
+      : null,
+  };
+}
+
 export function searchConnectorCatalog(
   args: ConnectorCatalogSearchArgs,
 ): Promise<ConnectorSearchItem[]> {
@@ -275,6 +368,33 @@ export function listPublicConnectorCatalog(
       return [];
     }
     return [connectorCatalogItem(type, authMethods)];
+  });
+
+  return Promise.resolve(connectors);
+}
+
+export function listPublicConnectorCatalogStatus(
+  args: ConnectorCatalogReadArgs & {
+    readonly connectors: readonly ConnectorResponse[];
+  },
+): Promise<PublicConnectorCatalogStatusItem[]> {
+  const connectorsByType = new Map(
+    args.connectors.map((connector) => {
+      return [connector.type, connector];
+    }),
+  );
+  const connectors = CONNECTOR_TYPE_KEYS.flatMap((type) => {
+    const authMethods = availableAuthMethodsForCatalog(type, args);
+    if (authMethods.length === 0) {
+      return [];
+    }
+    return [
+      connectorCatalogStatusItem({
+        type,
+        authMethods,
+        connector: connectorsByType.get(type) ?? null,
+      }),
+    ];
   });
 
   return Promise.resolve(connectors);

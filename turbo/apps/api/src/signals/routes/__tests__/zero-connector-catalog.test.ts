@@ -16,9 +16,18 @@ import {
 } from "./helpers/zero-org-membership";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { assertPublicConnectorCatalogHasNoPrivateFields } from "./helpers/connector-catalog-public-leak";
+import { createBddApi } from "./helpers/api-bdd";
+import {
+  createConnectorBddApi,
+  mockGitHubConnectorOAuth,
+} from "./helpers/api-bdd-connectors";
+import { createAuthDeviceApiActions } from "./helpers/api-bdd-auth-device";
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
+const bdd = createBddApi(context);
+const connectorsApi = createConnectorBddApi(context);
+const authDevice = createAuthDeviceApiActions(context);
 const store = createStore();
 
 async function enableFeatureSwitches(
@@ -51,6 +60,14 @@ async function deleteFeatureSwitches(
 
 function currentSecond(): number {
   return Math.floor(now() / 1000);
+}
+
+function stateFromAuthorizationUrl(authorizationUrl: string): string {
+  const state = new URL(authorizationUrl).searchParams.get("state");
+  if (!state) {
+    throw new Error("Expected connector authorization URL to include state");
+  }
+  return state;
 }
 
 describe("GET /api/zero/connector-catalog", () => {
@@ -214,6 +231,269 @@ describe("GET /api/zero/connector-catalog", () => {
     expect(response.body.error.message).toBe(
       "Missing required capability: connector:read",
     );
+  });
+
+  it("returns 401 for catalog status when not authenticated", async () => {
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(client.status({ headers: {} }), [401]);
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("returns 401 for catalog status when the session has no organization", async () => {
+    mocks.clerk.session(`user_${randomUUID()}`, null);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [401],
+    );
+
+    expect(response.body.error.code).toBe("UNAUTHORIZED");
+  });
+
+  it("rejects catalog status ZERO_TOKEN calls without connector:read", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    seededOrgs.push(
+      await store.set(
+        seedOrgMembership$,
+        { orgId, userId, role: "admin" },
+        context.signal,
+      ),
+    );
+    const seconds = currentSecond();
+    const token = signSandboxJwtForTests({
+      scope: "zero",
+      userId,
+      orgId,
+      runId: `run_${randomUUID()}`,
+      capabilities: [],
+      iat: seconds,
+      exp: seconds + 600,
+    });
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(
+      client.status({ headers: { authorization: `Bearer ${token}` } }),
+      [403],
+    );
+
+    expect(response.body.error.code).toBe("FORBIDDEN");
+    expect(response.body.error.message).toBe(
+      "Missing required capability: connector:read",
+    );
+  });
+
+  it("returns public catalog status without private connector fields", async () => {
+    const userId = `user_${randomUUID()}`;
+    const orgId = `org_${randomUUID()}`;
+    mocks.clerk.session(userId, orgId);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    const openai = response.body.connectors.find((connector) => {
+      return connector.connectorRef === "openai";
+    });
+    expect(openai).toMatchObject({
+      connectorRef: "openai",
+      label: "OpenAI",
+      connected: false,
+      connection: null,
+      connectionStatus: "not-connected",
+      scopeMismatch: false,
+      authMethodSupportsRefresh: false,
+      tokenExpiresAt: null,
+      singleAuthCodeAuthMethodId: null,
+      connectNotice: null,
+    });
+    expect(openai?.authMethods).toStrictEqual([
+      {
+        id: "api-token",
+        label: "API Key",
+        description: expect.any(String),
+        grantKind: "manual",
+        manualFields: [
+          {
+            id: "apiKey",
+            label: "API Key",
+            required: true,
+            placeholder: "sk-...",
+            inputType: "password",
+          },
+        ],
+        startOptions: [],
+      },
+    ]);
+    const neon = response.body.connectors.find((connector) => {
+      return connector.connectorRef === "neon";
+    });
+    expect(
+      neon?.authMethods.map((authMethod) => {
+        return authMethod.id;
+      }),
+    ).toStrictEqual(["api-token"]);
+  });
+
+  it("returns connected manual grant status from public API-created state", async () => {
+    const actor = bdd.user();
+    await connectorsApi.connectManualGrant(actor, "openai", "api-token", {
+      apiKey: "sk-public-status",
+    });
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    const openai = response.body.connectors.find((connector) => {
+      return connector.connectorRef === "openai";
+    });
+    expect(openai).toMatchObject({
+      connectorRef: "openai",
+      connected: true,
+      connectionStatus: "connected",
+      scopeMismatch: false,
+      authMethodSupportsRefresh: false,
+      tokenExpiresAt: null,
+    });
+    expect(openai?.connection).toStrictEqual({
+      authMethod: "api-token",
+      externalId: null,
+      externalUsername: null,
+      externalEmail: null,
+      connectionStatus: "connected",
+      reconnectReason: null,
+      tokenExpiresAt: null,
+      createdAt: expect.any(String),
+      updatedAt: expect.any(String),
+    });
+    expect(openai?.connection).not.toHaveProperty("oauthScopes");
+  });
+
+  it("returns connected auth-code status without exposing stored scopes", async () => {
+    const actor = bdd.user();
+    mockGitHubConnectorOAuth();
+    const start = await connectorsApi.startOauth(actor, "github", "oauth");
+    await connectorsApi.completeOauthCallback("github", {
+      code: `github-${randomUUID()}`,
+      state: stateFromAuthorizationUrl(start.authorizationUrl),
+    });
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    const github = response.body.connectors.find((connector) => {
+      return connector.connectorRef === "github";
+    });
+    expect(github).toMatchObject({
+      connectorRef: "github",
+      connected: true,
+      connectionStatus: "connected",
+      scopeMismatch: false,
+      singleAuthCodeAuthMethodId: "oauth",
+    });
+    expect(github?.connection).toMatchObject({
+      authMethod: "oauth",
+      externalUsername: "bdd-github-user",
+      connectionStatus: "connected",
+    });
+    expect(github?.connection).not.toHaveProperty("oauthScopes");
+  });
+
+  it("returns scope mismatch status for connectors with missing stored scopes", async () => {
+    const actor = bdd.user();
+    await authDevice.provisionTestOrg(actor);
+    await authDevice.requestTestConnector(
+      { email: actor.email },
+      {
+        connectorName: "github",
+        authMethod: "oauth",
+        accessToken: "github-access-token",
+        expiresIn: 3600,
+      },
+      [200],
+    );
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    const github = response.body.connectors.find((connector) => {
+      return connector.connectorRef === "github";
+    });
+    expect(github).toMatchObject({
+      connectorRef: "github",
+      connected: true,
+      connectionStatus: "scope-mismatch",
+      scopeMismatch: true,
+      authMethodSupportsRefresh: false,
+    });
+    expect(github?.connection).toMatchObject({
+      authMethod: "oauth",
+      connectionStatus: "connected",
+      reconnectReason: null,
+    });
+    expect(github?.connection).not.toHaveProperty("oauthScopes");
+  });
+
+  it("returns reconnect-required status for expired non-refreshable connectors", async () => {
+    const actor = bdd.user();
+    await authDevice.provisionTestOrg(actor);
+    await authDevice.requestTestConnector(
+      { email: actor.email },
+      {
+        connectorName: "github",
+        authMethod: "oauth",
+        accessToken: "expired-github-access-token",
+        expiresIn: -60,
+      },
+      [200],
+    );
+    mocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
+
+    const client = setupApp({ context })(zeroConnectorCatalogContract);
+    const response = await accept(
+      client.status({ headers: { authorization: "Bearer clerk-session" } }),
+      [200],
+    );
+
+    assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    const github = response.body.connectors.find((connector) => {
+      return connector.connectorRef === "github";
+    });
+    expect(github).toMatchObject({
+      connectorRef: "github",
+      connected: true,
+      connectionStatus: "reconnect-required",
+      scopeMismatch: true,
+      authMethodSupportsRefresh: false,
+    });
+    expect(github?.connection).toMatchObject({
+      authMethod: "oauth",
+      connectionStatus: "reconnect-required",
+      reconnectReason: "credential_expired",
+    });
+    expect(github?.tokenExpiresAt).toStrictEqual(expect.any(String));
+    expect(Date.parse(github?.tokenExpiresAt ?? "")).toBeLessThan(now());
+    expect(github?.connection).not.toHaveProperty("oauthScopes");
   });
 
   it("returns connector detail without leaking manual field storage names", async () => {
