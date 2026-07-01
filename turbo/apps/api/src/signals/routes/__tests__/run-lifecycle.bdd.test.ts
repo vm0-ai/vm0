@@ -1511,6 +1511,68 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await api.requestCancelRun(actor, queued.runId, [200]);
   });
 
+  it("drains queued runs after a cancel request aborts post-commit", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const controller = new AbortController();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before post-commit abort one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before post-commit abort two",
+      modelProvider: "anthropic-api-key",
+    });
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should drain after cancel abort",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        const error = new Error("abort after cancel commit");
+        error.name = "AbortError";
+        controller.abort(error);
+      }
+      return Promise.resolve(undefined);
+    });
+
+    const cancelled = await api.requestCancelRunWithSignal(
+      actor,
+      first.runId,
+      controller.signal,
+    );
+    expect(cancelled.status).toBe(200);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
+    expect(promoted.status).toBe("pending");
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(
+          ([topic, payload]) => {
+            return (
+              topic === "job" &&
+              isRecord(payload) &&
+              payload.runId === queued.runId
+            );
+          },
+        );
+      })
+      .toBe(true);
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
+  });
+
   it("drains queued runs when queue changed publish fails after cancellation", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();
