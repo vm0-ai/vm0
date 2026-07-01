@@ -40,6 +40,7 @@ import { db$, type Db } from "../external/db";
 import { getDatasetName, queryAxiom } from "../external/axiom";
 import { escapeAplString } from "../../lib/axiom-apl";
 import { now } from "../../lib/time";
+import { runContextCliAgentType } from "./run-context-framework.service";
 
 type ServiceDb = Pick<Db, "select" | "selectDistinct">;
 
@@ -463,13 +464,16 @@ export function zeroLogDetail(
     const runResult = run.result as RunResult | null;
     const agentSessionId = runResult?.agentSessionId ?? null;
     const composeContent = composeVersion?.content ?? null;
+    const framework =
+      (await get(runContextCliAgentType(params.runId))) ??
+      extractFramework(composeContent);
 
     return {
       id: run.id,
       sessionId: agentSessionId,
       agentId,
       displayName: agentDisplayName ?? null,
-      framework: extractFramework(composeContent),
+      framework,
       modelProvider: modelProvider ?? null,
       selectedModel: selectedModel ?? null,
       triggerSource: normalizeTriggerSource(triggerSource ?? "cli"),
