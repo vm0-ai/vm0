@@ -1107,7 +1107,7 @@ describe("chat composer models", () => {
       context.store.set(reloadUserModelPreference$);
     });
     await waitFor(() => {
-      expect(preferenceReloadStarted).toBe(true);
+      expect(preferenceReloadStarted).toBeTruthy();
     });
     await act(async () => {
       await Promise.resolve();
