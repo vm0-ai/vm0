@@ -37,6 +37,7 @@ unsafe fn setup_api_env(
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
         std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
         std::env::set_var("HOME", workdir);
+        std::env::remove_var(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
     }
     std::fs::create_dir_all(workdir).map_err(|e| format!("create workdir: {e}"))?;
     common::ensure_canonical_workspace_for_test()?;

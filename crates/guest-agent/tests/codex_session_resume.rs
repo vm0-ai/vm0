@@ -54,6 +54,7 @@ fn setup_env_once() {
             // `home_dir` is loaded eagerly via `expect`. The marker
             // payload embeds it, so set a stable dummy.
             std::env::set_var("HOME", "/tmp/codex-resume-home");
+            std::env::remove_var(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
         }
     });
 }

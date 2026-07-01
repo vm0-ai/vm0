@@ -473,6 +473,7 @@ pub unsafe fn setup_codex_app_server_env(
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
         std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
         std::env::set_var("HOME", home);
+        std::env::remove_var(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
         if let Some(resume_session_id) = config.resume_session_id {
             std::env::set_var("VM0_RESUME_SESSION_ID", resume_session_id);
         } else {
@@ -585,6 +586,7 @@ pub unsafe fn setup_env(
         // the tempdir and gets cleaned up with it, instead of
         // accumulating in the dev's real ~/.claude on every run.
         std::env::set_var("HOME", workdir);
+        std::env::remove_var(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
     }
     std::fs::create_dir_all(workdir).map_err(|e| format!("create workdir: {e}"))?;
     ensure_canonical_workspace_for_test()?;
