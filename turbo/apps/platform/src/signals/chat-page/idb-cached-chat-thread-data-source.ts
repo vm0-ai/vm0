@@ -1,4 +1,4 @@
-import { command, computed, state } from "ccstate";
+import { command, computed } from "ccstate";
 import {
   chatThreadMessagesContract,
   type PagedChatMessage,
@@ -30,31 +30,6 @@ type ListMessagesAfterResult = {
   messages: PagedChatMessage[];
   reachedEnd: boolean;
 };
-
-const warmMessageStoresByAccount$ = state<ReadonlyMap<string, Stores>>(
-  new Map(),
-);
-
-function messageStoresCacheKey(userId: string, orgId: string): string {
-  return JSON.stringify([userId, orgId]);
-}
-
-const getWarmMessageStores$ = command(
-  ({ get, set }, userId: string, orgId: string) => {
-    const key = messageStoresCacheKey(userId, orgId);
-    const existing = get(warmMessageStoresByAccount$).get(key);
-    if (existing) {
-      return existing;
-    }
-    const stores = createIdbMessageStores(userId, orgId);
-    set(warmMessageStoresByAccount$, (current) => {
-      const next = new Map(current);
-      next.set(key, stores);
-      return next;
-    });
-    return stores;
-  },
-);
 
 const warmListMessagesAfter$ = command(
   async (
@@ -329,7 +304,7 @@ export const warmLatestChatThreadMessages$ = command(
       return;
     }
 
-    const stores = set(getWarmMessageStores$, userId, orgId);
+    const stores = createIdbMessageStores(userId, orgId);
     const latest = await stores.readStore.readLatest(threadId, 1, signal);
     signal.throwIfAborted();
 
