@@ -112,7 +112,7 @@ fn cleanup_codex_resume_files() {
         .and_then(|name| name.to_str())
         .map(|name| name.starts_with("codex-resume-home-"))
         .unwrap_or(false);
-    if is_test_home {
+    if is_test_home && home.starts_with(std::env::temp_dir()) {
         let _ = std::fs::remove_dir_all(home);
     }
 }
