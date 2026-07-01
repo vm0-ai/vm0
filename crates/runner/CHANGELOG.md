@@ -1,5 +1,22 @@
 # Changelog
 
+## [0.131.7](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.6...runner-rs-v0.131.7) (2026-07-01)
+
+
+### Bug Fixes
+
+* classify codex context window failures ([#19607](https://github.com/vm0-ai/vm0/issues/19607)) ([34ed0ac](https://github.com/vm0-ai/vm0/commit/34ed0ac9d29d81ffda52c5ccd6bf69915d5cc80c))
+
+
+### Refactoring
+
+* strip firewall runtime permission descriptions ([#19584](https://github.com/vm0-ai/vm0/issues/19584)) ([7ea1dcb](https://github.com/vm0-ai/vm0/commit/7ea1dcb93739a189d4acbecb6f36428d0a6a5006))
+
+
+### Performance Improvements
+
+* **runner:** attribute session history fallback ([#19588](https://github.com/vm0-ai/vm0/issues/19588)) ([7d94c23](https://github.com/vm0-ai/vm0/commit/7d94c238d862f8650112490928097380ed3089b1))
+
 ## [0.131.6](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.5...runner-rs-v0.131.6) (2026-07-01)
 
 
