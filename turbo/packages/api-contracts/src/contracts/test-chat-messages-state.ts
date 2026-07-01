@@ -8,8 +8,18 @@ export const testChatMessagesStateErrorSchema = z.object({
   error: z.string(),
 });
 
+const vm0BddApiKeySchema = z.string().refine(
+  (apiKey) => {
+    return (
+      apiKey.startsWith("vm0-key-bdd-fake-") ||
+      apiKey.startsWith("vm0-key-bdd-dev-seed-")
+    );
+  },
+  { message: "Expected a bdd-scoped vm0 API key" },
+);
+
 const vm0ApiKeySeedSchema = z.object({
-  api_key: z.string(),
+  api_key: vm0BddApiKeySchema,
   label: z.string(),
 });
 
