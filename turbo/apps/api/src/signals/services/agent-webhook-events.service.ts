@@ -1,6 +1,7 @@
 import { command, type Command } from "ccstate";
 import { and, eq } from "drizzle-orm";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { zeroRuns } from "@vm0/db/schema/zero-run";
 
 import { eventConsumerPayloadState$ } from "../../lib/event-consumer/route";
 import type {
@@ -49,6 +50,7 @@ interface DispatchableConsumer {
   readonly command$: ConsumerCommand;
   readonly required?: boolean;
   readonly eventTypes?: readonly string[];
+  readonly chatOnly?: boolean;
 }
 
 interface PreparedConsumer {
@@ -62,6 +64,7 @@ interface DispatchAgentEventConsumersParams {
   readonly runId: string;
   readonly events: readonly AgentEvent[];
   readonly context: RunEventContext;
+  readonly isChatRun: boolean;
 }
 
 const EVENT_CONSUMERS: readonly DispatchableConsumer[] = [
@@ -73,7 +76,7 @@ const EVENT_CONSUMERS: readonly DispatchableConsumer[] = [
   {
     name: "chat-assistant",
     command$: processChatAssistantEvents$,
-    eventTypes: ["assistant", "item.completed"],
+    chatOnly: true,
   },
   {
     name: "telegram-typing",
@@ -165,6 +168,10 @@ const dispatchAgentEventConsumers$ = command(
     const context = params.context;
     const consumers = EVENT_CONSUMERS.map(
       (consumer): PreparedConsumer | null => {
+        if (consumer.chatOnly && !params.isChatRun) {
+          return null;
+        }
+
         const matchingEvents = consumer.eventTypes
           ? params.events.filter((event) => {
               return consumer.eventTypes?.includes(event.type) ?? false;
@@ -233,8 +240,9 @@ export const receiveAgentEvents$ = command(
   ) => {
     const db = get(db$);
     const [run] = await db
-      .select({ orgId: agentRuns.orgId })
+      .select({ orgId: agentRuns.orgId, chatThreadId: zeroRuns.chatThreadId })
       .from(agentRuns)
+      .leftJoin(zeroRuns, eq(zeroRuns.id, agentRuns.id))
       .where(
         and(
           eq(agentRuns.id, params.body.runId),
@@ -266,6 +274,7 @@ export const receiveAgentEvents$ = command(
             userId: params.auth.userId,
             orgId: run.orgId,
           },
+          isChatRun: run.chatThreadId !== null,
         },
         signal,
       ),

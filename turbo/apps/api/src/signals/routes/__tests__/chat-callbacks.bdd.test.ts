@@ -380,6 +380,17 @@ function resultEvent(
   return { eventType: "result", sequenceNumber, eventData: { result } };
 }
 
+function chatOutputAxiomQueryCalls(): readonly unknown[][] {
+  return context.mocks.axiom.query.mock.calls.filter((call) => {
+    const apl = call[0];
+    return (
+      typeof apl === "string" &&
+      apl.includes("['agent-run-events']") &&
+      apl.includes('eventType == "assistant"')
+    );
+  });
+}
+
 function pushPayload(call: readonly unknown[] | undefined): unknown {
   const raw = call?.[1];
   return JSON.parse(typeof raw === "string" ? raw : "{}");
@@ -975,6 +986,8 @@ describe("CHAT-02: completed chat callback", () => {
     await expectChatCallbackPreCreateTimingActions(claimed.runId, [
       "api_dispatch_pre_create_zero_chat_callback_load_terminal",
       "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
+      "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
+      "api_dispatch_pre_create_zero_chat_callback_db_output_incomplete",
       "api_dispatch_pre_create_zero_chat_callback_query_output_events",
       "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items",
       "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
@@ -1207,6 +1220,252 @@ describe("CHAT-02: completed chat callback", () => {
 });
 
 describe("CHAT-02: chat output extraction and progress callbacks", () => {
+  it("uses DB-complete assistant output for queued auto-send without querying Axiom output", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const first = await startChatRun(actor, {
+      agentId,
+      prompt: "stream before queued follow-up",
+    });
+    await queueChatMessage(actor, {
+      agentId,
+      threadId: first.threadId,
+      prompt: "queued after streamed output",
+    });
+    const firstHeaders = await claimChatRun(runnerGroup, first.runId);
+
+    await webhooks.requestAgentEvents(
+      {
+        runId: first.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              id: "msg_bdd_db_complete",
+              content: [{ type: "text", text: "DB-complete streamed answer" }],
+            },
+          },
+        ],
+      },
+      firstHeaders,
+      [200],
+    );
+    context.mocks.axiom.query.mockClear();
+    context.mocks.axiom.query.mockImplementation((apl: unknown) => {
+      const query = typeof apl === "string" ? apl : "";
+      if (query.includes("['agent-run-events']")) {
+        throw new Error("DB-complete output should not query Axiom");
+      }
+      return Promise.resolve([]);
+    });
+
+    await completeChatRunOk(first.runId, firstHeaders, {
+      lastEventSequence: 0,
+    });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      first.threadId,
+      (threadMessages) => {
+        return userMessages(threadMessages).some((message) => {
+          return (
+            message.content === "queued after streamed output" &&
+            message.runId !== undefined
+          );
+        });
+      },
+    );
+    expect(chatOutputAxiomQueryCalls()).toHaveLength(0);
+    expect(
+      eventBackedContents(messages.messages, first.runId).map((message) => {
+        return message.content;
+      }),
+    ).toStrictEqual(["DB-complete streamed answer"]);
+    expect(
+      lifecycleMarkers(messages.messages, first.runId, "completed"),
+    ).toHaveLength(1);
+
+    const claimed = userMessages(messages.messages).find((message) => {
+      return (
+        message.content === "queued after streamed output" &&
+        message.runId !== undefined
+      );
+    });
+    if (!claimed?.runId) {
+      throw new Error("Expected queued message to auto-send");
+    }
+    const timingEvents = await expectChatCallbackPreCreateTimingActions(
+      claimed.runId,
+      [
+        "api_dispatch_pre_create_zero_chat_callback_load_terminal",
+        "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
+        "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
+        "api_dispatch_pre_create_zero_chat_callback_db_output_complete",
+        "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
+        "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_load_thread",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_lookup_queued_message",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_build_input",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_create_run",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_claim_message",
+        "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
+      ],
+    );
+    expectNoChatCallbackPreCreateTimingActions(timingEvents, [
+      "api_dispatch_pre_create_zero_chat_callback_query_output_events",
+      "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items",
+    ]);
+  }, 90_000);
+
+  it("falls back to Axiom when DB assistant output is not complete through the terminal sequence", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const run = await startChatRun(actor, {
+      agentId,
+      prompt: "partial streamed output",
+    });
+    const sandboxHeaders = await claimChatRun(runnerGroup, run.runId);
+    await webhooks.requestAgentEvents(
+      {
+        runId: run.runId,
+        events: [
+          {
+            type: "assistant",
+            sequenceNumber: 0,
+            message: {
+              id: "msg_bdd_partial_0",
+              content: [{ type: "text", text: "Partial streamed answer" }],
+            },
+          },
+        ],
+      },
+      sandboxHeaders,
+      [200],
+    );
+
+    chatCallbacks.mockChatOutputEvents([
+      assistantEvent(0, "Partial streamed answer"),
+      assistantEvent(1, "Terminal answer from Axiom"),
+    ]);
+    context.mocks.axiom.query.mockClear();
+    await completeChatRunOk(run.runId, sandboxHeaders, {
+      lastEventSequence: 1,
+    });
+
+    const messages = await waitForThreadMessages(
+      actor,
+      run.threadId,
+      (threadMessages) => {
+        return eventBackedContents(threadMessages, run.runId).length === 2;
+      },
+    );
+    expect(chatOutputAxiomQueryCalls()).toHaveLength(1);
+    expect(
+      eventBackedContents(messages.messages, run.runId).map((message) => {
+        return message.content;
+      }),
+    ).toStrictEqual(
+      expect.arrayContaining([
+        "Partial streamed answer",
+        "Terminal answer from Axiom",
+      ]),
+    );
+  }, 90_000);
+
+  it("skips Axiom for DB-complete no-output runs and falls back for result-only output", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+
+    const silent = await startChatRun(actor, {
+      agentId,
+      prompt: "silent streamed run",
+    });
+    const silentHeaders = await claimChatRun(runnerGroup, silent.runId);
+    await webhooks.requestAgentEvents(
+      {
+        runId: silent.runId,
+        events: [{ type: "system", sequenceNumber: 0 }],
+      },
+      silentHeaders,
+      [200],
+    );
+    context.mocks.axiom.query.mockClear();
+    context.mocks.axiom.query.mockImplementation((apl: unknown) => {
+      const query = typeof apl === "string" ? apl : "";
+      if (query.includes("['agent-run-events']")) {
+        throw new Error("DB-complete no-output run should not query Axiom");
+      }
+      return Promise.resolve([]);
+    });
+
+    await completeChatRunOk(silent.runId, silentHeaders, {
+      lastEventSequence: 0,
+    });
+    let messages = await waitForThreadMessages(
+      actor,
+      silent.threadId,
+      (threadMessages) => {
+        return (
+          lifecycleMarkers(threadMessages, silent.runId, "completed").length ===
+          1
+        );
+      },
+    );
+    expect(chatOutputAxiomQueryCalls()).toHaveLength(0);
+    expect(eventBackedContents(messages.messages, silent.runId)).toHaveLength(
+      0,
+    );
+
+    const resultOnly = await startChatRun(actor, {
+      agentId,
+      threadId: silent.threadId,
+      prompt: "result-only streamed run",
+    });
+    const resultOnlyHeaders = await claimChatRun(runnerGroup, resultOnly.runId);
+    await webhooks.requestAgentEvents(
+      {
+        runId: resultOnly.runId,
+        events: [
+          {
+            type: "result",
+            sequenceNumber: 0,
+            result: "webhook result text is not stored in materialization",
+          },
+        ],
+      },
+      resultOnlyHeaders,
+      [200],
+    );
+    chatCallbacks.mockChatOutputEvents([
+      resultEvent(0, "Axiom result fallback answer"),
+    ]);
+    context.mocks.axiom.query.mockClear();
+
+    await completeChatRunOk(resultOnly.runId, resultOnlyHeaders, {
+      lastEventSequence: 0,
+    });
+    messages = await waitForThreadMessages(
+      actor,
+      silent.threadId,
+      (threadMessages) => {
+        return (
+          eventBackedContents(threadMessages, resultOnly.runId).length === 1
+        );
+      },
+    );
+    expect(chatOutputAxiomQueryCalls()).toHaveLength(1);
+    expect(
+      eventBackedContents(messages.messages, resultOnly.runId).map(
+        (message) => {
+          return message.content;
+        },
+      ),
+    ).toStrictEqual(["Axiom result fallback answer"]);
+  }, 90_000);
+
   it("extracts assistant output from Codex items and result fallbacks, skips non-events, and acknowledges progress without reading events", async () => {
     const { actor, agentId, runnerGroup } = await entitledChatActor();
     const routeRequests = chatCallbacks.failIfChatCallbackRouteIsFetched();
@@ -1735,6 +1994,9 @@ describe("CHAT-02: auto-send after failures", () => {
     );
     expectNoChatCallbackPreCreateTimingActions(timingEvents, [
       "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
+      "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
+      "api_dispatch_pre_create_zero_chat_callback_db_output_complete",
+      "api_dispatch_pre_create_zero_chat_callback_db_output_incomplete",
       "api_dispatch_pre_create_zero_chat_callback_query_output_events",
       "api_dispatch_pre_create_zero_chat_callback_insert_lifecycle_marker",
       "api_dispatch_pre_create_zero_chat_callback_load_followup_context",
