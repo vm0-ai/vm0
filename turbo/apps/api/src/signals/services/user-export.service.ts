@@ -645,7 +645,7 @@ async function resolveSessionHistory(
   encoding: string | null,
   size: number | null,
   legacyText: string | null,
-): Promise<string | null> {
+): Promise<Buffer | string | null> {
   if (hash) {
     const normalizedEncoding = normalizeSessionHistoryBlobEncoding(encoding);
     const key = resumeSessionHistoryBlobKey(hash, normalizedEncoding);
@@ -677,7 +677,7 @@ async function loadSessionHistoryBlob(
     readonly hash: string;
     readonly key: string;
   },
-): Promise<string> {
+): Promise<Buffer> {
   const encodedBuffer = await runtime.get(
     downloadS3BufferWithMaxBytes(
       runtime.bucket,
@@ -693,14 +693,14 @@ async function loadSessionHistoryBlob(
           args.expectedSize ?? RESUME_SESSION_HISTORY_MAX_BYTES,
         )
       : encodedBuffer;
-  return decodeVerifiedSessionHistory(args.hash, rawBuffer, args.expectedSize);
+  return verifySessionHistoryBuffer(args.hash, rawBuffer, args.expectedSize);
 }
 
-function decodeVerifiedSessionHistory(
+function verifySessionHistoryBuffer(
   hash: string,
   buffer: Buffer,
   expectedSize: number | undefined,
-): string {
+): Buffer {
   if (expectedSize !== undefined && buffer.length !== expectedSize) {
     throw new Error(
       `session history size mismatch: expected ${expectedSize} bytes, got ${buffer.length} bytes`,
@@ -713,7 +713,7 @@ function decodeVerifiedSessionHistory(
   if (!isUtf8(buffer)) {
     throw new Error("session history is not utf-8");
   }
-  return buffer.toString("utf8");
+  return buffer;
 }
 
 async function collectConversationMessages(
