@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.43.6](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.5...guest-agent-v0.43.6) (2026-07-01)
+
+
+### Bug Fixes
+
+* classify codex context window failures ([#19607](https://github.com/vm0-ai/vm0/issues/19607)) ([34ed0ac](https://github.com/vm0-ai/vm0/commit/34ed0ac9d29d81ffda52c5ccd6bf69915d5cc80c))
+
+
+### Refactoring
+
+* pass guest diagnostics paths explicitly ([#19574](https://github.com/vm0-ai/vm0/issues/19574)) ([5913576](https://github.com/vm0-ai/vm0/commit/5913576079f9acde38845e9b8174ad76f4b82f10))
+
 ## [0.43.5](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.43.4...guest-agent-v0.43.5) (2026-07-01)
 
 

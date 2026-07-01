@@ -2251,7 +2251,8 @@ function buildGmailLabelAppliedEventConfig(
 
 type GoogleCalendarTriggerEventType =
   | "google-calendar-event-created"
-  | "google-calendar-event-updated";
+  | "google-calendar-event-updated"
+  | "google-calendar-event-cancelled";
 
 function googleCalendarIdFromForm(form: FormData): string {
   return formTextValue(form, "calendarId") ?? "primary";
@@ -2369,6 +2370,9 @@ function workflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "google-calendar-event-updated") {
     return "Google Calendar event updated";
   }
+  if (trigger.eventType === "google-calendar-event-cancelled") {
+    return "Google Calendar event cancelled";
+  }
   return "Webhook";
 }
 
@@ -2395,7 +2399,8 @@ function workflowTriggerSummary(
   }
   if (
     trigger.eventType === "google-calendar-event-created" ||
-    trigger.eventType === "google-calendar-event-updated"
+    trigger.eventType === "google-calendar-event-updated" ||
+    trigger.eventType === "google-calendar-event-cancelled"
   ) {
     return `Calendar ${quote(trigger.eventConfig.calendarId)}`;
   }
@@ -2419,6 +2424,7 @@ type TriggerCreateDialogKind =
   | "github-label"
   | "google-calendar-created"
   | "google-calendar-updated"
+  | "google-calendar-cancelled"
   | "webhook";
 
 function TriggerCreateMenuItem({
@@ -2510,6 +2516,13 @@ function GoogleCalendarTriggerCreateMenuItems({
         description="Run when a calendar event is updated."
         onSelect={() => {
           onSelect("google-calendar-updated");
+        }}
+      />
+      <GoogleCalendarTriggerCreateMenuItem
+        title="Google Calendar event cancelled"
+        description="Run when a calendar event is cancelled."
+        onSelect={() => {
+          onSelect("google-calendar-cancelled");
         }}
       />
     </>
@@ -2640,6 +2653,45 @@ function TriggerCreateMenu({
   );
 }
 
+function GoogleCalendarTriggerDialogs({
+  workflowId,
+  createDialog,
+  setCreateDialog,
+}: {
+  readonly workflowId: string;
+  readonly createDialog: TriggerCreateDialogKind | null;
+  readonly setCreateDialog: (dialog: TriggerCreateDialogKind | null) => void;
+}) {
+  return (
+    <>
+      <CreateGoogleCalendarEventTriggerDialog
+        workflowId={workflowId}
+        eventType="google-calendar-event-created"
+        open={createDialog === "google-calendar-created"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "google-calendar-created" : null);
+        }}
+      />
+      <CreateGoogleCalendarEventTriggerDialog
+        workflowId={workflowId}
+        eventType="google-calendar-event-updated"
+        open={createDialog === "google-calendar-updated"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "google-calendar-updated" : null);
+        }}
+      />
+      <CreateGoogleCalendarEventTriggerDialog
+        workflowId={workflowId}
+        eventType="google-calendar-event-cancelled"
+        open={createDialog === "google-calendar-cancelled"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "google-calendar-cancelled" : null);
+        }}
+      />
+    </>
+  );
+}
+
 function TriggersSection({
   detail,
 }: {
@@ -2737,21 +2789,10 @@ function TriggersSection({
           setCreateDialog(open ? "github-label" : null);
         }}
       />
-      <CreateGoogleCalendarEventTriggerDialog
+      <GoogleCalendarTriggerDialogs
         workflowId={detail.id}
-        eventType="google-calendar-event-created"
-        open={createDialog === "google-calendar-created"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "google-calendar-created" : null);
-        }}
-      />
-      <CreateGoogleCalendarEventTriggerDialog
-        workflowId={detail.id}
-        eventType="google-calendar-event-updated"
-        open={createDialog === "google-calendar-updated"}
-        onOpenChange={(open) => {
-          setCreateDialog(open ? "google-calendar-updated" : null);
-        }}
+        createDialog={createDialog}
+        setCreateDialog={setCreateDialog}
       />
       <CreateWebhookTriggerDialog
         workflowId={detail.id}
@@ -3876,6 +3917,7 @@ function CreateGoogleCalendarEventTriggerDialog({
   );
   const creating = createLoadable.state === "loading";
   const isUpdated = eventType === "google-calendar-event-updated";
+  const isCancelled = eventType === "google-calendar-event-cancelled";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -3883,9 +3925,11 @@ function CreateGoogleCalendarEventTriggerDialog({
         <DialogHeader>
           <DialogTitle>Add Google Calendar automation</DialogTitle>
           <DialogDescription>
-            {isUpdated
-              ? "Run this workflow when a Google Calendar event is updated."
-              : "Run this workflow when a new Google Calendar event is created."}
+            {isCancelled
+              ? "Run this workflow when a Google Calendar event is cancelled."
+              : isUpdated
+                ? "Run this workflow when a Google Calendar event is updated."
+                : "Run this workflow when a new Google Calendar event is created."}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -3910,7 +3954,7 @@ function CreateGoogleCalendarEventTriggerDialog({
                     },
                     pageSignal,
                   );
-                } else {
+                } else if (eventType === "google-calendar-event-updated") {
                   await createGoogleCalendarTrigger(
                     {
                       workflowId,
@@ -3918,6 +3962,19 @@ function CreateGoogleCalendarEventTriggerDialog({
                       eventConfig: {
                         provider: "google-calendar",
                         event: "event_updated",
+                        calendarId,
+                      },
+                    },
+                    pageSignal,
+                  );
+                } else {
+                  await createGoogleCalendarTrigger(
+                    {
+                      workflowId,
+                      eventType: "google-calendar-event-cancelled",
+                      eventConfig: {
+                        provider: "google-calendar",
+                        event: "event_cancelled",
                         calendarId,
                       },
                     },
