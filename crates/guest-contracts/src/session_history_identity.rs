@@ -294,6 +294,10 @@ pub enum FinalSessionHistoryIdentityError {
     /// History size is zero.
     InvalidHistorySize,
     /// History size exceeds a verifier work budget.
+    ///
+    /// Final identity metadata no longer owns this runtime policy, but the
+    /// variant remains part of the shared error contract for callers that may
+    /// still classify older validator results.
     HistoryTooLarge,
     /// History marker payload is missing.
     MissingHistoryMarker,
