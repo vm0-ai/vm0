@@ -12,6 +12,7 @@ import { server } from "../../../mocks/server";
 import {
   deleteWorkflowsForFixture$,
   getWorkflowGoogleCalendarWatchState$,
+  getWorkflowTriggerRunState$,
   seedAgentForInstructions$,
   seedWorkflowConnector$,
   seedWorkflowsFixture$,
@@ -500,8 +501,12 @@ describe("POST /api/webhooks/google-calendar", () => {
       dispatched: 0,
       duplicates: 0,
     });
-    const idleAfterSameRevision = await runsApi.pollRunner(runnerGroup);
-    expect(idleAfterSameRevision.body.job).toBeNull();
+    const runsAfterSameRevision = await store.set(
+      getWorkflowTriggerRunState$,
+      { triggerId: created.body.id },
+      context.signal,
+    );
+    expect(runsAfterSameRevision).toHaveLength(1);
 
     const third = await postGoogleCalendarWebhook(webhookHeaders(watch));
 
@@ -512,10 +517,17 @@ describe("POST /api/webhooks/google-calendar", () => {
       dispatched: 1,
       duplicates: 0,
     });
-    await runsApi.heartbeatRunner(runnerGroup);
-    const thirdJob = await runsApi.pollRunner(runnerGroup);
-    expect(thirdJob.body.job?.runId).toStrictEqual(expect.any(String));
-    await runsApi.claimRunnerJob(thirdJob.body.job!.runId);
+    const runsAfterThird = await store.set(
+      getWorkflowTriggerRunState$,
+      { triggerId: created.body.id },
+      context.signal,
+    );
+    expect(runsAfterThird).toHaveLength(2);
+    expect(runsAfterThird).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ triggerSource: "workflow-event" }),
+      ]),
+    );
 
     const afterThird = await store.set(
       getWorkflowGoogleCalendarWatchState$,
