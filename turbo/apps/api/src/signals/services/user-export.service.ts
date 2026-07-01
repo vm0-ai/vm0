@@ -42,10 +42,10 @@ import {
 import { nowDate } from "../external/time";
 import { settle } from "../utils";
 import {
-  resumeSessionHistoryGzipBlobKey,
-  resumeSessionHistoryRawBlobKey,
+  normalizeSessionHistoryBlobEncoding,
+  resumeSessionHistoryBlobKey,
+  type SessionHistoryBlobEncoding,
   SESSION_HISTORY_ENCODING_GZIP,
-  SESSION_HISTORY_ENCODING_IDENTITY,
 } from "./session-history-blobs";
 import { gunzipSessionHistoryBufferWithMaxBytes } from "./session-history-decompression";
 import { loadWorkflowVolumeFiles } from "./zero-workflow-volume.service";
@@ -647,17 +647,8 @@ async function resolveSessionHistory(
   legacyText: string | null,
 ): Promise<string | null> {
   if (hash) {
-    const normalizedEncoding = encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
-    if (
-      normalizedEncoding !== SESSION_HISTORY_ENCODING_IDENTITY &&
-      normalizedEncoding !== SESSION_HISTORY_ENCODING_GZIP
-    ) {
-      throw new Error(`invalid session history blob encoding: ${encoding}`);
-    }
-    const key =
-      normalizedEncoding === SESSION_HISTORY_ENCODING_GZIP
-        ? resumeSessionHistoryGzipBlobKey(hash)
-        : resumeSessionHistoryRawBlobKey(hash);
+    const normalizedEncoding = normalizeSessionHistoryBlobEncoding(encoding);
+    const key = resumeSessionHistoryBlobKey(hash, normalizedEncoding);
     const result = await settle(
       loadSessionHistoryBlob(runtime, {
         encoding: normalizedEncoding,
@@ -681,9 +672,7 @@ async function resolveSessionHistory(
 async function loadSessionHistoryBlob(
   runtime: ExportRuntime,
   args: {
-    readonly encoding:
-      | typeof SESSION_HISTORY_ENCODING_IDENTITY
-      | typeof SESSION_HISTORY_ENCODING_GZIP;
+    readonly encoding: SessionHistoryBlobEncoding;
     readonly expectedSize: number | undefined;
     readonly hash: string;
     readonly key: string;

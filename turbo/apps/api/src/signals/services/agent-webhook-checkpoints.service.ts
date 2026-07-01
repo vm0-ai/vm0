@@ -20,9 +20,8 @@ import type { SandboxAuth } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import { generatePresignedPutUrl, s3ObjectExists } from "../external/s3";
 import {
-  resumeSessionHistoryGzipBlobKey,
-  resumeSessionHistoryRawBlobKey,
-  SESSION_HISTORY_ENCODING_GZIP,
+  normalizeSessionHistoryBlobEncoding,
+  resumeSessionHistoryBlobKey,
   SESSION_HISTORY_ENCODING_IDENTITY,
 } from "./session-history-blobs";
 
@@ -33,34 +32,9 @@ type PrepareHistoryBody = z.infer<
   typeof webhookCheckpointsPrepareHistoryContract.prepare.body
 >;
 
-type SessionHistoryBlobEncoding =
-  | typeof SESSION_HISTORY_ENCODING_IDENTITY
-  | typeof SESSION_HISTORY_ENCODING_GZIP;
-
 interface CheckpointAuthInput<TBody> {
   readonly auth: SandboxAuth;
   readonly body: TBody;
-}
-
-function normalizeSessionHistoryBlobEncoding(
-  encoding: string | null,
-): SessionHistoryBlobEncoding {
-  if (encoding === null || encoding === SESSION_HISTORY_ENCODING_IDENTITY) {
-    return SESSION_HISTORY_ENCODING_IDENTITY;
-  }
-  if (encoding === SESSION_HISTORY_ENCODING_GZIP) {
-    return SESSION_HISTORY_ENCODING_GZIP;
-  }
-  throw new Error(`invalid session history blob encoding: ${encoding}`);
-}
-
-function resumeSessionHistoryBlobKey(
-  hash: string,
-  encoding: SessionHistoryBlobEncoding,
-): string {
-  return encoding === SESSION_HISTORY_ENCODING_GZIP
-    ? resumeSessionHistoryGzipBlobKey(hash)
-    : resumeSessionHistoryRawBlobKey(hash);
 }
 
 interface AgentComposeSnapshot {

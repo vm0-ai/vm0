@@ -47,10 +47,10 @@ import { dispatchCompleteSideEffects$ } from "../services/agent-webhook-complete
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { gunzipSessionHistoryBufferWithMaxBytes } from "../services/session-history-decompression";
 import {
-  resumeSessionHistoryGzipBlobKey,
+  resumeSessionHistoryBlobKey,
   resumeSessionHistoryRawBlobKey,
   SESSION_HISTORY_ENCODING_GZIP,
-  SESSION_HISTORY_ENCODING_IDENTITY,
+  tryNormalizeSessionHistoryBlobEncoding,
 } from "../services/session-history-blobs";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
@@ -1027,14 +1027,14 @@ const loadGzipResumeSessionHistoryRepresentation$ = command(
     if (!blob) {
       return undefined;
     }
-    const encoding = blob.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
+    const encoding = tryNormalizeSessionHistoryBlobEncoding(blob.encoding);
+    if (encoding === undefined) {
+      throw invalidResumeSessionHistoryError(
+        args.hash,
+        new Error(`invalid session history blob encoding: ${blob.encoding}`),
+      );
+    }
     if (encoding !== SESSION_HISTORY_ENCODING_GZIP) {
-      if (encoding !== SESSION_HISTORY_ENCODING_IDENTITY) {
-        throw invalidResumeSessionHistoryError(
-          args.hash,
-          new Error(`invalid session history blob encoding: ${encoding}`),
-        );
-      }
       return undefined;
     }
     if (blob.size <= 0) {
@@ -1044,7 +1044,7 @@ const loadGzipResumeSessionHistoryRepresentation$ = command(
     return {
       encoding: SESSION_HISTORY_ENCODING_GZIP,
       rawSize: blob.size,
-      objectKey: resumeSessionHistoryGzipBlobKey(args.hash),
+      objectKey: resumeSessionHistoryBlobKey(args.hash, encoding),
     };
   },
 );

@@ -4,7 +4,6 @@ import {
   CANONICAL_CODEX_MEMORY_MOUNT_PATH,
   CANONICAL_CLAUDE_MEMORY_MOUNT_PATH,
   DEFAULT_PROFILE,
-  sessionHistoryEncodingSchema,
   type SecretConnectorMetadata,
   type StorageManifest,
   type StoredExecutionContext,
@@ -181,6 +180,10 @@ import {
   loadAgentConnectorScope,
   loadZeroBackedComposeAgent,
 } from "./agent-connector-scope.service";
+import {
+  normalizeSessionHistoryBlobEncoding,
+  SESSION_HISTORY_ENCODING_GZIP,
+} from "./session-history-blobs";
 
 const PENDING_RUN_TTL_MS = 15 * 60 * 1000;
 const AUTO_MEMORY_ARTIFACT_NAME = MEMORY_ARTIFACT_NAME;
@@ -4008,16 +4011,11 @@ function loadResumeSession(
           const hash = conversation.cliAgentSessionHistoryHash;
           let encoding: "identity" | "gzip" | undefined;
           if (conversation.sessionHistoryBlobEncoding !== null) {
-            const parsedEncoding = sessionHistoryEncodingSchema.safeParse(
+            const parsedEncoding = normalizeSessionHistoryBlobEncoding(
               conversation.sessionHistoryBlobEncoding,
             );
-            if (!parsedEncoding.success) {
-              throw new Error(
-                `invalid session history blob encoding: ${conversation.sessionHistoryBlobEncoding}`,
-              );
-            }
-            if (parsedEncoding.data === "gzip") {
-              encoding = parsedEncoding.data;
+            if (parsedEncoding === SESSION_HISTORY_ENCODING_GZIP) {
+              encoding = parsedEncoding;
             }
           }
           if (hash) {
