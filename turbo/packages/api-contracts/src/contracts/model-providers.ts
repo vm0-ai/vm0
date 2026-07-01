@@ -442,6 +442,8 @@ export const MODEL_PROVIDER_TYPES = {
       ANTHROPIC_DEFAULT_SONNET_MODEL: "$model",
       ANTHROPIC_DEFAULT_HAIKU_MODEL: "$model",
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
+      // Moonshot rejects Anthropic document blocks; keep attachments as text.
+      CLAUDE_CODE_DISABLE_ATTACHMENTS: "1",
     } satisfies ModelProviderEnvBindings,
     models: [
       "kimi-k2.7-code",
@@ -467,6 +469,8 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
       API_TIMEOUT_MS: "3000000",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+      // MiniMax does not document support for Anthropic document blocks.
+      CLAUDE_CODE_DISABLE_ATTACHMENTS: "1",
     } satisfies ModelProviderEnvBindings,
     models: ["MiniMax-M3", "MiniMax-M2.1"] as string[],
     defaultModel: "MiniMax-M3",
@@ -487,6 +491,8 @@ export const MODEL_PROVIDER_TYPES = {
       CLAUDE_CODE_SUBAGENT_MODEL: "$model",
       API_TIMEOUT_MS: "600000",
       CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: "1",
+      // DeepSeek explicitly rejects Anthropic document blocks.
+      CLAUDE_CODE_DISABLE_ATTACHMENTS: "1",
     } satisfies ModelProviderEnvBindings,
     models: ["deepseek-v4-pro"] as string[],
     defaultModel: "deepseek-v4-pro",

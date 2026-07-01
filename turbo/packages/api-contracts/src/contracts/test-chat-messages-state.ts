@@ -36,6 +36,17 @@ export const testChatMessagesStateActionBodySchema = z.discriminatedUnion(
       model: z.string(),
     }),
     z.object({
+      action: z.literal("replace-vm0-api-keys"),
+      vendor: z.string(),
+      model: z.string(),
+      keys: z.array(vm0ApiKeySeedSchema),
+    }),
+    z.object({
+      action: z.literal("delete-vm0-api-keys"),
+      vendor: z.string(),
+      model: z.string(),
+    }),
+    z.object({
       action: z.literal("attach-pre-dispatch-cancelled-run-to-thread"),
       run_id: z.uuid(),
       thread_id: z.uuid(),
