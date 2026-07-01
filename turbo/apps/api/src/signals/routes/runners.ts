@@ -1119,7 +1119,7 @@ const loadCompressedResumeSessionHistory$ = command(
     const rawBuffer = await gunzipBufferWithMaxBytes(
       args.representation.objectKey,
       encodedBuffer,
-      RESUME_SESSION_HISTORY_MAX_BYTES,
+      args.representation.rawSize,
     );
     return decodeVerifiedResumeSessionHistory(
       args.hash,

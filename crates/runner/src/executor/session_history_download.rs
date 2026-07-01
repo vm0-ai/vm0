@@ -343,7 +343,7 @@ async fn download_resume_session_history(
         ResumeSessionHistoryEncoding::Gzip => {
             let raw_size = validate_gzip_ref(&history_ref, timings)?;
             let encoded_bytes = download_body(&http, &history_ref.url, None, timings).await?;
-            let raw_bytes = gunzip_session_history(&encoded_bytes)?;
+            let raw_bytes = gunzip_session_history(&encoded_bytes, raw_size)?;
             validate_gzip_raw_size(raw_size, raw_bytes.len(), timings)?;
             raw_bytes
         }
@@ -453,7 +453,7 @@ fn validate_gzip_raw_size(
     Ok(())
 }
 
-fn gunzip_session_history(encoded_bytes: &[u8]) -> RunnerResult<Vec<u8>> {
+fn gunzip_session_history(encoded_bytes: &[u8], max_raw_bytes: u64) -> RunnerResult<Vec<u8>> {
     let mut decoder = GzDecoder::new(encoded_bytes);
     let mut bytes = Vec::new();
     let mut buffer = [0u8; 8192];
@@ -466,9 +466,9 @@ fn gunzip_session_history(encoded_bytes: &[u8]) -> RunnerResult<Vec<u8>> {
             break;
         }
         decoded += read as u64;
-        if decoded > RESUME_SESSION_HISTORY_MAX_BYTES {
+        if decoded > max_raw_bytes {
             return Err(RunnerError::Internal(format!(
-                "session history is too large after decompression: {decoded} bytes exceeds {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
+                "session history is too large after decompression: {decoded} bytes exceeds {max_raw_bytes} bytes"
             )));
         }
         let chunk = buffer
@@ -742,6 +742,32 @@ mod tests {
                 assert_phase_success(timings.hash_verification());
             }
             _ => panic!("expected downloaded session"),
+        }
+    }
+
+    #[tokio::test]
+    async fn materializer_rejects_gzip_body_over_declared_raw_size() {
+        let body = b"{\"type\":\"init\"}\n{\"type\":\"user\",\"message\":\"hello\"}\n";
+        let compressed = gzip_bytes(body);
+        let compressed_body: &'static [u8] = Box::leak(compressed.into_boxed_slice());
+        let hash = hex::encode(Sha256::digest(body));
+        let session = gzip_ref_session(serve_once("200 OK", compressed_body, None).await, hash, 1);
+
+        let materializer = start_materializer(&session);
+        let result = materializer.finish(&CancellationToken::new()).await;
+
+        match result {
+            SessionHistoryMaterialization::Failed { error, timings, .. } => {
+                assert!(
+                    error
+                        .to_string()
+                        .contains("session history is too large after decompression"),
+                    "unexpected error: {error}"
+                );
+                assert_phase_success(timings.request_status());
+                assert_phase_success(timings.body_read());
+            }
+            _ => panic!("expected failed materialization"),
         }
     }
 
