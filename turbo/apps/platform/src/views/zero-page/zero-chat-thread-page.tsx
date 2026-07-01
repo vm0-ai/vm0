@@ -59,11 +59,13 @@ import {
   cn,
   isEditableTarget,
   matchShortcut,
+  getShortcutParts,
   Button,
   Skeleton,
   DropdownMenu as UiDropdownMenu,
   DropdownMenuContent as UiDropdownMenuContent,
   DropdownMenuItem as UiDropdownMenuItem,
+  DropdownMenuSeparator as UiDropdownMenuSeparator,
   DropdownMenuTrigger as UiDropdownMenuTrigger,
   Dialog,
   DialogContent,
@@ -276,6 +278,8 @@ import {
 import {
   applyChatThreadEmoji,
   chatThreadEmojiShortcutIndex,
+  isChatThreadEmojiClearShortcut,
+  removeChatThreadEmoji,
   CHAT_THREAD_EMOJI_OPTIONS,
 } from "../../signals/chat-page/chat-thread-title.ts";
 import type { ChatThread } from "../../signals/agent-chat.ts";
@@ -366,6 +370,8 @@ const CHAT_SHORTCUT_SECTIONS = [
       { key: "mod+shift+a", label: "Open agent list" },
       { key: "f2", label: "Rename chat" },
       { key: "shift+f2", label: "Change emoji" },
+      { key: "shift+1", label: "Set emoji (shift+1-9)" },
+      { key: "shift+0", label: "Clear emoji" },
     ],
   },
   {
@@ -385,6 +391,10 @@ const CHAT_SHORTCUT_SECTIONS = [
     ],
   },
 ] as const;
+
+function isChatThreadEmojiShortcutKey(key: string): boolean {
+  return key === "shift+f2" || key === "shift+1" || key === "shift+0";
+}
 
 function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
   return <ArtifactsButtonInner thread={thread} />;
@@ -1164,12 +1174,10 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatThreadEmojiMenuButton({
-  emoji,
+function useChatThreadEmojiMenuActions({
   threadId,
   title,
 }: {
-  emoji: string | null | undefined;
   threadId: string;
   title: string | null | undefined;
 }) {
@@ -1213,6 +1221,44 @@ function ChatThreadEmojiMenuButton({
     );
   }
 
+  function clearEmoji() {
+    const activeThreadId = emojiMenuThreadId;
+    if (!activeThreadId) {
+      return;
+    }
+    const nextTitle = removeChatThreadEmoji(emojiMenuTitle ?? title);
+    if (!nextTitle) {
+      closeMenu();
+      return;
+    }
+    detach(
+      (async () => {
+        await renameChatThread(
+          { threadId: activeThreadId, title: nextTitle },
+          pageSignal,
+        );
+        reloadChatThreadDataForId(activeThreadId);
+        closeMenu();
+      })(),
+      Reason.DomCallback,
+    );
+  }
+
+  return { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji };
+}
+
+function ChatThreadEmojiMenuButton({
+  emoji,
+  threadId,
+  title,
+}: {
+  emoji: string | null | undefined;
+  threadId: string;
+  title: string | null | undefined;
+}) {
+  const { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji } =
+    useChatThreadEmojiMenuActions({ threadId, title });
+
   return (
     <TooltipProvider delayDuration={200}>
       <UiDropdownMenu
@@ -1251,13 +1297,17 @@ function ChatThreadEmojiMenuButton({
           }}
           onKeyDown={(event) => {
             const index = chatThreadEmojiShortcutIndex(event);
-            if (index === null) {
+            if (index !== null) {
+              event.preventDefault();
+              const option = CHAT_THREAD_EMOJI_OPTIONS[index];
+              if (option) {
+                selectEmoji(option.emoji);
+              }
               return;
             }
-            event.preventDefault();
-            const option = CHAT_THREAD_EMOJI_OPTIONS[index];
-            if (option) {
-              selectEmoji(option.emoji);
+            if (isChatThreadEmojiClearShortcut(event)) {
+              event.preventDefault();
+              clearEmoji();
             }
           }}
         >
@@ -1274,12 +1324,28 @@ function ChatThreadEmojiMenuButton({
                   {option.emoji}
                 </span>
                 <span>{option.label}</span>
-                <span className="ml-auto text-xs text-muted-foreground">
-                  {index + 1}
+                <span className="ml-auto flex items-center gap-0.5 text-xs text-muted-foreground">
+                  {getShortcutParts(`shift+${index + 1}`).map((part) => {
+                    return <span key={part}>{part}</span>;
+                  })}
                 </span>
               </UiDropdownMenuItem>
             );
           })}
+          <UiDropdownMenuSeparator />
+          <UiDropdownMenuItem
+            aria-label="Clear emoji"
+            onSelect={() => {
+              clearEmoji();
+            }}
+          >
+            <span>Clear emoji</span>
+            <span className="ml-auto flex items-center gap-0.5 text-xs text-muted-foreground">
+              {getShortcutParts("shift+0").map((part) => {
+                return <span key={part}>{part}</span>;
+              })}
+            </span>
+          </UiDropdownMenuItem>
         </UiDropdownMenuContent>
       </UiDropdownMenu>
     </TooltipProvider>
@@ -3002,12 +3068,30 @@ function ChatThread({
 }) {
   const openRenameDialog = useOpenCurrentChatThreadRenameDialog(thread);
   const openEmojiMenu = useOpenCurrentChatThreadEmojiMenu(thread);
+  const setThreadEmoji = useSetCurrentChatThreadEmoji(thread);
+  const clearThreadEmoji = useClearCurrentChatThreadEmoji(thread);
   const features = useLastResolved(featureSwitch$);
   const chatThreadEmojiEnabled =
     features?.[FeatureSwitchKey.ChatThreadEmoji] ?? false;
   const handleKeyDown = (event: ReactKeyboardEvent<HTMLElement>) => {
     if (event.defaultPrevented) {
       return;
+    }
+    if (chatThreadEmojiEnabled) {
+      const emojiOptionIndex = chatThreadEmojiShortcutIndex(event);
+      if (emojiOptionIndex !== null) {
+        const option = CHAT_THREAD_EMOJI_OPTIONS[emojiOptionIndex];
+        if (option) {
+          event.preventDefault();
+          setThreadEmoji(option.emoji);
+          return;
+        }
+      }
+      if (isChatThreadEmojiClearShortcut(event)) {
+        event.preventDefault();
+        clearThreadEmoji();
+        return;
+      }
     }
     if (chatThreadEmojiEnabled && matchShortcut("shift+f2", event)) {
       event.preventDefault();
@@ -3057,6 +3141,51 @@ function useOpenCurrentChatThreadEmojiMenu(thread: ChatThreadSignals) {
       threadId: thread.threadId,
       title,
     });
+  };
+}
+
+function useSetCurrentChatThreadEmoji(thread: ChatThreadSignals) {
+  const renameChatThread = useSet(renameChatThread$);
+  const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
+  const title = useCurrentChatThreadDialogTitle(thread);
+  const pageSignal = useGet(pageSignal$);
+  return (emoji: string) => {
+    detach(
+      (async () => {
+        await renameChatThread(
+          {
+            threadId: thread.threadId,
+            title: applyChatThreadEmoji(title, emoji),
+          },
+          pageSignal,
+        );
+        reloadChatThreadDataForId(thread.threadId);
+      })(),
+      Reason.DomCallback,
+    );
+  };
+}
+
+function useClearCurrentChatThreadEmoji(thread: ChatThreadSignals) {
+  const renameChatThread = useSet(renameChatThread$);
+  const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
+  const title = useCurrentChatThreadDialogTitle(thread);
+  const pageSignal = useGet(pageSignal$);
+  return () => {
+    const nextTitle = removeChatThreadEmoji(title);
+    if (!nextTitle) {
+      return;
+    }
+    detach(
+      (async () => {
+        await renameChatThread(
+          { threadId: thread.threadId, title: nextTitle },
+          pageSignal,
+        );
+        reloadChatThreadDataForId(thread.threadId);
+      })(),
+      Reason.DomCallback,
+    );
   };
 }
 
@@ -3258,7 +3387,7 @@ export function ZeroChatThreadPage() {
         return {
           ...section,
           shortcuts: section.shortcuts.filter((shortcut) => {
-            return shortcut.key !== "shift+f2";
+            return !isChatThreadEmojiShortcutKey(shortcut.key);
           }),
         };
       });
@@ -4685,12 +4814,13 @@ function useChatComposerModel(
     disabled: false,
     defaultSelection: defaultModelSelection,
   });
-  // Skeleton only on cold start (nothing has ever resolved). Once we have any
-  // resolved value, refetches reuse the cached value instead of flashing.
+  // Explicit thread selections can render before default model selection
+  // resolves; only inherited selections need that fallback before showing.
   const modelPickerLoading =
     threadDataResolved === undefined ||
     modelSelectionResolved === undefined ||
-    defaultModelSelectionResolved === undefined;
+    (modelSelectionResolved === null &&
+      defaultModelSelectionResolved === undefined);
   const submitBlockerProps = resolveChatComposerSubmitBlocker({
     state: modelFirstOauthState,
     modelSelection,
@@ -7597,17 +7727,21 @@ function PagedGroupPrimaryActions({
         </TooltipProvider>
       )}
       {workflowAutomationEnabled && (
-        <button
-          type="button"
-          onClick={onCreateWorkflow}
-          className="inline-flex h-[26px] items-center overflow-hidden rounded-md p-1 text-muted-foreground/60 transition-colors duration-150 hover:bg-accent hover:text-foreground [&:focus-visible>span]:ml-1.5 [&:focus-visible>span]:max-w-24 [&:focus-visible>span]:opacity-100 [&:hover>span]:ml-1.5 [&:hover>span]:max-w-24 [&:hover>span]:opacity-100"
-          aria-label="Create workflow"
-        >
-          <IconRoute size={18} stroke={1.5} className="shrink-0" />
-          <span className="ml-0 max-w-0 overflow-hidden whitespace-nowrap text-xs font-medium opacity-0 transition-all duration-150">
-            Create workflow
-          </span>
-        </button>
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onCreateWorkflow}
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                aria-label="Create workflow"
+              >
+                <IconRoute size={18} stroke={1.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Create workflow</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
       {usage && firstRunId && <RunUsageChip runId={firstRunId} usage={usage} />}
     </div>

@@ -1065,6 +1065,397 @@ describe("zero attachment chips", () => {
     });
   });
 
+  it("navigates modal image artifacts within the current run", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/image-navigation/first.png";
+    const notesUrl =
+      "https://cdn.vm7.io/artifacts/test/image-navigation/notes.md";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/image-navigation/second.png";
+    // A generated image artifact that lives in the same run but was NOT attached
+    // to the message. It must be excluded from message-scoped navigation.
+    const generatedArtifactUrl =
+      "https://cdn.vm7.io/artifacts/test/image-navigation/generated.png";
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-image-navigation",
+            files: [
+              artifactFile(firstImageUrl, {
+                id: "artifact-first-image",
+                filename: "first.png",
+                contentType: "image/png",
+                size: 128,
+              }),
+              artifactFile(notesUrl, {
+                id: "artifact-notes",
+                filename: "notes.md",
+                contentType: "text/markdown",
+                size: 64,
+              }),
+              artifactFile(secondImageUrl, {
+                id: "artifact-second-image",
+                filename: "second.png",
+                contentType: "image/png",
+                size: 256,
+              }),
+              artifactFile(generatedArtifactUrl, {
+                id: "artifact-generated-image",
+                filename: "generated.png",
+                contentType: "image/png",
+                size: 512,
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-image-navigation",
+          role: "user",
+          content: "Review these images",
+          attachFiles: [
+            {
+              id: "artifact-first-image",
+              filename: "first.png",
+              contentType: "image/png",
+              size: 128,
+              url: firstImageUrl,
+            },
+            {
+              id: "artifact-notes",
+              filename: "notes.md",
+              contentType: "text/markdown",
+              size: 64,
+              url: notesUrl,
+            },
+            {
+              id: "artifact-second-image",
+              filename: "second.png",
+              contentType: "image/png",
+              size: 256,
+              url: secondImageUrl,
+            },
+          ],
+          runId: "run-image-navigation",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
+      },
+    });
+
+    click(await screen.findByLabelText("Preview first.png"));
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+    expect(screen.queryByLabelText("Previous image artifact")).toBeNull();
+    expect(screen.getByLabelText("Next image artifact")).toBeInTheDocument();
+
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+      "alt",
+      "first.png",
+    );
+
+    await user.click(screen.getByLabelText("Next image artifact"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "second.png",
+      );
+    });
+    expect(
+      screen.getByLabelText("Previous image artifact"),
+    ).toBeInTheDocument();
+    expect(screen.queryByLabelText("Next image artifact")).toBeNull();
+
+    // The lightbox modal is immersive: arrow keys navigate even when focus is
+    // on an interactive control.
+    const shareButton = screen.getByLabelText("Share");
+    shareButton.focus();
+    fireEvent.keyDown(shareButton, { key: "ArrowLeft" });
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+  });
+
+  it("navigates modal images generated in an assistant message body", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/body-image-navigation/first.png";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/body-image-navigation/second.png";
+    // A generated image that exists in the run artifacts but is NOT referenced
+    // in the message body. It must be excluded from message-scoped navigation.
+    const unreferencedImageUrl =
+      "https://cdn.vm7.io/artifacts/test/body-image-navigation/unreferenced.png";
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-body-image-navigation",
+            files: [
+              artifactFile(firstImageUrl, {
+                id: "artifact-body-first-image",
+                filename: "first.png",
+                contentType: "image/png",
+                size: 128,
+              }),
+              artifactFile(secondImageUrl, {
+                id: "artifact-body-second-image",
+                filename: "second.png",
+                contentType: "image/png",
+                size: 256,
+              }),
+              artifactFile(unreferencedImageUrl, {
+                id: "artifact-body-unreferenced-image",
+                filename: "unreferenced.png",
+                contentType: "image/png",
+                size: 512,
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-body-image-navigation",
+          role: "assistant",
+          content: `Generated images:\n\n${firstImageUrl}\n${secondImageUrl}`,
+          runId: "run-body-image-navigation",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
+      },
+    });
+
+    const bodyImage = await screen.findByAltText("first.png");
+    const previewButton = bodyImage.closest("button");
+    if (!previewButton) {
+      throw new Error("Markdown image preview button not found");
+    }
+    fireEvent.load(bodyImage);
+    click(previewButton);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+    expect(screen.queryByLabelText("Previous image artifact")).toBeNull();
+    expect(screen.getByLabelText("Next image artifact")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Next image artifact"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "second.png",
+      );
+    });
+    // The unreferenced generated artifact is not part of the message, so the
+    // last message image has no next target.
+    expect(screen.queryByLabelText("Next image artifact")).toBeNull();
+
+    fireEvent.keyDown(document, { key: "ArrowLeft" });
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+  });
+
+  it("keeps the modal fullscreen state while navigating images", async () => {
+    const user = userEvent.setup({ delay: null });
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/fullscreen-navigation/first.png";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/fullscreen-navigation/second.png";
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-fullscreen-navigation",
+            files: [
+              artifactFile(firstImageUrl, {
+                id: "artifact-fullscreen-first-image",
+                filename: "first.png",
+                contentType: "image/png",
+                size: 128,
+              }),
+              artifactFile(secondImageUrl, {
+                id: "artifact-fullscreen-second-image",
+                filename: "second.png",
+                contentType: "image/png",
+                size: 256,
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-fullscreen-navigation",
+          role: "user",
+          content: "Review these images",
+          attachFiles: [
+            {
+              id: "artifact-fullscreen-first-image",
+              filename: "first.png",
+              contentType: "image/png",
+              size: 128,
+              url: firstImageUrl,
+            },
+            {
+              id: "artifact-fullscreen-second-image",
+              filename: "second.png",
+              contentType: "image/png",
+              size: 256,
+              url: secondImageUrl,
+            },
+          ],
+          runId: "run-fullscreen-navigation",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${THREAD_ID}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: true,
+      },
+    });
+
+    click(await screen.findByLabelText("Preview first.png"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+
+    await user.click(screen.getByLabelText("Enter fullscreen"));
+    expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+
+    await user.click(screen.getByLabelText("Next image artifact"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "second.png",
+      );
+    });
+    // Navigating between images must not collapse fullscreen.
+    expect(screen.getByLabelText("Exit fullscreen")).toBeInTheDocument();
+    expect(screen.queryByLabelText("Enter fullscreen")).toBeNull();
+  });
+
+  it("hides image navigation when the feature switch is disabled", async () => {
+    const firstImageUrl =
+      "https://cdn.vm7.io/artifacts/test/navigation-disabled/first.png";
+    const secondImageUrl =
+      "https://cdn.vm7.io/artifacts/test/navigation-disabled/second.png";
+    context.mocks.api(chatThreadArtifactsContract.list, ({ respond }) => {
+      return respond(200, {
+        runs: [
+          {
+            runId: "run-navigation-disabled",
+            files: [
+              artifactFile(firstImageUrl, {
+                id: "artifact-disabled-first-image",
+                filename: "first.png",
+                contentType: "image/png",
+                size: 128,
+              }),
+              artifactFile(secondImageUrl, {
+                id: "artifact-disabled-second-image",
+                filename: "second.png",
+                contentType: "image/png",
+                size: 256,
+              }),
+            ],
+          },
+        ],
+      });
+    });
+    mockChatLifecycle(context, {
+      threadId: THREAD_ID,
+      chatMessages: [
+        {
+          id: "msg-navigation-disabled",
+          role: "user",
+          content: "Review these images",
+          attachFiles: [
+            {
+              id: "artifact-disabled-first-image",
+              filename: "first.png",
+              contentType: "image/png",
+              size: 128,
+              url: firstImageUrl,
+            },
+            {
+              id: "artifact-disabled-second-image",
+              filename: "second.png",
+              contentType: "image/png",
+              size: 256,
+              url: secondImageUrl,
+            },
+          ],
+          runId: "run-navigation-disabled",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+      ],
+    });
+
+    // No featureSwitches override: the switch defaults to off in tests.
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    click(await screen.findByLabelText("Preview first.png"));
+    await waitFor(() => {
+      expect(screen.getByTestId("attachment-lightbox-image")).toHaveAttribute(
+        "alt",
+        "first.png",
+      );
+    });
+
+    expect(screen.queryByLabelText("Next image artifact")).toBeNull();
+    expect(screen.queryByLabelText("Previous image artifact")).toBeNull();
+  });
+
   it("opens presentation artifact controls from chat message links", async () => {
     const presentationUrl =
       "https://cdn.vm7.io/artifacts/test/body-presentation/quarterly-roadmap.html";

@@ -506,14 +506,16 @@ function mockImmediateIdleCallback(): () => void {
   };
 }
 
-async function expectComposerModel(label: string): Promise<HTMLElement> {
-  const combobox = await screen.findByRole(
-    "combobox",
-    { name: label },
-    { timeout: 5000 },
-  );
-  expect(combobox).toBeInTheDocument();
-  return combobox;
+async function findComposerModel(label: string): Promise<HTMLElement> {
+  return await waitFor(() => {
+    const combobox = screen.getByRole("combobox", { name: label });
+    expect(combobox).toBeInTheDocument();
+    return combobox;
+  });
+}
+
+async function expectComposerModel(label: string): Promise<void> {
+  await expect(findComposerModel(label)).resolves.toBeInTheDocument();
 }
 
 async function openTemplatePicker(
@@ -1163,12 +1165,61 @@ describe("chat composer models", () => {
 
     detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
 
-    const modelPicker = await expectComposerModel("GLM-5.1");
-    await user.click(modelPicker);
+    await waitFor(() => {
+      expect(document.title).toBe("My thread | VM0");
+    });
+    await user.click(await findComposerModel("GLM-5.1"));
     await user.click(
       await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
     );
     await expectComposerModel("Claude Sonnet 4.6");
+  });
+
+  it("edits thread override before user default model selection resolves", async () => {
+    const user = userEvent.setup({ delay: null });
+    const pendingPreference = context.mocks.deferred<void>();
+    let preferenceRequestStarted = false;
+
+    mockOrgModelRoutes("kimi-k2.7-code");
+    context.mocks.api(
+      zeroUserModelPreferenceContract.get,
+      async ({ respond, withSignal }) => {
+        preferenceRequestStarted = true;
+        await withSignal(pendingPreference.promise);
+        return respond(200, {
+          selectedModel: "claude-opus-4-7",
+          updatedAt: "2026-03-10T00:00:00Z",
+        });
+      },
+    );
+    mockAgent();
+    mockThread({
+      selectedModel: "glm-5.1",
+      messages: [
+        {
+          id: "msg-user",
+          role: "user",
+          content: "Use GLM",
+          createdAt: "2026-03-10T00:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({ context, path: `/chats/${THREAD_ID}` });
+
+    try {
+      await waitFor(() => {
+        expect(preferenceRequestStarted).toBeTruthy();
+      });
+      await expectComposerModel("GLM-5.1");
+      await user.click(screen.getByRole("combobox", { name: "GLM-5.1" }));
+      await user.click(
+        await screen.findByRole("option", { name: /Claude Sonnet 4\.6/ }),
+      );
+      await expectComposerModel("Claude Sonnet 4.6");
+    } finally {
+      pendingPreference.resolve();
+    }
   });
 
   it("opens compare plans from limited-free-1 Pro composer model items", async () => {

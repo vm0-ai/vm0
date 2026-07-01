@@ -5,6 +5,7 @@ use api_contracts::{Method, ResolvedRoute, Route};
 use reqwest::Client;
 use tracing::info;
 
+use crate::config::normalize_api_base_url;
 use crate::error::{RunnerError, RunnerResult};
 
 /// Default timeout for API requests (covers large claim payloads).
@@ -40,9 +41,10 @@ impl HttpClient {
     /// Returns an error if the underlying HTTP client cannot be built.
     pub fn new(config: HttpClientConfig) -> RunnerResult<Self> {
         let HttpClientConfig {
-            api_url,
+            api_url: raw_api_url,
             vercel_bypass,
         } = config;
+        let api_url = normalize_api_base_url(&raw_api_url)?;
 
         let client = Client::builder()
             .timeout(DEFAULT_TIMEOUT)
@@ -155,6 +157,41 @@ mod tests {
                 .to_str()
                 .unwrap(),
             "Bearer sandbox-token"
+        );
+    }
+
+    #[test]
+    fn new_normalizes_api_url_before_building_routes() {
+        let http = http_client("https://api.vm0.dev/prefix/");
+
+        let request = http
+            .request_route(routes::webhooks::agent::telemetry::SEND, "sandbox-token")
+            .build()
+            .unwrap();
+
+        assert_eq!(
+            request.url().as_str(),
+            "https://api.vm0.dev/prefix/api/webhooks/agent/telemetry"
+        );
+    }
+
+    #[test]
+    fn new_rejects_api_url_with_sensitive_components() {
+        let result = HttpClient::new(HttpClientConfig {
+            api_url: "https://user:pass@api.vm0.dev?token=secret".to_string(),
+            vercel_bypass: None,
+        });
+        let error = match result {
+            Ok(_) => panic!("expected invalid API URL to be rejected"),
+            Err(error) => error,
+        };
+        let message = error.to_string();
+
+        assert!(message.contains("server.url"), "got: {message}");
+        assert!(message.contains("credentials"), "got: {message}");
+        assert!(
+            !message.contains("user:pass") && !message.contains("token=secret"),
+            "error should not echo sensitive URL components: {message}"
         );
     }
 

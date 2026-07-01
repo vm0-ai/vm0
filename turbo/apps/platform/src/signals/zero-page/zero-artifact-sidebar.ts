@@ -252,6 +252,16 @@ export const openArtifactFromInbox$ = command(
   },
 );
 
+export const navigateArtifactSidebarImage$ = command(
+  ({ get, set }, url: string) => {
+    const params = new URLSearchParams(get(searchParams$));
+    params.set(ARTIFACT_QUERY_PARAM, url);
+    params.delete(ARTIFACT_HTML_EDIT_PARAM);
+    clearChatAutomationSidebarParams(params);
+    set(updateSearchParams$, params);
+  },
+);
+
 export const backToArtifactInbox$ = command(({ get, set }) => {
   const params = new URLSearchParams(get(searchParams$));
   params.delete(ARTIFACT_QUERY_PARAM);

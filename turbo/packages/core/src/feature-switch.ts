@@ -281,8 +281,7 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show connected connector filtering and per-agent connector access management on connected connector cards.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+    enabled: true,
   },
   [FeatureSwitchKey.PresentationTemplateRunbook]: {
     maintainer: "bingjie@vm0.ai",
@@ -297,6 +296,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
     enabled: false,
   },
+  [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable left/right keyboard and button navigation between image artifacts within the same chat message, in both the lightbox modal and the artifact sidebar.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.AgentsPageRedesign]: {
     maintainer: "ming@vm0.ai",
     description:
@@ -307,6 +313,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
     maintainer: "ethan@vm0.ai",
     description:
       "Show Codex and Claude Code personal subscription usage in the Zero sidebar footer.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
+  [FeatureSwitchKey.TeamsIntegration]: {
+    maintainer: "linghan@vm0.ai",
+    description:
+      "Show standalone Microsoft Teams integration settings, connect flows, and Works page entry points.",
     enabled: false,
     enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
