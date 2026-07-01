@@ -1398,7 +1398,7 @@ export const createWorkflowTrigger$ = command(
     const workflowTitle = workflow.displayName ?? workflow.name;
 
     if (!triggerCreateInputIsSchedule(args)) {
-      return await set(
+      const result = await set(
         createEventTriggerForWorkflow$,
         {
           db: writeDb,
@@ -1409,6 +1409,15 @@ export const createWorkflowTrigger$ = command(
         },
         signal,
       );
+      signal.throwIfAborted();
+      if (result.kind === "ok") {
+        await publishThreadBoundWorkflowTriggerChanged(
+          result.summary.ownerUserId,
+          result.summary.chatThreadId,
+        );
+        signal.throwIfAborted();
+      }
+      return result;
     }
 
     const now = nowDate();
@@ -1429,6 +1438,11 @@ export const createWorkflowTrigger$ = command(
       nextRunAt,
       currentTime: now,
     });
+    signal.throwIfAborted();
+    await publishThreadBoundWorkflowTriggerChanged(
+      summary.ownerUserId,
+      summary.chatThreadId,
+    );
     signal.throwIfAborted();
     return { kind: "ok", summary };
   },

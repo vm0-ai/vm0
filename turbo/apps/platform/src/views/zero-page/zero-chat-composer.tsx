@@ -5770,10 +5770,11 @@ function insertPastedText(
   currentValue: string,
   pastedText: string,
 ): string {
-  // Only the plain textarea supports caret-based insertion. The TipTap composer
-  // inserts pasted text itself, so for it we leave the value unchanged here.
-  if (!pastedText || !(target instanceof HTMLTextAreaElement)) {
+  if (!pastedText) {
     return currentValue;
+  }
+  if (!(target instanceof HTMLTextAreaElement)) {
+    return [currentValue.trimEnd(), pastedText].filter(Boolean).join("\n");
   }
   const start = target.selectionStart;
   const end = target.selectionEnd;
@@ -6356,15 +6357,28 @@ export function ZeroChatComposer({
   });
 
   const handleConnectSuccess = async (type: ConnectorType) => {
-    const label = connectorMap.get(type)!.label;
-    await tapError(authorizeFn(type, pageSignal), () => {
-      toast.error(`${label} was authorized but could not be saved`, {
-        id: `connector-save-error-${type}`,
-      });
-    });
+    const label = connectorMap.get(type)?.label ?? type;
+    const authorized = await tapError(
+      (async () => {
+        await authorizeFn(type, pageSignal);
+        return true;
+      })(),
+      () => {
+        toast.error(
+          `${label} connected but could not be authorized for ${displayName}`,
+          {
+            id: `connector-save-error-${type}`,
+          },
+        );
+      },
+    );
+    if (authorized !== true) {
+      return false;
+    }
     toast.success(`${label} connected and authorized for ${displayName}`, {
       id: `connector-connected-${type}`,
     });
+    return true;
   };
 
   const handleToggle = async (type: ConnectorType, checked: boolean) => {
@@ -6637,7 +6651,11 @@ export function ZeroChatComposer({
           onSuccess={async () => {
             const type = pendingConnectType ?? selectedConnType;
             if (type && !authorizedSet.has(type)) {
-              await handleConnectSuccess(type);
+              const authorized = await handleConnectSuccess(type);
+              if (!authorized) {
+                setPendingConnectType(null);
+                return;
+              }
             }
             setPendingConnectType(null);
             setShowAddDialog(false);
@@ -6649,6 +6667,7 @@ export function ZeroChatComposer({
           unconnected={unconnectedConnectors}
           pollingType={pollingConnType}
           onClose={() => {
+            setPendingConnectType(null);
             return setShowAddDialog(false);
           }}
           onSelect={(type) => {
