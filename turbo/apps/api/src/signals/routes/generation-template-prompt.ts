@@ -8,6 +8,7 @@ import {
   presentationColorSystemToken,
   type PresentationRunbookPackage,
 } from "@vm0/core/resource-registry";
+import { findWorkflowTemplateItem } from "@vm0/core/workflow-template-items";
 
 interface PresentationGenerationTemplateInput {
   readonly type: "presentation";
@@ -33,10 +34,18 @@ interface IllustrationGenerationTemplateInput {
   };
 }
 
+interface WorkflowGenerationTemplateInput {
+  readonly type: "workflow";
+  readonly selection: {
+    readonly workflowTemplateId: string;
+  };
+}
+
 type GenerationTemplateInput =
   | PresentationGenerationTemplateInput
   | VideoGenerationTemplateInput
-  | IllustrationGenerationTemplateInput;
+  | IllustrationGenerationTemplateInput
+  | WorkflowGenerationTemplateInput;
 
 type GenerationTemplatePromptResult =
   | {
@@ -71,6 +80,9 @@ export function buildGenerationTemplatePrompt(
   if (generationTemplate.type === "illustration") {
     return buildIllustrationGenerationTemplatePrompt(generationTemplate);
   }
+  if (generationTemplate.type === "workflow") {
+    return buildWorkflowGenerationTemplatePrompt(generationTemplate);
+  }
 
   return buildPresentationGenerationTemplatePrompt(generationTemplate, options);
 }
@@ -97,6 +109,18 @@ function templateFraming(artifactNoun: string): readonly string[] {
     "- Other artifact templates, files, or attachments may also be present.",
     "",
   ];
+}
+
+function buildWorkflowGenerationTemplatePrompt(
+  generationTemplate: WorkflowGenerationTemplateInput,
+): GenerationTemplatePromptResult {
+  const template = findWorkflowTemplateItem(
+    generationTemplate.selection.workflowTemplateId,
+  );
+  if (!template) {
+    return { status: "invalid", message: "Unknown workflow template" };
+  }
+  return { status: "resolved", prompt: template.promptGuidance };
 }
 
 function buildPresentationGenerationTemplatePrompt(

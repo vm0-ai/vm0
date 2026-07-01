@@ -38,10 +38,18 @@ export interface ChatMessageIllustrationGenerationTemplate {
   };
 }
 
+export interface ChatMessageWorkflowGenerationTemplate {
+  readonly type: "workflow";
+  readonly selection: {
+    readonly workflowTemplateId: string;
+  };
+}
+
 export type ChatMessageGenerationTemplate =
   | ChatMessagePresentationGenerationTemplate
   | ChatMessageVideoGenerationTemplate
-  | ChatMessageIllustrationGenerationTemplate;
+  | ChatMessageIllustrationGenerationTemplate
+  | ChatMessageWorkflowGenerationTemplate;
 
 export type ChatMessageRecommendedFollowupKind = "talk" | "generate";
 export type ChatMessageRecommendedFollowupGenerationType =

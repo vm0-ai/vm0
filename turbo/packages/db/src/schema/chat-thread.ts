@@ -81,10 +81,11 @@ export const chatThreads = pgTable(
      * Per-thread sticky generation templates, keyed by template type
      * (illustration style / video preset / presentation design) so a thread can
      * keep several active at once. Persisted so follow-up messages inherit the
-     * selections the user attached earlier without restating them, and the
-     * server re-injects them deterministically on every run. NULL means none are
-     * attached. Thread-scoped on purpose: a new thread starts clean (no
-     * cross-session carry-over) and there is intentionally no org/global default.
+     * selections the user attached earlier without restating them. Workflow
+     * templates are not stored here; they are one-shot context for a single run.
+     * NULL means none are attached. Thread-scoped on purpose: a new thread
+     * starts clean (no cross-session carry-over) and there is intentionally no
+     * org/global default.
      */
     generationTemplate: jsonb(
       "generation_template",

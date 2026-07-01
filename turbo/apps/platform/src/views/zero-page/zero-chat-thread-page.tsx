@@ -100,6 +100,7 @@ import {
   PRESENTATION_TEMPLATE_ITEMS,
   PRESENTATION_TEMPLATE_PICKER_ITEMS,
   findVideoTemplateItem,
+  findWorkflowTemplateItem,
   r2ImageTransformUrl,
 } from "@vm0/core";
 import { getModelDisplayName } from "@vm0/core/model-display-name";
@@ -6873,6 +6874,7 @@ function formatTemplateIdLabel(templateId: string): string {
   const label = templateId
     .replace(/^template:/, "")
     .replace(/^video-template:/, "")
+    .replace(/^workflow-template:/, "")
     .replace(/^html-ppt-/, "")
     .replace(/-/g, " ");
   return label.charAt(0).toUpperCase() + label.slice(1);
@@ -6887,6 +6889,12 @@ function generationTemplateLabel(
   if (value.type === "video") {
     const item = findVideoTemplateItem(value.selection.stylePresetId);
     return item?.title ?? formatTemplateIdLabel(value.selection.stylePresetId);
+  }
+  if (value.type === "workflow") {
+    const item = findWorkflowTemplateItem(value.selection.workflowTemplateId);
+    return (
+      item?.title ?? formatTemplateIdLabel(value.selection.workflowTemplateId)
+    );
   }
   if (value.type === "illustration") {
     const item = ILLUSTRATION_TEMPLATE_ITEMS.find((candidate) => {
@@ -6926,6 +6934,9 @@ function generationTemplateTypeLabel(
   if (value.type === "illustration") {
     return "Illustration";
   }
+  if (value.type === "workflow") {
+    return "Workflow";
+  }
   return "Presentation";
 }
 
@@ -6949,6 +6960,8 @@ function UserMessageGenerationTemplate({
         <IconVideo size={15} stroke={1.8} className="shrink-0" />
       ) : generationTemplate?.type === "illustration" ? (
         <IconPhoto size={15} stroke={1.8} className="shrink-0" />
+      ) : generationTemplate?.type === "workflow" ? (
+        <IconRoute size={15} stroke={1.8} className="shrink-0" />
       ) : (
         <IconPresentation size={15} stroke={1.8} className="shrink-0" />
       )}
