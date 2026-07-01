@@ -3,11 +3,14 @@
 //! This test lives in its own binary because `guest_agent::env` caches
 //! environment values in process-wide once cells.
 
+mod common;
+
 #[test]
 fn runtime_bootstrap_requires_api_url_when_api_token_is_set() {
     let tmp = tempfile::tempdir().unwrap();
 
     unsafe {
+        common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var(
             guest_contracts::env::RUN_ID_ENV,
             "guest-runtime-missing-api-url",
