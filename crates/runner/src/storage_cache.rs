@@ -1995,6 +1995,14 @@ mod tests {
         (format!("http://{addr}/archive.tar.gz"), handle)
     }
 
+    async fn await_raw_http_sequence(handle: tokio::task::JoinHandle<std::io::Result<()>>) {
+        tokio::time::timeout(Duration::from_secs(5), handle)
+            .await
+            .expect("raw HTTP sequence server should finish")
+            .expect("raw HTTP sequence server task should not panic")
+            .expect("raw HTTP sequence server should not fail");
+    }
+
     fn status_response(status: &str) -> Vec<u8> {
         format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\n\r\n").into_bytes()
     }
@@ -2010,6 +2018,14 @@ mod tests {
         let mut response =
             format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len()).into_bytes();
         response.extend_from_slice(body);
+        response
+    }
+
+    fn truncated_ok_response(body: &[u8]) -> Vec<u8> {
+        let partial_len = (body.len() / 2).max(1);
+        let mut response =
+            format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len()).into_bytes();
+        response.extend_from_slice(&body[..partial_len]);
         response
     }
 
@@ -2294,7 +2310,7 @@ mod tests {
         populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
-        handle.await.unwrap().unwrap();
+        await_raw_http_sequence(handle).await;
 
         assert_eq!(
             manifest.storages[0].archive_url.as_deref(),
@@ -2385,7 +2401,43 @@ mod tests {
         populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
             .await
             .unwrap();
-        handle.await.unwrap().unwrap();
+        await_raw_http_sequence(handle).await;
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(format!("file://{}", guest_archive_path(name, version)).as_str())
+        );
+        assert_eq!(
+            std::fs::read(home.storage_cache_dir(name, version).join("archive.tar.gz")).unwrap(),
+            body
+        );
+        assert_eq!(sandbox.write_file_calls().len(), 1);
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(ops.iter().any(|(key, _, _)| key == "storage_cache_miss"));
+        assert_no_op(&ops, "storage_cache_skipped_invalid_download");
+    }
+
+    #[tokio::test]
+    async fn full_download_body_read_error_retry_then_success_rewrites_url() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let body = tarball_bytes();
+        let responses = vec![
+            partial_content_response(body.len()),
+            truncated_ok_response(&body),
+            ok_response(&body),
+        ];
+        let (url, handle) = raw_http_sequence_url(responses).await;
+        let name = "download-body-retry-success";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(url, name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+        await_raw_http_sequence(handle).await;
 
         assert_eq!(
             manifest.storages[0].archive_url.as_deref(),
