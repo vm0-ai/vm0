@@ -7,7 +7,6 @@ import { useLoadableSet } from "ccstate-react/experimental";
 import type {
   GmailLabelAppliedEventConfig,
   GmailNewMessageEventConfig,
-  GoogleCalendarEventCreatedEventConfig,
   GithubLabelAppliedEventConfig,
   GithubLabelAppliedSubjectFilter,
   WorkflowFileEntry,
@@ -70,7 +69,7 @@ import { user$ } from "../../signals/auth.ts";
 import {
   changeWorkflowVisibility$,
   createWorkflowGithubLabelAppliedTrigger$,
-  createWorkflowGoogleCalendarEventCreatedTrigger$,
+  createWorkflowGoogleCalendarEventTrigger$,
   createWorkflowGmailLabelAppliedTrigger$,
   createWorkflowGmailNewMessageTrigger$,
   createWorkflowWebhookTrigger$,
@@ -2317,14 +2316,12 @@ function buildGmailLabelAppliedEventConfig(
   };
 }
 
-function buildGoogleCalendarEventCreatedEventConfig(
-  form: FormData,
-): GoogleCalendarEventCreatedEventConfig {
-  return {
-    provider: "google-calendar",
-    event: "event_created",
-    calendarId: formTextValue(form, "calendarId") ?? "primary",
-  };
+type GoogleCalendarTriggerEventType =
+  | "google-calendar-event-created"
+  | "google-calendar-event-updated";
+
+function googleCalendarIdFromForm(form: FormData): string {
+  return formTextValue(form, "calendarId") ?? "primary";
 }
 
 function githubSubjectFilterValue(
@@ -2436,6 +2433,9 @@ function workflowTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "google-calendar-event-created") {
     return "Google Calendar event created";
   }
+  if (trigger.eventType === "google-calendar-event-updated") {
+    return "Google Calendar event updated";
+  }
   return "Webhook";
 }
 
@@ -2460,7 +2460,10 @@ function workflowTriggerSummary(
       trigger.eventConfig.filters.actor.type === "me" ? "me" : "anyone";
     return `Label ${quote(trigger.eventConfig.labelName)} · ${subject} · Actor ${actor}`;
   }
-  if (trigger.eventType === "google-calendar-event-created") {
+  if (
+    trigger.eventType === "google-calendar-event-created" ||
+    trigger.eventType === "google-calendar-event-updated"
+  ) {
     return `Calendar ${quote(trigger.eventConfig.calendarId)}`;
   }
   return null;
@@ -2481,7 +2484,8 @@ type TriggerCreateDialogKind =
   | "gmail"
   | "gmail-label"
   | "github-label"
-  | "google-calendar"
+  | "google-calendar-created"
+  | "google-calendar-updated"
   | "webhook";
 
 function TriggerCreateMenuItem({
@@ -2530,14 +2534,18 @@ function GithubLabelTriggerCreateMenuItem({
 }
 
 function GoogleCalendarTriggerCreateMenuItem({
+  title,
+  description,
   onSelect,
 }: {
+  readonly title: string;
+  readonly description: string;
   readonly onSelect: () => void;
 }) {
   return (
     <TriggerCreateMenuItem
-      title="Google Calendar event"
-      description="Run when a new calendar event is created."
+      title={title}
+      description={description}
       icon={
         <IconCalendarTime
           size={15}
@@ -2547,6 +2555,31 @@ function GoogleCalendarTriggerCreateMenuItem({
       }
       onSelect={onSelect}
     />
+  );
+}
+
+function GoogleCalendarTriggerCreateMenuItems({
+  onSelect,
+}: {
+  readonly onSelect: (kind: TriggerCreateDialogKind) => void;
+}) {
+  return (
+    <>
+      <GoogleCalendarTriggerCreateMenuItem
+        title="Google Calendar event created"
+        description="Run when a calendar event is created."
+        onSelect={() => {
+          onSelect("google-calendar-created");
+        }}
+      />
+      <GoogleCalendarTriggerCreateMenuItem
+        title="Google Calendar event updated"
+        description="Run when a calendar event is updated."
+        onSelect={() => {
+          onSelect("google-calendar-updated");
+        }}
+      />
+    </>
   );
 }
 
@@ -2651,11 +2684,7 @@ function TriggerCreateMenu({
           />
         ) : null}
         {googleCalendarTriggersEnabled ? (
-          <GoogleCalendarTriggerCreateMenuItem
-            onSelect={() => {
-              onSelect("google-calendar");
-            }}
-          />
+          <GoogleCalendarTriggerCreateMenuItems onSelect={onSelect} />
         ) : null}
         {webhookTriggersEnabled ? (
           <TriggerCreateMenuItem
@@ -2775,11 +2804,20 @@ function TriggersSection({
           setCreateDialog(open ? "github-label" : null);
         }}
       />
-      <CreateGoogleCalendarEventCreatedTriggerDialog
+      <CreateGoogleCalendarEventTriggerDialog
         workflowId={detail.id}
-        open={createDialog === "google-calendar"}
+        eventType="google-calendar-event-created"
+        open={createDialog === "google-calendar-created"}
         onOpenChange={(open) => {
-          setCreateDialog(open ? "google-calendar" : null);
+          setCreateDialog(open ? "google-calendar-created" : null);
+        }}
+      />
+      <CreateGoogleCalendarEventTriggerDialog
+        workflowId={detail.id}
+        eventType="google-calendar-event-updated"
+        open={createDialog === "google-calendar-updated"}
+        onOpenChange={(open) => {
+          setCreateDialog(open ? "google-calendar-updated" : null);
         }}
       />
       <CreateWebhookTriggerDialog
@@ -3888,20 +3926,23 @@ function CreateGithubLabelAppliedTriggerDialog({
   );
 }
 
-function CreateGoogleCalendarEventCreatedTriggerDialog({
+function CreateGoogleCalendarEventTriggerDialog({
   workflowId,
+  eventType,
   open,
   onOpenChange,
 }: {
   readonly workflowId: string;
+  readonly eventType: GoogleCalendarTriggerEventType;
   readonly open: boolean;
   readonly onOpenChange: (open: boolean) => void;
 }) {
   const pageSignal = useGet(pageSignal$);
   const [createLoadable, createGoogleCalendarTrigger] = useLoadableSet(
-    createWorkflowGoogleCalendarEventCreatedTrigger$,
+    createWorkflowGoogleCalendarEventTrigger$,
   );
   const creating = createLoadable.state === "loading";
+  const isUpdated = eventType === "google-calendar-event-updated";
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -3909,7 +3950,9 @@ function CreateGoogleCalendarEventCreatedTriggerDialog({
         <DialogHeader>
           <DialogTitle>Add Google Calendar automation</DialogTitle>
           <DialogDescription>
-            Run this workflow when a new Google Calendar event is created.
+            {isUpdated
+              ? "Run this workflow when a Google Calendar event is updated."
+              : "Run this workflow when a new Google Calendar event is created."}
           </DialogDescription>
         </DialogHeader>
         <form
@@ -3920,14 +3963,34 @@ function CreateGoogleCalendarEventCreatedTriggerDialog({
             const form = new FormData(event.currentTarget);
             detach(
               (async () => {
-                await createGoogleCalendarTrigger(
-                  {
-                    workflowId,
-                    eventConfig:
-                      buildGoogleCalendarEventCreatedEventConfig(form),
-                  },
-                  pageSignal,
-                );
+                const calendarId = googleCalendarIdFromForm(form);
+                if (eventType === "google-calendar-event-created") {
+                  await createGoogleCalendarTrigger(
+                    {
+                      workflowId,
+                      eventType: "google-calendar-event-created",
+                      eventConfig: {
+                        provider: "google-calendar",
+                        event: "event_created",
+                        calendarId,
+                      },
+                    },
+                    pageSignal,
+                  );
+                } else {
+                  await createGoogleCalendarTrigger(
+                    {
+                      workflowId,
+                      eventType: "google-calendar-event-updated",
+                      eventConfig: {
+                        provider: "google-calendar",
+                        event: "event_updated",
+                        calendarId,
+                      },
+                    },
+                    pageSignal,
+                  );
+                }
                 onOpenChange(false);
               })(),
               Reason.DomCallback,

@@ -71,7 +71,12 @@ function configureGoogleCalendarApiMock(args: {
   readonly baselineItems?: readonly Record<string, unknown>[];
   readonly incrementalItems?: readonly Record<string, unknown>[];
   readonly incrementalNextSyncToken?: string;
+  readonly incrementalResponses?: readonly {
+    readonly items: readonly Record<string, unknown>[];
+    readonly nextSyncToken: string;
+  }[];
 }): void {
+  let incrementalCallCount = 0;
   mockOptionalEnv("VM0_API_BACKEND_URL", "https://api.vm0.ai");
   server.use(
     http.post(
@@ -121,9 +126,18 @@ function configureGoogleCalendarApiMock(args: {
             nextSyncToken: "calendar-sync-baseline",
           });
         }
-        expect(["calendar-sync-baseline", "calendar-sync-next"]).toContain(
-          syncToken,
-        );
+        expect(syncToken).toBeTruthy();
+        const sequentialResponse =
+          args.incrementalResponses?.[
+            Math.min(incrementalCallCount, args.incrementalResponses.length - 1)
+          ];
+        incrementalCallCount += 1;
+        if (sequentialResponse) {
+          return HttpResponse.json({
+            items: sequentialResponse.items,
+            nextSyncToken: sequentialResponse.nextSyncToken,
+          });
+        }
         return HttpResponse.json({
           items: args.incrementalItems ?? [],
           nextSyncToken: args.incrementalNextSyncToken ?? "calendar-sync-next",
@@ -277,7 +291,7 @@ describe("POST /api/webhooks/google-calendar", () => {
       context.signal,
     );
     expect(updatedWatchState.processed).toStrictEqual([
-      { calendarEventId: "event-created-1" },
+      { calendarEventId: "event-created-1", eventChangeKey: "created" },
     ]);
     expect(updatedWatchState.snapshots).toStrictEqual([
       { calendarEventId: "event-created-1" },
@@ -366,6 +380,162 @@ describe("POST /api/webhooks/google-calendar", () => {
     await runsApi.heartbeatRunner(runnerGroup);
     const idle = await runsApi.pollRunner(runnerGroup);
     expect(idle.body.job).toBeNull();
+  });
+
+  it("dispatches updated calendar events once per event revision", async () => {
+    configureGoogleCalendarApiMock({
+      baselineItems: [
+        {
+          id: "event-existing",
+          etag: '"existing-etag-1"',
+          status: "confirmed",
+          summary: "Existing",
+          created: "2026-06-01T00:00:00.000Z",
+          updated: "2026-06-01T00:00:00.000Z",
+        },
+      ],
+      incrementalResponses: [
+        {
+          items: [
+            {
+              id: "event-existing",
+              etag: '"existing-etag-2"',
+              status: "confirmed",
+              summary: "Existing updated",
+              created: "2026-06-01T00:00:00.000Z",
+              updated: "2026-06-29T01:00:00.000Z",
+            },
+          ],
+          nextSyncToken: "calendar-sync-updated-1",
+        },
+        {
+          items: [
+            {
+              id: "event-existing",
+              etag: '"existing-etag-2"',
+              status: "confirmed",
+              summary: "Existing updated",
+              created: "2026-06-01T00:00:00.000Z",
+              updated: "2026-06-29T01:00:00.000Z",
+            },
+          ],
+          nextSyncToken: "calendar-sync-updated-2",
+        },
+        {
+          items: [
+            {
+              id: "event-existing",
+              etag: '"existing-etag-3"',
+              status: "confirmed",
+              summary: "Existing updated again",
+              created: "2026-06-01T00:00:00.000Z",
+              updated: "2026-06-29T02:00:00.000Z",
+            },
+          ],
+          nextSyncToken: "calendar-sync-updated-3",
+        },
+      ],
+    });
+
+    const { fixture, runnerGroup, workflowId } = await setupFixture();
+    await track(Promise.resolve(fixture));
+    await enableGoogleCalendarWorkflowTriggers(fixture);
+    const connectorId = await seedGoogleCalendarConnector(fixture);
+
+    const created = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-updated",
+        },
+      }),
+      [201],
+    );
+
+    const watchState = await store.set(
+      getWorkflowGoogleCalendarWatchState$,
+      { connectorId, triggerId: created.body.id },
+      context.signal,
+    );
+    const watch = watchState.watches[0];
+    if (!watch) {
+      throw new Error("Expected Google Calendar watch state");
+    }
+
+    const first = await postGoogleCalendarWebhook(webhookHeaders(watch));
+
+    expect(first.status).toBe(200);
+    expect(first.body).toStrictEqual({
+      success: true,
+      watchStates: 1,
+      dispatched: 1,
+      duplicates: 0,
+    });
+    await runsApi.heartbeatRunner(runnerGroup);
+    const firstJob = await runsApi.pollRunner(runnerGroup);
+    expect(firstJob.body.job?.runId).toStrictEqual(expect.any(String));
+    await runsApi.claimRunnerJob(firstJob.body.job!.runId);
+
+    const afterFirst = await store.set(
+      getWorkflowGoogleCalendarWatchState$,
+      { connectorId, triggerId: created.body.id },
+      context.signal,
+    );
+    expect(afterFirst.processed).toStrictEqual([
+      {
+        calendarEventId: "event-existing",
+        eventChangeKey: 'etag:"existing-etag-2"',
+      },
+    ]);
+    expect(afterFirst.watches[0]?.syncToken).toBe("calendar-sync-updated-1");
+
+    const second = await postGoogleCalendarWebhook(webhookHeaders(watch));
+
+    expect(second.status).toBe(200);
+    expect(second.body).toStrictEqual({
+      success: true,
+      watchStates: 1,
+      dispatched: 0,
+      duplicates: 0,
+    });
+    const idleAfterSameRevision = await runsApi.pollRunner(runnerGroup);
+    expect(idleAfterSameRevision.body.job).toBeNull();
+
+    const third = await postGoogleCalendarWebhook(webhookHeaders(watch));
+
+    expect(third.status).toBe(200);
+    expect(third.body).toStrictEqual({
+      success: true,
+      watchStates: 1,
+      dispatched: 1,
+      duplicates: 0,
+    });
+    await runsApi.heartbeatRunner(runnerGroup);
+    const thirdJob = await runsApi.pollRunner(runnerGroup);
+    expect(thirdJob.body.job?.runId).toStrictEqual(expect.any(String));
+    await runsApi.claimRunnerJob(thirdJob.body.job!.runId);
+
+    const afterThird = await store.set(
+      getWorkflowGoogleCalendarWatchState$,
+      { connectorId, triggerId: created.body.id },
+      context.signal,
+    );
+    expect(afterThird.processed).toHaveLength(2);
+    expect(afterThird.processed).toStrictEqual(
+      expect.arrayContaining([
+        {
+          calendarEventId: "event-existing",
+          eventChangeKey: 'etag:"existing-etag-2"',
+        },
+        {
+          calendarEventId: "event-existing",
+          eventChangeKey: 'etag:"existing-etag-3"',
+        },
+      ]),
+    );
+    expect(afterThird.watches[0]?.syncToken).toBe("calendar-sync-updated-3");
   });
 
   it("rejects webhook notifications with the wrong channel token", async () => {

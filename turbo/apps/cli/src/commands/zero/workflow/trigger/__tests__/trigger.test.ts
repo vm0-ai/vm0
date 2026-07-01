@@ -501,6 +501,42 @@ describe("zero workflow trigger commands", () => {
       expect(logCalls).toContain("team@example.com");
     });
 
+    it("should add a Google Calendar event-updated trigger", async () => {
+      const captured = captureCreateTrigger({
+        ...googleCalendarTrigger,
+        eventType: "google-calendar-event-updated",
+        eventConfig: {
+          provider: "google-calendar",
+          event: "event_updated",
+          calendarId: "team@example.com",
+        },
+      });
+
+      await triggerCommand.parseAsync([
+        "node",
+        "cli",
+        "add",
+        WORKFLOW_ID,
+        "google-calendar-event-updated",
+        "--calendar-id",
+        "team@example.com",
+      ]);
+
+      expect(captured.workflowId).toBe(WORKFLOW_ID);
+      expect(captured.body).toEqual({
+        kind: "event",
+        eventType: "google-calendar-event-updated",
+        eventConfig: {
+          provider: "google-calendar",
+          event: "event_updated",
+          calendarId: "team@example.com",
+        },
+      });
+      const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
+      expect(logCalls).toContain("Google Calendar event updated");
+      expect(logCalls).toContain("team@example.com");
+    });
+
     it("should add a webhook trigger", async () => {
       const captured = captureCreateTrigger(webhookTrigger);
 

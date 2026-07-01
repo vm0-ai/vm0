@@ -110,6 +110,10 @@ type WorkflowGoogleCalendarEventCreatedTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { kind: "event"; eventType: "google-calendar-event-created" }
 >;
+type WorkflowGoogleCalendarEventUpdatedTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "event"; eventType: "google-calendar-event-updated" }
+>;
 
 function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
   return [weekdayWorkflowTrigger()];
@@ -216,6 +220,26 @@ function googleCalendarWorkflowTrigger(): WorkflowGoogleCalendarEventCreatedTrig
     ownerUserId: CURRENT_USER_ID,
     enabled: true,
     chatThreadId: "thread_google_calendar_event_created",
+    nextRunAt: null,
+    lastRunAt: null,
+  };
+}
+
+function googleCalendarUpdatedWorkflowTrigger(): WorkflowGoogleCalendarEventUpdatedTriggerSummary {
+  return {
+    id: "workflow-trigger-google-calendar-updated",
+    kind: "event",
+    eventType: "google-calendar-event-updated",
+    eventConfig: {
+      provider: "google-calendar",
+      event: "event_updated",
+      calendarId: "primary",
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_google_calendar_event_updated",
     nextRunAt: null,
     lastRunAt: null,
   };
@@ -590,6 +614,12 @@ function mockCreateWorkflowTrigger(
       if (body.eventType === "google-calendar-event-created") {
         return respond(201, {
           ...googleCalendarWorkflowTrigger(),
+          eventConfig: body.eventConfig,
+        });
+      }
+      if (body.eventType === "google-calendar-event-updated") {
+        return respond(201, {
+          ...googleCalendarUpdatedWorkflowTrigger(),
           eventConfig: body.eventConfig,
         });
       }
@@ -1438,6 +1468,51 @@ describe("workflow detail page", () => {
           provider: "gmail",
           event: "label_applied",
           labelName: "Support",
+        },
+      });
+    });
+  });
+
+  it("creates a Google Calendar event-updated trigger", async () => {
+    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowTrigger((body) => {
+      createBodies.push(body);
+    });
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.WorkflowAutomation]: true,
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+
+    await waitFor(() => {
+      expect(
+        menuItemByText(/^Google Calendar event updated/),
+      ).toBeInTheDocument();
+    });
+    click(menuItemByText(/^Google Calendar event updated/));
+
+    const createTriggerForm = await screen.findByRole("form", {
+      name: "Add Google Calendar automation",
+    });
+    await fill(
+      within(createTriggerForm).getByLabelText("Calendar ID"),
+      "team@example.com",
+    );
+    fireEvent.submit(createTriggerForm);
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "google-calendar-event-updated",
+        eventConfig: {
+          provider: "google-calendar",
+          event: "event_updated",
+          calendarId: "team@example.com",
         },
       });
     });
