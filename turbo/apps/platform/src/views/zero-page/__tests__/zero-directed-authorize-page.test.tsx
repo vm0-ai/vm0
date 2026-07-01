@@ -19,10 +19,12 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { pushState } from "../../../signals/location.ts";
 
 const context = testContext();
 
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
+const SECOND_AGENT_ID = "00000000-0000-0000-0000-000000000002";
 
 function publicStatusItem(args: {
   readonly connectorRef: ConnectorType;
@@ -136,6 +138,40 @@ describe("directed connector authorize page", () => {
     await waitFor(() => {
       expect(screen.getByText("Gmail authorized")).toBeInTheDocument();
       expect(screen.getByText("Authorized")).toBeInTheDocument();
+    });
+  });
+
+  it("does not reuse optimistic authorization across agents", async () => {
+    mockConnectedConnector("gmail");
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Authorize Zero")).toBeInTheDocument();
+    });
+
+    click(screen.getByText("Authorize Zero"));
+
+    await waitFor(() => {
+      expect(screen.getByText("Gmail authorized")).toBeInTheDocument();
+      expect(screen.getByText("Authorized")).toBeInTheDocument();
+    });
+
+    pushState({}, "", `/connectors/gmail/authorize?agentId=${SECOND_AGENT_ID}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Gmail to proceed"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Authorize Zero")).toBeInTheDocument();
+      expect(screen.queryByText("Gmail authorized")).not.toBeInTheDocument();
     });
   });
 

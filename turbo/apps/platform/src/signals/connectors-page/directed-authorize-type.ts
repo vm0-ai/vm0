@@ -48,10 +48,17 @@ export const agentEnabledTypes$ = computed(async (get) => {
   return result.body.enabledTypes;
 });
 
+function connectorAgentAuthorizationKey(args: {
+  readonly connectorType: ConnectorType;
+  readonly agentId: string;
+}): string {
+  return `${args.agentId}:${args.connectorType}`;
+}
+
 const internalAuthorized$ = state<Set<string>>(new Set());
 
 /** Whether the connector has just been authorized (optimistic). */
-export const justAuthorizedTypes$ = computed((get) => {
+export const justAuthorizedConnectorAgentKeys$ = computed((get) => {
   return get(internalAuthorized$);
 });
 
@@ -78,8 +85,21 @@ export const authorizeConnector$ = command(
 
     // Optimistic update
     set(internalAuthorized$, (prev) => {
-      return new Set([...prev, connectorType]);
+      return new Set([
+        ...prev,
+        connectorAgentAuthorizationKey({ connectorType, agentId }),
+      ]);
     });
     set(reloadAgentConnectorAuthorizations$);
   },
 );
+
+export function isJustAuthorizedConnectorAgent(
+  justAuthorizedKeys: ReadonlySet<string>,
+  args: {
+    readonly connectorType: ConnectorType;
+    readonly agentId: string;
+  },
+): boolean {
+  return justAuthorizedKeys.has(connectorAgentAuthorizationKey(args));
+}

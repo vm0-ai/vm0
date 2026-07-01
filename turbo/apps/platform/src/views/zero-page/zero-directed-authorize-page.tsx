@@ -21,8 +21,9 @@ import {
   directedAuthorizeAgentId$,
   directedAuthorizeAgentName$,
   agentEnabledTypes$,
-  justAuthorizedTypes$,
+  justAuthorizedConnectorAgentKeys$,
   authorizeConnector$,
+  isJustAuthorizedConnectorAgent,
 } from "../../signals/connectors-page/directed-authorize-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { IconCheck, IconLoader2 } from "@tabler/icons-react";
@@ -117,15 +118,20 @@ function useDirectedAuthorizeCatalogState(connectorType: ConnectorType | null) {
 
 function useDirectedAuthorizePermissionState(
   connectorType: ConnectorType | null,
+  agentId: string | null,
 ) {
-  const justAuthorized = useGet(justAuthorizedTypes$);
+  const justAuthorizedKeys = useGet(justAuthorizedConnectorAgentKeys$);
   const enabledLoadable = useLastLoadable(agentEnabledTypes$);
   const enabledTypes =
     enabledLoadable.state === "hasData" ? enabledLoadable.data : [];
   return {
     isAuthorized:
       connectorType !== null &&
-      (justAuthorized.has(connectorType) ||
+      agentId !== null &&
+      (isJustAuthorizedConnectorAgent(justAuthorizedKeys, {
+        connectorType,
+        agentId,
+      }) ||
         enabledTypes.includes(connectorType)),
     permissionLoading: enabledLoadable.state === "loading",
   };
@@ -225,7 +231,10 @@ function DirectedAuthorizeCard() {
   const { item, isConnected, catalogLoading, unavailable } =
     useDirectedAuthorizeCatalogState(connectorTypeForState);
   const { isAuthorized, permissionLoading } =
-    useDirectedAuthorizePermissionState(connectorTypeForState);
+    useDirectedAuthorizePermissionState(
+      connectorTypeForState,
+      params?.agentId ?? null,
+    );
 
   if (!params) {
     return null;

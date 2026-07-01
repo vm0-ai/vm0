@@ -10,7 +10,7 @@ import type { Db } from "../external/db";
 
 type UpdateUserConnectorsResult =
   | {
-      readonly status: "replaced";
+      readonly status: "updated";
       readonly enabledTypes: readonly ConnectorType[];
     }
   | { readonly status: "agentNotFound" };
@@ -19,7 +19,7 @@ export type UserConnectorUpdateOperation = "replace" | "add" | "remove";
 
 type UpdateUserCustomConnectorsResult =
   | {
-      readonly status: "replaced";
+      readonly status: "updated";
       readonly enabledIds: readonly string[];
     }
   | { readonly status: "agentNotFound" }
@@ -184,7 +184,7 @@ export async function updateUserConnectors(
     }
 
     if (operation === "replace") {
-      return { status: "replaced", enabledTypes };
+      return { status: "updated", enabledTypes };
     }
 
     const rows = await tx
@@ -192,7 +192,7 @@ export async function updateUserConnectors(
       .from(userConnectors)
       .where(connectorScope);
     return {
-      status: "replaced",
+      status: "updated",
       enabledTypes: rows.map((row) => {
         return row.connectorType as ConnectorType;
       }),
@@ -270,7 +270,7 @@ export async function updateUserCustomConnectors(
     }
 
     if (operation === "replace") {
-      return { status: "replaced", enabledIds };
+      return { status: "updated", enabledIds };
     }
 
     const rows = await tx
@@ -278,7 +278,7 @@ export async function updateUserCustomConnectors(
       .from(userCustomConnectors)
       .where(connectorScope);
     return {
-      status: "replaced",
+      status: "updated",
       enabledIds: rows.map((row) => {
         return row.customConnectorId;
       }),
@@ -302,7 +302,7 @@ export async function addUserCustomConnector(
     enabledIds: [args.customConnectorId],
     operation: "add",
   });
-  if (result.status === "replaced") {
+  if (result.status === "updated") {
     return { status: "added" };
   }
   return result;
