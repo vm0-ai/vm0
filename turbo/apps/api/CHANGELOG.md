@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.203.3](https://github.com/vm0-ai/vm0/compare/api-v1.203.2...api-v1.203.3) (2026-07-01)
+
+
+### Performance Improvements
+
+* attribute storage manifest presign work ([#19693](https://github.com/vm0-ai/vm0/issues/19693)) ([0f78c6b](https://github.com/vm0-ai/vm0/commit/0f78c6b66c06c3004a52cd97940ab3a2d5e4eb22))
+
 ## [1.203.2](https://github.com/vm0-ai/vm0/compare/api-v1.203.1...api-v1.203.2) (2026-07-01)
 
 
