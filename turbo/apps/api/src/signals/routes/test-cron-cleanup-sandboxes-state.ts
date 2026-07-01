@@ -17,7 +17,7 @@ import { exportJobs } from "@vm0/db/schema/export-job";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { command } from "ccstate";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
@@ -194,6 +194,20 @@ async function deleteRunForAction(
         .limit(1)
     : [];
   signal.throwIfAborted();
+  const runThreadRows = await db
+    .select({ id: chatMessages.chatThreadId })
+    .from(chatMessages)
+    .where(eq(chatMessages.runId, runId));
+  signal.throwIfAborted();
+  const runThreadIds = runThreadRows.map((row) => {
+    return row.id;
+  });
+  if (runThreadIds.length > 0) {
+    await db.delete(chatMessages).where(eq(chatMessages.runId, runId));
+    signal.throwIfAborted();
+    await db.delete(chatThreads).where(inArray(chatThreads.id, runThreadIds));
+    signal.throwIfAborted();
+  }
   await db.delete(agentRunQueue).where(eq(agentRunQueue.runId, runId));
   signal.throwIfAborted();
   await db.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
