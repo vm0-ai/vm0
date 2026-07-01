@@ -3,17 +3,15 @@
 //! Host-local capacity is optional and belongs at the runner boundary. This
 //! module converts that capacity into provider-neutral per-sandbox limits.
 
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 
 use sandbox::{BlockRateLimits, DeviceRateLimits, NetworkRateLimits};
 
 use crate::config::ProfileConfig;
 use crate::host_env::{self, HostEnvValue, RunnerHostEnv, RunnerIoEnvValues};
 use crate::resource_budget::ResourceBudget;
-use crate::types::ExecutionContext;
 
 const MIB: f64 = 1024.0 * 1024.0;
-pub(crate) const SANDBOX_IO_LIMITERS_FEATURE_FLAG: &str = "sandboxIoLimiters";
 // Keep host-level headroom outside Firecracker token buckets for system daemons,
 // filesystem metadata bursts, and other non-sandbox traffic.
 const IO_CAPACITY_PERCENT: u128 = 100;
@@ -42,24 +40,6 @@ impl IoLimitResolution {
             Self::Disabled | Self::Misconfigured { .. } => None,
         }
     }
-}
-
-pub(crate) fn device_rate_limits_for_context(
-    configured_limits: Option<&DeviceRateLimits>,
-    context: &ExecutionContext,
-) -> Option<DeviceRateLimits> {
-    if !io_limit_feature_enabled(context.feature_flags.as_ref()) {
-        return None;
-    }
-
-    configured_limits.cloned()
-}
-
-fn io_limit_feature_enabled(feature_flags: Option<&HashMap<String, bool>>) -> bool {
-    feature_flags
-        .and_then(|flags| flags.get(SANDBOX_IO_LIMITERS_FEATURE_FLAG))
-        .copied()
-        .unwrap_or(false)
 }
 
 pub(crate) fn resolve_io_limits(
@@ -379,18 +359,6 @@ mod tests {
             net_rx_mib_per_sec: Some(value("1250")),
             net_tx_mib_per_sec: Some(value("1000")),
         }
-    }
-
-    #[test]
-    fn io_limit_feature_enabled_requires_explicit_true_flag() {
-        let enabled = HashMap::from([(SANDBOX_IO_LIMITERS_FEATURE_FLAG.to_string(), true)]);
-        let disabled = HashMap::from([(SANDBOX_IO_LIMITERS_FEATURE_FLAG.to_string(), false)]);
-        let unrelated = HashMap::from([("otherFlag".to_string(), true)]);
-
-        assert!(io_limit_feature_enabled(Some(&enabled)));
-        assert!(!io_limit_feature_enabled(Some(&disabled)));
-        assert!(!io_limit_feature_enabled(Some(&unrelated)));
-        assert!(!io_limit_feature_enabled(None));
     }
 
     #[test]

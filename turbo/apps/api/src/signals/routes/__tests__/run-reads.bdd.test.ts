@@ -3024,7 +3024,7 @@ describe("RUN-04: agent run telemetry families", () => {
             },
             featureFlags: { legacyIgnored: true },
             featureFlagEntries: [
-              { name: "sandboxIoLimiters", enabled: true },
+              { name: "memoryViewer", enabled: true },
               { name: "dummy", enabled: null },
               { enabled: true },
             ],
@@ -3080,7 +3080,7 @@ describe("RUN-04: agent run telemetry families", () => {
           unknownPolicy: "allow",
         },
       },
-      featureFlags: { sandboxIoLimiters: true },
+      featureFlags: { memoryViewer: true },
       artifact: { vasStorageName: "art-1" },
     });
     expect(contextRead.body.environment).toStrictEqual({
