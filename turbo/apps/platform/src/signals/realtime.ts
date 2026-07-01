@@ -1,6 +1,8 @@
 import { command, state, type Command } from "ccstate";
 import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { Realtime, type RealtimeChannel, type InboundMessage } from "ably";
+import { delay } from "signal-timers";
+import { IN_VITEST } from "../env.ts";
 import { zeroClient$ } from "./api-client.ts";
 import { clerk$ } from "./auth.ts";
 import { createAblyAuthCallback } from "../lib/ably-auth.ts";
@@ -8,6 +10,9 @@ import { createDeferredPromise, throwIfAbort } from "./utils.ts";
 import { logger } from "./log.ts";
 
 const L = logger("Realtime");
+const REALTIME_TRANSIENT_RETRY_DELAYS_MS = [
+  1000, 2000, 5000, 10_000, 30_000,
+] as const;
 
 const internalUserChannel$ = state<RealtimeChannel | null>(null);
 
@@ -20,6 +25,42 @@ interface PendingAblySubscription {
 }
 
 const pendingAblySubscriptions$ = state<readonly PendingAblySubscription[]>([]);
+
+interface RealtimeSubscribeOptions {
+  readonly onSubscribed?: () => void;
+}
+
+interface RealtimeLoopArgs {
+  readonly channel: RealtimeChannel;
+  readonly topic: string;
+  readonly loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>;
+  readonly options?: RealtimeSubscribeOptions;
+}
+
+interface RealtimePayloadLoopArgs {
+  readonly channel: RealtimeChannel;
+  readonly topic: string;
+  readonly loopCommand$: Command<
+    Promise<boolean> | boolean,
+    [unknown, AbortSignal]
+  >;
+  readonly options?: RealtimeSubscribeOptions;
+}
+
+interface SetAblyLoopArgs {
+  readonly topic: string;
+  readonly loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>;
+  readonly options?: RealtimeSubscribeOptions;
+}
+
+interface SetAblyPayloadLoopArgs {
+  readonly topic: string;
+  readonly loopCommand$: Command<
+    Promise<boolean> | boolean,
+    [unknown, AbortSignal]
+  >;
+  readonly options?: RealtimeSubscribeOptions;
+}
 
 function errorMessage(error: unknown): string | undefined {
   if (error instanceof Error) {
@@ -40,12 +81,32 @@ function isAblyConnectionClosedError(error: unknown): boolean {
   return errorMessage(error) === "Connection closed";
 }
 
+async function subscribeChannel(
+  channel: RealtimeChannel,
+  topic: string,
+  callback: (message: InboundMessage) => void,
+): Promise<boolean> {
+  await channel.subscribe(topic, callback);
+  return true;
+}
+
+async function waitForTransientRetry(
+  signal: AbortSignal,
+  retryCount: number,
+): Promise<void> {
+  const delayMs = IN_VITEST
+    ? 0
+    : (REALTIME_TRANSIENT_RETRY_DELAYS_MS[
+        Math.min(retryCount, REALTIME_TRANSIENT_RETRY_DELAYS_MS.length - 1)
+      ] ?? 30_000);
+  await delay(delayMs, { signal });
+  signal.throwIfAborted();
+}
+
 const runWithChannel$ = command(
   async (
     { set },
-    channel: RealtimeChannel,
-    topic: string,
-    loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>,
+    { channel, topic, loopCommand$, options }: RealtimeLoopArgs,
     signal: AbortSignal,
   ): Promise<void> => {
     // No implicit prime on subscribe. Callers whose loop body sets up baseline
@@ -55,13 +116,21 @@ const runWithChannel$ = command(
     // separate computeds.
     signal.throwIfAborted();
     let deferred = createDeferredPromise(signal);
+    let poked = false;
+    let transientRetryCount = 0;
 
     const pokeLoop = () => {
+      if (signal.aborted || poked || deferred.settled()) {
+        return;
+      }
+      poked = true;
       deferred.resolve(true);
-      deferred = createDeferredPromise(signal);
     };
 
     const callback = (message: InboundMessage) => {
+      if (signal.aborted) {
+        return;
+      }
       L.debug("got message from topic", topic, message);
       pokeLoop();
     };
@@ -105,19 +174,22 @@ const runWithChannel$ = command(
 
     // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
     try {
-      await channel.subscribe(topic, callback);
+      subscribed = await subscribeChannel(channel, topic, callback);
       signal.throwIfAborted();
-      subscribed = true;
+      options?.onSubscribed?.();
       L.debug("subscribed to topic: " + topic);
 
       while (!signal.aborted) {
         await deferred.promise;
         signal.throwIfAborted();
+        deferred = createDeferredPromise(signal);
+        poked = false;
 
         // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
         try {
           const done = await set(loopCommand$, signal);
           signal.throwIfAborted();
+          transientRetryCount = 0;
           if (done) {
             cleanup();
             return;
@@ -126,6 +198,10 @@ const runWithChannel$ = command(
           signal.throwIfAborted();
           throwIfAbort(error);
           L.warn(`transient error in ably notification`, error);
+          await waitForTransientRetry(signal, transientRetryCount);
+          signal.throwIfAborted();
+          transientRetryCount++;
+          pokeLoop();
         }
       }
     } catch (error) {
@@ -145,45 +221,30 @@ const runWithChannel$ = command(
   },
 );
 
-const runPayloadNotification$ = command(
-  async (
-    { set },
-    loopCommand$: Command<Promise<boolean> | boolean, [unknown, AbortSignal]>,
-    payload: unknown,
-    signal: AbortSignal,
-  ): Promise<boolean> => {
-    // eslint-disable-next-line no-restricted-syntax -- polling loop requires try/catch for transient error retry with backoff
-    try {
-      const done = await set(loopCommand$, payload, signal);
-      signal.throwIfAborted();
-      return done;
-    } catch (error) {
-      signal.throwIfAborted();
-      throwIfAbort(error);
-      L.warn(`transient error in ably payload notification`, error);
-      return false;
-    }
-  },
-);
-
 const runWithChannelPayload$ = command(
   async (
     { set },
-    channel: RealtimeChannel,
-    topic: string,
-    loopCommand$: Command<Promise<boolean> | boolean, [unknown, AbortSignal]>,
+    { channel, topic, loopCommand$, options }: RealtimePayloadLoopArgs,
     signal: AbortSignal,
   ): Promise<void> => {
     signal.throwIfAborted();
     let deferred = createDeferredPromise(signal);
+    let poked = false;
+    let transientRetryCount = 0;
     const pendingPayloads: unknown[] = [];
 
     const pokeLoop = () => {
+      if (signal.aborted || poked || deferred.settled()) {
+        return;
+      }
+      poked = true;
       deferred.resolve(true);
-      deferred = createDeferredPromise(signal);
     };
 
     const callback = (message: InboundMessage) => {
+      if (signal.aborted) {
+        return;
+      }
       L.debug("got payload message from topic", topic, message);
       pendingPayloads.push(message.data);
       pokeLoop();
@@ -228,24 +289,36 @@ const runWithChannelPayload$ = command(
 
     // eslint-disable-next-line no-restricted-syntax -- Ably can close during app teardown while a channel attach is in flight; suppress only that terminal close race.
     try {
-      await channel.subscribe(topic, callback);
+      subscribed = await subscribeChannel(channel, topic, callback);
       signal.throwIfAborted();
-      subscribed = true;
+      options?.onSubscribed?.();
       L.debug("subscribed to payload topic: " + topic);
 
       while (!signal.aborted) {
         await deferred.promise;
         signal.throwIfAborted();
+        deferred = createDeferredPromise(signal);
+        poked = false;
 
         while (pendingPayloads.length > 0) {
-          const payload = pendingPayloads.shift();
-          const done = await set(
-            runPayloadNotification$,
-            loopCommand$,
-            payload,
-            signal,
-          );
-          signal.throwIfAborted();
+          const payload = pendingPayloads[0];
+          let done = false;
+          // eslint-disable-next-line no-restricted-syntax -- payload notifications must retry transient handler failures without dropping the payload
+          try {
+            done = await set(loopCommand$, payload, signal);
+            signal.throwIfAborted();
+          } catch (error) {
+            signal.throwIfAborted();
+            throwIfAbort(error);
+            L.warn(`transient error in ably payload notification`, error);
+            await waitForTransientRetry(signal, transientRetryCount);
+            signal.throwIfAborted();
+            transientRetryCount++;
+            pokeLoop();
+            break;
+          }
+          pendingPayloads.shift();
+          transientRetryCount = 0;
           if (done) {
             cleanup();
             return;
@@ -422,13 +495,16 @@ const userChannel$ = command(
 export const setAblyLoop$ = command(
   async (
     { set },
-    topic: string,
-    loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>,
+    { topic, loopCommand$, options }: SetAblyLoopArgs,
     signal: AbortSignal,
   ) => {
     const channel = await set(userChannel$, topic, signal);
     signal.throwIfAborted();
-    await set(runWithChannel$, channel, topic, loopCommand$, signal);
+    await set(
+      runWithChannel$,
+      { channel, topic, loopCommand$, options },
+      signal,
+    );
     signal.throwIfAborted();
   },
 );
@@ -436,13 +512,16 @@ export const setAblyLoop$ = command(
 export const setAblyPayloadLoop$ = command(
   async (
     { set },
-    topic: string,
-    loopCommand$: Command<Promise<boolean> | boolean, [unknown, AbortSignal]>,
+    { topic, loopCommand$, options }: SetAblyPayloadLoopArgs,
     signal: AbortSignal,
   ) => {
     const channel = await set(userChannel$, topic, signal);
     signal.throwIfAborted();
-    await set(runWithChannelPayload$, channel, topic, loopCommand$, signal);
+    await set(
+      runWithChannelPayload$,
+      { channel, topic, loopCommand$, options },
+      signal,
+    );
     signal.throwIfAborted();
   },
 );

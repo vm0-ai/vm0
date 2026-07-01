@@ -33,6 +33,10 @@ export const startQueuePolling$ = command(
       return false;
     });
 
-    await set(setAblyLoop$, "queue:changed", onQueueChanged$, signal);
+    await set(
+      setAblyLoop$,
+      { topic: "queue:changed", loopCommand$: onQueueChanged$ },
+      signal,
+    );
   },
 );

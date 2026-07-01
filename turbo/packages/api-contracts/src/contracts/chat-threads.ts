@@ -247,6 +247,7 @@ const pagedChatMessageBaseSchema = z.object({
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
+  sequenceNumber: z.number().nullable().optional(),
   // Present on user messages posted by a firing automation. `automationId`
   // links to the automation detail page; `automationSnapshot` preserves the
   // automation label and description at send time. `automationTitle` is
@@ -516,6 +517,10 @@ const chatThreadIdPathParamsSchema = z.object({ id: z.string().uuid() });
 const chatThreadThreadIdPathParamsSchema = z.object({
   threadId: z.string().uuid(),
 });
+const chatThreadMessagePathParamsSchema =
+  chatThreadThreadIdPathParamsSchema.extend({
+    messageId: z.string().uuid(),
+  });
 
 export const chatThreadByIdContract = c.router({
   get: {
@@ -953,6 +958,18 @@ export const chatThreadMessagesContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Get paginated chat messages for a thread",
+  },
+  get: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/messages/:messageId",
+    headers: authHeadersSchema,
+    pathParams: chatThreadMessagePathParamsSchema,
+    responses: {
+      200: pagedChatMessageSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get a chat message by id for a thread",
   },
 });
 

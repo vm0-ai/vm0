@@ -1,14 +1,22 @@
 import type { IDBPDatabase } from "idb";
 
-const CHAT_IDB_CACHE_RESET_VERSION = 4;
+const CHAT_IDB_FULL_CACHE_RESET_VERSION = 4;
+const CHAT_IDB_MESSAGES_ORDER_RESET_VERSION = 5;
 
-export const CHAT_IDB_VERSION = 4;
+export const CHAT_IDB_VERSION = 5;
 export const CHAT_MESSAGES_STORE = "chat_messages";
 export const CHAT_THREAD_META_STORE = "chat_thread_agents";
+export const CHAT_MESSAGES_ORDER_INDEX = "byThreadAndOrder";
 
 function createChatMessagesStore(db: IDBPDatabase): void {
   const store = db.createObjectStore(CHAT_MESSAGES_STORE, { keyPath: "id" });
   store.createIndex("byThreadAndTime", ["threadId", "createdAt"]);
+  store.createIndex(CHAT_MESSAGES_ORDER_INDEX, [
+    "threadId",
+    "createdAt",
+    "orderSequence",
+    "id",
+  ]);
 }
 
 function createThreadMetaStore(db: IDBPDatabase): void {
@@ -16,12 +24,16 @@ function createThreadMetaStore(db: IDBPDatabase): void {
 }
 
 export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
-  if (oldVersion < CHAT_IDB_CACHE_RESET_VERSION) {
+  if (oldVersion < CHAT_IDB_FULL_CACHE_RESET_VERSION) {
     if (db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {
       db.deleteObjectStore(CHAT_MESSAGES_STORE);
     }
     if (db.objectStoreNames.contains(CHAT_THREAD_META_STORE)) {
       db.deleteObjectStore(CHAT_THREAD_META_STORE);
+    }
+  } else if (oldVersion < CHAT_IDB_MESSAGES_ORDER_RESET_VERSION) {
+    if (db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {
+      db.deleteObjectStore(CHAT_MESSAGES_STORE);
     }
   }
 

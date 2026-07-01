@@ -377,6 +377,26 @@ function publishedChatThreadRunFinished(threadId: string): boolean {
   });
 }
 
+async function waitForChatThreadMessageUpdatedPublish(
+  threadId: string,
+  messageId: string,
+): Promise<void> {
+  await expect
+    .poll(() => {
+      return context.mocks.ably.publish.mock.calls.some((call) => {
+        const payload = call[1];
+        return (
+          call[0] === `chatThreadMessageUpdated:${threadId}` &&
+          payload !== null &&
+          typeof payload === "object" &&
+          "messageId" in payload &&
+          payload.messageId === messageId
+        );
+      });
+    })
+    .toBe(true);
+}
+
 function assistantEvent(
   sequenceNumber: number,
   text: string,
@@ -912,6 +932,7 @@ describe("CHAT-02: completed chat callback", () => {
       "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
     ]);
 
+    context.mocks.ably.publish.mockClear();
     openRouterGate.release();
     const afterFollowups = await waitForThreadMessages(
       actor,
@@ -939,6 +960,14 @@ describe("CHAT-02: completed chat callback", () => {
     expect(markerAfterRelease?.recommendedFollowups).toStrictEqual([
       { prompt: "Review the queued result", kind: "talk" },
     ]);
+    await waitForChatThreadMessageUpdatedPublish(
+      first.threadId,
+      markerBeforeRelease.id,
+    );
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${first.threadId}`,
+      null,
+    );
     expect(titlePrompts).toHaveLength(1);
     expect(titlePrompts[0]).toContain("finish the current turn");
     expect(titlePrompts[0]).not.toContain("queued while side effects wait");

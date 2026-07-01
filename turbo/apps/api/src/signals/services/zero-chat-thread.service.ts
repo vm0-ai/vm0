@@ -637,6 +637,7 @@ function toPagedMessage(
       error: row.error ?? undefined,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
+      sequenceNumber: row.sequenceNumber,
       workflowSnapshot,
       createdAt: row.createdAt.toISOString(),
     };
@@ -1360,6 +1361,7 @@ export function zeroChatThreadMessagesPage(args: {
 
     const db = get(db$);
     const threadFilter = eq(chatMessages.chatThreadId, args.threadId);
+    const cursorSequence = sql<number>`COALESCE(${chatMessages.sequenceNumber}, -1)`;
     let rows: ChatMessageRow[];
     let hasHistoryBefore = false;
 
@@ -1370,7 +1372,8 @@ export function zeroChatThreadMessagesPage(args: {
         .where(threadFilter)
         .orderBy(
           desc(chatMessages.createdAt),
-          desc(chatMessages.sequenceNumber),
+          desc(cursorSequence),
+          desc(chatMessages.id),
         )
         .limit(args.limit + 1);
       hasHistoryBefore = latestRows.length > args.limit;
@@ -1382,19 +1385,27 @@ export function zeroChatThreadMessagesPage(args: {
       }
       const cursorAfterCondition = sql`(
         ${chatMessages.createdAt},
-        COALESCE(${chatMessages.sequenceNumber}, -1)
+        ${cursorSequence},
+        ${chatMessages.id}
       ) > (
-        SELECT ${chatMessages.createdAt}, COALESCE(${chatMessages.sequenceNumber}, -1)
+        SELECT ${chatMessages.createdAt},
+          COALESCE(${chatMessages.sequenceNumber}, -1),
+          ${chatMessages.id}
         FROM ${chatMessages}
         WHERE ${chatMessages.id} = ${cursorId}
+          AND ${chatMessages.chatThreadId} = ${args.threadId}
       )`;
       const cursorBeforeCondition = sql`(
         ${chatMessages.createdAt},
-        COALESCE(${chatMessages.sequenceNumber}, -1)
+        ${cursorSequence},
+        ${chatMessages.id}
       ) < (
-        SELECT ${chatMessages.createdAt}, COALESCE(${chatMessages.sequenceNumber}, -1)
+        SELECT ${chatMessages.createdAt},
+          COALESCE(${chatMessages.sequenceNumber}, -1),
+          ${chatMessages.id}
         FROM ${chatMessages}
         WHERE ${chatMessages.id} = ${cursorId}
+          AND ${chatMessages.chatThreadId} = ${args.threadId}
       )`;
 
       if (args.sinceId !== undefined) {
@@ -1404,7 +1415,8 @@ export function zeroChatThreadMessagesPage(args: {
           .where(and(threadFilter, cursorAfterCondition))
           .orderBy(
             asc(chatMessages.createdAt),
-            asc(chatMessages.sequenceNumber),
+            asc(cursorSequence),
+            asc(chatMessages.id),
           )
           .limit(args.limit);
       } else {
@@ -1414,7 +1426,8 @@ export function zeroChatThreadMessagesPage(args: {
           .where(and(threadFilter, cursorBeforeCondition))
           .orderBy(
             desc(chatMessages.createdAt),
-            desc(chatMessages.sequenceNumber),
+            desc(cursorSequence),
+            desc(chatMessages.id),
           )
           .limit(args.limit + 1);
         hasHistoryBefore = previousRows.length > args.limit;
@@ -1430,6 +1443,36 @@ export function zeroChatThreadMessagesPage(args: {
       ),
       hasHistoryBefore,
     };
+  });
+}
+
+export function zeroChatThreadMessageById(args: {
+  readonly threadId: string;
+  readonly userId: string;
+  readonly messageId: string;
+}): Computed<Promise<PagedChatMessage | null>> {
+  return computed(async (get) => {
+    const owned = await get(ownedChatThread(args.threadId, args.userId));
+    if (!owned) {
+      return null;
+    }
+
+    const db = get(db$);
+    const [row] = await db
+      .select(messageColumns)
+      .from(chatMessages)
+      .where(
+        and(
+          eq(chatMessages.id, args.messageId),
+          eq(chatMessages.chatThreadId, args.threadId),
+        ),
+      )
+      .limit(1);
+    if (!row) {
+      return null;
+    }
+
+    return await get(toPagedMessage(args.userId, row));
   });
 }
 

@@ -277,8 +277,16 @@ export const setupActivityLogLoop$ = command(
     }
 
     await Promise.all([
-      set(setAblyLoop$, `run:changed:${runId}`, onRunChanged$, signal),
-      set(setAblyLoop$, "queue:changed", onRunChanged$, signal),
+      set(
+        setAblyLoop$,
+        { topic: `run:changed:${runId}`, loopCommand$: onRunChanged$ },
+        signal,
+      ),
+      set(
+        setAblyLoop$,
+        { topic: "queue:changed", loopCommand$: onRunChanged$ },
+        signal,
+      ),
     ]);
     signal.throwIfAborted();
   },

@@ -1,4 +1,10 @@
 import { command, computed } from "ccstate";
+import {
+  chatThreadMessagesContract,
+  type PagedChatMessage,
+} from "@vm0/api-contracts/contracts/chat-threads";
+import { accept } from "../../lib/accept.ts";
+import { zeroClient$ } from "../api-client.ts";
 import { clerk$ } from "../auth.ts";
 import { createIdbMessageStores } from "../external/idb-message-store.ts";
 import {
@@ -9,12 +15,12 @@ import { logger } from "../log.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import type {
   ChatThreadDataSource,
+  GetMessageArgs,
   InitialPage,
   ListMessagesAfterArgs,
   ListMessagesBeforeArgs,
   SubscribeRealtimeArgs,
 } from "./chat-thread-data-source.ts";
-import type { PagedChatMessage } from "@vm0/api-contracts/contracts/chat-threads";
 
 const L = logger("ChatIdbCache");
 const MESSAGE_PAGE_SIZE = 50;
@@ -24,6 +30,34 @@ type ListMessagesAfterResult = {
   messages: PagedChatMessage[];
   reachedEnd: boolean;
 };
+
+const warmListMessagesAfter$ = command(
+  async (
+    { get },
+    { threadId, sinceId }: ListMessagesAfterArgs,
+    signal: AbortSignal,
+  ): Promise<ListMessagesAfterResult | null> => {
+    const client = get(zeroClient$)(chatThreadMessagesContract);
+    const result = await accept(
+      client.list({
+        params: { threadId },
+        query: { sinceId, limit: 50 },
+        fetchOptions: { signal },
+      }),
+      [200, 404],
+      { toast: false },
+    );
+    signal.throwIfAborted();
+    if (result.status === 404) {
+      L.debug("warmLatest:notFound", { threadId, sinceId });
+      return null;
+    }
+    return {
+      messages: result.body.messages,
+      reachedEnd: result.body.messages.length < 50,
+    };
+  },
+);
 
 interface CachedMessageReadStore {
   readBefore(
@@ -224,6 +258,40 @@ function createListMessagesAfter(
   );
 }
 
+function createGetMessage(
+  remote: ChatThreadDataSource,
+  getStores: (userId: string, orgId: string) => Stores,
+) {
+  return command(
+    async (
+      { get, set },
+      { threadId: tid, messageId }: GetMessageArgs,
+      signal: AbortSignal,
+    ) => {
+      const message = await set(
+        remote.getMessage$,
+        { threadId: tid, messageId },
+        signal,
+      );
+      signal.throwIfAborted();
+
+      const clerk = await get(clerk$);
+      signal.throwIfAborted();
+      const userId = clerk.user?.id;
+      const orgId = clerk.organization?.id;
+
+      if (!userId || !orgId || message === null) {
+        return message;
+      }
+
+      const stores = getStores(userId, orgId);
+      await stores.writeStore.upsertMessages(tid, [message], signal);
+      L.debug("getMessage:cacheFilled", { threadId: tid, messageId });
+      return message;
+    },
+  );
+}
+
 export const warmLatestChatThreadMessages$ = command(
   async ({ get, set }, threadId: string, signal: AbortSignal) => {
     const clerk = await get(clerk$);
@@ -240,23 +308,18 @@ export const warmLatestChatThreadMessages$ = command(
     const latest = await stores.readStore.readLatest(threadId, 1, signal);
     signal.throwIfAborted();
 
-    const remote = createRemoteChatThreadDataSource(threadId);
-    const listMessagesAfter$ = createListMessagesAfter(remote, (uid, oid) => {
-      if (uid === userId && oid === orgId) {
-        return stores;
-      }
-      return createIdbMessageStores(uid, oid);
-    });
-
     let sinceId = latest[0]?.id;
     let pages = 0;
     while (!signal.aborted) {
-      const result: ListMessagesAfterResult = await set(
-        listMessagesAfter$,
+      const result = await set(
+        warmListMessagesAfter$,
         { threadId, sinceId },
         signal,
       );
       signal.throwIfAborted();
+      if (result === null) {
+        return;
+      }
       pages += 1;
 
       L.debug("warmLatest:page", {
@@ -268,6 +331,12 @@ export const warmLatestChatThreadMessages$ = command(
       });
 
       if (result.messages.length > 0) {
+        await stores.writeStore.upsertMessages(
+          threadId,
+          result.messages,
+          signal,
+        );
+        signal.throwIfAborted();
         const nextSinceId = result.messages[result.messages.length - 1]!.id;
         if (nextSinceId === sinceId) {
           break;
@@ -363,6 +432,7 @@ export function createIdbCachedDataSource(
   });
 
   const listMessagesAfter$ = createListMessagesAfter(remote, getStores);
+  const getMessage$ = createGetMessage(remote, getStores);
 
   return {
     getThread$: remote.getThread$,
@@ -375,6 +445,7 @@ export function createIdbCachedDataSource(
     recallMessage$: remote.recallMessage$,
     listMessagesAfter$,
     listMessagesBefore$: createListMessagesBefore(remote, getStores),
+    getMessage$,
     cancelRuns$: remote.cancelRuns$,
     markRead$: remote.markRead$,
     subscribeRealtime$: createSubscribeRealtime(remote),

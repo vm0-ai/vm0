@@ -7,7 +7,14 @@ import {
   type State,
 } from "ccstate";
 import { animationFrame, delay } from "signal-timers";
-import { onRef, onRejection, resetSignal, setLoop } from "../utils.ts";
+import {
+  onRef,
+  onRejection,
+  resetSignalScope,
+  resetSignal,
+  setLoop,
+  withCleanup,
+} from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { reloadHeaderAutomationMenu$ } from "./header-automation-menu.ts";
 import {
@@ -101,6 +108,8 @@ export type {
 } from "./chat-thread-signals.ts";
 
 const L = logger("ChatThread");
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 
 const QUEUED_RUN_MARKER_EVENT_ID = "queue:queued";
 const SILENT_HISTORY_BACKFILL_INTERVAL_MS = 100;
@@ -1161,6 +1170,58 @@ function createGroupedChatMessagesCache(
 type ServerMessages$ = State<PagedChatMessage[]>;
 type KnownServerMessageIds$ = State<ReadonlySet<string>>;
 
+function compareCursorString(left: string, right: string): number {
+  if (left < right) {
+    return -1;
+  }
+  if (left > right) {
+    return 1;
+  }
+  return 0;
+}
+
+function compareCreatedAt(left: string, right: string): number {
+  if (left === right) {
+    return 0;
+  }
+  const leftTime = Date.parse(left);
+  const rightTime = Date.parse(right);
+  if (Number.isNaN(leftTime) || Number.isNaN(rightTime)) {
+    return compareCursorString(left, right);
+  }
+  return leftTime - rightTime;
+}
+
+function compareServerMessageOrder(
+  left: PagedChatMessage,
+  right: PagedChatMessage,
+): number {
+  const createdAtOrder = compareCreatedAt(left.createdAt, right.createdAt);
+  if (createdAtOrder !== 0) {
+    return createdAtOrder;
+  }
+
+  const leftSequence = left.sequenceNumber ?? -1;
+  const rightSequence = right.sequenceNumber ?? -1;
+  if (leftSequence !== rightSequence) {
+    return leftSequence - rightSequence;
+  }
+
+  return compareCursorString(left.id, right.id);
+}
+
+function mergeServerMessages(
+  messageSets: readonly (readonly PagedChatMessage[])[],
+): PagedChatMessage[] {
+  const byId = new Map<string, PagedChatMessage>();
+  for (const messages of messageSets) {
+    for (const message of messages) {
+      byId.set(message.id, message);
+    }
+  }
+  return Array.from(byId.values()).sort(compareServerMessageOrder);
+}
+
 function addKnownServerMessageIds(
   prev: ReadonlySet<string>,
   messages: readonly PagedChatMessage[],
@@ -1255,7 +1316,11 @@ function createRawMessagesComputed({
   return computed(async (get): Promise<ChatMessageProjectionEntry[]> => {
     const initial = await get(initialPage$);
     const history = get(historyMessages$);
-    const server = [...history, ...initial.messages, ...get(serverMessages$)];
+    const server = mergeServerMessages([
+      history,
+      initial.messages,
+      get(serverMessages$),
+    ]);
     const serverIds = new Set(
       server.map((message) => {
         return message.id;
@@ -1513,6 +1578,62 @@ function createFetchNextPageCommand({
   });
 }
 
+function messageUpdatedPayloadMessageId(payload: unknown): string | null {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    !("messageId" in payload) ||
+    typeof payload.messageId !== "string" ||
+    !uuidPattern.test(payload.messageId)
+  ) {
+    return null;
+  }
+  return payload.messageId;
+}
+
+function createFetchUpdatedMessageCommand({
+  threadId,
+  dataSource,
+  appendServerMessages$,
+  refreshGroupedChatMessagesCache$,
+}: {
+  threadId: string;
+  dataSource: ChatThreadDataSource;
+  appendServerMessages$: Command<void, [PagedChatMessage[]]>;
+  refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
+}): Command<Promise<boolean>, [unknown, AbortSignal]> {
+  return command(
+    async (
+      { set },
+      payload: unknown,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      const messageId = messageUpdatedPayloadMessageId(payload);
+      if (messageId === null) {
+        L.warn("Ignoring chat message update with invalid payload", {
+          threadId,
+        });
+        return false;
+      }
+
+      const message = await set(
+        dataSource.getMessage$,
+        { threadId, messageId },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (message === null) {
+        return false;
+      }
+
+      set(appendServerMessages$, [message]);
+      await set(refreshGroupedChatMessagesCache$, signal);
+      signal.throwIfAborted();
+      return false;
+    },
+  );
+}
+
 function createPagedMessages(
   threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
@@ -1603,6 +1724,12 @@ function createPagedMessages(
     knownServerMessageIds$,
     dataSource,
   });
+  const fetchUpdatedMessage$ = createFetchUpdatedMessageCommand({
+    threadId,
+    dataSource,
+    appendServerMessages$,
+    refreshGroupedChatMessagesCache$,
+  });
 
   const refreshLatestMessages$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
@@ -1641,6 +1768,7 @@ function createPagedMessages(
     latestRunStatus$,
     activeGoal$,
     fetchNextPage$,
+    fetchUpdatedMessage$,
     refreshLatestMessages$,
     loadHistory$,
   };
@@ -1795,8 +1923,10 @@ function createArtifacts(
     command(async ({ set }, _el: HTMLElement, signal: AbortSignal) => {
       await set(
         setAblyLoop$,
-        `chatThreadArtifactsChanged:${threadId}`,
-        reloadArtifactsFromRealtime$,
+        {
+          topic: `chatThreadArtifactsChanged:${threadId}`,
+          loopCommand$: reloadArtifactsFromRealtime$,
+        },
         signal,
       );
     }),
@@ -1979,6 +2109,7 @@ interface RunTrackingDeps {
   latestRunStatus$: Computed<Promise<string | null>>;
   initialPage$: Computed<Promise<InitialPage>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
+  fetchUpdatedMessage$: Command<Promise<boolean>, [unknown, AbortSignal]>;
   silentBackfillHistory$: Command<Promise<void>, [AbortSignal]>;
   refreshLatestMessages$: Command<Promise<void>, [AbortSignal]>;
   autoScroll$: Command<void, []>;
@@ -2156,12 +2287,14 @@ function createRunTracking({
   latestRunStatus$,
   initialPage$,
   fetchNextPage$,
+  fetchUpdatedMessage$,
   silentBackfillHistory$,
   refreshLatestMessages$,
   autoScroll$,
   dataSource,
 }: RunTrackingDeps) {
   const locallyMarkedReadMessageId$ = state<string | undefined>(undefined);
+  const resetChatSubscriptionSignal$ = resetSignalScope();
 
   const allFinished$ = computed(async (get) => {
     return (await get(latestRunStatus$)) === null;
@@ -2175,7 +2308,7 @@ function createRunTracking({
     dataSource,
   });
 
-  const shouldRunPreSubscribeCatchup$ = command(
+  const shouldRunSubscribeReadyCatchup$ = command(
     async ({ get }, signal: AbortSignal): Promise<boolean> => {
       const initial = await get(initialPage$);
       signal.throwIfAborted();
@@ -2189,22 +2322,30 @@ function createRunTracking({
     },
   );
 
+  const onSubscribed$ = command(async ({ get, set }, sig: AbortSignal) => {
+    L.debug("subscribeChatThread$ catchup start", { threadId });
+    set(reloadThread$);
+    await get(threadData$);
+    sig.throwIfAborted();
+    if (await set(shouldRunSubscribeReadyCatchup$, sig)) {
+      await set(fetchNextPage$, sig);
+    }
+    const latestMessageId = await get(latestChatMessageId$);
+    sig.throwIfAborted();
+    if (latestMessageId) {
+      // In-place message updates, such as completed marker followups, are not
+      // returned by a sinceId fetch. Refresh the latest loaded row after the
+      // realtime callbacks are registered so update events racing with this
+      // fetch are queued instead of missed.
+      await set(fetchUpdatedMessage$, { messageId: latestMessageId }, sig);
+    }
+    await set(markThreadReadIfNeeded$, sig);
+    sig.throwIfAborted();
+    L.debug("subscribeChatThread$ catchup done", { threadId });
+  });
+
   const subscribeChatThread$ = command(async ({ set }, signal: AbortSignal) => {
     L.debug("subscribeChatThread$ start", { threadId });
-
-    // Catch up any messages that arrived since the initial page was loaded.
-    // Cache hits and active runs still need a catch-up fetch. A fresh remote
-    // empty page on an idle thread can skip it because it would repeat the same
-    // no-cursor request before the realtime loop starts.
-    L.debug("subscribeChatThread$ pre-subscribe fetchNextPage$ start", {
-      threadId,
-    });
-    if (await set(shouldRunPreSubscribeCatchup$, signal)) {
-      await set(fetchNextPage$, signal);
-    }
-    L.debug("subscribeChatThread$ pre-subscribe fetchNextPage$ done", {
-      threadId,
-    });
 
     const onMessageCreated$ = command(async ({ set }, sig: AbortSignal) => {
       L.debug("onMessageCreated$ fired", { threadId });
@@ -2215,10 +2356,17 @@ function createRunTracking({
         () => {
           set(autoScroll$);
         },
-        { signal },
+        { signal: sig },
       );
       return false;
     });
+
+    const onMessageUpdated$ = command(
+      async ({ set }, payload: unknown, sig: AbortSignal) => {
+        L.debug("onMessageUpdated$ fired", { threadId });
+        return await set(fetchUpdatedMessage$, payload, sig);
+      },
+    );
 
     const onRunChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
       L.debug("onRunChanged$ fired", { threadId });
@@ -2230,7 +2378,7 @@ function createRunTracking({
         () => {
           set(autoScroll$);
         },
-        { signal },
+        { signal: sig },
       );
       return false;
     });
@@ -2242,23 +2390,33 @@ function createRunTracking({
     });
 
     L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
-    await Promise.all([
-      set(silentBackfillHistory$, signal),
-      set(markThreadReadIfNeeded$, signal),
-      set(subscribeComputerUseHostsChanged$, signal),
-      set(
-        dataSource.subscribeRealtime$,
-        {
-          threadId,
-          handlers: {
-            onMessageCreated$,
-            onRunChanged$,
-            onAutomationsChanged$,
+    const subscriptionScope = set(resetChatSubscriptionSignal$, signal);
+    const subscriptionSignal = subscriptionScope.signal;
+
+    await withCleanup(
+      Promise.all([
+        set(silentBackfillHistory$, subscriptionSignal),
+        set(markThreadReadIfNeeded$, subscriptionSignal),
+        set(subscribeComputerUseHostsChanged$, subscriptionSignal),
+        set(
+          dataSource.subscribeRealtime$,
+          {
+            threadId,
+            handlers: {
+              onMessageCreated$,
+              onMessageUpdated$,
+              onRunChanged$,
+              onAutomationsChanged$,
+              onSubscribed$,
+            },
           },
-        },
-        signal,
-      ),
-    ]);
+          subscriptionSignal,
+        ),
+      ]),
+      () => {
+        subscriptionScope.abort(signal.reason);
+      },
+    );
     signal.throwIfAborted();
   });
 
@@ -3023,6 +3181,7 @@ export function createChatThreadSignals(
     latestRunStatus$: messages.latestRunStatus$,
     initialPage$: messages.initialPage$,
     fetchNextPage$: messages.fetchNextPage$,
+    fetchUpdatedMessage$: messages.fetchUpdatedMessage$,
     silentBackfillHistory$: messages.silentBackfillHistory$,
     refreshLatestMessages$: messages.refreshLatestMessages$,
     autoScroll$: scrollSignals.autoScroll$,

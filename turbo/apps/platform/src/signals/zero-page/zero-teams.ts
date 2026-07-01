@@ -108,6 +108,10 @@ export const watchTeamsConnection$ = command(
       return false;
     });
 
-    await set(setAblyLoop$, "teams:changed", onTeamsChanged$, signal);
+    await set(
+      setAblyLoop$,
+      { topic: "teams:changed", loopCommand$: onTeamsChanged$ },
+      signal,
+    );
   },
 );

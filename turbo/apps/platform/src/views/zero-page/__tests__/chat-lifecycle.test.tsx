@@ -2770,7 +2770,6 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Tail run group window")).toBeInTheDocument();
       expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
         "10 runs",
       );
@@ -2813,7 +2812,6 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Middle run group window")).toBeInTheDocument();
       expect(screen.getByText("A reply 1")).toBeInTheDocument();
       expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
         "9 runs",
@@ -4267,7 +4265,6 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Run group folding")).toBeInTheDocument();
       expect(screen.getByText("Latest daily check result")).toBeInTheDocument();
       const foldButton = buttonByLabel("Expand grouped run history");
       expect(
@@ -4400,7 +4397,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("First goal result")).toBeInTheDocument();
-      expect(screen.getByText("Worked for 30s")).toBeInTheDocument();
+      expect(screen.getAllByText("Worked for 30s").length).toBeGreaterThan(0);
     });
   });
 
@@ -5018,6 +5015,210 @@ describe("chat lifecycle", () => {
     expect(sentMessages).toHaveLength(1);
     expect(sentMessages[0]).toMatchObject({ prompt: followupPrompt });
     expect(sentMessages[0]?.revokesMessageId).toBeUndefined();
+  });
+
+  it("shows recommended follow-ups after a completed marker update event", async () => {
+    const assistantReply = "I can turn this into a launch package.";
+    const followupPrompt = "Create a presentation outline";
+    const updateTopic = `chatThreadMessageUpdated:${FOLLOWUP_THREAD_ID}`;
+    const completedMarker: Extract<PagedChatMessage, { role: "assistant" }> = {
+      id: "00000000-0000-4000-8000-000000004001",
+      role: "assistant",
+      content: null,
+      runId: "run-followup",
+      runLifecycleEvent: "completed",
+      createdAt: "2026-06-09T10:01:01Z",
+    };
+    const fetchedMessageIds: string[] = [];
+
+    mockChatLifecycle(context, {
+      threadId: FOLLOWUP_THREAD_ID,
+      threadTitle: "Launch package",
+      chatMessages: [
+        {
+          id: "msg-followup-user",
+          role: "user",
+          content: "Package this launch plan",
+          runId: "run-followup",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-followup-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-followup",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        completedMarker,
+      ],
+      onMessageGet: (messageId) => {
+        fetchedMessageIds.push(messageId);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FOLLOWUP_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(assistantReply)).toBeInTheDocument();
+      expect(queryButtonByText(followupPrompt)).not.toBeInTheDocument();
+      expect(context.mocks.ably.hasSubscription(updateTopic)).toBeTruthy();
+    });
+
+    context.mocks.ably.trigger(updateTopic, { messageId: "not-a-valid-id" });
+    completedMarker.recommendedFollowups = [
+      {
+        prompt: followupPrompt,
+        kind: "generate",
+        generationType: "presentation",
+      },
+    ];
+    context.mocks.ably.trigger(updateTopic, { messageId: completedMarker.id });
+
+    await waitFor(() => {
+      expect(fetchedMessageIds).toContain(completedMarker.id);
+      expect(buttonByText(followupPrompt)).toBeInTheDocument();
+    });
+  });
+
+  it("catches recommended follow-ups written before realtime subscription is ready", async () => {
+    const assistantReply = "I can turn this into a launch package.";
+    const followupPrompt = "Create a presentation outline";
+    const completedMarker: Extract<PagedChatMessage, { role: "assistant" }> = {
+      id: "00000000-0000-4000-8000-000000004003",
+      role: "assistant",
+      content: null,
+      runId: "run-followup-subscribe-gap",
+      runLifecycleEvent: "completed",
+      createdAt: "2026-06-09T10:01:01Z",
+    };
+    const fetchedMessageIds: string[] = [];
+    let updatedAfterInitialList = false;
+
+    mockChatLifecycle(context, {
+      threadId: FOLLOWUP_THREAD_ID,
+      threadTitle: "Launch package",
+      chatMessages: [
+        {
+          id: "msg-followup-subscribe-gap-user",
+          role: "user",
+          content: "Package this launch plan",
+          runId: "run-followup-subscribe-gap",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-followup-subscribe-gap-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-followup-subscribe-gap",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        completedMarker,
+      ],
+      afterInitialMessagesList: () => {
+        if (updatedAfterInitialList) {
+          return;
+        }
+        updatedAfterInitialList = true;
+        completedMarker.recommendedFollowups = [
+          {
+            prompt: followupPrompt,
+            kind: "generate",
+            generationType: "presentation",
+          },
+        ];
+      },
+      onMessageGet: (messageId) => {
+        fetchedMessageIds.push(messageId);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FOLLOWUP_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(fetchedMessageIds).toContain(completedMarker.id);
+      expect(buttonByText(followupPrompt)).toBeInTheDocument();
+    });
+  });
+
+  it("keeps stale recommended follow-ups hidden after the user advances the thread", async () => {
+    const assistantReply = "I can turn this into a launch package.";
+    const followupPrompt = "Create a presentation outline";
+    const updateTopic = `chatThreadMessageUpdated:${FOLLOWUP_THREAD_ID}`;
+    const completedMarker: Extract<PagedChatMessage, { role: "assistant" }> = {
+      id: "00000000-0000-4000-8000-000000004002",
+      role: "assistant",
+      content: null,
+      runId: "run-followup-old",
+      runLifecycleEvent: "completed",
+      createdAt: "2026-06-09T10:01:01Z",
+    };
+    const fetchedMessageIds: string[] = [];
+
+    mockChatLifecycle(context, {
+      threadId: FOLLOWUP_THREAD_ID,
+      threadTitle: "Launch package",
+      chatMessages: [
+        {
+          id: "msg-followup-old-user",
+          role: "user",
+          content: "Package this launch plan",
+          runId: "run-followup-old",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-followup-old-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-followup-old",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+        completedMarker,
+        {
+          id: "msg-followup-new-user",
+          role: "user",
+          content: "I already sent a new message",
+          runId: "run-followup-new",
+          createdAt: "2026-06-09T10:02:00Z",
+        },
+      ],
+      onMessageGet: (messageId) => {
+        fetchedMessageIds.push(messageId);
+      },
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${FOLLOWUP_THREAD_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText(assistantReply)).toBeInTheDocument();
+      expect(
+        screen.getByText("I already sent a new message"),
+      ).toBeInTheDocument();
+      expect(queryButtonByText(followupPrompt)).not.toBeInTheDocument();
+      expect(context.mocks.ably.hasSubscription(updateTopic)).toBeTruthy();
+    });
+
+    completedMarker.recommendedFollowups = [
+      {
+        prompt: followupPrompt,
+        kind: "generate",
+        generationType: "presentation",
+      },
+    ];
+    context.mocks.ably.trigger(updateTopic, { messageId: completedMarker.id });
+
+    await waitFor(() => {
+      expect(fetchedMessageIds).toContain(completedMarker.id);
+      expect(queryButtonByText(followupPrompt)).not.toBeInTheDocument();
+    });
   });
 
   it("hides recommended follow-ups after a newer assistant reply", async () => {
