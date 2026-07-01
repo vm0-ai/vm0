@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://api.hitem3d.ai/open-api/v1/auth/token",
       "permissions": [
         {
-          "description": "Obtain a Hitem3D API access token",
           "name": "auth-token",
           "rules": [
             "POST /"

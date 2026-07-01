@@ -15,7 +15,6 @@ JSON_PART = r"""{
       "base": "https://chatgpt.com/backend-api/codex",
       "permissions": [
         {
-          "description": "Access the ChatGPT Codex backend with GET and POST requests.",
           "name": "codex:api",
           "rules": [
             "GET /{path*}",

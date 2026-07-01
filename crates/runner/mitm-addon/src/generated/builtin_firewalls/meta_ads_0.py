@@ -19,7 +19,6 @@ JSON_PART = r"""{
       "base": "https://graph.facebook.com",
       "permissions": [
         {
-          "description": "Allow Page access token calls to Page Ads Posts without replacing Authorization.",
           "name": "page-token-ads-posts",
           "rules": [
             "GET /v{version}/{page_id}/ads_posts"

@@ -31,7 +31,10 @@ use super::diagnostics::{
 };
 use super::env::{build_env_json_for_run, build_user_env_json, write_user_env_file};
 use super::guest_state::{restore_guest_state, sync_guest_timezone};
-use super::session_history_download::{SessionHistoryMaterialization, SessionHistoryMaterializer};
+use super::session_history_download::{
+    SessionHistoryDownloadPhaseTiming, SessionHistoryDownloadTimings,
+    SessionHistoryMaterialization, SessionHistoryMaterializer,
+};
 use super::session_restore::{MaterializedResumeSession, restore_session};
 use super::storage::{apply_storage_fingerprint_reuse, download_storages, guest_download_has_work};
 use super::telemetry::{RunnerSpawnTiming, record_api_latency};
@@ -47,13 +50,15 @@ use crate::helper_exec::{helper_exec_succeeded, helper_exec_termination_label};
 use crate::paths::guest;
 use crate::restored_session_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_READ_LIMIT, RestoredSessionFinalMetadataVerification,
-    RestoredSessionIdentity,
+    RestoredSessionIdentity, RestoredSessionIdentityMismatchReason,
 };
 use crate::telemetry::JobTelemetry;
 use crate::types::{ExecutionContext, GuestDownloadManifest};
 
 const AGENT_WRAPPER_STDERR_CAPTURE_LIMIT_BYTES: u32 = 64 * 1024;
 const SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR: &str = "session history download failed";
+const SESSION_HISTORY_DOWNLOAD_PHASE_TELEMETRY_ERROR: &str =
+    "session history download phase failed";
 const SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR: &str =
     "session history materialization failed";
 const STORAGE_CACHE_POPULATE_FAILED: &str = "storage-cache-populate-failed";
@@ -66,7 +71,7 @@ pub(crate) enum SessionHistoryRestoreFallback {
     MissingIdleIdentity,
     UnverifiedIdleIdentity,
     StaleIdleIdentity,
-    IdentityMismatch,
+    IdentityMismatch(Option<RestoredSessionIdentityMismatchReason>),
 }
 
 impl SessionHistoryRestoreFallback {
@@ -78,7 +83,14 @@ impl SessionHistoryRestoreFallback {
                 "session_history_restore_fallback_unverified_idle_identity"
             }
             Self::StaleIdleIdentity => "session_history_restore_fallback_stale_idle_identity",
-            Self::IdentityMismatch => "session_history_restore_fallback_identity_mismatch",
+            Self::IdentityMismatch(_) => "session_history_restore_fallback_identity_mismatch",
+        }
+    }
+
+    const fn identity_mismatch_reason(self) -> Option<RestoredSessionIdentityMismatchReason> {
+        match self {
+            Self::IdentityMismatch(reason) => reason,
+            _ => None,
         }
     }
 }
@@ -184,6 +196,81 @@ fn record_session_history_identity_reason(
     reason: SessionHistoryIdentityReason,
 ) {
     telemetry.record(reason.action_type(), Duration::ZERO, true, None);
+}
+
+fn record_session_history_identity_mismatch_reason(
+    telemetry: &mut JobTelemetry,
+    reason: RestoredSessionIdentityMismatchReason,
+) {
+    telemetry.record(reason.action_type(), Duration::ZERO, true, None);
+}
+
+fn record_session_history_download_timings(
+    telemetry: &mut JobTelemetry,
+    timings: &SessionHistoryDownloadTimings,
+) {
+    record_session_history_download_phase(
+        telemetry,
+        "session_history_download_request_status",
+        timings.request_status(),
+    );
+    record_session_history_download_phase(
+        telemetry,
+        "session_history_download_body_read",
+        timings.body_read(),
+    );
+    record_session_history_download_phase(
+        telemetry,
+        "session_history_download_validation",
+        timings.validation(),
+    );
+    record_session_history_download_phase(
+        telemetry,
+        "session_history_download_hash_verification",
+        timings.hash_verification(),
+    );
+}
+
+fn record_session_history_download_phase(
+    telemetry: &mut JobTelemetry,
+    action_type: &'static str,
+    phase: Option<SessionHistoryDownloadPhaseTiming>,
+) {
+    if let Some(phase) = phase {
+        telemetry.record(
+            action_type,
+            phase.elapsed(),
+            phase.success(),
+            (!phase.success()).then_some(SESSION_HISTORY_DOWNLOAD_PHASE_TELEMETRY_ERROR),
+        );
+    }
+}
+
+fn record_session_history_materializer_state(
+    telemetry: &mut JobTelemetry,
+    was_downloading: bool,
+    completed_before_restore: bool,
+    wait: Duration,
+    success: bool,
+) {
+    if !was_downloading {
+        return;
+    }
+    if completed_before_restore {
+        telemetry.record(
+            "session_history_materializer_completed_before_restore",
+            Duration::ZERO,
+            success,
+            (!success).then_some(SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR),
+        );
+    } else {
+        telemetry.record(
+            "session_history_materializer_waited_at_restore",
+            wait,
+            success,
+            (!success).then_some(SESSION_HISTORY_MATERIALIZATION_WAIT_TELEMETRY_ERROR),
+        );
+    }
 }
 
 #[derive(Default)]
@@ -812,6 +899,9 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         } => {
             if let Some(fallback) = fallback {
                 telemetry.record(fallback.action_type(), Duration::ZERO, true, None);
+                if let Some(reason) = fallback.identity_mismatch_reason() {
+                    record_session_history_identity_mismatch_reason(telemetry, reason);
+                }
                 if matches!(fallback, SessionHistoryRestoreFallback::MissingIdleIdentity) {
                     telemetry.record(
                         "session_history_identity_reuse_missing",
@@ -832,13 +922,26 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
         // 4. Restore session history. Hash-backed history downloads can start
         // before sandbox preparation, then materialize here right before restore.
         let should_record_materialization_wait = session_history_materializer.is_downloading();
+        let materializer_completed_before_restore =
+            session_history_materializer.is_download_finished();
         let materialization_wait_started = Instant::now();
         let materialization = session_history_materializer.finish(&cancel).await;
         let materialization_wait = materialization_wait_started.elapsed();
         let downloaded_resume_session = match materialization {
             SessionHistoryMaterialization::Missing => None,
             SessionHistoryMaterialization::NoDownloadNeeded => None,
-            SessionHistoryMaterialization::Downloaded { session, elapsed } => {
+            SessionHistoryMaterialization::Downloaded {
+                session,
+                elapsed,
+                timings,
+            } => {
+                record_session_history_materializer_state(
+                    telemetry,
+                    should_record_materialization_wait,
+                    materializer_completed_before_restore,
+                    materialization_wait,
+                    true,
+                );
                 if should_record_materialization_wait {
                     telemetry.record(
                         "session_history_materialization_wait",
@@ -848,9 +951,21 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     );
                 }
                 telemetry.record("session_history_download", elapsed, true, None);
+                record_session_history_download_timings(telemetry, &timings);
                 Some(session)
             }
-            SessionHistoryMaterialization::Failed { elapsed, error } => {
+            SessionHistoryMaterialization::Failed {
+                elapsed,
+                timings,
+                error,
+            } => {
+                record_session_history_materializer_state(
+                    telemetry,
+                    should_record_materialization_wait,
+                    materializer_completed_before_restore,
+                    materialization_wait,
+                    false,
+                );
                 if should_record_materialization_wait {
                     telemetry.record(
                         "session_history_materialization_wait",
@@ -865,6 +980,7 @@ pub(super) async fn run_in_sandbox_with_process_cancel_timeouts(
                     false,
                     Some(SESSION_HISTORY_DOWNLOAD_TELEMETRY_ERROR),
                 );
+                record_session_history_download_timings(telemetry, &timings);
                 return Err(error);
             }
         };

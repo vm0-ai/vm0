@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://api.notion.com",
       "permissions": [
         {
-          "description": "Create, update, and delete comments",
           "name": "insert_comments",
           "rules": [
             "POST /v1/comments",
@@ -23,7 +22,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create pages, databases, blocks, data sources, and upload files",
           "name": "insert_content",
           "rules": [
             "PATCH /v1/blocks/{block_id}/children",
@@ -38,7 +36,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read comments",
           "name": "read_comments",
           "rules": [
             "GET /v1/comments",
@@ -46,7 +43,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read pages, databases, blocks, data sources, and files",
           "name": "read_content",
           "rules": [
             "POST /v1/blocks/meeting_notes/query",
@@ -69,7 +65,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read user information",
           "name": "read_users",
           "rules": [
             "GET /v1/users",
@@ -78,7 +73,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Update and delete pages, databases, blocks, and data sources",
           "name": "update_content",
           "rules": [
             "PATCH /v1/blocks/{block_id}",

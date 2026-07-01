@@ -14,14 +14,12 @@ JSON_PART = r"""{
       "base": "https://api.brex.com",
       "permissions": [
         {
-          "description": "Read Brex resources",
           "name": "read",
           "rules": [
             "GET /{path+}"
           ]
         },
         {
-          "description": "Create, update, and delete Brex resources",
           "name": "write",
           "rules": [
             "POST /{path+}",

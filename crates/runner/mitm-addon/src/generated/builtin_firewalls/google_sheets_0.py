@@ -14,56 +14,48 @@ JSON_PART = r"""{
       "base": "https://sheets.googleapis.com",
       "permissions": [
         {
-          "description": "Read Google Sheets developer metadata.",
           "name": "developer-metadata.read",
           "rules": [
             "GET /v4/spreadsheets/{spreadsheetId}/developerMetadata/{metadataId}"
           ]
         },
         {
-          "description": "Search Google Sheets developer metadata.",
           "name": "developer-metadata.search",
           "rules": [
             "POST /v4/spreadsheets/{spreadsheetId}/developerMetadata:search"
           ]
         },
         {
-          "description": "Copy sheets between Google Sheets spreadsheets.",
           "name": "sheets.copy",
           "rules": [
             "POST /v4/spreadsheets/{spreadsheetId}/sheets/{sheetId}:copyTo"
           ]
         },
         {
-          "description": "Create Google Sheets spreadsheets.",
           "name": "spreadsheets.create",
           "rules": [
             "POST /v4/spreadsheets"
           ]
         },
         {
-          "description": "Read Google Sheets spreadsheet metadata and grid data.",
           "name": "spreadsheets.read",
           "rules": [
             "GET /v4/spreadsheets/{spreadsheetId}"
           ]
         },
         {
-          "description": "Read Google Sheets spreadsheets by data filter.",
           "name": "spreadsheets.read-by-data-filter",
           "rules": [
             "POST /v4/spreadsheets/{spreadsheetId}:getByDataFilter"
           ]
         },
         {
-          "description": "Apply batch updates to Google Sheets spreadsheets.",
           "name": "spreadsheets.write",
           "rules": [
             "POST /v4/spreadsheets/{spreadsheetId}:batchUpdate"
           ]
         },
         {
-          "description": "Clear Google Sheets cell values.",
           "name": "values.clear",
           "rules": [
             "POST /v4/spreadsheets/{spreadsheetId}/values/{range}:clear",
@@ -72,7 +64,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Google Sheets cell values.",
           "name": "values.read",
           "rules": [
             "GET /v4/spreadsheets/{spreadsheetId}/values/{range}",
@@ -80,14 +71,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Google Sheets cell values by data filter.",
           "name": "values.read-by-data-filter",
           "rules": [
             "POST /v4/spreadsheets/{spreadsheetId}/values:batchGetByDataFilter"
           ]
         },
         {
-          "description": "Append and update Google Sheets cell values.",
           "name": "values.write",
           "rules": [
             "PUT /v4/spreadsheets/{spreadsheetId}/values/{range}",

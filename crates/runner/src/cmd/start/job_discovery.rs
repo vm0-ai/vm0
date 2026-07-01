@@ -31,7 +31,9 @@ use crate::ids::RunId;
 use crate::paths::diagnostic_session_fingerprint;
 use crate::provider::{ClaimedJob, JobCandidate};
 use crate::resource_budget::{BudgetLease, ResourceBudget};
-use crate::restored_session_identity::RestoredSessionIdentity;
+use crate::restored_session_identity::{
+    RestoredSessionIdentity, RestoredSessionIdentityMismatchReason,
+};
 use crate::run_cancellation::{RunCancellationHandle, SharedRunCancellationMap};
 use crate::status::{RunnerMode, StatusTracker};
 use crate::types::{ExecutionContext, SandboxReuseResult};
@@ -248,16 +250,24 @@ fn build_session_history_restore_plan(
                     }
                     Some(restored_identity) if restored_identity == &requested_identity => {
                         if restored_identity.has_final_metadata_verification() {
-                            Some(SessionHistoryRestoreFallback::IdentityMismatch)
+                            Some(SessionHistoryRestoreFallback::IdentityMismatch(
+                                restored_identity.mismatch_reason_for_request(&requested_identity),
+                            ))
                         } else {
                             Some(SessionHistoryRestoreFallback::UnverifiedIdleIdentity)
                         }
                     }
-                    Some(_) => Some(SessionHistoryRestoreFallback::IdentityMismatch),
+                    Some(restored_identity) => {
+                        Some(SessionHistoryRestoreFallback::IdentityMismatch(
+                            restored_identity.mismatch_reason_for_request(&requested_identity),
+                        ))
+                    }
                     None => Some(SessionHistoryRestoreFallback::MissingIdleIdentity),
                 }
             } else {
-                Some(SessionHistoryRestoreFallback::IdentityMismatch)
+                Some(SessionHistoryRestoreFallback::IdentityMismatch(Some(
+                    RestoredSessionIdentityMismatchReason::MissingRequestedIdentity,
+                )))
             }
         }
         SandboxReuseResult::NoSessionId
@@ -602,6 +612,7 @@ mod tests {
     use crate::network_log_drain::NetworkLogDrainCoordinator;
     use crate::provider::CompletionAuth;
     use crate::resource_budget::ResourceBudget;
+    use crate::restored_session_identity::RestoredSessionFramework;
     use crate::status::IdleVm;
     use crate::test_fixtures::execution_context_for_test;
     use crate::types::{ResumeSession, ResumeSessionHistory, ResumeSessionHistoryRef};
@@ -1061,7 +1072,9 @@ mod tests {
             SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
                 assert_eq!(
                     fallback,
-                    Some(SessionHistoryRestoreFallback::IdentityMismatch)
+                    Some(SessionHistoryRestoreFallback::IdentityMismatch(Some(
+                        RestoredSessionIdentityMismatchReason::HistorySize
+                    )))
                 );
             }
             _ => panic!("reused identity with mismatched size should fall back to restore"),
@@ -1149,10 +1162,90 @@ mod tests {
             SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
                 assert_eq!(
                     fallback,
-                    Some(SessionHistoryRestoreFallback::IdentityMismatch)
+                    Some(SessionHistoryRestoreFallback::IdentityMismatch(Some(
+                        RestoredSessionIdentityMismatchReason::HistoryHash
+                    )))
                 );
             }
             _ => panic!("mismatched reused identity should fall back to restore"),
+        }
+    }
+
+    #[tokio::test]
+    async fn restore_plan_classifies_session_identity_mismatch() {
+        let http = test_http_client();
+        let history_hash = "a".repeat(64);
+        let context = context_with_history_ref(&history_hash);
+        let restored_identity = RestoredSessionIdentity::new(
+            RestoredSessionFramework::ClaudeCode,
+            "sess-other",
+            crate::types::ResumeSessionHistoryRefKind::Blob,
+            history_hash,
+            Some(12),
+        );
+        let reusable_sandbox = reusable_sandbox_with_identity(Some(restored_identity)).await;
+        let cancel = RunCancellationHandle::new();
+        let mut timing = RunnerPreSpawnTiming::start_after_claim();
+
+        let plan = build_session_history_restore_plan(
+            &http,
+            &context,
+            true,
+            &cancel,
+            Some(&reusable_sandbox),
+            SandboxReuseResult::Reused,
+            &mut timing,
+        );
+
+        match plan {
+            SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
+                assert_eq!(
+                    fallback,
+                    Some(SessionHistoryRestoreFallback::IdentityMismatch(Some(
+                        RestoredSessionIdentityMismatchReason::SessionIdentity
+                    )))
+                );
+            }
+            _ => panic!("mismatched session identity should fall back to restore"),
+        }
+    }
+
+    #[tokio::test]
+    async fn restore_plan_classifies_framework_mismatch() {
+        let http = test_http_client();
+        let history_hash = "a".repeat(64);
+        let context = context_with_history_ref(&history_hash);
+        let restored_identity = RestoredSessionIdentity::new(
+            RestoredSessionFramework::Codex,
+            "sess-restore-plan",
+            crate::types::ResumeSessionHistoryRefKind::Blob,
+            history_hash,
+            Some(12),
+        );
+        let reusable_sandbox = reusable_sandbox_with_identity(Some(restored_identity)).await;
+        let cancel = RunCancellationHandle::new();
+        let mut timing = RunnerPreSpawnTiming::start_after_claim();
+
+        let plan = build_session_history_restore_plan(
+            &http,
+            &context,
+            true,
+            &cancel,
+            Some(&reusable_sandbox),
+            SandboxReuseResult::Reused,
+            &mut timing,
+        );
+
+        match plan {
+            SessionHistoryRestorePlan::Prestarted { fallback, .. } => {
+                assert_eq!(
+                    fallback,
+                    Some(SessionHistoryRestoreFallback::IdentityMismatch(Some(
+                        RestoredSessionIdentityMismatchReason::Framework
+                    )))
+                );
+            }
+            _ => panic!("mismatched framework should fall back to restore"),
         }
     }
 }

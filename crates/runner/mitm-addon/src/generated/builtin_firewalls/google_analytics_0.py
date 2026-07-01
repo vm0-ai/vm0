@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://analyticsdata.googleapis.com",
       "permissions": [
         {
-          "description": "Read and query GA4 audience export report jobs.",
           "name": "audience-exports.read",
           "rules": [
             "GET /v1beta/properties/{propertiesId}/audienceExports",
@@ -23,21 +22,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create GA4 audience export report jobs.",
           "name": "audience-exports.run",
           "rules": [
             "POST /v1beta/properties/{propertiesId}/audienceExports"
           ]
         },
         {
-          "description": "Read GA4 property report metadata.",
           "name": "metadata.read",
           "rules": [
             "GET /v1beta/properties/{propertiesId}/metadata"
           ]
         },
         {
-          "description": "Run GA4 property reports and compatibility checks.",
           "name": "reports.run",
           "rules": [
             "POST /v1beta/properties/{propertiesId}:batchRunPivotReports",
@@ -59,7 +55,6 @@ JSON_PART = r"""{
       "base": "https://analyticsadmin.googleapis.com",
       "permissions": [
         {
-          "description": "Run account and property access reports.",
           "name": "access-reports.run",
           "rules": [
             "POST /v1beta/accounts/{accountsId}:runAccessReport",
@@ -67,14 +62,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Delete Google Analytics accounts.",
           "name": "accounts.delete",
           "rules": [
             "DELETE /v1beta/accounts/{accountsId}"
           ]
         },
         {
-          "description": "Read Google Analytics accounts and sharing settings.",
           "name": "accounts.read",
           "rules": [
             "GET /v1beta/accountSummaries",
@@ -84,7 +77,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create account tickets and update Analytics accounts.",
           "name": "accounts.write",
           "rules": [
             "PATCH /v1beta/accounts/{accountsId}",
@@ -92,14 +84,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read account change history events.",
           "name": "change-history.read",
           "rules": [
             "POST /v1beta/accounts/{accountsId}:searchChangeHistoryEvents"
           ]
         },
         {
-          "description": "Read GA4 custom dimensions and metrics.",
           "name": "custom-definitions.read",
           "rules": [
             "GET /v1beta/properties/{propertiesId}/customDimensions",
@@ -109,7 +99,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create, update, and archive GA4 custom definitions.",
           "name": "custom-definitions.write",
           "rules": [
             "POST /v1beta/properties/{propertiesId}/customDimensions",
@@ -121,14 +110,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Delete GA4 data streams.",
           "name": "data-streams.delete",
           "rules": [
             "DELETE /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}"
           ]
         },
         {
-          "description": "Read GA4 data streams.",
           "name": "data-streams.read",
           "rules": [
             "GET /v1beta/properties/{propertiesId}/dataStreams",
@@ -136,7 +123,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create and update GA4 data streams.",
           "name": "data-streams.write",
           "rules": [
             "POST /v1beta/properties/{propertiesId}/dataStreams",
@@ -144,7 +130,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Delete GA4 key event definitions.",
           "name": "key-events.delete",
           "rules": [
             "DELETE /v1beta/properties/{propertiesId}/conversionEvents/{conversionEventsId}",
@@ -152,7 +137,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read GA4 key event and conversion event definitions.",
           "name": "key-events.read",
           "rules": [
             "GET /v1beta/properties/{propertiesId}/conversionEvents",
@@ -162,7 +146,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create and update GA4 key event definitions.",
           "name": "key-events.write",
           "rules": [
             "POST /v1beta/properties/{propertiesId}/conversionEvents",
@@ -172,7 +155,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Delete Firebase and Google Ads links.",
           "name": "links.delete",
           "rules": [
             "DELETE /v1beta/properties/{propertiesId}/firebaseLinks/{firebaseLinksId}",
@@ -180,7 +162,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read Firebase and Google Ads links.",
           "name": "links.read",
           "rules": [
             "GET /v1beta/properties/{propertiesId}/firebaseLinks",
@@ -188,7 +169,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create and update Firebase and Google Ads links.",
           "name": "links.write",
           "rules": [
             "POST /v1beta/properties/{propertiesId}/firebaseLinks",
@@ -197,14 +177,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Delete GA4 Measurement Protocol secrets.",
           "name": "measurement-secrets.delete",
           "rules": [
             "DELETE /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}/measurementProtocolSecrets/{measurementProtocolSecretsId}"
           ]
         },
         {
-          "description": "Read GA4 Measurement Protocol secrets.",
           "name": "measurement-secrets.read",
           "rules": [
             "GET /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}/measurementProtocolSecrets",
@@ -212,7 +190,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create and update GA4 Measurement Protocol secrets.",
           "name": "measurement-secrets.write",
           "rules": [
             "POST /v1beta/properties/{propertiesId}/dataStreams/{dataStreamsId}/measurementProtocolSecrets",
@@ -220,14 +197,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Delete GA4 properties.",
           "name": "properties.delete",
           "rules": [
             "DELETE /v1beta/properties/{propertiesId}"
           ]
         },
         {
-          "description": "Read GA4 properties and property-level settings.",
           "name": "properties.read",
           "rules": [
             "GET /v1beta/properties",
@@ -236,7 +211,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create and update GA4 properties and property settings.",
           "name": "properties.write",
           "rules": [
             "POST /v1beta/properties",

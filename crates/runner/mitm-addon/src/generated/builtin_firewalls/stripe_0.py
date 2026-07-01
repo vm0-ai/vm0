@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://api.stripe.com",
       "permissions": [
         {
-          "description": "Connect - Account Links",
           "name": "account_link_write",
           "rules": [
             "POST /v1/account_links",
@@ -22,14 +21,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource account_session",
           "name": "account_session_write",
           "rules": [
             "POST /v1/account_sessions"
           ]
         },
         {
-          "description": "Stripe API resource account",
           "name": "account_write",
           "rules": [
             "POST /v1/accounts",
@@ -39,7 +36,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Apple Pay Domains",
           "name": "apple_pay_domain_read",
           "rules": [
             "GET /v1/apple_pay/domains",
@@ -47,7 +43,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Apple Pay Domains",
           "name": "apple_pay_domain_write",
           "rules": [
             "POST /v1/apple_pay/domains",
@@ -55,7 +50,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Connect - Application Fees",
           "name": "application_fee_read",
           "rules": [
             "GET /v1/application_fees",
@@ -63,35 +57,30 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Connect - Application Fees",
           "name": "application_fee_write",
           "rules": [
             "POST /v1/application_fees/{id}/refund"
           ]
         },
         {
-          "description": "Core - Balance",
           "name": "balance_read",
           "rules": [
             "GET /v1/balance"
           ]
         },
         {
-          "description": "Stripe API resource balance_settings",
           "name": "balance_settings_read",
           "rules": [
             "GET /v1/balance_settings"
           ]
         },
         {
-          "description": "Stripe API resource balance_settings",
           "name": "balance_settings_write",
           "rules": [
             "POST /v1/balance_settings"
           ]
         },
         {
-          "description": "Stripe API resource balance_transaction",
           "name": "balance_transaction_read",
           "rules": [
             "GET /v1/balance/history",
@@ -101,14 +90,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource bank_account",
           "name": "bank_account_write",
           "rules": [
             "POST /v1/customers/{customer}/bank_accounts/{id}/verify"
           ]
         },
         {
-          "description": "Stripe API resource billing.alert",
           "name": "billing_alert_read",
           "rules": [
             "GET /v1/billing/alerts",
@@ -116,7 +103,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource billing.alert",
           "name": "billing_alert_write",
           "rules": [
             "POST /v1/billing/alerts",
@@ -126,7 +112,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Test Clocks",
           "name": "billing_clock_read",
           "rules": [
             "GET /v1/test_helpers/test_clocks",
@@ -134,7 +119,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Test Clocks",
           "name": "billing_clock_write",
           "rules": [
             "POST /v1/test_helpers/test_clocks",
@@ -143,14 +127,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource billing.credit_balance_summary",
           "name": "billing_credit_balance_summary_read",
           "rules": [
             "GET /v1/billing/credit_balance_summary"
           ]
         },
         {
-          "description": "Stripe API resource billing.credit_balance_transaction",
           "name": "billing_credit_balance_transaction_read",
           "rules": [
             "GET /v1/billing/credit_balance_transactions",
@@ -158,7 +140,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource billing.credit_grant",
           "name": "billing_credit_grant_read",
           "rules": [
             "GET /v1/billing/credit_grants",
@@ -166,7 +147,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource billing.credit_grant",
           "name": "billing_credit_grant_write",
           "rules": [
             "POST /v1/billing/credit_grants",
@@ -176,21 +156,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource billing.meter_event_adjustment",
           "name": "billing_meter_event_adjustment_write",
           "rules": [
             "POST /v1/billing/meter_event_adjustments"
           ]
         },
         {
-          "description": "Stripe API resource billing.meter_event_summary",
           "name": "billing_meter_event_summary_read",
           "rules": [
             "GET /v1/billing/meters/{id}/event_summaries"
           ]
         },
         {
-          "description": "Billing - Billing Meter Events",
           "name": "billing_meter_event_write",
           "rules": [
             "POST /v1/billing/meter_events",
@@ -199,7 +176,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Billing Meters",
           "name": "billing_meter_read",
           "rules": [
             "GET /v1/billing/meters",
@@ -207,7 +183,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Billing Meters",
           "name": "billing_meter_write",
           "rules": [
             "POST /v1/billing/meters",
@@ -217,7 +192,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource capability",
           "name": "capability_read",
           "rules": [
             "GET /v1/accounts/{account}/capabilities",
@@ -225,28 +199,24 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource capability",
           "name": "capability_write",
           "rules": [
             "POST /v1/accounts/{account}/capabilities/{capability}"
           ]
         },
         {
-          "description": "Stripe API resource cash_balance",
           "name": "cash_balance_read",
           "rules": [
             "GET /v1/customers/{customer}/cash_balance"
           ]
         },
         {
-          "description": "Stripe API resource cash_balance",
           "name": "cash_balance_write",
           "rules": [
             "POST /v1/customers/{customer}/cash_balance"
           ]
         },
         {
-          "description": "Core - Charges and Refunds",
           "name": "charge_read",
           "rules": [
             "GET /v1/charges",
@@ -259,7 +229,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Charges and Refunds",
           "name": "charge_write",
           "rules": [
             "POST /v1/charges",
@@ -275,7 +244,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Checkout Sessions - Checkout Sessions",
           "name": "checkout_session_read",
           "rules": [
             "GET /v1/checkout/sessions",
@@ -284,7 +252,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Checkout Sessions - Checkout Sessions",
           "name": "checkout_session_write",
           "rules": [
             "POST /v1/checkout/sessions",
@@ -293,7 +260,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource climate.order",
           "name": "climate_order_read",
           "rules": [
             "GET /v1/climate/orders",
@@ -301,7 +267,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource climate.order",
           "name": "climate_order_write",
           "rules": [
             "POST /v1/climate/orders",
@@ -310,7 +275,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource climate.product",
           "name": "climate_product_read",
           "rules": [
             "GET /v1/climate/products",
@@ -318,7 +282,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource climate.supplier",
           "name": "climate_supplier_read",
           "rules": [
             "GET /v1/climate/suppliers",
@@ -326,21 +289,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Client Confirmation Tokens",
           "name": "confirmation_token_client_write",
           "rules": [
             "POST /v1/test_helpers/confirmation_tokens"
           ]
         },
         {
-          "description": "Core - Confirmation Tokens",
           "name": "confirmation_token_read",
           "rules": [
             "GET /v1/confirmation_tokens/{confirmation_token}"
           ]
         },
         {
-          "description": "Core - Accounts",
           "name": "connected_account_read",
           "rules": [
             "GET /v1/account",
@@ -349,7 +309,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource country_spec",
           "name": "country_spec_read",
           "rules": [
             "GET /v1/country_specs",
@@ -357,7 +316,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Coupons",
           "name": "coupon_read",
           "rules": [
             "GET /v1/coupons",
@@ -365,7 +323,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Coupons",
           "name": "coupon_write",
           "rules": [
             "POST /v1/coupons",
@@ -374,7 +331,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Credit Notes",
           "name": "credit_note_read",
           "rules": [
             "GET /v1/credit_notes",
@@ -385,7 +341,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Credit Notes",
           "name": "credit_note_write",
           "rules": [
             "POST /v1/credit_notes",
@@ -394,7 +349,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource customer_balance_transaction",
           "name": "customer_balance_transaction_read",
           "rules": [
             "GET /v1/customers/{customer}/balance_transactions",
@@ -402,7 +356,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource customer_balance_transaction",
           "name": "customer_balance_transaction_write",
           "rules": [
             "POST /v1/customers/{customer}/balance_transactions",
@@ -410,7 +363,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource customer_cash_balance_transaction",
           "name": "customer_cash_balance_transaction_read",
           "rules": [
             "GET /v1/customers/{customer}/cash_balance_transactions",
@@ -418,14 +370,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource customer_cash_balance_transaction",
           "name": "customer_cash_balance_transaction_write",
           "rules": [
             "POST /v1/test_helpers/customers/{customer}/fund_cash_balance"
           ]
         },
         {
-          "description": "Billing - Customer Portal",
           "name": "customer_portal_read",
           "rules": [
             "GET /v1/billing_portal/configurations",
@@ -433,7 +383,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Customer Portal",
           "name": "customer_portal_write",
           "rules": [
             "POST /v1/billing_portal/configurations",
@@ -442,7 +391,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Customers",
           "name": "customer_read",
           "rules": [
             "GET /v1/customers",
@@ -451,14 +399,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Customer Sessions",
           "name": "customer_session_write",
           "rules": [
             "POST /v1/customer_sessions"
           ]
         },
         {
-          "description": "Core - Customers",
           "name": "customer_write",
           "rules": [
             "POST /v1/customers",
@@ -467,7 +413,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource discount",
           "name": "discount_read",
           "rules": [
             "GET /v1/customers/{customer}/discount",
@@ -475,7 +420,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource discount",
           "name": "discount_write",
           "rules": [
             "DELETE /v1/customers/{customer}/discount",
@@ -484,7 +428,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Payment Disputes",
           "name": "dispute_read",
           "rules": [
             "GET /v1/charges/{charge}/dispute",
@@ -493,7 +436,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Payment Disputes",
           "name": "dispute_write",
           "rules": [
             "POST /v1/charges/{charge}/dispute",
@@ -503,14 +445,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Connect - Login Links",
           "name": "edit_link_write",
           "rules": [
             "POST /v1/accounts/{account}/login_links"
           ]
         },
         {
-          "description": "Billing - Entitlements",
           "name": "entitlement_read",
           "rules": [
             "GET /v1/entitlements/active_entitlements",
@@ -518,7 +458,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource entitlements.feature",
           "name": "entitlements_feature_read",
           "rules": [
             "GET /v1/entitlements/features",
@@ -526,7 +465,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource entitlements.feature",
           "name": "entitlements_feature_write",
           "rules": [
             "POST /v1/entitlements/features",
@@ -534,7 +472,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource ephemeral_key",
           "name": "ephemeral_key_write",
           "rules": [
             "POST /v1/ephemeral_keys",
@@ -542,7 +479,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Events",
           "name": "event_read",
           "rules": [
             "GET /v1/events",
@@ -552,7 +488,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource exchange_rate",
           "name": "exchange_rate_read",
           "rules": [
             "GET /v1/exchange_rates",
@@ -560,7 +495,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource external_account",
           "name": "external_account_read",
           "rules": [
             "GET /v1/accounts/{account}/bank_accounts/{id}",
@@ -569,7 +503,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource external_account",
           "name": "external_account_write",
           "rules": [
             "POST /v1/accounts/{account}/bank_accounts",
@@ -582,7 +515,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource fee_refund",
           "name": "fee_refund_read",
           "rules": [
             "GET /v1/application_fees/{fee}/refunds/{id}",
@@ -590,7 +522,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource fee_refund",
           "name": "fee_refund_write",
           "rules": [
             "POST /v1/application_fees/{fee}/refunds/{id}",
@@ -598,7 +529,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource file_link",
           "name": "file_link_read",
           "rules": [
             "GET /v1/file_links",
@@ -606,7 +536,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource file_link",
           "name": "file_link_write",
           "rules": [
             "POST /v1/file_links",
@@ -614,7 +543,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Files",
           "name": "file_read",
           "rules": [
             "GET /v1/files",
@@ -622,14 +550,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Files",
           "name": "file_write",
           "rules": [
             "POST /v1/files"
           ]
         },
         {
-          "description": "Stripe API resource financial_connections.account_owner",
           "name": "financial_connections_account_owner_read",
           "rules": [
             "GET /v1/financial_connections/accounts/{account}/owners",
@@ -637,7 +563,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource financial_connections.account",
           "name": "financial_connections_account_read",
           "rules": [
             "GET /v1/financial_connections/accounts",
@@ -647,7 +572,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource financial_connections.account",
           "name": "financial_connections_account_write",
           "rules": [
             "POST /v1/financial_connections/accounts/{account}/disconnect",
@@ -659,7 +583,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource financial_connections.session",
           "name": "financial_connections_session_read",
           "rules": [
             "GET /v1/financial_connections/sessions/{session}",
@@ -667,7 +590,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource financial_connections.session",
           "name": "financial_connections_session_write",
           "rules": [
             "POST /v1/financial_connections/sessions",
@@ -675,7 +597,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource financial_connections.transaction",
           "name": "financial_connections_transaction_read",
           "rules": [
             "GET /v1/financial_connections/transactions",
@@ -683,7 +604,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Payments - Forwarding Requests",
           "name": "forwarding_request_read",
           "rules": [
             "GET /v1/forwarding/requests",
@@ -691,21 +611,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Payments - Forwarding Requests",
           "name": "forwarding_request_write",
           "rules": [
             "POST /v1/forwarding/requests"
           ]
         },
         {
-          "description": "Stripe API resource funding_instructions",
           "name": "funding_instructions_write",
           "rules": [
             "POST /v1/customers/{customer}/funding_instructions"
           ]
         },
         {
-          "description": "Stripe API resource identity.verification_report",
           "name": "identity_verification_report_read",
           "rules": [
             "GET /v1/identity/verification_reports",
@@ -713,7 +630,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource identity.verification_session",
           "name": "identity_verification_session_read",
           "rules": [
             "GET /v1/identity/verification_sessions",
@@ -721,7 +637,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource identity.verification_session",
           "name": "identity_verification_session_write",
           "rules": [
             "POST /v1/identity/verification_sessions",
@@ -731,7 +646,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource invoice_payment",
           "name": "invoice_payment_read",
           "rules": [
             "GET /v1/invoice_payments",
@@ -739,7 +653,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Invoices",
           "name": "invoice_read",
           "rules": [
             "GET /v1/invoices",
@@ -748,7 +661,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource invoice_rendering_template",
           "name": "invoice_rendering_template_read",
           "rules": [
             "GET /v1/invoice_rendering_templates",
@@ -756,7 +668,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource invoice_rendering_template",
           "name": "invoice_rendering_template_write",
           "rules": [
             "POST /v1/invoice_rendering_templates/{template}/archive",
@@ -764,7 +675,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Invoices",
           "name": "invoice_write",
           "rules": [
             "POST /v1/invoices",
@@ -783,7 +693,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource invoiceitem",
           "name": "invoiceitem_read",
           "rules": [
             "GET /v1/invoiceitems",
@@ -791,7 +700,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource invoiceitem",
           "name": "invoiceitem_write",
           "rules": [
             "POST /v1/invoiceitems",
@@ -800,7 +708,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Issuing - Issuing Authorizations",
           "name": "issuing_authorization_read",
           "rules": [
             "GET /v1/issuing/authorizations",
@@ -808,7 +715,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Issuing - Issuing Authorizations",
           "name": "issuing_authorization_write",
           "rules": [
             "POST /v1/issuing/authorizations/{authorization}",
@@ -824,7 +730,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Issuing - Issuing Cards",
           "name": "issuing_card_read",
           "rules": [
             "GET /v1/issuing/cards",
@@ -832,7 +737,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Issuing - Issuing Cards",
           "name": "issuing_card_write",
           "rules": [
             "POST /v1/issuing/cards",
@@ -845,7 +749,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Issuing - Issuing Cardholders",
           "name": "issuing_cardholder_read",
           "rules": [
             "GET /v1/issuing/cardholders",
@@ -853,7 +756,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Issuing - Issuing Cardholders",
           "name": "issuing_cardholder_write",
           "rules": [
             "POST /v1/issuing/cardholders",
@@ -861,7 +763,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Issuing - Issuing Disputes",
           "name": "issuing_dispute_read",
           "rules": [
             "GET /v1/issuing/disputes",
@@ -869,7 +770,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Issuing - Issuing Disputes",
           "name": "issuing_dispute_write",
           "rules": [
             "POST /v1/issuing/disputes",
@@ -878,7 +778,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource issuing.personalization_design",
           "name": "issuing_personalization_design_read",
           "rules": [
             "GET /v1/issuing/personalization_designs",
@@ -886,7 +785,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource issuing.personalization_design",
           "name": "issuing_personalization_design_write",
           "rules": [
             "POST /v1/issuing/personalization_designs",
@@ -897,7 +795,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource issuing.physical_bundle",
           "name": "issuing_physical_bundle_read",
           "rules": [
             "GET /v1/issuing/physical_bundles",
@@ -905,14 +802,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource issuing.settlement",
           "name": "issuing_settlement_read",
           "rules": [
             "GET /v1/issuing/settlements/{settlement}"
           ]
         },
         {
-          "description": "Stripe API resource issuing.settlement",
           "name": "issuing_settlement_write",
           "rules": [
             "POST /v1/issuing/settlements/{settlement}",
@@ -921,7 +816,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Issuing - Issuing Tokens",
           "name": "issuing_token_read",
           "rules": [
             "GET /v1/issuing/tokens",
@@ -929,14 +823,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Issuing - Issuing Tokens",
           "name": "issuing_token_write",
           "rules": [
             "POST /v1/issuing/tokens/{token}"
           ]
         },
         {
-          "description": "Issuing - Issuing Transactions",
           "name": "issuing_transaction_read",
           "rules": [
             "GET /v1/issuing/transactions",
@@ -944,7 +836,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Issuing - Issuing Transactions",
           "name": "issuing_transaction_write",
           "rules": [
             "POST /v1/issuing/transactions/{transaction}",
@@ -954,35 +845,30 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource item",
           "name": "item_read",
           "rules": [
             "GET /v1/payment_links/{payment_link}/line_items"
           ]
         },
         {
-          "description": "Stripe API resource line_item",
           "name": "line_item_read",
           "rules": [
             "GET /v1/invoices/{invoice}/lines"
           ]
         },
         {
-          "description": "Stripe API resource line_item",
           "name": "line_item_write",
           "rules": [
             "POST /v1/invoices/{invoice}/lines/{line_item_id}"
           ]
         },
         {
-          "description": "Stripe API resource mandate",
           "name": "mandate_read",
           "rules": [
             "GET /v1/mandates/{mandate}"
           ]
         },
         {
-          "description": "Stripe API resource payment_attempt_record",
           "name": "payment_attempt_record_read",
           "rules": [
             "GET /v1/payment_attempt_records",
@@ -990,7 +876,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Payment Intents",
           "name": "payment_intent_read",
           "rules": [
             "GET /v1/payment_intents",
@@ -1000,7 +885,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Payment Intents",
           "name": "payment_intent_write",
           "rules": [
             "POST /v1/payment_intents",
@@ -1014,7 +898,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Payment Links",
           "name": "payment_links_read",
           "rules": [
             "GET /v1/payment_links",
@@ -1022,7 +905,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Payment Links",
           "name": "payment_links_write",
           "rules": [
             "POST /v1/payment_links",
@@ -1030,7 +912,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Payment Method Configurations",
           "name": "payment_method_configurations_read",
           "rules": [
             "GET /v1/payment_method_configurations",
@@ -1038,7 +919,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Payment Method Configurations",
           "name": "payment_method_configurations_write",
           "rules": [
             "POST /v1/payment_method_configurations",
@@ -1046,7 +926,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Payment Method Domains",
           "name": "payment_method_domain_read",
           "rules": [
             "GET /v1/payment_method_domains",
@@ -1054,7 +933,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Payment Method Domains",
           "name": "payment_method_domain_write",
           "rules": [
             "POST /v1/payment_method_domains",
@@ -1063,7 +941,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Payment Methods",
           "name": "payment_method_read",
           "rules": [
             "GET /v1/customers/{customer}/payment_methods",
@@ -1073,7 +950,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Payment Methods",
           "name": "payment_method_write",
           "rules": [
             "POST /v1/payment_methods",
@@ -1083,14 +959,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Payment Records",
           "name": "payment_records_read",
           "rules": [
             "GET /v1/payment_records/{id}"
           ]
         },
         {
-          "description": "Core - Payment Records",
           "name": "payment_records_write",
           "rules": [
             "POST /v1/payment_records/report_payment",
@@ -1103,7 +977,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Payouts",
           "name": "payout_read",
           "rules": [
             "GET /v1/payouts",
@@ -1111,7 +984,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Payouts",
           "name": "payout_write",
           "rules": [
             "POST /v1/payouts",
@@ -1121,7 +993,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource person",
           "name": "person_read",
           "rules": [
             "GET /v1/accounts/{account}/people",
@@ -1131,7 +1002,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource person",
           "name": "person_write",
           "rules": [
             "POST /v1/accounts/{account}/people",
@@ -1143,7 +1013,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Prices",
           "name": "plan_read",
           "rules": [
             "GET /v1/plans",
@@ -1154,7 +1023,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Prices",
           "name": "plan_write",
           "rules": [
             "POST /v1/plans",
@@ -1165,7 +1033,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Commerce - Product Catalog Imports",
           "name": "product_catalog_import_read",
           "rules": [
             "GET /v2/commerce/product_catalog/imports",
@@ -1173,14 +1040,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Commerce - Product Catalog Imports",
           "name": "product_catalog_import_write",
           "rules": [
             "POST /v2/commerce/product_catalog/imports"
           ]
         },
         {
-          "description": "Stripe API resource product_feature",
           "name": "product_feature_read",
           "rules": [
             "GET /v1/products/{product}/features",
@@ -1188,7 +1053,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource product_feature",
           "name": "product_feature_write",
           "rules": [
             "POST /v1/products/{product}/features",
@@ -1196,7 +1060,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Products",
           "name": "product_read",
           "rules": [
             "GET /v1/products",
@@ -1205,7 +1068,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Products",
           "name": "product_write",
           "rules": [
             "POST /v1/products",
@@ -1214,7 +1076,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Promotion Codes",
           "name": "promotion_code_read",
           "rules": [
             "GET /v1/promotion_codes",
@@ -1222,7 +1083,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Promotion Codes",
           "name": "promotion_code_write",
           "rules": [
             "POST /v1/promotion_codes",
@@ -1230,7 +1090,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Quotes",
           "name": "quote_read",
           "rules": [
             "GET /v1/quotes",
@@ -1241,7 +1100,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Quotes",
           "name": "quote_write",
           "rules": [
             "POST /v1/quotes",
@@ -1252,7 +1110,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource radar.early_fraud_warning",
           "name": "radar_early_fraud_warning_read",
           "rules": [
             "GET /v1/radar/early_fraud_warnings",
@@ -1260,14 +1117,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource radar.payment_evaluation",
           "name": "radar_payment_evaluation_write",
           "rules": [
             "POST /v1/radar/payment_evaluations"
           ]
         },
         {
-          "description": "Stripe API resource radar.value_list_item",
           "name": "radar_value_list_item_read",
           "rules": [
             "GET /v1/radar/value_list_items",
@@ -1275,7 +1130,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource radar.value_list_item",
           "name": "radar_value_list_item_write",
           "rules": [
             "POST /v1/radar/value_list_items",
@@ -1283,7 +1137,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource radar.value_list",
           "name": "radar_value_list_read",
           "rules": [
             "GET /v1/radar/value_lists",
@@ -1291,7 +1144,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource radar.value_list",
           "name": "radar_value_list_write",
           "rules": [
             "POST /v1/radar/value_lists",
@@ -1300,7 +1152,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Reporting - Financial Reports",
           "name": "report_runs_and_report_types_read",
           "rules": [
             "GET /v1/reporting/report_runs",
@@ -1310,14 +1161,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource reporting.report_run",
           "name": "reporting_report_run_write",
           "rules": [
             "POST /v1/reporting/report_runs"
           ]
         },
         {
-          "description": "Radar - Reviews",
           "name": "review_read",
           "rules": [
             "GET /v1/reviews",
@@ -1325,14 +1174,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Radar - Reviews",
           "name": "review_write",
           "rules": [
             "POST /v1/reviews/{review}/approve"
           ]
         },
         {
-          "description": "Stripe API resource scheduled_query_run",
           "name": "scheduled_query_run_read",
           "rules": [
             "GET /v1/sigma/scheduled_query_runs",
@@ -1340,7 +1187,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe Apps - Secrets",
           "name": "secret_read",
           "rules": [
             "GET /v1/apps/secrets",
@@ -1348,7 +1194,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe Apps - Secrets",
           "name": "secret_write",
           "rules": [
             "POST /v1/apps/secrets",
@@ -1356,14 +1201,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource setup_attempt",
           "name": "setup_attempt_read",
           "rules": [
             "GET /v1/setup_attempts"
           ]
         },
         {
-          "description": "Core - Setup Intents",
           "name": "setup_intent_read",
           "rules": [
             "GET /v1/setup_intents",
@@ -1371,7 +1214,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Setup Intents",
           "name": "setup_intent_write",
           "rules": [
             "POST /v1/setup_intents",
@@ -1382,7 +1224,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Shipping Rates",
           "name": "shipping_rate_read",
           "rules": [
             "GET /v1/shipping_rates",
@@ -1390,7 +1231,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Shipping Rates",
           "name": "shipping_rate_write",
           "rules": [
             "POST /v1/shipping_rates",
@@ -1398,21 +1238,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource sigma.sigma_api_query",
           "name": "sigma_sigma_api_query_write",
           "rules": [
             "POST /v1/sigma/saved_queries/{id}"
           ]
         },
         {
-          "description": "Stripe API resource source_mandate_notification",
           "name": "source_mandate_notification_read",
           "rules": [
             "GET /v1/sources/{source}/mandate_notifications/{mandate_notification}"
           ]
         },
         {
-          "description": "Core - Sources",
           "name": "source_read",
           "rules": [
             "GET /v1/customers/{customer}/bank_accounts",
@@ -1425,7 +1262,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource source_transaction",
           "name": "source_transaction_read",
           "rules": [
             "GET /v1/sources/{source}/source_transactions",
@@ -1433,7 +1269,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Sources",
           "name": "source_write",
           "rules": [
             "POST /v1/customers/{customer}/bank_accounts",
@@ -1452,7 +1287,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource subscription_item",
           "name": "subscription_item_read",
           "rules": [
             "GET /v1/subscription_items",
@@ -1460,7 +1294,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource subscription_item",
           "name": "subscription_item_write",
           "rules": [
             "POST /v1/subscription_items",
@@ -1469,7 +1302,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Subscriptions",
           "name": "subscription_read",
           "rules": [
             "GET /v1/customers/{customer}/subscriptions",
@@ -1480,7 +1312,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource subscription_schedule",
           "name": "subscription_schedule_read",
           "rules": [
             "GET /v1/subscription_schedules",
@@ -1488,7 +1319,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource subscription_schedule",
           "name": "subscription_schedule_write",
           "rules": [
             "POST /v1/subscription_schedules",
@@ -1498,7 +1328,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Subscriptions",
           "name": "subscription_write",
           "rules": [
             "POST /v1/customers/{customer}/subscriptions",
@@ -1512,21 +1341,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource tax.association",
           "name": "tax_association_read",
           "rules": [
             "GET /v1/tax/associations/find"
           ]
         },
         {
-          "description": "Stripe API resource tax.calculation_line_item",
           "name": "tax_calculation_line_item_read",
           "rules": [
             "GET /v1/tax/calculations/{calculation}/line_items"
           ]
         },
         {
-          "description": "Tax - Tax Calculations, Transactions",
           "name": "tax_calculations_and_transactions_read",
           "rules": [
             "GET /v1/tax/calculations/{calculation}",
@@ -1535,7 +1361,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Tax - Tax Calculations, Transactions",
           "name": "tax_calculations_and_transactions_write",
           "rules": [
             "POST /v1/tax/calculations",
@@ -1544,7 +1369,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource tax_code",
           "name": "tax_code_read",
           "rules": [
             "GET /v1/tax_codes",
@@ -1552,7 +1376,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource tax_id",
           "name": "tax_id_read",
           "rules": [
             "GET /v1/customers/{customer}/tax_ids",
@@ -1562,7 +1385,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource tax_id",
           "name": "tax_id_write",
           "rules": [
             "POST /v1/customers/{customer}/tax_ids",
@@ -1572,7 +1394,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Tax Rates",
           "name": "tax_rate_read",
           "rules": [
             "GET /v1/tax_rates",
@@ -1580,7 +1401,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Tax Rates",
           "name": "tax_rate_write",
           "rules": [
             "POST /v1/tax_rates",
@@ -1588,7 +1408,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Tax - Tax Settings, Registrations",
           "name": "tax_settings_read",
           "rules": [
             "GET /v1/tax/registrations",
@@ -1597,7 +1416,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Tax - Tax Settings, Registrations",
           "name": "tax_settings_write",
           "rules": [
             "POST /v1/tax/registrations",
@@ -1606,7 +1424,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Terminal - Terminal Configurations",
           "name": "terminal_configuration_read",
           "rules": [
             "GET /v1/terminal/configurations",
@@ -1614,7 +1431,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Terminal - Terminal Configurations",
           "name": "terminal_configuration_write",
           "rules": [
             "POST /v1/terminal/configurations",
@@ -1623,14 +1439,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Terminal - Terminal Connection Tokens",
           "name": "terminal_connection_token_write",
           "rules": [
             "POST /v1/terminal/connection_tokens"
           ]
         },
         {
-          "description": "Terminal - Terminal Locations",
           "name": "terminal_location_read",
           "rules": [
             "GET /v1/terminal/locations",
@@ -1638,7 +1452,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Terminal - Terminal Locations",
           "name": "terminal_location_write",
           "rules": [
             "POST /v1/terminal/locations",
@@ -1647,14 +1460,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource terminal.onboarding_link",
           "name": "terminal_onboarding_link_write",
           "rules": [
             "POST /v1/terminal/onboarding_links"
           ]
         },
         {
-          "description": "Terminal - Terminal Readers",
           "name": "terminal_reader_read",
           "rules": [
             "GET /v1/terminal/readers",
@@ -1662,7 +1473,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Terminal - Terminal Readers",
           "name": "terminal_reader_write",
           "rules": [
             "POST /v1/terminal/readers",
@@ -1682,28 +1492,24 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource terminal.refund",
           "name": "terminal_refund_write",
           "rules": [
             "POST /v1/terminal/refunds"
           ]
         },
         {
-          "description": "Core - Tokens",
           "name": "token_read",
           "rules": [
             "GET /v1/tokens/{token}"
           ]
         },
         {
-          "description": "Core - Tokens",
           "name": "token_write",
           "rules": [
             "POST /v1/tokens"
           ]
         },
         {
-          "description": "Connect - Top-Ups",
           "name": "top_up_read",
           "rules": [
             "GET /v1/topups",
@@ -1711,7 +1517,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Connect - Top-Ups",
           "name": "top_up_write",
           "rules": [
             "POST /v1/topups",
@@ -1720,7 +1525,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Connect - Transfers",
           "name": "transfer_read",
           "rules": [
             "GET /v1/transfers",
@@ -1728,7 +1532,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource transfer_reversal",
           "name": "transfer_reversal_read",
           "rules": [
             "GET /v1/transfers/{id}/reversals",
@@ -1736,7 +1539,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource transfer_reversal",
           "name": "transfer_reversal_write",
           "rules": [
             "POST /v1/transfers/{id}/reversals",
@@ -1744,7 +1546,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Connect - Transfers",
           "name": "transfer_write",
           "rules": [
             "POST /v1/transfers",
@@ -1752,7 +1553,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource treasury.credit_reversal",
           "name": "treasury_credit_reversal_read",
           "rules": [
             "GET /v1/treasury/credit_reversals",
@@ -1760,14 +1560,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource treasury.credit_reversal",
           "name": "treasury_credit_reversal_write",
           "rules": [
             "POST /v1/treasury/credit_reversals"
           ]
         },
         {
-          "description": "Stripe API resource treasury.debit_reversal",
           "name": "treasury_debit_reversal_read",
           "rules": [
             "GET /v1/treasury/debit_reversals",
@@ -1775,28 +1573,24 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource treasury.debit_reversal",
           "name": "treasury_debit_reversal_write",
           "rules": [
             "POST /v1/treasury/debit_reversals"
           ]
         },
         {
-          "description": "Stripe API resource treasury.financial_account_features",
           "name": "treasury_financial_account_features_read",
           "rules": [
             "GET /v1/treasury/financial_accounts/{financial_account}/features"
           ]
         },
         {
-          "description": "Stripe API resource treasury.financial_account_features",
           "name": "treasury_financial_account_features_write",
           "rules": [
             "POST /v1/treasury/financial_accounts/{financial_account}/features"
           ]
         },
         {
-          "description": "Stripe API resource treasury.financial_account",
           "name": "treasury_financial_account_read",
           "rules": [
             "GET /v1/treasury/financial_accounts",
@@ -1804,7 +1598,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource treasury.financial_account",
           "name": "treasury_financial_account_write",
           "rules": [
             "POST /v1/treasury/financial_accounts",
@@ -1813,7 +1606,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource treasury.inbound_transfer",
           "name": "treasury_inbound_transfer_read",
           "rules": [
             "GET /v1/treasury/inbound_transfers",
@@ -1821,7 +1613,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource treasury.inbound_transfer",
           "name": "treasury_inbound_transfer_write",
           "rules": [
             "POST /v1/test_helpers/treasury/inbound_transfers/{id}/fail",
@@ -1832,7 +1623,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource treasury.outbound_payment",
           "name": "treasury_outbound_payment_read",
           "rules": [
             "GET /v1/treasury/outbound_payments",
@@ -1840,7 +1630,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource treasury.outbound_payment",
           "name": "treasury_outbound_payment_write",
           "rules": [
             "POST /v1/test_helpers/treasury/outbound_payments/{id}",
@@ -1852,7 +1641,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource treasury.outbound_transfer",
           "name": "treasury_outbound_transfer_read",
           "rules": [
             "GET /v1/treasury/outbound_transfers",
@@ -1860,7 +1648,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource treasury.outbound_transfer",
           "name": "treasury_outbound_transfer_write",
           "rules": [
             "POST /v1/test_helpers/treasury/outbound_transfers/{outbound_transfer}",
@@ -1872,7 +1659,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource treasury.received_credit",
           "name": "treasury_received_credit_read",
           "rules": [
             "GET /v1/treasury/received_credits",
@@ -1880,14 +1666,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource treasury.received_credit",
           "name": "treasury_received_credit_write",
           "rules": [
             "POST /v1/test_helpers/treasury/received_credits"
           ]
         },
         {
-          "description": "Stripe API resource treasury.received_debit",
           "name": "treasury_received_debit_read",
           "rules": [
             "GET /v1/treasury/received_debits",
@@ -1895,14 +1679,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Stripe API resource treasury.received_debit",
           "name": "treasury_received_debit_write",
           "rules": [
             "POST /v1/test_helpers/treasury/received_debits"
           ]
         },
         {
-          "description": "Stripe API resource treasury.transaction_entry",
           "name": "treasury_transaction_entry_read",
           "rules": [
             "GET /v1/treasury/transaction_entries",
@@ -1910,7 +1692,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Treasury - Treasury Transactions",
           "name": "treasury_transaction_read",
           "rules": [
             "GET /v1/treasury/transactions",
@@ -1918,21 +1699,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Billing - Meter Event Adjustments v2",
           "name": "v2_billing_meter_event_adjustment_write",
           "rules": [
             "POST /v2/billing/meter_event_adjustments"
           ]
         },
         {
-          "description": "Billing - Meter Event Sessions v2",
           "name": "v2_billing_meter_event_session_write",
           "rules": [
             "POST /v2/billing/meter_event_session"
           ]
         },
         {
-          "description": "Core - Persons v2",
           "name": "v2_core_account_person_read",
           "rules": [
             "GET /v2/core/accounts/{account_id}/persons",
@@ -1940,21 +1718,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Person Tokens v2",
           "name": "v2_core_account_person_token_read",
           "rules": [
             "GET /v2/core/accounts/{account_id}/person_tokens/{id}"
           ]
         },
         {
-          "description": "Core - Person Tokens v2",
           "name": "v2_core_account_person_token_write",
           "rules": [
             "POST /v2/core/accounts/{account_id}/person_tokens"
           ]
         },
         {
-          "description": "Core - Persons v2",
           "name": "v2_core_account_person_write",
           "rules": [
             "POST /v2/core/accounts/{account_id}/persons",
@@ -1963,7 +1738,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Accounts v2",
           "name": "v2_core_account_read",
           "rules": [
             "GET /v2/core/accounts",
@@ -1971,21 +1745,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Core - Account Tokens v2",
           "name": "v2_core_account_token_read",
           "rules": [
             "GET /v2/core/account_tokens/{id}"
           ]
         },
         {
-          "description": "Core - Account Tokens v2",
           "name": "v2_core_account_token_write",
           "rules": [
             "POST /v2/core/account_tokens"
           ]
         },
         {
-          "description": "Core - Accounts v2",
           "name": "v2_core_account_write",
           "rules": [
             "POST /v2/core/accounts",
@@ -1994,7 +1765,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Webhook Endpoints - Webhook Endpoints, Event Destinations",
           "name": "webhook_read",
           "rules": [
             "GET /v1/webhook_endpoints",
@@ -2004,7 +1774,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Webhook Endpoints - Webhook Endpoints, Event Destinations",
           "name": "webhook_write",
           "rules": [
             "POST /v1/webhook_endpoints",

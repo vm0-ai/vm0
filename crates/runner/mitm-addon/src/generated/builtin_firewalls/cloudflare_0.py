@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://api.cloudflare.com/client",
       "permissions": [
         {
-          "description": "Cloudflare API token group: Access: Apps and Policies Read",
           "name": "access-app.read",
           "rules": [
             "GET /v4/accounts/{account_id}/access/apps",
@@ -38,7 +37,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Access: Apps and Policies Revoke",
           "name": "access-app.revoke",
           "rules": [
             "POST /v4/accounts/{account_id}/access/apps/{app_id}/revoke_tokens",
@@ -46,7 +44,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Access: Apps and Policies Write",
           "name": "access-app.write",
           "rules": [
             "POST /v4/accounts/{account_id}/access/apps",
@@ -76,7 +73,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Access: Audit Logs Read",
           "name": "access-audit-log.read",
           "rules": [
             "GET /v4/accounts/{account_id}/access/logs/access_requests",
@@ -89,7 +85,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Access: Mutual TLS Certificates Read",
           "name": "access-certificate.read",
           "rules": [
             "GET /v4/accounts/{account_id}/access/certificates",
@@ -101,7 +96,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Access: Mutual TLS Certificates Write",
           "name": "access-certificate.write",
           "rules": [
             "POST /v4/accounts/{account_id}/access/certificates",
@@ -115,7 +109,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Access: Custom Pages Read",
           "name": "access-custom-page.read",
           "rules": [
             "GET /v4/accounts/{account_id}/access/custom_pages",
@@ -123,7 +116,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Access: Custom Pages Write",
           "name": "access-custom-page.write",
           "rules": [
             "POST /v4/accounts/{account_id}/access/custom_pages",
@@ -132,7 +124,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Access: Organizations, Identity Providers, and Groups Read",
           "name": "access-org.read",
           "rules": [
             "GET /v4/accounts/{account_id}/access/groups",
@@ -152,7 +143,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Access: Organizations, Identity Providers, and Groups Write",
           "name": "access-org.write",
           "rules": [
             "POST /v4/accounts/{account_id}/access/groups",
@@ -179,7 +169,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Access: Policy Test Read",
           "name": "access-policy-test.read",
           "rules": [
             "GET /v4/accounts/{account_id}/access/policy-tests/{policy_test_id}",
@@ -187,21 +176,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Access: Policy Test Write",
           "name": "access-policy-test.write",
           "rules": [
             "POST /v4/accounts/{account_id}/access/policy-tests"
           ]
         },
         {
-          "description": "Cloudflare API token group: Access: SCIM Logs Read",
           "name": "access-scim-log.read",
           "rules": [
             "GET /v4/accounts/{account_id}/access/logs/scim/updates"
           ]
         },
         {
-          "description": "Cloudflare API token group: Zero Trust: Seats Write",
           "name": "access-seats.write",
           "rules": [
             "PATCH /v4/accounts/{account_id}/access/seats",
@@ -209,7 +195,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Access: Service Tokens Read",
           "name": "access-service-token.read",
           "rules": [
             "GET /v4/accounts/{account_id}/access/service_tokens",
@@ -219,7 +204,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Access: Service Tokens Write",
           "name": "access-service-token.write",
           "rules": [
             "POST /v4/accounts/{account_id}/access/service_tokens",
@@ -232,14 +216,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Access: SSH Auditing Read",
           "name": "access-ssh-auditing.read",
           "rules": [
             "GET /v4/accounts/{account_id}/access/gateway_ca"
           ]
         },
         {
-          "description": "Cloudflare API token group: Access: SSH Auditing Write",
           "name": "access-ssh-auditing.write",
           "rules": [
             "POST /v4/accounts/{account_id}/access/gateway_ca",
@@ -247,7 +229,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account Analytics Read",
           "name": "account-analytics.read",
           "rules": [
             "GET /v4/accounts/{account_id}/analytics_engine/sql",
@@ -255,7 +236,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account API Tokens Read",
           "name": "account-api-tokens.read",
           "rules": [
             "GET /v4/accounts/{account_id}/tokens",
@@ -264,7 +244,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account API Tokens Write",
           "name": "account-api-tokens.write",
           "rules": [
             "POST /v4/accounts/{account_id}/tokens",
@@ -274,7 +253,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account Custom Pages Read",
           "name": "account-custom-pages.read",
           "rules": [
             "GET /v4/accounts/{account_identifier}/custom_pages",
@@ -282,7 +260,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account Custom Pages Write",
           "name": "account-custom-pages.write",
           "rules": [
             "POST /v4/accounts/{account_identifier}/custom_pages/preview_tokens",
@@ -290,7 +267,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account DNS Settings Read",
           "name": "account-dns-settings.read",
           "rules": [
             "GET /v4/accounts/{account_id}/dns_records/usage",
@@ -298,14 +274,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account DNS Settings Write",
           "name": "account-dns-settings.write",
           "rules": [
             "PATCH /v4/accounts/{account_id}/dns_settings"
           ]
         },
         {
-          "description": "Cloudflare API token group: Account Firewall Access Rules Read",
           "name": "account-firewall-access-rules.read",
           "rules": [
             "GET /v4/accounts/{account_id}/firewall/access_rules/rules",
@@ -315,7 +289,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account Firewall Access Rules Write",
           "name": "account-firewall-access-rules.write",
           "rules": [
             "POST /v4/accounts/{account_id}/firewall/access_rules/rules",
@@ -327,7 +300,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account Filter Lists Read",
           "name": "account-rule-lists.read",
           "rules": [
             "GET /v4/accounts/{account_id}/rules/lists",
@@ -338,7 +310,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account Filter Lists Edit",
           "name": "account-rule-lists.write",
           "rules": [
             "POST /v4/accounts/{account_id}/rules/lists",
@@ -350,7 +321,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account Rulesets Read",
           "name": "account-rulesets.read",
           "rules": [
             "GET /v4/accounts/{account_id}/rulesets",
@@ -364,7 +334,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account Rulesets Write",
           "name": "account-rulesets.write",
           "rules": [
             "POST /v4/accounts/{account_id}/rulesets",
@@ -378,7 +347,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account Settings Read",
           "name": "account-settings.read",
           "rules": [
             "GET /v4/accounts/{account_id}",
@@ -427,7 +395,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account Settings Write",
           "name": "account-settings.write",
           "rules": [
             "PUT /v4/accounts/{account_id}",
@@ -468,7 +435,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account: SSL and Certificates Read",
           "name": "account-ssl-and-certificates.read",
           "rules": [
             "GET /v4/accounts/{account_id}/custom_csrs",
@@ -479,7 +445,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account: SSL and Certificates Write",
           "name": "account-ssl-and-certificates.write",
           "rules": [
             "POST /v4/accounts/{account_id}/custom_csrs",
@@ -489,14 +454,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Account Waiting Rooms Read",
           "name": "account-waiting-rooms.read",
           "rules": [
             "GET /v4/accounts/{account_id}/waiting_rooms"
           ]
         },
         {
-          "description": "Cloudflare API token group: Address Maps Read",
           "name": "address-maps.read",
           "rules": [
             "GET /v4/accounts/{account_id}/addressing/address_maps",
@@ -504,7 +467,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Address Maps Write",
           "name": "address-maps.write",
           "rules": [
             "POST /v4/accounts/{account_id}/addressing/address_maps",
@@ -517,7 +479,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare OAuth scope: ai-search.index",
           "name": "ai-search.index",
           "rules": [
             "POST /v4/accounts/{account_id}/ai-search/instances/{id}/jobs",
@@ -531,7 +492,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare OAuth scope: ai-search.read",
           "name": "ai-search.read",
           "rules": [
             "GET /v4/accounts/{account_id}/ai-search/instances",
@@ -558,7 +518,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare OAuth scope: ai-search.run",
           "name": "ai-search.run",
           "rules": [
             "POST /v4/accounts/{account_id}/ai-search/instances/{id}/chat/completions",
@@ -570,7 +529,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare OAuth scope: ai-search.write",
           "name": "ai-search.write",
           "rules": [
             "POST /v4/accounts/{account_id}/ai-search/instances",
@@ -589,7 +547,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers AI Read",
           "name": "ai.read",
           "rules": [
             "GET /v4/accounts/{account_id}/ai/authors/search",
@@ -602,7 +559,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers AI Write",
           "name": "ai.write",
           "rules": [
             "POST /v4/accounts/{account_id}/ai/finetunes",
@@ -730,7 +686,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: AI Gateway Read",
           "name": "aig.read",
           "rules": [
             "GET /v4/accounts/{account_id}/ai-gateway/billing/credit-balance",
@@ -765,7 +720,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: AI Gateway Write",
           "name": "aig.write",
           "rules": [
             "POST /v4/accounts/{account_id}/ai-gateway/billing/spending-limit",
@@ -798,7 +752,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Analytics Read",
           "name": "analytics.read",
           "rules": [
             "GET /v4/zones/{zone_identifier}/analytics/colos",
@@ -813,7 +766,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Domain API Gateway Read",
           "name": "api-gateway.read",
           "rules": [
             "GET /v4/zones/{zone_id}/api_gateway/configuration",
@@ -847,7 +799,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Domain API Gateway",
           "name": "api-gateway.write",
           "rules": [
             "PUT /v4/zones/{zone_id}/api_gateway/configuration",
@@ -898,7 +849,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: API Tokens Read",
           "name": "api-tokens.read",
           "rules": [
             "GET /v4/user/tokens",
@@ -907,7 +857,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: API Tokens Write",
           "name": "api-tokens.write",
           "rules": [
             "POST /v4/user/tokens",
@@ -917,7 +866,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Cloudflare Tunnel Read",
           "name": "argotunnel.read",
           "rules": [
             "GET /v4/accounts/{account_id}/cfd_tunnel",
@@ -931,7 +879,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Cloudflare Tunnel Write",
           "name": "argotunnel.write",
           "rules": [
             "POST /v4/accounts/{account_id}/cfd_tunnel",
@@ -951,7 +898,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Artifacts Read",
           "name": "artifacts.read",
           "rules": [
             "GET /v4/accounts/{account_id}/artifacts/namespaces",
@@ -968,7 +914,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Artifacts Edit",
           "name": "artifacts.write",
           "rules": [
             "POST /v4/accounts/{account_id}/artifacts/namespaces/{namespace}/repos",
@@ -980,7 +925,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Billing Read",
           "name": "billing.read",
           "rules": [
             "GET /v4/accounts/{account_id}/billing/profile",
@@ -996,7 +940,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Billing Write",
           "name": "billing.write",
           "rules": [
             "POST /v4/accounts/{account_id}/subscriptions",
@@ -1009,35 +952,30 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Bot Management Feedback Report Read",
           "name": "bot-management-feedback.read",
           "rules": [
             "GET /v4/zones/{zone_id}/bot_management/feedback"
           ]
         },
         {
-          "description": "Cloudflare API token group: Bot Management Feedback Report Write",
           "name": "bot-management-feedback.write",
           "rules": [
             "POST /v4/zones/{zone_id}/bot_management/feedback"
           ]
         },
         {
-          "description": "Cloudflare API token group: Bot Management Read",
           "name": "bot-management.read",
           "rules": [
             "GET /v4/zones/{zone_id}/bot_management"
           ]
         },
         {
-          "description": "Cloudflare API token group: Bot Management Write",
           "name": "bot-management.write",
           "rules": [
             "PUT /v4/zones/{zone_id}/bot_management"
           ]
         },
         {
-          "description": "Cloudflare API token group: Browser Rendering Read",
           "name": "browser-rendering.read",
           "rules": [
             "GET /v4/accounts/{account_id}/browser-rendering/crawl/{job_id}",
@@ -1056,7 +994,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Browser Rendering Write",
           "name": "browser-rendering.write",
           "rules": [
             "POST /v4/accounts/{account_id}/browser-rendering/content",
@@ -1075,7 +1012,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Cache Purge",
           "name": "cache.purge",
           "rules": [
             "POST /v4/zones/{zone_id}/environments/{environment_id}/purge_cache",
@@ -1083,7 +1019,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Calls Read",
           "name": "calls.read",
           "rules": [
             "GET /v4/accounts/{account_id}/calls/apps",
@@ -1093,7 +1028,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Calls Write",
           "name": "calls.write",
           "rules": [
             "POST /v4/accounts/{account_id}/calls/apps",
@@ -1105,7 +1039,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Turnstile Sites Read",
           "name": "challenge-widgets.read",
           "rules": [
             "GET /v4/accounts/{account_id}/challenges/widgets",
@@ -1113,7 +1046,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Turnstile Sites Write",
           "name": "challenge-widgets.write",
           "rules": [
             "POST /v4/accounts/{account_id}/challenges/widgets",
@@ -1123,21 +1055,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Cloud Connector Read",
           "name": "cloud-connector.read",
           "rules": [
             "GET /v4/zones/{zone_id}/cloud_connector/rules"
           ]
         },
         {
-          "description": "Cloudflare API token group: Cloud Connector Write",
           "name": "cloud-connector.write",
           "rules": [
             "PUT /v4/zones/{zone_id}/cloud_connector/rules"
           ]
         },
         {
-          "description": "Cloudflare API token group: Cloud Email Security: Read",
           "name": "cloud-email-security.read",
           "rules": [
             "GET /v4/accounts/{account_id}/email-security/investigate",
@@ -1165,7 +1094,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Cloud Email Security: Write",
           "name": "cloud-email-security.write",
           "rules": [
             "POST /v4/accounts/{account_id}/email-security/investigate/move",
@@ -1201,7 +1129,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Cloudforce One Read",
           "name": "cloudforce-one.read",
           "rules": [
             "GET /v4/accounts/{account_id}/cloudforce-one/binary/{hash}",
@@ -1267,7 +1194,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Cloudforce One Write",
           "name": "cloudforce-one.write",
           "rules": [
             "POST /v4/accounts/{account_id}/cloudforce-one/binary",
@@ -1366,7 +1292,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers Containers Read",
           "name": "containers.read",
           "rules": [
             "GET /v4/accounts/{account_id}/containers/applications/{application_id}",
@@ -1376,7 +1301,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers Containers Write",
           "name": "containers.write",
           "rules": [
             "PATCH /v4/accounts/{account_id}/containers/applications/{application_id}",
@@ -1386,7 +1310,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Custom Errors Read",
           "name": "custom-errors.read",
           "rules": [
             "GET /v4/zones/{zone_identifier}/custom_pages/assets",
@@ -1394,7 +1317,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Custom Errors Write",
           "name": "custom-errors.write",
           "rules": [
             "POST /v4/zones/{zone_identifier}/custom_pages/assets",
@@ -1403,7 +1325,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Custom Pages Read",
           "name": "custom-pages.read",
           "rules": [
             "GET /v4/zones/{zone_identifier}/custom_pages",
@@ -1411,7 +1332,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Custom Pages Write",
           "name": "custom-pages.write",
           "rules": [
             "POST /v4/zones/{zone_identifier}/custom_pages/preview_tokens",
@@ -1419,7 +1339,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: D1 Read",
           "name": "d1.read",
           "rules": [
             "GET /v4/accounts/{account_id}/d1/database",
@@ -1430,7 +1349,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: D1 Write",
           "name": "d1.write",
           "rules": [
             "POST /v4/accounts/{account_id}/d1/database",
@@ -1440,7 +1358,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: DDoS Botnet Feed Read",
           "name": "ddos-botnet-feed.read",
           "rules": [
             "GET /v4/accounts/{account_id}/botnet_feed/asn/{asn_id}/day_report",
@@ -1449,14 +1366,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: DDoS Botnet Feed Write",
           "name": "ddos-botnet-feed.write",
           "rules": [
             "DELETE /v4/accounts/{account_id}/botnet_feed/configs/asn/{asn_id}"
           ]
         },
         {
-          "description": "Cloudflare API token group: DDoS Protection Read",
           "name": "ddos-protection.read",
           "rules": [
             "GET /v4/accounts/{account_id}/magic/advanced_dns_protection/configs/dns_protection/rules",
@@ -1477,7 +1392,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: DDoS Protection Write",
           "name": "ddos-protection.write",
           "rules": [
             "POST /v4/accounts/{account_id}/magic/advanced_dns_protection/configs/dns_protection/rules",
@@ -1513,7 +1427,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: DNS Firewall Read",
           "name": "dns-firewall.read",
           "rules": [
             "GET /v4/accounts/{account_id}/dns_firewall",
@@ -1524,7 +1437,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: DNS Firewall Write",
           "name": "dns-firewall.write",
           "rules": [
             "POST /v4/accounts/{account_id}/dns_firewall",
@@ -1534,7 +1446,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: DNS View Read",
           "name": "dns-view.read",
           "rules": [
             "GET /v4/accounts/{account_id}/dns_settings/views",
@@ -1542,7 +1453,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: DNS View Write",
           "name": "dns-view.write",
           "rules": [
             "POST /v4/accounts/{account_id}/dns_settings/views",
@@ -1551,7 +1461,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: DNS Read",
           "name": "dns.read",
           "rules": [
             "GET /v4/accounts/{account_id}/addressing/regional_hostnames/regions",
@@ -1571,7 +1480,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: DNS Write",
           "name": "dns.write",
           "rules": [
             "POST /v4/zones/{zone_id}/addressing/regional_hostnames",
@@ -1602,7 +1510,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Email Routing Addresses Read",
           "name": "email-routing-address.read",
           "rules": [
             "GET /v4/accounts/{account_id}/email/routing/addresses",
@@ -1610,7 +1517,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Email Routing Addresses Write",
           "name": "email-routing-address.write",
           "rules": [
             "POST /v4/accounts/{account_id}/email/routing/addresses",
@@ -1618,7 +1524,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Email Routing Rules Read",
           "name": "email-routing-rule.read",
           "rules": [
             "GET /v4/zones/{zone_id}/email/routing/rules",
@@ -1627,7 +1532,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Email Routing Rules Write",
           "name": "email-routing-rule.write",
           "rules": [
             "POST /v4/zones/{zone_id}/email/routing/rules",
@@ -1637,7 +1541,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare OAuth scope: email-sending.read",
           "name": "email-sending.read",
           "rules": [
             "GET /v4/accounts/{account_id}/email/sending/limits",
@@ -1649,7 +1552,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare OAuth scope: email-sending.write",
           "name": "email-sending.write",
           "rules": [
             "POST /v4/accounts/{account_id}/email/sending/send",
@@ -1660,7 +1562,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Magic Network Monitoring Admin",
           "name": "fbm.admin",
           "rules": [
             "POST /v4/accounts/{account_id}/mnm/config",
@@ -1671,7 +1572,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Magic Network Monitoring Config Read",
           "name": "fbm.read",
           "rules": [
             "GET /v4/accounts/{account_id}/mnm/config",
@@ -1681,7 +1581,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Magic Network Monitoring Config Write",
           "name": "fbm.write",
           "rules": [
             "PUT /v4/accounts/{account_id}/mnm/config",
@@ -1692,7 +1591,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Firewall Services Read",
           "name": "firewall-services.read",
           "rules": [
             "GET /v4/zones/{zone_id}/filters",
@@ -1715,7 +1613,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Firewall Services Write",
           "name": "firewall-services.write",
           "rules": [
             "POST /v4/zones/{zone_id}/filters",
@@ -1748,14 +1645,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Flagship Evaluate",
           "name": "flagship.evaluate",
           "rules": [
             "GET /v4/accounts/{account_id}/flagship/apps/{app_id}/evaluate"
           ]
         },
         {
-          "description": "Cloudflare API token group: Flagship Read",
           "name": "flagship.read",
           "rules": [
             "GET /v4/accounts/{account_id}/flagship/apps",
@@ -1766,7 +1661,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Flagship Write",
           "name": "flagship.write",
           "rules": [
             "POST /v4/accounts/{account_id}/flagship/apps",
@@ -1778,21 +1672,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Fraud Detection Read",
           "name": "fraud-detection.read",
           "rules": [
             "GET /v4/zones/{zone_id}/fraud_detection/settings"
           ]
         },
         {
-          "description": "Cloudflare API token group: Fraud Detection Write",
           "name": "fraud-detection.write",
           "rules": [
             "PUT /v4/zones/{zone_id}/fraud_detection/settings"
           ]
         },
         {
-          "description": "Cloudflare API token group: Health Checks Read",
           "name": "healthcheck.read",
           "rules": [
             "GET /v4/zones/{zone_id}/healthchecks",
@@ -1803,7 +1694,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Health Checks Write",
           "name": "healthcheck.write",
           "rules": [
             "POST /v4/zones/{zone_id}/healthchecks",
@@ -1819,7 +1709,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Images Read",
           "name": "images.read",
           "rules": [
             "GET /v4/accounts/{account_id}/images/v1",
@@ -1834,7 +1723,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Images Write",
           "name": "images.write",
           "rules": [
             "POST /v4/accounts/{account_id}/images/v1",
@@ -1847,7 +1735,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Intel Read",
           "name": "intel.read",
           "rules": [
             "GET /v4/accounts/{account_id}/brand-protection/alerts",
@@ -1893,7 +1780,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Intel Write",
           "name": "intel.write",
           "rules": [
             "PATCH /v4/accounts/{account_id}/brand-protection/alerts",
@@ -1926,7 +1812,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: IP Prefixes: BGP On Demand Read",
           "name": "ip-prefix-bgp-on-demand.read",
           "rules": [
             "GET /v4/accounts/{account_id}/addressing/prefixes/{prefix_id}/bgp/prefixes",
@@ -1934,14 +1819,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: IP Prefixes: BGP On Demand Write",
           "name": "ip-prefix-bgp-on-demand.write",
           "rules": [
             "PATCH /v4/accounts/{account_id}/addressing/prefixes/{prefix_id}/bgp/prefixes/{bgp_prefix_id}"
           ]
         },
         {
-          "description": "Cloudflare API token group: IP Prefixes: Read",
           "name": "ip-prefix.read",
           "rules": [
             "GET /v4/accounts/{account_id}/addressing/prefixes",
@@ -1953,7 +1836,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: IP Prefixes: Write",
           "name": "ip-prefix.write",
           "rules": [
             "PATCH /v4/accounts/{account_id}/addressing/prefixes/{prefix_id}",
@@ -1966,7 +1848,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Load Balancers Read",
           "name": "load-balancers.read",
           "rules": [
             "GET /v4/zones/{zone_id}/load_balancers",
@@ -1974,7 +1855,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Load Balancers Write",
           "name": "load-balancers.write",
           "rules": [
             "POST /v4/zones/{zone_id}/load_balancers",
@@ -1984,7 +1864,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Load Balancing: Monitors and Pools Read",
           "name": "load-balancing-monitors-and-pools.read",
           "rules": [
             "GET /v4/accounts/{account_id}/load_balancers/monitors",
@@ -2010,7 +1889,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Load Balancing: Monitors and Pools Write",
           "name": "load-balancing-monitors-and-pools.write",
           "rules": [
             "POST /v4/accounts/{account_id}/load_balancers/monitors",
@@ -2034,7 +1912,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Logs Read",
           "name": "logs.read",
           "rules": [
             "GET /v4/accounts/{account_id}/logpush/datasets/{dataset_id}/fields",
@@ -2057,7 +1934,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Logs Write",
           "name": "logs.write",
           "rules": [
             "GET /v4/accounts/{account_id}/logpush/datasets/{dataset_id}/jobs",
@@ -2094,14 +1970,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Magic Transit Read",
           "name": "magic-transit.read",
           "rules": [
             "GET /v4/accounts/{account_id}/addressing/loa_documents/{loa_document_id}/download"
           ]
         },
         {
-          "description": "Cloudflare API token group: Magic Transit Write",
           "name": "magic-transit.write",
           "rules": [
             "POST /v4/accounts/{account_id}/addressing/loa_documents",
@@ -2113,7 +1987,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Magic WAN Read",
           "name": "magic-wan.read",
           "rules": [
             "GET /v4/accounts/{account_id}/cni/cnis",
@@ -2171,7 +2044,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Magic WAN Write",
           "name": "magic-wan.write",
           "rules": [
             "POST /v4/accounts/{account_id}/cni/cnis",
@@ -2252,14 +2124,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Managed headers Read",
           "name": "managed-headers.read",
           "rules": [
             "GET /v4/zones/{zone_id}/managed_headers"
           ]
         },
         {
-          "description": "Cloudflare API token group: Managed headers Write",
           "name": "managed-headers.write",
           "rules": [
             "PATCH /v4/zones/{zone_id}/managed_headers",
@@ -2267,14 +2137,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Mass URL Redirects Read",
           "name": "mass-url-redirects.read",
           "rules": [
             "GET /v4/zones/{zone_id}/url_normalization"
           ]
         },
         {
-          "description": "Cloudflare API token group: Mass URL Redirects Write",
           "name": "mass-url-redirects.write",
           "rules": [
             "PUT /v4/zones/{zone_id}/url_normalization",
@@ -2282,7 +2150,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: MCP Portals Read",
           "name": "mcp-portals.read",
           "rules": [
             "GET /v4/accounts/{account_id}/access/ai-controls/mcp/portals",
@@ -2292,7 +2159,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: MCP Portals Write",
           "name": "mcp-portals.write",
           "rules": [
             "POST /v4/accounts/{account_id}/access/ai-controls/mcp/portals",
@@ -2305,7 +2171,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Memberships Read",
           "name": "memberships.read",
           "rules": [
             "GET /v4/memberships",
@@ -2316,7 +2181,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Memberships Write",
           "name": "memberships.write",
           "rules": [
             "PUT /v4/memberships/{membership_id}",
@@ -2325,7 +2189,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Notifications Read",
           "name": "notifications.read",
           "rules": [
             "GET /v4/accounts/{account_id}/alerting/v3/available_alerts",
@@ -2341,7 +2204,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Notifications Write",
           "name": "notifications.write",
           "rules": [
             "DELETE /v4/accounts/{account_id}/alerting/v3/destinations/pagerduty",
@@ -2360,7 +2222,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: OAuth Client Read",
           "name": "oauth-client.read",
           "rules": [
             "GET /v4/accounts/{account_id}/oauth_clients",
@@ -2368,7 +2229,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: OAuth Client Write",
           "name": "oauth-client.write",
           "rules": [
             "POST /v4/accounts/{account_id}/oauth_clients",
@@ -2379,7 +2239,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Page Rules Read",
           "name": "page-rules.read",
           "rules": [
             "GET /v4/zones/{zone_id}/pagerules",
@@ -2388,7 +2247,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Page Rules Write",
           "name": "page-rules.write",
           "rules": [
             "POST /v4/zones/{zone_id}/pagerules",
@@ -2398,7 +2256,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Page Shield Read",
           "name": "page-shield.read",
           "rules": [
             "GET /v4/zones/{zone_id}/page_shield",
@@ -2413,7 +2270,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Pages Read",
           "name": "page.read",
           "rules": [
             "GET /v4/accounts/{account_id}/pages/projects",
@@ -2426,7 +2282,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Page Shield",
           "name": "page.shield",
           "rules": [
             "PUT /v4/zones/{zone_id}/page_shield",
@@ -2436,7 +2291,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Pages Write",
           "name": "page.write",
           "rules": [
             "POST /v4/accounts/{account_id}/pages/projects",
@@ -2458,7 +2312,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Magic Firewall Packet Captures - Read PCAPs API",
           "name": "pcaps-api.read",
           "rules": [
             "GET /v4/accounts/{account_id}/pcaps",
@@ -2468,7 +2321,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Magic Firewall Packet Captures - Write PCAPs API",
           "name": "pcaps-api.write",
           "rules": [
             "POST /v4/accounts/{account_id}/pcaps",
@@ -2479,7 +2331,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Pipelines Read",
           "name": "pipelines.read",
           "rules": [
             "GET /v4/accounts/{account_id}/pipelines",
@@ -2493,7 +2344,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Pipelines Write",
           "name": "pipelines.write",
           "rules": [
             "POST /v4/accounts/{account_id}/pipelines",
@@ -2506,7 +2356,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Hyperdrive Read",
           "name": "query-cache.read",
           "rules": [
             "GET /v4/accounts/{account_id}/hyperdrive/configs",
@@ -2514,7 +2363,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Hyperdrive Write",
           "name": "query-cache.write",
           "rules": [
             "POST /v4/accounts/{account_id}/hyperdrive/configs",
@@ -2524,7 +2372,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Queues Read",
           "name": "queues.read",
           "rules": [
             "GET /v4/accounts/{account_id}/event_subscriptions/subscriptions",
@@ -2538,7 +2385,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Queues Write",
           "name": "queues.write",
           "rules": [
             "POST /v4/accounts/{account_id}/event_subscriptions/subscriptions",
@@ -2561,7 +2407,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers R2 Data Catalog Read",
           "name": "r2-catalog.read",
           "rules": [
             "GET /v4/accounts/{account_id}/r2-catalog",
@@ -2573,7 +2418,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Workers R2 Data Catalog Write",
           "name": "r2-catalog.write",
           "rules": [
             "POST /v4/accounts/{account_id}/r2-catalog/{bucket_name}/credential",
@@ -2584,7 +2428,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Auto Rag Read",
           "name": "rag.read",
           "rules": [
             "GET /v4/accounts/{account_id}/autorag/rags/{id}/files",
@@ -2594,7 +2437,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Auto Rag Write",
           "name": "rag.write",
           "rules": [
             "POST /v4/accounts/{account_id}/autorag/rags/{id}/ai-search",
@@ -2603,14 +2445,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Realtime Admin",
           "name": "realtime.admin",
           "rules": [
             "POST /v4/accounts/{account_id}/realtime/kit/{app_id}/recordings"
           ]
         },
         {
-          "description": "Cloudflare API token group: Realtime",
           "name": "realtime.realtime",
           "rules": [
             "GET /v4/accounts/{account_id}/realtime/kit/apps",
@@ -2677,14 +2517,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Allow Request Tracer Read",
           "name": "request-tracer.read",
           "rules": [
             "POST /v4/accounts/{account_id}/request-tracer/trace"
           ]
         },
         {
-          "description": "Cloudflare API token group: SCIM Provisioning",
           "name": "scim-provisioning.write",
           "rules": [
             "POST /v4/accounts/{account_id}/scim/v2/Groups",
@@ -2696,7 +2534,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Secrets Store Read",
           "name": "secrets-store.read",
           "rules": [
             "GET /v4/accounts/{account_id}/secrets_store/quota",
@@ -2707,7 +2544,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Secrets Store Write",
           "name": "secrets-store.write",
           "rules": [
             "POST /v4/accounts/{account_id}/ai-gateway/gateways/{gateway_id}/provider_configs",
@@ -2723,7 +2559,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Snippets Read",
           "name": "snippets.read",
           "rules": [
             "GET /v4/zones/{zone_id}/snippets",
@@ -2733,7 +2568,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Snippets Write",
           "name": "snippets.write",
           "rules": [
             "PUT /v4/zones/{zone_id}/snippets/snippet_rules",
@@ -2743,7 +2577,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: SSL and Certificates Read",
           "name": "ssl-and-certificates.read",
           "rules": [
             "GET /v4/zones/{zone_id}/acm/custom_trust_store",
@@ -2783,7 +2616,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: SSL and Certificates Write",
           "name": "ssl-and-certificates.write",
           "rules": [
             "POST /v4/zones/{zone_id}/acm/custom_trust_store",
@@ -2827,7 +2659,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: SSO Connector Read",
           "name": "sso-connector.read",
           "rules": [
             "GET /v4/accounts/{account_id}/sso_connectors",
@@ -2835,7 +2666,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: SSO Connector Write",
           "name": "sso-connector.write",
           "rules": [
             "POST /v4/accounts/{account_id}/sso_connectors",
@@ -2845,7 +2675,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Stream Read",
           "name": "stream.read",
           "rules": [
             "GET /v4/accounts/{account_id}/stream",
@@ -2867,7 +2696,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Stream Write",
           "name": "stream.write",
           "rules": [
             "POST /v4/accounts/{account_id}/stream",
@@ -2895,7 +2723,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Cloudflare One Connector: WARP Read",
           "name": "teams-connector-warp.read",
           "rules": [
             "GET /v4/accounts/{account_id}/warp_connector",
@@ -2906,7 +2733,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Cloudflare One Connector: WARP Write",
           "name": "teams-connector-warp.write",
           "rules": [
             "POST /v4/accounts/{account_id}/warp_connector",
@@ -2917,7 +2743,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Cloudflare DEX Read",
           "name": "teams-dex.read",
           "rules": [
             "GET /v4/accounts/{account_id}/dex/colos",
@@ -2947,7 +2772,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Cloudflare DEX Write",
           "name": "teams-dex.write",
           "rules": [
             "POST /v4/accounts/{account_id}/dex/commands",
@@ -2960,7 +2784,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Cloudflare One Networks Read",
           "name": "teams-networks.read",
           "rules": [
             "GET /v4/accounts/{account_id}/teamnet/virtual_networks",
@@ -2971,7 +2794,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Cloudflare One Networks Write",
           "name": "teams-networks.write",
           "rules": [
             "POST /v4/accounts/{account_id}/teamnet/virtual_networks",
@@ -2987,7 +2809,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Zero Trust: PII Read",
           "name": "teams-pii.read",
           "rules": [
             "GET /v4/accounts/{account_id}/zt_risk_scoring/summary",
@@ -2995,21 +2816,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Zero Trust Resilience Read",
           "name": "teams-resilience.read",
           "rules": [
             "GET /v4/accounts/{account_id}/devices/resilience/disconnect"
           ]
         },
         {
-          "description": "Cloudflare API token group: Zero Trust Resilience Write",
           "name": "teams-resilience.write",
           "rules": [
             "POST /v4/accounts/{account_id}/devices/resilience/disconnect"
           ]
         },
         {
-          "description": "Cloudflare API token group: Zero Trust Read",
           "name": "teams.read",
           "rules": [
             "GET /v4/accounts/{account_id}/devices/ip-profiles",
@@ -3070,7 +2888,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Zero Trust Write",
           "name": "teams.write",
           "rules": [
             "POST /v4/accounts/{account_id}/devices/ip-profiles",
@@ -3180,7 +2997,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Trust and Safety Read",
           "name": "trust-and-safety.read",
           "rules": [
             "GET /v4/accounts/{account_id}/abuse-reports",
@@ -3190,14 +3006,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: Trust and Safety Write",
           "name": "trust-and-safety.write",
           "rules": [
             "POST /v4/accounts/{account_id}/abuse-reports/{report_id}/mitigations/appeal"
           ]
         },
         {
-          "description": "Cloudflare API token group: URL Scanner Read",
           "name": "url-scanner.read",
           "rules": [
             "GET /v4/accounts/{account_id}/urlscanner/response/{response_id}",
@@ -3214,7 +3028,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: URL Scanner Write",
           "name": "url-scanner.write",
           "rules": [
             "POST /v4/accounts/{account_id}/urlscanner/scan",
@@ -3223,7 +3036,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Cloudflare API token group: User Details Read",
           "name": "user-details.read",
           "rules": [
             "GET /v4/organizations",
@@ -3295,4 +3107,260 @@ JSON_PART = r"""{
             "GET /v4/radar/attacks/layer7/summary/{dimension}",
             "GET /v4/radar/attacks/layer7/timeseries",
             "GET /v4/radar/attacks/layer7/timeseries_groups/http_method",
+            "GET /v4/radar/attacks/layer7/timeseries_groups/http_version",
+            "GET /v4/radar/attacks/layer7/timeseries_groups/industry",
+            "GET /v4/radar/attacks/layer7/timeseries_groups/ip_version",
+            "GET /v4/radar/attacks/layer7/timeseries_groups/managed_rules",
+            "GET /v4/radar/attacks/layer7/timeseries_groups/mitigation_product",
+            "GET /v4/radar/attacks/layer7/timeseries_groups/vertical",
+            "GET /v4/radar/attacks/layer7/timeseries_groups/{dimension}",
+            "GET /v4/radar/attacks/layer7/top/ases/origin",
+            "GET /v4/radar/attacks/layer7/top/attacks",
+            "GET /v4/radar/attacks/layer7/top/industry",
+            "GET /v4/radar/attacks/layer7/top/locations/origin",
+            "GET /v4/radar/attacks/layer7/top/locations/target",
+            "GET /v4/radar/attacks/layer7/top/vertical",
+            "GET /v4/radar/bgp/hijacks/events",
+            "GET /v4/radar/bgp/ips/timeseries",
+            "GET /v4/radar/bgp/ips/top/ases",
+            "GET /v4/radar/bgp/leaks/events",
+            "GET /v4/radar/bgp/routes/ases",
+            "GET /v4/radar/bgp/routes/moas",
+            "GET /v4/radar/bgp/routes/pfx2as",
+            "GET /v4/radar/bgp/routes/realtime",
+            "GET /v4/radar/bgp/routes/stats",
+            "GET /v4/radar/bgp/rpki/aspa/changes",
+            "GET /v4/radar/bgp/rpki/aspa/snapshot",
+            "GET /v4/radar/bgp/rpki/aspa/timeseries",
+            "GET /v4/radar/bgp/rpki/roas/timeseries",
+            "GET /v4/radar/bgp/timeseries",
+            "GET /v4/radar/bgp/top/ases",
+            "GET /v4/radar/bgp/top/ases/prefixes",
+            "GET /v4/radar/bgp/top/prefixes",
+            "GET /v4/radar/bots",
+            "GET /v4/radar/bots/crawlers/summary/{dimension}",
+            "GET /v4/radar/bots/crawlers/timeseries_groups/{dimension}",
+            "GET /v4/radar/bots/summary/{dimension}",
+            "GET /v4/radar/bots/timeseries",
+            "GET /v4/radar/bots/timeseries_groups/{dimension}",
+            "GET /v4/radar/bots/{bot_slug}",
+            "GET /v4/radar/ct/authorities",
+            "GET /v4/radar/ct/authorities/{ca_slug}",
+            "GET /v4/radar/ct/logs",
+            "GET /v4/radar/ct/logs/{log_slug}",
+            "GET /v4/radar/ct/summary/{dimension}",
+            "GET /v4/radar/ct/timeseries",
+            "GET /v4/radar/ct/timeseries_groups/{dimension}",
+            "GET /v4/radar/datasets",
+            "POST /v4/radar/datasets/download",
+            "GET /v4/radar/datasets/{alias}",
+            "GET /v4/radar/dns/summary/cache_hit",
+            "GET /v4/radar/dns/summary/dnssec",
+            "GET /v4/radar/dns/summary/dnssec_aware",
+            "GET /v4/radar/dns/summary/dnssec_e2e",
+            "GET /v4/radar/dns/summary/ip_version",
+            "GET /v4/radar/dns/summary/matching_answer",
+            "GET /v4/radar/dns/summary/protocol",
+            "GET /v4/radar/dns/summary/query_type",
+            "GET /v4/radar/dns/summary/response_code",
+            "GET /v4/radar/dns/summary/response_ttl",
+            "GET /v4/radar/dns/summary/{dimension}",
+            "GET /v4/radar/dns/timeseries",
+            "GET /v4/radar/dns/timeseries_groups/cache_hit",
+            "GET /v4/radar/dns/timeseries_groups/dnssec",
+            "GET /v4/radar/dns/timeseries_groups/dnssec_aware",
+            "GET /v4/radar/dns/timeseries_groups/dnssec_e2e",
+            "GET /v4/radar/dns/timeseries_groups/ip_version",
+            "GET /v4/radar/dns/timeseries_groups/matching_answer",
+            "GET /v4/radar/dns/timeseries_groups/protocol",
+            "GET /v4/radar/dns/timeseries_groups/query_type",
+            "GET /v4/radar/dns/timeseries_groups/response_code",
+            "GET /v4/radar/dns/timeseries_groups/response_ttl",
+            "GET /v4/radar/dns/timeseries_groups/{dimension}",
+            "GET /v4/radar/dns/top/ases",
+            "GET /v4/radar/dns/top/locations",
+            "GET /v4/radar/email/routing/summary/arc",
+            "GET /v4/radar/email/routing/summary/dkim",
+            "GET /v4/radar/email/routing/summary/dmarc",
+            "GET /v4/radar/email/routing/summary/encrypted",
+            "GET /v4/radar/email/routing/summary/ip_version",
+            "GET /v4/radar/email/routing/summary/spf",
+            "GET /v4/radar/email/routing/summary/{dimension}",
+            "GET /v4/radar/email/routing/timeseries_groups/arc",
+            "GET /v4/radar/email/routing/timeseries_groups/dkim",
+            "GET /v4/radar/email/routing/timeseries_groups/dmarc",
+            "GET /v4/radar/email/routing/timeseries_groups/encrypted",
+            "GET /v4/radar/email/routing/timeseries_groups/ip_version",
+            "GET /v4/radar/email/routing/timeseries_groups/spf",
+            "GET /v4/radar/email/routing/timeseries_groups/{dimension}",
+            "GET /v4/radar/email/security/summary/arc",
+            "GET /v4/radar/email/security/summary/dkim",
+            "GET /v4/radar/email/security/summary/dmarc",
+            "GET /v4/radar/email/security/summary/malicious",
+            "GET /v4/radar/email/security/summary/spam",
+            "GET /v4/radar/email/security/summary/spf",
+            "GET /v4/radar/email/security/summary/spoof",
+            "GET /v4/radar/email/security/summary/threat_category",
+            "GET /v4/radar/email/security/summary/tls_version",
+            "GET /v4/radar/email/security/summary/{dimension}",
+            "GET /v4/radar/email/security/timeseries_groups/arc",
+            "GET /v4/radar/email/security/timeseries_groups/dkim",
+            "GET /v4/radar/email/security/timeseries_groups/dmarc",
+            "GET /v4/radar/email/security/timeseries_groups/malicious",
+            "GET /v4/radar/email/security/timeseries_groups/spam",
+            "GET /v4/radar/email/security/timeseries_groups/spf",
+            "GET /v4/radar/email/security/timeseries_groups/spoof",
+            "GET /v4/radar/email/security/timeseries_groups/threat_category",
+            "GET /v4/radar/email/security/timeseries_groups/tls_version",
+            "GET /v4/radar/email/security/timeseries_groups/{dimension}",
+            "GET /v4/radar/email/security/top/tlds",
+            "GET /v4/radar/email/security/top/tlds/malicious/{malicious}",
+            "GET /v4/radar/email/security/top/tlds/spam/{spam}",
+            "GET /v4/radar/email/security/top/tlds/spoof/{spoof}",
+            "GET /v4/radar/entities/asns",
+            "GET /v4/radar/entities/asns/botnet_threat_feed",
+            "GET /v4/radar/entities/asns/ip",
+            "GET /v4/radar/entities/asns/{asn}",
+            "GET /v4/radar/entities/asns/{asn}/as_set",
+            "GET /v4/radar/entities/asns/{asn}/rel",
+            "GET /v4/radar/entities/ip",
+            "GET /v4/radar/entities/locations",
+            "GET /v4/radar/entities/locations/{location}",
+            "GET /v4/radar/geolocations",
+            "GET /v4/radar/geolocations/{geo_id}",
+            "GET /v4/radar/http/summary/bot_class",
+            "GET /v4/radar/http/summary/device_type",
+            "GET /v4/radar/http/summary/http_protocol",
+            "GET /v4/radar/http/summary/http_version",
+            "GET /v4/radar/http/summary/ip_version",
+            "GET /v4/radar/http/summary/os",
+            "GET /v4/radar/http/summary/post_quantum",
+            "GET /v4/radar/http/summary/tls_version",
+            "GET /v4/radar/http/summary/{dimension}",
+            "GET /v4/radar/http/timeseries",
+            "GET /v4/radar/http/timeseries_groups/bot_class",
+            "GET /v4/radar/http/timeseries_groups/browser",
+            "GET /v4/radar/http/timeseries_groups/browser_family",
+            "GET /v4/radar/http/timeseries_groups/device_type",
+            "GET /v4/radar/http/timeseries_groups/http_protocol",
+            "GET /v4/radar/http/timeseries_groups/http_version",
+            "GET /v4/radar/http/timeseries_groups/ip_version",
+            "GET /v4/radar/http/timeseries_groups/os",
+            "GET /v4/radar/http/timeseries_groups/post_quantum",
+            "GET /v4/radar/http/timeseries_groups/tls_version",
+            "GET /v4/radar/http/timeseries_groups/{dimension}",
+            "GET /v4/radar/http/top/ases",
+            "GET /v4/radar/http/top/ases/bot_class/{bot_class}",
+            "GET /v4/radar/http/top/ases/browser_family/{browser_family}",
+            "GET /v4/radar/http/top/ases/device_type/{device_type}",
+            "GET /v4/radar/http/top/ases/http_protocol/{http_protocol}",
+            "GET /v4/radar/http/top/ases/http_version/{http_version}",
+            "GET /v4/radar/http/top/ases/ip_version/{ip_version}",
+            "GET /v4/radar/http/top/ases/os/{os}",
+            "GET /v4/radar/http/top/ases/tls_version/{tls_version}",
+            "GET /v4/radar/http/top/browser",
+            "GET /v4/radar/http/top/browser_family",
+            "GET /v4/radar/http/top/locations",
+            "GET /v4/radar/http/top/locations/bot_class/{bot_class}",
+            "GET /v4/radar/http/top/locations/browser_family/{browser_family}",
+            "GET /v4/radar/http/top/locations/device_type/{device_type}",
+            "GET /v4/radar/http/top/locations/http_protocol/{http_protocol}",
+            "GET /v4/radar/http/top/locations/http_version/{http_version}",
+            "GET /v4/radar/http/top/locations/ip_version/{ip_version}",
+            "GET /v4/radar/http/top/locations/os/{os}",
+            "GET /v4/radar/http/top/locations/tls_version/{tls_version}",
+            "GET /v4/radar/leaked_credential_checks/summary/bot_class",
+            "GET /v4/radar/leaked_credential_checks/summary/compromised",
+            "GET /v4/radar/leaked_credential_checks/summary/{dimension}",
+            "GET /v4/radar/leaked_credential_checks/timeseries_groups/bot_class",
+            "GET /v4/radar/leaked_credential_checks/timeseries_groups/compromised",
+            "GET /v4/radar/leaked_credential_checks/timeseries_groups/{dimension}",
+            "GET /v4/radar/netflows/summary",
+            "GET /v4/radar/netflows/summary/{dimension}",
+            "GET /v4/radar/netflows/timeseries",
+            "GET /v4/radar/netflows/timeseries_groups/{dimension}",
+            "GET /v4/radar/netflows/top/ases",
+            "GET /v4/radar/netflows/top/locations",
+            "GET /v4/radar/origins",
+            "GET /v4/radar/origins/summary/{dimension}",
+            "GET /v4/radar/origins/timeseries",
+            "GET /v4/radar/origins/timeseries_groups/{dimension}",
+            "GET /v4/radar/origins/{slug}",
+            "GET /v4/radar/post_quantum/origin/summary/{dimension}",
+            "GET /v4/radar/post_quantum/origin/timeseries_groups/{dimension}",
+            "GET /v4/radar/post_quantum/tls/support",
+            "GET /v4/radar/quality/iqi/summary",
+            "GET /v4/radar/quality/iqi/timeseries_groups",
+            "GET /v4/radar/quality/speed/histogram",
+            "GET /v4/radar/quality/speed/summary",
+            "GET /v4/radar/quality/speed/top/ases",
+            "GET /v4/radar/quality/speed/top/locations",
+            "GET /v4/radar/ranking/domain/{domain}",
+            "GET /v4/radar/ranking/internet_services/categories",
+            "GET /v4/radar/ranking/internet_services/timeseries_groups",
+            "GET /v4/radar/ranking/internet_services/top",
+            "GET /v4/radar/ranking/timeseries_groups",
+            "GET /v4/radar/ranking/top",
+            "GET /v4/radar/robots_txt/top/domain_categories",
+            "GET /v4/radar/robots_txt/top/user_agents/directive",
+            "GET /v4/radar/search/global",
+            "GET /v4/radar/tcp_resets_timeouts/summary",
+            "GET /v4/radar/tcp_resets_timeouts/timeseries_groups",
+            "GET /v4/radar/tlds",
+            "GET /v4/radar/tlds/performance/summary/{dimension}",
+            "GET /v4/radar/tlds/performance/timeseries_groups/{dimension}",
+            "GET /v4/radar/tlds/{tld}",
+            "GET /v4/radar/traffic_anomalies",
+            "GET /v4/radar/traffic_anomalies/locations",
+            "GET /v4/radar/verified_bots/top/bots",
+            "GET /v4/radar/verified_bots/top/categories",
+            "GET /v4/user",
+            "GET /v4/user/tenants"
+          ]
+        },
+        {
+          "name": "user-details.write",
+          "rules": [
+            "POST /v4/organizations",
+            "PATCH /v4/user"
+          ]
+        },
+        {
+          "name": "vectorize.read",
+          "rules": [
+            "GET /v4/accounts/{account_id}/vectorize/indexes",
+            "GET /v4/accounts/{account_id}/vectorize/indexes/{index_name}",
+            "POST /v4/accounts/{account_id}/vectorize/indexes/{index_name}/get-by-ids",
+            "POST /v4/accounts/{account_id}/vectorize/indexes/{index_name}/query",
+            "GET /v4/accounts/{account_id}/vectorize/v2/indexes",
+            "GET /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}",
+            "POST /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/get_by_ids",
+            "GET /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/info",
+            "GET /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/list",
+            "GET /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/metadata_index/list",
+            "POST /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/query"
+          ]
+        },
+        {
+          "name": "vectorize.write",
+          "rules": [
+            "POST /v4/accounts/{account_id}/vectorize/indexes",
+            "PUT /v4/accounts/{account_id}/vectorize/indexes/{index_name}",
+            "DELETE /v4/accounts/{account_id}/vectorize/indexes/{index_name}",
+            "POST /v4/accounts/{account_id}/vectorize/indexes/{index_name}/delete-by-ids",
+            "POST /v4/accounts/{account_id}/vectorize/indexes/{index_name}/insert",
+            "POST /v4/accounts/{account_id}/vectorize/indexes/{index_name}/upsert",
+            "POST /v4/accounts/{account_id}/vectorize/v2/indexes",
+            "DELETE /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}",
+            "POST /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/delete_by_ids",
+            "POST /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/insert",
+            "POST /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/metadata_index/create",
+            "POST /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/metadata_index/delete",
+            "POST /v4/accounts/{account_id}/vectorize/v2/indexes/{index_name}/upsert"
+          ]
+        },
+        {
+          "name": "waiting-rooms.read",
+          "rules": [
+            "GET /v4/zones/{zone_id}/waiting_rooms",
 """

@@ -287,7 +287,6 @@ describe("Python builtin firewall catalog renderer", () => {
             permissions: [
               {
                 name: "responses",
-                description: "Provider Responses API",
                 rules: ["POST /"],
               },
             ],
@@ -346,7 +345,6 @@ describe("Python builtin firewall catalog renderer", () => {
     ]);
     expect(diagnostics.content).not.toContain("DYNAMIC_TOKEN");
     expect(diagnostics.content).not.toContain("JSON_PART");
-    expect(diagnostics.content).not.toContain("Provider Responses API");
   });
 
   it("preserves runtime API host policies in catalog JSON", () => {
