@@ -86,6 +86,18 @@ function formatPlainText(payload: ChatClipboardPayload): string {
     .join("\n\n");
 }
 
+function textFromPlainClipboardFallback(plainText: string): string {
+  const attachmentsMarker = "\n\nAttachments:\n";
+  const markerIndex = plainText.indexOf(attachmentsMarker);
+  if (markerIndex !== -1) {
+    return plainText.slice(0, markerIndex).trim();
+  }
+  if (plainText.startsWith("Attachments:\n")) {
+    return "";
+  }
+  return plainText.trim();
+}
+
 function formatMessageHtml(payload: ChatClipboardPayload): string {
   const encoded = escapeHtml(encodeURIComponent(JSON.stringify(payload)));
   const textHtml = payload.text
@@ -187,5 +199,16 @@ export function readChatMessageFromClipboard(
     return null;
   }
   const serialized = decodeClipboardPayload(encoded);
-  return serialized ? parseChatClipboardPayload(serialized) : null;
+  const payload = serialized ? parseChatClipboardPayload(serialized) : null;
+  if (!payload) {
+    return null;
+  }
+  if (payload.text.trim()) {
+    return payload;
+  }
+  const plainText = clipboardData.getData("text/plain");
+  return {
+    ...payload,
+    text: textFromPlainClipboardFallback(plainText),
+  };
 }

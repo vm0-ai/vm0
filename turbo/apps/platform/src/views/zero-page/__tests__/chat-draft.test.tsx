@@ -11,6 +11,8 @@ import {
   zeroAgentDraftContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
 import { zeroTeamContract } from "@vm0/api-contracts/contracts/zero-team";
+import { zeroWorkflowsCollectionContract } from "@vm0/api-contracts/contracts/zero-workflows";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
 import {
   click,
@@ -129,6 +131,18 @@ function chatClipboardHtml(payload: {
   return `<div data-vm0-chat-message="${encodeURIComponent(
     JSON.stringify(payload),
   )}"></div>`;
+}
+
+async function findComposerEditor(): Promise<HTMLElement> {
+  return await waitFor(() => {
+    const editor = document.querySelector(
+      '.zero-composer [contenteditable="true"]',
+    );
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error("Composer editor not found");
+    }
+    return editor;
+  });
 }
 
 async function navigateToThread(threadId: string): Promise<void> {
@@ -643,6 +657,113 @@ describe("chat drafts", () => {
 
     await waitFor(() => {
       expect(input).toHaveValue(pastedText);
+      expect(screen.getByLabelText(`Remove ${filename}`)).toBeInTheDocument();
+    });
+  });
+
+  it("falls back to plain text when copied chat html only carries attachments", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "thread-copied-attachment-plain-fallback";
+    const pastedText = "123";
+    const filename = "image.png";
+    const url =
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8e2a2ad0-da8a-4ee7-8494-e0d7f6d87360/image.png";
+
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({ context, path: `/chats/${threadId}` });
+
+    const input = await waitFor(() => {
+      return textarea();
+    });
+    await user.click(input);
+
+    fireEvent.paste(input, {
+      clipboardData: {
+        getData: (type: string) => {
+          if (type === "text/html") {
+            return chatClipboardHtml({
+              text: "",
+              attachments: [
+                {
+                  id: "copied-image",
+                  url,
+                  filename,
+                  contentType: "image/png",
+                  size: 42,
+                },
+              ],
+            });
+          }
+          if (type === "text/plain") {
+            return [
+              pastedText,
+              "",
+              "Attachments:",
+              `- [${filename}](${url}): ${url}`,
+            ].join("\n");
+          }
+          return "";
+        },
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(input).toHaveValue(pastedText);
+      expect(screen.getByLabelText(`Remove ${filename}`)).toBeInTheDocument();
+    });
+  });
+
+  it("restores copied chat text in the slash composer when attachments prevent default paste", async () => {
+    const user = userEvent.setup({ delay: null });
+    const threadId = "thread-copied-attachment-slash-composer";
+    const pastedText = "123";
+    const filename = "image.png";
+    const url =
+      "https://cdn.vm0.io/artifacts/user_3EWY21Oe3f15kfs3yYmbGgDb3NV/8e2a2ad0-da8a-4ee7-8494-e0d7f6d87360/image.png";
+
+    context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+      return respond(200, []);
+    });
+    mockChatLifecycle(context, { threadId });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.WorkflowAutomation]: true,
+      },
+    });
+
+    const editor = await findComposerEditor();
+    await user.click(editor);
+
+    fireEvent.paste(editor, {
+      clipboardData: {
+        getData: (type: string) => {
+          if (type === "text/html") {
+            return chatClipboardHtml({
+              text: pastedText,
+              attachments: [
+                {
+                  id: "copied-image",
+                  url,
+                  filename,
+                  contentType: "image/png",
+                  size: 42,
+                },
+              ],
+            });
+          }
+          return "";
+        },
+        items: [],
+      },
+    });
+
+    await waitFor(() => {
+      expect(editor).toHaveTextContent(pastedText);
       expect(screen.getByLabelText(`Remove ${filename}`)).toBeInTheDocument();
     });
   });

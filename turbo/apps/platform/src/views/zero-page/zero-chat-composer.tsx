@@ -5770,10 +5770,11 @@ function insertPastedText(
   currentValue: string,
   pastedText: string,
 ): string {
-  // Only the plain textarea supports caret-based insertion. The TipTap composer
-  // inserts pasted text itself, so for it we leave the value unchanged here.
-  if (!pastedText || !(target instanceof HTMLTextAreaElement)) {
+  if (!pastedText) {
     return currentValue;
+  }
+  if (!(target instanceof HTMLTextAreaElement)) {
+    return [currentValue.trimEnd(), pastedText].filter(Boolean).join("\n");
   }
   const start = target.selectionStart;
   const end = target.selectionEnd;
