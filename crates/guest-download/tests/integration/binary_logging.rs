@@ -47,7 +47,7 @@ fn run_binary_with_manifest_stdin(
 }
 
 #[test]
-fn binary_writes_system_log_to_guest_common_default_path() {
+fn binary_writes_system_log_to_explicit_runtime_path() {
     let dir = tempfile::tempdir().unwrap();
     let manifest_path = write_manifest(&dir, &[], None).unwrap();
     let run_id = unique_run_id("success");
@@ -271,7 +271,7 @@ fn binary_without_manifest_path_logs_usage() {
 }
 
 #[test]
-fn binary_panics_without_run_id_for_default_system_log() {
+fn binary_fails_without_run_id_for_runtime_log_setup() {
     let dir = tempfile::tempdir().unwrap();
     let manifest_path = write_manifest(&dir, &[], None).unwrap();
 
@@ -284,13 +284,13 @@ fn binary_panics_without_run_id_for_default_system_log() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("VM0_RUN_ID is required for guest system logging"),
+        stderr.contains("VM0_RUN_ID is required for guest-download runtime paths"),
         "unexpected stderr: {stderr}"
     );
 }
 
 #[test]
-fn binary_panics_with_empty_run_id_for_default_system_log() {
+fn binary_fails_with_empty_run_id_for_runtime_log_setup() {
     let dir = tempfile::tempdir().unwrap();
     let manifest_path = write_manifest(&dir, &[], None).unwrap();
 
@@ -303,7 +303,105 @@ fn binary_panics_with_empty_run_id_for_default_system_log() {
     assert!(!output.status.success());
     let stderr = String::from_utf8_lossy(&output.stderr);
     assert!(
-        stderr.contains("VM0_RUN_ID is required for guest system logging"),
+        stderr.contains("VM0_RUN_ID is required for guest-download runtime paths"),
+        "unexpected stderr: {stderr}"
+    );
+}
+
+#[test]
+fn binary_fails_with_relative_runtime_dir_for_runtime_log_setup() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = write_manifest(&dir, &[], None).unwrap();
+    let run_id = unique_run_id("relative-runtime-dir");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest_path)
+        .env("VM0_RUN_ID", run_id)
+        .env(
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            "relative-runtime-dir",
+        )
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(
+            "failed to resolve guest-download runtime paths: VM0_GUEST_RUNTIME_DIR must be an absolute path"
+        ),
+        "unexpected stderr: {stderr}"
+    );
+}
+
+#[test]
+fn binary_fails_with_invalid_run_id_for_runtime_log_setup() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = write_manifest(&dir, &[], None).unwrap();
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest_path)
+        .env("VM0_RUN_ID", "invalid/run/id")
+        .env_remove(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(
+            "failed to resolve guest-download runtime paths: VM0_RUN_ID must be a single safe path segment"
+        ),
+        "unexpected stderr: {stderr}"
+    );
+}
+
+#[test]
+fn binary_uses_absolute_runtime_dir_without_validating_run_id_as_path_segment() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = write_manifest(&dir, &[], None).unwrap();
+    let logs = RuntimeLogPaths::new(&dir);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest_path)
+        .env("VM0_RUN_ID", "ignored/when/runtime-dir/is-set")
+        .env(
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            &logs.runtime_dir,
+        )
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let content = std::fs::read_to_string(&logs.system_log).unwrap();
+    assert!(
+        content.contains("[INFO] [sandbox:download] Download completed"),
+        "unexpected system log: {content:?}"
+    );
+}
+
+#[test]
+fn binary_fails_without_home_or_runtime_dir_for_runtime_log_setup() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = write_manifest(&dir, &[], None).unwrap();
+    let run_id = unique_run_id("missing-home");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest_path)
+        .env("VM0_RUN_ID", run_id)
+        .env_remove(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
+        .env_remove("HOME")
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("failed to resolve guest-download runtime paths: HOME is required for guest runtime paths"),
         "unexpected stderr: {stderr}"
     );
 }

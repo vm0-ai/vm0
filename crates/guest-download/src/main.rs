@@ -1,4 +1,5 @@
 use guest_common::{log_error, log_info, telemetry::record_sandbox_op};
+use guest_contracts::{env, runtime_paths};
 use std::fs::File;
 #[cfg(unix)]
 use std::fs::OpenOptions;
@@ -16,7 +17,10 @@ enum ManifestInput {
 }
 
 fn main() {
-    guest_common::log::enable_system_log_file();
+    if let Err(error) = install_runtime_log_paths() {
+        log_error!(LOG_TAG, "{error}");
+        std::process::exit(1);
+    }
 
     let Some(input) = manifest_input_from_args() else {
         log_error!(LOG_TAG, "{USAGE}");
@@ -34,6 +38,27 @@ fn main() {
         log_error!(LOG_TAG, "Download failed");
         std::process::exit(1);
     }
+}
+
+fn install_runtime_log_paths() -> Result<(), String> {
+    let run_id = std::env::var(env::RUN_ID_ENV).map_err(|_| {
+        format!(
+            "{} is required for guest-download runtime paths",
+            env::RUN_ID_ENV
+        )
+    })?;
+    if run_id.is_empty() {
+        return Err(format!(
+            "{} is required for guest-download runtime paths",
+            env::RUN_ID_ENV
+        ));
+    }
+
+    let run_dir = runtime_paths::run_dir_from_env(&run_id)
+        .map_err(|error| format!("failed to resolve guest-download runtime paths: {error}"))?;
+    guest_common::log::set_system_log_file(runtime_paths::system_log_file(&run_dir));
+    guest_common::telemetry::set_sandbox_ops_log_file(runtime_paths::sandbox_ops_log_file(run_dir));
+    Ok(())
 }
 
 fn manifest_input_from_args() -> Option<ManifestInput> {

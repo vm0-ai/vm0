@@ -1441,6 +1441,21 @@ mod tests {
         }
     }
 
+    struct SandboxOpsOverrideGuard;
+
+    impl SandboxOpsOverrideGuard {
+        fn set(path: &std::path::Path) -> Self {
+            guest_common::telemetry::set_sandbox_ops_log_file(path);
+            Self
+        }
+    }
+
+    impl Drop for SandboxOpsOverrideGuard {
+        fn drop(&mut self) {
+            guest_common::telemetry::clear_sandbox_ops_log_file();
+        }
+    }
+
     fn cli_diagnostic(message: &str, source: FailureDetailSource) -> cli::CliFailureDiagnostic {
         cli::CliFailureDiagnostic {
             message: message.to_string(),
@@ -2794,6 +2809,8 @@ mod tests {
         let tmp = tempfile::tempdir().unwrap();
         let system_log_path = tmp.path().join("system.log");
         let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
+        let _sandbox_ops_guard =
+            SandboxOpsOverrideGuard::set(std::path::Path::new(guest_paths.sandbox_ops_file()));
         let cleanup_paths = vec![
             system_log_path.to_string_lossy().into_owned(),
             guest_paths.sandbox_ops_file().to_string(),
@@ -2854,6 +2871,9 @@ mod tests {
                 server.reset_async().await;
                 let _env_guard = unsafe { set_test_env(server, None) };
                 let guest_paths = test_guest_paths();
+                let _sandbox_ops_guard = SandboxOpsOverrideGuard::set(std::path::Path::new(
+                    guest_paths.sandbox_ops_file(),
+                ));
 
                 let marker = "producer_after_shutdown_before_final_upload";
                 let cleanup_paths = vec![

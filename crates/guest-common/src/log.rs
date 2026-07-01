@@ -3,30 +3,9 @@
 use std::fs::File;
 use std::io::{self, IoSlice, Write};
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex};
+use std::sync::Mutex;
 
-#[allow(clippy::panic)]
-static RUN_ID: LazyLock<String> =
-    LazyLock::new(|| match std::env::var(guest_contracts::env::RUN_ID_ENV) {
-        Ok(run_id) if !run_id.is_empty() => run_id,
-        _ => panic!("VM0_RUN_ID is required for guest system logging"),
-    });
-static DEFAULT_SYSTEM_LOG_FILE: LazyLock<String> = LazyLock::new(|| {
-    path_to_string(guest_contracts::runtime_paths::system_log_file(
-        default_run_dir(),
-    ))
-});
 static SYSTEM_LOG: Mutex<SystemLogState> = Mutex::new(SystemLogState::disabled());
-
-#[allow(clippy::panic)]
-fn default_run_dir() -> PathBuf {
-    guest_contracts::runtime_paths::run_dir_from_env(&RUN_ID)
-        .unwrap_or_else(|error| panic!("failed to resolve guest system log path: {error}"))
-}
-
-fn path_to_string(path: PathBuf) -> String {
-    path.to_string_lossy().into_owned()
-}
 
 /// Process-global guest system log state.
 ///
@@ -109,20 +88,6 @@ fn open_system_log_file(path: &Path) -> std::io::Result<File> {
 /// Get current timestamp in RFC3339 format with milliseconds.
 pub fn timestamp() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
-}
-
-/// Enable writes to the guest-side system log file for the current run.
-///
-/// # Panics
-///
-/// Panics when `VM0_RUN_ID` is missing or empty. Guest binaries require a run
-/// ID before writing run-scoped logs.
-pub fn enable_system_log_file() {
-    set_system_log_file(default_system_log_file());
-}
-
-fn default_system_log_file() -> &'static str {
-    &DEFAULT_SYSTEM_LOG_FILE
 }
 
 /// Override the system log file used by future log lines.
