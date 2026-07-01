@@ -962,6 +962,7 @@ function decodeVerifiedResumeSessionHistory(
 }
 
 async function gunzipBufferWithMaxBytes(
+  hash: string,
   key: string,
   buffer: Buffer,
   maxBytes: number,
@@ -975,9 +976,12 @@ async function gunzipBufferWithMaxBytes(
   if (result.error instanceof S3ObjectSizeLimitError) {
     throw result.error;
   }
-  throw new Error("failed to decompress gzip session history", {
-    cause: result.error,
-  });
+  throw invalidResumeSessionHistoryError(
+    hash,
+    new Error("failed to decompress gzip session history", {
+      cause: result.error,
+    }),
+  );
 }
 
 const generateResumeSessionHistoryUrl$ = command(
@@ -1093,6 +1097,7 @@ const loadCompressedResumeSessionHistory$ = command(
       ),
     );
     const rawBuffer = await gunzipBufferWithMaxBytes(
+      args.hash,
       args.representation.objectKey,
       encodedBuffer,
       args.representation.rawSize,

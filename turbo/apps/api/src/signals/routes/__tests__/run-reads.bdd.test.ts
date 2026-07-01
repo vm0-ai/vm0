@@ -1136,6 +1136,82 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     );
   });
 
+  it("fails old runner claims when compressed resume history is not gzip", async () => {
+    const actor = await entitledActor();
+    const compose = await createClaudeCompose(actor, "bdd-bad-gzip-history");
+    const history = `{"type":"init"}\n{"type":"human","text":"bad-gzip-${randomUUID()}"}\n`;
+    const historyHash = createHash("sha256").update(history).digest("hex");
+    const compressedKey = `blobs/${historyHash}.blob.gz`;
+    const corruptCompressedHistory = Buffer.from("not gzip", "utf8");
+    context.mocks.s3.send.mockImplementation((command: unknown) => {
+      if (s3CommandKey(command) === compressedKey) {
+        return Promise.resolve({
+          ContentLength: corruptCompressedHistory.length,
+          Body: s3BytesBody(corruptCompressedHistory),
+        });
+      }
+      return Promise.resolve({});
+    });
+
+    const run = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "create corrupt compressed checkpoint",
+    });
+    const claim = await api.claimRunnerJob(run.runId);
+    const headers = sandboxHeaders(claim.sandboxToken);
+    const prepared = await webhooks.requestAgentCheckpointPrepareHistory(
+      {
+        runId: run.runId,
+        hash: historyHash,
+        size: Buffer.byteLength(history, "utf8"),
+        encoding: "gzip",
+      },
+      headers,
+      [200],
+    );
+    expect(prepared.body).toMatchObject({
+      existing: false,
+      encoding: "gzip",
+    });
+    const checkpointed = await webhooks.requestAgentCheckpoint(
+      {
+        runId: run.runId,
+        cliAgentType: "claude-code",
+        cliAgentSessionId: `bdd-cli-${run.runId}`,
+        cliAgentSessionHistoryHash: historyHash,
+      },
+      headers,
+      [200],
+    );
+    mustOk(checkpointed, "corrupt compressed resume checkpoint");
+    await webhooks.requestAgentComplete(
+      { runId: run.runId, exitCode: 0 },
+      headers,
+      [200],
+    );
+
+    const resumed = await api.createDirectRun(actor, {
+      checkpointId: checkpointed.body.checkpointId,
+      prompt: "resume with old runner",
+    });
+    const failedClaim = await api.requestClaimRunnerJob(
+      true,
+      resumed.runId,
+      [400],
+    );
+    expectApiError(failedClaim.body);
+    expect(failedClaim.body.error.message).toBe(
+      "Runner job has invalid resume session history",
+    );
+
+    const failedRun = await api.readRun(actor, resumed.runId);
+    expect(failedRun.status).toBe("failed");
+    expect(failedRun.error).toBe(
+      "Runner job has invalid resume session history",
+    );
+    await api.requestClaimRunnerJob(true, resumed.runId, [404]);
+  });
+
   it("restores volumes, memory, and conversation state when resuming checkpoints", async () => {
     const storages = createStoragesBddApi(context);
     const actor = await entitledActor();
