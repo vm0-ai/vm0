@@ -370,6 +370,26 @@ async fn load_normalizes_server_url() {
 }
 
 #[tokio::test]
+async fn load_for_start_applies_api_url_override_before_server_url_validation() {
+    let fixture = ConfigFixture::new().await;
+    let yaml = fixture.yaml_with_default_profile(
+        r#"server:
+  url: "https://user:pass@stale.example.com?token=secret#frag"
+  token: secret
+"#,
+    );
+    let config_path = fixture.write_config(&yaml).await;
+
+    let config = load_for_start(&config_path, Some("https://api.example.com/prefix/"))
+        .await
+        .unwrap();
+
+    let server = config.server.unwrap();
+    assert_eq!(server.url, "https://api.example.com/prefix");
+    assert_eq!(server.token, "secret");
+}
+
+#[tokio::test]
 async fn load_rejects_server_url_with_sensitive_components() {
     let fixture = ConfigFixture::new().await;
     let cases = [

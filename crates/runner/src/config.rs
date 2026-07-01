@@ -174,7 +174,17 @@ pub async fn load(path: &Path) -> RunnerResult<RunnerConfig> {
     let home = HomePaths::new()?;
     // Image artifacts are mutable cache outputs. Runtime callers validate
     // them only after acquiring the matching shared rootfs/snapshot locks.
-    load_with_home(path, &home, false).await
+    load_with_home_inner(path, &home, false, None).await
+}
+
+/// Load a runner config for `runner start`, applying the API URL override
+/// before validating `server.url`.
+pub(crate) async fn load_for_start(
+    path: &Path,
+    api_url_override: Option<&str>,
+) -> RunnerResult<RunnerConfig> {
+    let home = HomePaths::new()?;
+    load_with_home_inner(path, &home, false, api_url_override).await
 }
 
 /// Read a runner config selected by diagnostic/discovery code.
@@ -191,10 +201,20 @@ pub(crate) async fn read_diagnostic_config_to_string(path: &Path) -> RunnerResul
     .await
 }
 
+#[cfg(test)]
 async fn load_with_home(
     path: &Path,
     home: &HomePaths,
     validate_image_artifacts: bool,
+) -> RunnerResult<RunnerConfig> {
+    load_with_home_inner(path, home, validate_image_artifacts, None).await
+}
+
+async fn load_with_home_inner(
+    path: &Path,
+    home: &HomePaths,
+    validate_image_artifacts: bool,
+    api_url_override: Option<&str>,
 ) -> RunnerResult<RunnerConfig> {
     let content = tokio::fs::read_to_string(path)
         .await
@@ -203,6 +223,13 @@ async fn load_with_home(
         .map_err(|e| RunnerError::Config(format!("parse {}: {e}", path.display())))?;
     if let Some(config_dir) = path.parent() {
         config.resolve_relative_paths(config_dir);
+    }
+    if let Some(api_url) = api_url_override {
+        let server = config.server.get_or_insert_with(|| ServerConfig {
+            url: String::new(),
+            token: String::new(),
+        });
+        server.url = api_url.to_string();
     }
     if let Some(server) = &mut config.server
         && !server.url.is_empty()
