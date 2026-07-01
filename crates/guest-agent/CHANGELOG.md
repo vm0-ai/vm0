@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.44.2](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.44.1...guest-agent-v0.44.2) (2026-07-01)
+
+
+### Refactoring
+
+* retire guest-agent env facade readers ([#19712](https://github.com/vm0-ai/vm0/issues/19712)) ([13cf0a8](https://github.com/vm0-ai/vm0/commit/13cf0a857fc2738671a0ec629e97ddc53ccc21ec))
+
 ## [0.44.1](https://github.com/vm0-ai/vm0/compare/guest-agent-v0.44.0...guest-agent-v0.44.1) (2026-07-01)
 
 
