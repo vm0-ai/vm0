@@ -759,7 +759,7 @@ function JobPermissionsTab({
     await bestEffort(
       (async () => {
         await modify;
-        await saveConnectors(pageSignal);
+        await saveConnectors(type, checked ? "add" : "remove", pageSignal);
         toast.success("Connectors saved");
       })(),
     );

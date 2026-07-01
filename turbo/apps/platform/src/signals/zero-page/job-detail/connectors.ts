@@ -51,7 +51,7 @@ export const authorizeAgentConnector$ = command(
       set(internalAuthorizedConnectors$, await get(authorizedConnectors$));
     }
     set(internalAuthorizedConnectors$, (prev) => {
-      return [...(prev ?? []), name];
+      return Array.from(new Set([...(prev ?? []), name]));
     });
   },
 );
@@ -74,19 +74,23 @@ export const discardAgentConnectorsDraft$ = command(({ set }) => {
 });
 
 export const saveAgentConnectors$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+  async (
+    { get, set },
+    name: string,
+    operation: "add" | "remove",
+    signal: AbortSignal,
+  ) => {
     const detail = await get(agentDetail$);
     signal.throwIfAborted();
     if (!detail?.agentId) {
       throw new Error("No agent detail loaded");
     }
 
-    const enabledTypes = get(internalAuthorizedConnectors$) ?? [];
     const client = get(zeroClient$)(zeroUserConnectorsContract);
     await accept(
       client.update({
         params: { id: detail.agentId },
-        body: { enabledTypes },
+        body: { enabledTypes: [name], operation },
         fetchOptions: { signal },
       }),
       [200],

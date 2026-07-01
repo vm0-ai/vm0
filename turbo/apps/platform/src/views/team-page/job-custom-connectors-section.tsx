@@ -90,7 +90,7 @@ export function JobCustomConnectorsSection() {
     detach(
       (async () => {
         await mutate;
-        await save(pageSignal);
+        await save(id, checked ? "add" : "remove", pageSignal);
         toast.success("Custom connectors saved");
       })(),
       Reason.DomCallback,

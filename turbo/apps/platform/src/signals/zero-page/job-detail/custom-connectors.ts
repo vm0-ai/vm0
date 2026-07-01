@@ -49,7 +49,7 @@ export const addAgentCustomConnector$ = command(
       set(internalAdded$, await get(seededCustomConnectors$));
     }
     set(internalAdded$, (prev) => {
-      return [...(prev ?? []), id];
+      return Array.from(new Set([...(prev ?? []), id]));
     });
   },
 );
@@ -68,19 +68,23 @@ export const removeAgentCustomConnector$ = command(
 );
 
 export const saveAgentCustomConnectors$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
+  async (
+    { get, set },
+    id: string,
+    operation: "add" | "remove",
+    signal: AbortSignal,
+  ) => {
     const detail = await get(agentDetail$);
     signal.throwIfAborted();
     if (!detail?.agentId) {
       throw new Error("No agent detail loaded");
     }
 
-    const enabledIds = get(internalAdded$) ?? [];
     const client = get(zeroClient$)(zeroAgentCustomConnectorsContract);
     await accept(
       client.update({
         params: { id: detail.agentId },
-        body: { enabledIds },
+        body: { enabledIds: [id], operation },
         fetchOptions: { signal },
       }),
       [200],
