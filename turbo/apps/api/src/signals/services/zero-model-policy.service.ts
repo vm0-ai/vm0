@@ -8,6 +8,7 @@ import {
   getDefaultOrgModelPolicySeed,
   isModelSupportedByProvider,
   isLimitedFree1RestrictedRunModel,
+  type ModelProviderFeatureStates,
   type ModelProviderCredentialScope,
   type ModelProviderType,
   type OrgModelPoliciesResponse,
@@ -16,6 +17,7 @@ import {
   type SupportedRunModel,
   type UpdateOrgModelPolicy,
 } from "@vm0/api-contracts/contracts/model-providers";
+import { getAllFeatureStates } from "@vm0/core/feature-switch";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
@@ -23,6 +25,7 @@ import { orgModelPolicies } from "@vm0/db/schema/org-model-policy";
 import { insufficientCredits } from "../../lib/error";
 import { nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
+import { userFeatureSwitchContext } from "./feature-switches.service";
 
 type OrgModelPolicyRow = typeof orgModelPolicies.$inferSelect;
 
@@ -206,8 +209,15 @@ async function validateOrgProviderRoute(
   db: Db,
   orgId: string,
   policy: UpdateOrgModelPolicy,
+  featureStates: ModelProviderFeatureStates,
 ): Promise<string | null> {
-  if (!isModelSupportedByProvider(policy.model, policy.defaultProviderType)) {
+  if (
+    !isModelSupportedByProvider(
+      policy.model,
+      policy.defaultProviderType,
+      featureStates,
+    )
+  ) {
     return `Model "${policy.model}" is not supported by provider "${policy.defaultProviderType}"`;
   }
 
@@ -267,6 +277,7 @@ async function validateUpdatePolicies(
   orgId: string,
   policies: UpdateOrgModelPolicy[],
   limitedFree1: boolean,
+  featureStates: ModelProviderFeatureStates,
 ): Promise<ServiceResult<UpdateOrgModelPolicy[]>> {
   if (policies.length === 0) {
     return bad("Request must include at least one model");
@@ -298,7 +309,12 @@ async function validateUpdatePolicies(
       defaultCount += 1;
     }
 
-    const routeError = await validateOrgProviderRoute(db, orgId, policy);
+    const routeError = await validateOrgProviderRoute(
+      db,
+      orgId,
+      policy,
+      featureStates,
+    );
     if (routeError) {
       return bad(routeError);
     }
@@ -317,6 +333,7 @@ function getRouteStatus(params: {
   readonly credentialScope: ModelProviderCredentialScope;
   readonly modelProviderId: string | null;
   readonly providersById: Map<string, ProviderRouteInfo>;
+  readonly featureStates: ModelProviderFeatureStates;
 }): {
   readonly status: OrgModelPolicyRouteStatus;
   readonly reason: string | null;
@@ -327,9 +344,10 @@ function getRouteStatus(params: {
     credentialScope,
     modelProviderId,
     providersById,
+    featureStates,
   } = params;
 
-  if (!isModelSupportedByProvider(model, providerType)) {
+  if (!isModelSupportedByProvider(model, providerType, featureStates)) {
     return {
       status: "invalid",
       reason: "Provider does not support this model.",
@@ -366,6 +384,7 @@ function getRouteStatus(params: {
 function serializePolicy(
   policy: OrgModelPolicyRow,
   providersById: Map<string, ProviderRouteInfo>,
+  featureStates: ModelProviderFeatureStates,
 ): OrgModelPolicy {
   const model = parseSupportedModel(policy.model);
   const providerType = parseProviderType(policy.defaultProviderType);
@@ -380,6 +399,7 @@ function serializePolicy(
     credentialScope,
     modelProviderId: policy.modelProviderId ?? null,
     providersById,
+    featureStates,
   });
 
   return {
@@ -411,6 +431,7 @@ async function listOrgModelPolicies(
   db: Db,
   orgId: string,
   userId: string,
+  featureStates: ModelProviderFeatureStates,
 ): Promise<OrgModelPoliciesResponse> {
   const rows = await ensureOrgModelPolicies(db, orgId, userId);
   const providers = await listOrgProviderRoutes(db, orgId);
@@ -420,7 +441,7 @@ async function listOrgModelPolicies(
     }),
   );
   const policies = rows.map((row) => {
-    return serializePolicy(row, providersById);
+    return serializePolicy(row, providersById, featureStates);
   });
   const workspaceDefault = selectWorkspaceDefaultPolicy(policies);
 
@@ -433,15 +454,21 @@ async function listOrgModelPolicies(
 
 export const listOrgModelPolicies$ = command(
   async (
-    { set },
+    { get, set },
     params: { readonly orgId: string; readonly userId: string },
     signal: AbortSignal,
   ): Promise<OrgModelPoliciesResponse> => {
     const db = set(writeDb$);
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(params.orgId, params.userId),
+    );
+    signal.throwIfAborted();
+    const featureStates = getAllFeatureStates(featureSwitchContext);
     const response = await listOrgModelPolicies(
       db,
       params.orgId,
       params.userId,
+      featureStates,
     );
     signal.throwIfAborted();
     return response;
@@ -450,7 +477,7 @@ export const listOrgModelPolicies$ = command(
 
 export const updateOrgModelPolicies$ = command(
   async (
-    { set },
+    { get, set },
     params: {
       readonly orgId: string;
       readonly userId: string;
@@ -459,6 +486,11 @@ export const updateOrgModelPolicies$ = command(
     signal: AbortSignal,
   ): Promise<ServiceResult<OrgModelPoliciesResponse>> => {
     const db = set(writeDb$);
+    const featureSwitchContext = await get(
+      userFeatureSwitchContext(params.orgId, params.userId),
+    );
+    signal.throwIfAborted();
+    const featureStates = getAllFeatureStates(featureSwitchContext);
     const limitedFree1 = await orgHasLimitedFree1Restrictions(db, params.orgId);
     signal.throwIfAborted();
     const validation = await validateUpdatePolicies(
@@ -466,6 +498,7 @@ export const updateOrgModelPolicies$ = command(
       params.orgId,
       params.policies,
       limitedFree1,
+      featureStates,
     );
     signal.throwIfAborted();
     if (!validation.ok) {
@@ -542,6 +575,7 @@ export const updateOrgModelPolicies$ = command(
       db,
       params.orgId,
       params.userId,
+      featureStates,
     );
     signal.throwIfAborted();
     return ok(response);

@@ -19,11 +19,14 @@ import {
   getVm0ConcreteProviderType,
   getVm0Vendor,
   hasAuthMethods,
+  isModelProviderTypeEnabled,
   isSupportedRunModel,
   MODEL_PROVIDER_TYPES,
   normalizeRunModelId,
+  shouldInlineModelProviderFirewall,
   type ModelProviderEnvBindings,
   type ModelProviderCredentialScope,
+  type ModelProviderFeatureStates,
   type ModelProviderType,
 } from "@vm0/api-contracts/contracts/model-providers";
 import {
@@ -379,9 +382,12 @@ interface ResolvedModelProviderEnvironment {
   readonly id: string | null;
   readonly type: ModelProviderType;
   readonly concreteType?: ModelProviderType;
+  readonly framework: SupportedFramework;
   readonly environment: Record<string, string>;
   readonly secrets: Record<string, string>;
   readonly selectedModel: string | null;
+  readonly firewall?: ExpandedFirewallConfig;
+  readonly inlineFirewall?: boolean;
   readonly secretConnectorMap?: Record<string, string>;
   readonly secretConnectorMetadataMap?: Record<string, SecretConnectorMetadata>;
 }
@@ -701,32 +707,39 @@ function resolveFramework(
 function modelProviderFramework(
   modelProvider: ResolvedModelProviderEnvironment,
 ): SupportedFramework {
-  return getFrameworkForType(modelProvider.concreteType ?? modelProvider.type);
+  return modelProvider.framework;
 }
 
 function frameworkForProviderSelection(
   providerType: ModelProviderType,
   selectedModel: string | null | undefined,
+  featureStates?: ModelProviderFeatureStates,
 ): SupportedFramework | null {
   if (providerType !== "vm0") {
-    return getFrameworkForType(providerType);
+    return getFrameworkForType(providerType, featureStates);
   }
   if (!selectedModel) {
     return null;
   }
-  return getFrameworkForType(getVm0ConcreteProviderType(selectedModel));
+  return getFrameworkForType(
+    getVm0ConcreteProviderType(selectedModel),
+    featureStates,
+  );
 }
 
 async function resolveRequestedRunFramework(
   db: Db,
   args: CreateAgentRunArgs,
   composeFramework: SupportedFramework,
+  featureSwitchContext: FeatureSwitchContext,
 ): Promise<SupportedFramework> {
+  const featureStates = getAllFeatureStates(featureSwitchContext);
   if (args.modelProviderType && isModelProviderType(args.modelProviderType)) {
     return (
       frameworkForProviderSelection(
         args.modelProviderType,
         args.selectedModelOverride,
+        featureStates,
       ) ?? composeFramework
     );
   }
@@ -761,6 +774,7 @@ async function resolveRequestedRunFramework(
     frameworkForProviderSelection(
       provider.type,
       args.selectedModelOverride ?? provider.selectedModel,
+      featureStates,
     ) ?? composeFramework
   );
 }
@@ -1194,8 +1208,9 @@ function modelProviderEnvironmentSecretValue(
   type: ModelProviderType,
   secretName: string,
   secretValue: string,
+  featureStates?: ModelProviderFeatureStates,
 ): string {
-  return getModelProviderFirewall(type)
+  return getModelProviderFirewall(type, featureStates)
     ? `\${{ secrets.${secretName} }}`
     : secretValue;
 }
@@ -1208,6 +1223,7 @@ function modelProviderFirewallAuthMaps(
   providerType: ModelProviderType,
   sourceUserId: string,
   secretNames: readonly string[],
+  featureStates?: ModelProviderFeatureStates,
 ):
   | {
       readonly secretConnectorMap: Record<string, string>;
@@ -1217,7 +1233,7 @@ function modelProviderFirewallAuthMaps(
       >;
     }
   | undefined {
-  if (getModelProviderFirewall(providerType) === undefined) {
+  if (getModelProviderFirewall(providerType, featureStates) === undefined) {
     return undefined;
   }
 
@@ -1254,8 +1270,10 @@ function modelProviderEnvironment(args: {
   readonly secretValue: string | undefined;
   readonly sourceUserId: string;
   readonly selectedModel: string | null;
+  readonly featureStates?: ModelProviderFeatureStates;
 }): ResolvedModelProviderEnvironment {
-  const hasFirewallAuth = getModelProviderFirewall(args.type) !== undefined;
+  const firewall = getModelProviderFirewall(args.type, args.featureStates);
+  const hasFirewallAuth = firewall !== undefined;
   if (!hasFirewallAuth && args.secretValue === undefined) {
     throw new Error(`Missing eager secret for model provider ${args.type}`);
   }
@@ -1265,9 +1283,13 @@ function modelProviderEnvironment(args: {
     args.type,
     args.config.secretName,
     args.secretValue ?? "",
+    args.featureStates,
   );
+  const envBindings =
+    getModelProviderEnvBindings(args.type, args.featureStates) ??
+    args.config.envBindings;
   const environment: Record<string, string> = {};
-  for (const [key, value] of Object.entries(args.config.envBindings)) {
+  for (const [key, value] of Object.entries(envBindings)) {
     environment[key] = value
       .replaceAll("$secret", environmentSecret)
       .replaceAll("$model", runtimeModel);
@@ -1276,14 +1298,23 @@ function modelProviderEnvironment(args: {
   return {
     id: args.id,
     type: args.type,
+    framework: getFrameworkForType(args.type, args.featureStates),
     environment,
     secrets: hasFirewallAuth
       ? {}
       : { [args.config.secretName]: args.secretValue ?? "" },
     selectedModel: model || null,
-    ...modelProviderFirewallAuthMaps(args.type, args.sourceUserId, [
-      args.config.secretName,
-    ]),
+    firewall,
+    inlineFirewall: shouldInlineModelProviderFirewall(
+      args.type,
+      args.featureStates,
+    ),
+    ...modelProviderFirewallAuthMaps(
+      args.type,
+      args.sourceUserId,
+      [args.config.secretName],
+      args.featureStates,
+    ),
   };
 }
 
@@ -1292,14 +1323,16 @@ function providerEnvironmentFromSecretRefs(
   secretName: string,
   secretValue: string,
   selectedModel: string | null,
+  featureStates?: ModelProviderFeatureStates,
 ): Record<string, string> {
-  const envBindings = getModelProviderEnvBindings(type);
+  const envBindings = getModelProviderEnvBindings(type, featureStates);
   if (!envBindings) {
     return {
       [secretName]: modelProviderEnvironmentSecretValue(
         type,
         secretName,
         secretValue,
+        featureStates,
       ),
     };
   }
@@ -1312,6 +1345,7 @@ function providerEnvironmentFromSecretRefs(
         type,
         secretName,
         secretValue,
+        featureStates,
       );
     } else if (value === "$model") {
       if (model) {
@@ -1324,6 +1358,7 @@ function providerEnvironmentFromSecretRefs(
           type,
           referencedSecret,
           secretValue,
+          featureStates,
         );
       }
     } else {
@@ -1337,14 +1372,20 @@ function providerEnvironmentFromSecretMap(
   type: ModelProviderType,
   providerSecrets: Record<string, string>,
   selectedModel: string | null,
+  featureStates?: ModelProviderFeatureStates,
 ): Record<string, string> {
-  const envBindings = getModelProviderEnvBindings(type);
+  const envBindings = getModelProviderEnvBindings(type, featureStates);
   if (!envBindings) {
     return Object.fromEntries(
       Object.entries(providerSecrets).map(([secretName, secretValue]) => {
         return [
           secretName,
-          modelProviderEnvironmentSecretValue(type, secretName, secretValue),
+          modelProviderEnvironmentSecretValue(
+            type,
+            secretName,
+            secretValue,
+            featureStates,
+          ),
         ];
       }),
     );
@@ -1361,6 +1402,7 @@ function providerEnvironmentFromSecretMap(
           type,
           secretName,
           secretValue,
+          featureStates,
         );
       }
     } else if (value === "$model") {
@@ -1375,6 +1417,7 @@ function providerEnvironmentFromSecretMap(
           type,
           secretName,
           secretValue,
+          featureStates,
         );
       }
     } else {
@@ -1408,7 +1451,9 @@ async function multiAuthModelProviderEnvironment(
     return null;
   }
 
-  const hasFirewallAuth = getModelProviderFirewall(args.type) !== undefined;
+  const featureStates = getAllFeatureStates(args.featureSwitchContext);
+  const firewall = getModelProviderFirewall(args.type, featureStates);
+  const hasFirewallAuth = firewall !== undefined;
   const secretRows = await db
     .select({
       name: secretsTable.name,
@@ -1464,17 +1509,22 @@ async function multiAuthModelProviderEnvironment(
     args.type,
     args.userId,
     Object.keys(forwardableSecrets),
+    featureStates,
   );
   return {
     id: args.id,
     type: args.type,
+    framework: getFrameworkForType(args.type, featureStates),
     environment: providerEnvironmentFromSecretMap(
       args.type,
       forwardableSecrets,
       runtimeModel,
+      featureStates,
     ),
     secrets: hasFirewallAuth ? {} : forwardableSecrets,
     selectedModel,
+    firewall,
+    inlineFirewall: shouldInlineModelProviderFirewall(args.type, featureStates),
     secretConnectorMap: authMaps?.secretConnectorMap,
     secretConnectorMetadataMap: authMaps?.secretConnectorMetadataMap,
   };
@@ -1483,7 +1533,9 @@ async function multiAuthModelProviderEnvironment(
 async function vm0ModelProviderEnvironment(
   db: Db,
   selectedModel: string,
+  featureSwitchContext: FeatureSwitchContext,
 ): Promise<ResolvedModelProviderEnvironment | null> {
+  const featureStates = getAllFeatureStates(featureSwitchContext);
   const concreteType = getVm0ConcreteProviderType(selectedModel);
   const vendor = getVm0Vendor(selectedModel);
   const apiModel = getProviderRuntimeModel("vm0", selectedModel);
@@ -1512,14 +1564,21 @@ async function vm0ModelProviderEnvironment(
     id: null,
     type: "vm0",
     concreteType,
+    framework: getFrameworkForType(concreteType, featureStates),
     environment: providerEnvironmentFromSecretRefs(
       concreteType,
       secretName,
       apiKey,
       apiModel,
+      featureStates,
     ),
     secrets: { [secretName]: apiKey },
     selectedModel,
+    firewall: getModelProviderFirewall(concreteType, featureStates),
+    inlineFirewall: shouldInlineModelProviderFirewall(
+      concreteType,
+      featureStates,
+    ),
   };
 }
 
@@ -1578,19 +1637,29 @@ async function resolveCandidateModelProviderEnvironment(
   args: ResolveModelProviderEnvironmentArgs,
   row: ResolvableModelProviderEnvironmentRow,
 ): Promise<ResolvedModelProviderEnvironment | null> {
+  const featureStates = getAllFeatureStates(args.featureSwitchContext);
   if (row.type === "vm0") {
     const selectedModel =
       args.selectedModelOverride ??
       row.selectedModel ??
       MODEL_PROVIDER_TYPES.vm0.defaultModel;
-    const provider = await vm0ModelProviderEnvironment(db, selectedModel);
+    const provider = await vm0ModelProviderEnvironment(
+      db,
+      selectedModel,
+      args.featureSwitchContext,
+    );
     return provider?.concreteType &&
-      getFrameworkForType(provider.concreteType) === args.framework
+      getFrameworkForType(provider.concreteType, featureStates) ===
+        args.framework
       ? provider
       : null;
   }
 
-  if (getFrameworkForType(row.type) !== args.framework) {
+  if (getFrameworkForType(row.type, featureStates) !== args.framework) {
+    return null;
+  }
+
+  if (!isModelProviderTypeEnabled(row.type, featureStates)) {
     return null;
   }
 
@@ -1610,7 +1679,7 @@ async function resolveCandidateModelProviderEnvironment(
   if (!isSingleSecretModelProviderConfig(config) || !row.encryptedValue) {
     return null;
   }
-  if (getModelProviderFirewall(row.type) !== undefined) {
+  if (getModelProviderFirewall(row.type, featureStates) !== undefined) {
     return modelProviderEnvironment({
       id: row.id,
       type: row.type,
@@ -1618,6 +1687,7 @@ async function resolveCandidateModelProviderEnvironment(
       secretValue: undefined,
       sourceUserId: row.userId,
       selectedModel: args.selectedModelOverride ?? row.selectedModel,
+      featureStates,
     });
   }
   const secretValue = await decryptStoredSecretValue(
@@ -1634,6 +1704,7 @@ async function resolveCandidateModelProviderEnvironment(
     secretValue,
     sourceUserId: row.userId,
     selectedModel: args.selectedModelOverride ?? row.selectedModel,
+    featureStates,
   });
 }
 
@@ -1645,9 +1716,13 @@ async function resolveModelProviderEnvironment(
     const provider = await vm0ModelProviderEnvironment(
       db,
       args.selectedModelOverride ?? MODEL_PROVIDER_TYPES.vm0.defaultModel,
+      args.featureSwitchContext,
     );
     return provider?.concreteType &&
-      getFrameworkForType(provider.concreteType) === args.framework
+      getFrameworkForType(
+        provider.concreteType,
+        getAllFeatureStates(args.featureSwitchContext),
+      ) === args.framework
       ? provider
       : null;
   }
@@ -3212,9 +3287,9 @@ function modelProviderPermissionManifest(
     return undefined;
   }
 
-  const firewall = getModelProviderFirewall(
-    modelProvider.concreteType ?? modelProvider.type,
-  );
+  const firewall =
+    modelProvider.firewall ??
+    getModelProviderFirewall(modelProvider.concreteType ?? modelProvider.type);
   if (!firewall) {
     return undefined;
   }
@@ -3223,7 +3298,11 @@ function modelProviderPermissionManifest(
   const denySet = new Set(firewall.defaultPolicies?.deny ?? []);
   const askSet = new Set(firewall.defaultPolicies?.ask ?? []);
   return {
-    firewalls: [builtinFirewallEntry(firewall, vars)],
+    firewalls: [
+      modelProvider.inlineFirewall
+        ? inlineFirewallEntry(firewall)
+        : builtinFirewallEntry(firewall, vars),
+    ],
     environmentSecretPlaceholders: firewallSecretPlaceholdersFromFirewalls([
       firewall,
     ]),
@@ -4432,6 +4511,7 @@ function buildRunContextSnapshot(args: {
     prompt: args.body.prompt,
     appendSystemPrompt: args.body.appendSystemPrompt ?? null,
     sessionId: cliAgentSessionId,
+    cliAgentType: storedContext.cliAgentType,
     secretNames: [...args.builtContext.secretNames],
     environmentEntries: environmentRecordToEntries(sanitizedEnvironment),
     firewalls: firewallSnapshots(storedContext.firewalls),
@@ -5607,6 +5687,7 @@ async function prepareRunBodyContext(args: {
         args.db,
         args.createArgs,
         frameworkValidation.framework,
+        featureSwitchContext,
       );
     },
   );

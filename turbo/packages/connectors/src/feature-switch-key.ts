@@ -41,6 +41,7 @@ export enum FeatureSwitchKey {
   StabilityAiConnector = "stabilityAiConnector",
   ZoomConnector = "zoomConnector",
   ApiKeys = "apiKeys",
+  CodexFrameworkForMinimax = "codexFrameworkForMinimax",
 
   ZapierConnector = "zapierConnector",
   SandboxIoLimiters = "sandboxIoLimiters",
