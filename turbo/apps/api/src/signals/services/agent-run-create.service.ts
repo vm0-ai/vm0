@@ -114,7 +114,7 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
 import { variables } from "@vm0/db/schema/variable";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, count, eq, inArray, or, sql } from "drizzle-orm";
+import { and, count, eq, inArray, ne, or, sql } from "drizzle-orm";
 import type { z } from "zod";
 
 import { env, optionalEnv } from "../../lib/env";
@@ -344,7 +344,7 @@ interface RunRecord {
   readonly id: string;
   readonly createdAt: Date;
   readonly sessionId: string;
-  readonly status: "pending" | "queued";
+  readonly status: LaunchRunStatus;
 }
 
 interface LaunchRunIdentity {
@@ -4958,11 +4958,7 @@ async function commitFailedLaunch(args: {
       runnerGroup: undefined,
       error: message,
     });
-    const run = runRecordFromLaunchIdentity(
-      args.identity,
-      "pending",
-      createdAt,
-    );
+    const run = runRecordFromLaunchIdentity(args.identity, "failed", createdAt);
     const chatAssociated = await writeChatLaunchAssociationRows(tx, {
       association: args.createArgs.chatLaunchAssociation,
       run,
@@ -5005,7 +5001,7 @@ async function commitFailedLaunch(args: {
     );
   }
   return failedRunResponse(
-    runRecordFromLaunchIdentity(args.identity, "pending", result.createdAt),
+    runRecordFromLaunchIdentity(args.identity, "failed", result.createdAt),
     args.error,
   );
 }
@@ -5098,6 +5094,22 @@ async function writeAutoSendChatLaunchAssociation(
   },
 ): Promise<boolean> {
   const association = args.association;
+  const [competingRun] = await tx
+    .select({ id: zeroRuns.id })
+    .from(zeroRuns)
+    .innerJoin(agentRuns, eq(agentRuns.id, zeroRuns.id))
+    .where(
+      and(
+        eq(zeroRuns.chatThreadId, association.threadId),
+        ne(zeroRuns.id, args.run.id),
+        inArray(agentRuns.status, ["queued", "pending", "running"]),
+      ),
+    )
+    .limit(1);
+  if (competingRun) {
+    return false;
+  }
+
   const [inserted] = await tx
     .insert(chatMessages)
     .values({
