@@ -1571,6 +1571,18 @@ describe("zero attachment chips", () => {
       ).toHaveLength(2);
     });
 
+    mockElementRect(frame, {
+      height: 640,
+      left: 0,
+      top: 0,
+      width: 960,
+    });
+    mockElementRect(frame.parentElement!, {
+      height: 720,
+      left: 0,
+      top: 0,
+      width: 960,
+    });
     fireEvent.click(title!);
     await waitFor(() => {
       const visibleMarkers = frame.contentDocument?.querySelectorAll(
@@ -1585,6 +1597,53 @@ describe("zero attachment chips", () => {
       expect(screen.getByTestId("html-dom-comment-textarea")).toHaveValue(
         "Make the hero headline shorter",
       );
+      expect(
+        screen.getByTestId("html-dom-comment-textarea"),
+      ).not.toHaveAttribute("readonly");
+    });
+    const editedPopover = screen.getByTestId("html-dom-comment-popover");
+    const initialEditedPopoverTop = Number.parseFloat(editedPopover.style.top);
+    mockElementRect(title!, {
+      height: 32,
+      left: 284,
+      top: 72,
+      width: 32,
+    });
+    fireEvent.scroll(frame.contentDocument!);
+    await waitFor(() => {
+      expect(Number.parseFloat(editedPopover.style.top)).toBeGreaterThan(
+        initialEditedPopoverTop,
+      );
+    });
+    mockElementRect(title!, {
+      height: 32,
+      left: 284,
+      top: -80,
+      width: 32,
+    });
+    fireEvent.scroll(frame.contentDocument!);
+    await waitFor(() => {
+      expect(screen.queryByTestId("html-dom-comment-popover")).toBeNull();
+      expect(title).not.toHaveAttribute(HTML_DOM_EDIT_SELECTED_ATTR);
+      expect(
+        frame.contentDocument?.querySelectorAll(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveLength(1);
+      expect(
+        frame.contentDocument?.querySelector(
+          "[data-testid='html-dom-comment-marker']",
+        ),
+      ).toHaveTextContent("Make the body copy warmer");
+    });
+    mockElementRect(title!, {
+      height: 32,
+      left: 284,
+      top: 24,
+      width: 32,
+    });
+    fireEvent.click(title!);
+    await waitFor(() => {
       expect(
         screen.getByTestId("html-dom-comment-textarea"),
       ).not.toHaveAttribute("readonly");
@@ -1815,7 +1874,17 @@ describe("zero attachment chips", () => {
 
     await waitFor(() => {
       expect(screen.getByTestId("html-dom-color-controls")).toBeInTheDocument();
+      expect(screen.getByTestId("html-dom-color-controls")).toHaveClass(
+        "grid-cols-2",
+      );
       expect(screen.queryByTestId("html-dom-color-popover")).toBeNull();
+      expect(
+        screen
+          .getByTestId("html-dom-color-controls")
+          .compareDocumentPosition(
+            screen.getByTestId("html-dom-comment-textarea"),
+          ),
+      ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
       expect(
         screen.getByTestId("html-dom-color-control-color"),
       ).toHaveTextContent("#ff0000");
@@ -1932,7 +2001,7 @@ describe("zero attachment chips", () => {
     });
   });
 
-  it("hides hosted-site HTML color controls for selected images", async () => {
+  it("shows hosted-site HTML image controls for selected images", async () => {
     const htmlUrl = "https://image-launch-site.sites.vm7.io";
 
     setupHostedSiteArtifactPreview({
@@ -1973,7 +2042,383 @@ describe("zero attachment chips", () => {
       expect(
         screen.getByTestId("html-dom-comment-popover"),
       ).toBeInTheDocument();
+      expect(screen.getByTestId("html-dom-image-tools")).toBeInTheDocument();
+      expect(
+        screen.getByTestId("html-dom-image-source-upload"),
+      ).toHaveTextContent("Upload");
+      expect(
+        screen.getByTestId("html-dom-image-source-link"),
+      ).toHaveTextContent("Link");
+      expect(
+        screen.getByTestId("html-dom-image-layout-cover"),
+      ).toHaveTextContent("Cover");
+      expect(
+        screen.getByTestId("html-dom-image-layout-contain"),
+      ).toHaveTextContent("Contain");
+      expect(screen.getByTestId("html-dom-image-layout-fill")).toHaveAttribute(
+        "aria-pressed",
+        "true",
+      );
+      expect(screen.getByTestId("html-dom-image-upload-input")).toHaveAttribute(
+        "accept",
+        expect.stringContaining("image/png"),
+      );
+      expect(
+        screen
+          .getByTestId("html-dom-image-upload-input")
+          .getAttribute("accept"),
+      ).not.toContain("svg");
+      expect(screen.getByTestId("html-dom-comment-textarea")).toHaveAttribute(
+        "placeholder",
+        "Ask Zero to adjust this image",
+      );
       expect(screen.queryByTestId("html-dom-color-controls")).toBeNull();
+    });
+  });
+
+  it("shows hosted-site HTML image controls when selecting image wrappers", async () => {
+    const htmlUrl = "https://wrapped-image-launch-site.sites.vm7.io";
+
+    setupHostedSiteArtifactPreview({
+      filename: "wrapped-image-launch-site.html",
+      html: `<!doctype html>
+      <html>
+        <head><title>Wrapped image launch site</title></head>
+        <body>
+          <main>
+            <h1>Launch faster</h1>
+            <figure>
+              <a href="/hero">
+                <img src="/hero.png" alt="Hero" />
+              </a>
+            </figure>
+          </main>
+        </body>
+      </html>`,
+      htmlUrl,
+      label: "Wrapped image launch site",
+      runId: "run-hosted-site-wrapped-image",
+    });
+
+    click(
+      await screen.findByLabelText(
+        "Open html preview for Wrapped image launch site",
+      ),
+    );
+    click(await screen.findByLabelText("Edit page"));
+
+    const frame = (await screen.findByTestId(
+      "html-dom-comment-frame",
+    )) as HTMLIFrameElement;
+    await waitFor(() => {
+      expect(
+        frame.contentDocument
+          ?.querySelector("img")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+      expect(
+        frame.contentDocument
+          ?.querySelector("a")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+    });
+
+    const link = frame.contentDocument!.querySelector("a")!;
+    const image = frame.contentDocument!.querySelector("img")!;
+    mockElementRect(image, {
+      height: 80,
+      left: 10,
+      top: 20,
+      width: 120,
+    });
+    fireEvent.mouseOver(image);
+
+    await waitFor(() => {
+      expect(
+        within(frame.contentDocument!.body).getByTestId("html-dom-hover-box"),
+      ).toHaveStyle({ border: "2px dashed rgba(37, 99, 235, 0.85)" });
+    });
+
+    let imageAnimationRunning = true;
+    Object.defineProperty(image, "getAnimations", {
+      configurable: true,
+      value: () => {
+        return imageAnimationRunning
+          ? [
+              {
+                effect: {
+                  getTiming: () => {
+                    return { iterations: 1 };
+                  },
+                },
+                playState: "running",
+              },
+            ]
+          : [];
+      },
+    });
+
+    fireEvent.click(link);
+
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-image-tools")).toBeInTheDocument();
+      expect(screen.queryByTestId("html-dom-color-controls")).toBeNull();
+      expect(image).toHaveAttribute(HTML_DOM_EDIT_SELECTED_ATTR, "true");
+      expect(link).not.toHaveAttribute(HTML_DOM_EDIT_SELECTED_ATTR);
+      expect(
+        within(frame.contentDocument!.body).getByTestId(
+          "html-dom-selected-box",
+        ),
+      ).toHaveStyle({ border: "2px solid rgb(37, 99, 235)" });
+    });
+
+    mockElementRect(image, {
+      height: 80,
+      left: 42,
+      top: 36,
+      width: 120,
+    });
+
+    await waitFor(() => {
+      expect(
+        within(frame.contentDocument!.body).getByTestId(
+          "html-dom-selected-box",
+        ),
+      ).toHaveStyle({ left: "42px", top: "36px" });
+    });
+
+    mockElementRect(image, {
+      height: 80,
+      left: 64,
+      top: 58,
+      width: 120,
+    });
+
+    await waitFor(() => {
+      expect(
+        within(frame.contentDocument!.body).getByTestId(
+          "html-dom-selected-box",
+        ),
+      ).toHaveStyle({ left: "64px", top: "58px" });
+    });
+    imageAnimationRunning = false;
+
+    click(screen.getByTestId("html-dom-image-layout-cover"));
+
+    await waitFor(() => {
+      expect(image.style.objectFit).toBe("cover");
+    });
+  });
+
+  it("uploads and applies a hosted-site HTML image replacement", async () => {
+    const htmlUrl = "https://upload-image-launch-site.sites.vm7.io";
+    const uploadedImageUrl =
+      "https://cdn.vm7.io/artifacts/test/html-image/new-hero.png";
+    let redeployedHtml: string | null = null;
+
+    context.mocks.upload.success({
+      id: "upload-html-hero-image",
+      filename: "new-hero.png",
+      contentType: "image/png",
+      size: 2048,
+      url: uploadedImageUrl,
+    });
+    setupHostedSiteArtifactPreview({
+      filename: "upload-image-launch-site.html",
+      html: `<!doctype html>
+      <html>
+        <head><title>Upload image launch site</title></head>
+        <body>
+          <main>
+            <img src="/hero.png" srcset="/hero-small.png 1x, /hero-large.png 2x" sizes="100vw" alt="Hero" />
+          </main>
+        </body>
+      </html>`,
+      htmlUrl,
+      label: "Upload image launch site",
+      runId: "run-hosted-site-upload-image",
+    });
+    context.mocks.api(zeroHostContract.redeployHtml, ({ body, respond }) => {
+      expect(body.url).toBe(htmlUrl);
+      expect(body.html).toContain(uploadedImageUrl);
+      expect(body.html).not.toContain("srcset=");
+      expect(body.html).not.toContain("sizes=");
+      redeployedHtml = body.html;
+      return respond(200, {
+        siteId: "7c82da29-6280-4d65-b078-e233c8ad14bf",
+        deploymentId: "dc8b4d42-5dc1-4769-ad8b-17bdf1ad035a",
+        publicSlug: "upload-image-launch-site",
+        url: htmlUrl,
+        status: "ready",
+      });
+    });
+
+    click(
+      await screen.findByLabelText(
+        "Open html preview for Upload image launch site",
+      ),
+    );
+    click(await screen.findByLabelText("Edit page"));
+
+    const frame = (await screen.findByTestId(
+      "html-dom-comment-frame",
+    )) as HTMLIFrameElement;
+    await waitFor(() => {
+      expect(
+        frame.contentDocument
+          ?.querySelector("img")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+    });
+    const image = frame.contentDocument!.querySelector("img")!;
+    fireEvent.click(image);
+    await waitFor(() => {
+      expect(screen.getByTestId("html-dom-image-tools")).toBeInTheDocument();
+    });
+
+    const user = userEvent.setup({ delay: null });
+    await user.upload(
+      screen.getByTestId("html-dom-image-upload-input"),
+      new File(["new image"], "new-hero.png", { type: "image/png" }),
+    );
+
+    await waitFor(() => {
+      expect(image.getAttribute("src")).toBe(uploadedImageUrl);
+      expect(image.hasAttribute("srcset")).toBeFalsy();
+      expect(image.hasAttribute("sizes")).toBeFalsy();
+      expect(screen.getByTestId("html-dom-toolbar-send")).toBeEnabled();
+      expect(screen.getByTestId("html-dom-toolbar-send")).toHaveTextContent(
+        "Apply",
+      );
+    });
+
+    click(screen.getByTestId("html-dom-toolbar-send"));
+    await waitFor(() => {
+      expect(redeployedHtml).not.toBeNull();
+      expect(screen.queryByTestId("html-dom-comment-frame")).toBeNull();
+    });
+  });
+
+  it("replaces a hosted-site HTML image with a URL", async () => {
+    const htmlUrl = "https://link-image-launch-site.sites.vm7.io";
+    const linkedImageUrl = "https://images.example.com/replacement.png";
+
+    setupHostedSiteArtifactPreview({
+      filename: "link-image-launch-site.html",
+      html: `<!doctype html>
+      <html>
+        <head><title>Link image launch site</title></head>
+        <body>
+          <main>
+            <img src="/hero.png" alt="Hero" />
+          </main>
+        </body>
+      </html>`,
+      htmlUrl,
+      label: "Link image launch site",
+      runId: "run-hosted-site-link-image",
+    });
+
+    click(
+      await screen.findByLabelText(
+        "Open html preview for Link image launch site",
+      ),
+    );
+    click(await screen.findByLabelText("Edit page"));
+
+    const frame = (await screen.findByTestId(
+      "html-dom-comment-frame",
+    )) as HTMLIFrameElement;
+    await waitFor(() => {
+      expect(
+        frame.contentDocument
+          ?.querySelector("img")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+    });
+    const image = frame.contentDocument!.querySelector("img")!;
+    fireEvent.click(image);
+    click(await screen.findByTestId("html-dom-image-source-link"));
+
+    const user = userEvent.setup({ delay: null });
+    await user.type(
+      await screen.findByTestId("html-dom-image-link-input"),
+      linkedImageUrl,
+    );
+    click(screen.getByTestId("html-dom-image-link-submit"));
+
+    await waitFor(() => {
+      expect(image.getAttribute("src")).toBe(linkedImageUrl);
+      expect(screen.queryByTestId("html-dom-image-link-form")).toBeNull();
+      expect(screen.getByTestId("html-dom-toolbar-send")).toBeEnabled();
+    });
+  });
+
+  it("applies hosted-site HTML image layout edits from the DOM popover", async () => {
+    const htmlUrl = "https://layout-image-launch-site.sites.vm7.io";
+    let redeployedHtml: string | null = null;
+
+    setupHostedSiteArtifactPreview({
+      filename: "layout-image-launch-site.html",
+      html: `<!doctype html>
+      <html>
+        <head><title>Layout image launch site</title></head>
+        <body>
+          <main>
+            <img src="/hero.png" alt="Hero" />
+          </main>
+        </body>
+      </html>`,
+      htmlUrl,
+      label: "Layout image launch site",
+      runId: "run-hosted-site-layout-image",
+    });
+    context.mocks.api(zeroHostContract.redeployHtml, ({ body, respond }) => {
+      expect(body.url).toBe(htmlUrl);
+      expect(body.html).toContain("object-fit: cover");
+      redeployedHtml = body.html;
+      return respond(200, {
+        siteId: "7c82da29-6280-4d65-b078-e233c8ad14bf",
+        deploymentId: "dc8b4d42-5dc1-4769-ad8b-17bdf1ad035a",
+        publicSlug: "layout-image-launch-site",
+        url: htmlUrl,
+        status: "ready",
+      });
+    });
+
+    click(
+      await screen.findByLabelText(
+        "Open html preview for Layout image launch site",
+      ),
+    );
+    click(await screen.findByLabelText("Edit page"));
+
+    const frame = (await screen.findByTestId(
+      "html-dom-comment-frame",
+    )) as HTMLIFrameElement;
+    await waitFor(() => {
+      expect(
+        frame.contentDocument
+          ?.querySelector("img")
+          ?.hasAttribute(HTML_DOM_NODE_ID_ATTR),
+      ).toBeTruthy();
+    });
+    const image = frame.contentDocument!.querySelector("img")!;
+    fireEvent.click(image);
+    click(await screen.findByTestId("html-dom-image-layout-cover"));
+
+    await waitFor(() => {
+      expect(image.style.objectFit).toBe("cover");
+      expect(screen.getByTestId("html-dom-toolbar-send")).toHaveTextContent(
+        "Apply",
+      );
+      expect(screen.getByTestId("html-dom-toolbar-send")).toBeEnabled();
+    });
+
+    click(screen.getByTestId("html-dom-toolbar-send"));
+    await waitFor(() => {
+      expect(redeployedHtml).not.toBeNull();
+      expect(screen.queryByTestId("html-dom-comment-frame")).toBeNull();
     });
   });
 
@@ -2021,6 +2466,9 @@ describe("zero attachment chips", () => {
     fireEvent.click(frame.contentDocument!.querySelector("input")!);
     await waitFor(() => {
       expect(screen.getByTestId("html-dom-color-controls")).toBeInTheDocument();
+      expect(screen.getByTestId("html-dom-color-controls")).toHaveClass(
+        "grid-cols-2",
+      );
       expect(
         screen.getByTestId("html-dom-color-control-color"),
       ).toBeInTheDocument();
