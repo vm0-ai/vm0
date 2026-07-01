@@ -19,7 +19,7 @@ use std::io::Read;
 use std::time::{Duration, Instant};
 
 use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
-use flate2::read::GzDecoder;
+use flate2::read::MultiGzDecoder;
 use sha2::{Digest, Sha256};
 use tokio::task::JoinHandle;
 use tokio_util::sync::CancellationToken;
@@ -454,7 +454,7 @@ fn validate_gzip_raw_size(
 }
 
 fn gunzip_session_history(encoded_bytes: &[u8], max_raw_bytes: u64) -> RunnerResult<Vec<u8>> {
-    let mut decoder = GzDecoder::new(encoded_bytes);
+    let mut decoder = MultiGzDecoder::new(encoded_bytes);
     let mut bytes = Vec::new();
     let mut buffer = [0u8; 8192];
     let mut decoded = 0u64;
@@ -740,6 +740,30 @@ mod tests {
                 assert_phase_success(timings.body_read());
                 assert_phase_success(timings.validation());
                 assert_phase_success(timings.hash_verification());
+            }
+            _ => panic!("expected downloaded session"),
+        }
+    }
+
+    #[tokio::test]
+    async fn materializer_decompresses_multi_member_gzip_history() {
+        let first = b"{\"type\":\"init\"}\n";
+        let second = b"{\"type\":\"user\",\"message\":\"hello\"}\n";
+        let body = [first.as_slice(), second.as_slice()].concat();
+        let compressed = [gzip_bytes(first), gzip_bytes(second)].concat();
+        let hash = hex::encode(Sha256::digest(&body));
+        let session = gzip_ref_session(
+            serve_once("200 OK", compressed, None).await,
+            hash,
+            body.len() as u64,
+        );
+
+        let materializer = start_materializer(&session);
+        let result = materializer.finish(&CancellationToken::new()).await;
+
+        match result {
+            SessionHistoryMaterialization::Downloaded { session, .. } => {
+                assert_eq!(session.history_bytes(), body);
             }
             _ => panic!("expected downloaded session"),
         }
