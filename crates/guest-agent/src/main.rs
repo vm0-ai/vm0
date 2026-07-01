@@ -1324,6 +1324,7 @@ mod tests {
 
     unsafe fn set_test_env(server: &MockServer, prompt: Option<&str>) {
         unsafe {
+            clear_test_env();
             std::env::set_var("VM0_API_URL", server.base_url());
             std::env::set_var("VM0_API_TOKEN", "test-token");
             std::env::set_var("VM0_RUN_ID", "main-recovery-checkpoint");
@@ -1333,6 +1334,46 @@ mod tests {
             );
             if let Some(prompt) = prompt {
                 std::env::set_var("VM0_PROMPT", prompt);
+            }
+        }
+    }
+
+    unsafe fn clear_test_env() {
+        for key in [
+            guest_contracts::env::API_URL_ENV,
+            guest_contracts::env::RUN_ID_ENV,
+            guest_contracts::env::API_TOKEN_ENV,
+            guest_contracts::env::SANDBOX_ID_ENV,
+            guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+            guest_contracts::env::PROMPT_ENV,
+            guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
+            guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
+            guest_contracts::env::RESUME_SESSION_ID_ENV,
+            guest_contracts::env::API_START_TIME_ENV,
+            guest_contracts::env::SECRET_VALUES_ENV,
+            guest_contracts::env::DISALLOWED_TOOLS_ENV,
+            guest_contracts::env::TOOLS_ENV,
+            guest_contracts::env::SETTINGS_ENV,
+            guest_contracts::env::CLI_AGENT_TYPE_ENV,
+            guest_contracts::env::USER_ENV_FILE_ENV,
+            guest_contracts::env::ARTIFACTS_ENV,
+            guest_contracts::env::FEATURE_FLAGS_ENV,
+            guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
+            guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+            guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
+            guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+            guest_contracts::env::USE_MOCK_CLAUDE_ENV,
+            guest_contracts::env::USE_MOCK_CODEX_ENV,
+            guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV,
+            guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
+            guest_contracts::env::MOCK_CODEX_PATH_ENV,
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            process_control_ipc::BOOTSTRAP_ENV,
+            "MOCK_CODEX_FIXTURE",
+            "MOCK_CODEX_APP_SERVER_SCENARIO",
+        ] {
+            unsafe {
+                std::env::remove_var(key);
             }
         }
     }
