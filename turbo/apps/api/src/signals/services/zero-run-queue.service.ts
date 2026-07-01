@@ -581,6 +581,38 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
     const currentTime = nowDate();
 
     const result = await writeDb.transaction(async (tx) => {
+      const candidates = await tx
+        .select({
+          runId: agentRuns.id,
+          orgId: agentRuns.orgId,
+          userId: agentRuns.userId,
+        })
+        .from(agentRuns)
+        .where(
+          and(
+            eq(agentRuns.status, "queued"),
+            lt(agentRuns.createdAt, cutoff),
+            sql<boolean>`NOT EXISTS (
+              SELECT 1
+              FROM ${agentRunQueue}
+              WHERE ${agentRunQueue.runId} = ${agentRuns.id}
+            )`,
+          ),
+        )
+        .for("update");
+      signal.throwIfAborted();
+
+      if (candidates.length === 0) {
+        return { deletedCount: 0, timedOutRuns: [] };
+      }
+
+      const candidateRunIds = candidates.map((candidate) => {
+        return candidate.runId;
+      });
+
+      // Queue persistence locks the run before inserting agent_run_queue. If
+      // this transaction waited for that lock, re-check the queue table with a
+      // fresh statement before timing out the run.
       const timedOut = await tx
         .update(agentRuns)
         .set({
@@ -591,7 +623,7 @@ export const cleanupQueuedRunLaunchOrphans$ = command(
         .where(
           and(
             eq(agentRuns.status, "queued"),
-            lt(agentRuns.createdAt, cutoff),
+            inArray(agentRuns.id, candidateRunIds),
             sql<boolean>`NOT EXISTS (
               SELECT 1
               FROM ${agentRunQueue}
