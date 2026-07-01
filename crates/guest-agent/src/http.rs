@@ -65,7 +65,7 @@ impl HttpClient {
     /// This constructor always initializes the underlying `reqwest` client and
     /// does not check `VM0_API_TOKEN`. It can send presigned uploads, but
     /// webhook JSON posts require API config from [`Self::with_api_config`],
-    /// [`Self::for_config`], or the legacy [`Self::for_current_env`] wrapper.
+    /// or [`Self::for_config`].
     /// Production guest-agent initialization should use [`Self::for_config`]
     /// so API settings come from the captured runtime config.
     pub fn new() -> Result<Self, AgentError> {
@@ -116,27 +116,6 @@ impl HttpClient {
         })
     }
 
-    /// Build the HTTP client appropriate for the current environment.
-    ///
-    /// Compatibility wrapper for legacy callers that still read process env
-    /// directly. Production guest-agent bootstrap should prefer
-    /// [`Self::for_config`] so API settings come from the captured runtime
-    /// config. When `VM0_API_TOKEN` is non-empty, this captures `VM0_API_URL`,
-    /// the API token, and optional Vercel bypass header once and returns a
-    /// webhook-ready client. Otherwise it returns a disabled client whose
-    /// request methods fail with the disabled-client error before building or
-    /// sending HTTP requests.
-    pub fn for_current_env() -> Result<Self, AgentError> {
-        let Some(api) = Self::api_config_from_current_env()? else {
-            return Ok(Self {
-                inner: None,
-                retry_delay: DEFAULT_RETRY_DELAY,
-                api: None,
-            });
-        };
-        Self::build(Some(api), DEFAULT_RETRY_DELAY)
-    }
-
     /// Build the HTTP client from an owned guest-agent config.
     pub fn for_config(config: &env::GuestConfig) -> Result<Self, AgentError> {
         let Some(api) = Self::api_config_from_values(
@@ -175,10 +154,6 @@ impl HttpClient {
                     "guest-agent API HTTP config is disabled; build the client with API config to send webhooks".into(),
                 )
             })
-    }
-
-    fn api_config_from_current_env() -> Result<Option<ApiHttpConfig>, AgentError> {
-        Self::api_config_from_values(env::api_url(), env::api_token(), env::vercel_bypass())
     }
 
     fn api_config_from_values(

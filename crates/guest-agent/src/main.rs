@@ -2820,9 +2820,11 @@ mod tests {
             true,
             None,
         );
-        let masker = Arc::new(masker::SecretMasker::from_env());
+        let config = test_guest_config(server, None);
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
         let http = test_http_client(server);
-        let telemetry = Telemetry::spawn(masker, http);
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http);
 
         final_telemetry(telemetry).await;
 
@@ -2882,9 +2884,11 @@ mod tests {
                 let heartbeat_handle = tokio::spawn(async {
                     std::future::pending::<()>().await;
                 });
-                let masker = Arc::new(masker::SecretMasker::from_env());
+                let config = test_guest_config(server, None);
+                let masker = Arc::new(masker::SecretMasker::from_config(&config));
                 let http = test_http_client(server);
-                let telemetry = Telemetry::spawn(masker, http);
+                let telemetry =
+                    Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http);
 
                 stop_background_and_flush_final_telemetry(
                     shutdown,
@@ -3081,10 +3085,11 @@ mod tests {
                 .json_body(json!({}));
         });
 
-        let masker = Arc::new(masker::SecretMasker::from_env());
-        let http = test_http_client(server);
-        let telemetry = Telemetry::spawn(masker, http.clone());
         let config = test_guest_config(server, Some("/event-upload-failure"));
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
+        let http = test_http_client(server);
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
         let runtime = test_guest_runtime(config, http.clone());
         let exit_code = complete_execution(
             0,
@@ -3139,10 +3144,11 @@ mod tests {
                 .json_body(json!({}));
         });
 
-        let masker = Arc::new(masker::SecretMasker::from_env());
-        let http = test_http_client(server);
-        let telemetry = Telemetry::spawn(masker, http.clone());
         let config = test_guest_config(server, Some("/checkpoint-failure"));
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
+        let http = test_http_client(server);
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
         let runtime = test_guest_runtime(config, http.clone());
         let exit_code = complete_execution(
             0,
@@ -3196,10 +3202,11 @@ mod tests {
                 .json_body(json!({}));
         });
 
-        let masker = Arc::new(masker::SecretMasker::from_env());
-        let http = test_http_client(server);
-        let telemetry = Telemetry::spawn(masker, http.clone());
         let config = test_guest_config(server, Some("plain prompt"));
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
+        let http = test_http_client(server);
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
         let runtime = test_guest_runtime(config, http.clone());
         let failure_message = "CLI failed before all events uploaded";
         let failure_diagnostic = FailureDiagnostic::new(
@@ -3266,10 +3273,11 @@ mod tests {
                 .json_body(json!({}));
         });
 
-        let masker = Arc::new(masker::SecretMasker::from_env());
-        let http = test_http_client(server);
-        let telemetry = Telemetry::spawn(masker, http.clone());
         let config = test_guest_config(server, Some("/help"));
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
+        let http = test_http_client(server);
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
         let runtime = test_guest_runtime(config, http.clone());
         let failure_message = "Claude Code emitted a zero-turn result without creating session history; skipping checkpoint";
         let failure_diagnostic = FailureDiagnostic::new(
@@ -3367,10 +3375,11 @@ mod tests {
                 .json_body(json!({}));
         });
 
-        let masker = Arc::new(masker::SecretMasker::from_env());
-        let http = test_http_client(server);
-        let telemetry = Telemetry::spawn(masker, http.clone());
         let config = test_guest_config(server, Some("plain prompt"));
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
+        let http = test_http_client(server);
+        let telemetry =
+            Telemetry::spawn_for_paths(config.run_id.clone(), &guest_paths, masker, http.clone());
         let runtime = test_guest_runtime(config, http.clone());
         let failure_message = "You've hit your usage limit.";
         let failure_diagnostic = FailureDiagnostic::new(

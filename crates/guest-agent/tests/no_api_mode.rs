@@ -1,9 +1,7 @@
 //! No-API mode is used by local/reap tests and skips all webhook calls.
 //!
 //! This test captures an explicit runtime from process env, then exercises
-//! disabled-HTTP users through explicit runtime/config/path entry points. The
-//! `send_event` call intentionally remains legacy compatibility coverage for
-//! no-API session metadata capture.
+//! disabled-HTTP users through explicit runtime/config/path entry points.
 
 mod common;
 
@@ -49,7 +47,8 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
     telemetry.final_flush_and_shutdown().await?;
 
     let shutdown = CancellationToken::new();
-    let heartbeat = tokio::spawn(guest_agent::heartbeat::heartbeat_loop(
+    let heartbeat = tokio::spawn(guest_agent::heartbeat::heartbeat_loop_for_run(
+        runtime.config.run_id.clone(),
         http.clone(),
         shutdown.clone(),
     ));
@@ -65,7 +64,15 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         "session_id": "session-no-api",
         "cwd": tmp.path().to_string_lossy(),
     });
-    guest_agent::events::send_event(&http, event, 1, &masker).await?;
+    guest_agent::events::send_event_for_config(
+        &http,
+        event,
+        1,
+        &masker,
+        &runtime.config,
+        &runtime.paths,
+    )
+    .await?;
     assert_eq!(
         std::fs::read_to_string(runtime.paths.session_id_file())?,
         "session-no-api"

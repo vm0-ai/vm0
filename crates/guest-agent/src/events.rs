@@ -4,8 +4,7 @@
 //! event payloads for webhook delivery.
 
 use crate::constants;
-use crate::env;
-use crate::env::Framework;
+use crate::env::{Framework, GuestConfig};
 use crate::error::AgentError;
 use crate::http::HttpClient;
 use crate::masker::SecretMasker;
@@ -37,38 +36,35 @@ pub(crate) struct ClaudeFailureDiagnostic {
     pub message: String,
 }
 
-/// Send a single event to the webhook.
+/// Send a single event using an explicit guest-agent runtime snapshot.
 ///
-/// On framework session-start events, captures the session metadata needed by
-/// checkpoints before preparing the webhook payload.
-pub async fn send_event(
+/// Captures session metadata using the provided config and paths before
+/// preparing and posting the webhook payload.
+pub async fn send_event_for_config(
     http: &HttpClient,
     event: Value,
     seq: u32,
     masker: &SecretMasker,
+    config: &GuestConfig,
+    paths: &paths::GuestPaths,
 ) -> Result<(), AgentError> {
-    let mut capture = SessionMetadataCapture::new();
+    let mut capture = SessionMetadataCapture::from_values(
+        config.framework,
+        &config.home_dir,
+        paths.session_id_file(),
+        paths.session_history_path_file(),
+    );
     capture.capture_event(&event, masker);
 
     if !http.has_api() {
         return Ok(());
     }
 
-    let payload = prepare_event_payload(event, seq, masker);
-    post_event(http, &payload).await
+    let payload = prepare_event_payload_for_run_id(event, seq, masker, &config.run_id);
+    post_event_with_error_flag(http, &payload, paths.event_error_flag()).await
 }
 
-/// Prepare an event webhook payload by adding a sequence number, masking secrets,
-/// and moving the event into the HTTP payload shape.
-///
-/// This function does not perform filesystem or network I/O; session metadata
-/// capture is handled separately before payload preparation, and network
-/// delivery happens in `post_event` / `send_event`.
-pub fn prepare_event_payload(event: Value, seq: u32, masker: &SecretMasker) -> Value {
-    prepare_event_payload_for_run_id(event, seq, masker, env::run_id())
-}
-
-pub(crate) fn prepare_event_payload_for_run_id(
+pub fn prepare_event_payload_for_run_id(
     mut event: Value,
     seq: u32,
     masker: &SecretMasker,
@@ -410,12 +406,6 @@ fn truncate_diagnostic_message(message: &str) -> String {
     format!("{}{}", &message[..end], FAILURE_DIAGNOSTIC_TRUNCATED_SUFFIX)
 }
 
-/// POST a prepared event payload to the webhook endpoint.
-pub async fn post_event(http: &HttpClient, payload: &Value) -> Result<(), AgentError> {
-    let paths = paths::legacy_paths_from_process_env();
-    post_event_with_error_flag(http, payload, paths.event_error_flag()).await
-}
-
 pub async fn post_event_with_error_flag(
     http: &HttpClient,
     payload: &Value,
@@ -508,16 +498,6 @@ pub(crate) struct SessionMetadataCapture {
 }
 
 impl SessionMetadataCapture {
-    pub(crate) fn new() -> Self {
-        let paths = paths::legacy_paths_from_process_env();
-        Self::from_values(
-            Framework::from_env(),
-            env::home_dir(),
-            paths.session_id_file(),
-            paths.session_history_path_file(),
-        )
-    }
-
     pub(crate) fn from_values(
         framework: Framework,
         home_dir: &str,
@@ -690,7 +670,7 @@ mod tests {
         });
         let masker = SecretMasker::from_raw("c2VjcmV0LXZhbHVl");
 
-        let payload = prepare_event_payload(event, 7, &masker);
+        let payload = prepare_event_payload_for_run_id(event, 7, &masker, "test-run");
 
         assert_eq!(payload["events"][0]["type"], "test");
         assert_eq!(payload["events"][0]["sequenceNumber"], 7);
@@ -702,7 +682,7 @@ mod tests {
         let event = serde_json::json!("contains secret-value");
         let masker = SecretMasker::from_raw("c2VjcmV0LXZhbHVl");
 
-        let payload = prepare_event_payload(event, 7, &masker);
+        let payload = prepare_event_payload_for_run_id(event, 7, &masker, "test-run");
 
         assert_eq!(payload["events"][0], "contains ***");
     }

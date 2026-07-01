@@ -1,14 +1,12 @@
-//! Environment variable accessors — each value is read once via process globals.
+//! Guest-agent startup configuration parsed from environment snapshots.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, OnceLock};
 use std::time::Duration;
 
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 
 use crate::constants;
-use crate::error::AgentError;
 use guest_common::log_warn;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
@@ -31,13 +29,6 @@ pub enum Framework {
 }
 
 impl Framework {
-    /// Resolve the framework once and cache it. Subsequent calls are a
-    /// `LazyLock` deref — no repeat env reads, no repeat warning logs,
-    /// and a single source of truth if a third framework is added later.
-    pub fn from_env() -> Self {
-        *FRAMEWORK
-    }
-
     /// Stable CLI agent type string used in runner/web contracts and logs.
     pub fn agent_type(self) -> &'static str {
         match self {
@@ -47,105 +38,18 @@ impl Framework {
     }
 }
 
-static FRAMEWORK: LazyLock<Framework> =
-    LazyLock::new(|| framework_from_cli_agent_type(cli_agent_type()));
-
 // ---------------------------------------------------------------------------
 // Core
 // ---------------------------------------------------------------------------
 
-static RUN_ID: LazyLock<String> = LazyLock::new(|| env_or_empty(guest_contracts::env::RUN_ID_ENV));
-static API_URL: LazyLock<String> =
-    LazyLock::new(|| env_or_empty(guest_contracts::env::API_URL_ENV));
-static API_TOKEN: LazyLock<String> =
-    LazyLock::new(|| env_or_empty(guest_contracts::env::API_TOKEN_ENV));
-static SANDBOX_ID: LazyLock<String> =
-    LazyLock::new(|| env_or_empty(guest_contracts::env::SANDBOX_ID_ENV));
-static SANDBOX_REUSE_RESULT: LazyLock<String> =
-    LazyLock::new(|| env_or_empty(guest_contracts::env::SANDBOX_REUSE_RESULT_ENV));
-static PROMPT: LazyLock<String> = LazyLock::new(|| env_or_empty(guest_contracts::env::PROMPT_ENV));
-static APPEND_SYSTEM_PROMPT: LazyLock<String> =
-    LazyLock::new(|| env_or_empty(guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV));
-static VERCEL_BYPASS: LazyLock<String> =
-    LazyLock::new(|| env_or_empty(guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV));
-static RESUME_SESSION_ID: LazyLock<String> =
-    LazyLock::new(|| env_or_empty(guest_contracts::env::RESUME_SESSION_ID_ENV));
-static API_START_TIME: LazyLock<String> =
-    LazyLock::new(|| env_or_empty(guest_contracts::env::API_START_TIME_ENV));
-static SECRET_VALUES: LazyLock<String> =
-    LazyLock::new(|| env_or_empty(guest_contracts::env::SECRET_VALUES_ENV));
-static DISALLOWED_TOOLS: LazyLock<String> =
-    LazyLock::new(|| env_or_empty(guest_contracts::env::DISALLOWED_TOOLS_ENV));
-static TOOLS: LazyLock<String> = LazyLock::new(|| env_or_empty(guest_contracts::env::TOOLS_ENV));
-static SETTINGS: LazyLock<String> =
-    LazyLock::new(|| env_or_empty(guest_contracts::env::SETTINGS_ENV));
-static USE_MOCK_CLAUDE: LazyLock<bool> =
-    LazyLock::new(|| bool_true_env(guest_contracts::env::USE_MOCK_CLAUDE_ENV));
 /// Production install location for the mock-claude binary. Exposed so
 /// tests can assert against a single source of truth when the
 /// `VM0_MOCK_CLAUDE_PATH` env override is unset.
 pub const DEFAULT_MOCK_CLAUDE_PATH: &str = "/usr/local/bin/guest-mock-claude";
 
-/// Optional override for the mock-claude binary path. Used by
-/// integration tests to point at a cargo-built artifact; production
-/// runs fall through to `DEFAULT_MOCK_CLAUDE_PATH`.
-static MOCK_CLAUDE_PATH: LazyLock<String> = LazyLock::new(|| {
-    std::env::var(guest_contracts::env::MOCK_CLAUDE_PATH_ENV)
-        .unwrap_or_else(|_| DEFAULT_MOCK_CLAUDE_PATH.to_string())
-});
-
-// ---------------------------------------------------------------------------
-// Codex framework env vars
-// ---------------------------------------------------------------------------
-
-static CLI_AGENT_TYPE: LazyLock<String> =
-    LazyLock::new(|| env_or_empty(guest_contracts::env::CLI_AGENT_TYPE_ENV));
-static USER_ENV: OnceLock<Result<HashMap<String, String>, String>> = OnceLock::new();
-
-/// `USE_MOCK_CODEX` accepts both `"true"` and `"1"` (matches the Codex
-/// epic's documented invocation shape `USE_MOCK_CODEX=1`). The
-/// claude-side `USE_MOCK_CLAUDE` historically only accepts `"true"`;
-/// the asymmetry is intentional.
-static USE_MOCK_CODEX: LazyLock<bool> =
-    LazyLock::new(|| bool_true_or_one_env(guest_contracts::env::USE_MOCK_CODEX_ENV));
-static USE_CODEX_APP_SERVER_BACKEND: LazyLock<bool> =
-    LazyLock::new(|| bool_true_or_one_env(guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV));
-
 /// Production install location for the mock-codex binary, mirroring
 /// `DEFAULT_MOCK_CLAUDE_PATH`.
 pub const DEFAULT_MOCK_CODEX_PATH: &str = "/usr/local/bin/guest-mock-codex";
-
-static MOCK_CODEX_PATH: LazyLock<String> = LazyLock::new(|| {
-    std::env::var(guest_contracts::env::MOCK_CODEX_PATH_ENV)
-        .unwrap_or_else(|_| DEFAULT_MOCK_CODEX_PATH.to_string())
-});
-
-/// `$HOME` is always set in the guest sandbox (rootfs init guarantees it),
-/// unless the loaded user env intentionally overrides it for the CLI child.
-/// If neither source sets it, the rootfs is misconfigured and we want a loud,
-/// visible failure rather than papering over it with a magic path that would
-/// silently land session/auth state in the wrong directory.
-///
-/// # Panics
-/// Panics if `HOME` is unset in both loaded user env and the guest process env.
-/// This indicates a rootfs/runner contract violation and is not
-/// user-recoverable; the same fail-fast policy as `load_artifacts`
-/// (`VM0_ARTIFACTS`).
-#[allow(clippy::expect_used)]
-fn load_home_dir() -> String {
-    let process_home = std::env::var("HOME").ok();
-    resolve_home_dir(user_env_map(), process_home.as_deref())
-        .expect("HOME must be set in guest sandbox (rootfs init contract)")
-}
-
-static HOME_DIR: LazyLock<String> = LazyLock::new(load_home_dir);
-/// Read an optional `u64` env var, falling back to `default` when it's
-/// unset or unparseable. Emits a stderr warning on the unparseable case so
-/// the mistake is visible in runner logs rather than silently absorbed.
-fn u64_env_or(name: &str, default: u64) -> u64 {
-    let value = std::env::var(name).ok();
-    u64_value_or(name, value.as_deref(), default)
-}
 
 fn u64_value_or(name: &str, value: Option<&str>, default: u64) -> u64 {
     match value {
@@ -158,13 +62,6 @@ fn u64_value_or(name: &str, value: Option<&str>, default: u64) -> u64 {
         }),
         None => default,
     }
-}
-
-/// Read an optional bounded seconds env var as `Duration`, falling back to
-/// `default_secs` when unset, unparseable, or outside the supported range.
-fn bounded_duration_secs_env_or(name: &str, default_secs: u64, max_secs: u64) -> Duration {
-    let value = std::env::var(name).ok();
-    bounded_duration_secs_value_or(name, value.as_deref(), default_secs, max_secs)
 }
 
 fn bounded_duration_secs_value_or(
@@ -194,47 +91,6 @@ fn bounded_duration_secs_value_or(
         None => Duration::from_secs(default_secs),
     }
 }
-
-/// Workaround for Claude Code bug: WebSearch/WebFetch can hang indefinitely.
-/// See: https://github.com/anthropics/claude-code/issues/11650
-static STUCK_TOOL_TIMEOUT: LazyLock<u64> = LazyLock::new(|| {
-    u64_env_or(
-        guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
-        constants::STUCK_TOOL_TIMEOUT_SECS,
-    )
-});
-
-/// Grace after `type=result` before SIGTERM-ing the CLI process group.
-/// Shortened in integration tests via env override so runs converge
-/// within a test-sized window instead of the prod default.
-/// See: https://github.com/vm0-ai/vm0/issues/10879
-static POST_RESULT_SIGTERM_GRACE: LazyLock<Duration> = LazyLock::new(|| {
-    bounded_duration_secs_env_or(
-        guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
-        constants::POST_RESULT_SIGTERM_GRACE_SECS,
-        POST_RESULT_CLEANUP_MAX_SECS,
-    )
-});
-
-/// Absolute post-result cap. Unlike the quiet grace, this is fixed from the
-/// terminal result time and does not refresh on later stdout events.
-static POST_RESULT_TOTAL_CAP: LazyLock<Duration> = LazyLock::new(|| {
-    bounded_duration_secs_env_or(
-        guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
-        constants::POST_RESULT_TOTAL_CAP_SECS,
-        POST_RESULT_CLEANUP_MAX_SECS,
-    )
-});
-
-/// Follow-up grace after SIGTERM before escalating to SIGKILL. Same
-/// override rationale as `POST_RESULT_SIGTERM_GRACE`.
-static POST_RESULT_SIGKILL_GRACE: LazyLock<Duration> = LazyLock::new(|| {
-    bounded_duration_secs_env_or(
-        guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
-        constants::POST_RESULT_SIGKILL_GRACE_SECS,
-        POST_RESULT_CLEANUP_MAX_SECS,
-    )
-});
 
 // ---------------------------------------------------------------------------
 // Artifacts (multi-mount)
@@ -271,9 +127,9 @@ pub struct ArtifactEnv {
 
 /// Raw startup values used to build an owned guest-agent run config.
 ///
-/// Empty strings represent unset runner bootstrap values, matching the legacy
-/// `env::*` facade. Optional override fields preserve the difference between
-/// an unset variable and an explicitly empty variable.
+/// Empty strings represent unset runner bootstrap values. Optional override
+/// fields preserve the difference between an unset variable and an explicitly
+/// empty variable.
 #[derive(Clone, Default)]
 pub struct GuestConfigRaw {
     pub run_id: String,
@@ -394,14 +250,8 @@ pub struct GuestConfig {
 
 impl GuestConfig {
     /// Build an owned config from the current process environment.
-    ///
-    /// This shares the one-time user-env loader with the legacy `env::*`
-    /// facade so transitional callers can build a `GuestConfig` and still use
-    /// existing accessors without racing on the private user-env file.
     pub fn from_process_env() -> Result<Self, String> {
-        let raw = GuestConfigRaw::from_process_env();
-        let user_env = init_user_env_from_raw(&raw)?.clone();
-        Self::from_raw_with_user_env(raw, user_env)
+        Self::from_raw(GuestConfigRaw::from_process_env())
     }
 
     /// Build an owned config from explicit startup values.
@@ -410,7 +260,7 @@ impl GuestConfig {
         Self::from_raw_with_user_env(raw, user_env)
     }
 
-    pub(crate) fn from_raw_with_user_env(
+    fn from_raw_with_user_env(
         raw: GuestConfigRaw,
         user_env: HashMap<String, String>,
     ) -> Result<Self, String> {
@@ -478,21 +328,6 @@ impl GuestConfig {
     }
 }
 
-/// Parse `VM0_ARTIFACTS`, which the runner writes as a JSON array.
-///
-/// # Panics
-/// Panics if the env var is set but not valid JSON. This indicates a
-/// runner/guest-agent version-skew bug and is not user-recoverable;
-/// failing loudly is preferable to silently producing a zero-snapshot
-/// run that looks successful in dashboards.
-#[allow(clippy::expect_used)]
-fn load_artifacts() -> Vec<ArtifactEnv> {
-    let raw = std::env::var(guest_contracts::env::ARTIFACTS_ENV).unwrap_or_default();
-    parse_artifacts_value(&raw).expect("VM0_ARTIFACTS must be a valid JSON array")
-}
-
-static ARTIFACTS: LazyLock<Vec<ArtifactEnv>> = LazyLock::new(load_artifacts);
-
 fn framework_from_cli_agent_type(value: &str) -> Framework {
     match value {
         "codex" => Framework::Codex,
@@ -511,18 +346,8 @@ fn non_empty(value: &str) -> Option<&str> {
     if value.is_empty() { None } else { Some(value) }
 }
 
-fn bool_true_env(name: &str) -> bool {
-    let value = std::env::var(name).ok();
-    bool_true_value(value.as_deref())
-}
-
 fn bool_true_value(value: Option<&str>) -> bool {
     matches!(value, Some("true"))
-}
-
-fn bool_true_or_one_env(name: &str) -> bool {
-    let value = std::env::var(name).ok();
-    bool_true_or_one_value(value.as_deref())
 }
 
 fn bool_true_or_one_value(value: Option<&str>) -> bool {
@@ -538,17 +363,6 @@ fn parse_artifacts_value(raw: &str) -> Result<Vec<ArtifactEnv>, serde_json::Erro
         return Ok(Vec::new());
     }
     serde_json::from_str::<Vec<ArtifactEnv>>(raw)
-}
-
-fn load_user_env_from_process() -> Result<HashMap<String, String>, String> {
-    let path = env_or_empty(USER_ENV_FILE_ENV_KEY);
-    if path.is_empty() {
-        return Ok(HashMap::new());
-    }
-
-    let path = Path::new(&path);
-    validate_user_env_file_path(path)?;
-    load_user_env_from_path(path)
 }
 
 fn load_user_env_from_raw(raw: &GuestConfigRaw) -> Result<HashMap<String, String>, String> {
@@ -601,23 +415,6 @@ fn is_user_env_private_dir(path: &Path) -> bool {
     path.file_name()
         .and_then(|name| name.to_str())
         .is_some_and(|name| name == USER_ENV_PRIVATE_DIR_NAME)
-}
-
-fn validate_user_env_file_path(path: &Path) -> Result<(), String> {
-    let runtime_dir = guest_runtime_dir_for_user_env()?;
-    validate_user_env_file_path_for_runtime(path, &runtime_dir)
-}
-
-fn guest_runtime_dir_for_user_env() -> Result<PathBuf, String> {
-    let run_id = env_or_empty(guest_contracts::env::RUN_ID_ENV);
-    guest_runtime_dir_for_user_env_run_id(&run_id)
-}
-
-fn guest_runtime_dir_for_user_env_run_id(run_id: &str) -> Result<PathBuf, String> {
-    guest_contracts::runtime_paths::validate_run_id(run_id)
-        .map_err(|e| format!("resolve guest runtime dir for {USER_ENV_FILE_ENV_KEY}: {e}"))?;
-    guest_contracts::runtime_paths::run_dir_from_env(run_id)
-        .map_err(|e| format!("resolve guest runtime dir for {USER_ENV_FILE_ENV_KEY}: {e}"))
 }
 
 fn guest_runtime_dir_for_user_env_values(
@@ -697,225 +494,6 @@ fn resolve_home_dir(
     process_home
         .map(str::to_string)
         .ok_or_else(|| "HOME must be set in guest sandbox (rootfs init contract)".to_string())
-}
-
-#[allow(clippy::panic)] // Entry points must call init_user_env; bypassing it is a code bug.
-fn user_env_map() -> &'static HashMap<String, String> {
-    user_env_map_result().unwrap_or_else(|message| {
-        panic!("{USER_ENV_FILE_ENV_KEY} failed to load before accessor use: {message}")
-    })
-}
-
-fn user_env_map_result() -> Result<&'static HashMap<String, String>, String> {
-    user_env_result(USER_ENV.get_or_init(load_user_env_from_process))
-}
-
-fn user_env_result(
-    result: &'static Result<HashMap<String, String>, String>,
-) -> Result<&'static HashMap<String, String>, String> {
-    match result {
-        Ok(user_env) => Ok(user_env),
-        Err(message) => Err(message.clone()),
-    }
-}
-
-fn user_env_value(name: &str) -> &'static str {
-    user_env_map().get(name).map(String::as_str).unwrap_or("")
-}
-
-// ---------------------------------------------------------------------------
-// Public accessors
-// ---------------------------------------------------------------------------
-
-/// Runner-provided run id from `VM0_RUN_ID`; empty string means unset.
-pub fn run_id() -> &'static str {
-    &RUN_ID
-}
-/// Backend API base URL from `VM0_API_URL`; empty string means unset.
-pub fn api_url() -> &'static str {
-    &API_URL
-}
-/// Backend API bearer token from `VM0_API_TOKEN`; empty string means no API.
-pub fn api_token() -> &'static str {
-    &API_TOKEN
-}
-/// Sandbox id from `VM0_SANDBOX_ID`; empty string means unset.
-pub fn sandbox_id() -> &'static str {
-    &SANDBOX_ID
-}
-/// Sandbox reuse result from `VM0_SANDBOX_REUSE_RESULT`; empty string means unset.
-pub fn sandbox_reuse_result() -> &'static str {
-    &SANDBOX_REUSE_RESULT
-}
-/// User prompt from `VM0_PROMPT`; empty string means unset.
-pub fn prompt() -> &'static str {
-    &PROMPT
-}
-/// Additional system prompt text from `VM0_APPEND_SYSTEM_PROMPT`; empty string
-/// means unset.
-pub fn append_system_prompt() -> &'static str {
-    &APPEND_SYSTEM_PROMPT
-}
-/// Vercel protection bypass secret from `VERCEL_PROTECTION_BYPASS`; empty
-/// string means unset.
-pub fn vercel_bypass() -> &'static str {
-    &VERCEL_BYPASS
-}
-/// Claude/Codex CLI agent session id from `VM0_RESUME_SESSION_ID`; empty
-/// string means a new session.
-pub fn resume_session_id() -> &'static str {
-    &RESUME_SESSION_ID
-}
-/// Runner-provided Unix epoch millisecond API start timestamp from
-/// `VM0_API_START_TIME`; empty string means unset.
-pub fn api_start_time() -> &'static str {
-    &API_START_TIME
-}
-/// Encoded secret values from `VM0_SECRET_VALUES`; empty string means no secrets.
-pub fn secret_values() -> &'static str {
-    &SECRET_VALUES
-}
-/// Raw disallowed tool list from `VM0_DISALLOWED_TOOLS`; empty string means no
-/// explicit deny list.
-pub fn disallowed_tools() -> &'static str {
-    &DISALLOWED_TOOLS
-}
-/// Raw allowed tool list from `VM0_TOOLS`; empty string means no explicit allow list.
-pub fn tools() -> &'static str {
-    &TOOLS
-}
-/// Raw CLI settings payload from `VM0_SETTINGS`; empty string means no settings
-/// override.
-pub fn settings() -> &'static str {
-    &SETTINGS
-}
-/// Load and validate the runner-provided user env payload once at startup.
-pub fn init_user_env() -> Result<(), AgentError> {
-    user_env_map_result()
-        .map(|_| ())
-        .map_err(AgentError::Execution)
-}
-
-pub(crate) fn init_user_env_from_raw(
-    raw: &GuestConfigRaw,
-) -> Result<&'static HashMap<String, String>, String> {
-    user_env_result(USER_ENV.get_or_init(|| load_user_env_from_raw(raw)))
-}
-/// User/model/connector environment loaded from `VM0_USER_ENV_FILE`.
-pub fn user_env() -> &'static HashMap<String, String> {
-    user_env_map()
-}
-/// Whether `USE_MOCK_CLAUDE` is exactly `"true"`; unset or any other value is
-/// false.
-pub fn use_mock_claude() -> bool {
-    *USE_MOCK_CLAUDE
-}
-/// Mock Claude binary path from `VM0_MOCK_CLAUDE_PATH`, or
-/// `DEFAULT_MOCK_CLAUDE_PATH` when unset.
-pub fn mock_claude_path() -> String {
-    MOCK_CLAUDE_PATH.clone()
-}
-/// Raw CLI framework selector from `CLI_AGENT_TYPE`; empty string means unset.
-pub fn cli_agent_type() -> &'static str {
-    &CLI_AGENT_TYPE
-}
-/// OpenAI API key from loaded user env; empty string means unset.
-pub fn openai_api_key() -> &'static str {
-    user_env_value("OPENAI_API_KEY")
-}
-/// OpenAI model from loaded user env; empty string means unset.
-pub fn openai_model() -> &'static str {
-    user_env_value("OPENAI_MODEL")
-}
-/// OpenAI-compatible API base URL from loaded user env; empty string means unset.
-pub fn openai_base_url() -> &'static str {
-    user_env_value("OPENAI_BASE_URL")
-}
-/// Anthropic model from loaded user env; empty string means unset.
-pub fn anthropic_model() -> &'static str {
-    user_env_value("ANTHROPIC_MODEL")
-}
-/// ChatGPT workspace account id from loaded user env; empty string
-/// means unset. Presence is the signal that the sandbox is running in
-/// codex-oauth mode (see `is_codex_oauth_mode`); the value itself is
-/// not consumed by the guest-agent — the firewall replaces the
-/// placeholder bytes in `auth.json` on egress.
-pub fn chatgpt_account_id() -> &'static str {
-    user_env_value("CHATGPT_ACCOUNT_ID")
-}
-/// Whether the sandbox should bootstrap codex into codex-oauth mode
-/// instead of the API-key path. True iff `CHATGPT_ACCOUNT_ID` is set.
-pub fn is_codex_oauth_mode() -> bool {
-    !chatgpt_account_id().is_empty()
-}
-/// Whether `USE_MOCK_CODEX` is `"true"` or `"1"`; unset or any other value is
-/// false.
-pub fn use_mock_codex() -> bool {
-    *USE_MOCK_CODEX
-}
-/// Whether the Codex app-server backend is explicitly enabled.
-pub fn use_codex_app_server_backend() -> bool {
-    *USE_CODEX_APP_SERVER_BACKEND
-}
-/// Mock Codex binary path from `VM0_MOCK_CODEX_PATH`, or
-/// `DEFAULT_MOCK_CODEX_PATH` when unset.
-pub fn mock_codex_path() -> String {
-    MOCK_CODEX_PATH.clone()
-}
-/// Guest home directory from loaded user env `HOME`, or process `HOME`.
-///
-/// # Panics
-/// Panics if `HOME` is unset in both sources, which indicates a rootfs/runner
-/// contract violation.
-pub fn home_dir() -> &'static str {
-    &HOME_DIR
-}
-/// Artifact mounts parsed from `VM0_ARTIFACTS`.
-///
-/// Unset or empty `VM0_ARTIFACTS` returns an empty slice.
-///
-/// # Panics
-/// Panics if `VM0_ARTIFACTS` is set but is not a valid JSON array.
-pub fn artifacts() -> &'static [ArtifactEnv] {
-    &ARTIFACTS
-}
-/// Stuck tool timeout in seconds from `VM0_STUCK_TOOL_TIMEOUT_SECS`.
-///
-/// Unset or unparseable values use the compiled default; unparseable values
-/// also log a warning.
-pub fn stuck_tool_timeout_secs() -> u64 {
-    *STUCK_TOOL_TIMEOUT
-}
-/// Grace period before SIGTERM after `type=result`, from
-/// `VM0_POST_RESULT_SIGTERM_GRACE_SECS`.
-///
-/// Unset, unparseable, or out-of-range values use the compiled default;
-/// invalid values also log a warning.
-pub fn post_result_sigterm_grace() -> Duration {
-    *POST_RESULT_SIGTERM_GRACE
-}
-/// Absolute cap after `type=result`, from `VM0_POST_RESULT_TOTAL_CAP_SECS`.
-///
-/// Unset, unparseable, or out-of-range values use the compiled default;
-/// invalid values also log a warning.
-pub fn post_result_total_cap() -> Duration {
-    *POST_RESULT_TOTAL_CAP
-}
-/// Grace period before SIGKILL after SIGTERM, from
-/// `VM0_POST_RESULT_SIGKILL_GRACE_SECS`.
-///
-/// Unset, unparseable, or out-of-range values use the compiled default;
-/// invalid values also log a warning.
-pub fn post_result_sigkill_grace() -> Duration {
-    *POST_RESULT_SIGKILL_GRACE
-}
-
-/// Whether a backend API is available (token set).
-///
-/// When false (e.g. local-provider test mode), heartbeat / events / checkpoint
-/// are skipped because there is no API server to call.
-pub fn has_api() -> bool {
-    !API_TOKEN.is_empty()
 }
 
 #[cfg(test)]
@@ -1281,7 +859,8 @@ mod tests {
 
     #[test]
     fn guest_runtime_dir_for_user_env_returns_error_when_run_id_missing() {
-        let err = guest_runtime_dir_for_user_env_run_id("").unwrap_err();
+        let err = guest_runtime_dir_for_user_env_values("", None, Some(Path::new("/home/vm0")))
+            .unwrap_err();
 
         assert!(err.contains("VM0_RUN_ID is required"));
     }

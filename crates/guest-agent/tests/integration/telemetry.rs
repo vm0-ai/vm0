@@ -244,7 +244,8 @@ async fn telemetry_masks_runtime_session_id_registered_after_spawn() {
         "subtype": "init",
         "session_id": session_id
     });
-    guest_agent::events::send_event(&http_client!(), event, 1, &masker)
+    let config = shared_guest_config().expect("shared integration guest config should be valid");
+    guest_agent::events::send_event_for_config(&http_client!(), event, 1, &masker, &config, paths)
         .await
         .expect("session event should be sent");
 

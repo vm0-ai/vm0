@@ -2,17 +2,12 @@
 //!
 //! # Why a dedicated test binary
 //!
-//! `guest_agent::env::Framework` and the rest of the env accessors are
-//! cached in process-wide `LazyLock`s on first read. The pre-existing
-//! `tests/integration/mod.rs` binary defaults to Claude (no `CLI_AGENT_TYPE`
-//! set), so it can't also exercise the codex branch — once `Framework`
-//! is locked to `ClaudeCode`, the codex path becomes unreachable in that
-//! process. Splitting codex coverage into a separate test binary gives
-//! it a fresh `LazyLock` state with `CLI_AGENT_TYPE=codex`.
+//! The pre-existing `tests/integration/mod.rs` binary defaults to Claude. This
+//! binary keeps Codex metadata tests separate so their setup can stay focused
+//! on Codex config and file layout.
 //!
-//! Each test still serialises behind a `std::sync::Mutex` because they share
-//! that single set of LazyLocks and because they touch the same on-disk
-//! session-id / history-path files.
+//! Each test serialises behind a `std::sync::Mutex` because they touch the same
+//! on-disk session-id / history-path files.
 //!
 //! # Coverage
 //!
@@ -27,72 +22,65 @@ use common::SystemLogOverrideGuard;
 use httpmock::prelude::*;
 use serde_json::json;
 use std::path::{Path, PathBuf};
-use std::sync::{LazyLock, Mutex, Once};
+use std::sync::{LazyLock, Mutex};
 use std::time::Duration;
 
 use guest_agent::masker::SecretMasker;
 
 static CODEX_RESUME_HOME: LazyLock<PathBuf> =
     LazyLock::new(|| common::unique_temp_path("codex-resume-home"));
+static CODEX_RESUME_RUN_ID: LazyLock<String> =
+    LazyLock::new(|| format!("codex-resume-{}", std::process::id()));
 
-/// Configure the process env BEFORE any `guest_agent::env` LazyLock
-/// initialiser runs. Idempotent — only the first call wins.
-fn setup_env_once() {
-    static INIT: Once = Once::new();
-    INIT.call_once(|| {
-        // SAFETY: this `Once` runs on the first test, before any test
-        // body has read `guest_agent::env::*`. No other thread is
-        // touching the env at this point.
-        unsafe {
-            common::clear_guest_agent_bootstrap_env_for_test();
-            std::env::set_var("CLI_AGENT_TYPE", "codex");
-            // Empty API token → `send_event` skips the HTTP POST after
-            // running session-id extraction (which is the part we want
-            // to assert against).
-            std::env::set_var("VM0_API_TOKEN", "");
-            std::env::set_var("VM0_API_URL", "http://127.0.0.1:1");
-            std::env::set_var("VM0_RUN_ID", format!("codex-resume-{}", std::process::id()));
-            std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
-            std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
-            std::env::set_var("VM0_PROMPT", "test prompt");
-            // `home_dir` is loaded eagerly via `expect`. Keep it stable within
-            // this process while avoiding cross-runner and stale /tmp collisions.
-            std::env::set_var("HOME", CODEX_RESUME_HOME.as_os_str());
-        }
-    });
-}
-
-/// Serialise tests — they share both LazyLock state and the run-id-scoped
-/// runtime metadata files written by session metadata capture.
+/// Serialise tests — they share the run-id-scoped runtime metadata files
+/// written by session metadata capture.
 static TEST_MUTEX: LazyLock<Mutex<()>> = LazyLock::new(|| Mutex::new(()));
-
-macro_rules! http_client {
-    () => {
-        guest_agent::http::HttpClient::new().unwrap()
-    };
-}
 
 fn send_event_for_test(
     event: serde_json::Value,
     seq: u32,
     masker: &SecretMasker,
 ) -> Result<(), guest_agent::error::AgentError> {
+    let config = codex_resume_config("http://127.0.0.1:1", "")
+        .map_err(guest_agent::error::AgentError::Execution)?;
+    let paths = codex_resume_paths();
+    let http = guest_agent::http::HttpClient::for_config(&config)?;
     let runtime = tokio::runtime::Builder::new_current_thread()
         .enable_all()
         .build()?;
-    let http = http_client!();
-    runtime.block_on(guest_agent::events::send_event(&http, event, seq, masker))
+    runtime.block_on(guest_agent::events::send_event_for_config(
+        &http, event, seq, masker, &config, &paths,
+    ))
 }
 
 fn codex_resume_paths() -> guest_agent::paths::GuestPaths {
-    setup_env_once();
-    guest_agent::paths::GuestPaths::from_runtime_dir(
-        CODEX_RESUME_HOME
-            .join(".vm0")
-            .join("guest-agent")
-            .join("runs")
-            .join(guest_agent::env::run_id()),
-    )
+    guest_agent::paths::GuestPaths::from_runtime_dir(codex_resume_runtime_dir())
+}
+
+fn codex_resume_runtime_dir() -> PathBuf {
+    CODEX_RESUME_HOME
+        .join(".vm0")
+        .join("guest-agent")
+        .join("runs")
+        .join(CODEX_RESUME_RUN_ID.as_str())
+}
+
+fn codex_resume_config(
+    api_url: &str,
+    api_token: &str,
+) -> Result<guest_agent::env::GuestConfig, String> {
+    guest_agent::env::GuestConfig::from_raw(guest_agent::env::GuestConfigRaw {
+        run_id: CODEX_RESUME_RUN_ID.clone(),
+        api_url: api_url.to_string(),
+        api_token: api_token.to_string(),
+        sandbox_id: "00000000-0000-4000-8000-000000000abc".to_string(),
+        sandbox_reuse_result: "reused".to_string(),
+        prompt: "test prompt".to_string(),
+        cli_agent_type: "codex".to_string(),
+        home: Some(CODEX_RESUME_HOME.to_string_lossy().into_owned()),
+        guest_runtime_dir: Some(codex_resume_runtime_dir()),
+        ..Default::default()
+    })
 }
 
 fn session_file_paths() -> (String, String) {
@@ -129,7 +117,7 @@ impl Drop for CodexResumeFilesGuard {
 
 fn cleanup_codex_resume_files() {
     reset_session_files();
-    let home = Path::new(guest_agent::env::home_dir());
+    let home = CODEX_RESUME_HOME.as_path();
     let is_test_home = home
         .file_name()
         .and_then(|name| name.to_str())
@@ -142,7 +130,7 @@ fn cleanup_codex_resume_files() {
 
 fn write_codex_session_file(thread_id: &str, history: &str) -> Result<(), String> {
     let id_no_dashes = thread_id.replace('-', "");
-    let path = Path::new(guest_agent::env::home_dir())
+    let path = CODEX_RESUME_HOME
         .join(".codex")
         .join("sessions")
         .join("2026")
@@ -172,7 +160,6 @@ fn checkpoint_http_client(
 
 #[test]
 fn send_event_extracts_codex_thread_id_and_writes_marker() {
-    setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
     let _files_guard = CodexResumeFilesGuard::new();
     let tmp = tempfile::tempdir().unwrap();
@@ -186,7 +173,7 @@ fn send_event_extracts_codex_thread_id_and_writes_marker() {
         "thread_id": thread_id
     });
 
-    // No API token → send_event skips the HTTP POST but still captures
+    // No API token -> send_event skips the HTTP POST but still captures
     // session metadata, which is the part we want to assert.
     let result = send_event_for_test(event, 1, &masker);
     assert!(
@@ -235,7 +222,6 @@ fn send_event_extracts_codex_thread_id_and_writes_marker() {
 
 #[test]
 fn send_event_canonicalizes_codex_thread_id_before_writing_marker() {
-    setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
     let _files_guard = CodexResumeFilesGuard::new();
 
@@ -266,7 +252,6 @@ fn send_event_canonicalizes_codex_thread_id_before_writing_marker() {
 
 #[test]
 fn send_event_seeds_existing_codex_thread_id_without_repairing_history_marker() {
-    setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
     let _files_guard = CodexResumeFilesGuard::new();
 
@@ -311,8 +296,7 @@ fn send_event_seeds_existing_codex_thread_id_without_repairing_history_marker() 
 }
 
 #[test]
-fn legacy_recovery_checkpoint_derives_missing_codex_history_marker() {
-    setup_env_once();
+fn recovery_checkpoint_derives_missing_codex_history_marker() {
     let _guard = TEST_MUTEX.lock().unwrap();
     let _files_guard = CodexResumeFilesGuard::new();
 
@@ -353,8 +337,17 @@ fn legacy_recovery_checkpoint_derives_missing_codex_history_marker() {
             .json_body(json!({"checkpointId": "codex-derived-checkpoint"}));
     });
 
+    let config =
+        codex_resume_config(&server.base_url(), "test-token").expect("build codex resume config");
+    let paths = codex_resume_paths();
     let http = checkpoint_http_client(&server).expect("build http client");
-    let result = runtime.block_on(guest_agent::checkpoint::create_recovery_checkpoint(&http));
+    let guest_runtime = guest_agent::run_context::GuestRuntime {
+        config,
+        paths,
+        http,
+    };
+    let result = runtime
+        .block_on(guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&guest_runtime));
 
     assert!(result.is_ok());
     prepare_mock.assert_calls(1);
@@ -364,7 +357,6 @@ fn legacy_recovery_checkpoint_derives_missing_codex_history_marker() {
 
 #[test]
 fn send_event_codex_ignores_non_thread_started_event() {
-    setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
     let _files_guard = CodexResumeFilesGuard::new();
 
@@ -382,7 +374,6 @@ fn send_event_codex_ignores_non_thread_started_event() {
 
 #[test]
 fn send_event_codex_ignores_empty_thread_id() {
-    setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
     let _files_guard = CodexResumeFilesGuard::new();
 
@@ -400,7 +391,6 @@ fn send_event_codex_ignores_empty_thread_id() {
 
 #[test]
 fn send_event_codex_ignores_malformed_thread_id() {
-    setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
     let _files_guard = CodexResumeFilesGuard::new();
 

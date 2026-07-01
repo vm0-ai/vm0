@@ -1,12 +1,9 @@
-//! Process-env config construction must coexist with legacy env accessors.
-//!
-//! This test lives in its own binary because `guest_agent::env` caches
-//! environment values in process-wide `LazyLock`s.
+//! Process-env config construction loads and removes the private user-env file.
 
 mod common;
 
 #[test]
-fn process_env_config_and_legacy_accessors_share_user_env_load() {
+fn process_env_config_loads_user_env_once() {
     let tmp = tempfile::tempdir().unwrap();
     let runtime_dir = tmp.path().join("runtime");
     let user_env_dir = runtime_dir.join("user-env");
@@ -35,8 +32,4 @@ fn process_env_config_and_legacy_accessors_share_user_env_load() {
     assert_eq!(config.home_dir, "/home/from-user-env");
     assert!(!user_env_path.exists());
     assert!(!user_env_dir.exists());
-
-    guest_agent::env::init_user_env().unwrap();
-    assert_eq!(guest_agent::env::openai_model(), "gpt-process-env");
-    assert_eq!(guest_agent::env::home_dir(), "/home/from-user-env");
 }

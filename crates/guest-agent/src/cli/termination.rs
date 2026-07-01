@@ -6,7 +6,6 @@
 //! deadlines for those events.
 
 use super::process_group::ChildProcessGroup;
-use crate::env;
 use crate::error::AgentError;
 use guest_common::log_warn;
 use guest_common::telemetry::record_sandbox_op;
@@ -19,6 +18,27 @@ use std::time::Duration;
 use tokio::time::{Instant, Sleep};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
+
+#[derive(Debug, Clone, Copy)]
+pub(super) struct PostResultCleanupPolicy {
+    sigterm_grace: Duration,
+    total_cap: Duration,
+    sigkill_grace: Duration,
+}
+
+impl PostResultCleanupPolicy {
+    pub(super) fn new(
+        sigterm_grace: Duration,
+        total_cap: Duration,
+        sigkill_grace: Duration,
+    ) -> Self {
+        Self {
+            sigterm_grace,
+            total_cap,
+            sigkill_grace,
+        }
+    }
+}
 
 /// State machine driving forced CLI process-group termination. A single
 /// pinned deadline is resettable across phases; the enum value tells the
@@ -244,6 +264,7 @@ impl ControlTerminationLog {
 pub(super) struct CliTerminationRuntime {
     process_group: Option<ChildProcessGroup>,
     pgid: Option<i32>,
+    policy: PostResultCleanupPolicy,
     state: TerminationState,
     post_result_cleanup: Option<PostResultCleanupState>,
     control_error: Option<AgentError>,
@@ -251,10 +272,14 @@ pub(super) struct CliTerminationRuntime {
 }
 
 impl CliTerminationRuntime {
-    pub(super) fn new(process_group: Option<ChildProcessGroup>) -> Self {
+    pub(super) fn new(
+        process_group: Option<ChildProcessGroup>,
+        policy: PostResultCleanupPolicy,
+    ) -> Self {
         Self {
             process_group,
             pgid: process_group.map(ChildProcessGroup::raw_pgid),
+            policy,
             state: TerminationState::Idle,
             post_result_cleanup: None,
             control_error: None,
@@ -288,11 +313,8 @@ impl CliTerminationRuntime {
         }
 
         let now = Instant::now();
-        let cleanup = PostResultCleanupState::arm(
-            now,
-            env::post_result_sigterm_grace(),
-            env::post_result_total_cap(),
-        );
+        let cleanup =
+            PostResultCleanupState::arm(now, self.policy.sigterm_grace, self.policy.total_cap);
         let Some(next_deadline) = cleanup.next_deadline() else {
             return false;
         };
@@ -322,7 +344,7 @@ impl CliTerminationRuntime {
         ) && let Some(cleanup) = self.post_result_cleanup.as_mut()
         {
             let next_deadline =
-                cleanup.record_meaningful_event(Instant::now(), env::post_result_sigterm_grace());
+                cleanup.record_meaningful_event(Instant::now(), self.policy.sigterm_grace);
             if let Some(next_deadline) = next_deadline {
                 termination_deadline.as_mut().reset(next_deadline);
             }
@@ -362,7 +384,7 @@ impl CliTerminationRuntime {
         error: AgentError,
         mut termination_deadline: Pin<&mut Sleep>,
     ) {
-        let grace = env::post_result_sigkill_grace();
+        let grace = self.policy.sigkill_grace;
         record_cli_termination_signal(
             &mut self.diagnostic,
             reason,
@@ -394,7 +416,7 @@ impl CliTerminationRuntime {
                     .flatten();
                 let grace = cleanup_timeout
                     .map(|timeout| timeout.elapsed)
-                    .unwrap_or_else(env::post_result_sigterm_grace);
+                    .unwrap_or(self.policy.sigterm_grace);
 
                 if let Some(pid) = self.pgid {
                     if reason == TerminationReason::PostResult {
@@ -443,13 +465,12 @@ impl CliTerminationRuntime {
                 }
 
                 self.state = TerminationState::SigkillPending { reason };
-                termination_deadline.as_mut().reset(deadline_after(
-                    Instant::now(),
-                    env::post_result_sigkill_grace(),
-                ));
+                termination_deadline
+                    .as_mut()
+                    .reset(deadline_after(Instant::now(), self.policy.sigkill_grace));
             }
             TerminationState::SigkillPending { reason } => {
-                let grace = env::post_result_sigkill_grace();
+                let grace = self.policy.sigkill_grace;
                 let now = Instant::now();
                 if let Some(pid) = self.pgid {
                     log_warn!(
@@ -547,6 +568,14 @@ mod tests {
     use super::*;
     use guest_contracts::diagnostics::{CliTerminationReason, CliTerminationSignal};
 
+    fn test_policy() -> PostResultCleanupPolicy {
+        PostResultCleanupPolicy::new(
+            Duration::from_secs(3),
+            Duration::from_secs(60),
+            Duration::from_secs(1),
+        )
+    }
+
     #[test]
     fn termination_state_is_pending_only_between_arming_and_done() {
         assert!(!TerminationState::Idle.is_pending());
@@ -639,7 +668,7 @@ mod tests {
     async fn control_failure_overrides_post_result_cleanup() {
         let deadline = tokio::time::sleep(Duration::MAX);
         tokio::pin!(deadline);
-        let mut runtime = CliTerminationRuntime::new(None);
+        let mut runtime = CliTerminationRuntime::new(None, test_policy());
 
         assert!(runtime.arm_post_result_cleanup(false, deadline.as_mut()));
         assert!(runtime.has_post_result_cleanup());
@@ -675,7 +704,7 @@ mod tests {
     async fn second_control_failure_does_not_overwrite_first() {
         let deadline = tokio::time::sleep(Duration::MAX);
         tokio::pin!(deadline);
-        let mut runtime = CliTerminationRuntime::new(None);
+        let mut runtime = CliTerminationRuntime::new(None, test_policy());
 
         assert!(runtime.begin_control_failure(
             TerminationReason::HeartbeatError,
@@ -718,7 +747,7 @@ mod tests {
     async fn stdin_control_failure_is_only_eligible_while_idle() {
         let deadline = tokio::time::sleep(Duration::MAX);
         tokio::pin!(deadline);
-        let mut runtime = CliTerminationRuntime::new(None);
+        let mut runtime = CliTerminationRuntime::new(None, test_policy());
 
         assert!(runtime.can_begin_initial_prompt_stdin_control_failure(false));
         assert!(!runtime.can_begin_initial_prompt_stdin_control_failure(true));
@@ -734,7 +763,7 @@ mod tests {
     async fn child_exit_parks_termination_and_prevents_late_post_result_arm() {
         let deadline = tokio::time::sleep(Duration::MAX);
         tokio::pin!(deadline);
-        let mut runtime = CliTerminationRuntime::new(None);
+        let mut runtime = CliTerminationRuntime::new(None, test_policy());
 
         assert!(runtime.arm_post_result_cleanup(false, deadline.as_mut()));
         runtime.mark_child_exited();
@@ -757,7 +786,7 @@ mod tests {
     async fn post_result_activity_refreshes_only_for_previously_armed_cleanup() {
         let deadline = tokio::time::sleep(Duration::MAX);
         tokio::pin!(deadline);
-        let mut runtime = CliTerminationRuntime::new(None);
+        let mut runtime = CliTerminationRuntime::new(None, test_policy());
 
         runtime.record_post_result_activity(false, deadline.as_mut());
         assert!(runtime.post_result_cleanup.is_none());

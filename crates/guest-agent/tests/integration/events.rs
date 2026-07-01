@@ -12,6 +12,17 @@ fn session_file_paths() -> (String, String) {
     )
 }
 
+async fn send_shared_event(
+    event: serde_json::Value,
+    seq: u32,
+    masker: &SecretMasker,
+) -> Result<(), guest_agent::error::AgentError> {
+    let config = shared_guest_config().map_err(guest_agent::error::AgentError::Execution)?;
+    let paths = shared_guest_paths();
+    guest_agent::events::send_event_for_config(&http_client!(), event, seq, masker, &config, &paths)
+        .await
+}
+
 // =========================================================================
 // Events
 // =========================================================================
@@ -31,7 +42,7 @@ async fn send_event_correct_payload() {
 
     let masker = SecretMasker::from_raw("");
     let event = json!({"type": "test", "data": "hello"});
-    let result = guest_agent::events::send_event(&http_client!(), event, 42, &masker).await;
+    let result = send_shared_event(event, 42, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
@@ -54,7 +65,7 @@ async fn send_event_masks_secrets() {
     let masker = SecretMasker::from_raw(&encoded_secret);
 
     let event = json!({"type": "test", "data": "contains super-secret-value here"});
-    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+    let result = send_shared_event(event, 1, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
@@ -77,7 +88,7 @@ async fn send_event_masks_lowercase_percent_encoded_secret() {
     let masker = SecretMasker::from_raw(&encoded_secret);
 
     let event = json!({"type": "test", "data": "contains token%2fa here"});
-    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+    let result = send_shared_event(event, 1, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
@@ -109,7 +120,7 @@ async fn send_event_captures_session_metadata_before_masking() {
         "session_id": session_id
     });
 
-    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+    let result = send_shared_event(event, 1, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
@@ -160,7 +171,8 @@ async fn prepare_event_does_not_capture_session_metadata() {
         "subtype": "init",
         "session_id": "ses-prepare-only"
     });
-    let payload = guest_agent::events::prepare_event_payload(event, 1, &masker);
+    let payload =
+        guest_agent::events::prepare_event_payload_for_run_id(event, 1, &masker, TEST_RUN_ID);
 
     assert_eq!(payload["runId"], "test-run-001");
     assert_eq!(payload["events"][0]["sequenceNumber"], 1);
@@ -196,7 +208,7 @@ async fn send_event_masks_invalid_session_id_without_checkpoint_metadata() {
         "subtype": "init",
         "session_id": session_id
     });
-    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+    let result = send_shared_event(event, 1, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
@@ -234,7 +246,7 @@ async fn send_event_keeps_existing_session_metadata() {
         "subtype": "init",
         "session_id": "second-session"
     });
-    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+    let result = send_shared_event(event, 1, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
@@ -281,7 +293,7 @@ async fn send_event_seeds_existing_claude_session_id_without_repairing_history_m
 
         let masker = SecretMasker::from_raw("");
         let event = json!({"type": "assistant", "data": "later"});
-        let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+        let result = send_shared_event(event, 1, &masker).await;
 
         assert!(result.is_ok());
         assert_eq!(
@@ -332,7 +344,7 @@ async fn send_event_extracts_claude_session_id() {
         "subtype": "init",
         "session_id": "ses-abc-123"
     });
-    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+    let result = send_shared_event(event, 1, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
@@ -377,7 +389,7 @@ async fn send_event_rejects_unsafe_claude_session_id() {
             "subtype": "init",
             "session_id": session_id
         });
-        let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+        let result = send_shared_event(event, 1, &masker).await;
 
         assert!(result.is_ok());
         assert!(
@@ -408,7 +420,7 @@ async fn send_event_skips_session_id_for_non_init() {
 
     let masker = SecretMasker::from_raw("");
     let event = json!({"type": "assistant", "data": "hello"});
-    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+    let result = send_shared_event(event, 1, &masker).await;
 
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;

@@ -2,8 +2,6 @@
 
 use std::collections::HashMap;
 
-use crate::env;
-
 use super::CliRuntimeConfig;
 
 const DEFAULT_PATH: &str = "/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin";
@@ -28,11 +26,6 @@ const OPTIONAL_BASE_ENV_KEYS: &[&str] = &[
     "REQUESTS_CA_BUNDLE",
     "CARGO_HTTP_CAINFO",
 ];
-
-pub(super) fn apply_to_tokio_command(cmd: &mut tokio::process::Command) {
-    let api_url = runner_visible_api_url_from_process_env();
-    apply_to_tokio_command_with_values(cmd, env::home_dir(), env::user_env(), &api_url);
-}
 
 pub(super) fn apply_to_tokio_command_for_runtime(
     cmd: &mut tokio::process::Command,
@@ -97,13 +90,6 @@ fn apply_runner_visible_env(api_url: &str, mut apply: impl FnMut(&'static str, S
     if !api_url.is_empty() {
         apply(RUNNER_VISIBLE_API_URL_ENV_KEY, api_url.to_string());
     }
-}
-
-pub(super) fn runner_visible_api_url_from_process_env() -> String {
-    std::env::var(RUNNER_VISIBLE_API_URL_ENV_KEY)
-        .ok()
-        .filter(|value| !value.is_empty())
-        .unwrap_or_default()
 }
 
 #[cfg(test)]

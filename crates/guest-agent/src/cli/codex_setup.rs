@@ -16,7 +16,7 @@ use crate::masker::SecretMasker;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
 
-/// Reconcile Codex auth on the guest before invoking `codex exec`.
+/// Reconcile Codex auth using the config captured during guest-agent bootstrap.
 ///
 /// Three mutually-exclusive states are supported:
 ///
@@ -30,20 +30,6 @@ const LOG_TAG: &str = "sandbox:guest-agent";
 ///   keeps setup deterministic before the CLI process starts.
 /// - **No auth**: remove any stale auth.json left by a previous reused
 ///   sandbox run so Codex cannot inherit credentials from another run.
-pub async fn setup_codex(_masker: &SecretMasker) -> Result<(), AgentError> {
-    setup_codex_with_values(
-        env::is_codex_oauth_mode(),
-        env::home_dir(),
-        env::openai_api_key(),
-    )
-}
-
-/// Reconcile Codex auth using the config captured during guest-agent bootstrap.
-///
-/// Production should use this instead of [`setup_codex`] so OAuth/API-key mode,
-/// child `HOME`, and loaded user env come from the same immutable
-/// [`env::GuestConfig`] as CLI execution. The legacy wrapper remains for tests
-/// and transitional callers that still rely on process-env facades.
 pub async fn setup_codex_for_config(
     _masker: &SecretMasker,
     config: &env::GuestConfig,

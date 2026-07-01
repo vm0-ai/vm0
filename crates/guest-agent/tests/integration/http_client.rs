@@ -31,20 +31,21 @@ async fn post_json_success_json_response() {
 }
 
 #[tokio::test]
-async fn for_current_env_uses_enabled_client_when_api_token_is_set()
+async fn for_config_uses_enabled_client_when_api_token_is_set()
 -> Result<(), Box<dyn std::error::Error>> {
     let api = SharedApiMock::new().await;
     let server = api.server();
+    let config = shared_guest_config()?;
 
     let mock = server.mock(|when, then| {
         when.method(POST)
-            .path("/test/for-current-env")
+            .path("/test/for-config")
             .header("Authorization", "Bearer test-token-abc123");
         then.status(200).json_body(json!({"status": "ok"}));
     });
 
-    let url = api.url("/test/for-current-env");
-    let result = guest_agent::http::HttpClient::for_current_env()?
+    let url = api.url("/test/for-config");
+    let result = guest_agent::http::HttpClient::for_config(&config)?
         .post_json(&url, &json!({}), 1)
         .await?;
 
@@ -54,10 +55,12 @@ async fn for_current_env_uses_enabled_client_when_api_token_is_set()
 }
 
 #[tokio::test]
-async fn for_current_env_uses_env_api_url_for_webhook_routes()
+async fn for_config_uses_config_api_url_for_webhook_routes()
 -> Result<(), Box<dyn std::error::Error>> {
     let api = SharedApiMock::new().await;
     let server = api.server();
+    let config = shared_guest_config()?;
+    let paths = shared_guest_paths();
 
     let mock = server.mock(|when, then| {
         when.method(POST)
@@ -71,11 +74,13 @@ async fn for_current_env_uses_env_api_url_for_webhook_routes()
 
     let masker = SecretMasker::from_raw("");
     let event = json!({"type": "test", "data": "env route"});
-    guest_agent::events::send_event(
-        &guest_agent::http::HttpClient::for_current_env()?,
+    guest_agent::events::send_event_for_config(
+        &guest_agent::http::HttpClient::for_config(&config)?,
         event,
         7,
         &masker,
+        &config,
+        &paths,
     )
     .await?;
 
@@ -280,9 +285,11 @@ async fn send_event_uses_explicit_api_config_route_instead_of_env_route()
         "",
         Duration::ZERO,
     )?;
+    let config = shared_guest_config()?;
+    let paths = shared_guest_paths();
     let masker = SecretMasker::from_raw("");
     let event = json!({"type": "test", "data": "explicit route"});
-    guest_agent::events::send_event(&http, event, 3, &masker).await?;
+    guest_agent::events::send_event_for_config(&http, event, 3, &masker, &config, &paths).await?;
 
     explicit_mock.assert_calls_async(1).await;
     env_mock.assert_calls_async(0).await;

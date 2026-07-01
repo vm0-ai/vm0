@@ -185,13 +185,6 @@ fn resolve_run_dir_from_captured_env(
     guest_contracts::runtime_paths::run_dir_for_home(home, run_id)
 }
 
-#[allow(clippy::panic)]
-pub(crate) fn legacy_paths_from_process_env() -> GuestPaths {
-    let run_id = std::env::var(guest_contracts::env::RUN_ID_ENV).unwrap_or_default();
-    GuestPaths::from_process_env(&run_id)
-        .unwrap_or_else(|error| panic!("failed to resolve guest runtime directory: {error}"))
-}
-
 fn path_to_string(path: PathBuf) -> String {
     path.to_string_lossy().into_owned()
 }
