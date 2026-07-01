@@ -3398,7 +3398,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     const connectors = createConnectorBddApi(context);
     const { actor, agentId, runnerGroup } = await entitledRunActor();
     await connectors.updateFeatureSwitches(actor, {
-      [FeatureSwitchKey.SandboxIoLimiters]: true,
+      [FeatureSwitchKey.MemoryViewer]: true,
     });
 
     const firstStartedAt = now();
@@ -3438,7 +3438,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
     await api.heartbeatRunner(runnerGroup);
     const claim = await api.claimRunnerJob(queued.runId);
     expect(claim.featureFlags).toMatchObject({
-      [FeatureSwitchKey.SandboxIoLimiters]: true,
+      [FeatureSwitchKey.MemoryViewer]: true,
     });
     expect(claim.apiStartTime).toBe(promotedAt);
 

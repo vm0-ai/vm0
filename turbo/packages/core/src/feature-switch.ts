@@ -237,13 +237,6 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Enable the Zapier connector. When disabled, Zapier is hidden from the connectors list and cannot be connected.",
     enabled: false,
   },
-  [FeatureSwitchKey.SandboxIoLimiters]: {
-    maintainer: "liangyou@vm0.ai",
-    description:
-      "Enable runner-provided disk and network device rate limiters for sandbox VMs.",
-    enabled: false,
-    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
-  },
   [FeatureSwitchKey.ChatGithubPrTracking]: {
     maintainer: "linghan@vm0.ai",
     description:
