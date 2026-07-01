@@ -660,6 +660,39 @@ class TestUsageWebhookDelivery:
             flush_request_id="success",
         )
 
+    def test_delivery_capacity_released_when_outcome_callback_fails(
+        self, tmp_path, sync_usage_executor, usage_webhook_server
+    ):
+        proxy_log = tmp_path / "proxy.jsonl"
+        pending_path = tmp_path / "usage-pending"
+        usage.set_pending_path(str(pending_path))
+        usage_webhook_server.queue_response(204)
+
+        def fail_callback(_outcome: usage.webhook.WebhookDeliveryOutcome) -> None:
+            raise RuntimeError("callback failed")
+
+        assert usage.webhook._enqueue_webhook(
+            usage_webhook_server.url("/usage"),
+            "tok",
+            {"runId": "run-1", "events": []},
+            str(proxy_log),
+            "usage_event",
+            delivery_outcome_callback=fail_callback,
+        )
+
+        with pytest.raises(RuntimeError, match="callback failed"):
+            sync_usage_executor.shutdown(wait=True)
+
+        assert usage_webhook_server.request_count == 1
+        assert usage.webhook._pending_delivery_payload_count_for_tests() == 0
+        assert_current_pending(
+            pending_path,
+            flows=0,
+            buffered=0,
+            reports=0,
+            flush_request_id="callback-failed",
+        )
+
     def test_delivery_capacity_released_after_retry_exhaustion(
         self, tmp_path, sync_usage_executor, usage_webhook_server
     ):
