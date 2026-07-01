@@ -72,12 +72,6 @@ const insightsResponseSchema = z.object({
   lastUpdated: z.string().nullable(),
 });
 
-const insightsRangeResponseSchema = z.object({
-  minDate: z.string().nullable(),
-  maxDate: z.string().nullable(),
-  totalDays: z.number(),
-});
-
 export const zeroInsightsContract = c.router({
   get: {
     method: "GET",
@@ -94,21 +88,6 @@ export const zeroInsightsContract = c.router({
   },
 });
 
-export const zeroInsightsRangeContract = c.router({
-  get: {
-    method: "GET",
-    path: "/api/zero/insights/range",
-    headers: authHeadersSchema,
-    responses: {
-      200: insightsRangeResponseSchema,
-      401: apiErrorSchema,
-    },
-    summary: "Get available date range for org insights",
-  },
-});
-
 export type ZeroInsightsContract = typeof zeroInsightsContract;
-export type ZeroInsightsRangeContract = typeof zeroInsightsRangeContract;
 export type InsightsResponse = z.infer<typeof insightsResponseSchema>;
-export type InsightsRangeResponse = z.infer<typeof insightsRangeResponseSchema>;
 export type DayInsight = z.infer<typeof dayInsightSchema>;

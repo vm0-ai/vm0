@@ -33,8 +33,6 @@ import { zeroBuiltInGenerationContract } from "@vm0/api-contracts/contracts/zero
 import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import {
   zeroInsightsContract,
-  zeroInsightsRangeContract,
-  type InsightsRangeResponse,
   type InsightsResponse,
 } from "@vm0/api-contracts/contracts/zero-insights";
 import { zeroImageIoGenerateContract } from "@vm0/api-contracts/contracts/zero-image-io-generate";
@@ -534,17 +532,6 @@ export function createBillingMediaApi(context: TestContext) {
       const client = setupApp({ context })(zeroInsightsContract);
       const response = await accept(
         client.get({ headers: authenticate(actor), query: { days: 7 } }),
-        [200],
-      );
-      return response.body;
-    },
-
-    async readInsightsRange(
-      actor: ApiTestUser,
-    ): Promise<InsightsRangeResponse> {
-      const client = setupApp({ context })(zeroInsightsRangeContract);
-      const response = await accept(
-        client.get({ headers: authenticate(actor) }),
         [200],
       );
       return response.body;

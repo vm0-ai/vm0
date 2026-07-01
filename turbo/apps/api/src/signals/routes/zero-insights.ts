@@ -1,16 +1,10 @@
 import { computed } from "ccstate";
-import {
-  zeroInsightsContract,
-  zeroInsightsRangeContract,
-} from "@vm0/api-contracts/contracts/zero-insights";
+import { zeroInsightsContract } from "@vm0/api-contracts/contracts/zero-insights";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
 import { queryOf } from "../context/request";
-import {
-  zeroInsights,
-  zeroInsightsRange,
-} from "../services/zero-insights.service";
+import { zeroInsights } from "../services/zero-insights.service";
 import type { RouteEntry } from "../route-entry";
 
 const orgAuth = {
@@ -31,19 +25,7 @@ const getInsightsInner$ = computed(async (get) => {
   return { status: 200 as const, body: result };
 });
 
-const getInsightsRangeInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const result = await get(
-    zeroInsightsRange({ orgId: auth.orgId, userId: auth.userId }),
-  );
-  return { status: 200 as const, body: result };
-});
-
 export const zeroInsightsRoutes: readonly RouteEntry[] = [
-  {
-    route: zeroInsightsRangeContract.get,
-    handler: authRoute(orgAuth, getInsightsRangeInner$),
-  },
   {
     route: zeroInsightsContract.get,
     handler: authRoute(orgAuth, getInsightsInner$),

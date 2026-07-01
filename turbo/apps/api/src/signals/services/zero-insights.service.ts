@@ -1,7 +1,6 @@
 import { computed, type Computed } from "ccstate";
 import type {
   DayInsight,
-  InsightsRangeResponse,
   InsightsResponse,
 } from "@vm0/api-contracts/contracts/zero-insights";
 import { insightsDaily } from "@vm0/db/schema/insights-daily";
@@ -210,37 +209,6 @@ export function zeroInsights(args: {
       totalCredits,
       totalRuns,
       lastUpdated: lastUpdated?.toISOString() ?? null,
-    };
-  });
-}
-
-export function zeroInsightsRange(args: {
-  readonly orgId: string;
-  readonly userId: string;
-}): Computed<Promise<InsightsRangeResponse>> {
-  return computed(async (get): Promise<InsightsRangeResponse> => {
-    const [row] = await get(db$)
-      .select({
-        minDate: sql<string | null>`MIN(${insightsDaily.date})`.as("min_date"),
-        maxDate: sql<string | null>`MAX(${insightsDaily.date})`.as("max_date"),
-        totalDays: sql<number>`COUNT(*)::int`.as("total_days"),
-      })
-      .from(insightsDaily)
-      .where(
-        and(
-          eq(insightsDaily.orgId, args.orgId),
-          eq(insightsDaily.userId, args.userId),
-        ),
-      );
-
-    if (!row || row.totalDays === 0) {
-      return { minDate: null, maxDate: null, totalDays: 0 };
-    }
-
-    return {
-      minDate: row.minDate,
-      maxDate: row.maxDate,
-      totalDays: row.totalDays,
     };
   });
 }
