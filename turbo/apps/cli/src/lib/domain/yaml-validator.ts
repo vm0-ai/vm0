@@ -98,7 +98,9 @@ function formatInvalidTypeIssue(
   issue: z.ZodIssue & { expected?: string },
 ): string | null {
   // Zod 4 uses 'input' instead of 'received' in types, but runtime has 'received'
-  const received = (issue as unknown as { received?: string }).received;
+  const runtimeReceived = Reflect.get(issue, "received");
+  const received =
+    typeof runtimeReceived === "string" ? runtimeReceived : undefined;
 
   // Missing required fields (handles both "Required" and "Invalid input:" messages)
   const isMissing =

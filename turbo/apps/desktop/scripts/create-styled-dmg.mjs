@@ -254,7 +254,11 @@ async function createStyledDmg({
     await run("hdiutil", ["verify", outPath]);
   } finally {
     if (mounted) {
-      await run("hdiutil", ["detach", mountPath]).catch(() => {});
+      try {
+        await run("hdiutil", ["detach", mountPath]);
+      } catch (error) {
+        console.warn(`Failed to detach DMG mount ${mountPath}:`, error);
+      }
     }
     if (process.env.ZERO_DESKTOP_KEEP_DMG_TEMP !== "true") {
       await rm(tempDir, { force: true, recursive: true });

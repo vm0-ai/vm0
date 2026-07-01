@@ -115,7 +115,7 @@ const postClerkWebhook$ = command(
 
     // "user.banned" is not yet in the Clerk SDK WebhookEvent type union
     if ((event.type as string) === "user.banned") {
-      const { data } = event as unknown as { data: unknown };
+      const data = propertyOf(event, "data");
       const userId = eventDataId(data);
       if (!userId) {
         L.error("user.banned event missing user ID", { data });
