@@ -350,10 +350,15 @@ interface PreparedRunnerLaunch {
   readonly runContextSnapshot: RunContextAxiomSnapshot;
 }
 
-interface QueuedPersistenceResult {
-  readonly persisted: DerivedPersistenceResult;
-  readonly queueDepth: number | null;
-}
+type QueuedPersistenceResult =
+  | {
+      readonly status: "queued";
+      readonly queueDepth: number;
+    }
+  | {
+      readonly status: Exclude<RunStatus, "queued">;
+      readonly sandboxId?: string;
+    };
 
 interface HttpRunCallback {
   readonly url: string;
@@ -4990,7 +4995,9 @@ function enqueueRunForConcurrency(
           throw new Error("Run disappeared before queue persistence");
         }
         if (currentRun.status !== "queued") {
-          return { persisted: currentRun, queueDepth: null };
+          return currentRun.sandboxId
+            ? { status: currentRun.status, sandboxId: currentRun.sandboxId }
+            : { status: currentRun.status };
         }
 
         await tx.insert(agentRunQueue).values({
@@ -5013,20 +5020,20 @@ function enqueueRunForConcurrency(
             and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "queued")),
           );
 
-        return { persisted: { status: "queued" as const }, queueDepth };
+        return { status: "queued" as const, queueDepth };
       },
     );
 
-    if (queuedPersistence.persisted.status === "queued") {
+    if (queuedPersistence.status === "queued") {
       recordQueuedRunEnqueueTelemetry({
         runId: args.run.id,
-        queueDepth: queuedPersistence.queueDepth ?? 0,
+        queueDepth: queuedPersistence.queueDepth,
       });
       ingestRunContextSnapshot(launch.runContextSnapshot);
       await publishOrgSignal(args.orgId, "queue:changed");
     }
 
-    return queuedPersistence.persisted;
+    return queuedPersistence;
   });
 }
 
