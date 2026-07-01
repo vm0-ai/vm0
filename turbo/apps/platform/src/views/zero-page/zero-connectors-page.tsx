@@ -288,7 +288,7 @@ function ConnectorFilterOption({
     <DropdownMenuItem className="justify-between gap-2" onClick={onSelect}>
       <span className="flex min-w-0 items-center gap-2">{children}</span>
       {active && (
-        <IconCheck size={15} stroke={2} className="shrink-0 text-primary" />
+        <IconCheck size={15} stroke={2} className="shrink-0 text-foreground" />
       )}
     </DropdownMenuItem>
   );
@@ -358,7 +358,10 @@ function ConnectorFilterDropdown({
           />
         </Button>
       </DropdownMenuTrigger>
-      <DropdownMenuContent align="end" className="w-56">
+      <DropdownMenuContent
+        align="end"
+        className="max-h-[min(420px,var(--radix-dropdown-menu-content-available-height))] w-56 overflow-y-auto"
+      >
         <ConnectorFilterOption
           active={value.kind === "all"}
           onSelect={() => {
