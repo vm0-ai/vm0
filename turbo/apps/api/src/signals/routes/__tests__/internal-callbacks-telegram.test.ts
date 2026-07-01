@@ -2,7 +2,7 @@ import { randomUUID } from "node:crypto";
 
 import { createStore } from "ccstate";
 import { HttpResponse, http } from "msw";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { OFFICIAL_TELEGRAM_BOT_ID } from "@vm0/api-contracts/contracts/zero-integrations-telegram";
 import type {
@@ -77,6 +77,11 @@ interface TelegramSendMessageBody {
   readonly reply_parameters?: { readonly message_id: number };
 }
 
+interface TelegramMockResponse {
+  readonly status?: number;
+  readonly body: Record<string, unknown>;
+}
+
 interface TelegramStateMessage {
   readonly text: string;
   readonly isBot: boolean;
@@ -89,7 +94,43 @@ interface TelegramStateRun {
   readonly selected_model: string | null;
 }
 
-function telegramApiMocks(token = TEST_BOT_TOKEN): {
+function runTelegramSendDelaysImmediately(): {
+  readonly delays: number[];
+  readonly restore: () => void;
+} {
+  const delays: number[] = [];
+  const setTimeoutSpy = vi.spyOn(globalThis, "setTimeout").mockImplementation(((
+    handler: (...args: unknown[]) => void,
+    delay?: number,
+    ...args: unknown[]
+  ) => {
+    delays.push(delay ?? 0);
+    queueMicrotask(() => {
+      handler(...args);
+    });
+    const timeout = {
+      hasRef: () => false,
+      refresh: () => timeout,
+      ref: () => timeout,
+      unref: () => timeout,
+    };
+    return timeout as unknown as ReturnType<typeof setTimeout>;
+  }) as typeof setTimeout);
+
+  return {
+    delays,
+    restore: () => {
+      setTimeoutSpy.mockRestore();
+    },
+  };
+}
+
+function telegramApiMocks(
+  token = TEST_BOT_TOKEN,
+  options: {
+    readonly sendMessageResponses?: readonly TelegramMockResponse[];
+  } = {},
+): {
   readonly chatActions: unknown[];
   readonly deleteMessages: unknown[];
   readonly sentMessages: TelegramSendMessageBody[];
@@ -119,6 +160,13 @@ function telegramApiMocks(token = TEST_BOT_TOKEN): {
       async ({ request }) => {
         const body = (await request.json()) as TelegramSendMessageBody;
         sentMessages.push(body);
+        const mockResponse =
+          options.sendMessageResponses?.[sentMessages.length - 1];
+        if (mockResponse) {
+          return HttpResponse.json(mockResponse.body, {
+            status: mockResponse.status,
+          });
+        }
         return HttpResponse.json({
           ok: true,
           result: {
@@ -469,6 +517,8 @@ async function findThreadSession(args: {
 }
 
 afterEach(() => {
+  vi.restoreAllMocks();
+  vi.useRealTimers();
   context.mocks.axiom.query.mockReset();
   clearMockedEnv();
 });
@@ -541,6 +591,84 @@ describe("POST /api/internal/callbacks/telegram", () => {
       text: "**Done** with `code`",
       isBot: true,
     });
+  });
+
+  it("retries Telegram completion replies on 429 with Fibonacci backoff", async () => {
+    const fixture = await track(seedFixture());
+    const telegram = telegramApiMocks(TEST_BOT_TOKEN, {
+      sendMessageResponses: [
+        {
+          status: 429,
+          body: { ok: false, description: "Too Many Requests" },
+        },
+      ],
+    });
+    completedOutput("Retried result");
+
+    const timer = runTelegramSendDelaysImmediately();
+    const result = await dispatchTelegramCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: fixture.payload,
+    });
+    timer.restore();
+
+    expect(result).toStrictEqual({ success: true });
+    expect(timer.delays).toContain(1000);
+    expect(telegram.sentMessages).toHaveLength(2);
+    expect(telegram.sentMessages[1]?.text).toBe("Retried result");
+  });
+
+  it("returns the Telegram 429 after exhausting Fibonacci retries", async () => {
+    const fixture = await track(seedFixture());
+    const telegram = telegramApiMocks(TEST_BOT_TOKEN, {
+      sendMessageResponses: Array.from({ length: 6 }, () => ({
+        status: 429,
+        body: { ok: false, description: "Too Many Requests" },
+      })),
+    });
+    completedOutput("Still limited");
+
+    const timer = runTelegramSendDelaysImmediately();
+    const result = await dispatchTelegramCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: fixture.payload,
+    });
+    timer.restore();
+
+    expect(result).toStrictEqual({
+      success: false,
+      status: 400,
+      error: "Telegram API error: Too Many Requests",
+    });
+    expect(timer.delays).toStrictEqual(
+      expect.arrayContaining([1000, 1000, 2000, 3000, 5000]),
+    );
+    expect(telegram.sentMessages).toHaveLength(6);
+  });
+
+  it("throttles split completion reply chunks", async () => {
+    const fixture = await track(seedFixture());
+    const telegram = telegramApiMocks();
+    completedOutput("x".repeat(5000));
+
+    const timer = runTelegramSendDelaysImmediately();
+    const result = await dispatchTelegramCallback({
+      callbackId: fixture.callbackId,
+      runId: fixture.runId,
+      status: "completed",
+      payload: fixture.payload,
+    });
+    timer.restore();
+
+    expect(result).toStrictEqual({ success: true });
+    expect(timer.delays).toContain(1100);
+    expect(telegram.sentMessages).toHaveLength(2);
+    expect(telegram.sentMessages[0]?.text).toHaveLength(4096);
+    expect(telegram.sentMessages[1]?.text).toHaveLength(904);
   });
 
   it("renders markdown links in completed replies", async () => {
