@@ -9,12 +9,27 @@ import {
   setAblyLoop$,
   setAblyPayloadLoop$,
 } from "../realtime.ts";
+import { createRemoteChatThreadDataSource } from "../chat-page/remote-chat-thread-data-source.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
 
 const finishLoop$ = command((_ctx, _signal: AbortSignal) => {
   return true;
+});
+
+const keepAliveLoop$ = command((_ctx, _signal: AbortSignal) => {
+  return Promise.resolve(false);
+});
+
+const keepAlivePayloadLoop$ = command(
+  (_ctx, _payload: unknown, _signal: AbortSignal) => {
+    return false;
+  },
+);
+
+const failReadyCatchup$ = command((_ctx, _signal: AbortSignal) => {
+  throw new Error("ready catchup should not run");
 });
 
 function mockSignedInUser(): void {
@@ -186,5 +201,55 @@ describe("realtime signals", () => {
 
     subscriber.abort(abortError("test done"));
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+  });
+
+  it("fails and cleans up when a chat realtime subscription ends before ready", async () => {
+    mockSignedInUser();
+    const threadId = "test-thread-partial-ready";
+    const dataSource = createRemoteChatThreadDataSource(threadId);
+
+    await context.store.set(setupRealtime$, context.signal);
+    context.mocks.ably.rejectNextSubscribe("Connection closed");
+
+    await expect(
+      context.store.set(
+        dataSource.subscribeRealtime$,
+        {
+          threadId,
+          handlers: {
+            onMessageCreated$: keepAliveLoop$,
+            onMessageUpdated$: keepAlivePayloadLoop$,
+            onRunChanged$: keepAliveLoop$,
+            onAutomationsChanged$: keepAliveLoop$,
+            onSubscribed$: failReadyCatchup$,
+          },
+        },
+        context.signal,
+      ),
+    ).rejects.toThrow(
+      `Realtime subscription ended before ready: chatThreadMessageCreated:${threadId}`,
+    );
+
+    expect(
+      context.mocks.ably.hasSubscription(
+        `chatThreadMessageCreated:${threadId}`,
+      ),
+    ).toBeFalsy();
+    expect(
+      context.mocks.ably.hasSubscription(
+        `chatThreadMessageUpdated:${threadId}`,
+      ),
+    ).toBeFalsy();
+    expect(
+      context.mocks.ably.hasSubscription(`chatThreadRunCreated:${threadId}`),
+    ).toBeFalsy();
+    expect(
+      context.mocks.ably.hasSubscription(`chatThreadRunUpdated:${threadId}`),
+    ).toBeFalsy();
+    expect(
+      context.mocks.ably.hasSubscription(
+        `chatThreadAutomationsChanged:${threadId}`,
+      ),
+    ).toBeFalsy();
   });
 });
