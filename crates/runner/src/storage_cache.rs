@@ -62,7 +62,10 @@ const GUEST_STAGE_BATCH_MAX_BYTES: usize = 15 * 1024 * 1024;
 const GUEST_STAGE_DIR: &str = "/tmp/vm0-storage-cache";
 
 const HEAD_TIMEOUT: Duration = Duration::from_secs(10);
-const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
+/// Storage cache fetches are best-effort and capped to small archives, so a
+/// slow full GET should fall back to guest-download instead of holding the
+/// per-version cache lock for minutes across retry attempts.
+const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(30);
 const CACHE_HTTP_MAX_ATTEMPTS: usize = 3;
 const CACHE_HTTP_RETRY_DELAY: Duration = Duration::from_millis(200);
 const STORAGE_CACHE_STAGE_TOTAL: &str = "storage_cache_stage_total";
