@@ -20,6 +20,7 @@ import {
 } from "../../../../signals/zero-page/settings/custom-connectors.ts";
 import { hasTokenInputValue } from "../../../../signals/zero-page/settings/token-input.ts";
 import { CustomConnectorIcon } from "./custom-connector-icon.tsx";
+import type { FormEvent } from "react";
 
 export function CustomConnectorConnectDialog({
   id,
@@ -43,7 +44,8 @@ export function CustomConnectorConnectDialog({
     closeDialog();
   };
 
-  const onSubmit = () => {
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     if (!canSubmit) {
       return;
     }
@@ -75,31 +77,38 @@ export function CustomConnectorConnectDialog({
           by the firewall. It&apos;s never exposed to the agent as an
           environment variable.
         </p>
-        <div className="flex flex-col gap-2">
-          <label
-            htmlFor="cc-connect-secret"
-            className="text-sm font-medium text-foreground"
-          >
-            Secret
-          </label>
-          <Input
-            id="cc-connect-secret"
-            type="password"
-            value={value}
-            onChange={(e) => {
-              return setValue(e.target.value);
-            }}
-            autoFocus
-          />
-        </div>
-        <DialogFooter>
-          <Button variant="outline" onClick={close} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button onClick={onSubmit} disabled={!canSubmit}>
-            {submitting ? "Saving…" : "Save"}
-          </Button>
-        </DialogFooter>
+        <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+          <div className="flex flex-col gap-2">
+            <label
+              htmlFor="cc-connect-secret"
+              className="text-sm font-medium text-foreground"
+            >
+              Secret
+            </label>
+            <Input
+              id="cc-connect-secret"
+              type="password"
+              value={value}
+              onChange={(e) => {
+                return setValue(e.target.value);
+              }}
+              autoFocus
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={close}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!canSubmit}>
+              {submitting ? "Saving…" : "Save"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

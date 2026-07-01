@@ -209,7 +209,13 @@ function ClaudeCodeDeviceAuthBody({
     case "pending":
     case "submitting": {
       return (
-        <div className="space-y-3">
+        <form
+          className="space-y-3"
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+        >
           <div className="rounded-lg border border-border bg-muted/30 p-3 text-xs leading-5 text-muted-foreground">
             <p>
               First click Open Claude approval page. Then approve vm0 in Claude
@@ -252,9 +258,8 @@ function ClaudeCodeDeviceAuthBody({
             </p>
           )}
           <Button
-            type="button"
+            type="submit"
             className="w-full gap-2"
-            onClick={onSubmit}
             disabled={flow.status === "submitting"}
             data-testid="claude-code-device-auth-submit"
           >
@@ -263,7 +268,7 @@ function ClaudeCodeDeviceAuthBody({
             )}
             {flow.status === "submitting" ? "Connecting..." : "Connect"}
           </Button>
-        </div>
+        </form>
       );
     }
     case "expired":

@@ -18,6 +18,7 @@ import {
   resetCustomConnectorCreateForm$,
   setCustomConnectorCreateField$,
 } from "../../../../signals/zero-page/settings/custom-connectors.ts";
+import type { FormEvent } from "react";
 
 function parsePrefixLines(raw: string): string[] {
   return raw
@@ -145,7 +146,8 @@ export function CustomConnectorCreateDialog() {
     closeDialog();
   };
 
-  const onSubmit = () => {
+  const onSubmit = (event: FormEvent<HTMLFormElement>) => {
+    event.preventDefault();
     if (!canSubmit) {
       return;
     }
@@ -177,15 +179,22 @@ export function CustomConnectorCreateDialog() {
         <DialogHeader>
           <DialogTitle>New custom connector</DialogTitle>
         </DialogHeader>
-        <CreateFormFields form={form} setField={setField} />
-        <DialogFooter>
-          <Button variant="outline" onClick={close} disabled={submitting}>
-            Cancel
-          </Button>
-          <Button onClick={onSubmit} disabled={!canSubmit}>
-            {submitting ? "Creating…" : "Create"}
-          </Button>
-        </DialogFooter>
+        <form className="flex flex-col gap-4" onSubmit={onSubmit}>
+          <CreateFormFields form={form} setField={setField} />
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={close}
+              disabled={submitting}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!canSubmit}>
+              {submitting ? "Creating…" : "Create"}
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );

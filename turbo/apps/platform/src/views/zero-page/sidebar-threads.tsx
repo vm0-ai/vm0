@@ -639,35 +639,39 @@ function ChatThreadRenameDialog() {
             Enter a new name for this chat thread.
           </DialogDescription>
         </DialogHeader>
-        <div className="py-2">
-          <Input
-            type="text"
-            autoFocus
-            value={renameDialogInput}
-            onChange={(e) => {
-              return setRenameDialogInput(e.target.value);
-            }}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") {
-                handleRename();
-              }
-            }}
-            placeholder="Chat title"
-          />
-        </div>
-        <DialogFooter>
-          <Button
-            variant="outline"
-            onClick={() => {
-              closeRenameDialog();
-            }}
-          >
-            Cancel
-          </Button>
-          <Button disabled={!renameDialogInput.trim()} onClick={handleRename}>
-            Rename
-          </Button>
-        </DialogFooter>
+        <form
+          className="flex flex-col gap-4"
+          onSubmit={(event) => {
+            event.preventDefault();
+            handleRename();
+          }}
+        >
+          <div className="py-2">
+            <Input
+              type="text"
+              autoFocus
+              value={renameDialogInput}
+              onChange={(e) => {
+                return setRenameDialogInput(e.target.value);
+              }}
+              placeholder="Chat title"
+            />
+          </div>
+          <DialogFooter>
+            <Button
+              type="button"
+              variant="outline"
+              onClick={() => {
+                closeRenameDialog();
+              }}
+            >
+              Cancel
+            </Button>
+            <Button type="submit" disabled={!renameDialogInput.trim()}>
+              Rename
+            </Button>
+          </DialogFooter>
+        </form>
       </DialogContent>
     </Dialog>
   );
