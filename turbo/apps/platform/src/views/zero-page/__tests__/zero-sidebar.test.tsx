@@ -14,6 +14,7 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import { zeroAgentsByIdContract } from "@vm0/api-contracts/contracts/zero-agents";
+import { automationsMainContract } from "@vm0/api-contracts/contracts/automations";
 
 import {
   click,
@@ -1030,6 +1031,52 @@ describe("zero sidebar", () => {
         within(sidebar()).queryByText("Scheduled launch"),
       ).not.toBeInTheDocument();
       expect(within(sidebar()).getByText("Release plan")).toBeInTheDocument();
+    });
+  });
+
+  it("skips the automations check when deleting a chat with workflow automation enabled", async () => {
+    prepareDefaultAgent();
+    mockSidebarThreadStory([
+      createThread(EXISTING_THREAD_ID, "Release plan"),
+      createThread(AUTOMATION_THREAD_ID, "Scheduled launch"),
+    ]);
+
+    // Never resolves: if the delete flow still queried automations, the
+    // dialog would be stuck showing the "checking" state forever.
+    const automationsRequested = context.mocks.deferred<void>();
+    context.mocks.api(automationsMainContract.list, async ({ respond }) => {
+      await automationsRequested.promise;
+      return respond(200, { automations: [] });
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${EXISTING_THREAD_ID}`,
+      featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).getByText("Scheduled launch"),
+      ).toBeInTheDocument();
+    });
+
+    openThreadMenu("Scheduled launch");
+    click(menuItemByText("Delete chat"));
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Delete chat?",
+    });
+    expect(
+      screen.queryByTestId("delete-chat-thread-checking"),
+    ).not.toBeInTheDocument();
+
+    click(buttonByText("Delete", dialog));
+
+    await waitFor(() => {
+      expect(
+        within(sidebar()).queryByText("Scheduled launch"),
+      ).not.toBeInTheDocument();
     });
   });
 
