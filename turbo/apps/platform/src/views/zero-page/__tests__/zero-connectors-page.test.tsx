@@ -1037,6 +1037,7 @@ describe("connectors page", () => {
     await waitFor(() => {
       expect(startCount).toBe(1);
       expect(openMock.calls).toHaveLength(1);
+      expect(authWindow.opener).toBeNull();
       expect(authWindow.location.href).toBe(
         "https://oauth.test/stripe/authorize",
       );

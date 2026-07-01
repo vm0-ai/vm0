@@ -1818,6 +1818,9 @@ const openConnectorOAuthAuthCodeWindow$ = command(
     if (!authWindow && !standalone) {
       throw new Error("Failed to open authorization window");
     }
+    if (authWindow) {
+      authWindow.opener = null;
+    }
 
     let navigated = false;
     await withCleanup(
