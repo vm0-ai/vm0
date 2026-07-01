@@ -7,7 +7,14 @@ import {
   type State,
 } from "ccstate";
 import { animationFrame, delay } from "signal-timers";
-import { onRef, onRejection, resetSignal, setLoop } from "../utils.ts";
+import {
+  onRef,
+  onRejection,
+  resetSignalScope,
+  resetSignal,
+  setLoop,
+  withCleanup,
+} from "../utils.ts";
 import { setAblyLoop$ } from "../realtime.ts";
 import { reloadHeaderAutomationMenu$ } from "./header-automation-menu.ts";
 import {
@@ -2284,6 +2291,7 @@ function createRunTracking({
   dataSource,
 }: RunTrackingDeps) {
   const locallyMarkedReadMessageId$ = state<string | undefined>(undefined);
+  const resetChatSubscriptionSignal$ = resetSignalScope();
 
   const allFinished$ = computed(async (get) => {
     return (await get(latestRunStatus$)) === null;
@@ -2379,25 +2387,33 @@ function createRunTracking({
     });
 
     L.debug("subscribeChatThread$ subscribeRealtime$ start", { threadId });
-    await Promise.all([
-      set(silentBackfillHistory$, signal),
-      set(markThreadReadIfNeeded$, signal),
-      set(subscribeComputerUseHostsChanged$, signal),
-      set(
-        dataSource.subscribeRealtime$,
-        {
-          threadId,
-          handlers: {
-            onMessageCreated$,
-            onMessageUpdated$,
-            onRunChanged$,
-            onAutomationsChanged$,
-            onSubscribed$,
+    const subscriptionScope = set(resetChatSubscriptionSignal$, signal);
+    const subscriptionSignal = subscriptionScope.signal;
+
+    await withCleanup(
+      Promise.all([
+        set(silentBackfillHistory$, subscriptionSignal),
+        set(markThreadReadIfNeeded$, subscriptionSignal),
+        set(subscribeComputerUseHostsChanged$, subscriptionSignal),
+        set(
+          dataSource.subscribeRealtime$,
+          {
+            threadId,
+            handlers: {
+              onMessageCreated$,
+              onMessageUpdated$,
+              onRunChanged$,
+              onAutomationsChanged$,
+              onSubscribed$,
+            },
           },
-        },
-        signal,
-      ),
-    ]);
+          subscriptionSignal,
+        ),
+      ]),
+      () => {
+        subscriptionScope.abort(signal.reason);
+      },
+    );
     signal.throwIfAborted();
   });
 

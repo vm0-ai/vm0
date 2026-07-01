@@ -1,7 +1,7 @@
-import { command } from "ccstate";
+import { command, computed } from "ccstate";
 import { waitFor } from "@testing-library/react";
 import { platformRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { clearMockedAuth, mockUser } from "../../__tests__/mock-auth.ts";
 import {
@@ -9,7 +9,15 @@ import {
   setAblyLoop$,
   setAblyPayloadLoop$,
 } from "../realtime.ts";
+import type { ChatThread } from "../agent-chat.ts";
+import { createChatThreadSignals } from "../chat-page/create-chat-thread.ts";
+import type {
+  ChatThreadDataSource,
+  SubscribeRealtimeArgs,
+} from "../chat-page/chat-thread-data-source.ts";
 import { createRemoteChatThreadDataSource } from "../chat-page/remote-chat-thread-data-source.ts";
+import { createDeferredPromise } from "../utils.ts";
+import { createDraftSignals } from "../zero-page/chat-draft.ts";
 import { testContext } from "./test-helpers.ts";
 
 const context = testContext();
@@ -34,6 +42,10 @@ const failReadyCatchup$ = command((_ctx, _signal: AbortSignal) => {
 
 const failReadyCatchupAfterReady$ = command((_ctx, _signal: AbortSignal) => {
   throw new Error("ready catchup failed");
+});
+
+const waitForReadyCatchupAbort$ = command((_ctx, signal: AbortSignal) => {
+  return createDeferredPromise<void>(signal).promise;
 });
 
 function mockSignedInUser(): void {
@@ -67,6 +79,99 @@ function expectNoChatThreadSubscriptions(threadId: string): void {
   for (const topic of chatThreadRealtimeTopics(threadId)) {
     expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
   }
+}
+
+function expectChatThreadSubscriptions(threadId: string): void {
+  for (const topic of chatThreadRealtimeTopics(threadId)) {
+    expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+  }
+}
+
+function abortListenerCallCount(calls: readonly unknown[][]): number {
+  return calls.filter((call) => {
+    return call[0] === "abort";
+  }).length;
+}
+
+function unexpectedDataSourceCall(name: string): never {
+  throw new Error(`Unexpected data source call: ${name}`);
+}
+
+function createFailingSubscribeDataSource(
+  threadId: string,
+): ChatThreadDataSource {
+  const thread: ChatThread = {
+    id: threadId,
+    title: null,
+    agentId: "agent-1",
+    activeRunIds: [],
+    createdAt: "2026-07-01T00:00:00Z",
+    updatedAt: "2026-07-01T00:00:00Z",
+    lastReadMessageId: null,
+    lastReadAt: null,
+    lastMessageAt: "2026-07-01T00:00:00Z",
+    isLegacySession: false,
+    draftContent: null,
+    draftAttachments: null,
+    modelProviderId: null,
+    selectedModel: null,
+    computerUseHostId: null,
+  };
+
+  return {
+    getThread$: computed(() => {
+      return Promise.resolve(thread);
+    }),
+    reloadThread$: command(() => {}),
+    initialPage$: computed(() => {
+      return Promise.resolve({
+        messages: [],
+        hasHistoryBefore: false,
+        fetchedFromRemote: true,
+      });
+    }),
+    patchDraft$: command(() => {
+      return unexpectedDataSourceCall("patchDraft$");
+    }),
+    patchModelSelection$: command(() => {
+      return unexpectedDataSourceCall("patchModelSelection$");
+    }),
+    patchComputerUseHost$: command(() => {
+      return unexpectedDataSourceCall("patchComputerUseHost$");
+    }),
+    appendQueuedMessage$: command(() => {
+      return unexpectedDataSourceCall("appendQueuedMessage$");
+    }),
+    recallMessage$: command(() => {
+      return unexpectedDataSourceCall("recallMessage$");
+    }),
+    listMessagesAfter$: command(() => {
+      return Promise.resolve({ messages: [], reachedEnd: true });
+    }),
+    listMessagesBefore$: command(() => {
+      return unexpectedDataSourceCall("listMessagesBefore$");
+    }),
+    getMessage$: command(() => {
+      return unexpectedDataSourceCall("getMessage$");
+    }),
+    cancelRuns$: command(() => {
+      return unexpectedDataSourceCall("cancelRuns$");
+    }),
+    markRead$: command(() => {
+      return unexpectedDataSourceCall("markRead$");
+    }),
+    subscribeRealtime$: command(
+      async (_ctx, _args: SubscribeRealtimeArgs, signal: AbortSignal) => {
+        await waitFor(() => {
+          expect(
+            context.mocks.ably.hasSubscription("computerUseHostsChanged"),
+          ).toBeTruthy();
+        });
+        signal.throwIfAborted();
+        throw new Error("chat realtime failed");
+      },
+    ),
+  };
 }
 
 describe("realtime signals", () => {
@@ -190,6 +295,53 @@ describe("realtime signals", () => {
     await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
   });
 
+  it("removes settled realtime wait abort listeners between notifications", async () => {
+    mockSignedInUser();
+    const topic = "test:listener-cleanup";
+    const subscriber = new AbortController();
+    const addListener = vi.spyOn(subscriber.signal, "addEventListener");
+    const removeListener = vi.spyOn(subscriber.signal, "removeEventListener");
+    let runs = 0;
+    const loop$ = command((_ctx, _signal: AbortSignal) => {
+      runs += 1;
+      return false;
+    });
+
+    await context.store.set(setupRealtime$, context.signal);
+    const loopPromise = context.store.set(
+      setAblyLoop$,
+      {
+        topic,
+        loopCommand$: loop$,
+      },
+      subscriber.signal,
+    );
+
+    await waitFor(() => {
+      expect(context.mocks.ably.hasSubscription(topic)).toBeTruthy();
+    });
+    const removesAfterSubscribe = abortListenerCallCount(
+      removeListener.mock.calls,
+    );
+
+    for (let i = 0; i < 5; i++) {
+      context.mocks.ably.trigger(topic);
+      await waitFor(() => {
+        expect(runs).toBe(i + 1);
+      });
+    }
+
+    expect(
+      abortListenerCallCount(removeListener.mock.calls),
+    ).toBeGreaterThanOrEqual(removesAfterSubscribe + 5);
+
+    subscriber.abort(abortError("test done"));
+    await expect(loopPromise).rejects.toMatchObject({ name: "AbortError" });
+    expect(
+      abortListenerCallCount(removeListener.mock.calls),
+    ).toBeGreaterThanOrEqual(abortListenerCallCount(addListener.mock.calls));
+  });
+
   it("passes Ably payloads to payload loops", async () => {
     mockSignedInUser();
     const topic = "test:payload";
@@ -278,5 +430,81 @@ describe("realtime signals", () => {
     ).rejects.toThrow("ready catchup failed");
 
     expectNoChatThreadSubscriptions(threadId);
+  });
+
+  it("keeps the replacement chat realtime subscription after old cleanup", async () => {
+    mockSignedInUser();
+    const threadId = "test-thread-replacement-subscription";
+    const dataSource = createRemoteChatThreadDataSource(threadId);
+    const replacement = new AbortController();
+
+    await context.store.set(setupRealtime$, context.signal);
+    const firstSubscription = context.store.set(
+      dataSource.subscribeRealtime$,
+      {
+        threadId,
+        handlers: {
+          onMessageCreated$: keepAliveLoop$,
+          onMessageUpdated$: keepAlivePayloadLoop$,
+          onRunChanged$: keepAliveLoop$,
+          onAutomationsChanged$: keepAliveLoop$,
+          onSubscribed$: waitForReadyCatchupAbort$,
+        },
+      },
+      context.signal,
+    );
+
+    await waitFor(() => {
+      expectChatThreadSubscriptions(threadId);
+    });
+
+    const replacementSubscription = context.store.set(
+      dataSource.subscribeRealtime$,
+      {
+        threadId,
+        handlers: {
+          onMessageCreated$: keepAliveLoop$,
+          onMessageUpdated$: keepAlivePayloadLoop$,
+          onRunChanged$: keepAliveLoop$,
+          onAutomationsChanged$: keepAliveLoop$,
+        },
+      },
+      replacement.signal,
+    );
+
+    await expect(firstSubscription).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    await waitFor(() => {
+      expectChatThreadSubscriptions(threadId);
+    });
+
+    replacement.abort(abortError("test done"));
+    await expect(replacementSubscription).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    expectNoChatThreadSubscriptions(threadId);
+  });
+
+  it("aborts sibling chat page subscriptions when chat realtime fails", async () => {
+    mockSignedInUser();
+    const threadId = "test-thread-chat-subscribe-fails";
+    const signals = createChatThreadSignals(
+      threadId,
+      createDraftSignals(),
+      createFailingSubscribeDataSource(threadId),
+    );
+
+    await context.store.set(setupRealtime$, context.signal);
+
+    await expect(
+      context.store.set(signals.subscribeChatThread$, context.signal),
+    ).rejects.toThrow("chat realtime failed");
+
+    await waitFor(() => {
+      expect(
+        context.mocks.ably.hasSubscription("computerUseHostsChanged"),
+      ).toBeFalsy();
+    });
   });
 });

@@ -14,7 +14,7 @@ import { zeroClient$ } from "../api-client.ts";
 import { setAblyLoop$, setAblyPayloadLoop$ } from "../realtime.ts";
 import {
   createDeferredPromise,
-  resetSignal,
+  resetSignalScope,
   settle,
   withCleanup,
 } from "../utils.ts";
@@ -329,7 +329,7 @@ const markRead$ = command(
 );
 
 function createSubscribeRealtime() {
-  const resetSubscriptionSignal$ = resetSignal();
+  const resetSubscriptionSignal$ = resetSignalScope();
 
   return command(
     async (
@@ -337,7 +337,8 @@ function createSubscribeRealtime() {
       { threadId, handlers }: SubscribeRealtimeArgs,
       signal: AbortSignal,
     ) => {
-      const subscriptionSignal = set(resetSubscriptionSignal$, signal);
+      const subscriptionScope = set(resetSubscriptionSignal$, signal);
+      const subscriptionSignal = subscriptionScope.signal;
 
       await withCleanup(
         (async () => {
@@ -424,7 +425,7 @@ function createSubscribeRealtime() {
             );
             subscriptionSignal.throwIfAborted();
             if (!synced.ok) {
-              set(resetSubscriptionSignal$);
+              subscriptionScope.abort();
               await Promise.allSettled(subscriptionPromises);
               signal.throwIfAborted();
               throw synced.error;
@@ -434,7 +435,7 @@ function createSubscribeRealtime() {
           subscriptionSignal.throwIfAborted();
         })(),
         () => {
-          set(resetSubscriptionSignal$);
+          subscriptionScope.abort(signal.reason);
         },
       );
     },
