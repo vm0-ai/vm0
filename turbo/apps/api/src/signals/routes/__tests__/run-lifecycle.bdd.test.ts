@@ -1758,7 +1758,7 @@ describe("RUN-02: model provider selection and vm0 admission", () => {
       actor,
       agent.agentId,
       workflowName,
-      "# BDD codex kit\nUse this workflow for codex runs.",
+      { content: "# BDD codex kit\nUse this workflow for codex runs." },
       [201],
     );
     const thread = await chat.createThread(actor, { agentId: agent.agentId });
@@ -3477,7 +3477,7 @@ describe("RUN-01: zero runner context, queue promotion, and skills", () => {
       actor,
       agent.agentId,
       workflowName,
-      "# BDD claude kit\nUse this workflow in claude runs.",
+      { content: "# BDD claude kit\nUse this workflow in claude runs." },
       [201],
     );
 

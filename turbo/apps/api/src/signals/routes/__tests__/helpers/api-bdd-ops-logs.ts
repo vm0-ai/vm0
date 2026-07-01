@@ -88,6 +88,19 @@ export async function cleanupUserExportState(
   });
 }
 
+export async function seedUserExportChatMessages(args: {
+  readonly userId: string;
+  readonly agentId: string;
+  readonly threadId: string;
+}): Promise<void> {
+  await postUserExportState({
+    action: "seed-chat-messages",
+    user_id: args.userId,
+    agent_id: args.agentId,
+    thread_id: args.threadId,
+  });
+}
+
 export function createOpsLogsApi(context: TestContext) {
   return {
     async requestSearchLogs<TStatus extends 200 | 400 | 401>(
