@@ -5051,11 +5051,6 @@ async function lockChatLaunchThread(
   if (!rows.rows[0]) {
     return notFound("Chat thread not found");
   }
-  // Serialize launch admission for one chat thread; org queue admission uses a
-  // separate lock so multi-thread runs in the same org can still progress.
-  await tx.execute(
-    sql`SELECT pg_advisory_xact_lock(hashtext('chat_launch_thread:' || ${association.threadId}))`,
-  );
   return null;
 }
 
