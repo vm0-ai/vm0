@@ -6,5 +6,5 @@ export function resumeSessionHistoryRawBlobKey(hash: string): string {
 }
 
 export function resumeSessionHistoryGzipBlobKey(hash: string): string {
-  return `session-history-blobs/${hash}/gzip.blob`;
+  return `blobs/${hash}.blob.gz`;
 }

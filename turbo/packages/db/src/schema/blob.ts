@@ -19,6 +19,11 @@ export const blobs = pgTable(
     hash: varchar("hash", { length: 64 }).primaryKey(),
     /** File size in bytes */
     size: bigint("size", { mode: "number" }).notNull(),
+    /**
+     * Physical storage encoding for this raw-content hash. Null means legacy
+     * identity blobs written before encoding metadata existed.
+     */
+    encoding: varchar("encoding", { length: 16 }),
     /** Reference count for garbage collection */
     refCount: integer("ref_count").notNull().default(1),
     /** Timestamp when the blob was first uploaded */

@@ -51,6 +51,7 @@ import {
   resumeSessionHistoryGzipBlobKey,
   resumeSessionHistoryRawBlobKey,
   SESSION_HISTORY_ENCODING_GZIP,
+  SESSION_HISTORY_ENCODING_IDENTITY,
 } from "../services/session-history-blobs";
 import type { RouteEntry } from "../route-entry";
 import { settle, tapError } from "../utils";
@@ -1042,11 +1043,22 @@ const loadGzipResumeSessionHistoryRepresentation$ = command(
     const [blob] = await args.db
       .select({
         size: blobs.size,
+        encoding: blobs.encoding,
       })
       .from(blobs)
       .where(eq(blobs.hash, args.hash))
       .limit(1);
     if (!blob) {
+      return undefined;
+    }
+    const encoding = blob.encoding ?? SESSION_HISTORY_ENCODING_IDENTITY;
+    if (encoding !== SESSION_HISTORY_ENCODING_GZIP) {
+      if (encoding !== SESSION_HISTORY_ENCODING_IDENTITY) {
+        throw invalidResumeSessionHistoryError(
+          args.hash,
+          new Error(`invalid session history blob encoding: ${encoding}`),
+        );
+      }
       return undefined;
     }
     if (blob.size <= 0) {

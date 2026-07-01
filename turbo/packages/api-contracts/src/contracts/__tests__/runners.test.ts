@@ -278,7 +278,7 @@ describe("runner resume session contract", () => {
       historyRef: {
         kind: "blob",
         hash: historyHash,
-        url: "https://r2.example.com/session-history/history.blob?sig=secret",
+        url: "https://r2.example.com/blobs/history.blob.gz?sig=secret",
         encoding: "gzip",
         rawSize: 1024,
       },
@@ -293,7 +293,7 @@ describe("runner resume session contract", () => {
       historyRef: {
         kind: "blob",
         hash: historyHash,
-        url: "https://r2.example.com/session-history/history.blob?sig=secret",
+        url: "https://r2.example.com/blobs/history.blob.gz?sig=secret",
         encoding: "gzip",
       },
     };

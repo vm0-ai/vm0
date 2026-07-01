@@ -98,6 +98,7 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import { blobs } from "@vm0/db/schema/blob";
 import { conversations } from "@vm0/db/schema/conversation";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -3984,10 +3985,13 @@ function loadResumeSession(
           cliAgentSessionId: conversations.cliAgentSessionId,
           cliAgentSessionHistory: conversations.cliAgentSessionHistory,
           cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
-          cliAgentSessionHistoryEncoding:
-            conversations.cliAgentSessionHistoryEncoding,
+          sessionHistoryBlobEncoding: blobs.encoding,
         })
         .from(conversations)
+        .leftJoin(
+          blobs,
+          eq(conversations.cliAgentSessionHistoryHash, blobs.hash),
+        )
         .where(eq(conversations.id, conversationId))
         .limit(1);
 
@@ -4003,16 +4007,18 @@ function loadResumeSession(
           const cliAgentSessionId = conversation.cliAgentSessionId;
           const hash = conversation.cliAgentSessionHistoryHash;
           let encoding: "identity" | "gzip" | undefined;
-          if (conversation.cliAgentSessionHistoryEncoding !== null) {
+          if (conversation.sessionHistoryBlobEncoding !== null) {
             const parsedEncoding = sessionHistoryEncodingSchema.safeParse(
-              conversation.cliAgentSessionHistoryEncoding,
+              conversation.sessionHistoryBlobEncoding,
             );
             if (!parsedEncoding.success) {
               throw new Error(
-                `invalid cli agent session history encoding: ${conversation.cliAgentSessionHistoryEncoding}`,
+                `invalid session history blob encoding: ${conversation.sessionHistoryBlobEncoding}`,
               );
             }
-            encoding = parsedEncoding.data;
+            if (parsedEncoding.data === "gzip") {
+              encoding = parsedEncoding.data;
+            }
           }
           if (hash) {
             return Promise.resolve({

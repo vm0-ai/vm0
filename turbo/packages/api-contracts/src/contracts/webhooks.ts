@@ -433,7 +433,6 @@ export const webhookCheckpointsContract = c.router({
         cliAgentType: z.string().min(1, "cliAgentType is required"),
         cliAgentSessionId: z.string().min(1, "cliAgentSessionId is required"),
         cliAgentSessionHistoryHash: sha256HexSchema,
-        cliAgentSessionHistoryEncoding: sessionHistoryEncodingSchema.optional(),
         // Multi-artifact snapshot payload. Canonical
         // `Array<{name, version, mountPath}>` form persisted verbatim to
         // checkpoints.artifact_snapshots.

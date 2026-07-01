@@ -1002,7 +1002,7 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
     const history = `{"type":"init"}\n{"type":"human","text":"compressed-${randomUUID()}"}\n`;
     const historyHash = createHash("sha256").update(history).digest("hex");
     const compressedHistory = gzipSync(Buffer.from(history, "utf8"));
-    const compressedKey = `session-history-blobs/${historyHash}/gzip.blob`;
+    const compressedKey = `blobs/${historyHash}.blob.gz`;
     context.mocks.s3.send.mockImplementation((command: unknown) => {
       if (s3CommandKey(command) === compressedKey) {
         return Promise.resolve({
@@ -1039,7 +1039,6 @@ describe("RUN-01/RUN-02: checkpoint resume, memory policies, and volume pinning"
         cliAgentType: "claude-code",
         cliAgentSessionId: `bdd-cli-${run.runId}`,
         cliAgentSessionHistoryHash: historyHash,
-        cliAgentSessionHistoryEncoding: "gzip",
       },
       headers,
       [200],

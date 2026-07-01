@@ -178,11 +178,5 @@ export const conversations = pgTable("conversations", {
   cliAgentSessionHistoryHash: varchar("cli_agent_session_history_hash", {
     length: 64,
   }),
-  cliAgentSessionHistoryEncoding: varchar(
-    "cli_agent_session_history_encoding",
-    {
-      length: 16,
-    },
-  ),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -209,7 +209,7 @@ async fn upload_session_history(
     run_id: &str,
     history_hash: &str,
     history_upload: SessionHistoryUpload,
-) -> Result<Option<&'static str>, AgentError> {
+) -> Result<(), AgentError> {
     let prep_start = std::time::Instant::now();
     let url = http.checkpoint_prepare_history_url()?;
     let requested_encoding = history_upload.requested_encoding();
@@ -247,17 +247,12 @@ async fn upload_session_history(
         .and_then(|v| v.as_bool())
         .unwrap_or(false);
     let response_encoding = prep_resp.get("encoding").and_then(|v| v.as_str());
-    let checkpoint_response_encoding = match response_encoding {
-        Some(SESSION_HISTORY_ENCODING_GZIP) => Some(SESSION_HISTORY_ENCODING_GZIP),
-        Some(SESSION_HISTORY_ENCODING_IDENTITY) => Some(SESSION_HISTORY_ENCODING_IDENTITY),
-        _ => None,
-    };
     if existing {
         log_info!(
             LOG_TAG,
             "Session history already exists in S3 (deduplicated, encoding={requested_encoding})"
         );
-        return Ok(checkpoint_response_encoding);
+        return Ok(());
     }
 
     let presigned_url = prep_resp
@@ -302,7 +297,7 @@ async fn upload_session_history(
         None,
     );
     log_info!(LOG_TAG, "Session history uploaded to S3");
-    Ok(checkpoint_response_encoding.map(|_| upload_encoding))
+    Ok(())
 }
 
 /// Snapshot artifact entries. Memory rides in `VM0_ARTIFACTS` post-#10602, so
@@ -620,7 +615,7 @@ async fn create_checkpoint_impl(
     // path is web-API bound (prepare + S3 PUT); the artifact path is VAS-bound
     // (prepare + HEAD update). Serial, wall time was dominated by whichever
     // was longer plus the other; concurrent, it's just the longer one.
-    let (session_history_encoding, artifact_snapshots) = tokio::try_join!(
+    let (_, artifact_snapshots) = tokio::try_join!(
         upload_session_history(
             http,
             inputs.run_id,
@@ -638,15 +633,6 @@ async fn create_checkpoint_impl(
         "cliAgentSessionId": cli_agent_session_id,
         "cliAgentSessionHistoryHash": history_hash,
     });
-
-    if let Some(encoding) = session_history_encoding
-        && let Some(obj) = payload.as_object_mut()
-    {
-        obj.insert(
-            "cliAgentSessionHistoryEncoding".to_string(),
-            json!(encoding),
-        );
-    }
 
     if let Some(snaps) = artifact_snapshots
         && let Some(obj) = payload.as_object_mut()
