@@ -1,5 +1,12 @@
 # Changelog
 
+## [0.3.1](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.3.0...guest-contracts-v0.3.1) (2026-07-01)
+
+
+### Bug Fixes
+
+* align session history verification cap ([#19561](https://github.com/vm0-ai/vm0/issues/19561)) ([657cc42](https://github.com/vm0-ai/vm0/commit/657cc422cfe1e929e921a82e7bbd7ceec0d7861d))
+
 ## [0.3.0](https://github.com/vm0-ai/vm0/compare/guest-contracts-v0.2.10...guest-contracts-v0.3.0) (2026-06-30)
 
 

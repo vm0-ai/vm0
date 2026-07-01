@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.517.0](https://github.com/vm0-ai/vm0/compare/app-v0.516.2...app-v0.517.0) (2026-07-01)
+
+
+### Features
+
+* show connector access as a text affordance instead of avatars ([#19409](https://github.com/vm0-ai/vm0/issues/19409)) ([c222c4d](https://github.com/vm0-ai/vm0/commit/c222c4de6c8b819d7ddb9800a31559086ff68a1e))
+
+
+### Bug Fixes
+
+* keep chat icon tooltip closed after picker dismiss ([#19557](https://github.com/vm0-ai/vm0/issues/19557)) ([eafa389](https://github.com/vm0-ai/vm0/commit/eafa3898259a0329eacdef461e2e7f8ad6db5be1))
+* update workflow automation tab routing ([#19542](https://github.com/vm0-ai/vm0/issues/19542)) ([d69630d](https://github.com/vm0-ai/vm0/commit/d69630d2e89cf0ebe1320136f687353aed46bb89))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.133.2
+    * @vm0/connectors bumped to 1.120.0
+    * @vm0/core bumped to 8.381.0
+
 ## [0.516.2](https://github.com/vm0-ai/vm0/compare/app-v0.516.1...app-v0.516.2) (2026-07-01)
 
 
