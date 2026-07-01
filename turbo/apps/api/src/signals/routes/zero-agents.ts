@@ -15,7 +15,6 @@ import {
 } from "@vm0/connectors/connectors";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
-import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -48,7 +47,10 @@ import {
   unavailableUserConnectorTypes,
   userConnectorAvailability,
 } from "../services/connector-availability.service";
-import { replaceUserConnectors } from "../services/user-connectors.service";
+import {
+  replaceUserConnectors,
+  replaceUserCustomConnectors,
+} from "../services/user-connectors.service";
 import type { RouteEntry } from "../route-entry";
 
 const PUBLIC_AGENT_LIMIT = 7;
@@ -740,7 +742,7 @@ const updateAgentCustomConnectorsInner$ = command(
     }
 
     const writeDb = set(writeDb$);
-    const enabledIds = body.data.enabledIds;
+    const enabledIds = Array.from(new Set(body.data.enabledIds));
 
     if (enabledIds.length > 0) {
       const found = await writeDb
@@ -774,31 +776,16 @@ const updateAgentCustomConnectorsInner$ = command(
       }
     }
 
-    await writeDb.transaction(async (tx) => {
-      await tx
-        .delete(userCustomConnectors)
-        .where(
-          and(
-            eq(userCustomConnectors.orgId, auth.orgId),
-            eq(userCustomConnectors.userId, auth.userId),
-            eq(userCustomConnectors.agentId, params.id),
-          ),
-        );
-
-      if (enabledIds.length > 0) {
-        await tx.insert(userCustomConnectors).values(
-          enabledIds.map((customConnectorId) => {
-            return {
-              orgId: auth.orgId,
-              userId: auth.userId,
-              agentId: params.id,
-              customConnectorId,
-            };
-          }),
-        );
-      }
+    const replaced = await replaceUserCustomConnectors(writeDb, {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      agentId: params.id,
+      enabledIds,
     });
     signal.throwIfAborted();
+    if (!replaced) {
+      return agentNotFound(params.id);
+    }
 
     return {
       status: 200 as const,
@@ -875,13 +862,16 @@ const updateAgentUserConnectorsInner$ = command(
       );
     }
 
-    await replaceUserConnectors(writeDb, {
+    const replaced = await replaceUserConnectors(writeDb, {
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
       enabledTypes: parsedTypes,
     });
     signal.throwIfAborted();
+    if (!replaced) {
+      return agentNotFound(params.id);
+    }
 
     await set(
       recomposeAgentIfStale$,

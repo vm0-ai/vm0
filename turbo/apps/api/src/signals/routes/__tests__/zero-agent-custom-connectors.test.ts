@@ -258,6 +258,38 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     ).resolves.toStrictEqual([c2.id]);
   });
 
+  it("serializes concurrent custom connector replaces for the same agent", async () => {
+    const actor = bdd.user();
+    const agent = await createAgent(actor, { displayName: "Concurrent Agent" });
+    const c1 = await createCustomConnector(actor, "conc-1");
+    const c2 = await createCustomConnector(actor, "conc-2");
+
+    const sameSetUpdates = await Promise.all([
+      connectors.updateAgentCustomConnectors(actor, agent.agentId, [
+        c1.id,
+        c2.id,
+      ]),
+      connectors.updateAgentCustomConnectors(actor, agent.agentId, [
+        c1.id,
+        c2.id,
+      ]),
+    ]);
+    for (const update of sameSetUpdates) {
+      expect(new Set(update)).toStrictEqual(new Set([c1.id, c2.id]));
+    }
+
+    await Promise.all([
+      connectors.updateAgentCustomConnectors(actor, agent.agentId, [c1.id]),
+      connectors.updateAgentCustomConnectors(actor, agent.agentId, [c2.id]),
+    ]);
+    const readBack = await connectors.readAgentCustomConnectors(
+      actor,
+      agent.agentId,
+    );
+    expect(readBack).toHaveLength(1);
+    expect([c1.id, c2.id]).toContain(readBack[0]);
+  });
+
   it("clears authorizations with empty array", async () => {
     const actor = bdd.user();
     const agent = await createAgent(actor, { displayName: "Test Agent" });

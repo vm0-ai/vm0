@@ -431,12 +431,15 @@ async function replaceSelectedConnectors(
     return;
   }
 
-  await replaceUserConnectors(db, {
+  const replaced = await replaceUserConnectors(db, {
     orgId: args.orgId,
     userId: args.userId,
     agentId: args.agentId,
     enabledTypes: args.selectedConnectors,
   });
+  if (!replaced) {
+    throw new Error(`Default agent not found: ${args.agentId}`);
+  }
 }
 
 async function updateOnboardingPaymentPending(

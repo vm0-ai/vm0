@@ -43,7 +43,7 @@ import {
   savePermissionDraftPolicies,
   type ApplyUserPermissionGrants,
 } from "../../../../signals/zero-page/settings/permission-grant-save.ts";
-import { detach, Reason } from "../../../../signals/utils.ts";
+import { detach, Reason, withCleanup } from "../../../../signals/utils.ts";
 import { LoadingSwitch } from "../../../components/loading-switch.tsx";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import { AvatarFromUrl } from "../../zero-sidebar-shared.tsx";
@@ -414,14 +414,18 @@ export function ConnectorAccessManagementDialog({
     }
     setSavingAgentId(row.agent.id);
     detach(
-      (async () => {
-        await setAuthorization(
-          { agentId: row.agent.id, connectorType, authorized },
-          pageSignal,
-        );
-        toast.success(`${connectorLabel} access updated`);
-        setSavingAgentId(null);
-      })(),
+      withCleanup(
+        (async () => {
+          await setAuthorization(
+            { agentId: row.agent.id, connectorType, authorized },
+            pageSignal,
+          );
+          toast.success(`${connectorLabel} access updated`);
+        })(),
+        () => {
+          setSavingAgentId(null);
+        },
+      ),
       Reason.DomCallback,
     );
   };

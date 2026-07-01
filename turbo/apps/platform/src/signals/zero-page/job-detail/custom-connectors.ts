@@ -81,6 +81,7 @@ export const saveAgentCustomConnectors$ = command(
       client.update({
         params: { id: detail.agentId },
         body: { enabledIds },
+        fetchOptions: { signal },
       }),
       [200],
     );
