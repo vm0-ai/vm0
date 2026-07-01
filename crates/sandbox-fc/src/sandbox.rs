@@ -2966,9 +2966,10 @@ async fn park_inner(
                 message: format!("balloon inflate: {e}"),
             })?;
 
-        // Wait for the guest to fully inflate the balloon before pausing
-        // vCPUs. The guest balloon driver needs running vCPUs to process
-        // the inflate — pausing immediately would negate the memory savings.
+        // Wait for the guest to inflate the balloon close enough before
+        // pausing vCPUs. The guest balloon driver needs running vCPUs to
+        // process the inflate — pausing immediately would negate the memory
+        // savings.
         wait_for_balloon(&client, target, log_id).await;
     }
 
@@ -2995,7 +2996,7 @@ async fn park_inner(
 
     *is_parked = true;
     if target > 0 {
-        info!(id = %log_id, target_mib = target, "sandbox parked (balloon inflated, vCPUs paused)");
+        info!(id = %log_id, target_mib = target, "sandbox parked (balloon settled, vCPUs paused)");
     } else {
         info!(id = %log_id, "sandbox parked (vCPUs paused, balloon skipped)");
     }
