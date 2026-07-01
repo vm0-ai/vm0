@@ -243,7 +243,7 @@ async fn run_start_with_home(
     let signals = EarlySignals::register()
         .map_err(|e| RunnerError::Internal(format!("register signal handlers: {e}")))?;
 
-    let mut runner_config = config::load(&args.config).await?;
+    let mut runner_config = config::load_for_start(&args.config, args.api_url.as_deref()).await?;
     let registry_config_path = tokio::fs::canonicalize(&args.config).await.map_err(|e| {
         RunnerError::Config(format!(
             "canonicalize config path {} for live runner registry: {e}",
@@ -269,6 +269,7 @@ async fn run_start_with_home(
             "server.url is required (set in config or via --api-url / VM0_API_URL)".into(),
         ));
     }
+    server.url = config::normalize_api_base_url(&server.url)?;
     if server.token.is_empty() {
         return Err(RunnerError::Config(
             "server.token is required (set in config or via --token / VM0_RUNNER_TOKEN)".into(),

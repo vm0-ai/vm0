@@ -1,5 +1,27 @@
 # Changelog
 
+## [0.522.0](https://github.com/vm0-ai/vm0/compare/app-v0.521.0...app-v0.522.0) (2026-07-01)
+
+
+### Features
+
+* add workflow templates to composer ([#19660](https://github.com/vm0-ai/vm0/issues/19660)) ([1f110fd](https://github.com/vm0-ai/vm0/commit/1f110fd9d3ae503e731e957767a76d0094ce88a9))
+* show subscription usage in sidebar ([#19673](https://github.com/vm0-ai/vm0/issues/19673)) ([a186329](https://github.com/vm0-ai/vm0/commit/a1863296fc3b8545a9edf6ce4a12c0739d5dec88))
+
+
+### Bug Fixes
+
+* render thread model before defaults resolve ([#19676](https://github.com/vm0-ai/vm0/issues/19676)) ([39e5a35](https://github.com/vm0-ai/vm0/commit/39e5a35b215a46545ed7dba49a440ec2f914eb2a))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.138.0
+    * @vm0/connectors bumped to 1.122.0
+    * @vm0/core bumped to 8.383.0
+
 ## [0.521.0](https://github.com/vm0-ai/vm0/compare/app-v0.520.0...app-v0.521.0) (2026-07-01)
 
 

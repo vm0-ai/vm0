@@ -1,5 +1,21 @@
 # Changelog
 
+## [8.383.0](https://github.com/vm0-ai/vm0/compare/core-v8.382.0...core-v8.383.0) (2026-07-01)
+
+
+### Features
+
+* add workflow templates to composer ([#19660](https://github.com/vm0-ai/vm0/issues/19660)) ([1f110fd](https://github.com/vm0-ai/vm0/commit/1f110fd9d3ae503e731e957767a76d0094ce88a9))
+* show subscription usage in sidebar ([#19673](https://github.com/vm0-ai/vm0/issues/19673)) ([a186329](https://github.com/vm0-ai/vm0/commit/a1863296fc3b8545a9edf6ce4a12c0739d5dec88))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.138.0
+    * @vm0/connectors bumped to 1.122.0
+
 ## [8.382.0](https://github.com/vm0-ai/vm0/compare/core-v8.381.3...core-v8.382.0) (2026-07-01)
 
 

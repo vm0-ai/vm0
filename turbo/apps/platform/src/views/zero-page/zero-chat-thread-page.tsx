@@ -4803,12 +4803,13 @@ function useChatComposerModel(
     disabled: false,
     defaultSelection: defaultModelSelection,
   });
-  // Skeleton only on cold start (nothing has ever resolved). Once we have any
-  // resolved value, refetches reuse the cached value instead of flashing.
+  // Explicit thread selections can render before default model selection
+  // resolves; only inherited selections need that fallback before showing.
   const modelPickerLoading =
     threadDataResolved === undefined ||
     modelSelectionResolved === undefined ||
-    defaultModelSelectionResolved === undefined;
+    (modelSelectionResolved === null &&
+      defaultModelSelectionResolved === undefined);
   const submitBlockerProps = resolveChatComposerSubmitBlocker({
     state: modelFirstOauthState,
     modelSelection,
