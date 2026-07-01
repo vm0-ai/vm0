@@ -14,23 +14,6 @@ const stringErrorResponseSchema = z.object({
 
 const notFoundTextSchema = z.string();
 
-export const cliAuthTestApproveContract = c.router({
-  approve: {
-    method: "POST",
-    path: "/api/cli/auth/test-approve",
-    query: testEmailQuerySchema,
-    body: z.object({
-      device_code: z.string().optional(),
-    }),
-    responses: {
-      200: z.object({ success: z.literal(true), userId: z.string() }),
-      400: stringErrorResponseSchema,
-      404: notFoundTextSchema,
-    },
-    summary: "Approve a CLI auth device code for tests",
-  },
-});
-
 export const cliAuthTestTokenContract = c.router({
   create: {
     method: "POST",
@@ -130,7 +113,6 @@ export const cliAuthTestCodexOauthContract = c.router({
   },
 });
 
-export type CliAuthTestApproveContract = typeof cliAuthTestApproveContract;
 export type CliAuthTestTokenContract = typeof cliAuthTestTokenContract;
 export type CliAuthTestConnectorContract = typeof cliAuthTestConnectorContract;
 export type CliAuthTestEnableConnectorContract =

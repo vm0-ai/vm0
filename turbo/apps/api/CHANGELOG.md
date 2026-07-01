@@ -1,5 +1,22 @@
 # Changelog
 
+## [1.197.0](https://github.com/vm0-ai/vm0/compare/api-v1.196.1...api-v1.197.0) (2026-07-01)
+
+
+### Features
+
+* support public connector form field ids ([#19506](https://github.com/vm0-ai/vm0/issues/19506)) ([c18d792](https://github.com/vm0-ai/vm0/commit/c18d7928e35477389809273f8f8c594b9f96d09d))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.133.1
+    * @vm0/connectors bumped to 1.119.0
+    * @vm0/core bumped to 8.380.2
+    * @vm0/db bumped to 1.79.7
+
 ## [1.196.1](https://github.com/vm0-ai/vm0/compare/api-v1.196.0...api-v1.196.1) (2026-07-01)
 
 

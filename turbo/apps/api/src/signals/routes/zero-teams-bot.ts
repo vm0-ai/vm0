@@ -8,13 +8,15 @@ import {
 } from "../../lib/teams-bot-activity";
 import { verifyTeamsBotAuthorization } from "../../lib/teams-bot-auth";
 import { authorization$, request$ } from "../context/hono";
+import { now } from "../external/time";
+import type { RouteEntry } from "../route-entry";
 import {
   buildTeamsConnectUrlForActivity,
   publishTeamsChanged$,
   recordTeamsInstallationActivity$,
 } from "../services/zero-teams-connect.service";
+import { dispatchTeamsMessageToAgent$ } from "../services/zero-teams-dispatch.service";
 import { safeJsonParse } from "../utils";
-import type { RouteEntry } from "../route-entry";
 
 function errorResponse(
   status: 400 | 401 | 403 | 503,
@@ -96,6 +98,16 @@ const handleZeroTeamsBot$ = command(
 
     const installation =
       activityResult.kind === "upserted" ? activityResult.installation : null;
+    const dispatch = await set(
+      dispatchTeamsMessageToAgent$,
+      {
+        activity: normalized.activity,
+        installation,
+        apiStartTime: now(),
+      },
+      signal,
+    );
+    signal.throwIfAborted();
 
     return {
       status: 200 as const,
@@ -106,6 +118,7 @@ const handleZeroTeamsBot$ = command(
           activity: normalized.activity,
           installation,
         }),
+        dispatch,
       },
     };
   },
