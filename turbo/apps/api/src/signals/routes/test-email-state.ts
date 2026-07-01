@@ -41,6 +41,7 @@ const actionBody$ = bodyResultOf(testEmailStateContract.action);
 const CALLBACK_SECRET = "test-callback-secret";
 const REPLY_PATH = "/api/zero/email/callbacks/reply";
 const TRIGGER_PATH = "/api/zero/email/callbacks/trigger";
+const VM0_OUTBOX_FROM = "Zero <vm0@mail.example.com>";
 const OUTBOX_TEST_FROM = "Zero <bdd-outbox@mail.example.com>";
 const OUTBOX_TEST_CREATED_AT_OFFSET_MS = 10 * 60 * 1000;
 
@@ -108,6 +109,18 @@ function readStringArray(
   }
   return value.filter((item): item is string => {
     return typeof item === "string";
+  });
+}
+
+function includesEmailAddress(value: unknown, emailAddress: string): boolean {
+  if (typeof value === "string") {
+    return value === emailAddress;
+  }
+  if (!Array.isArray(value)) {
+    return false;
+  }
+  return value.some((item) => {
+    return item === emailAddress;
   });
 }
 
@@ -382,6 +395,42 @@ async function seedFixtureForAction(db: Db, signal: AbortSignal) {
   });
 }
 
+async function deleteOutboxForFixture(
+  db: Db,
+  fixture: EmailFixture,
+): Promise<void> {
+  const fixtureOutboxRows = await db
+    .select({
+      id: emailOutbox.id,
+      fromAddress: emailOutbox.fromAddress,
+      toAddresses: emailOutbox.toAddresses,
+    })
+    .from(emailOutbox)
+    .where(
+      or(
+        eq(
+          emailOutbox.fromAddress,
+          `Zero <${fixture.orgSlug}@mail.example.com>`,
+        ),
+        eq(emailOutbox.fromAddress, VM0_OUTBOX_FROM),
+      ),
+    );
+  const fixtureOutboxIds = fixtureOutboxRows
+    .filter((row) => {
+      return (
+        row.fromAddress !== VM0_OUTBOX_FROM ||
+        includesEmailAddress(row.toAddresses, fixture.userEmail)
+      );
+    })
+    .map((row) => {
+      return row.id;
+    });
+  if (fixtureOutboxIds.length === 0) {
+    return;
+  }
+  await db.delete(emailOutbox).where(inArray(emailOutbox.id, fixtureOutboxIds));
+}
+
 async function deleteFixtureForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -392,17 +441,7 @@ async function deleteFixtureForAction(
     return actionBadRequest("fixture is required");
   }
 
-  await db
-    .delete(emailOutbox)
-    .where(
-      or(
-        eq(
-          emailOutbox.fromAddress,
-          `Zero <${fixture.orgSlug}@mail.example.com>`,
-        ),
-        eq(emailOutbox.fromAddress, "Zero <vm0@mail.example.com>"),
-      ),
-    );
+  await deleteOutboxForFixture(db, fixture);
   signal.throwIfAborted();
   await db
     .delete(emailSuppressions)
