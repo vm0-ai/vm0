@@ -5,12 +5,12 @@
 //! guest env flag selects this backend.
 
 use std::future::Future;
-use std::path::{Path, PathBuf};
+use std::path::PathBuf;
 
 use serde_json::{Map, Value, json};
 use tokio::sync::oneshot;
 
-use crate::env;
+use crate::env::Framework;
 use crate::error::AgentError;
 use crate::events;
 use crate::http::HttpClient;
@@ -22,8 +22,8 @@ use super::codex_app_server::{
 };
 use super::event_delivery::{AckedEventPrefix, PreparedEvent};
 use super::{
-    CliEventIngestor, CliExecutionResult, HeartbeatMonitor, HeartbeatStatus, LOG_TAG,
-    ParsedEventAction, codex_app_server_events::IGNORED_NOTIFICATION_METHODS, command,
+    CliEventIngestor, CliExecutionResult, CliRuntimeConfig, HeartbeatMonitor, HeartbeatStatus,
+    LOG_TAG, ParsedEventAction, codex_app_server_events::IGNORED_NOTIFICATION_METHODS, command,
     notification_to_codex_event,
 };
 use crate::active_input::{ActiveInputFrame, ActiveInputWriter};
@@ -64,13 +64,14 @@ enum CodexRunEvent {
     ActiveInput(Option<ActiveInputFrame>),
 }
 
-pub(super) async fn execute_codex_app_server(
+pub(super) async fn execute_codex_app_server_for_runtime(
     masker: &SecretMasker,
     mut heartbeat_monitor: HeartbeatMonitor,
     http: HttpClient,
     active_input: ActiveInputWriter,
+    runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
-    masker.add_sensitive_value(env::resume_session_id());
+    masker.add_sensitive_value(runtime.resume_session_id.as_ref());
     log_info!(LOG_TAG, "Starting codex app-server execution...");
 
     let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
@@ -102,6 +103,7 @@ pub(super) async fn execute_codex_app_server(
         should_send_events,
         &event_tx,
         active_input,
+        runtime,
     )
     .await;
 
@@ -133,15 +135,16 @@ async fn run_codex_app_server(
     should_send_events: bool,
     event_tx: &tokio::sync::mpsc::UnboundedSender<PreparedEvent>,
     mut active_input: ActiveInputWriter,
+    runtime: &CliRuntimeConfig<'_>,
 ) -> Result<CliExecutionResult, AgentError> {
-    let log_file = guest_contracts::runtime_paths::create_private(paths::agent_log_file())?;
+    let log_file = guest_contracts::runtime_paths::create_private(runtime.agent_log_file.as_ref())?;
     let mut log_file = tokio::fs::File::from_std(log_file);
-    let mut ingestor = CliEventIngestor::new();
-    let resume_thread_id = resume_thread_id_from_env()?;
+    let mut ingestor = CliEventIngestor::new(runtime);
+    let resume_thread_id = resume_thread_id_from_runtime(runtime)?;
     if let Some(resume_thread_id) = &resume_thread_id {
         masker.add_sensitive_value(resume_thread_id);
     }
-    let mut client = CodexAppServerClient::spawn(codex_app_server_config())
+    let mut client = CodexAppServerClient::spawn(codex_app_server_config(runtime))
         .map_err(|error| app_server_error(masker, error))?;
     let mut heartbeat_done = false;
 
@@ -154,7 +157,7 @@ async fn run_codex_app_server(
         )
         .await?;
         let thread_response = race_with_heartbeat(
-            start_or_resume_thread(&mut client, resume_thread_id.as_deref()),
+            start_or_resume_thread(&mut client, resume_thread_id.as_deref(), runtime),
             heartbeat_monitor,
             &mut heartbeat_done,
             masker,
@@ -201,7 +204,10 @@ async fn run_codex_app_server(
         }
 
         let turn_response = race_with_heartbeat(
-            client.request_value("turn/start", turn_start_params(&thread_identity.wire_id)),
+            client.request_value(
+                "turn/start",
+                turn_start_params(&thread_identity.wire_id, runtime),
+            ),
             heartbeat_monitor,
             &mut heartbeat_done,
             masker,
@@ -339,23 +345,28 @@ async fn run_codex_app_server(
     }
 }
 
-fn codex_app_server_config() -> CodexAppServerConfig {
-    let binary = if env::use_mock_codex() {
+fn codex_app_server_config(runtime: &CliRuntimeConfig<'_>) -> CodexAppServerConfig {
+    let binary = if runtime.use_mock_codex {
         log_info!(LOG_TAG, "Using mock-codex app-server for testing");
-        PathBuf::from(env::mock_codex_path())
+        PathBuf::from(runtime.mock_codex_path.as_ref())
     } else {
         PathBuf::from("codex")
     };
-    let codex_home = crate::codex_auth::codex_home_path(Path::new(env::home_dir()));
+    let codex_home = PathBuf::from(runtime.codex_home());
     let mut config = CodexAppServerConfig::new(binary, codex_home)
+        .with_child_env(
+            runtime.home_dir.as_ref(),
+            runtime.user_env,
+            runtime.api_url.as_ref(),
+        )
         .with_current_dir(paths::CANONICAL_WORKING_DIR)
         .with_opt_out_notification_methods(IGNORED_NOTIFICATION_METHODS.iter().copied());
-    if env::use_mock_codex()
+    if runtime.use_mock_codex
         && let Ok(scenario) = std::env::var("MOCK_CODEX_APP_SERVER_SCENARIO")
     {
         config = config.with_env("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
     }
-    if env::is_codex_oauth_mode() {
+    if runtime.codex_oauth_mode {
         config = config.with_env(
             "CODEX_REFRESH_TOKEN_URL_OVERRIDE",
             crate::codex_auth::REFRESH_TOKEN_NOOP_URL,
@@ -367,10 +378,11 @@ fn codex_app_server_config() -> CodexAppServerConfig {
 async fn start_or_resume_thread(
     client: &mut CodexAppServerClient,
     resume_thread_id: Option<&str>,
+    runtime: &CliRuntimeConfig<'_>,
 ) -> Result<Value, CodexAppServerError> {
     match resume_thread_id {
         Some(resume_thread_id) => {
-            let mut params = thread_param_fields();
+            let mut params = thread_param_fields(runtime);
             params.insert(
                 "threadId".to_string(),
                 Value::String(resume_thread_id.to_string()),
@@ -379,15 +391,19 @@ async fn start_or_resume_thread(
                 .request_value("thread/resume", Value::Object(params))
                 .await
         }
-        None => client.request_value("thread/start", thread_params()).await,
+        None => {
+            client
+                .request_value("thread/start", thread_params(runtime))
+                .await
+        }
     }
 }
 
-fn thread_params() -> Value {
-    Value::Object(thread_param_fields())
+fn thread_params(runtime: &CliRuntimeConfig<'_>) -> Value {
+    Value::Object(thread_param_fields(runtime))
 }
 
-fn thread_param_fields() -> Map<String, Value> {
+fn thread_param_fields(runtime: &CliRuntimeConfig<'_>) -> Map<String, Value> {
     let mut params = Map::new();
     params.insert(
         "cwd".to_string(),
@@ -411,29 +427,29 @@ fn thread_param_fields() -> Map<String, Value> {
             "features.memories": true,
         }),
     );
-    if !env::openai_model().is_empty() {
+    if !runtime.openai_model.is_empty() {
         params.insert(
             "model".to_string(),
-            Value::String(env::openai_model().to_string()),
+            Value::String(runtime.openai_model.to_string()),
         );
     }
-    if !env::append_system_prompt().is_empty() {
+    if !runtime.append_system_prompt.is_empty() {
         params.insert(
             "developerInstructions".to_string(),
-            Value::String(env::append_system_prompt().to_string()),
+            Value::String(runtime.append_system_prompt.to_string()),
         );
     }
     params
 }
 
-fn turn_start_params(thread_id: &str) -> Value {
+fn turn_start_params(thread_id: &str, runtime: &CliRuntimeConfig<'_>) -> Value {
     let mut params = Map::new();
     params.insert("threadId".to_string(), Value::String(thread_id.to_string()));
     params.insert(
         "input".to_string(),
         Value::Array(vec![json!({
             "type": "text",
-            "text": env::prompt(),
+            "text": runtime.prompt.as_ref(),
             "text_elements": [],
         })]),
     );
@@ -453,13 +469,15 @@ fn turn_start_params(thread_id: &str) -> Value {
         "sandboxPolicy".to_string(),
         json!({ "type": "dangerFullAccess" }),
     );
-    if !env::openai_model().is_empty() {
+    if !runtime.openai_model.is_empty() {
         params.insert(
             "model".to_string(),
-            Value::String(env::openai_model().to_string()),
+            Value::String(runtime.openai_model.to_string()),
         );
     }
-    if let Some(effort) = command::default_codex_reasoning_effort_for_model(env::openai_model()) {
+    if let Some(effort) =
+        command::default_codex_reasoning_effort_for_model(runtime.openai_model.as_ref())
+    {
         params.insert("effort".to_string(), Value::String(effort.to_string()));
     }
     Value::Object(params)
@@ -793,7 +811,7 @@ async fn ingest_event(event: Value, sink: &mut EventIngestSink<'_>) -> Result<()
             raw_line,
             &event,
             sink.masker,
-            super::framework::CliFrameworkBehavior::new(env::Framework::Codex),
+            super::framework::CliFrameworkBehavior::new(Framework::Codex),
         )
         .await?
     {
@@ -902,8 +920,10 @@ fn thread_identity_from_response(response: &Value) -> Result<ThreadIdentity, Age
     })
 }
 
-fn resume_thread_id_from_env() -> Result<Option<String>, AgentError> {
-    let resume_id = env::resume_session_id();
+fn resume_thread_id_from_runtime(
+    runtime: &CliRuntimeConfig<'_>,
+) -> Result<Option<String>, AgentError> {
+    let resume_id = runtime.resume_session_id.as_ref();
     if resume_id.is_empty() {
         return Ok(None);
     }

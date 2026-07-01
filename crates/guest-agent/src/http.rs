@@ -64,9 +64,10 @@ impl HttpClient {
     ///
     /// This constructor always initializes the underlying `reqwest` client and
     /// does not check `VM0_API_TOKEN`. It can send presigned uploads, but
-    /// webhook JSON posts require API config from [`Self::with_api_config`] or
-    /// [`Self::for_current_env`]. Production guest-agent initialization should
-    /// use [`Self::for_current_env`] so no-API runs can use a disabled client.
+    /// webhook JSON posts require API config from [`Self::with_api_config`],
+    /// [`Self::for_config`], or the legacy [`Self::for_current_env`] wrapper.
+    /// Production guest-agent initialization should use [`Self::for_config`]
+    /// so API settings come from the captured runtime config.
     pub fn new() -> Result<Self, AgentError> {
         Self::with_retry_delay(DEFAULT_RETRY_DELAY)
     }
@@ -76,7 +77,7 @@ impl HttpClient {
     /// Integration tests use this to cover real retry behavior without paying
     /// production backoff time. This constructor does not enable API webhook
     /// auth by itself; use [`Self::with_api_config`] for explicit API tests or
-    /// [`Self::for_current_env`] for production guest-agent initialization.
+    /// [`Self::for_config`] for production guest-agent initialization.
     #[doc(hidden)]
     pub fn with_retry_delay(retry_delay: Duration) -> Result<Self, AgentError> {
         Self::build(None, retry_delay)

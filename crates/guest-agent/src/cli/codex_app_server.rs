@@ -5,7 +5,7 @@
 //! thread or turn semantics; later runtime code can build those policies on
 //! top of this generic request/notification layer.
 
-use std::collections::VecDeque;
+use std::collections::{HashMap, VecDeque};
 use std::path::PathBuf;
 use std::process::{ExitStatus, Stdio};
 use std::time::Duration;
@@ -34,9 +34,17 @@ const STDERR_DRAIN_GRACE: Duration = Duration::from_secs(2);
 pub struct CodexAppServerConfig {
     binary: PathBuf,
     codex_home: PathBuf,
+    child_env: Option<CodexAppServerChildEnv>,
     extra_env: Vec<(String, String)>,
     current_dir: Option<PathBuf>,
     opt_out_notification_methods: Vec<String>,
+}
+
+#[derive(Debug, Clone)]
+struct CodexAppServerChildEnv {
+    home_dir: String,
+    user_env: HashMap<String, String>,
+    api_url: String,
 }
 
 impl CodexAppServerConfig {
@@ -44,10 +52,25 @@ impl CodexAppServerConfig {
         Self {
             binary: binary.into(),
             codex_home: codex_home.into(),
+            child_env: None,
             extra_env: Vec::new(),
             current_dir: None,
             opt_out_notification_methods: Vec::new(),
         }
+    }
+
+    pub fn with_child_env(
+        mut self,
+        home_dir: impl Into<String>,
+        user_env: &HashMap<String, String>,
+        api_url: impl Into<String>,
+    ) -> Self {
+        self.child_env = Some(CodexAppServerChildEnv {
+            home_dir: home_dir.into(),
+            user_env: user_env.clone(),
+            api_url: api_url.into(),
+        });
+        self
     }
 
     pub fn with_env(mut self, key: impl Into<String>, value: impl Into<String>) -> Self {
@@ -177,7 +200,16 @@ impl CodexAppServerClient {
         std::fs::create_dir_all(&config.codex_home)?;
 
         let mut cmd = tokio::process::Command::new(&config.binary);
-        child_env::apply_to_tokio_command(&mut cmd);
+        if let Some(child_env_config) = &config.child_env {
+            child_env::apply_to_tokio_command_with_values(
+                &mut cmd,
+                &child_env_config.home_dir,
+                &child_env_config.user_env,
+                &child_env_config.api_url,
+            );
+        } else {
+            child_env::apply_to_tokio_command(&mut cmd);
+        }
         cmd.args(["app-server", "--listen", "stdio://"])
             .stdin(Stdio::piped())
             .stdout(Stdio::piped())
