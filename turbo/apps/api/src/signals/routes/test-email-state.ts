@@ -23,7 +23,7 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { users } from "@vm0/db/schema/user";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
@@ -109,18 +109,6 @@ function readStringArray(
   }
   return value.filter((item): item is string => {
     return typeof item === "string";
-  });
-}
-
-function includesEmailAddress(value: unknown, emailAddress: string): boolean {
-  if (typeof value === "string") {
-    return value === emailAddress;
-  }
-  if (!Array.isArray(value)) {
-    return false;
-  }
-  return value.some((item) => {
-    return item === emailAddress;
   });
 }
 
@@ -399,36 +387,18 @@ async function deleteOutboxForFixture(
   db: Db,
   fixture: EmailFixture,
 ): Promise<void> {
-  const fixtureOutboxRows = await db
-    .select({
-      id: emailOutbox.id,
-      fromAddress: emailOutbox.fromAddress,
-      toAddresses: emailOutbox.toAddresses,
-    })
-    .from(emailOutbox)
-    .where(
-      or(
-        eq(
-          emailOutbox.fromAddress,
-          `Zero <${fixture.orgSlug}@mail.example.com>`,
-        ),
+  await db.delete(emailOutbox).where(
+    or(
+      eq(emailOutbox.fromAddress, `Zero <${fixture.orgSlug}@mail.example.com>`),
+      and(
         eq(emailOutbox.fromAddress, VM0_OUTBOX_FROM),
+        sql`(
+            ${emailOutbox.toAddresses} = ${JSON.stringify(fixture.userEmail)}::jsonb
+            OR ${emailOutbox.toAddresses} @> ${JSON.stringify([fixture.userEmail])}::jsonb
+          )`,
       ),
-    );
-  const fixtureOutboxIds = fixtureOutboxRows
-    .filter((row) => {
-      return (
-        row.fromAddress !== VM0_OUTBOX_FROM ||
-        includesEmailAddress(row.toAddresses, fixture.userEmail)
-      );
-    })
-    .map((row) => {
-      return row.id;
-    });
-  if (fixtureOutboxIds.length === 0) {
-    return;
-  }
-  await db.delete(emailOutbox).where(inArray(emailOutbox.id, fixtureOutboxIds));
+    ),
+  );
 }
 
 async function deleteFixtureForAction(
