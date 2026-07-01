@@ -193,6 +193,18 @@ const ROUTE_CONFIG = [
     setup: setupAuthSidebarPageWrapper(setupWorkflowDetailPage$),
   },
   {
+    path: ROUTES.workflowDetailAutomations,
+    setup: setupAuthSidebarPageWrapper(setupWorkflowDetailPage$),
+  },
+  {
+    path: ROUTES.workflowDetailInstructions,
+    setup: setupAuthSidebarPageWrapper(setupWorkflowDetailPage$),
+  },
+  {
+    path: ROUTES.workflowDetailInfo,
+    setup: setupAuthSidebarPageWrapper(setupWorkflowDetailPage$),
+  },
+  {
     path: ROUTES.workflows,
     setup: setupAuthSidebarPageWrapper(setupWorkflowsPage$),
   },
