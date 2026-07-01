@@ -212,10 +212,7 @@ export function getConnectorStatusConnectLaunchMode(
     preferModalForConnectorNotice = false,
   }: { readonly preferModalForConnectorNotice?: boolean } = {},
 ): ConnectorConnectLaunchMode {
-  if (
-    connector.availableAuthMethods.length !== 1 ||
-    !connector.singleAuthCodeAuthMethodId
-  ) {
+  if (!getOnlyAvailableStatusAuthCodeAuthMethod(connector)) {
     return "modal";
   }
   if (preferModalForConnectorNotice && connector.connectNotice) {
@@ -242,8 +239,12 @@ export function getAvailableStatusAuthCodeAuthMethod(
 export function getOnlyAvailableStatusAuthCodeAuthMethod(
   connector: ConnectorTypeWithStatus,
 ): ConnectorAuthMethodId | null {
-  const [authMethod] = connector.availableAuthMethods;
-  if (connector.availableAuthMethods.length !== 1 || !authMethod) {
+  const authMethod = connector.singleAuthCodeAuthMethodId;
+  if (
+    connector.availableAuthMethods.length !== 1 ||
+    !authMethod ||
+    connector.availableAuthMethods[0] !== authMethod
+  ) {
     return null;
   }
   return getAvailableStatusAuthCodeAuthMethod(connector, authMethod);

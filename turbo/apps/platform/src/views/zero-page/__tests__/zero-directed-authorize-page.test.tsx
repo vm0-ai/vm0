@@ -218,6 +218,47 @@ describe("directed connector authorize page", () => {
     });
   });
 
+  it("opens the connect dialog when catalog does not expose direct OAuth", async () => {
+    let startCalls = 0;
+    context.mocks.api(
+      zeroConnectorOauthStartContract.start,
+      ({ params, respond }) => {
+        startCalls += 1;
+        return respond(200, {
+          authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+        });
+      },
+    );
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "github",
+        label: "Public GitHub",
+        authMethods: [
+          {
+            id: "oauth",
+            label: "Public OAuth",
+            description: null,
+            grantKind: "auth-code",
+            manualFields: [],
+            startOptions: [],
+          },
+        ],
+        singleAuthCodeAuthMethodId: null,
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/github/authorize?agentId=${AGENT_ID}`,
+    });
+
+    await screen.findByText("Zero needs Public GitHub to proceed");
+    click(getButtonByText("Authorize Zero"));
+
+    await screen.findByRole("dialog", { name: "Public GitHub" });
+    expect(startCalls).toBe(0);
+  });
+
   it("does not authorize the agent when OAuth connection is cancelled", async () => {
     const { authWindow } = mockConnectorOauthStart();
     let updateCalls = 0;
