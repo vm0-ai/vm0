@@ -52,6 +52,9 @@ function connectedPersonalClaudeCodeProvider(): ModelProviderResponse {
     secretNames: null,
     isDefault: false,
     selectedModel: null,
+    workspaceName: "claude.user@example.com",
+    planType: "pro",
+    subscriptionResetPeriod: "weekly",
     needsReconnect: false,
     lastRefreshErrorCode: null,
     createdAt: "2026-03-01T00:00:00Z",
@@ -234,7 +237,11 @@ describe("personal model providers settings", () => {
 
     await waitFor(() => {
       expect(screen.getByText("Claude Code connected")).toBeInTheDocument();
-      expect(within(claudeCodeRow).getByText("Connected")).toBeInTheDocument();
+      expect(
+        within(claudeCodeRow).getByText(
+          "Connected (claude.user@example.com, Pro, resets weekly)",
+        ),
+      ).toBeInTheDocument();
       expect(
         within(claudeCodeRow).queryByText(/Unavailable|Unknown/),
       ).not.toBeInTheDocument();
@@ -258,7 +265,11 @@ describe("personal model providers settings", () => {
     const claudeCodeRow = await screen.findByTestId(
       "oauth-card-claude-code-oauth-token",
     );
-    expect(within(claudeCodeRow).getByText("Connected")).toBeInTheDocument();
+    expect(
+      within(claudeCodeRow).getByText(
+        "Connected (claude.user@example.com, Pro, resets weekly)",
+      ),
+    ).toBeInTheDocument();
     expect(
       within(claudeCodeRow).queryByText(/Unavailable|Unknown|Account:|Reset:/),
     ).not.toBeInTheDocument();

@@ -369,7 +369,7 @@ function assertVm0OrgOnly(
   return null;
 }
 
-interface MultiAuthMetadata {
+interface ModelProviderMetadata {
   readonly tokenExpiresAt?: Date | null;
   readonly workspaceName?: string | null;
   readonly planType?: string | null;
@@ -391,7 +391,7 @@ function buildMultiAuthInsertValues(args: {
   authMethod: string;
   selectedModel: string | undefined;
   orgId: string;
-  metadata: MultiAuthMetadata | undefined;
+  metadata: ModelProviderMetadata | undefined;
 }): MultiAuthInsertValues {
   return {
     type: args.type,
@@ -411,7 +411,7 @@ function buildMultiAuthInsertValues(args: {
 function buildMultiAuthConflictSet(
   authMethod: string,
   selectedModel: string | undefined,
-  metadata?: MultiAuthMetadata,
+  metadata?: ModelProviderMetadata,
 ): Record<string, unknown> {
   const base: Record<string, unknown> = {
     authMethod,
@@ -438,6 +438,39 @@ function buildMultiAuthConflictSet(
   }
   base.needsReconnect = false;
   base.lastRefreshErrorCode = null;
+  return base;
+}
+
+function buildSingleAuthConflictSet(args: {
+  readonly secretId: string;
+  readonly selectedModel: string | undefined;
+  readonly metadata?: ModelProviderMetadata;
+}): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    secretId: args.secretId,
+    selectedModel: args.selectedModel ?? null,
+    needsReconnect: false,
+    lastRefreshErrorCode: null,
+    updatedAt: nowDate(),
+  };
+  if (!args.metadata) {
+    return base;
+  }
+  if (args.metadata.tokenExpiresAt !== undefined) {
+    base.tokenExpiresAt = args.metadata.tokenExpiresAt;
+  }
+  if (args.metadata.workspaceName !== undefined) {
+    base.workspaceName = args.metadata.workspaceName;
+  }
+  if (args.metadata.planType !== undefined) {
+    base.planType = args.metadata.planType;
+  }
+  if (args.metadata.subscriptionResetPeriod !== undefined) {
+    base.subscriptionResetPeriod = args.metadata.subscriptionResetPeriod;
+  }
+  if (args.metadata.subscriptionNextResetAt !== undefined) {
+    base.subscriptionNextResetAt = args.metadata.subscriptionNextResetAt;
+  }
   return base;
 }
 
@@ -510,6 +543,7 @@ export const upsertUserModelProvider$ = command(
       readonly type: ModelProviderType;
       readonly secret: string;
       readonly selectedModel?: string;
+      readonly metadata?: ModelProviderMetadata;
     },
     signal: AbortSignal,
   ): Promise<
@@ -603,6 +637,11 @@ export const upsertUserModelProvider$ = command(
         isDefault: false,
         selectedModel: args.selectedModel ?? null,
         orgId: args.orgId,
+        tokenExpiresAt: args.metadata?.tokenExpiresAt ?? null,
+        workspaceName: args.metadata?.workspaceName ?? null,
+        planType: args.metadata?.planType ?? null,
+        subscriptionResetPeriod: args.metadata?.subscriptionResetPeriod ?? null,
+        subscriptionNextResetAt: args.metadata?.subscriptionNextResetAt ?? null,
       })
       .onConflictDoUpdate({
         target: [
@@ -610,11 +649,11 @@ export const upsertUserModelProvider$ = command(
           modelProviders.userId,
           modelProviders.type,
         ],
-        set: {
+        set: buildSingleAuthConflictSet({
           secretId: upsertedSecret.id,
-          selectedModel: args.selectedModel ?? null,
-          updatedAt: nowDate(),
-        },
+          selectedModel: args.selectedModel,
+          metadata: args.metadata,
+        }),
       })
       .returning();
     signal.throwIfAborted();
@@ -690,7 +729,7 @@ async function persistMultiAuthModelProvider(
     readonly type: ModelProviderType;
     readonly authMethod: string;
     readonly selectedModel?: string;
-    readonly metadata?: MultiAuthMetadata;
+    readonly metadata?: ModelProviderMetadata;
     readonly secretNames: readonly string[];
     readonly encryptedSecrets: readonly EncryptedMultiAuthSecret[];
   },
@@ -845,7 +884,7 @@ export const upsertUserMultiAuthModelProvider$ = command(
       readonly authMethod: string;
       readonly secretValues: Record<string, string>;
       readonly selectedModel?: string;
-      readonly metadata?: MultiAuthMetadata;
+      readonly metadata?: ModelProviderMetadata;
     },
     signal: AbortSignal,
   ): Promise<
@@ -914,6 +953,7 @@ export const upsertOrgModelProvider$ = command(
       readonly type: ModelProviderType;
       readonly secret: string;
       readonly selectedModel?: string;
+      readonly metadata?: ModelProviderMetadata;
     },
     signal: AbortSignal,
   ) => {
@@ -925,6 +965,7 @@ export const upsertOrgModelProvider$ = command(
         type: args.type,
         secret: args.secret,
         selectedModel: args.selectedModel,
+        metadata: args.metadata,
       },
       signal,
     );
@@ -940,7 +981,7 @@ export const upsertOrgMultiAuthModelProvider$ = command(
       readonly authMethod: string;
       readonly secretValues: Record<string, string>;
       readonly selectedModel?: string;
-      readonly metadata?: MultiAuthMetadata;
+      readonly metadata?: ModelProviderMetadata;
     },
     signal: AbortSignal,
   ) => {

@@ -23,6 +23,7 @@ import {
   encryptPersistentSecretValue,
   encryptSecretValue,
 } from "./crypto.utils";
+import { fetchClaudeCodeSubscriptionMetadata } from "./claude-code-usage.service";
 import {
   upsertOrgModelProvider$,
   upsertUserModelProvider$,
@@ -37,7 +38,7 @@ const CLAUDE_CODE_DEVICE_AUTH_REDIRECT_URI =
   "https://platform.claude.com/oauth/code/callback";
 const CLAUDE_CODE_DEVICE_AUTH_CLIENT_ID =
   "9d1c250a-e61b-44d9-88ed-5944d1962f5e";
-const CLAUDE_CODE_DEVICE_AUTH_SCOPE = "user:inference";
+const CLAUDE_CODE_DEVICE_AUTH_SCOPE = "user:profile user:inference";
 const CLAUDE_CODE_DEVICE_AUTH_TOKEN_TTL_SECONDS = 365 * 24 * 60 * 60;
 const CLAUDE_CODE_DEVICE_AUTH_SESSION_TTL_SECONDS = 15 * 60;
 const CLAUDE_CODE_DEVICE_AUTH_CONNECTOR_TYPE = "claude-code-oauth-token";
@@ -706,6 +707,15 @@ const importClaudeCodeOAuthToken$ = command(
     readonly provider: ModelProviderResponse;
     readonly created: boolean;
   }> => {
+    const metadataResult = await settle(
+      fetchClaudeCodeSubscriptionMetadata({
+        accessToken: args.accessToken,
+        signal,
+      }),
+      signal,
+    );
+    const metadata = metadataResult.ok ? metadataResult.value : undefined;
+
     const result =
       args.scope === "org"
         ? await set(
@@ -714,6 +724,7 @@ const importClaudeCodeOAuthToken$ = command(
               orgId: args.orgId,
               type: CLAUDE_CODE_DEVICE_AUTH_CONNECTOR_TYPE,
               secret: args.accessToken,
+              metadata,
             },
             signal,
           )
@@ -724,6 +735,7 @@ const importClaudeCodeOAuthToken$ = command(
               userId: args.userId,
               type: CLAUDE_CODE_DEVICE_AUTH_CONNECTOR_TYPE,
               secret: args.accessToken,
+              metadata,
             },
             signal,
           );

@@ -1215,8 +1215,8 @@ export const modelProviderResponseSchema = z.object({
   selectedModel: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
-  // ChatGPT-only metadata populated by the codex-oauth-token auth.json paste
-  // flow. Other provider types omit these.
+  // OAuth account metadata populated by provider-specific connect flows. Other
+  // provider types omit these.
   workspaceName: z.string().nullable().optional(),
   planType: z.string().nullable().optional(),
   // Subscription quota metadata. Providers omit these until an upstream source
