@@ -1630,6 +1630,99 @@ describe("connectors page", () => {
     ).not.toBeInTheDocument();
   });
 
+  it("keeps the post-connect permission dialog open when authorization fails", async () => {
+    const researchAgentId = "c0000000-0000-4000-a000-000000000001";
+    mockConnectors([]);
+    context.mocks.data.team([teamAgent(researchAgentId, "Research Agent")]);
+    mockPublicConnectorStatus([
+      publicStatusItem({
+        connectorRef: "axiom",
+        label: "Public Axiom",
+        authMethods: [
+          {
+            id: "api-token",
+            label: "Public API Token",
+            description: null,
+            grantKind: "manual",
+            manualFields: [
+              {
+                id: "apiToken",
+                label: "Public API token",
+                required: true,
+                placeholder: "public-xaat",
+                inputType: "password",
+              },
+            ],
+            startOptions: [],
+          },
+        ],
+      }),
+    ]);
+    context.mocks.api(
+      zeroConnectorManualGrantContract.connect,
+      ({ body, params, respond }) => {
+        return respond(200, {
+          id: crypto.randomUUID(),
+          type: params.type,
+          authMethod: body.authMethod,
+          externalId: null,
+          externalUsername: null,
+          externalEmail: null,
+          oauthScopes: null,
+          connectionStatus: "connected",
+          reconnectReason: null,
+          tokenExpiresAt: null,
+          createdAt: "2026-01-01T00:00:00.000Z",
+          updatedAt: "2026-01-01T00:00:00.000Z",
+        });
+      },
+    );
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: [] });
+    });
+    context.mocks.api(zeroUserConnectorsContract.update, ({ respond }) => {
+      return respond(400, {
+        error: {
+          code: "CONNECTOR_ACCESS_UPDATE_FAILED",
+          message: "Could not update connector access",
+        },
+      });
+    });
+
+    detachedSetupPage({ context, path: "/connectors" });
+
+    await fill(await screen.findByPlaceholderText("Find connectors"), "axiom");
+    click(await screen.findByLabelText("Connect Public Axiom"));
+    const axiomDialog = await screen.findByRole("dialog", {
+      name: "Public Axiom",
+    });
+    await fill(
+      within(axiomDialog).getByPlaceholderText("public-xaat"),
+      "xaat-test",
+    );
+    click(buttonByText("Save", axiomDialog));
+
+    const permissionDialog = dialogForElement(
+      await screen.findByText(
+        "You've successfully connected with Public Axiom!",
+      ),
+    );
+    click(buttonByText("Research Agent", permissionDialog));
+    click(buttonByText("Confirm", permissionDialog));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Could not update connector access"),
+      ).toBeInTheDocument();
+    });
+    expect(
+      screen.getByText("You've successfully connected with Public Axiom!"),
+    ).toBeInTheDocument();
+    expect(
+      screen.queryByText("Public Axiom enabled for 1 agent"),
+    ).not.toBeInTheDocument();
+  });
+
   it("connects AWS with an authorization code and authorizes an agent", async () => {
     mockConnectors([]);
     context.mocks.data.team([

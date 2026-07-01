@@ -58,7 +58,7 @@ export const confirmPermissionDialog$ = command(
     }
     const createClient = get(zeroClient$);
     const client = createClient(zeroUserConnectorsContract);
-    await Promise.allSettled(
+    const results = await Promise.allSettled(
       [...selected].map(async (agentId) => {
         signal.throwIfAborted();
         const existing = await accept(
@@ -84,6 +84,12 @@ export const confirmPermissionDialog$ = command(
       }),
     );
     signal.throwIfAborted();
+    const failed = results.find((result): result is PromiseRejectedResult => {
+      return result.status === "rejected";
+    });
+    if (failed) {
+      throw failed.reason;
+    }
     toast.success(
       `${connectorLabel} enabled for ${selected.size} agent${selected.size > 1 ? "s" : ""}`,
     );
