@@ -147,7 +147,7 @@ export const cancelRun$ = command(
  * Post-cancel side effects:
  *  - Notify the runner group to halt the cancelled run (if it was
  *    running on a runner).
- *  - Publish org-level `queue:changed` and user-level `runChanged`.
+ *  - Publish org-level `queue:changed` and user-level `run:changed`.
  *  - Drain the org queue: promote one queued run to pending. The
  *    runner picks up pending runs on its existing poll loop.
  *  - Reconcile credits via `processOrgUsageEvents$` when the cancelled
@@ -195,7 +195,7 @@ export const dispatchCancelSideEffects$ = command(
     });
     signal.throwIfAborted();
     await tapError(
-      publishUserSignal([result.userId], `runChanged:${result.runId}`, {
+      publishUserSignal([result.userId], `run:changed:${result.runId}`, {
         status: "cancelled",
       }),
       (error) => {
