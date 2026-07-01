@@ -5052,18 +5052,6 @@ async function writeNormalChatLaunchAssociation(
   },
 ): Promise<boolean> {
   const association = args.association;
-  if (association.clearDraft) {
-    await tx
-      .update(chatThreads)
-      .set({ draftContent: null, draftAttachments: null })
-      .where(
-        and(
-          eq(chatThreads.id, association.threadId),
-          eq(chatThreads.userId, association.userId),
-        ),
-      );
-  }
-
   const [inserted] = await tx
     .insert(chatMessages)
     .values({
@@ -5087,6 +5075,17 @@ async function writeNormalChatLaunchAssociation(
     .returning({ createdAt: chatMessages.createdAt });
   if (!inserted) {
     return false;
+  }
+  if (association.clearDraft) {
+    await tx
+      .update(chatThreads)
+      .set({ draftContent: null, draftAttachments: null })
+      .where(
+        and(
+          eq(chatThreads.id, association.threadId),
+          eq(chatThreads.userId, association.userId),
+        ),
+      );
   }
   if (args.status === "queued") {
     await appendQueuedRunAssistantMarker(tx, {
