@@ -42,6 +42,7 @@ export interface GoogleCalendarWatchState {
 
 interface GoogleCalendarProcessedEvent {
   readonly calendarEventId: string;
+  readonly eventChangeKey: string;
 }
 
 interface GoogleCalendarEventSnapshot {
@@ -376,7 +377,11 @@ export const getWorkflowGoogleCalendarWatchState$ = command(
       }),
       processed: recordsField(response, "processed", (row) => {
         const calendarEventId = row.calendarEventId;
-        return typeof calendarEventId === "string" ? { calendarEventId } : null;
+        const eventChangeKey = row.eventChangeKey;
+        return typeof calendarEventId === "string" &&
+          typeof eventChangeKey === "string"
+          ? { calendarEventId, eventChangeKey }
+          : null;
       }),
       snapshots: recordsField(response, "snapshots", (row) => {
         const calendarEventId = row.calendarEventId;

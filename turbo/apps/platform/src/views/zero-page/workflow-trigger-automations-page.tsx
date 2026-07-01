@@ -234,6 +234,9 @@ function humanReadableTriggerRuleLabel(
   if (trigger.eventType === "google-calendar-event-created") {
     return `When calendar ${quote(trigger.eventConfig.calendarId)} gets a new event`;
   }
+  if (trigger.eventType === "google-calendar-event-updated") {
+    return `When calendar ${quote(trigger.eventConfig.calendarId)} event is updated`;
+  }
   if (trigger.eventType === "webhook-received") {
     return "When an inbound webhook is received";
   }
@@ -253,7 +256,10 @@ function triggerTypeLabel(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "github-label-applied") {
     return "GitHub";
   }
-  if (trigger.eventType === "google-calendar-event-created") {
+  if (
+    trigger.eventType === "google-calendar-event-created" ||
+    trigger.eventType === "google-calendar-event-updated"
+  ) {
     return "Google Calendar";
   }
   if (trigger.eventType === "webhook-received") {

@@ -116,6 +116,7 @@ export const googleCalendarProcessedEvents = pgTable(
     channelId: uuid("channel_id").notNull(),
     resourceState: varchar("resource_state", { length: 64 }).notNull(),
     calendarEventId: varchar("calendar_event_id", { length: 1024 }).notNull(),
+    eventChangeKey: text("event_change_key").notNull().default("created"),
     eventCreatedAt: timestamp("event_created_at"),
     eventUpdatedAt: timestamp("event_updated_at"),
     createdAt: timestamp("created_at").defaultNow().notNull(),
@@ -126,6 +127,7 @@ export const googleCalendarProcessedEvents = pgTable(
         table.watchStateId,
         table.triggerId,
         table.calendarEventId,
+        table.eventChangeKey,
       ),
       index("idx_google_calendar_processed_events_channel").on(table.channelId),
     ];

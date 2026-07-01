@@ -7,6 +7,7 @@ import {
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
   type GoogleCalendarEventCreatedEventConfig,
+  type GoogleCalendarEventUpdatedEventConfig,
   type GithubLabelAppliedEventConfig,
   type ZeroWorkflowDetailResponse,
   type ZeroWorkflowSchedule,
@@ -56,7 +57,8 @@ type WorkflowTriggerCreateDialog =
   | "gmail"
   | "gmail-label"
   | "github-label"
-  | "google-calendar"
+  | "google-calendar-created"
+  | "google-calendar-updated"
   | "webhook"
   | null;
 type WorkflowWebhookTriggerSummary = Extract<
@@ -757,24 +759,38 @@ export const createWorkflowGithubLabelAppliedTrigger$ = command(
   },
 );
 
-export const createWorkflowGoogleCalendarEventCreatedTrigger$ = command(
+export const createWorkflowGoogleCalendarEventTrigger$ = command(
   async (
     { get, set },
-    input: {
-      readonly workflowId: string;
-      readonly eventConfig: GoogleCalendarEventCreatedEventConfig;
-    },
+    input:
+      | {
+          readonly workflowId: string;
+          readonly eventType: "google-calendar-event-created";
+          readonly eventConfig: GoogleCalendarEventCreatedEventConfig;
+        }
+      | {
+          readonly workflowId: string;
+          readonly eventType: "google-calendar-event-updated";
+          readonly eventConfig: GoogleCalendarEventUpdatedEventConfig;
+        },
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(zeroWorkflowTriggersContract);
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
-        body: {
-          kind: "event",
-          eventType: "google-calendar-event-created",
-          eventConfig: input.eventConfig,
-        },
+        body:
+          input.eventType === "google-calendar-event-created"
+            ? {
+                kind: "event",
+                eventType: "google-calendar-event-created",
+                eventConfig: input.eventConfig,
+              }
+            : {
+                kind: "event",
+                eventType: "google-calendar-event-updated",
+                eventConfig: input.eventConfig,
+              },
         fetchOptions: { signal },
       }),
       [201],

@@ -254,6 +254,9 @@ const messageColumns = {
           AND "zero_workflow_triggers"."event_type" = 'google-calendar-event-created'
           THEN 'Google Calendar event created'
         WHEN "zero_workflow_triggers"."kind" = 'event'
+          AND "zero_workflow_triggers"."event_type" = 'google-calendar-event-updated'
+          THEN 'Google Calendar event updated'
+        WHEN "zero_workflow_triggers"."kind" = 'event'
           AND "zero_workflow_triggers"."event_type" = 'webhook-received'
           THEN 'Webhook trigger'
         ELSE NULL

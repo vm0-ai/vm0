@@ -63,11 +63,12 @@ const EVENT_KINDS = [
   "gmail-label-applied",
   "github-label-applied",
   "google-calendar-event-created",
+  "google-calendar-event-updated",
   "webhook",
 ] as const;
 const TRIGGER_KINDS = [...SCHEDULE_KINDS, ...EVENT_KINDS] as const;
 const EXACTLY_ONE_FLAG_MESSAGE =
-  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, or --actor";
+  "Provide exactly one of --expr (cron), --at (once), --every (loop), Gmail match options, --label, --subject, --actor, or --calendar-id";
 
 function addGmailTriggerOptions(command: Command): Command {
   return command
@@ -462,7 +463,8 @@ function buildGithubLabelAppliedCreateRequest(
   };
 }
 
-function buildGoogleCalendarEventCreatedCreateRequest(
+function buildGoogleCalendarEventCreateRequest(
+  eventType: "google-calendar-event-created" | "google-calendar-event-updated",
   options: AddOptions,
 ): ZeroWorkflowTriggerCreateRequest {
   assertNoScheduleAddOptions(options);
@@ -475,13 +477,25 @@ function buildGoogleCalendarEventCreatedCreateRequest(
       "Gmail and GitHub trigger flags only apply to their event triggers",
     );
   }
+  const calendarId = options.calendarId?.trim() || "primary";
+  if (eventType === "google-calendar-event-created") {
+    return {
+      kind: "event",
+      eventType: "google-calendar-event-created",
+      eventConfig: {
+        provider: "google-calendar",
+        event: "event_created",
+        calendarId,
+      },
+    };
+  }
   return {
     kind: "event",
-    eventType: "google-calendar-event-created",
+    eventType: "google-calendar-event-updated",
     eventConfig: {
       provider: "google-calendar",
-      event: "event_created",
-      calendarId: options.calendarId?.trim() || "primary",
+      event: "event_updated",
+      calendarId,
     },
   };
 }
@@ -526,7 +540,9 @@ function buildCreateRequest(
     case "github-label-applied":
       return buildGithubLabelAppliedCreateRequest(options);
     case "google-calendar-event-created":
-      return buildGoogleCalendarEventCreatedCreateRequest(options);
+      return buildGoogleCalendarEventCreateRequest(kind, options);
+    case "google-calendar-event-updated":
+      return buildGoogleCalendarEventCreateRequest(kind, options);
     case "webhook":
       return buildWebhookCreateRequest(options);
     default:
@@ -542,7 +558,10 @@ function buildEventUpdate(
   const hasLabelOption = hasGmailLabelOption(options);
   const hasGithubOptions = hasGithubTriggerOptions(options);
 
-  if (existing.eventType === "google-calendar-event-created") {
+  if (
+    existing.eventType === "google-calendar-event-created" ||
+    existing.eventType === "google-calendar-event-updated"
+  ) {
     throw new Error("Google Calendar event triggers cannot be updated");
   }
 
@@ -677,7 +696,7 @@ const addCommand = addGithubTriggerOptions(
 )
   .option(
     "--calendar-id <id>",
-    "Google Calendar ID for google-calendar-event-created (default: primary)",
+    "Google Calendar ID for Google Calendar event triggers (default: primary)",
   )
   .option("--agent <id>", "Agent ID for resolving a workflow name")
   .addHelpText(
@@ -692,6 +711,7 @@ Examples:
   zero workflow trigger add triage gmail-label-applied --label "Support"
   zero workflow trigger add triage github-label-applied --label "triage" --subject both --actor me
   zero workflow trigger add triage google-calendar-event-created
+  zero workflow trigger add triage google-calendar-event-updated
   zero workflow trigger add triage webhook
 
 Notes:

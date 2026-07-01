@@ -29,6 +29,24 @@ function isWebhookTrigger(
   return trigger.kind === "event" && trigger.eventType === "webhook-received";
 }
 
+function isGoogleCalendarTrigger(
+  trigger: ZeroWorkflowTriggerSummary,
+): trigger is Extract<
+  ZeroWorkflowTriggerSummary,
+  {
+    readonly kind: "event";
+    readonly eventType:
+      | "google-calendar-event-created"
+      | "google-calendar-event-updated";
+  }
+> {
+  return (
+    trigger.kind === "event" &&
+    (trigger.eventType === "google-calendar-event-created" ||
+      trigger.eventType === "google-calendar-event-updated")
+  );
+}
+
 function quote(value: string): string {
   return `"${value}"`;
 }
@@ -105,6 +123,12 @@ function formatWorkflowTriggerEntry(
   ) {
     return `Google Calendar event created: ${trigger.eventConfig.calendarId}`;
   }
+  if (
+    trigger.kind === "event" &&
+    trigger.eventType === "google-calendar-event-updated"
+  ) {
+    return `Google Calendar event updated: ${trigger.eventConfig.calendarId}`;
+  }
   if (isWebhookTrigger(trigger)) {
     return `Webhook: ${trigger.webhookUrl}`;
   }
@@ -122,6 +146,26 @@ function formatWorkflowTriggerEntry(
 
 function formatRunTime(value: string | null): string {
   return value ? formatRelativeTime(value) : chalk.dim("-");
+}
+
+function workflowTriggerKindLabel(trigger: ZeroWorkflowTriggerSummary): string {
+  if (trigger.kind !== "event") {
+    return formatWorkflowTriggerEntry(trigger);
+  }
+  switch (trigger.eventType) {
+    case "gmail-new-message":
+      return "Gmail new message";
+    case "gmail-label-applied":
+      return "Gmail label applied";
+    case "github-label-applied":
+      return "GitHub label applied";
+    case "google-calendar-event-created":
+      return "Google Calendar event created";
+    case "google-calendar-event-updated":
+      return "Google Calendar event updated";
+    case "webhook-received":
+      return "Webhook";
+  }
 }
 
 function signedCurlExample(trigger: WorkflowWebhookTriggerSummary): string {
@@ -194,21 +238,7 @@ export function printWorkflowTriggerDetails(
     console.log(`${"Workflow:".padEnd(14)}${options.workflowRef}`);
   }
   console.log(`${"Status:".padEnd(14)}${status}`);
-  console.log(
-    `${"Trigger:".padEnd(14)}${
-      trigger.kind === "event"
-        ? trigger.eventType === "gmail-new-message"
-          ? "Gmail new message"
-          : trigger.eventType === "gmail-label-applied"
-            ? "Gmail label applied"
-            : trigger.eventType === "github-label-applied"
-              ? "GitHub label applied"
-              : trigger.eventType === "google-calendar-event-created"
-                ? "Google Calendar event created"
-                : "Webhook"
-        : formatWorkflowTriggerEntry(trigger)
-    }`,
-  );
+  console.log(`${"Trigger:".padEnd(14)}${workflowTriggerKindLabel(trigger)}`);
   if (trigger.kind === "event" && trigger.eventType === "gmail-new-message") {
     console.log(
       `${"Match:".padEnd(14)}${formatGmailMatchSummary(trigger.eventConfig)}`,
@@ -231,10 +261,7 @@ export function printWorkflowTriggerDetails(
       `${"Actor:".padEnd(14)}${trigger.eventConfig.filters.actor.type}`,
     );
   }
-  if (
-    trigger.kind === "event" &&
-    trigger.eventType === "google-calendar-event-created"
-  ) {
+  if (isGoogleCalendarTrigger(trigger)) {
     console.log(`${"Calendar:".padEnd(14)}${trigger.eventConfig.calendarId}`);
   }
   if (isWebhookTrigger(trigger)) {

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import {
   googleCalendarEventCreatedEventConfigSchema,
+  googleCalendarEventUpdatedEventConfigSchema,
   gmailLabelAppliedEventConfigSchema,
   gmailNewMessageEventConfigSchema,
   zeroWorkflowUpdateRequestSchema,
@@ -97,6 +98,38 @@ describe("Google Calendar event-created workflow trigger contract", () => {
       eventConfig: {
         provider: "google-calendar",
         event: "event_created",
+        calendarId: "primary",
+      },
+    });
+  });
+});
+
+describe("Google Calendar event-updated workflow trigger contract", () => {
+  it("defaults to the primary calendar", () => {
+    const parsed = googleCalendarEventUpdatedEventConfigSchema.parse({
+      provider: "google-calendar",
+      event: "event_updated",
+    });
+
+    expect(parsed).toStrictEqual({
+      provider: "google-calendar",
+      event: "event_updated",
+      calendarId: "primary",
+    });
+  });
+
+  it("accepts event-updated trigger create requests without explicit config", () => {
+    const parsed = zeroWorkflowTriggerCreateRequestSchema.parse({
+      kind: "event",
+      eventType: "google-calendar-event-updated",
+    });
+
+    expect(parsed).toStrictEqual({
+      kind: "event",
+      eventType: "google-calendar-event-updated",
+      eventConfig: {
+        provider: "google-calendar",
+        event: "event_updated",
         calendarId: "primary",
       },
     });

@@ -1059,6 +1059,7 @@ async function getGoogleCalendarWatchForAction(
             watchStateId: googleCalendarProcessedEvents.watchStateId,
             triggerId: googleCalendarProcessedEvents.triggerId,
             calendarEventId: googleCalendarProcessedEvents.calendarEventId,
+            eventChangeKey: googleCalendarProcessedEvents.eventChangeKey,
           })
           .from(googleCalendarProcessedEvents)
           .where(
