@@ -190,26 +190,29 @@ class TestModelProviderWebSocketUsage:
             "tokens.cache_read": 10,
         }
 
-    def test_model_websocket_missing_context_releases_positive_source(self, tmp_path, real_flow):
+    def test_model_websocket_missing_context_releases_positive_source(
+        self, tmp_path, real_flow, mitm_ctx
+    ):
         flow = _openai_model_websocket_flow(tmp_path, real_flow)
         mitm_addon.responseheaders(flow)
         flow.metadata[metadata_keys.VM_SANDBOX_AUTH_KEY] = ""
         proxy_log = Path(flow.metadata[metadata_keys.VM_PROXY_LOG_PATH])
 
-        _feed_websocket_server_message(
-            flow,
-            _openai_websocket_usage_frame(
-                "resp_ws_missing_context",
-                input_tokens=10,
-                output_tokens=4,
-            ),
-        )
+        with mitm_ctx(api_url="https://api.vm0.ai"):
+            _feed_websocket_server_message(
+                flow,
+                _openai_websocket_usage_frame(
+                    "resp_ws_missing_context",
+                    input_tokens=10,
+                    output_tokens=4,
+                ),
+            )
 
         assert _model_websocket_usage_sources(flow) == {}
-        [entry] = [
-            entry
-            for entry in read_jsonl_entries_after_flush(proxy_log)
-            if entry.get("type") == "usage_underbilling"
+        entries = read_jsonl_entries_after_flush(proxy_log)
+        [entry] = [entry for entry in entries if entry.get("type") == "usage_underbilling"]
+        [observation_entry] = [
+            entry for entry in entries if entry.get("type") == "model_usage_observation"
         ]
         assert entry["type"] == "usage_underbilling"
         assert entry["reason"] == "missing_reporting_context"
@@ -217,6 +220,12 @@ class TestModelProviderWebSocketUsage:
         assert entry["run_id"] == "run-abc-123"
         assert entry["firewall_name"] == "model-provider:openai-api-key"
         assert entry["missing_sandbox_token"] is True
+        assert entry["missing_api_url"] is False
+        assert observation_entry["level"] == "warn"
+        assert (
+            observation_entry["message"]
+            == "Cannot report model usage observation: missing sandbox_token or api_url"
+        )
 
     def test_model_websocket_missing_api_url_releases_positive_source(
         self, tmp_path, real_flow, mitm_ctx

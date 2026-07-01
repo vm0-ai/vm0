@@ -153,8 +153,8 @@ export const rustConstantBindings = [
     rustConstName: "RESUME_SESSION_HISTORY_MAX_BYTES",
     value: rustU64(RESUME_SESSION_HISTORY_MAX_BYTES),
     rustDoc: [
-      "Maximum resume session history blob size accepted by the API and runner.",
-      "Rust and TypeScript components use this shared contract value when validating resume history refs and downloads.",
+      "Maximum resume session history blob size accepted by the API, runner, and guest verifier.",
+      "Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.",
     ],
   },
   {

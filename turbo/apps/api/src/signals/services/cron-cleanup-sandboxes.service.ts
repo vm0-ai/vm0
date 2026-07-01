@@ -12,13 +12,22 @@ import { env } from "../../lib/env";
 import { logger } from "../../lib/log";
 import { now, nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
+import {
+  publishOrgSignal,
+  publishRunChangedForUserSafely,
+  publishThreadListChanged,
+  publishUserSignal,
+} from "../external/realtime";
 import { deleteS3Objects } from "../external/s3";
 import { settle } from "../utils";
 import { dispatchCompleteSideEffects$ } from "./agent-webhook-complete.service";
 import {
   cleanupExpiredQueueEntries$,
+  cleanupQueuedRunLaunchOrphans$,
   drainStaleQueues$,
+  type QueuedRunMaintenanceTimeout,
 } from "./zero-run-queue.service";
+import type { QueueMarkerRevokeNotification } from "./zero-chat-queue-marker.service";
 
 const L = logger("CronCleanupSandboxes");
 
@@ -47,6 +56,7 @@ interface CleanupSandboxesResult {
 interface StaleRun {
   readonly id: string;
   readonly orgId: string;
+  readonly userId: string;
   readonly status: string;
   readonly sandboxId: string | null;
   readonly lastHeartbeatAt: Date | null;
@@ -58,6 +68,15 @@ interface CleanupCutoffs {
   readonly running: Date;
   readonly debug: Date;
   readonly pending: Date;
+}
+
+interface MaintenanceTerminalSideEffectsInput {
+  readonly runId: string;
+  readonly orgId: string;
+  readonly userId: string;
+  readonly error: string;
+  readonly queueChanged: boolean;
+  readonly queueMarkerNotification: QueueMarkerRevokeNotification | null;
 }
 
 function staleRunCutoff(run: StaleRun, cutoffs: CleanupCutoffs): Date {
@@ -72,6 +91,51 @@ function staleRunCutoff(run: StaleRun, cutoffs: CleanupCutoffs): Date {
 function isExpiredRun(run: StaleRun, cutoffs: CleanupCutoffs): boolean {
   const referenceTime = run.lastHeartbeatAt ?? run.createdAt;
   return referenceTime < staleRunCutoff(run, cutoffs);
+}
+
+async function publishQueueChangedSafely(
+  orgId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const result = await settle(publishOrgSignal(orgId, "queue:changed"), signal);
+  if (!result.ok) {
+    L.warn("Failed to publish queue changed signal", {
+      orgId,
+      error: result.error,
+    });
+  }
+}
+
+async function publishQueueMarkerNotificationSafely(
+  notification: QueueMarkerRevokeNotification,
+  signal: AbortSignal,
+): Promise<void> {
+  const messageResult = await settle(
+    publishUserSignal(
+      [notification.userId],
+      `chatThreadMessageCreated:${notification.chatThreadId}`,
+    ),
+    signal,
+  );
+  if (!messageResult.ok) {
+    L.warn("Failed to publish queue marker revocation signal", {
+      userId: notification.userId,
+      chatThreadId: notification.chatThreadId,
+      error: messageResult.error,
+    });
+  }
+
+  const threadListResult = await settle(
+    publishThreadListChanged(notification.userId),
+    signal,
+  );
+  if (!threadListResult.ok) {
+    L.warn("Failed to publish queue marker thread list signal", {
+      userId: notification.userId,
+      chatThreadId: notification.chatThreadId,
+      error: threadListResult.error,
+    });
+  }
 }
 
 const cleanupExportJobs$ = command(
@@ -164,6 +228,42 @@ const cleanupExportJobs$ = command(
   },
 );
 
+const dispatchMaintenanceTerminalSideEffects$ = command(
+  async (
+    { set },
+    input: MaintenanceTerminalSideEffectsInput,
+    signal: AbortSignal,
+  ): Promise<void> => {
+    await publishRunChangedForUserSafely(input.userId, input.runId, {
+      status: "failed",
+    });
+    signal.throwIfAborted();
+
+    if (input.queueChanged) {
+      await publishQueueChangedSafely(input.orgId, signal);
+    }
+
+    if (input.queueMarkerNotification) {
+      await publishQueueMarkerNotificationSafely(
+        input.queueMarkerNotification,
+        signal,
+      );
+    }
+
+    await set(
+      dispatchCompleteSideEffects$,
+      {
+        runId: input.runId,
+        orgId: input.orgId,
+        status: "failed",
+        error: input.error,
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+  },
+);
+
 const cleanupSingleRun$ = command(
   async (
     { set },
@@ -216,12 +316,14 @@ const cleanupSingleRun$ = command(
     }
 
     await set(
-      dispatchCompleteSideEffects$,
+      dispatchMaintenanceTerminalSideEffects$,
       {
         runId: run.id,
         orgId: run.orgId,
-        status: "failed",
+        userId: run.userId,
         error: timeoutReason,
+        queueChanged: false,
+        queueMarkerNotification: null,
       },
       signal,
     );
@@ -244,6 +346,100 @@ const cleanupSingleRun$ = command(
       status: "cleaned",
       reason: timeoutReason,
     };
+  },
+);
+
+const cleanupQueuedTerminalRuns$ = command(
+  async (
+    { set },
+    runs: readonly QueuedRunMaintenanceTimeout[],
+    signal: AbortSignal,
+  ): Promise<CleanupResult[]> => {
+    const results: CleanupResult[] = [];
+    for (const run of runs) {
+      const cleanupResult = await settle(
+        set(
+          dispatchMaintenanceTerminalSideEffects$,
+          {
+            runId: run.runId,
+            orgId: run.orgId,
+            userId: run.userId,
+            error: run.error,
+            queueChanged: true,
+            queueMarkerNotification: run.queueMarkerNotification,
+          },
+          signal,
+        ),
+      );
+      signal.throwIfAborted();
+
+      if (cleanupResult.ok) {
+        results.push({
+          runId: run.runId,
+          sandboxId: null,
+          status: "cleaned",
+          reason: run.error,
+        });
+        continue;
+      }
+
+      const errorMessage =
+        cleanupResult.error instanceof Error
+          ? cleanupResult.error.message
+          : "Unknown error";
+      L.error("Failed to dispatch queued run timeout side effects", {
+        runId: run.runId,
+        error: errorMessage,
+      });
+      results.push({
+        runId: run.runId,
+        sandboxId: null,
+        status: "error",
+        error: errorMessage,
+      });
+    }
+    return results;
+  },
+);
+
+const cleanupExpiredRuns$ = command(
+  async (
+    { set },
+    db: Db,
+    runs: readonly StaleRun[],
+    cutoffs: CleanupCutoffs,
+    signal: AbortSignal,
+  ): Promise<CleanupResult[]> => {
+    const results: CleanupResult[] = [];
+    for (const run of runs) {
+      const cleanupResult = await settle(
+        set(cleanupSingleRun$, db, run, cutoffs, signal),
+      );
+      signal.throwIfAborted();
+
+      if (cleanupResult.ok) {
+        if (cleanupResult.value) {
+          results.push(cleanupResult.value);
+        }
+        continue;
+      }
+
+      const errorMessage =
+        cleanupResult.error instanceof Error
+          ? cleanupResult.error.message
+          : "Unknown error";
+      L.error("Failed to cleanup run", {
+        runId: run.id,
+        error: errorMessage,
+      });
+      results.push({
+        runId: run.id,
+        sandboxId: run.sandboxId,
+        status: "error",
+        error: errorMessage,
+      });
+    }
+    return results;
   },
 );
 
@@ -286,6 +482,7 @@ export const cleanupSandboxes$ = command(
       .select({
         id: agentRuns.id,
         orgId: agentRuns.orgId,
+        userId: agentRuns.userId,
         status: agentRuns.status,
         sandboxId: agentRuns.sandboxId,
         lastHeartbeatAt: agentRuns.lastHeartbeatAt,
@@ -308,25 +505,37 @@ export const cleanupSandboxes$ = command(
       return isExpiredRun(run, cutoffs);
     });
 
-    const expiredQueueCount = await set(cleanupExpiredQueueEntries$, signal);
+    const expiredQueueResult = await set(cleanupExpiredQueueEntries$, signal);
+    signal.throwIfAborted();
+    const queuedOrphanResult = await set(
+      cleanupQueuedRunLaunchOrphans$,
+      cutoffs.pending,
+      signal,
+    );
     signal.throwIfAborted();
     const expiredRunnerJobCount = await cleanupExpiredRunnerJobs(db, signal);
     signal.throwIfAborted();
     const drainedCount = await set(drainStaleQueues$, signal);
     signal.throwIfAborted();
+    const queuedTerminalRuns = [
+      ...expiredQueueResult.timedOutRuns,
+      ...queuedOrphanResult.timedOutRuns,
+    ];
     if (
-      expiredQueueCount > 0 ||
+      expiredQueueResult.deletedCount > 0 ||
+      queuedTerminalRuns.length > 0 ||
       expiredRunnerJobCount > 0 ||
       drainedCount > 0
     ) {
       L.debug("Queue maintenance completed", {
-        expired: expiredQueueCount,
+        expired: expiredQueueResult.deletedCount,
+        expiredTimedOut: expiredQueueResult.timedOutRuns.length,
+        launchOrphansTimedOut: queuedOrphanResult.timedOutRuns.length,
         expiredRunnerJobs: expiredRunnerJobCount,
         drained: drainedCount,
       });
     }
 
-    const results: CleanupResult[] = [];
     if (expiredRuns.length === 0) {
       L.debug("No expired sandboxes found");
     } else {
@@ -335,33 +544,21 @@ export const cleanupSandboxes$ = command(
       });
     }
 
-    for (const run of expiredRuns) {
-      const cleanupResult = await settle(
-        set(cleanupSingleRun$, db, run, cutoffs, signal),
-      );
-      signal.throwIfAborted();
-
-      if (cleanupResult.ok) {
-        if (cleanupResult.value) {
-          results.push(cleanupResult.value);
-        }
-      } else {
-        const errorMessage =
-          cleanupResult.error instanceof Error
-            ? cleanupResult.error.message
-            : "Unknown error";
-        L.error("Failed to cleanup run", {
-          runId: run.id,
-          error: errorMessage,
-        });
-        results.push({
-          runId: run.id,
-          sandboxId: run.sandboxId,
-          status: "error",
-          error: errorMessage,
-        });
-      }
-    }
+    const queuedResults = await set(
+      cleanupQueuedTerminalRuns$,
+      queuedTerminalRuns,
+      signal,
+    );
+    signal.throwIfAborted();
+    const expiredRunResults = await set(
+      cleanupExpiredRuns$,
+      db,
+      expiredRuns,
+      cutoffs,
+      signal,
+    );
+    signal.throwIfAborted();
+    const results = [...queuedResults, ...expiredRunResults];
 
     const { exportJobsCleaned, exportJobsStuck } = await set(
       cleanupExportJobs$,

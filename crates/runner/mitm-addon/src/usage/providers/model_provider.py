@@ -23,7 +23,6 @@ from mitmproxy import http
 import flow_metadata
 import flow_metadata_keys as metadata_keys
 from logging_utils import log_proxy_entry
-from platform_api import get_api_url
 
 from ..buffer import (
     UsageEvent,
@@ -38,6 +37,7 @@ from ..idempotency import (
     derive_usage_idempotency_key,
 )
 from ..model_tokens import MODEL_USAGE_CATEGORIES
+from ..reporting_context import UsageReportingContext, usage_reporting_context
 from ..underbilling import log_usage_underbilling
 
 MODEL_USAGE_KIND = "model"
@@ -89,30 +89,7 @@ def report_model_provider_usage(flow: http.HTTPFlow, run_id: str) -> bool:
     events = _build_model_provider_usage_events(flow, run_id, USAGE_EVENT_NAMESPACE_MODEL)
     if not events:
         return False
-    sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY, "")
-    api_url = get_api_url() if sandbox_token else ""
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
-    if not sandbox_token or not api_url:
-        log_usage_underbilling(
-            proxy_log_path,
-            "Cannot report usage event: missing sandbox_token or api_url",
-            "missing_reporting_context",
-            "confirmed",
-            run_id=run_id,
-            firewall_name=firewall_name,
-            missing_sandbox_token=not bool(sandbox_token),
-            missing_api_url=not bool(api_url),
-        )
-        return False
-    url = f"{api_url}/api/webhooks/agent/usage-event"
-    buffer_usage_events(
-        url,
-        sandbox_token,
-        run_id,
-        events,
-        proxy_log_path,
-    )
-    return True
+    return _buffer_model_provider_usage_events(flow, run_id, firewall_name, events)
 
 
 def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) -> bool:
@@ -145,26 +122,7 @@ def report_model_provider_usage_observation(flow: http.HTTPFlow, run_id: str) ->
     events = _build_model_provider_usage_events(flow, run_id, USAGE_OBSERVATION_NAMESPACE_MODEL)
     if not events:
         return False
-    sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY, "")
-    api_url = get_api_url() if sandbox_token else ""
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
-    if not sandbox_token or not api_url:
-        log_proxy_entry(
-            proxy_log_path,
-            "warn",
-            "Cannot report model usage observation: missing sandbox_token or api_url",
-            type="model_usage_observation",
-        )
-        return False
-    url = f"{api_url}/api/webhooks/agent/model-usage-observation"
-    buffer_model_usage_observations(
-        url,
-        sandbox_token,
-        run_id,
-        events,
-        proxy_log_path,
-    )
-    return True
+    return _buffer_model_provider_usage_observations(flow, run_id, events)
 
 
 def report_model_provider_usage_source(
@@ -205,50 +163,113 @@ def report_model_provider_usage_source(
             USAGE_OBSERVATION_NAMESPACE_MODEL,
         )
 
-    sandbox_token = flow.metadata.get(metadata_keys.VM_SANDBOX_AUTH_KEY, "")
-    api_url = get_api_url() if sandbox_token else ""
-    proxy_log_path = flow.metadata.get(metadata_keys.VM_PROXY_LOG_PATH, "")
     if not usage_events and not observation_events:
         return
 
-    if not sandbox_token or not api_url:
+    context = usage_reporting_context(flow)
+    if not context.is_complete:
         if usage_events:
             firewall_name = flow_metadata.get_firewall_name_metadata(flow.metadata)
-            log_usage_underbilling(
-                proxy_log_path,
-                "Cannot report usage event: missing sandbox_token or api_url",
-                "missing_reporting_context",
-                "confirmed",
-                run_id=run_id,
-                firewall_name=firewall_name,
-                missing_sandbox_token=not bool(sandbox_token),
-                missing_api_url=not bool(api_url),
-            )
+            _log_usage_reporting_context_missing(context, run_id, firewall_name)
         if observation_events:
-            log_proxy_entry(
-                proxy_log_path,
-                "warn",
-                "Cannot report model usage observation: missing sandbox_token or api_url",
-                type="model_usage_observation",
-            )
+            _log_model_usage_observation_context_missing(context)
         return
 
     if usage_events:
-        buffer_source_usage_events(
-            f"{api_url}/api/webhooks/agent/usage-event",
-            sandbox_token,
-            run_id,
-            usage_events,
-            proxy_log_path,
-        )
+        _buffer_source_model_provider_usage_events(context, run_id, usage_events)
     if observation_events:
-        buffer_source_model_usage_observations(
-            f"{api_url}/api/webhooks/agent/model-usage-observation",
-            sandbox_token,
-            run_id,
-            observation_events,
-            proxy_log_path,
-        )
+        _buffer_source_model_provider_usage_observations(context, run_id, observation_events)
+
+
+def _buffer_model_provider_usage_events(
+    flow: http.HTTPFlow,
+    run_id: str,
+    firewall_name: str,
+    events: list[UsageEvent],
+) -> bool:
+    context = usage_reporting_context(flow)
+    if not context.is_complete:
+        _log_usage_reporting_context_missing(context, run_id, firewall_name)
+        return False
+    buffer_usage_events(
+        context.usage_event_url(),
+        context.sandbox_token,
+        run_id,
+        events,
+        context.proxy_log_path,
+    )
+    return True
+
+
+def _buffer_model_provider_usage_observations(
+    flow: http.HTTPFlow,
+    run_id: str,
+    events: list[UsageEvent],
+) -> bool:
+    context = usage_reporting_context(flow)
+    if not context.is_complete:
+        _log_model_usage_observation_context_missing(context)
+        return False
+    buffer_model_usage_observations(
+        context.model_usage_observation_url(),
+        context.sandbox_token,
+        run_id,
+        events,
+        context.proxy_log_path,
+    )
+    return True
+
+
+def _buffer_source_model_provider_usage_events(
+    context: UsageReportingContext,
+    run_id: str,
+    events: list[UsageEvent],
+) -> None:
+    buffer_source_usage_events(
+        context.usage_event_url(),
+        context.sandbox_token,
+        run_id,
+        events,
+        context.proxy_log_path,
+    )
+
+
+def _buffer_source_model_provider_usage_observations(
+    context: UsageReportingContext,
+    run_id: str,
+    events: list[UsageEvent],
+) -> None:
+    buffer_source_model_usage_observations(
+        context.model_usage_observation_url(),
+        context.sandbox_token,
+        run_id,
+        events,
+        context.proxy_log_path,
+    )
+
+
+def _log_usage_reporting_context_missing(
+    context: UsageReportingContext, run_id: str, firewall_name: str
+) -> None:
+    log_usage_underbilling(
+        context.proxy_log_path,
+        "Cannot report usage event: missing sandbox_token or api_url",
+        "missing_reporting_context",
+        "confirmed",
+        run_id=run_id,
+        firewall_name=firewall_name,
+        missing_sandbox_token=context.missing_sandbox_token,
+        missing_api_url=context.missing_api_url,
+    )
+
+
+def _log_model_usage_observation_context_missing(context: UsageReportingContext) -> None:
+    log_proxy_entry(
+        context.proxy_log_path,
+        "warn",
+        "Cannot report model usage observation: missing sandbox_token or api_url",
+        type="model_usage_observation",
+    )
 
 
 def _build_model_provider_usage_events(

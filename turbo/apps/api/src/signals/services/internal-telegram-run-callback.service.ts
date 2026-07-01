@@ -7,6 +7,7 @@ import { telegramInstallations } from "@vm0/db/schema/telegram-installation";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
 import { eq } from "drizzle-orm";
+import { delay } from "signal-timers";
 import { z } from "zod";
 
 import { buildTelegramResponse, splitMessage } from "../../lib/telegram-format";
@@ -39,6 +40,7 @@ import { resolveTelegramAgentReplyFooterText } from "./zero-telegram-footer.serv
 import { settle } from "../utils";
 
 const L = logger("InternalCallbacksTelegram");
+const TELEGRAM_COMPLETION_CHUNK_THROTTLE_MS = 1100;
 
 const telegramCallbackPayloadSchema = z
   .object({
@@ -78,6 +80,68 @@ type TelegramInternalCallbackResult =
       readonly error: string;
       readonly status: 400 | 500 | 502;
     };
+
+async function waitForTelegramSendDelay(
+  delayMs: number,
+  signal: AbortSignal,
+): Promise<void> {
+  signal.throwIfAborted();
+  if (delayMs > 0) {
+    await delay(delayMs, { signal });
+  }
+  signal.throwIfAborted();
+}
+
+function telegramSendRetryDelayMs(attempt: number): number | undefined {
+  switch (attempt) {
+    case 0:
+    case 1: {
+      return 1000;
+    }
+    case 2: {
+      return 2000;
+    }
+    case 3: {
+      return 3000;
+    }
+    case 4: {
+      return 5000;
+    }
+    default: {
+      return undefined;
+    }
+  }
+}
+
+async function sendMessageWithTelegramRateLimitRetry(args: {
+  readonly botToken: string;
+  readonly chatId: string;
+  readonly text: string;
+  readonly replyToMessageId: number | undefined;
+  readonly signal: AbortSignal;
+}): Promise<SendTelegramMessageResult> {
+  for (let attempt = 0; ; attempt++) {
+    const result = await sendMessage(args.botToken, args.chatId, args.text, {
+      replyToMessageId: args.replyToMessageId,
+    });
+    args.signal.throwIfAborted();
+
+    if (result.kind !== "telegram-error" || result.status !== 429) {
+      return result;
+    }
+
+    const retryDelayMs = telegramSendRetryDelayMs(attempt);
+    if (retryDelayMs === undefined) {
+      return result;
+    }
+
+    L.warn("Telegram sendMessage rate limited; retrying", {
+      attempt: attempt + 1,
+      retryDelayMs,
+    });
+    await waitForTelegramSendDelay(retryDelayMs, args.signal);
+  }
+}
 
 function successResponse(): {
   readonly status: 200;
@@ -352,11 +416,22 @@ async function sendCompletionMessages(args: {
   | Extract<SendTelegramMessageResult, { kind: "telegram-error" }>
 > {
   let firstMessageId: number | undefined;
-  for (const chunk of splitMessage(args.htmlOutput)) {
-    const sent = await sendMessage(args.botToken, args.chatId, chunk, {
+  const chunks = splitMessage(args.htmlOutput);
+  for (const [index, chunk] of chunks.entries()) {
+    if (index > 0) {
+      await waitForTelegramSendDelay(
+        TELEGRAM_COMPLETION_CHUNK_THROTTLE_MS,
+        args.signal,
+      );
+    }
+
+    const sent = await sendMessageWithTelegramRateLimitRetry({
+      botToken: args.botToken,
+      chatId: args.chatId,
+      text: chunk,
       replyToMessageId: args.replyToMessageId,
+      signal: args.signal,
     });
-    args.signal.throwIfAborted();
     if (sent.kind === "telegram-error") {
       return sent;
     }

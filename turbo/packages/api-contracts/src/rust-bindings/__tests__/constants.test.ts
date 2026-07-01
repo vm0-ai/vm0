@@ -33,8 +33,8 @@ const canonicalWorkingDirDoc = [
 ] as const;
 
 const resumeSessionHistoryMaxBytesDoc = [
-  "Maximum resume session history blob size accepted by the API and runner.",
-  "Rust and TypeScript components use this shared contract value when validating resume history refs and downloads.",
+  "Maximum resume session history blob size accepted by the API, runner, and guest verifier.",
+  "Rust and TypeScript components use this shared contract value when validating resume history refs, downloads, and idle-reuse verification.",
 ] as const;
 
 function rustString(value: string): RustConstantValue {
@@ -226,7 +226,7 @@ describe("Rust constant bindings", () => {
       `pub const CANONICAL_WORKING_DIR: &str = "${CANONICAL_WORKING_DIR}";`,
     );
     expect(firstRender).toContain(
-      "/// Maximum resume session history blob size accepted by the API and runner.",
+      "/// Maximum resume session history blob size accepted by the API, runner, and guest verifier.",
     );
     expect(firstRender).toContain(
       `pub const RESUME_SESSION_HISTORY_MAX_BYTES: u64 = ${RESUME_SESSION_HISTORY_MAX_BYTES};`,

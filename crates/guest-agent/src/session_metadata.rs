@@ -3,7 +3,6 @@
 //! Event capture writes run-scoped metadata files. Checkpoint and diagnostics
 //! resolve missing history markers from the stored session id when needed.
 
-use crate::env;
 use crate::env::Framework;
 use crate::error::AgentError;
 use crate::paths;
@@ -14,14 +13,6 @@ use std::io;
 use std::path::{Component, Path, PathBuf};
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-
-pub(crate) fn history_marker_payload_for_session_id(session_id: &str) -> Option<String> {
-    history_marker_payload_for_session_id_with_home(
-        Framework::from_env(),
-        env::home_dir(),
-        session_id,
-    )
-}
 
 pub(crate) fn history_marker_payload_for_session_id_with_home(
     framework: Framework,
@@ -92,10 +83,6 @@ pub(crate) fn session_history_marker_kind(history_path_payload: &str) -> &'stati
     }
 }
 
-pub(crate) fn read_existing_history_marker_payload() -> io::Result<Option<String>> {
-    read_existing_history_marker_payload_from(paths::session_history_path_file())
-}
-
 pub(crate) fn read_existing_history_marker_payload_from(
     session_history_path_file: &str,
 ) -> io::Result<Option<String>> {
@@ -130,48 +117,57 @@ pub(crate) fn ensure_history_marker_payload_at(
     }
 }
 
-pub(crate) fn resolve_history_marker_payload(session_id: &str) -> Result<String, AgentError> {
-    match read_existing_history_marker_payload() {
+pub(crate) fn resolve_history_marker_payload_from(
+    framework: Framework,
+    home_dir: &str,
+    session_history_path_file: &str,
+    session_id: &str,
+) -> Result<String, AgentError> {
+    match read_existing_history_marker_payload_from(session_history_path_file) {
         Ok(Some(payload)) => return Ok(payload),
         Ok(None) => {}
         Err(e) => {
             return Err(AgentError::Checkpoint(format!(
                 "Failed to read history-path file {}: {e}",
-                paths::session_history_path_file()
+                session_history_path_file
             )));
         }
     }
 
-    let payload = history_marker_payload_for_session_id(session_id).ok_or_else(|| {
-        AgentError::Checkpoint(
-            "Failed to derive session history marker from session ID".to_string(),
-        )
-    })?;
-    write_session_history_marker(&payload);
+    let payload = history_marker_payload_for_session_id_with_home(framework, home_dir, session_id)
+        .ok_or_else(|| {
+            AgentError::Checkpoint(
+                "Failed to derive session history marker from session ID".to_string(),
+            )
+        })?;
+    write_session_history_marker_at(session_history_path_file, &payload);
     Ok(payload)
 }
 
-pub fn resolve_history_marker_payload_for_diagnostics() -> io::Result<Option<String>> {
-    if let Some(payload) = read_existing_history_marker_payload()? {
+pub fn resolve_history_marker_payload_for_diagnostics_from(
+    framework: Framework,
+    home_dir: &str,
+    session_id_file: &str,
+    session_history_path_file: &str,
+) -> io::Result<Option<String>> {
+    if let Some(payload) = read_existing_history_marker_payload_from(session_history_path_file)? {
         return Ok(Some(payload));
     }
 
-    match std::fs::read_to_string(paths::session_id_file()) {
+    match std::fs::read_to_string(session_id_file) {
         Ok(session_id) => {
             let session_id = session_id.trim();
             if session_id.is_empty() {
                 Ok(None)
             } else {
-                Ok(history_marker_payload_for_session_id(session_id))
+                Ok(history_marker_payload_for_session_id_with_home(
+                    framework, home_dir, session_id,
+                ))
             }
         }
         Err(e) if e.kind() == io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(e),
     }
-}
-
-pub(crate) fn write_session_history_marker(history_path_payload: &str) {
-    write_session_history_marker_at(paths::session_history_path_file(), history_path_payload);
 }
 
 pub(crate) fn write_session_history_marker_at(

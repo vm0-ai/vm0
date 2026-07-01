@@ -536,18 +536,30 @@ describe("connectors page", () => {
 
   it("filters connectors by connected status", async () => {
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    context.mocks.data.team([
+      teamAgent("c0000000-0000-4000-a000-000000000020", "Research", "preset:0"),
+    ]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: ["github"] });
+    });
 
-    detachedSetupPage({ context, path: "/connectors" });
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccessManagement]: true,
+      },
+    });
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
       expect(screen.getByText("Asana")).toBeInTheDocument();
     });
 
-    const connectionFilter = screen.getByRole("group", {
-      name: "Connector connection filter",
-    });
-    click(buttonByText("Connected", connectionFilter));
+    const filterTrigger = screen.getByLabelText("Filter connectors");
+
+    click(filterTrigger);
+    click(menuItemByText("Connected"));
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
@@ -555,12 +567,58 @@ describe("connectors page", () => {
     });
     expect(search()).toBe("?connection=connected");
 
-    click(buttonByText("All", connectionFilter));
+    click(filterTrigger);
+    click(menuItemByText("Not connected"));
 
     await waitFor(() => {
       expect(screen.getByText("Asana")).toBeInTheDocument();
+      expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
+    });
+    expect(search()).toBe("?connection=not-connected");
+
+    click(filterTrigger);
+    click(menuItemByText("All"));
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Asana")).toBeInTheDocument();
     });
     expect(search()).toBe("");
+  });
+
+  it("filters connectors by agent when access management is enabled", async () => {
+    const agentId = "c0000000-0000-4000-a000-000000000010";
+    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+    context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
+    context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
+      return respond(200, {
+        enabledTypes: params.id === agentId ? ["github"] : [],
+      });
+    });
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccessManagement]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.getByText("Asana")).toBeInTheDocument();
+    });
+
+    const filterTrigger = screen.getByLabelText("Filter connectors");
+    click(filterTrigger);
+    click(menuItemByText("Research Agent"));
+
+    await waitFor(() => {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+      expect(screen.queryByText("Asana")).not.toBeInTheDocument();
+    });
+    expect(search()).toContain("connection=agent");
+    expect(search()).toContain(agentId);
   });
 
   it("hydrates connector search from URL keywords", async () => {
@@ -610,7 +668,7 @@ describe("connectors page", () => {
     expect(screen.queryByLabelText("Connect AWS")).not.toBeInTheDocument();
   });
 
-  it("shows the connection filter and hides access management when its switch is disabled", async () => {
+  it("hides connector access management when its switch is disabled", async () => {
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
 
     detachedSetupPage({
@@ -625,10 +683,8 @@ describe("connectors page", () => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
     });
     expect(
-      screen.getByRole("group", {
-        name: "Connector connection filter",
-      }),
-    ).toBeInTheDocument();
+      screen.queryByLabelText("Filter connectors"),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByLabelText("Manage GitHub access"),
     ).not.toBeInTheDocument();
@@ -710,7 +766,7 @@ describe("connectors page", () => {
     });
   });
 
-  it("shows up to three authorized agent avatars on connector cards", async () => {
+  it("shows authorized agent names with an overflow count on connector cards", async () => {
     const agentIds = [
       "c0000000-0000-4000-a000-000000000001",
       "c0000000-0000-4000-a000-000000000002",
@@ -725,10 +781,10 @@ describe("connectors page", () => {
 
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
     context.mocks.data.team([
-      teamAgent(agentIds[0], "Research Agent", "preset:0"),
-      teamAgent(agentIds[1], "Support Agent", "preset:1"),
-      teamAgent(agentIds[2], "Growth Agent"),
-      teamAgent(agentIds[3], "Ops Agent", "preset:3"),
+      teamAgent(agentIds[0], "Research", "preset:0"),
+      teamAgent(agentIds[1], "Support", "preset:1"),
+      teamAgent(agentIds[2], "Growth"),
+      teamAgent(agentIds[3], "Ops", "preset:3"),
     ]);
     context.mocks.api(zeroUserConnectorsContract.get, ({ params, respond }) => {
       return respond(200, {
@@ -746,11 +802,11 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       const card = connectorCardByLabel("GitHub");
-      const avatars = within(card).getAllByTestId(
-        "connector-card-agent-avatar",
-      );
-      expect(avatars).toHaveLength(3);
-      expect(avatars[2]).toHaveClass("block", "h-7", "w-7");
+      const access = within(card).getByLabelText("Manage GitHub access");
+      expect(access).toHaveTextContent("Used by");
+      expect(access).toHaveTextContent("Research, Support");
+      expect(access).toHaveTextContent("+2");
+      expect(access).not.toHaveTextContent("Growth");
     });
 
     click(
@@ -765,7 +821,7 @@ describe("connectors page", () => {
     expect(dialog).toBeInTheDocument();
   });
 
-  it("shows a users icon when no agents are authorized", async () => {
+  it("shows an add-access affordance when no agents are authorized", async () => {
     const agentId = "c0000000-0000-4000-a000-000000000001";
     mockConnectors([{ type: "github", externalUsername: "octocat" }]);
     context.mocks.data.team([teamAgent(agentId, "Research Agent", "preset:0")]);
@@ -783,11 +839,8 @@ describe("connectors page", () => {
 
     await waitFor(() => {
       const card = connectorCardByLabel("GitHub");
-      const placeholder = within(card).getByTestId(
-        "connector-card-agent-avatar-placeholder",
-      );
-      expect(placeholder).toHaveClass("flex", "h-7", "w-7");
-      expect(placeholder.querySelector(".tabler-icon-users")).not.toBeNull();
+      const empty = within(card).getByTestId("connector-card-access-empty");
+      expect(empty).toHaveTextContent("Add access");
     });
 
     click(

@@ -9,7 +9,7 @@ import { updateDocumentTitle$ } from "../document-title.ts";
 import { featureSwitch$ } from "../external/feature-switch.ts";
 import { updatePage$ } from "../react-router.ts";
 import { detachedNavigateTo$ } from "../route.ts";
-import { ROUTES } from "../route-paths.ts";
+import { isWorkflowDetailRouteKey, ROUTES } from "../route-paths.ts";
 import { resetWorkflowDetailUiState$ } from "./workflows-signals.ts";
 import { onboardGuard$ } from "../zero-page/onboard-guard.ts";
 
@@ -19,7 +19,7 @@ export const setupWorkflowDetailPage$ = command(
     const features = await get(featureSwitch$);
     signal.throwIfAborted();
     if (
-      route === "workflowDetail" &&
+      isWorkflowDetailRouteKey(route) &&
       !features[FeatureSwitchKey.WorkflowAutomation]
     ) {
       set(detachedNavigateTo$, ROUTES.home, { replace: true });

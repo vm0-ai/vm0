@@ -1,5 +1,17 @@
 # Changelog
 
+## [0.131.5](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.4...runner-rs-v0.131.5) (2026-07-01)
+
+
+### Refactoring
+
+* generate resume history limit for rust ([#19512](https://github.com/vm0-ai/vm0/issues/19512)) ([152a190](https://github.com/vm0-ai/vm0/commit/152a1908da298b0892bac4749b92ee0ea1ad48d0))
+
+
+### Performance Improvements
+
+* add storage cache populate attribution telemetry ([#19532](https://github.com/vm0-ai/vm0/issues/19532)) ([d256484](https://github.com/vm0-ai/vm0/commit/d256484e3828f81d9b26ff9d5fbcade38d24b361))
+
 ## [0.131.4](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.3...runner-rs-v0.131.4) (2026-06-30)
 
 ## [0.131.3](https://github.com/vm0-ai/vm0/compare/runner-rs-v0.131.2...runner-rs-v0.131.3) (2026-06-30)

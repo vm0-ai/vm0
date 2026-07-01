@@ -3,12 +3,12 @@
 use crate::env;
 use crate::error::AgentError;
 use crate::session_history;
+use api_contracts::generated::constants::runners::RESUME_SESSION_HISTORY_MAX_BYTES;
 use guest_contracts::codex_thread_id::canonical_codex_thread_id;
 use guest_contracts::session_history_identity::{
     FINAL_SESSION_HISTORY_IDENTITY_MAX_BYTES, FinalSessionHistoryFramework,
     FinalSessionHistoryIdentity, FinalSessionHistoryIdentityError,
     FinalSessionHistoryIdentityExpectation, FinalSessionHistoryRefKind,
-    SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_EXPECTED_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_FRAMEWORK_MISMATCH,
     SESSION_HISTORY_IDENTITY_VERIFY_EXIT_HISTORY_MISMATCH,
@@ -108,7 +108,7 @@ fn verify_final_session_history_identity(
         }
     }
 
-    if identity.history_size_bytes > SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES {
+    if identity.history_size_bytes > RESUME_SESSION_HISTORY_MAX_BYTES {
         return Err(FinalSessionHistoryIdentityVerifyError::HistoryTooLarge);
     }
     let digest = match session_history::digest_session_history_from_payload_bounded(
@@ -218,6 +218,7 @@ mod tests {
     use std::io::Write;
 
     const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
+    const PREVIOUS_GUEST_VERIFY_CAP_BYTES: u64 = 32 * 1024 * 1024;
 
     fn write_metadata(
         dir: &tempfile::TempDir,
@@ -226,6 +227,18 @@ mod tests {
         let path = dir.path().join("identity.json");
         std::fs::write(&path, identity.to_json_vec().unwrap()).unwrap();
         path
+    }
+
+    fn repeated_byte_sha256(byte: u8, len: u64) -> String {
+        let mut hasher = Sha256::new();
+        let buffer = [byte; 8192];
+        let mut remaining = len;
+        while remaining > 0 {
+            let chunk_len = remaining.min(buffer.len() as u64) as usize;
+            hasher.update(&buffer[..chunk_len]);
+            remaining -= chunk_len as u64;
+        }
+        hex::encode(hasher.finalize())
     }
 
     #[test]
@@ -388,6 +401,31 @@ mod tests {
     }
 
     #[test]
+    fn verifies_history_above_previous_guest_verify_cap() {
+        let history_size = PREVIOUS_GUEST_VERIFY_CAP_BYTES + 1;
+        assert!(history_size < RESUME_SESSION_HISTORY_MAX_BYTES);
+
+        let dir = tempfile::tempdir().unwrap();
+        let history_path = dir.path().join("history.jsonl");
+        std::fs::File::create(&history_path)
+            .unwrap()
+            .set_len(history_size)
+            .unwrap();
+        let identity = FinalSessionHistoryIdentity::new(
+            FinalSessionHistoryFramework::ClaudeCode,
+            "a".repeat(64),
+            FinalSessionHistoryRefKind::Blob,
+            repeated_byte_sha256(0, history_size),
+            history_size,
+            history_path.to_string_lossy(),
+        )
+        .unwrap();
+        let metadata_path = write_metadata(&dir, &identity);
+
+        verify_final_session_history_identity_file(metadata_path, None).unwrap();
+    }
+
+    #[test]
     fn rejects_current_history_larger_than_identity_size() {
         let dir = tempfile::tempdir().unwrap();
         let history_path = dir.path().join("history.jsonl");
@@ -413,7 +451,7 @@ mod tests {
     }
 
     #[test]
-    fn rejects_history_above_guest_verify_cap() {
+    fn rejects_history_above_resume_cap() {
         let dir = tempfile::tempdir().unwrap();
         let history_path = dir.path().join("history.jsonl");
         std::fs::write(&history_path, b"small").unwrap();
@@ -422,7 +460,7 @@ mod tests {
             "a".repeat(64),
             FinalSessionHistoryRefKind::Blob,
             "b".repeat(64),
-            SESSION_HISTORY_IDENTITY_GUEST_VERIFY_MAX_BYTES + 1,
+            RESUME_SESSION_HISTORY_MAX_BYTES + 1,
             history_path.to_string_lossy(),
         )
         .unwrap();

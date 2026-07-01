@@ -599,7 +599,7 @@ coverage gap is acceptable once listed:
 
 - `zero-voice-io-post.service.ts:348` (`return null` when `bytesPerSecond` is non-finite or <= 0): `hasUsableWavFormat` already guarantees positive bounded channels/sampleRate/bitsPerSample from `getUint16`/`getUint32` reads, so the product is always a finite positive number. Defensive guard, not exercisable via crafted bytes.
 
-- `routes/cli-auth.ts:126-136` (token-exchange `access_denied` arm and its row delete): no production write path sets `device_codes.status = 'denied'` — the browser approve route and the test-approve route write only `authenticated`, and the web cli-auth page has no deny action; the enum value is historical. The main baseline covered these statements only through direct row seeding.
+- `routes/cli-auth.ts:126-136` (token-exchange `access_denied` arm and its row delete): no production write path sets `device_codes.status = 'denied'` — the browser approve route writes only `authenticated`, and the web cli-auth page has no deny action; the enum value is historical. The main baseline covered these statements only through direct row seeding.
 - `zero-chat-messages.ts:1196-1197`, `:2481` (stored-thread-pin resolution failures) and `zero-model-selection.service.ts:180` (sentinel pin naming an unsupported model): thread pins are persisted model-only after the same request validated the model, and the contract superRefine rejects unsupported sentinel selections at parse time — only reachable across a model-removal deploy or direct DB writes.
 
 - `agent-composes-read.service.ts` no-head 400 arm and instructions safeParse-failure arm: every public write path sets `head_version_id` and contract-validates content in the same request; baseline reached both via DB-seeded rows.

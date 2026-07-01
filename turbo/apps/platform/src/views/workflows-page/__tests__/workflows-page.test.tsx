@@ -50,7 +50,7 @@ const TRIGGER_RUN_THREAD_ID = "00000000-0000-4000-a000-000000000301";
 type WorkflowDetailTestTab = "automations" | "instructions" | "info";
 
 function workflowDetailPath(tab: WorkflowDetailTestTab): string {
-  return `/workflows/${SALES_WORKFLOW_ID}?tab=${tab}`;
+  return `/workflows/${SALES_WORKFLOW_ID}/${tab}`;
 }
 
 function detachedSetupWorkflowDetailPage(
@@ -787,12 +787,14 @@ describe("workflows routes", () => {
   it("redirects the workspace workflow detail when workflows are disabled", async () => {
     detachedSetupPage({
       context,
-      path: `/workflows/${SALES_WORKFLOW_ID}`,
+      path: `/workflows/${SALES_WORKFLOW_ID}/automations`,
       featureSwitches: { [FeatureSwitchKey.WorkflowAutomation]: false },
     });
 
     await waitFor(() => {
-      expect(pathname()).not.toBe(`/workflows/${SALES_WORKFLOW_ID}`);
+      expect(pathname()).not.toBe(
+        `/workflows/${SALES_WORKFLOW_ID}/automations`,
+      );
     });
     expect(screen.queryByText("Workflow not found.")).not.toBeInTheDocument();
   });
@@ -823,7 +825,7 @@ describe("workflows routes", () => {
     const supportLink = screen.getByText("Support Intake").closest("a");
     expect(supportLink).toHaveAttribute(
       "href",
-      `/workflows/${OTHER_WORKFLOW_ID}`,
+      `/workflows/${OTHER_WORKFLOW_ID}/automations`,
     );
 
     expect(CREATE_WORKFLOW_WITH_CHAT_PROMPT).toContain(
@@ -903,7 +905,8 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getByText("Every weekday at 9:00 AM")).toBeInTheDocument();
     });
-    expect(search()).toBe("?tab=automations");
+    expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/automations`);
+    expect(search()).toBe("");
     expect(screen.getByText("Schedule")).toBeInTheDocument();
     expect(screen.getAllByText("Last run").length).toBeGreaterThan(0);
     expect(screen.getAllByText("Next run").length).toBeGreaterThan(0);
@@ -921,7 +924,8 @@ describe("workflow detail page", () => {
         screen.getByText("Gather CRM context before outreach."),
       ).toBeInTheDocument();
     });
-    expect(search()).toBe("?tab=instructions");
+    expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/instructions`);
+    expect(search()).toBe("");
     click(screen.getByLabelText("Workflow files"));
     click(menuItemByText(/config\/settings\.json/));
     await waitFor(() => {
@@ -932,7 +936,8 @@ describe("workflow detail page", () => {
     expect(screen.getByLabelText("Workflow file content")).toHaveValue(
       '{ "risk": "low", "tone": "direct" }',
     );
-    expect(search()).toBe("?tab=instructions&file=config%2Fsettings.json");
+    expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/instructions`);
+    expect(search()).toBe("?file=config%2Fsettings.json");
   });
 
   it("ignores stale workflow instruction drafts without edit permission", async () => {
@@ -1111,7 +1116,7 @@ describe("workflow detail page", () => {
 
     click(buttonByText(/View target workflow/));
     await waitFor(() => {
-      expect(pathname()).toBe(`/workflows/${COPIED_WORKFLOW_ID}`);
+      expect(pathname()).toBe(`/workflows/${COPIED_WORKFLOW_ID}/automations`);
     });
   });
 
@@ -1300,14 +1305,16 @@ describe("workflow detail page", () => {
     await waitFor(() => {
       expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
     });
-    expect(search()).toBe("?tab=info");
+    expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/info`);
+    expect(search()).toBe("");
     click(buttonByText("Instructions"));
     await waitFor(() => {
       expect(
         screen.getByText("Gather CRM context before outreach."),
       ).toBeInTheDocument();
     });
-    expect(search()).toBe("?tab=instructions");
+    expect(pathname()).toBe(`/workflows/${SALES_WORKFLOW_ID}/instructions`);
+    expect(search()).toBe("");
   });
 
   it("renders Gmail new message trigger match summaries", async () => {
