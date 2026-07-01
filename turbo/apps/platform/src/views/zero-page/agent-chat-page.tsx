@@ -367,8 +367,8 @@ function SuggestedPromptsGrid({
 }
 
 function useAgentChatComposerModel(pageSignal: AbortSignal) {
-  const modelSelectionLoadable = useLoadable(chatPageModelSelection$);
-  const defaultModelSelectionLoadable = useLoadable(
+  const modelSelectionLoadable = useLastLoadable(chatPageModelSelection$);
+  const defaultModelSelectionLoadable = useLastLoadable(
     chatPageDefaultModelSelection$,
   );
   const modelSelection =
