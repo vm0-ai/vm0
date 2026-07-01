@@ -622,6 +622,26 @@ describe("firewall metadata", () => {
     expect(await loadFirewallPermissionIndex("cloudinary")).toBeNull();
   });
 
+  it("loads source-backed Clerk permission descriptions", async () => {
+    const detail = await loadFirewallPermissionMetadata("clerk");
+    const index = await loadFirewallPermissionIndex("clerk");
+
+    expect(detail).not.toBeNull();
+    expect(index).not.toBeNull();
+    for (const permission of detail!.permissions) {
+      expect(permission.description, permission.name).toEqual(
+        expect.any(String),
+      );
+      expect(permission.description?.trim(), permission.name).not.toBe("");
+    }
+    expect(index!.permissionDescription("users:read")).toBe(
+      "Read Clerk Users. The user object represents a user that has successfully signed up to your application.",
+    );
+    expect(index!.permissionDescription("admin-portal-link-tokens:write")).toBe(
+      "Manage Clerk Admin Portal Link Tokens. Create and revoke single-use admin portal link tokens for Clerk admin portal access.",
+    );
+  });
+
   it("keeps server permission indexes aligned with generated summaries", async () => {
     const loadedIndexes = await Promise.all(
       Object.keys(FIREWALL_PERMISSION_METADATA_SUMMARIES).map(async (type) => {

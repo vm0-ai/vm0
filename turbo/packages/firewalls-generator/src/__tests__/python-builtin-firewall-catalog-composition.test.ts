@@ -135,6 +135,28 @@ describe("Python builtin firewall catalog composition", () => {
   );
 
   it(
+    "strips connector permission descriptions from the builtin runtime catalog",
+    async () => {
+      const catalog = await buildPythonBuiltinFirewallCatalog({
+        modelProviderFirewalls: [],
+      });
+      const permission = catalog.firewalls.clerk?.apis[0]?.permissions?.find(
+        (candidate) => {
+          return candidate.name === "users:read";
+        },
+      );
+
+      expect(permission).toBeDefined();
+      expect(permission).toMatchObject({
+        name: "users:read",
+        rules: expect.any(Array),
+      });
+      expect(permission).not.toHaveProperty("description");
+    },
+    FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS,
+  );
+
+  it(
     "preserves representative connector auth templates",
     async () => {
       const catalog = await buildPythonBuiltinFirewallCatalog({
