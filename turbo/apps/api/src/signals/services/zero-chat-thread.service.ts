@@ -70,6 +70,7 @@ type ChatMessageRow = {
   readonly id: string;
   readonly role: string;
   readonly content: string | null;
+  readonly thinking: string | null;
   readonly runId: string | null;
   readonly runGroupId: string | null;
   readonly triggerSource: TriggerSource | null;
@@ -152,6 +153,7 @@ const messageColumns = {
   id: chatMessages.id,
   role: chatMessages.role,
   content: chatMessages.content,
+  thinking: chatMessages.thinking,
   runId: effectiveChatMessageRunId(),
   runGroupId: chatMessages.runGroupId,
   triggerSource: sql<TriggerSource | null>`(
@@ -650,6 +652,7 @@ function toPagedMessage(
     return {
       ...message,
       role: "assistant" as const,
+      thinking: row.thinking ?? undefined,
       runLifecycleEvent: lifecycleEventOrUndefined(row.runLifecycleEvent),
       recommendedFollowups: normalizeRecommendedFollowups(
         row.recommendedFollowups,

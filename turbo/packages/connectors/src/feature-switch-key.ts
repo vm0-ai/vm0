@@ -55,5 +55,6 @@ export enum FeatureSwitchKey {
   ImageArtifactKeyboardNavigation = "imageArtifactKeyboardNavigation",
   AgentsPageRedesign = "agentsPageRedesign",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
+  ChatInitialThinkingIndicator = "chatInitialThinkingIndicator",
   TeamsIntegration = "teamsIntegration",
 }

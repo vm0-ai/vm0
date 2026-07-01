@@ -3901,6 +3901,47 @@ function isRenderableAssistantMessage(message: EnrichedChatMessage): boolean {
   );
 }
 
+type ThinkingIndicatorMarkerMessage = EnrichedChatMessage & {
+  readonly role: "assistant";
+  readonly content: null;
+  readonly error?: undefined;
+  readonly runId: string;
+  readonly thinking: string;
+};
+
+function isThinkingIndicatorMarkerMessage(
+  message: EnrichedChatMessage,
+): message is ThinkingIndicatorMarkerMessage {
+  return (
+    message.role === "assistant" &&
+    message.content === null &&
+    message.error === undefined &&
+    typeof message.thinking === "string" &&
+    message.thinking.trim().length > 0 &&
+    message.runId !== undefined
+  );
+}
+
+function lastRunThinkingMessageForIndicator(
+  groups: readonly GroupedChatMessageGroup[],
+): ThinkingIndicatorMarkerMessage | undefined {
+  const messages = groups.flatMap((group) => {
+    return group.messages.filter((message) => {
+      return !message.isQueued;
+    });
+  });
+  const lastMessage = messages[messages.length - 1];
+  if (!lastMessage || !isThinkingIndicatorMarkerMessage(lastMessage)) {
+    return undefined;
+  }
+
+  const runId = lastMessage.runId;
+  const runHasAssistantText = messages.some((message) => {
+    return message.runId === runId && isRenderableAssistantMessage(message);
+  });
+  return runHasAssistantText ? undefined : lastMessage;
+}
+
 function terminatedRunIdsForCompletedWork(
   messages: readonly EnrichedChatMessage[],
 ): Set<string> {
@@ -5230,11 +5271,13 @@ function shouldRenderThinkingIndicator({
   lastIsAssistant,
   running,
   lastAssistantCancelled,
+  lastAssistantOnlyThinking,
 }: {
   lastGroup: GroupedChatMessageGroup | undefined;
   lastIsAssistant: boolean;
   running: boolean;
   lastAssistantCancelled: boolean;
+  lastAssistantOnlyThinking: boolean;
 }): boolean {
   if (!lastGroup) {
     return false;
@@ -5242,15 +5285,29 @@ function shouldRenderThinkingIndicator({
   if (lastAssistantCancelled && !running) {
     return false;
   }
+  if (lastAssistantOnlyThinking && !running) {
+    return false;
+  }
   return lastIsAssistant || running;
+}
+
+interface ServerThinkingLabel {
+  readonly displayedText: string;
+  readonly fullText: string;
+  readonly id: string;
+  readonly setRef: (
+    el: HTMLParagraphElement | null,
+  ) => (() => void) | undefined;
 }
 
 function ThinkingLabel({
   isQueued,
   rotatingLabel,
+  serverThinkingLabel,
 }: {
   isQueued: boolean;
   rotatingLabel: string;
+  serverThinkingLabel?: ServerThinkingLabel;
 }) {
   const openQueueDrawer = useSet(openQueueDrawer$);
   const pageSignal = useGet(pageSignal$);
@@ -5272,6 +5329,19 @@ function ThinkingLabel({
     );
   }
 
+  if (serverThinkingLabel) {
+    return (
+      <p
+        key={serverThinkingLabel.id}
+        ref={serverThinkingLabel.setRef}
+        className="zero-shimmer-text text-[0.8125rem] truncate"
+        aria-label={serverThinkingLabel.fullText}
+      >
+        {serverThinkingLabel.displayedText || "\u00a0"}
+      </p>
+    );
+  }
+
   return (
     <p className="zero-shimmer-text text-[0.8125rem] truncate">
       {rotatingLabel}
@@ -5283,10 +5353,12 @@ function InlineThinkingRow({
   blockStyle,
   isQueued,
   rotatingLabel,
+  serverThinkingLabel,
 }: {
   blockStyle: CSSProperties;
   isQueued: boolean;
   rotatingLabel: string;
+  serverThinkingLabel?: ServerThinkingLabel;
 }) {
   return (
     <div className="flex items-center gap-2 h-5">
@@ -5295,7 +5367,11 @@ function InlineThinkingRow({
         <span />
         <span />
       </span>
-      <ThinkingLabel isQueued={isQueued} rotatingLabel={rotatingLabel} />
+      <ThinkingLabel
+        isQueued={isQueued}
+        rotatingLabel={rotatingLabel}
+        serverThinkingLabel={serverThinkingLabel}
+      />
     </div>
   );
 }
@@ -5330,11 +5406,13 @@ function WaitingForAssistantResponse({
   blockStyle,
   isQueued,
   rotatingLabel,
+  serverThinkingLabel,
 }: {
   thread: ChatThreadSignals;
   blockStyle: CSSProperties;
   isQueued: boolean;
   rotatingLabel: string;
+  serverThinkingLabel?: ServerThinkingLabel;
 }) {
   return (
     <div
@@ -5351,7 +5429,11 @@ function WaitingForAssistantResponse({
               <span />
               <span />
             </span>
-            <ThinkingLabel isQueued={isQueued} rotatingLabel={rotatingLabel} />
+            <ThinkingLabel
+              isQueued={isQueued}
+              rotatingLabel={rotatingLabel}
+              serverThinkingLabel={serverThinkingLabel}
+            />
           </div>
         </div>
       </div>
@@ -5371,6 +5453,7 @@ function AssistantThinkingStatusRow({
   blockStyle,
   isQueued,
   rotatingLabel,
+  serverThinkingLabel,
   thread,
   doneLabel,
   recommendedFollowupSource,
@@ -5379,6 +5462,7 @@ function AssistantThinkingStatusRow({
   blockStyle: CSSProperties;
   isQueued: boolean;
   rotatingLabel: string;
+  serverThinkingLabel?: ServerThinkingLabel;
   thread: ChatThreadSignals;
   doneLabel: string;
   recommendedFollowupSource: RecommendedFollowupSource | null;
@@ -5400,6 +5484,7 @@ function AssistantThinkingStatusRow({
             blockStyle={blockStyle}
             isQueued={isQueued}
             rotatingLabel={rotatingLabel}
+            serverThinkingLabel={serverThinkingLabel}
           />
         ) : (
           <FinishedRunRow
@@ -5411,6 +5496,70 @@ function AssistantThinkingStatusRow({
       </div>
     </div>
   );
+}
+
+interface ThinkingIndicatorState {
+  readonly lastGroup: GroupedChatMessageGroup | undefined;
+  readonly lastIsAssistant: boolean;
+  readonly lastAssistantCancelled: boolean;
+  readonly lastAssistantOnlyThinking: boolean;
+  readonly isQueued: boolean;
+  readonly running: boolean;
+  readonly lastThinkingMessage: ThinkingIndicatorMarkerMessage | undefined;
+}
+
+function getThinkingIndicatorState(args: {
+  readonly groups: GroupedChatMessageGroup[];
+  readonly allFinishedResolved: boolean;
+  readonly allFinished: boolean;
+  readonly latestRunStatus: string | null | undefined;
+  readonly initialThinkingEnabled: boolean;
+}): ThinkingIndicatorState {
+  const lastGroup = args.groups[args.groups.length - 1];
+  const lastIsAssistant = lastGroup?.role === "assistant";
+  const lastAssistantMessage =
+    lastIsAssistant && lastGroup
+      ? lastGroup.messages[lastGroup.messages.length - 1]
+      : undefined;
+  const rawLastThinkingMessage = lastRunThinkingMessageForIndicator(
+    args.groups,
+  );
+  const lastAssistantHasRenderableMessage =
+    lastIsAssistant &&
+    lastGroup !== undefined &&
+    lastGroup.messages.some((message) => {
+      return isRenderableAssistantMessage(message);
+    });
+  const lastAssistantOnlyThinking =
+    lastIsAssistant &&
+    rawLastThinkingMessage !== undefined &&
+    !lastAssistantHasRenderableMessage;
+  const lastAssistantCancelled =
+    isCancelledAssistantMessage(lastAssistantMessage);
+  const isQueued = args.latestRunStatus === "queued";
+  const lastThinkingMessage =
+    args.initialThinkingEnabled && !isQueued
+      ? rawLastThinkingMessage
+      : undefined;
+  const runActive =
+    args.allFinishedResolved && !args.allFinished && !lastAssistantCancelled;
+  const waitingForAssistant =
+    lastGroup?.role === "user" &&
+    lastGroup.messages.length > 0 &&
+    (!args.allFinishedResolved ||
+      lastGroup.messages.some((message) => {
+        return message.isOptimisticRun || message.runId !== undefined;
+      }));
+
+  return {
+    lastGroup,
+    lastIsAssistant,
+    lastAssistantCancelled,
+    lastAssistantOnlyThinking,
+    isQueued,
+    running: runActive || waitingForAssistant,
+    lastThinkingMessage,
+  };
 }
 
 function ThinkingIndicator({
@@ -5430,50 +5579,61 @@ function ThinkingIndicator({
     "--zb-c3": c3,
   } as CSSProperties;
 
-  const lastGroup = groups[groups.length - 1];
-  const lastIsAssistant = lastGroup?.role === "assistant";
-  const lastAssistantMessage =
-    lastIsAssistant && lastGroup
-      ? lastGroup.messages[lastGroup.messages.length - 1]
-      : undefined;
-  const lastAssistantCancelled =
-    isCancelledAssistantMessage(lastAssistantMessage);
-  const runActive =
-    allFinishedResolved && !allFinished && !lastAssistantCancelled;
-  const waitingForAssistant =
-    lastGroup?.role === "user" &&
-    lastGroup.messages.length > 0 &&
-    (!allFinishedResolved ||
-      lastGroup.messages.some((message) => {
-        return message.isOptimisticRun || message.runId !== undefined;
-      }));
-  const running = runActive || waitingForAssistant;
+  const latestRunStatus = useLastResolved(thread.latestRunStatus$);
+  const features = useLastResolved(featureSwitch$);
+  const initialThinkingEnabled =
+    features?.[FeatureSwitchKey.ChatInitialThinkingIndicator] ?? false;
+  const indicatorState = getThinkingIndicatorState({
+    groups,
+    allFinishedResolved,
+    allFinished,
+    latestRunStatus,
+    initialThinkingEnabled,
+  });
   const rotatingLabel = useGet(thread.rotatingPhrase$);
   const donePhrase = useGet(thread.donePhrase$);
-  const latestRunStatus = useLastResolved(thread.latestRunStatus$);
-  const isQueued = latestRunStatus === "queued";
+  const displayedThinkingText =
+    useLastResolved(thread.displayedThinkingText$) ?? "";
+  const setThinkingIndicatorTextRef = useSet(
+    thread.setThinkingIndicatorTextRef$,
+  );
+  const serverThinkingLabel =
+    indicatorState.lastThinkingMessage && indicatorState.running
+      ? {
+          displayedText: displayedThinkingText,
+          fullText: indicatorState.lastThinkingMessage.thinking.trim(),
+          id: indicatorState.lastThinkingMessage.id,
+          setRef: setThinkingIndicatorTextRef,
+        }
+      : undefined;
   const recommendedFollowupSource = latestRecommendedFollowups(groups);
   const doneLabel = recommendedFollowupSource ? "Keep going" : donePhrase;
 
   if (
     !shouldRenderThinkingIndicator({
-      lastGroup,
-      lastIsAssistant,
-      running,
-      lastAssistantCancelled,
+      lastGroup: indicatorState.lastGroup,
+      lastIsAssistant: indicatorState.lastIsAssistant,
+      running: indicatorState.running,
+      lastAssistantCancelled: indicatorState.lastAssistantCancelled,
+      lastAssistantOnlyThinking: indicatorState.lastAssistantOnlyThinking,
     })
   ) {
     return null;
   }
 
   // Shared inline row with fixed h-5 to prevent layout jump on transition
-  if (lastIsAssistant || !running) {
+  if (
+    (indicatorState.lastIsAssistant &&
+      !indicatorState.lastAssistantOnlyThinking) ||
+    !indicatorState.running
+  ) {
     return (
       <AssistantThinkingStatusRow
-        running={running}
+        running={indicatorState.running}
         blockStyle={blockStyle}
-        isQueued={isQueued}
+        isQueued={indicatorState.isQueued}
         rotatingLabel={rotatingLabel}
+        serverThinkingLabel={serverThinkingLabel}
         thread={thread}
         doneLabel={doneLabel}
         recommendedFollowupSource={recommendedFollowupSource}
@@ -5486,8 +5646,9 @@ function ThinkingIndicator({
     <WaitingForAssistantResponse
       thread={thread}
       blockStyle={blockStyle}
-      isQueued={isQueued}
+      isQueued={indicatorState.isQueued}
       rotatingLabel={rotatingLabel}
+      serverThinkingLabel={serverThinkingLabel}
     />
   );
 }

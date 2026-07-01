@@ -6045,3 +6045,137 @@ describe("chat lifecycle", () => {
     });
   });
 });
+
+describe("initial thinking indicator", () => {
+  it("renders the latest run thinking marker inside the thinking indicator", async () => {
+    const threadId = "thread-initial-thinking";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-thinking-user",
+          role: "user",
+          content: "Draft a launch checklist",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-thinking-marker",
+          role: "assistant",
+          content: null,
+          thinking: "Reviewing your request",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
+      },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Stop")).toBeInTheDocument();
+    });
+    const label = await screen.findByLabelText("Reviewing your request");
+    expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
+  });
+
+  it("keeps the thinking marker visible while later messages are queued", async () => {
+    const threadId = "thread-initial-thinking-with-queue";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-thinking-queued-user",
+          role: "user",
+          content: "Draft a launch checklist",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-thinking-queued-marker",
+          role: "assistant",
+          content: null,
+          thinking: "Reviewing your request",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+        {
+          id: "msg-thinking-queued-followup",
+          role: "user",
+          content: "Also include owners",
+          runId: undefined,
+          createdAt: "2026-03-10T00:00:02Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
+      },
+    });
+
+    const label = await screen.findByLabelText("Reviewing your request");
+    expect(label.closest("[data-thinking-indicator]")).not.toBeNull();
+    await waitFor(() => {
+      expect(screen.getByLabelText("Queued message")).toHaveTextContent(
+        "Also include owners",
+      );
+    });
+  });
+
+  it("hides the thinking marker when the same run has assistant text", async () => {
+    const threadId = "thread-initial-thinking-answer";
+    mockChatLifecycle(context, {
+      threadId,
+      chatMessages: [
+        {
+          id: "msg-thinking-answer-user",
+          role: "user",
+          content: "Draft a launch checklist",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:00Z",
+        },
+        {
+          id: "msg-thinking-answer-marker",
+          role: "assistant",
+          content: null,
+          thinking: "Reviewing your request",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:01Z",
+        },
+        {
+          id: "msg-thinking-answer",
+          role: "assistant",
+          content: "Here is the checklist.",
+          runId: "run-active",
+          createdAt: "2026-03-10T00:00:02Z",
+        },
+      ],
+      activeRunIds: ["run-active"],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
+      },
+    });
+
+    await screen.findByText("Here is the checklist.");
+    expect(
+      screen.queryByText("Reviewing your request"),
+    ).not.toBeInTheDocument();
+  });
+});

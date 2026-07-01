@@ -7,6 +7,7 @@ import {
   VIDEO_TEMPLATE_ITEMS,
   WORKFLOW_TEMPLATE_ITEMS,
 } from "@vm0/core";
+import { FeatureSwitchKey } from "@vm0/core/feature-switch-key";
 import {
   chatMessagesContract,
   type AttachFile,
@@ -43,6 +44,7 @@ import { createComputerUseBddApi } from "./helpers/api-bdd-computer-use";
 import { createFirewallApi, secretTemplate } from "./helpers/api-bdd-firewall";
 import { createRunsAutomationsApi } from "./helpers/api-bdd-runs-automations";
 import { createWebhookCallbackApi } from "./helpers/api-bdd-webhooks";
+import { updateFeatureSwitchesForUser } from "./helpers/zero-feature-switches";
 import { createZeroRouteMocks } from "./helpers/zero-route-test";
 import { testChatMessagesStateRoutes } from "../test-chat-messages-state";
 
@@ -1970,6 +1972,84 @@ describe("CHAT-02: incomplete-round context", () => {
     expect(appended).not.toContain("retry after two failures");
     await cancelChatRun(actor, third.runId);
   }, 90_000);
+});
+
+describe("CHAT-02: initial thinking indicator", () => {
+  it("persists a fast assistant thinking marker for active web chat runs", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    chatCallbacks.failIfChatCallbackRouteIsFetched();
+    mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
+    if (!actor.orgId) {
+      throw new Error("Expected entitled chat actor to belong to an org");
+    }
+    await updateFeatureSwitchesForUser(
+      context,
+      {
+        userId: actor.userId,
+        orgId: actor.orgId,
+      },
+      {
+        [FeatureSwitchKey.ChatInitialThinkingIndicator]: true,
+      },
+    );
+
+    let upstreamAuthorization: string | null = null;
+    let promptPayload = "";
+    server.use(
+      http.post(
+        "https://openrouter.ai/api/v1/chat/completions",
+        async ({ request }) => {
+          upstreamAuthorization = request.headers.get("authorization");
+          const payload = openRouterBodySchema.parse(await request.json());
+          promptPayload = payload.messages
+            .map((message) => {
+              return message.content;
+            })
+            .join("\n\n");
+          return HttpResponse.json({
+            choices: [
+              {
+                finish_reason: "stop",
+                message: { content: "Reviewing the request" },
+              },
+            ],
+          });
+        },
+      ),
+    );
+
+    const run = await sendChatRun(actor, {
+      agentId,
+      prompt: "Draft a launch checklist",
+    });
+
+    const page = await waitForThreadMessages(actor, run.threadId, (items) => {
+      return assistantMessages(items).some((message) => {
+        return (
+          message.runId === run.runId &&
+          message.content === null &&
+          message.thinking === "Reviewing the request"
+        );
+      });
+    });
+    const marker = assistantMessages(page.messages).find((message) => {
+      return (
+        message.runId === run.runId &&
+        message.thinking === "Reviewing the request"
+      );
+    });
+    expect(marker).toMatchObject({
+      role: "assistant",
+      content: null,
+      runId: run.runId,
+      runEventId: "thinking:initial",
+      thinking: "Reviewing the request",
+    });
+    expect(upstreamAuthorization).toBe("Bearer thinking-key");
+    expect(promptPayload).toContain("Draft a launch checklist");
+
+    await cancelChatRun(actor, run.runId);
+  });
 });
 
 describe("CHAT-02: prior rounds and thread titles", () => {

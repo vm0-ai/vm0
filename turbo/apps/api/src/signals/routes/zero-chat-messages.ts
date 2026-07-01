@@ -66,6 +66,7 @@ import {
   generateAndPersistChatThreadTitle,
   isChatTitleGenerationConfigured,
 } from "../services/zero-chat-title.service";
+import { generateAndPersistInitialThinkingMessage } from "../services/zero-chat-initial-thinking.service";
 import {
   MODEL_FIRST_SELECTION_PROVIDER_ID,
   type ModelFirstPin,
@@ -199,6 +200,7 @@ interface PreparedNormalSend {
   readonly generationTemplatePrompt: string;
   readonly computerUseHostGrant: ResolvedComputerUseHostGrant | null;
   readonly persistedExplicitSelection: boolean;
+  readonly initialThinkingEnabled: boolean;
 }
 
 interface ResolvedComputerUseHostGrant {
@@ -2097,9 +2099,19 @@ const prepareNormalSend$ = command(
       thread.incompleteContext,
     );
     signal.throwIfAborted();
+    const featureSwitchContext = await loadUserFeatureSwitchContext(
+      db,
+      args.orgId,
+      args.userId,
+    );
+    signal.throwIfAborted();
     const presentationRunbookEnabled = isFeatureEnabled(
       FeatureSwitchKey.PresentationTemplateRunbook,
-      await loadUserFeatureSwitchContext(db, args.orgId, args.userId),
+      featureSwitchContext,
+    );
+    const initialThinkingEnabled = isFeatureEnabled(
+      FeatureSwitchKey.ChatInitialThinkingIndicator,
+      featureSwitchContext,
     );
     const generationTemplatePrompt =
       await resolveThreadGenerationTemplatePrompt({
@@ -2137,6 +2149,7 @@ const prepareNormalSend$ = command(
       generationTemplatePrompt,
       computerUseHostGrant,
       persistedExplicitSelection,
+      initialThinkingEnabled,
     };
   },
 );
@@ -2205,6 +2218,7 @@ function scheduleAssociatedUserMessage(params: {
   readonly userId: string;
   readonly runId: string;
   readonly appendQueueMarker: boolean;
+  readonly appendInitialThinking: boolean;
 }): void {
   waitUntil(
     (async () => {
@@ -2229,6 +2243,17 @@ function scheduleAssociatedUserMessage(params: {
         [params.userId],
         `chatThreadRunCreated:${params.threadId}`,
       );
+      if (params.appendInitialThinking) {
+        await bestEffort(
+          generateAndPersistInitialThinkingMessage({
+            db: params.db,
+            threadId: params.threadId,
+            userId: params.userId,
+            runId: params.runId,
+            currentPrompt: params.body.prompt,
+          }),
+        );
+      }
       // No threadListChanged here: the sending client reloads its own
       // sidebar after the POST, sorting only moves on run-terminal events,
       // and the terminal callback broadcasts to other clients.
@@ -2243,6 +2268,7 @@ function scheduleCreatedChatRunSideEffects(params: {
   readonly userId: string;
   readonly runId: string;
   readonly runStatus: string;
+  readonly initialThinkingEnabled: boolean;
 }): void {
   scheduleChatTitleGeneration({
     db: params.db,
@@ -2257,6 +2283,11 @@ function scheduleCreatedChatRunSideEffects(params: {
     userId: params.userId,
     runId: params.runId,
     appendQueueMarker: params.runStatus === "queued",
+    appendInitialThinking:
+      params.initialThinkingEnabled &&
+      params.runStatus !== "queued" &&
+      params.body.hasTextContent !== false &&
+      params.body.prompt.trim().length > 0,
   });
 }
 
@@ -2555,6 +2586,7 @@ const createNormalChatRun$ = command(
       userId: args.userId,
       runId: runResult.body.runId,
       runStatus: runResult.body.status,
+      initialThinkingEnabled: prepared.initialThinkingEnabled,
     });
 
     if (prepared.persistedExplicitSelection && modelPin.selectedModel) {
