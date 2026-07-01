@@ -16,6 +16,7 @@
 
 import {
   ALL_METHODS,
+  applyPermissionDescriptions,
   fetchSpec,
   logStats,
   renderPermissions,
@@ -54,8 +55,27 @@ interface XeroOperation {
 }
 
 interface XeroSpec {
+  components?: {
+    securitySchemes?: {
+      OAuth2?: {
+        flows?: Record<
+          string,
+          | {
+              scopes?: Record<string, string>;
+            }
+          | undefined
+        >;
+      };
+    };
+  };
   servers?: Array<{ url: string }>;
   paths?: Record<string, Record<string, XeroOperation>>;
+}
+
+interface XeroScopeDescription {
+  readonly scope: string;
+  readonly description: string;
+  readonly source: string;
 }
 
 // ── Scopeless endpoints ──────────────────────────────────────────────────
@@ -120,6 +140,24 @@ const INCLUDED_SCOPELESS = new Map<string, IncludedScopelessEndpoint>([
   ],
 ]);
 
+// The Xero OpenAPI specs carry most permission descriptions as OAuth scope
+// text. These overrides cover local-only permissions and known upstream text
+// defects that would otherwise leak into user-facing metadata.
+const XERO_PERMISSION_DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> =
+  {
+    "accounting.budgets.read": "Grant read-only access to budgets.",
+    "accounting.transactions.read":
+      "Grant read-only access to accounting transactions, including bank transactions, credit notes, invoices, payments, purchase orders, quotes, receipts, and related history.",
+    connections:
+      "List and disconnect Xero tenant connections for the authorized user.",
+    "finance.cashvalidation.read":
+      "Grant read-only access to bank statement and reconciliation data.",
+    "finance.statements.read":
+      "Grant read-only access to financial statements.",
+    "marketplace.billing":
+      "Read Xero App Store subscriptions and manage metered usage records.",
+  };
+
 function narrowRuleToBasePath(
   baseUrl: string,
   rule: string,
@@ -153,8 +191,155 @@ interface XeroScopePriority {
 }
 
 interface ParsedSpec {
+  sourceFile: string;
   baseUrl: string;
   paths: Record<string, Record<string, XeroOperation>>;
+  scopeDescriptions: readonly XeroScopeDescription[];
+}
+
+function compareStrings(left: string, right: string): number {
+  return left.localeCompare(right);
+}
+
+function sortedStrings(values: Iterable<string>): string[] {
+  return [...values].sort(compareStrings);
+}
+
+function normalizeXeroDescription(description: string): string {
+  return description.trim().replace(/\s+/g, " ");
+}
+
+function xeroSpecScopeDescriptions(
+  sourceFile: string,
+  spec: XeroSpec,
+): XeroScopeDescription[] {
+  const descriptions: XeroScopeDescription[] = [];
+  const flows = spec.components?.securitySchemes?.OAuth2?.flows;
+  if (!flows) {
+    return descriptions;
+  }
+
+  for (const [flowName, flow] of Object.entries(flows)) {
+    if (!flow?.scopes) {
+      continue;
+    }
+    for (const [scope, description] of Object.entries(flow.scopes)) {
+      const normalized = normalizeXeroDescription(description);
+      if (normalized === "") {
+        continue;
+      }
+      descriptions.push({
+        scope,
+        description: normalized,
+        source: `${sourceFile}:${flowName}`,
+      });
+    }
+  }
+
+  return descriptions;
+}
+
+function collectXeroScopeDescriptions(
+  specs: readonly ParsedSpec[],
+): ReadonlyMap<string, string> {
+  const descriptions = new Map<
+    string,
+    { readonly description: string; readonly source: string }
+  >();
+  const conflicts: string[] = [];
+
+  for (const spec of specs) {
+    for (const scopeDescription of spec.scopeDescriptions) {
+      const existing = descriptions.get(scopeDescription.scope);
+      if (existing && existing.description !== scopeDescription.description) {
+        conflicts.push(
+          `${scopeDescription.scope}: ${existing.description} (${existing.source}) <> ${scopeDescription.description} (${scopeDescription.source})`,
+        );
+        continue;
+      }
+      descriptions.set(scopeDescription.scope, {
+        description: scopeDescription.description,
+        source: scopeDescription.source,
+      });
+    }
+  }
+
+  if (conflicts.length > 0) {
+    throw new Error(
+      "Conflicting Xero OAuth scope descriptions:\n" +
+        sortedStrings(conflicts).join("\n"),
+    );
+  }
+
+  return new Map(
+    [...descriptions.entries()].map(([scope, { description }]) => {
+      return [scope, description];
+    }),
+  );
+}
+
+function xeroPermissionNames(
+  hostGroups: ReadonlyMap<string, readonly PermissionGroup[]>,
+): ReadonlySet<string> {
+  const names = new Set<string>();
+  for (const permissions of hostGroups.values()) {
+    for (const permission of permissions) {
+      names.add(permission.name);
+    }
+  }
+  return names;
+}
+
+function assertXeroDescriptionOverridesUsed(
+  permissionNames: ReadonlySet<string>,
+): void {
+  const unusedOverrides = sortedStrings(
+    Object.keys(XERO_PERMISSION_DESCRIPTION_OVERRIDES).filter((name) => {
+      return !permissionNames.has(name);
+    }),
+  );
+  if (unusedOverrides.length > 0) {
+    throw new Error(
+      "Xero permission description overrides reference unknown permissions:\n" +
+        unusedOverrides.join("\n"),
+    );
+  }
+}
+
+function xeroPermissionDescription(
+  permissionName: string,
+  scopeDescriptions: ReadonlyMap<string, string>,
+): string | undefined {
+  return (
+    XERO_PERMISSION_DESCRIPTION_OVERRIDES[permissionName] ??
+    scopeDescriptions.get(permissionName)
+  );
+}
+
+function describeXeroHostGroups(
+  hostGroups: Map<string, PermissionGroup[]>,
+  scopeDescriptions: ReadonlyMap<string, string>,
+): Map<string, PermissionGroup[]> {
+  assertXeroDescriptionOverridesUsed(xeroPermissionNames(hostGroups));
+
+  return new Map(
+    [...hostGroups.entries()].map(([baseUrl, permissions]) => {
+      const descriptions: Record<string, string> = {};
+      for (const permission of permissions) {
+        const description = xeroPermissionDescription(
+          permission.name,
+          scopeDescriptions,
+        );
+        if (description !== undefined) {
+          descriptions[permission.name] = description;
+        }
+      }
+      return [
+        baseUrl,
+        applyPermissionDescriptions("Xero", permissions, descriptions),
+      ];
+    }),
+  );
 }
 
 function isReadScope(scope: string): boolean {
@@ -443,7 +628,7 @@ export async function generate(): Promise<void> {
   console.error("Downloading Xero OpenAPI specs…");
 
   const parsedSpecs = await Promise.all(
-    SPEC_FILES.map(async (file) => {
+    SPEC_FILES.map(async (file): Promise<ParsedSpec | null> => {
       const url = `${RAW_BASE}/${file}`;
       const res = await fetchSpec(url, file);
       const text = await res.text();
@@ -468,8 +653,10 @@ export async function generate(): Promise<void> {
       const normalizedBase = baseUrl.replace(/\/$/, "");
 
       return {
+        sourceFile: file,
         baseUrl: normalizedBase,
         paths: typed.paths ?? {},
+        scopeDescriptions: xeroSpecScopeDescriptions(file, typed),
       } satisfies ParsedSpec;
     }),
   );
@@ -478,6 +665,11 @@ export async function generate(): Promise<void> {
   console.error(`  Parsed ${validSpecs.length} specs`);
 
   const { hostGroups, scopeless } = buildGroups(validSpecs);
+  const scopeDescriptions = collectXeroScopeDescriptions(validSpecs);
+  const describedHostGroups = describeXeroHostGroups(
+    hostGroups,
+    scopeDescriptions,
+  );
 
   if (scopeless.length > 0) {
     console.error(
@@ -492,9 +684,9 @@ export async function generate(): Promise<void> {
     );
   }
 
-  const ts = generateTypeScript(hostGroups);
+  const ts = generateTypeScript(describedHostGroups);
 
-  const allPerms = [...hostGroups.values()].flat();
+  const allPerms = [...describedHostGroups.values()].flat();
   logStats(allPerms);
   writeOutput("xero", ts);
 }

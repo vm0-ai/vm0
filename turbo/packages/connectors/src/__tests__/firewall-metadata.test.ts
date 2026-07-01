@@ -65,24 +65,6 @@ const KNOWN_MISSING_PERMISSION_DESCRIPTION_GAPS: Partial<
 > = {
   // Keep this list shrinking. Each entry tracks a follow-up issue for
   // removing the connector from this legacy allowlist.
-  clerk: {
-    issue: 19609,
-    missingCount: 67,
-    missingNamesSha256:
-      "a78b992b48b034a9e826933355d7082cec11e449f90f2cc4ba3de6cb36dfb39f",
-  },
-  deel: {
-    issue: 19610,
-    missingCount: 55,
-    missingNamesSha256:
-      "f1aa9bde204742913cc515ce6c60870dcdee8df7ba8da4dd2d6c76264853f345",
-  },
-  dropbox: {
-    issue: 19611,
-    missingCount: 29,
-    missingNamesSha256:
-      "08c5f153d436ed1ec9be40b44f35fcb7c087a89cd26603b508eee2a8b176eb19",
-  },
   "google-cloud": {
     issue: 19566,
     missingCount: 1189,
@@ -714,6 +696,32 @@ describe("firewall metadata", () => {
     );
   });
 
+  it("loads source-backed Xero permission descriptions", async () => {
+    const detail = await loadFirewallPermissionMetadata("xero");
+    const index = await loadFirewallPermissionIndex("xero");
+
+    expect(detail).not.toBeNull();
+    expect(index).not.toBeNull();
+    for (const permission of detail!.permissions) {
+      expect(permission.description, permission.name).toEqual(
+        expect.any(String),
+      );
+      expect(permission.description?.trim(), permission.name).not.toBe("");
+    }
+    expect(index!.permissionDescription("connections")).toBe(
+      "List and disconnect Xero tenant connections for the authorized user.",
+    );
+    expect(index!.permissionDescription("marketplace.billing")).toBe(
+      "Read Xero App Store subscriptions and manage metered usage records.",
+    );
+    expect(index!.permissionDescription("accounting.transactions.read")).toBe(
+      "Grant read-only access to accounting transactions, including bank transactions, credit notes, invoices, payments, purchase orders, quotes, receipts, and related history.",
+    );
+    expect(index!.permissionDescription("projects.read")).toBe(
+      "Grant read-only access to projects",
+    );
+  });
+
   it("keeps server permission indexes aligned with generated summaries", async () => {
     const loadedIndexes = await Promise.all(
       Object.keys(FIREWALL_PERMISSION_METADATA_SUMMARIES).map(async (type) => {
@@ -866,6 +874,38 @@ describe("firewall metadata", () => {
     }
 
     expect(failures).toStrictEqual([]);
+  });
+
+  it("describes Dropbox permissions", async () => {
+    const detail = await loadFirewallPermissionMetadata("dropbox");
+    expect(detail).not.toBeNull();
+    expect(detail!.permissionCount).toBe(29);
+    expect(
+      detail!.permissions.filter((permission) => {
+        return (
+          permission.description === undefined ||
+          permission.description.trim().length === 0
+        );
+      }),
+    ).toStrictEqual([]);
+
+    const permissions = new Map(
+      detail!.permissions.map((permission) => {
+        return [permission.name, permission] as const;
+      }),
+    );
+    expect(permissions.get("files.content.read")?.description).toBe(
+      "Download, export, preview, and read Dropbox file content.",
+    );
+    expect(permissions.get("files.metadata.write")?.description).toBe(
+      "Create, update, and remove Dropbox file tags, templates, and custom properties.",
+    );
+    expect(permissions.get("members.write")?.description).toBe(
+      "Add, update, suspend, unsuspend, and manage Dropbox team members and member quotas.",
+    );
+    expect(permissions.get("team_data.governance.write")?.description).toBe(
+      "Create, update, release, and inspect Dropbox team legal hold policies and held revisions.",
+    );
   });
 
   it("keeps execution metadata synchronized with runtime construction data", async () => {
