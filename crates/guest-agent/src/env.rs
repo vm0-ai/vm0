@@ -1,4 +1,8 @@
 //! Guest-agent startup configuration parsed from environment snapshots.
+//!
+//! `GuestConfigRaw::from_process_env` is the only process-env capture boundary
+//! in this module. After startup, callers should pass an owned [`GuestConfig`]
+//! instead of rereading process globals through run-scoped facade functions.
 
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
