@@ -5,7 +5,7 @@ import { logger } from "../../lib/log";
 import { singleton } from "../../lib/singleton";
 import { nowDate } from "../../lib/time";
 import { waitUntil } from "../context/wait-until";
-import { tapError } from "../utils";
+import { safeSync, tapError } from "../utils";
 
 interface AxiomIngestClient {
   readonly ingest: (
@@ -53,28 +53,31 @@ export function recordSandboxOperations(
   }
 
   const dataset = `vm0-sandbox-op-log-${env("AXIOM_DATASET_SUFFIX")}`;
+  const events = attrsList.map((attrs) => {
+    return {
+      _time: attrs.timestamp ?? nowDate().toISOString(),
+      source: "api",
+      op_type: attrs.actionType,
+      sandbox_type: attrs.sandboxType,
+      duration_ms: attrs.durationMs,
+      success: attrs.success,
+      run_id: attrs.runId,
+      ...attrs.dimensions,
+    };
+  });
+  const ingestResult = safeSync(() => {
+    return client.ingest(dataset, events);
+  });
+  if ("error" in ingestResult) {
+    L.warn("Failed to ingest sandbox operation log", {
+      error: ingestResult.error,
+    });
+    return;
+  }
+
   waitUntil(
-    tapError(
-      Promise.resolve(
-        client.ingest(
-          dataset,
-          attrsList.map((attrs) => {
-            return {
-              _time: attrs.timestamp ?? nowDate().toISOString(),
-              source: "api",
-              op_type: attrs.actionType,
-              sandbox_type: attrs.sandboxType,
-              duration_ms: attrs.durationMs,
-              success: attrs.success,
-              run_id: attrs.runId,
-              ...attrs.dimensions,
-            };
-          }),
-        ),
-      ),
-      (error) => {
-        L.warn("Failed to ingest sandbox operation log", { error });
-      },
-    ),
+    tapError(Promise.resolve(ingestResult.ok), (error) => {
+      L.warn("Failed to ingest sandbox operation log", { error });
+    }),
   );
 }

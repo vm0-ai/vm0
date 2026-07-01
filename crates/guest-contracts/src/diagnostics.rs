@@ -295,6 +295,8 @@ pub enum FailureReason {
     InvalidApiKey,
     /// The configured credentials are invalid.
     InvalidCredentials,
+    /// The model context window was exhausted.
+    ContextWindowExceeded,
     /// The provider stopped because an output-token limit was reached.
     OutputTokenLimit,
     /// The provider reported overload.
@@ -317,6 +319,7 @@ impl FailureReason {
             Self::InsufficientCredits => "insufficient_credits",
             Self::InvalidApiKey => "invalid_api_key",
             Self::InvalidCredentials => "invalid_credentials",
+            Self::ContextWindowExceeded => "context_window_exceeded",
             Self::OutputTokenLimit => "output_token_limit",
             Self::ProviderOverloaded => "provider_overloaded",
             Self::ProviderStreamTimeout => "provider_stream_timeout",
@@ -672,6 +675,28 @@ mod tests {
 
         let json = serde_json::to_value(&diagnostic).unwrap();
         assert_eq!(json["failureReason"], "invalid_credentials");
+
+        let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
+        assert_eq!(round_trip, diagnostic);
+    }
+
+    #[test]
+    fn failure_diagnostic_serializes_context_window_exceeded_reason() {
+        assert_eq!(
+            FailureReason::ContextWindowExceeded.as_str(),
+            "context_window_exceeded"
+        );
+
+        let diagnostic = FailureDiagnostic::new(
+            FailureClass::CliNonzero,
+            AgentFramework::Codex,
+            PromptMetadata::from_prompt("debug failure"),
+        )
+        .with_cli_exit_code(1)
+        .with_failure_reason(FailureReason::ContextWindowExceeded);
+
+        let json = serde_json::to_value(&diagnostic).unwrap();
+        assert_eq!(json["failureReason"], "context_window_exceeded");
 
         let round_trip: FailureDiagnostic = serde_json::from_value(json).unwrap();
         assert_eq!(round_trip, diagnostic);

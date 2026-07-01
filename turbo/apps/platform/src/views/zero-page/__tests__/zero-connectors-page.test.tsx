@@ -351,49 +351,12 @@ describe("connectors page", () => {
     ).toBeTruthy();
   });
 
-  it("shows reconnect reason tooltip help for known reconnect causes", async () => {
+  it("does not show reconnect reason help on the connection expired badge", async () => {
     mockConnectors([
       {
         type: "github",
         connectionStatus: "reconnect-required",
         reconnectReason: "authorization_expired_or_revoked",
-      },
-    ]);
-
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-    });
-
-    let helpButton: HTMLElement | null = null;
-    await waitFor(() => {
-      const card = connectorCardByLabel("GitHub");
-      expect(within(card).getByText("Connection expired")).toBeInTheDocument();
-      helpButton = reconnectReasonHelpButton(card);
-      expect(helpButton).toBeInTheDocument();
-    });
-    if (!helpButton) {
-      throw new Error("Reconnect reason help button not found");
-    }
-    fireEvent.focus(helpButton);
-
-    await waitFor(() => {
-      expect(
-        screen.getAllByText(
-          "Authorization expired or was revoked. Reconnect to continue.",
-        ).length,
-      ).toBeGreaterThan(0);
-    });
-    expect(screen.queryByText("invalid_grant")).not.toBeInTheDocument();
-    fireEvent.blur(helpButton);
-  });
-
-  it("does not show reconnect reason help for unknown reconnect causes", async () => {
-    mockConnectors([
-      {
-        type: "github",
-        connectionStatus: "reconnect-required",
-        reconnectReason: null,
       },
     ]);
 
