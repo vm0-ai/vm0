@@ -3422,6 +3422,51 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn probe_transport_retry_exhaustion_is_sanitized_passthrough() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        drop(listener);
+
+        let original = format!(
+            "http://{addr}/transport-fails.tar.gz?X-Amz-Signature=secret&X-Amz-Credential=credential"
+        );
+        let name = "transport-retry-exhausted";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        let (_, _, error) = ops
+            .iter()
+            .find(|(k, _, _)| k == "storage_cache_skipped_head_failed")
+            .expect("expected skipped head telemetry");
+        let error = error.as_deref().expect("expected telemetry error reason");
+        assert!(
+            error.contains("retry exhausted after 3 attempts"),
+            "unexpected retry exhaustion reason: {error}"
+        );
+        assert!(
+            !error.contains("X-Amz-Signature")
+                && !error.contains("secret")
+                && !error.contains("credential")
+                && !error.contains("/transport-fails.tar.gz"),
+            "telemetry error must not include presigned URL details: {error}"
+        );
+    }
+
+    #[tokio::test]
     async fn probe_200_ignored_range_uses_content_length_without_reading_body() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
         let addr = listener.local_addr().unwrap();
