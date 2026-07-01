@@ -1,5 +1,31 @@
 # Changelog
 
+## [1.199.0](https://github.com/vm0-ai/vm0/compare/api-v1.198.0...api-v1.199.0) (2026-07-01)
+
+
+### Features
+
+* add Google Calendar event-updated workflow trigger ([#19562](https://github.com/vm0-ai/vm0/issues/19562)) ([814bd2f](https://github.com/vm0-ai/vm0/commit/814bd2ffb0d5e024463d1c90203f40512f792bae))
+
+
+### Bug Fixes
+
+* disable Claude Code attachments for incompatible providers ([#19558](https://github.com/vm0-ai/vm0/issues/19558)) ([d5cd233](https://github.com/vm0-ai/vm0/commit/d5cd233e81363cedaab73bafffa8eae1325d2180))
+
+
+### Refactoring
+
+* remove legacy generate image route ([#19568](https://github.com/vm0-ai/vm0/issues/19568)) ([7d62a26](https://github.com/vm0-ai/vm0/commit/7d62a268d0737a7effbfbbd174a4ef1b0a5bb4fa))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.134.0
+    * @vm0/core bumped to 8.381.1
+    * @vm0/db bumped to 1.80.0
+
 ## [1.198.0](https://github.com/vm0-ai/vm0/compare/api-v1.197.0...api-v1.198.0) (2026-07-01)
 
 
