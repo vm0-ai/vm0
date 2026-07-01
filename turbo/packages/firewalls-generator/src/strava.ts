@@ -93,7 +93,7 @@ const SCOPE_MAP: Record<string, string[]> = {
 
 const STRAVA_PERMISSION_DESCRIPTIONS = {
   "activities:read":
-    "Read athlete activities, including activity details, streams, comments, kudos, laps, zones, and activity history. Only Me activities require Strava activity:read_all.",
+    "Read athlete activities, including activity details, streams, comments, kudos, laps, zones, and activity history. Privacy zone data and Only You activities require Strava activity:read_all.",
   "activities:write": "Create and update athlete activities.",
   "athlete_stats:read": "Read athlete activity statistics.",
   "clubs:read":
