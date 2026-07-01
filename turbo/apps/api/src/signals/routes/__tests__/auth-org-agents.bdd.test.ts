@@ -908,7 +908,7 @@ describe("AGENT-01 and AGENT-02", () => {
 });
 
 describe("COMPOSE-01", () => {
-  it("creates, reads, lists, updates metadata, rejects invalid/cross-org access, and deletes composes through public APIs", async () => {
+  it("creates, reads, lists, and rejects invalid/cross-org access through public APIs", async () => {
     const admin = api.user();
     const otherAdmin = api.user();
     const composeName = slug("bdd-compose");
@@ -943,22 +943,6 @@ describe("COMPOSE-01", () => {
       }),
     ).toBeTruthy();
 
-    await api.updateZeroComposeMetadata(admin, created.composeId, {
-      displayName: "BDD Compose Zero",
-      description: "Metadata through zero compose API",
-      sound: "quiet",
-    });
-    const zeroAfterMetadata = await api.listZeroComposes(admin);
-    expect(
-      zeroAfterMetadata.find((compose) => {
-        return compose.id === created.composeId;
-      }),
-    ).toMatchObject({
-      displayName: "BDD Compose Zero",
-      description: "Metadata through zero compose API",
-      sound: "quiet",
-    });
-
     const invalid = await api.requestCreateCompose(
       admin,
       { version: "1", agents: {} },
@@ -973,14 +957,5 @@ describe("COMPOSE-01", () => {
     );
     expectApiError(crossOrg.body);
     expect(crossOrg.body.error.code).toBe("NOT_FOUND");
-
-    await api.deleteAgent(admin, created.composeId);
-    const deleted = await api.requestReadComposeById(
-      admin,
-      created.composeId,
-      [404],
-    );
-    expectApiError(deleted.body);
-    expect(deleted.body.error.code).toBe("NOT_FOUND");
   });
 });

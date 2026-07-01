@@ -48,7 +48,6 @@ import {
 import {
   zeroComposesByIdContract,
   zeroComposesListContract,
-  zeroComposesMetadataContract,
 } from "@vm0/api-contracts/contracts/zero-composes";
 import {
   zeroCustomConnectorByIdContract,
@@ -1700,28 +1699,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
         [200],
       );
       return response.body.composes;
-    },
-
-    async updateZeroComposeMetadata(
-      actor: ApiTestUser,
-      composeId: string,
-      body: {
-        readonly displayName?: string | null;
-        readonly description?: string | null;
-        readonly sound?: string | null;
-      },
-    ): Promise<void> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroComposesMetadataContract,
-      );
-      await accept(
-        client.update({
-          headers: authenticate(actor),
-          params: { id: composeId },
-          body,
-        }),
-        [200],
-      );
     },
 
     async createCustomConnector(

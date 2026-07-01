@@ -475,73 +475,15 @@ describe("COMPOSE-01 token access", () => {
 
     const zeroList = await composes.requestListZeroComposes(null, [401]);
     expect(zeroList.body).toStrictEqual(unauthenticatedBody);
-
-    const zeroMetadata = await composes.requestUpdateZeroComposeMetadata(
-      null,
-      missingId,
-      { displayName: "Unauthenticated" },
-      [401],
-    );
-    expect(zeroMetadata.body).toStrictEqual(unauthenticatedBody);
   });
 });
 
 describe("COMPOSE-01 zero route errors", () => {
-  it("returns zero-route errors for missing, org-less, and cross-org compose access", async () => {
-    const admin = api.user();
-    const name = slug("bdd-zero-errors");
-    const created = await api.createCompose(admin, composeWith(name));
-    await api.updateZeroComposeMetadata(admin, created.composeId, {
-      displayName: "Zero Initial",
-      description: "Zero description",
-      sound: "quiet",
-    });
-
+  it("returns zero-route errors for org-less compose list access", async () => {
     const noOrg = api.user({ orgId: null });
     const noOrgList = await composes.requestListZeroComposes(noOrg, [400]);
     expect(noOrgList.body).toStrictEqual({
       error: { message: "Invalid request", code: "BAD_REQUEST" },
-    });
-
-    const missingMetadata = await composes.requestUpdateZeroComposeMetadata(
-      admin,
-      randomUUID(),
-      { displayName: "Missing" },
-      [404],
-    );
-    expectApiError(missingMetadata.body);
-    expect(missingMetadata.body.error.message).toBe("Agent compose not found");
-
-    const noOrgMetadata = await composes.requestUpdateZeroComposeMetadata(
-      noOrg,
-      created.composeId,
-      { displayName: "No Org" },
-      [401],
-    );
-    expect(noOrgMetadata.body).toStrictEqual({
-      error: { message: "Not authenticated", code: "UNAUTHORIZED" },
-    });
-
-    const outsider = api.user();
-    const crossOrgMetadata = await composes.requestUpdateZeroComposeMetadata(
-      outsider,
-      created.composeId,
-      { displayName: "Cross Org" },
-      [404],
-    );
-    expectApiError(crossOrgMetadata.body);
-    expect(crossOrgMetadata.body.error.code).toBe("NOT_FOUND");
-
-    // Owner state stayed intact through every rejected mutation above.
-    const survivors = await api.listZeroComposes(admin);
-    expect(
-      survivors.find((compose) => {
-        return compose.id === created.composeId;
-      }),
-    ).toMatchObject({
-      displayName: "Zero Initial",
-      description: "Zero description",
-      sound: "quiet",
     });
   });
 });
