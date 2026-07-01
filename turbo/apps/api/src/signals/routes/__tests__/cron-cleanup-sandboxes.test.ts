@@ -649,6 +649,38 @@ describe("GET /api/cron/cleanup-sandboxes", () => {
     );
   });
 
+  it("keeps queued timeout cleanup successful when queue realtime publish fails", async () => {
+    const fixture = await trackRun(
+      insertRunFixture({ status: "queued", createdAt: minutesAgo(6) }),
+    );
+    context.mocks.ably.publish.mockImplementation((topic) => {
+      if (topic === "queue:changed") {
+        return Promise.reject(new Error("queue realtime unavailable"));
+      }
+      return Promise.resolve();
+    });
+
+    const response = await accept(
+      apiClient().cleanup({ headers: cronHeaders() }),
+      [200],
+    );
+
+    expect(response.body.cleaned).toBe(1);
+    expect(response.body.errors).toBe(0);
+    expect(response.body.results).toContainEqual(
+      expect.objectContaining({
+        runId: fixture.runId,
+        sandboxId: null,
+        status: "cleaned",
+        reason: "Queued run timed out before queue entry was persisted",
+      }),
+    );
+    await expect(findRun(fixture.runId)).resolves.toMatchObject({
+      status: "timeout",
+      error: "Queued run timed out before queue entry was persisted",
+    });
+  });
+
   it("does not clean up fresh queued runs missing queue entries", async () => {
     const fixture = await trackRun(
       insertRunFixture({ status: "queued", createdAt: minutesAgo(1) }),

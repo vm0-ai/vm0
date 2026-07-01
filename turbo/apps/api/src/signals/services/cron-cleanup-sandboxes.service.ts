@@ -93,17 +93,49 @@ function isExpiredRun(run: StaleRun, cutoffs: CleanupCutoffs): boolean {
   return referenceTime < staleRunCutoff(run, cutoffs);
 }
 
-async function publishQueueMarkerNotification(
+async function publishQueueChangedSafely(
+  orgId: string,
+  signal: AbortSignal,
+): Promise<void> {
+  const result = await settle(publishOrgSignal(orgId, "queue:changed"), signal);
+  if (!result.ok) {
+    L.warn("Failed to publish queue changed signal", {
+      orgId,
+      error: result.error,
+    });
+  }
+}
+
+async function publishQueueMarkerNotificationSafely(
   notification: QueueMarkerRevokeNotification,
   signal: AbortSignal,
 ): Promise<void> {
-  await publishUserSignal(
-    [notification.userId],
-    `chatThreadMessageCreated:${notification.chatThreadId}`,
+  const messageResult = await settle(
+    publishUserSignal(
+      [notification.userId],
+      `chatThreadMessageCreated:${notification.chatThreadId}`,
+    ),
+    signal,
   );
-  signal.throwIfAborted();
-  await publishThreadListChanged(notification.userId);
-  signal.throwIfAborted();
+  if (!messageResult.ok) {
+    L.warn("Failed to publish queue marker revocation signal", {
+      userId: notification.userId,
+      chatThreadId: notification.chatThreadId,
+      error: messageResult.error,
+    });
+  }
+
+  const threadListResult = await settle(
+    publishThreadListChanged(notification.userId),
+    signal,
+  );
+  if (!threadListResult.ok) {
+    L.warn("Failed to publish queue marker thread list signal", {
+      userId: notification.userId,
+      chatThreadId: notification.chatThreadId,
+      error: threadListResult.error,
+    });
+  }
 }
 
 const cleanupExportJobs$ = command(
@@ -208,12 +240,11 @@ const dispatchMaintenanceTerminalSideEffects$ = command(
     signal.throwIfAborted();
 
     if (input.queueChanged) {
-      await publishOrgSignal(input.orgId, "queue:changed");
-      signal.throwIfAborted();
+      await publishQueueChangedSafely(input.orgId, signal);
     }
 
     if (input.queueMarkerNotification) {
-      await publishQueueMarkerNotification(
+      await publishQueueMarkerNotificationSafely(
         input.queueMarkerNotification,
         signal,
       );
