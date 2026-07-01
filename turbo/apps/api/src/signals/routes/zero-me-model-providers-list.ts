@@ -1,4 +1,4 @@
-import { computed } from "ccstate";
+import { command } from "ccstate";
 import type {
   ModelProviderListResponse,
   ModelProviderType,
@@ -7,6 +7,7 @@ import { zeroPersonalModelProvidersMainContract } from "@vm0/api-contracts/contr
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
+import { refreshPersonalModelProviderSubscriptionUsage$ } from "../services/model-provider-subscription-usage.service";
 import { zeroUserModelProviders } from "../services/zero-model-provider.service";
 import type { RouteEntry } from "../route-entry";
 
@@ -24,10 +25,22 @@ function visibleModelFirstProviders(
   };
 }
 
-const listInner$ = computed(async (get) => {
+const listInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
   const result = await get(zeroUserModelProviders(auth.orgId, auth.userId));
-  return { status: 200 as const, body: visibleModelFirstProviders(result) };
+  signal.throwIfAborted();
+  const visible = visibleModelFirstProviders(result);
+  const refreshed = await set(
+    refreshPersonalModelProviderSubscriptionUsage$,
+    {
+      orgId: auth.orgId,
+      userId: auth.userId,
+      result: visible,
+    },
+    signal,
+  );
+  signal.throwIfAborted();
+  return { status: 200 as const, body: refreshed };
 });
 
 export const zeroMeModelProvidersListRoutes: readonly RouteEntry[] = [

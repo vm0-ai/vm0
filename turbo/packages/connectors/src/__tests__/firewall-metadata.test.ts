@@ -1,3 +1,4 @@
+import * as crypto from "node:crypto";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { describe, expect, it } from "vitest";
@@ -54,12 +55,83 @@ const DEFAULT_FIREWALL_SECRET_PLACEHOLDER =
 const FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS = 60_000;
 type FirewallConnectorType =
   keyof typeof FIREWALL_PERMISSION_METADATA_SUMMARIES;
+interface KnownMissingPermissionDescriptionGap {
+  readonly issue: number;
+  readonly missingCount: number;
+  readonly missingNamesSha256: string;
+}
+const KNOWN_MISSING_PERMISSION_DESCRIPTION_GAPS: Partial<
+  Record<FirewallConnectorType, KnownMissingPermissionDescriptionGap>
+> = {
+  // Keep this list shrinking. Each entry tracks a follow-up issue for
+  // removing the connector from this legacy allowlist.
+  clerk: {
+    issue: 19609,
+    missingCount: 67,
+    missingNamesSha256:
+      "a78b992b48b034a9e826933355d7082cec11e449f90f2cc4ba3de6cb36dfb39f",
+  },
+  deel: {
+    issue: 19610,
+    missingCount: 55,
+    missingNamesSha256:
+      "f1aa9bde204742913cc515ce6c60870dcdee8df7ba8da4dd2d6c76264853f345",
+  },
+  dropbox: {
+    issue: 19611,
+    missingCount: 29,
+    missingNamesSha256:
+      "08c5f153d436ed1ec9be40b44f35fcb7c087a89cd26603b508eee2a8b176eb19",
+  },
+  "google-cloud": {
+    issue: 19566,
+    missingCount: 1189,
+    missingNamesSha256:
+      "29130e444cd58beaaa654c0207dbec064be945113ca97cf2d391f3614cb37cc1",
+  },
+  sentry: {
+    issue: 19612,
+    missingCount: 22,
+    missingNamesSha256:
+      "ddae869f18724903f394137a9a30186c0199c174c7a569bcb6f40349c0eaf904",
+  },
+  vercel: {
+    issue: 19613,
+    missingCount: 68,
+    missingNamesSha256:
+      "8ccddb8850744d7bdc07fc73a57b0cd5831cdc6a482c724a920abadd3317782e",
+  },
+  xero: {
+    issue: 19614,
+    missingCount: 35,
+    missingNamesSha256:
+      "0234b2bf557b118688656df62d5018f872195b32d3d8d04ff191cf8f0b9efca0",
+  },
+};
 let runtimeEntriesPromise: Promise<
   readonly (readonly [FirewallConnectorType, FirewallConfig])[]
 > | null = null;
 
 function compareStrings(a: string, b: string): number {
   return a < b ? -1 : a > b ? 1 : 0;
+}
+
+function permissionDescriptionGapHash(
+  permissionNames: readonly string[],
+): string {
+  return crypto
+    .createHash("sha256")
+    .update([...permissionNames].sort(compareStrings).join("\n"))
+    .digest("hex");
+}
+
+function formatPermissionDescriptionGapSample(
+  permissionNames: readonly string[],
+): string {
+  const sortedNames = [...permissionNames].sort(compareStrings);
+  const sample = sortedNames.slice(0, 10).join(", ");
+  const remaining = sortedNames.length - 10;
+  return remaining > 0 ? `${sample}, ... ${remaining} more` : sample;
 }
 
 function isConnectorType(type: string): type is ConnectorType {
@@ -622,6 +694,26 @@ describe("firewall metadata", () => {
     expect(await loadFirewallPermissionIndex("cloudinary")).toBeNull();
   });
 
+  it("loads source-backed Clerk permission descriptions", async () => {
+    const detail = await loadFirewallPermissionMetadata("clerk");
+    const index = await loadFirewallPermissionIndex("clerk");
+
+    expect(detail).not.toBeNull();
+    expect(index).not.toBeNull();
+    for (const permission of detail!.permissions) {
+      expect(permission.description, permission.name).toEqual(
+        expect.any(String),
+      );
+      expect(permission.description?.trim(), permission.name).not.toBe("");
+    }
+    expect(index!.permissionDescription("users:read")).toBe(
+      "Read Clerk Users. The user object represents a user that has successfully signed up to your application.",
+    );
+    expect(index!.permissionDescription("admin-portal-link-tokens:write")).toBe(
+      "Manage Clerk Admin Portal Link Tokens. Create and revoke single-use admin portal link tokens for Clerk admin portal access.",
+    );
+  });
+
   it("keeps server permission indexes aligned with generated summaries", async () => {
     const loadedIndexes = await Promise.all(
       Object.keys(FIREWALL_PERMISSION_METADATA_SUMMARIES).map(async (type) => {
@@ -728,6 +820,52 @@ describe("firewall metadata", () => {
         loadFirewallPermissionMetadata(unknownType),
       ).resolves.toBeNull();
     }
+  });
+
+  it("prevents new permission description gaps", async () => {
+    const failures: string[] = [];
+
+    for (const [type] of await runtimeEntries()) {
+      const detail = await loadFirewallPermissionMetadata(type);
+      if (detail === null) {
+        failures.push(`${type}: missing permission detail metadata`);
+        continue;
+      }
+
+      const missingDescriptions = detail.permissions
+        .filter((permission) => {
+          return (
+            permission.description === undefined ||
+            permission.description.trim().length === 0
+          );
+        })
+        .map((permission) => {
+          return permission.name;
+        });
+      const knownGap = KNOWN_MISSING_PERMISSION_DESCRIPTION_GAPS[type];
+      const missingNamesSha256 =
+        permissionDescriptionGapHash(missingDescriptions);
+
+      if (knownGap) {
+        if (
+          missingDescriptions.length !== knownGap.missingCount ||
+          missingNamesSha256 !== knownGap.missingNamesSha256
+        ) {
+          failures.push(
+            `${type}: expected ${knownGap.missingCount} missing descriptions tracked by #${knownGap.issue} with hash ${knownGap.missingNamesSha256}, got ${missingDescriptions.length} with hash ${missingNamesSha256}: ${formatPermissionDescriptionGapSample(missingDescriptions)}`,
+          );
+        }
+        continue;
+      }
+
+      if (missingDescriptions.length > 0) {
+        failures.push(
+          `${type}: missing descriptions without a tracked follow-up issue: ${formatPermissionDescriptionGapSample(missingDescriptions)}`,
+        );
+      }
+    }
+
+    expect(failures).toStrictEqual([]);
   });
 
   it("keeps execution metadata synchronized with runtime construction data", async () => {

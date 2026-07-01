@@ -1143,6 +1143,8 @@ export {
   type PublicConnectorCatalogAuthMethodSummary,
   type PublicConnectorCatalogDetail,
   type PublicConnectorCatalogDetailResponse,
+  type PublicConnectorCatalogConnection,
+  type PublicConnectorCatalogConnectionStatus,
   type PublicConnectorCatalogItem,
   type PublicConnectorCatalogListResponse,
   type PublicConnectorCatalogManualField,
@@ -1150,6 +1152,8 @@ export {
   type PublicConnectorCatalogPermissionDetailResponse,
   type PublicConnectorCatalogPermissionSummary,
   type PublicConnectorCatalogStartOption,
+  type PublicConnectorCatalogStatusItem,
+  type PublicConnectorCatalogStatusResponse,
   type ZeroConnectorCatalogContract,
 } from "./zero-connector-catalog";
 export {

@@ -60,8 +60,11 @@ function makeJwt(payload: Record<string, unknown>): string {
 
 type CodexWorkspaceClaim =
   | "organization.title"
+  | "organization.name"
   | "workspace.name"
-  | "chatgpt_workspace_name";
+  | "workspace.title"
+  | "chatgpt_workspace_name"
+  | "chatgpt_workspace_display_name";
 
 function makeIdToken(opts: {
   readonly accountId: string | null;
@@ -83,12 +86,24 @@ function makeIdToken(opts: {
         auth.organization = { title: opts.workspaceName };
         break;
       }
+      case "organization.name": {
+        auth.organization = { name: opts.workspaceName };
+        break;
+      }
       case "workspace.name": {
         auth.workspace = { name: opts.workspaceName };
         break;
       }
+      case "workspace.title": {
+        auth.workspace = { title: opts.workspaceName };
+        break;
+      }
       case "chatgpt_workspace_name": {
         auth.chatgpt_workspace_name = opts.workspaceName;
+        break;
+      }
+      case "chatgpt_workspace_display_name": {
+        auth.chatgpt_workspace_display_name = opts.workspaceName;
         break;
       }
     }
@@ -741,6 +756,27 @@ describe("POST /api/zero/model-providers", () => {
   it("handles codex auth_json paste", async () => {
     const fixture = uniqueOrgUser("zmp-codex-paste");
     mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+    server.use(
+      http.get("https://chatgpt.com/backend-api/wham/usage", ({ request }) => {
+        expect(request.headers.get("chatgpt-account-id")).toBe(
+          "ws_acct_from_id_token_org",
+        );
+        return HttpResponse.json({
+          plan_type: "pro",
+          workspace_name: "Usage Org Acme",
+          rate_limit: {
+            primary_window: {
+              limit_window_seconds: 18_000,
+              reset_at: 1_893_441_600,
+            },
+            secondary_window: {
+              limit_window_seconds: 604_800,
+              reset_at: 1_893_456_000,
+            },
+          },
+        });
+      }),
+    );
     const client = setupApp({ context })(zeroModelProvidersMainContract);
 
     const response = await accept(
@@ -749,7 +785,7 @@ describe("POST /api/zero/model-providers", () => {
         body: {
           type: "codex-oauth-token",
           authMethod: "auth_json",
-          secrets: { CODEX_AUTH_JSON: makeAuthJson() },
+          secrets: { CODEX_AUTH_JSON: makeAuthJson({ workspaceName: null }) },
         },
       }),
       [201],
@@ -757,11 +793,13 @@ describe("POST /api/zero/model-providers", () => {
 
     expect(response.body.provider.type).toBe("codex-oauth-token");
     expect(response.body.provider.authMethod).toBe("auth_json");
-    expect(response.body.provider.workspaceName).toBe("Org Acme");
-    expect(response.body.provider.planType).toBe("plus");
+    expect(response.body.provider.workspaceName).toBe("Usage Org Acme");
+    expect(response.body.provider.planType).toBe("pro");
     expect(response.body.provider).toMatchObject({
-      workspaceName: "Org Acme",
-      planType: "plus",
+      workspaceName: "Usage Org Acme",
+      planType: "pro",
+      subscriptionResetPeriod: "weekly",
+      subscriptionNextResetAt: "2030-01-01T00:00:00.000Z",
       needsReconnect: false,
       lastRefreshErrorCode: null,
     });
@@ -790,12 +828,24 @@ describe("POST /api/zero/model-providers", () => {
 
     for (const variant of [
       {
+        workspaceClaim: "organization.name" as const,
+        workspaceName: "Organization Name Claim",
+      },
+      {
         workspaceClaim: "workspace.name" as const,
         workspaceName: "Workspace Claim",
       },
       {
+        workspaceClaim: "workspace.title" as const,
+        workspaceName: "Workspace Title Claim",
+      },
+      {
         workspaceClaim: "chatgpt_workspace_name" as const,
         workspaceName: "Legacy Workspace Claim",
+      },
+      {
+        workspaceClaim: "chatgpt_workspace_display_name" as const,
+        workspaceName: "Workspace Display Claim",
       },
       {
         workspaceClaim: "organization.title" as const,

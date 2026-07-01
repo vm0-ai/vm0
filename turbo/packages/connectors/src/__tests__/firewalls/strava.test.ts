@@ -4,6 +4,10 @@ import { findMatchingPermissions } from "../../firewall-rule-matcher";
 import type { FirewallConfig } from "../../firewall-types";
 import { loadRequiredConnectorFirewall } from "../firewall-test-helpers";
 
+type FirewallPermission = NonNullable<
+  FirewallConfig["apis"][number]["permissions"]
+>[number];
+
 const RUNTIME_METHODS = [
   "GET",
   "POST",
@@ -57,6 +61,16 @@ function expectStravaMatches(
   );
 }
 
+function stravaPermissionsByName(): Map<string, FirewallPermission> {
+  return new Map(
+    firewall.apis.flatMap((api) => {
+      return (api.permissions ?? []).map((permission) => {
+        return [permission.name, permission] as const;
+      });
+    }),
+  );
+}
+
 function expandRuntimeRules(rule: string): string[] {
   const spaceIndex = rule.indexOf(" ");
   const method = rule.slice(0, spaceIndex);
@@ -85,6 +99,30 @@ describe("strava firewall", () => {
     for (const oldScopeGroup of STRAVA_REMOVED_OAUTH_SCOPE_GROUPS) {
       expect(permissions.has(oldScopeGroup)).toBe(false);
     }
+  });
+
+  it("describes every resource permission", () => {
+    const permissions = stravaPermissionsByName();
+
+    expect([...permissions.keys()].sort()).toStrictEqual(
+      [...STRAVA_RESOURCE_PERMISSIONS].sort(),
+    );
+    expect(
+      STRAVA_RESOURCE_PERMISSIONS.filter((name) => {
+        const description = permissions.get(name)?.description;
+        return description === undefined || description.trim().length === 0;
+      }),
+    ).toStrictEqual([]);
+    expect(permissions.get("activities:read")?.description).toContain(
+      "activity:read_all",
+    );
+    expect(permissions.get("routes:read")?.description).toContain("read_all");
+    expect(permissions.get("profile:read")?.description).toContain(
+      "profile:read_all",
+    );
+    expect(
+      permissions.get("segment_effort_streams:read")?.description,
+    ).toContain("read_all");
   });
 
   it("assigns one permission owner to every runtime route", () => {

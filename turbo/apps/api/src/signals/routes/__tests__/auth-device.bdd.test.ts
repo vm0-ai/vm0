@@ -489,7 +489,9 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
     expect(browserUrl.origin).toBe("https://claude.com");
     expect(browserUrl.pathname).toBe("/cai/oauth/authorize");
     expect(browserUrl.searchParams.get("response_type")).toBe("code");
-    expect(browserUrl.searchParams.get("scope")).toBe("user:inference");
+    expect(browserUrl.searchParams.get("scope")).toBe(
+      "user:profile user:inference",
+    );
 
     const wrongState = await authDevice.requestClaudeCodeComplete(
       admin,
@@ -666,7 +668,11 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
         `Expected Claude Code device auth start, got ${started.status}`,
       );
     }
-    const state = new URL(started.body.browserUrl).searchParams.get("state");
+    const browserUrl = new URL(started.body.browserUrl);
+    expect(browserUrl.searchParams.get("scope")).toBe(
+      "user:profile user:inference",
+    );
+    const state = browserUrl.searchParams.get("state");
     if (!state) {
       throw new Error("Missing state in Claude Code browser URL");
     }
@@ -683,9 +689,17 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
       provider: {
         type: "claude-code-oauth-token",
         secretName: "CLAUDE_CODE_OAUTH_TOKEN",
+        workspaceName: "claude.user@example.com",
+        planType: "pro",
+        subscriptionResetPeriod: "weekly",
+        subscriptionNextResetAt: "2030-01-07T00:00:00.000Z",
       },
     });
     expect(calls.token).toHaveLength(1);
+    expect(calls.profile).toHaveLength(1);
+    expect(calls.usage).toHaveLength(1);
+    expect(calls.profile[0]?.get("anthropic-beta")).toBe("oauth-2025-04-20");
+    expect(calls.usage[0]?.get("user-agent")).toBe("claude-code/2.1.161");
     expect(calls.token[0]).toMatchObject({
       grant_type: "authorization_code",
       code: "auth_code_test",
@@ -698,10 +712,13 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
 
     const providers = await support.listModelProviders(admin);
     expect(
-      providers.body.modelProviders.some((provider) => {
+      providers.body.modelProviders.find((provider) => {
         return provider.type === "claude-code-oauth-token";
       }),
-    ).toBeTruthy();
+    ).toMatchObject({
+      workspaceName: "claude.user@example.com",
+      planType: "pro",
+    });
 
     const reComplete = await authDevice.requestClaudeCodeComplete(
       admin,
@@ -744,7 +761,11 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
     );
     expect(completed.body).toMatchObject({
       status: "complete",
-      provider: { type: "claude-code-oauth-token" },
+      provider: {
+        type: "claude-code-oauth-token",
+        workspaceName: "claude.user@example.com",
+        planType: "pro",
+      },
     });
 
     const personalProviders = await support.listPersonalModelProviders(
@@ -755,10 +776,27 @@ describe("MODEL-PROVIDER: device auth boundaries", () => {
       throw new Error("Expected personal model provider list response");
     }
     expect(
-      personalProviders.body.modelProviders.some((provider) => {
+      personalProviders.body.modelProviders.find((provider) => {
         return provider.type === "claude-code-oauth-token";
       }),
-    ).toBeTruthy();
+    ).toMatchObject({
+      workspaceName: "claude.user@example.com",
+      planType: "pro",
+      subscriptionUsage: {
+        fiveHour: {
+          usedPercent: 12,
+          remainingPercent: 88,
+          resetAt: "2030-01-01T05:00:00.000Z",
+          windowSeconds: 18_000,
+        },
+        weekly: {
+          usedPercent: 24,
+          remainingPercent: 76,
+          resetAt: "2030-01-07T00:00:00.000Z",
+          windowSeconds: 604_800,
+        },
+      },
+    });
 
     await support.deletePersonalModelProvider(
       member,

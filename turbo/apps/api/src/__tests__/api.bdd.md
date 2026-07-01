@@ -128,7 +128,7 @@ When they read by id, read by name, list, update metadata, and delete it
 Then the compose APIs expose every state transition.
 Then deleted, cross-org, duplicate, invalid, and pending-run protected compose cases return the expected responses.
 
-Coverage: `agent-composes-create`, `agent-composes-read`, `agent-composes-metadata`, `agent-composes-delete`, `zero-composes-by-id`, `zero-composes-list`, `zero-composes-metadata-update`, `zero-composes-delete`.
+Coverage: `agent-composes-create`, `agent-composes-read`, `agent-composes-metadata`, `agent-composes-delete`, `zero-composes-by-id`, `zero-composes-list`, `zero-composes-metadata-update`.
 
 ### RUN-01: Run creation admission and validation
 
