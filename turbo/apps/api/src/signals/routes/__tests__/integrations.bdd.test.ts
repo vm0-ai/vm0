@@ -1283,7 +1283,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       throw new Error("Expected GPT Slack run to expose its session");
     }
 
-    await integrations.updateUserModelPreference(actor, "claude-sonnet-4-6");
+    await integrations.updateUserModelPreference(actor, "claude-sonnet-5");
     await integrations.postSlackEvent(teamId, {
       type: "app_mention",
       user: slackUserId,
@@ -1841,7 +1841,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
       integrations.modelPickerSubmission({
         workspaceId: teamId,
         slackUserId,
-        selectedValue: "claude-sonnet-4-6",
+        selectedValue: "claude-sonnet-5",
         channelId: "C_BDD_PICK",
       }),
     );
@@ -1849,7 +1849,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     await expect(
       integrations.readUserModelPreference(actor),
     ).resolves.toMatchObject({
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: "claude-sonnet-5",
     });
 
     const replaceModel = await integrations.postSlackInteractive(
