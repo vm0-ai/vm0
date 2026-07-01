@@ -228,6 +228,14 @@ type ClientSendResolution =
   | CreatedChatMessageResponse
   | ReturnType<typeof conflict>;
 
+interface NoActiveRunForQueuedMessage {
+  readonly kind: "no-active-run";
+}
+
+type QueueUnassociatedNormalMessageResult =
+  | ClientSendResolution
+  | NoActiveRunForQueuedMessage;
+
 type CreateChatThreadResult =
   | {
       readonly id: string;
@@ -277,6 +285,12 @@ interface ExistingClientMessageIdRow {
   readonly runStatus: string | null;
   readonly runCreatedAt: Date | null;
 }
+
+interface LockedActiveRunRow extends Record<string, unknown> {
+  readonly id: string;
+}
+
+type DbTransaction = Parameters<Parameters<Db["transaction"]>[0]>[0];
 
 const sendBody$ = bodyResultOf(chatMessagesContract.send);
 // Existing web chat threads carry a small recent-run window in the system
@@ -408,6 +422,17 @@ function clientMessageIdResolutionResponse(
 function isCancelResult(value: unknown): value is CancelRunResult {
   return (
     typeof value === "object" && value !== null && "alreadyCancelled" in value
+  );
+}
+
+function isNoActiveRunForQueuedMessage(
+  value: unknown,
+): value is NoActiveRunForQueuedMessage {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    "kind" in value &&
+    value.kind === "no-active-run"
   );
 }
 
@@ -975,6 +1000,21 @@ async function activeRunExistsForThread(
     )
     .limit(1);
   return run !== undefined;
+}
+
+async function lockActiveRunForQueuedMessage(
+  tx: DbTransaction,
+  threadId: string,
+): Promise<boolean> {
+  const runs = await tx.execute<LockedActiveRunRow>(sql`
+    SELECT ${agentRuns.id} AS "id"
+    FROM ${agentRuns}
+    INNER JOIN ${zeroRuns} ON ${zeroRuns.id} = ${agentRuns.id}
+    WHERE ${zeroRuns.chatThreadId} = ${threadId}
+      AND ${agentRuns.status} IN (${"queued"}, ${"pending"}, ${"running"})
+    FOR UPDATE
+  `);
+  return runs.rows.length > 0;
 }
 
 async function resolveClientMessageSend(params: {
@@ -1552,8 +1592,16 @@ function appendUnassociatedUserMessage(params: {
   readonly attachFiles: readonly AttachFile[] | undefined;
   readonly clientMessageId: string | undefined;
   readonly generationTemplate: IncomingGenerationTemplate;
-}): Promise<ClientMessageIdResolution> {
+}): Promise<ClientMessageIdResolution | NoActiveRunForQueuedMessage> {
   return params.db.transaction(async (tx) => {
+    const activeRunLocked = await lockActiveRunForQueuedMessage(
+      tx,
+      params.threadId,
+    );
+    if (!activeRunLocked) {
+      return { kind: "no-active-run" };
+    }
+
     await tx
       .update(chatThreads)
       .set({ draftContent: null, draftAttachments: null })
@@ -2087,10 +2135,7 @@ async function queueUnassociatedNormalMessage(params: {
   readonly prepared: PreparedNormalSend;
   readonly body: NormalSendBody;
   readonly userId: string;
-}): Promise<
-  | CreatedChatMessageResponse
-  | ReturnType<typeof duplicateClientMessageIdResponse>
-> {
+}): Promise<QueueUnassociatedNormalMessageResult> {
   const message = await appendUnassociatedUserMessage({
     db: params.prepared.db,
     threadId: params.prepared.thread.threadId,
@@ -2100,6 +2145,9 @@ async function queueUnassociatedNormalMessage(params: {
     clientMessageId: params.body.clientMessageId,
     generationTemplate: params.body.generationTemplate,
   });
+  if (message.kind === "no-active-run") {
+    return message;
+  }
   if (message.kind === "queued" && message.inserted) {
     await publishChatMessageCreated(
       params.userId,
@@ -2602,33 +2650,46 @@ export const sendNormalMessage$ = command(
       return badRequestMessage("Client thread id is already in use");
     }
 
-    const hasActiveRun = await measureApiDispatchTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_web_chat_check_active_run",
-      "nested",
-      async () => {
-        return await activeRunExistsForThread(
-          prepared.db,
-          prepared.thread.threadId,
-        );
-      },
-    );
-    signal.throwIfAborted();
-    if (hasActiveRun) {
-      if (args.body.revokesMessageId) {
-        return badRequestMessage("Recommended follow-up cannot be queued");
-      }
-      const response = await queueUnassociatedNormalMessage({
-        prepared,
-        body: args.body,
-        userId: args.userId,
-      });
+    for (;;) {
+      const hasActiveRun = await measureApiDispatchTiming(
+        args.timing,
+        "api_dispatch_pre_create_zero_web_chat_check_active_run",
+        "nested",
+        async () => {
+          return await activeRunExistsForThread(
+            prepared.db,
+            prepared.thread.threadId,
+          );
+        },
+      );
       signal.throwIfAborted();
-      return response;
-    }
-    signal.throwIfAborted();
+      if (hasActiveRun) {
+        if (args.body.revokesMessageId) {
+          return badRequestMessage("Recommended follow-up cannot be queued");
+        }
+        const response = await queueUnassociatedNormalMessage({
+          prepared,
+          body: args.body,
+          userId: args.userId,
+        });
+        signal.throwIfAborted();
+        if (!isNoActiveRunForQueuedMessage(response)) {
+          return response;
+        }
+        continue;
+      }
+      signal.throwIfAborted();
 
-    return await set(createNormalChatRun$, { args, prepared }, signal);
+      const response = await set(
+        createNormalChatRun$,
+        { args, prepared },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (!isNoActiveRunForQueuedMessage(response)) {
+        return response;
+      }
+    }
   },
 );
 
