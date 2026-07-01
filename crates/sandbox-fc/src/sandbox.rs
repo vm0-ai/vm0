@@ -2615,9 +2615,6 @@ const BALLOON_SETTLE_TOLERANCE_CAP_MIB: u32 = 256;
 /// targets are not fully swallowed by the 4 GiB cap.
 const BALLOON_SETTLE_TOLERANCE_TARGET_DIVISOR: u32 = 8;
 const BALLOON_SEVERE_DEFICIT_MIN_MIB: u32 = 256;
-/// Conservative fallback pressure boundary when Firecracker reports MemFree
-/// but not MemAvailable.
-const BALLOON_PRESSURE_FREE_MIB: i64 = 64;
 const BALLOON_PRESSURE_LIMITED_REASON: &str = "pressure_limited_partial_reclaim";
 const BYTES_PER_MIB: i64 = 1024 * 1024;
 
@@ -2741,12 +2738,8 @@ impl BalloonSettleSummary {
     }
 
     fn is_guest_memory_pressure_limited(&self) -> bool {
-        match self.reported_available_mib() {
-            Some(available_mib) => available_mib < balloon::PRESSURE_AVAILABLE_MIB,
-            None => self
-                .reported_free_mib()
-                .is_some_and(|free_mib| free_mib <= BALLOON_PRESSURE_FREE_MIB),
-        }
+        self.reported_available_mib()
+            .is_some_and(|available_mib| available_mib < balloon::PRESSURE_AVAILABLE_MIB)
     }
 
     fn severe_deficit_threshold_mib(&self) -> u32 {
@@ -6791,30 +6784,31 @@ mod tests {
     }
 
     #[test]
-    fn pressure_limited_reclaim_uses_free_memory_only_when_available_memory_is_missing() {
+    fn pressure_limited_reclaim_ignores_free_memory_when_available_memory_is_missing() {
         let target_mib = 2048 - balloon::MIN_GUEST_MIB;
         let tolerance_mib = balloon_settle_tolerance_mib(target_mib);
         let mut available_summary = BalloonSettleSummary::new(target_mib);
         let mut available_stats = balloon_statistics(target_mib, 1250);
-        available_stats.free_memory = Some(mib(32));
-        available_stats.available_memory = Some(mib(2048));
+        available_stats.free_memory = Some(mib(2048));
+        available_stats.available_memory = Some(mib(128));
         available_stats.total_memory = Some(mib(2048));
         let available_deficit_mib = available_summary.observe(&available_stats);
 
         assert!(
-            !available_summary
+            available_summary
                 .is_pressure_limited_partial_reclaim(available_deficit_mib, tolerance_mib)
         );
 
-        let mut free_fallback_summary = BalloonSettleSummary::new(target_mib);
-        let mut free_fallback_stats = balloon_statistics(target_mib, 1250);
-        free_fallback_stats.free_memory = Some(mib(32));
-        free_fallback_stats.total_memory = Some(mib(2048));
-        let free_fallback_deficit_mib = free_fallback_summary.observe(&free_fallback_stats);
+        let mut missing_available_summary = BalloonSettleSummary::new(target_mib);
+        let mut missing_available_stats = balloon_statistics(target_mib, 1250);
+        missing_available_stats.free_memory = Some(mib(32));
+        missing_available_stats.total_memory = Some(mib(2048));
+        let missing_available_deficit_mib =
+            missing_available_summary.observe(&missing_available_stats);
 
         assert!(
-            free_fallback_summary
-                .is_pressure_limited_partial_reclaim(free_fallback_deficit_mib, tolerance_mib)
+            !missing_available_summary
+                .is_pressure_limited_partial_reclaim(missing_available_deficit_mib, tolerance_mib)
         );
     }
 
