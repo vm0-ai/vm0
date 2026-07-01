@@ -31,7 +31,14 @@ export const subscribeComputerUseHostsChanged$ = command(
       set(reloadComputerUseHosts$);
       return false;
     });
-    await set(setAblyLoop$, "computerUseHostsChanged", onChanged$, signal);
+    await set(
+      setAblyLoop$,
+      {
+        topic: "computerUseHostsChanged",
+        loopCommand$: onChanged$,
+      },
+      signal,
+    );
   },
 );
 

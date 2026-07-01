@@ -11,10 +11,7 @@ import {
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
-import {
-  setAblyLoopWithOptions$,
-  setAblyPayloadLoopWithOptions$,
-} from "../realtime.ts";
+import { setAblyLoop$, setAblyPayloadLoop$ } from "../realtime.ts";
 import { createDeferredPromise, settle } from "../utils.ts";
 import { logger } from "../log.ts";
 import { reloadSidebarDraftThreads$ } from "./sidebar-draft-threads.ts";
@@ -328,7 +325,7 @@ const subscribeRealtime$ = command(
     const options = { onSubscribed: markSubscribed };
     const subscription = Promise.all([
       set(
-        setAblyLoopWithOptions$,
+        setAblyLoop$,
         {
           topic: `chatThreadMessageCreated:${threadId}`,
           loopCommand$: handlers.onMessageCreated$,
@@ -337,7 +334,7 @@ const subscribeRealtime$ = command(
         signal,
       ),
       set(
-        setAblyPayloadLoopWithOptions$,
+        setAblyPayloadLoop$,
         {
           topic: `chatThreadMessageUpdated:${threadId}`,
           loopCommand$: handlers.onMessageUpdated$,
@@ -346,7 +343,7 @@ const subscribeRealtime$ = command(
         signal,
       ),
       set(
-        setAblyLoopWithOptions$,
+        setAblyLoop$,
         {
           topic: `chatThreadRunCreated:${threadId}`,
           loopCommand$: handlers.onRunChanged$,
@@ -355,7 +352,7 @@ const subscribeRealtime$ = command(
         signal,
       ),
       set(
-        setAblyLoopWithOptions$,
+        setAblyLoop$,
         {
           topic: `chatThreadRunUpdated:${threadId}`,
           loopCommand$: handlers.onRunChanged$,
@@ -364,7 +361,7 @@ const subscribeRealtime$ = command(
         signal,
       ),
       set(
-        setAblyLoopWithOptions$,
+        setAblyLoop$,
         {
           topic: `chatThreadAutomationsChanged:${threadId}`,
           loopCommand$: handlers.onAutomationsChanged$,

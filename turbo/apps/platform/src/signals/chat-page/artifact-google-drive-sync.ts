@@ -212,6 +212,10 @@ export const waitForGoogleDriveAndSyncArtifacts$ = command(
       return;
     }
     signal.throwIfAborted();
-    await set(setAblyLoop$, "connector:changed", syncWhenConnected$, signal);
+    await set(
+      setAblyLoop$,
+      { topic: "connector:changed", loopCommand$: syncWhenConnected$ },
+      signal,
+    );
   },
 );

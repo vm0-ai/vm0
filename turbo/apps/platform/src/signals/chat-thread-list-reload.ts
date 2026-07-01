@@ -49,7 +49,11 @@ export const subscribeThreadListChanged$ = command(
       set(reloadChatUnreadState$);
       return false;
     });
-    await set(setAblyLoop$, "threadListChanged", onChanged$, signal);
+    await set(
+      setAblyLoop$,
+      { topic: "threadListChanged", loopCommand$: onChanged$ },
+      signal,
+    );
   },
 );
 
@@ -59,6 +63,10 @@ export const subscribeChatThreadReadCursorUpdated$ = command(
       set(reloadChatUnreadState$);
       return false;
     });
-    await set(setAblyLoop$, "chatThreadReadCursorUpdated", onChanged$, signal);
+    await set(
+      setAblyLoop$,
+      { topic: "chatThreadReadCursorUpdated", loopCommand$: onChanged$ },
+      signal,
+    );
   },
 );

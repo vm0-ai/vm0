@@ -1895,8 +1895,10 @@ export const connectConnectorOAuthAuthCode$ = command(
             const waitForConnectorChanged = async () => {
               await set(
                 setAblyLoop$,
-                "connector:changed",
-                onConnectorChanged$,
+                {
+                  topic: "connector:changed",
+                  loopCommand$: onConnectorChanged$,
+                },
                 loopSignal,
               );
               return "connectorChanged" as const;

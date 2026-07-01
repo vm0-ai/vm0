@@ -50,8 +50,10 @@ describe("realtime signals", () => {
 
     const loopPromise = context.store.set(
       setAblyLoop$,
-      topic,
-      loop$,
+      {
+        topic,
+        loopCommand$: loop$,
+      },
       context.signal,
     );
     expect(context.mocks.ably.hasSubscription(topic)).toBeFalsy();
@@ -75,8 +77,10 @@ describe("realtime signals", () => {
 
     const loopPromise = context.store.set(
       setAblyLoop$,
-      topic,
-      finishLoop$,
+      {
+        topic,
+        loopCommand$: finishLoop$,
+      },
       subscriber.signal,
     );
 
@@ -101,8 +105,10 @@ describe("realtime signals", () => {
     const topic = "test:auth-failure";
     const loopPromise = context.store.set(
       setAblyLoop$,
-      topic,
-      finishLoop$,
+      {
+        topic,
+        loopCommand$: finishLoop$,
+      },
       context.signal,
     );
     const setupPromise = context.store.set(setupRealtime$, context.signal);
@@ -125,8 +131,10 @@ describe("realtime signals", () => {
     await context.store.set(setupRealtime$, context.signal);
     const loopPromise = context.store.set(
       setAblyLoop$,
-      topic,
-      loop$,
+      {
+        topic,
+        loopCommand$: loop$,
+      },
       subscriber.signal,
     );
 
@@ -160,8 +168,10 @@ describe("realtime signals", () => {
     await context.store.set(setupRealtime$, context.signal);
     const loopPromise = context.store.set(
       setAblyPayloadLoop$,
-      topic,
-      loop$,
+      {
+        topic,
+        loopCommand$: loop$,
+      },
       subscriber.signal,
     );
 

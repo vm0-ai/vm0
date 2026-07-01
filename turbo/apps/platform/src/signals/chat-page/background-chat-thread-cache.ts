@@ -48,8 +48,10 @@ export const subscribeBackgroundChatThreadRunFinished$ = command(
   async ({ set }, signal: AbortSignal) => {
     await set(
       setAblyPayloadLoop$,
-      CHAT_THREAD_RUN_FINISHED_TOPIC,
-      warmFinishedThread$,
+      {
+        topic: CHAT_THREAD_RUN_FINISHED_TOPIC,
+        loopCommand$: warmFinishedThread$,
+      },
       signal,
     );
   },

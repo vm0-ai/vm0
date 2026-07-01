@@ -453,7 +453,7 @@ const userChannel$ = command(
   },
 );
 
-export const setAblyLoopWithOptions$ = command(
+export const setAblyLoop$ = command(
   async (
     { set },
     { topic, loopCommand$, options }: SetAblyLoopArgs,
@@ -470,19 +470,7 @@ export const setAblyLoopWithOptions$ = command(
   },
 );
 
-export const setAblyLoop$ = command(
-  async (
-    { set },
-    topic: string,
-    loopCommand$: Command<Promise<boolean> | boolean, [AbortSignal]>,
-    signal: AbortSignal,
-  ) => {
-    await set(setAblyLoopWithOptions$, { topic, loopCommand$ }, signal);
-    signal.throwIfAborted();
-  },
-);
-
-export const setAblyPayloadLoopWithOptions$ = command(
+export const setAblyPayloadLoop$ = command(
   async (
     { set },
     { topic, loopCommand$, options }: SetAblyPayloadLoopArgs,
@@ -495,18 +483,6 @@ export const setAblyPayloadLoopWithOptions$ = command(
       { channel, topic, loopCommand$, options },
       signal,
     );
-    signal.throwIfAborted();
-  },
-);
-
-export const setAblyPayloadLoop$ = command(
-  async (
-    { set },
-    topic: string,
-    loopCommand$: Command<Promise<boolean> | boolean, [unknown, AbortSignal]>,
-    signal: AbortSignal,
-  ) => {
-    await set(setAblyPayloadLoopWithOptions$, { topic, loopCommand$ }, signal);
     signal.throwIfAborted();
   },
 );

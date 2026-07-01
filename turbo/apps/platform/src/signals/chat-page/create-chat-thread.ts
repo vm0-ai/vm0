@@ -1913,8 +1913,10 @@ function createArtifacts(
     command(async ({ set }, _el: HTMLElement, signal: AbortSignal) => {
       await set(
         setAblyLoop$,
-        `chatThreadArtifactsChanged:${threadId}`,
-        reloadArtifactsFromRealtime$,
+        {
+          topic: `chatThreadArtifactsChanged:${threadId}`,
+          loopCommand$: reloadArtifactsFromRealtime$,
+        },
         signal,
       );
     }),

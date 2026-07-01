@@ -67,8 +67,10 @@ export const syncPrimaryThread$ = command(
     });
     await set(
       setAblyLoop$,
-      `chatThreadRunUpdated:${threadId}`,
-      onThreadUpdated$,
+      {
+        topic: `chatThreadRunUpdated:${threadId}`,
+        loopCommand$: onThreadUpdated$,
+      },
       signal,
     );
   },

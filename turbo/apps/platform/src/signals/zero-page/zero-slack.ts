@@ -121,7 +121,14 @@ export const watchSlackConnection$ = command(
       return false;
     });
 
-    await set(setAblyLoop$, "slack:changed", onSlackChanged$, signal);
+    await set(
+      setAblyLoop$,
+      {
+        topic: "slack:changed",
+        loopCommand$: onSlackChanged$,
+      },
+      signal,
+    );
   },
 );
 
