@@ -178,7 +178,7 @@ function WorkflowIndexCard({
 }) {
   return (
     <Link
-      pathname={ROUTES.workflowDetail}
+      pathname={ROUTES.workflowDetailAutomations}
       options={{
         pathParams: {
           workflowId: workflow.id,

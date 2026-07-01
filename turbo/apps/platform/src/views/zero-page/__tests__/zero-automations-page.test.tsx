@@ -332,6 +332,14 @@ function linkByNameAndPath(name: string, path: string): HTMLAnchorElement {
   throw new Error(`${name} link to ${path} not found`);
 }
 
+function articleByText(text: string): HTMLElement {
+  const article = screen.getByText(text).closest("article");
+  if (!article) {
+    throw new Error(`${text} card not found`);
+  }
+  return article;
+}
+
 function selectOptionByLabel(
   label: string,
   option: string,
@@ -518,12 +526,10 @@ describe("zero automations page", () => {
 
     const opsLink = linkByNameAndPath(
       "Ops brief",
-      `/automations/${intervalWorkflowTrigger().id}`,
+      `/workflows/${workflowId}/automations`,
     );
-    const opsCard = opsLink.closest("article");
-    if (!opsCard) {
-      throw new Error("Ops brief card not found");
-    }
+    const opsCard = articleByText("Every 15 minutes");
+    expect(opsLink.closest("article")).toBe(opsCard);
     expect(within(opsCard).getByText("Zero")).toBeInTheDocument();
     expect(within(opsCard).getByText("Schedule")).toBeInTheDocument();
     expect(within(opsCard).getByText("Every 15 minutes")).toBeInTheDocument();
@@ -542,7 +548,7 @@ describe("zero automations page", () => {
 
     linkByNameAndPath(
       "Support intake",
-      `/automations/${webhookWorkflowTrigger().id}`,
+      `/workflows/${supportWorkflowId}/automations`,
     );
     expect(screen.getByText("Webhook")).toBeInTheDocument();
     expect(
@@ -551,13 +557,7 @@ describe("zero automations page", () => {
 
     click(within(opsCard).getByRole("switch", { name: "Disable Ops brief" }));
     await waitFor(() => {
-      const updatedOpsCard = linkByNameAndPath(
-        "Ops brief",
-        `/automations/${intervalWorkflowTrigger().id}`,
-      ).closest("article");
-      if (!updatedOpsCard) {
-        throw new Error("Updated ops brief card not found");
-      }
+      const updatedOpsCard = articleByText("Every 15 minutes");
       expect(
         within(updatedOpsCard).getByRole("switch", {
           name: "Enable Ops brief",
@@ -566,7 +566,7 @@ describe("zero automations page", () => {
     });
   });
 
-  it("opens a workflow-trigger automation detail when the workflow-trigger switch is enabled", async () => {
+  it("redirects workflow-trigger automation detail paths back to the list", async () => {
     mockWorkflowTriggerStory();
 
     detachedSetupPage({
@@ -578,18 +578,11 @@ describe("zero automations page", () => {
     });
 
     await waitFor(() => {
-      expect(
-        screen.getByRole("heading", { name: "Ops brief" }),
-      ).toBeInTheDocument();
+      expect(pathname()).toBe("/automations");
     });
-
-    expect(screen.queryByText("Automation not found")).not.toBeInTheDocument();
-    expect(screen.getByText("Active")).toBeInTheDocument();
-    expect(screen.getAllByText("Zero").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Schedule").length).toBeGreaterThan(0);
-    expect(screen.getAllByText("Every 15 minutes").length).toBeGreaterThan(0);
-    expect(screen.getByText(intervalWorkflowTrigger().id)).toBeInTheDocument();
-    linkByNameAndPath("View workflow", `/workflows/${workflowId}`);
+    expect(
+      screen.getByRole("heading", { name: "Automations" }),
+    ).toBeInTheDocument();
   });
 
   it("starts automation creation in chat after choosing an agent", async () => {
@@ -678,8 +671,8 @@ describe("zero automations page", () => {
     click(within(dialog).getByText("Ops brief"));
 
     await waitFor(() => {
-      expect(pathname()).toBe(`/workflows/${workflowId}`);
-      expect(search()).toBe("?tab=automations");
+      expect(pathname()).toBe(`/workflows/${workflowId}/automations`);
+      expect(search()).toBe("");
     });
   });
 

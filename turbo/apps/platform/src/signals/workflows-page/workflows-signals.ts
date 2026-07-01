@@ -22,10 +22,14 @@ import { activeRoute$ } from "../active-route.ts";
 import {
   detachedNavigateTo$,
   pathParams$,
-  replaceSearchParams$,
+  replacePathSilently$,
   searchParams$,
 } from "../route.ts";
-import { ROUTES } from "../route-paths.ts";
+import {
+  isWorkflowDetailRouteKey,
+  ROUTES,
+  type RouteKey,
+} from "../route-paths.ts";
 import { currentChatAgentRecordId$ } from "../agent-chat.ts";
 import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 
@@ -62,21 +66,41 @@ type WorkflowWebhookTriggerSummary = Extract<
 type WorkflowGithubLabelActor =
   GithubLabelAppliedEventConfig["filters"]["actor"]["type"];
 export type WorkflowTriggerAutomationEntry = ZeroWorkflowTriggerAutomationEntry;
-export const WORKFLOW_DETAIL_TAB_PARAM = "tab";
 export const WORKFLOW_DETAIL_FILE_PARAM = "file";
 
-function workflowDetailTabFromSearchParams(
-  params: URLSearchParams,
-): WorkflowDetailTab | null {
-  const value = params.get(WORKFLOW_DETAIL_TAB_PARAM);
-  switch (value) {
-    case "automations":
-    case "instructions":
-    case "info": {
-      return value;
+function workflowDetailTabFromRoute(route: RouteKey | null): WorkflowDetailTab {
+  switch (route) {
+    case "workflowDetail":
+    case "workflowDetailAutomations": {
+      return "automations";
+    }
+    case "workflowDetailInstructions": {
+      return "instructions";
+    }
+    case "workflowDetailInfo": {
+      return "info";
     }
     default: {
-      return null;
+      return "automations";
+    }
+  }
+}
+
+export function workflowDetailRouteForTab(
+  tab: WorkflowDetailTab,
+):
+  | typeof ROUTES.workflowDetailAutomations
+  | typeof ROUTES.workflowDetailInstructions
+  | typeof ROUTES.workflowDetailInfo {
+  switch (tab) {
+    case "automations": {
+      return ROUTES.workflowDetailAutomations;
+    }
+    case "instructions": {
+      return ROUTES.workflowDetailInstructions;
+    }
+    case "info": {
+      return ROUTES.workflowDetailInfo;
     }
   }
 }
@@ -127,7 +151,7 @@ interface WorkflowMetadataPatch {
  */
 export const currentWorkflowId$ = computed((get): string | null => {
   const route = get(activeRoute$);
-  if (route !== "workflowDetail") {
+  if (!isWorkflowDetailRouteKey(route)) {
     return null;
   }
   const workflowId = get(pathParams$)?.workflowId;
@@ -238,18 +262,26 @@ export const resetWorkflowDetailUiState$ = command(({ set }) => {
 });
 
 export const workflowDetailActiveTab$ = computed((get) => {
-  return (
-    workflowDetailTabFromSearchParams(get(searchParams$)) ??
-    get(internalWorkflowDetailActiveTab$)
-  );
+  const route = get(activeRoute$);
+  if (isWorkflowDetailRouteKey(route)) {
+    return workflowDetailTabFromRoute(route);
+  }
+  return get(internalWorkflowDetailActiveTab$);
 });
 
 export const setWorkflowDetailActiveTab$ = command(
   ({ get, set }, tab: WorkflowDetailTab) => {
     set(internalWorkflowDetailActiveTab$, tab);
-    const params = new URLSearchParams(get(searchParams$));
-    params.set(WORKFLOW_DETAIL_TAB_PARAM, tab);
-    set(replaceSearchParams$, params);
+    const workflowId = get(currentWorkflowId$);
+    if (!workflowId) {
+      return;
+    }
+    set(
+      replacePathSilently$,
+      workflowDetailRouteForTab(tab),
+      { workflowId },
+      new URLSearchParams(),
+    );
   },
 );
 
@@ -354,14 +386,21 @@ export const selectedWorkflowFilePath$ = computed((get) => {
 export const setSelectedWorkflowFilePath$ = command(
   ({ get, set }, path: string | null) => {
     set(internalSelectedFilePath$, path);
-    const params = new URLSearchParams(get(searchParams$));
+    set(internalWorkflowDetailActiveTab$, "instructions");
+    const workflowId = get(currentWorkflowId$);
+    if (!workflowId) {
+      return;
+    }
+    const params = new URLSearchParams();
     if (path) {
       params.set(WORKFLOW_DETAIL_FILE_PARAM, path);
-    } else {
-      params.delete(WORKFLOW_DETAIL_FILE_PARAM);
     }
-    params.set(WORKFLOW_DETAIL_TAB_PARAM, "instructions");
-    set(replaceSearchParams$, params);
+    set(
+      replacePathSilently$,
+      ROUTES.workflowDetailInstructions,
+      { workflowId },
+      params,
+    );
   },
 );
 
