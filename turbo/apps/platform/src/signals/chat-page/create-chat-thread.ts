@@ -2353,7 +2353,7 @@ function createRunTracking({
         () => {
           set(autoScroll$);
         },
-        { signal },
+        { signal: sig },
       );
       return false;
     });
@@ -2375,7 +2375,7 @@ function createRunTracking({
         () => {
           set(autoScroll$);
         },
-        { signal },
+        { signal: sig },
       );
       return false;
     });
