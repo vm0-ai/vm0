@@ -1248,8 +1248,16 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
       prompt: "active run before telemetry failure two",
       modelProvider: "anthropic-api-key",
     });
-    context.mocks.axiom.sdkIngest.mockImplementationOnce(() => {
-      throw new Error("enqueue telemetry failed");
+    context.mocks.axiom.sdkIngest.mockImplementation((dataset, events) => {
+      if (
+        dataset === "vm0-sandbox-op-log-dev" &&
+        Array.isArray(events) &&
+        events.some((event) => {
+          return isRecord(event) && event.op_type === "enqueue_zero_run";
+        })
+      ) {
+        throw new Error("enqueue telemetry failed");
+      }
     });
 
     const queued = await api.createRun(actor, {
@@ -1262,6 +1270,12 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     const queue = await api.readRunQueue(actor);
     expect(queue.body.queue).toContainEqual(
       expect.objectContaining({ runId: queued.runId }),
+    );
+    expect(sandboxOperationEventsForRun(queued.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "enqueue_zero_run",
+        run_id: queued.runId,
+      }),
     );
 
     await api.requestCancelRun(actor, queued.runId, [200]);
