@@ -1,12 +1,11 @@
 //! Failure diagnostics must mask a session ID carried by the same JSONL event.
 //!
-//! This test lives in its own binary because `guest_agent::env` caches values
-//! in process-wide `LazyLock`s.
+//! This test lives in its own binary to isolate process env, working directory,
+//! and guest runtime path overrides used during setup.
 
 mod common;
 
 use common::SystemLogOverrideGuard;
-use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use serde_json::json;
 use std::time::Duration;
@@ -36,16 +35,14 @@ async fn cli_failure_diagnostic_masks_session_id_from_same_event()
         common::setup_env(&mock, tmp.path(), &prompt, 3, 1)?;
     }
 
+    let runtime = common::guest_runtime_from_process_env()?;
+
     let system_log_path = tmp.path().join("system.log");
     let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
     let masker = SecretMasker::from_raw("");
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
-        guest_agent::cli::execute_cli(
-            &masker,
-            common::spawn_dummy_heartbeat(),
-            HttpClient::for_current_env()?,
-        ),
+        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
     )
     .await
     .expect("execute_cli should return promptly")?;

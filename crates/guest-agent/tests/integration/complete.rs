@@ -2,6 +2,10 @@ use crate::support::*;
 use httpmock::prelude::*;
 use serde_json::json;
 
+const TEST_RUN_ID: &str = "test-run-001";
+const TEST_SANDBOX_ID: &str = "00000000-0000-4000-8000-000000000abc";
+const TEST_SANDBOX_REUSE_RESULT: &str = "reused";
+
 // =========================================================================
 // Complete webhook
 //
@@ -16,17 +20,16 @@ async fn complete_report_success_posts_full_payload_when_metadata_present() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
-    // VM0_SANDBOX_ID / VM0_SANDBOX_REUSE_RESULT come from shared API mock init.
     let mock = server.mock(|when, then| {
         when.method(POST)
             .path("/api/webhooks/agent/complete")
             .header("Authorization", "Bearer test-token-abc123")
             .json_body(json!({
-                "runId": "test-run-001",
+                "runId": TEST_RUN_ID,
                 "exitCode": 0,
                 "lastEventSequence": 7,
-                "sandboxId": "00000000-0000-4000-8000-000000000abc",
-                "sandboxReuseResult": "reused",
+                "sandboxId": TEST_SANDBOX_ID,
+                "sandboxReuseResult": TEST_SANDBOX_REUSE_RESULT,
             }));
         then.status(200).json_body(json!({
             "success": true,
@@ -34,10 +37,11 @@ async fn complete_report_success_posts_full_payload_when_metadata_present() {
         }));
     });
 
-    guest_agent::complete::report_success(
+    guest_agent::complete::report_success_for_run(
         &http_client!(),
-        guest_agent::env::sandbox_id(),
-        guest_agent::env::sandbox_reuse_result(),
+        TEST_RUN_ID,
+        TEST_SANDBOX_ID,
+        TEST_SANDBOX_REUSE_RESULT,
         Some(7),
     )
     .await;
@@ -59,13 +63,13 @@ async fn complete_report_success_omits_metadata_when_env_absent() {
         when.method(POST)
             .path("/api/webhooks/agent/complete")
             .json_body(json!({
-                "runId": "test-run-001",
+                "runId": TEST_RUN_ID,
                 "exitCode": 0,
             }));
         then.status(200).json_body(json!({"success": true}));
     });
 
-    guest_agent::complete::report_success(&http_client!(), "", "", None).await;
+    guest_agent::complete::report_success_for_run(&http_client!(), TEST_RUN_ID, "", "", None).await;
 
     mock.assert_calls_async(1).await;
 }
@@ -82,10 +86,11 @@ async fn complete_report_success_swallows_server_error() {
 
     // 1 attempt — no retry, no panic. Fire-and-forget semantics mean the
     // runner fallback is the correctness guarantee.
-    guest_agent::complete::report_success(
+    guest_agent::complete::report_success_for_run(
         &http_client!(),
-        guest_agent::env::sandbox_id(),
-        guest_agent::env::sandbox_reuse_result(),
+        TEST_RUN_ID,
+        TEST_SANDBOX_ID,
+        TEST_SANDBOX_REUSE_RESULT,
         None,
     )
     .await;
@@ -110,10 +115,11 @@ async fn complete_report_success_swallows_4xx_auth_error() {
         }));
     });
 
-    guest_agent::complete::report_success(
+    guest_agent::complete::report_success_for_run(
         &http_client!(),
-        guest_agent::env::sandbox_id(),
-        guest_agent::env::sandbox_reuse_result(),
+        TEST_RUN_ID,
+        TEST_SANDBOX_ID,
+        TEST_SANDBOX_REUSE_RESULT,
         None,
     )
     .await;

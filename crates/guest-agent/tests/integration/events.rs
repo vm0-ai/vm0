@@ -426,25 +426,25 @@ async fn send_event_skips_session_id_for_non_init() {
 async fn send_event_failure_writes_error_flag() {
     let api = SharedApiMock::new().await;
     let server = api.server();
-
-    let flag_path = guest_agent::paths::event_error_flag();
-    let _ = std::fs::remove_file(flag_path);
+    let tmp = tempfile::tempdir().unwrap();
+    let paths = guest_agent::paths::GuestPaths::from_runtime_dir(tmp.path().join("runtime"));
+    let flag_path = paths.event_error_flag();
 
     let _mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/events");
         then.status(500);
     });
 
-    let masker = SecretMasker::from_raw("");
-    let event = json!({"type": "test"});
-    let result = guest_agent::events::send_event(&http_client!(), event, 1, &masker).await;
+    let payload = json!({
+        "runId": "test-run-001",
+        "events": [{"type": "test", "sequenceNumber": 1}]
+    });
+    let result =
+        guest_agent::events::post_event_with_error_flag(&http_client!(), &payload, flag_path).await;
 
     assert!(result.is_err());
     assert!(
         std::path::Path::new(flag_path).exists(),
         "event error flag should be written on failure"
     );
-
-    // Clean up
-    let _ = std::fs::remove_file(flag_path);
 }

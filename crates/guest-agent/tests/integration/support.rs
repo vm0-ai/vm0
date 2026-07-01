@@ -1,5 +1,6 @@
 use httpmock::prelude::*;
 use serde_json::Value;
+use std::path::{Path, PathBuf};
 use std::sync::{
     Arc, LazyLock, Mutex, MutexGuard,
     atomic::{AtomicUsize, Ordering},
@@ -15,16 +16,13 @@ pub(crate) use crate::common::SystemLogOverrideGuard;
 pub(crate) static MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(|| {
     let server = MockServer::start();
     unsafe {
+        crate::common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("VM0_API_URL", server.base_url());
         std::env::set_var("VM0_API_TOKEN", "test-token-abc123");
         std::env::set_var("VM0_RUN_ID", "test-run-001");
         std::env::set_var(
             guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
-            std::env::temp_dir()
-                .join(format!(
-                    "vm0-guest-agent-integration-{}",
-                    std::process::id()
-                ))
+            crate::common::unique_temp_path("vm0-guest-agent-integration")
                 .join("runs")
                 .join("test-run-001"),
         );
@@ -53,6 +51,7 @@ impl SharedApiMock {
         };
         let server = &*MOCK_SERVER;
         server.reset_async().await;
+        cleanup_integration_runtime_root();
         Self {
             _guard: guard,
             server,
@@ -69,6 +68,32 @@ impl SharedApiMock {
             "shared API mock path must be absolute"
         );
         format!("{}{}", self.server.base_url(), path)
+    }
+}
+
+impl Drop for SharedApiMock {
+    fn drop(&mut self) {
+        cleanup_integration_runtime_root();
+    }
+}
+
+fn cleanup_integration_runtime_root() {
+    let Some(runtime_dir) =
+        std::env::var_os(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV).map(PathBuf::from)
+    else {
+        return;
+    };
+    let root = runtime_dir
+        .parent()
+        .and_then(Path::parent)
+        .unwrap_or(runtime_dir.as_path());
+    let is_test_root = root
+        .file_name()
+        .and_then(|name| name.to_str())
+        .map(|name| name.starts_with("vm0-guest-agent-integration-"))
+        .unwrap_or(false);
+    if is_test_root && root.starts_with(std::env::temp_dir()) {
+        let _ = std::fs::remove_dir_all(root);
     }
 }
 

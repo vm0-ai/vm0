@@ -3,6 +3,8 @@
 //! This test lives in its own binary because `guest_agent::env` caches values
 //! in process-wide `LazyLock`s.
 
+mod common;
+
 use guest_agent::masker::SecretMasker;
 use serde_json::Value;
 #[cfg(unix)]
@@ -36,6 +38,7 @@ async fn api_key_setup_writes_auth_without_invoking_codex() -> TestResult {
     let path = format!("{}:{original_path}", bin_dir.display());
 
     unsafe {
+        common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("CLI_AGENT_TYPE", "codex");
         std::env::set_var(guest_contracts::env::RUN_ID_ENV, "codex-setup-api-key");
         std::env::set_var(guest_contracts::env::USER_ENV_FILE_ENV, &user_env_path);

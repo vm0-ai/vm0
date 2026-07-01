@@ -92,6 +92,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         ("HOME", workdir.as_str()),
     ];
 
+    common::ensure_canonical_workspace_for_test()?;
     let connection = start_host_and_guest(tmp.path()).await?;
     let command = guest_agent_wrapper_command(guest_agent);
     let sudo = needs_sudo_for_canonical_workspace();
@@ -196,6 +197,7 @@ async fn process_control_enabled_plain_run_does_not_wait_for_stdin_eof() -> Test
         ("HOME", workdir.as_str()),
     ];
 
+    common::ensure_canonical_workspace_for_test()?;
     let connection = start_host_and_guest(tmp.path()).await?;
     let command = guest_agent_wrapper_command(guest_agent);
     let sudo = needs_sudo_for_canonical_workspace();
@@ -407,22 +409,7 @@ fn join_guest(guest: thread::JoinHandle<io::Result<()>>) -> TestResult<()> {
 }
 
 fn guest_agent_wrapper_command(guest_agent: &str) -> String {
-    format!(
-        "cleanup_home_user=0; \
-         cleanup_workspace=0; \
-         if [ ! -e /home/user ]; then cleanup_home_user=1; fi; \
-         if [ ! -e /home/user/workspace ]; then cleanup_workspace=1; fi; \
-         {}; \
-         status=$?; \
-         if [ \"$cleanup_workspace\" = 1 ]; then \
-           rmdir /home/user/workspace 2>/dev/null || true; \
-         fi; \
-         if [ \"$cleanup_home_user\" = 1 ]; then \
-           rmdir /home/user 2>/dev/null || true; \
-        fi; \
-         exit $status",
-        quote_shell_arg(guest_agent)
-    )
+    quote_shell_arg(guest_agent)
 }
 
 fn needs_sudo_for_canonical_workspace() -> bool {

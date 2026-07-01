@@ -26,6 +26,8 @@ async fn post_result_reap_stays_silent_on_clean_exit() -> Result<(), Box<dyn std
         common::setup_env(&mock, tmp.path(), "@exit-after-result", 60, 1)?;
     }
 
+    let runtime = common::guest_runtime_from_process_env()?;
+
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();
 
@@ -34,11 +36,7 @@ async fn post_result_reap_stays_silent_on_clean_exit() -> Result<(), Box<dyn std
     // assertion on fork/exec or async scheduling.
     let result = tokio::time::timeout(
         Duration::from_secs(15),
-        guest_agent::cli::execute_cli(
-            &masker,
-            heartbeat,
-            guest_agent::http::HttpClient::new().unwrap(),
-        ),
+        common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
     )
     .await
     .expect("execute_cli did not return within 15s on the happy path");

@@ -1,12 +1,11 @@
 //! Late active-input coverage for the experimental Codex app-server backend.
 //!
-//! This test lives in its own binary because `guest_agent::env` caches values
-//! in process-wide `LazyLock`s.
+//! This test lives in its own binary to isolate process env, working directory,
+//! and guest runtime path overrides used during setup.
 
 mod common;
 
 use guest_agent::active_input::{ActiveInputControlOutcome, ActiveInputRuntime};
-use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use std::time::Duration;
 
@@ -28,22 +27,23 @@ async fn codex_app_server_backend_rejects_active_input_after_turn_completion()
             },
         )?;
     }
-    let _run_files = common::RunFilesGuard::new();
+    let runtime = common::guest_runtime_from_process_env()?;
+    let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
 
     let active_input = ActiveInputRuntime::new_with_initial_prompt(
-        guest_agent::env::run_id(),
+        &runtime.config.run_id,
         true,
-        guest_agent::env::prompt(),
+        &runtime.config.prompt,
     );
     let controller = active_input.controller();
 
     let masker = SecretMasker::from_raw("");
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
-        guest_agent::cli::execute_cli_with_active_input(
+        common::execute_cli_with_active_input_for_runtime(
+            &runtime,
             &masker,
             common::spawn_dummy_heartbeat(),
-            HttpClient::for_current_env()?,
             active_input.into_writer(),
         ),
     )

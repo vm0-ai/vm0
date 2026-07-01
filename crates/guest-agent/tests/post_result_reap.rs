@@ -20,6 +20,8 @@ async fn post_result_reap_sigterm_kills_hung_cli() -> Result<(), Box<dyn std::er
         common::setup_env(&mock, tmp.path(), "@hang-after-result", 1, 5)?;
     }
 
+    let runtime = common::guest_runtime_from_process_env()?;
+
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();
 
@@ -29,11 +31,7 @@ async fn post_result_reap_sigterm_kills_hung_cli() -> Result<(), Box<dyn std::er
     // reap. Locally runs in ~1s.
     let result = tokio::time::timeout(
         Duration::from_secs(15),
-        guest_agent::cli::execute_cli(
-            &masker,
-            heartbeat,
-            guest_agent::http::HttpClient::new().unwrap(),
-        ),
+        common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
     )
     .await
     .expect("execute_cli did not return within 15s — reap likely broken");

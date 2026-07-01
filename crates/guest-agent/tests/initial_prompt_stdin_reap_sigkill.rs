@@ -2,7 +2,6 @@
 
 mod common;
 
-use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use guest_contracts::diagnostics::{CliTerminationReason, CliTerminationSignal};
 use std::os::unix::fs::PermissionsExt;
@@ -30,14 +29,12 @@ tail -f /dev/null
         common::setup_env(&mock, tmp.path(), &large_prompt, 3, 1)?;
     }
 
+    let runtime = common::guest_runtime_from_process_env()?;
+
     let masker = SecretMasker::from_raw("");
     let result = tokio::time::timeout(
         Duration::from_secs(15),
-        guest_agent::cli::execute_cli(
-            &masker,
-            common::spawn_dummy_heartbeat(),
-            HttpClient::for_current_env()?,
-        ),
+        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
     )
     .await
     .expect("execute_cli did not return within 15s - stdin failure reap likely broken");

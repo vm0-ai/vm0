@@ -1,8 +1,8 @@
 //! API-enabled `execute_cli` should capture session metadata from stdout events
 //! while still delivering webhook events.
 //!
-//! This test lives in its own binary because `guest_agent::env` and
-//! `guest_agent::paths` cache process-wide `VM0_*` values in `LazyLock`s.
+//! This test lives in its own binary to isolate process env, working directory,
+//! and guest runtime path overrides used during setup.
 
 mod common;
 
@@ -12,32 +12,6 @@ use httpmock::prelude::*;
 use std::path::Path;
 use std::time::Duration;
 
-struct RunFilesGuard {
-    ops_file: String,
-}
-
-impl RunFilesGuard {
-    fn new() -> Self {
-        let ops_file = guest_common::telemetry::sandbox_ops_log().to_string();
-        cleanup_run_files(&ops_file);
-        Self { ops_file }
-    }
-}
-
-impl Drop for RunFilesGuard {
-    fn drop(&mut self) {
-        cleanup_run_files(&self.ops_file);
-    }
-}
-
-fn cleanup_run_files(ops_file: &str) {
-    let _ = std::fs::remove_file(guest_agent::paths::agent_log_file());
-    let _ = std::fs::remove_file(guest_agent::paths::event_error_flag());
-    let _ = std::fs::remove_file(guest_agent::paths::session_id_file());
-    let _ = std::fs::remove_file(guest_agent::paths::session_history_path_file());
-    let _ = std::fs::remove_file(ops_file);
-}
-
 unsafe fn setup_api_env(
     mock_path: &Path,
     workdir: &Path,
@@ -45,6 +19,7 @@ unsafe fn setup_api_env(
     prompt: &str,
 ) -> Result<(), String> {
     unsafe {
+        common::clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
         std::env::set_var("VM0_MOCK_CLAUDE_PATH", mock_path);
         std::env::set_var("USE_MOCK_CLAUDE", "true");
@@ -90,7 +65,7 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
         setup_api_env(&mock_cli, tmp.path(), &server.base_url(), &prompt)?;
     }
     let runtime = GuestRuntime::from_process_env()?;
-    let _run_files = RunFilesGuard::new();
+    let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
     let expected_run_id = runtime.config.run_id.clone();
     unsafe {
         std::env::set_var("VM0_RUN_ID", "stale-run-id-after-runtime-construction");
@@ -148,9 +123,9 @@ async fn api_mode_execute_cli_captures_session_metadata_and_sends_events()
     result_event.assert_calls_async(1).await;
     replayed_user_event.assert_calls_async(0).await;
 
-    let captured_session_id = std::fs::read_to_string(guest_agent::paths::session_id_file())?;
+    let captured_session_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
     assert_eq!(captured_session_id, session_id);
-    let history_path = std::fs::read_to_string(guest_agent::paths::session_history_path_file())?;
+    let history_path = std::fs::read_to_string(runtime.paths.session_history_path_file())?;
     assert!(
         history_path.contains(session_id),
         "history path should contain the captured session id, got {history_path}"
