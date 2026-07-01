@@ -11,11 +11,13 @@ export const testCronCleanupSandboxesStateActionBodySchema = z
       "delete-run",
       "seed-runner-job",
       "seed-queue-entry",
+      "seed-queue-marker",
       "seed-export-job",
       "delete-export-job",
       "get-run",
       "get-runner-job",
       "get-queue-entry",
+      "get-queue-marker-revoker",
       "get-export-job",
     ]),
   })
