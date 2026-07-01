@@ -339,7 +339,6 @@ interface RunRecord {
 
 interface LaunchRunIdentity {
   readonly runId: string;
-  readonly createdAt: Date;
   readonly sessionId: string;
   readonly shouldCreateSession: boolean;
 }
@@ -4199,7 +4198,6 @@ function prepareLaunchRunIdentity(args: {
 }): LaunchRunIdentity {
   return {
     runId: randomUUID(),
-    createdAt: nowDate(),
     sessionId: args.resolved.agentSessionId ?? randomUUID(),
     shouldCreateSession: !args.resolved.agentSessionId,
   };
@@ -4208,10 +4206,11 @@ function prepareLaunchRunIdentity(args: {
 function runRecordFromLaunchIdentity(
   identity: LaunchRunIdentity,
   status: RunRecord["status"],
+  createdAt: Date,
 ): RunRecord {
   return {
     id: identity.runId,
-    createdAt: identity.createdAt,
+    createdAt,
     sessionId: identity.sessionId,
     status,
   };
@@ -4290,7 +4289,7 @@ async function insertLaunchRunRows(
     readonly runnerGroup: string | undefined;
     readonly error: string | undefined;
   },
-): Promise<void> {
+): Promise<{ readonly createdAt: Date }> {
   if (args.identity.shouldCreateSession) {
     await tx.insert(agentSessions).values({
       id: args.identity.sessionId,
@@ -4302,10 +4301,11 @@ async function insertLaunchRunRows(
     });
   }
 
-  const completedAt = args.status === "failed" ? nowDate() : undefined;
+  const createdAt = nowDate();
+  const completedAt = args.status === "failed" ? createdAt : undefined;
   const runValues: typeof agentRuns.$inferInsert = {
     id: args.identity.runId,
-    createdAt: args.identity.createdAt,
+    createdAt,
     userId: args.userId,
     orgId: args.orgId,
     agentComposeVersionId: args.resolved.agentComposeVersionId,
@@ -4320,7 +4320,7 @@ async function insertLaunchRunRows(
     resumedFromCheckpointId: args.resolved.resumedFromCheckpointId ?? null,
     continuedFromSessionId: args.resolved.continuedFromAgentSessionId ?? null,
     sessionId: args.identity.sessionId,
-    lastHeartbeatAt: args.identity.createdAt,
+    lastHeartbeatAt: createdAt,
     runnerGroup: args.runnerGroup ?? null,
     completedAt: completedAt ?? null,
     error: args.error ?? null,
@@ -4338,6 +4338,8 @@ async function insertLaunchRunRows(
   if (args.callbackRows.length > 0) {
     await tx.insert(agentRunCallbacks).values([...args.callbackRows]);
   }
+
+  return { createdAt };
 }
 
 async function insertRunRecord(
@@ -4362,7 +4364,7 @@ async function insertRunRecord(
     callbacks: args.callbacks,
     featureSwitchContext: args.featureSwitchContext,
   });
-  await insertLaunchRunRows(tx, {
+  const { createdAt } = await insertLaunchRunRows(tx, {
     userId: args.userId,
     orgId: args.orgId,
     identity,
@@ -4378,7 +4380,7 @@ async function insertRunRecord(
     runnerGroup: undefined,
     error: undefined,
   });
-  return runRecordFromLaunchIdentity(identity, "pending");
+  return runRecordFromLaunchIdentity(identity, "pending", createdAt);
 }
 
 async function insertQueuedRunRecord(
@@ -4403,7 +4405,7 @@ async function insertQueuedRunRecord(
     callbacks: args.callbacks,
     featureSwitchContext: args.featureSwitchContext,
   });
-  await insertLaunchRunRows(tx, {
+  const { createdAt } = await insertLaunchRunRows(tx, {
     userId: args.userId,
     orgId: args.orgId,
     identity,
@@ -4419,7 +4421,7 @@ async function insertQueuedRunRecord(
     runnerGroup: undefined,
     error: undefined,
   });
-  return runRecordFromLaunchIdentity(identity, "queued");
+  return runRecordFromLaunchIdentity(identity, "queued", createdAt);
 }
 
 async function buildStoredExecutionContext(args: {
@@ -5242,8 +5244,8 @@ async function commitFailedLaunch(args: {
   readonly error: unknown;
 }): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
   const message = runFailureMessage(args.error);
-  await args.db.transaction(async (tx) => {
-    await insertLaunchRunRows(tx, {
+  const { createdAt } = await args.db.transaction(async (tx) => {
+    return await insertLaunchRunRows(tx, {
       userId: args.createArgs.userId,
       orgId: args.createArgs.orgId,
       identity: args.identity,
@@ -5284,7 +5286,7 @@ async function commitFailedLaunch(args: {
     );
   }
   return failedRunResponse(
-    runRecordFromLaunchIdentity(args.identity, "pending"),
+    runRecordFromLaunchIdentity(args.identity, "pending", createdAt),
     args.error,
   );
 }
@@ -5295,11 +5297,11 @@ async function insertAtomicLaunchRunRecord(args: {
   readonly status: Extract<LaunchRunStatus, "pending" | "queued">;
   readonly runnerGroup: string;
 }): Promise<RunRecord> {
-  await args.commit.timing.measure(
+  const { createdAt } = await args.commit.timing.measure(
     "api_dispatch_insert_run_record",
     "nested",
     async () => {
-      await insertLaunchRunRows(args.tx, {
+      return await insertLaunchRunRows(args.tx, {
         userId: args.commit.createArgs.userId,
         orgId: args.commit.createArgs.orgId,
         identity: args.commit.identity,
@@ -5317,7 +5319,11 @@ async function insertAtomicLaunchRunRecord(args: {
       });
     },
   );
-  return runRecordFromLaunchIdentity(args.commit.identity, args.status);
+  return runRecordFromLaunchIdentity(
+    args.commit.identity,
+    args.status,
+    createdAt,
+  );
 }
 
 async function commitQueuedPreparedLaunch(
@@ -5340,7 +5346,7 @@ async function commitQueuedPreparedLaunch(
     userId: args.createArgs.userId,
     orgId: args.createArgs.orgId,
     encryptedParams: args.encryptedQueuedParams,
-    createdAt: args.identity.createdAt,
+    createdAt: run.createdAt,
     expiresAt: sql`now() + interval '2 hours'`,
   });
   const [depthRow] = await tx

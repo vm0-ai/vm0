@@ -338,7 +338,10 @@ async function seedVm0ManagedDefaultModelKey(): Promise<string> {
   return await seedVm0ManagedDefaultModelKeyState(context);
 }
 
-function failKmsAfterGenerateDataKeys(limit: number): void {
+function useSecretKmsClientForTests(args: {
+  readonly failAfterGenerateDataKeys?: number;
+  readonly onGenerateDataKey?: (callNumber: number) => void;
+}): void {
   let generateDataKeyCalls = 0;
   function send(
     command: GenerateDataKeyCommand,
@@ -349,7 +352,11 @@ function failKmsAfterGenerateDataKeys(limit: number): void {
   ): Promise<GenerateDataKeyCommandOutput | DecryptCommandOutput> {
     if (command instanceof GenerateDataKeyCommand) {
       generateDataKeyCalls += 1;
-      if (generateDataKeyCalls > limit) {
+      args.onGenerateDataKey?.(generateDataKeyCalls);
+      if (
+        args.failAfterGenerateDataKeys !== undefined &&
+        generateDataKeyCalls > args.failAfterGenerateDataKeys
+      ) {
         return Promise.reject(
           new Error("unexpected queued payload encryption"),
         );
@@ -370,6 +377,20 @@ function failKmsAfterGenerateDataKeys(limit: number): void {
 
   const client: SecretKmsClient = { send };
   setSecretKmsClientForTests(client);
+}
+
+function failKmsAfterGenerateDataKeys(limit: number): void {
+  useSecretKmsClientForTests({ failAfterGenerateDataKeys: limit });
+}
+
+function advanceNowOnFirstGenerateDataKey(timestamp: number): void {
+  useSecretKmsClientForTests({
+    onGenerateDataKey: (callNumber) => {
+      if (callNumber === 1) {
+        mockNow(timestamp);
+      }
+    },
+  });
 }
 
 function inlineFirewallApis(
@@ -1286,6 +1307,35 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     });
 
     expect(run.status).toBe("pending");
+
+    await api.requestCancelRun(actor, run.runId, [200]);
+  });
+
+  it("timestamps pending launches when the durable row is inserted", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const requestStartedAt = Date.UTC(2026, 0, 1, 12, 0, 0);
+    const payloadPreparedAt = requestStartedAt + 6 * 60_000;
+    mockNow(requestStartedAt);
+    advanceNowOnFirstGenerateDataKey(payloadPreparedAt);
+
+    const run = await api.createRun(actor, {
+      agentId,
+      prompt: "pending launch timestamp should reflect durable insert",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(run.status).toBe("pending");
+    if (!run.createdAt) {
+      throw new Error("Expected created run createdAt");
+    }
+    expect(new Date(run.createdAt).getTime()).toBe(payloadPreparedAt);
+
+    const stored = await api.readRun(actor, run.runId);
+    if (!stored.createdAt) {
+      throw new Error("Expected stored run createdAt");
+    }
+    expect(new Date(stored.createdAt).getTime()).toBe(payloadPreparedAt);
 
     await api.requestCancelRun(actor, run.runId, [200]);
   });
