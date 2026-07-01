@@ -5,9 +5,9 @@ use aws_smithy_mocks::{Rule, mock};
 // ---- upload: force + dedup + multipart lifecycle -------------------
 //
 // Size the payload below `PART_SIZE` (16 MiB) so the happy path issues
-// exactly one `upload_part` — keeps mock setup compact. Multi-part
-// correctness is already exercised structurally by the pack/unpack
-// round-trip test.
+// exactly one `upload_part` — keeps the lifecycle mock setup compact.
+// Multi-part scheduler ordering is covered by the focused inline tests in
+// `multipart.rs`.
 
 /// Mock-rule factory for the happy-path multipart triad.
 /// Returns (create, upload_part, complete) rules. Caller wires them with
