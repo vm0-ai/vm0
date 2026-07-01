@@ -50,6 +50,10 @@ export const testChatMessagesStateActionBodySchema = z.discriminatedUnion(
       thread_id: z.string(),
     }),
     z.object({
+      action: z.literal("read-run-model-metadata"),
+      run_id: z.uuid(),
+    }),
+    z.object({
       action: z.literal("replace-openrouter-vm0-api-keys"),
       model: z.string(),
       keys: z.array(vm0ApiKeySeedSchema),
@@ -80,6 +84,7 @@ export const testChatMessagesStateActionBodySchema = z.discriminatedUnion(
 export const testChatMessagesStateActionResponseSchema = z.object({
   ok: z.literal(true),
   computer_use_host_id: z.string().nullable().optional(),
+  run_model_provider: z.string().nullable().optional(),
 });
 
 export const testChatMessagesStateContract = c.router({

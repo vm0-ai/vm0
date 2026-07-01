@@ -818,6 +818,7 @@ describe("CHAT-02: completed chat callback", () => {
       agentId,
       prompt: "finish the current turn",
     });
+    await chat.updateThreadModelSelection(actor, first.threadId, null);
     await queueChatMessage(actor, {
       agentId,
       threadId: first.threadId,
@@ -895,6 +896,12 @@ describe("CHAT-02: completed chat callback", () => {
     }
     expect(claimed.runId).not.toBe(first.runId);
     await expectZeroPreCreateSource(claimed.runId, "chat_callback_auto_send");
+    openRouterGate.release();
+    const metadata = await postChatMessagesStateAction({
+      action: "read-run-model-metadata",
+      run_id: claimed.runId,
+    });
+    expect(metadata.run_model_provider).toBe("vm0");
     await expectChatCallbackPreCreateTimingActions(claimed.runId, [
       "api_dispatch_pre_create_zero_chat_callback_load_terminal",
       "api_dispatch_pre_create_zero_chat_callback_prepare_completed",
@@ -911,7 +918,6 @@ describe("CHAT-02: completed chat callback", () => {
       "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
     ]);
 
-    openRouterGate.release();
     const afterFollowups = await waitForThreadMessages(
       actor,
       first.threadId,

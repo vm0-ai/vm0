@@ -91,6 +91,30 @@ async function readThreadComputerUseHostIdForAction(
   return actionOk({ computer_use_host_id: thread.computerUseHostId });
 }
 
+async function readRunModelMetadataForAction(
+  db: Db,
+  body: ChatMessagesAction<"read-run-model-metadata">,
+  signal: AbortSignal,
+) {
+  const [run] = await db
+    .select({
+      modelProvider: zeroRuns.modelProvider,
+    })
+    .from(zeroRuns)
+    .where(eq(zeroRuns.id, body.run_id))
+    .limit(1);
+  signal.throwIfAborted();
+  if (!run) {
+    return {
+      status: 400 as const,
+      body: { error: "Expected zero run to exist" },
+    };
+  }
+  return actionOk({
+    run_model_provider: run.modelProvider,
+  });
+}
+
 async function replaceOpenRouterVm0ApiKeysForAction(
   db: Db,
   body: ChatMessagesAction<"replace-openrouter-vm0-api-keys">,
@@ -206,6 +230,9 @@ const mutateChatMessagesState$ = command(
       }
       case "read-thread-computer-use-host-id": {
         return await readThreadComputerUseHostIdForAction(db, body, signal);
+      }
+      case "read-run-model-metadata": {
+        return await readRunModelMetadataForAction(db, body, signal);
       }
       case "replace-openrouter-vm0-api-keys": {
         return await replaceOpenRouterVm0ApiKeysForAction(db, body, signal);

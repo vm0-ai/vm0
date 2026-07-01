@@ -4233,7 +4233,10 @@ function zeroRunModelProviderValues(
 > {
   if (zeroRunModelPin) {
     return {
-      modelProvider: zeroRunModelPin.modelProvider ?? null,
+      modelProvider:
+        zeroRunModelPin.modelProvider === undefined
+          ? (modelProvider?.type ?? null)
+          : zeroRunModelPin.modelProvider,
       modelProviderId: zeroRunModelPin.modelProviderId,
       modelProviderCredentialScope:
         zeroRunModelPin.modelProviderCredentialScope,
