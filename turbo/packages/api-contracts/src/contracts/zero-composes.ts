@@ -6,7 +6,7 @@ import { composeResponseSchema, composeListItemSchema } from "./composes";
 const c = initContract();
 
 /**
- * Zero composes by ID contract (GET/DELETE /api/zero/composes/:id)
+ * Zero composes by ID contract (GET /api/zero/composes/:id)
  * Proxies to composesByIdContract
  */
 export const zeroComposesByIdContract = c.router({
@@ -25,23 +25,6 @@ export const zeroComposesByIdContract = c.router({
       404: apiErrorSchema,
     },
     summary: "Get agent compose by ID (zero proxy)",
-  },
-  delete: {
-    method: "DELETE",
-    path: "/api/zero/composes/:id",
-    headers: authHeadersSchema,
-    pathParams: z.object({
-      id: z.string().uuid("Compose ID is required"),
-    }),
-    body: c.noBody(),
-    responses: {
-      204: c.noBody(),
-      401: apiErrorSchema,
-      403: apiErrorSchema,
-      404: apiErrorSchema,
-      409: apiErrorSchema,
-    },
-    summary: "Delete agent compose (zero proxy)",
   },
 });
 

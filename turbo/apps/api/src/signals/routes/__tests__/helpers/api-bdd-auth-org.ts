@@ -1724,22 +1724,6 @@ export function createAuthOrgAgentsBddApi(context: TestContext) {
       );
     },
 
-    async deleteZeroCompose(
-      actor: ApiTestUser,
-      composeId: string,
-    ): Promise<void> {
-      const client = setupAppWithRoutes({ context, routes: authOrgRoutes })(
-        zeroComposesByIdContract,
-      );
-      await accept(
-        client.delete({
-          headers: authenticate(actor),
-          params: { id: composeId },
-        }),
-        [204],
-      );
-    },
-
     async createCustomConnector(
       actor: ApiTestUser,
       body: CreateCustomConnectorBody,

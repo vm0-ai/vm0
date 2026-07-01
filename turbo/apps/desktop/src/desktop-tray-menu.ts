@@ -271,11 +271,29 @@ function buildAuthSubmenu(
   ];
 }
 
-function padTimePart(value: number): string {
+function padDateTimePart(value: number): string {
   return value.toString().padStart(2, "0");
 }
 
-function formatTrayTime(value: string | null): string {
+function isSameLocalDate(left: Date, right: Date): boolean {
+  return (
+    left.getFullYear() === right.getFullYear() &&
+    left.getMonth() === right.getMonth() &&
+    left.getDate() === right.getDate()
+  );
+}
+
+function formatTrayDate(date: Date, now: Date): string {
+  const monthDay = `${padDateTimePart(date.getMonth() + 1)}/${padDateTimePart(
+    date.getDate(),
+  )}`;
+  if (date.getFullYear() === now.getFullYear()) {
+    return monthDay;
+  }
+  return `${date.getFullYear()}/${monthDay}`;
+}
+
+function formatTrayTimestamp(value: string | null): string {
   if (!value) {
     return "running";
   }
@@ -283,7 +301,13 @@ function formatTrayTime(value: string | null): string {
   if (Number.isNaN(date.getTime())) {
     return value;
   }
-  return `${padTimePart(date.getHours())}:${padTimePart(date.getMinutes())}`;
+  const now = new Date(Date.now());
+  if (!isSameLocalDate(date, now)) {
+    return formatTrayDate(date, now);
+  }
+  return `${padDateTimePart(date.getHours())}:${padDateTimePart(
+    date.getMinutes(),
+  )}`;
 }
 
 function truncateMenuLabel(value: string): string {
@@ -297,7 +321,7 @@ function formatRecentCommandLabel(
   entry: ComputerUseLocalCommandLogEntry,
 ): string {
   const target = entry.app ? `${entry.app} - ` : "";
-  const timestamp = formatTrayTime(entry.completedAt ?? entry.startedAt);
+  const timestamp = formatTrayTimestamp(entry.completedAt ?? entry.startedAt);
   return truncateMenuLabel(
     `${timestamp} - ${target}${entry.kind} - ${COMMAND_STATUS_LABELS[entry.status]}`,
   );
