@@ -343,6 +343,18 @@ interface DerivedPersistenceResult {
   readonly sandboxId?: string;
 }
 
+type RunnerJobPayload = ReturnType<typeof queuedRunnerJobPayload>;
+
+interface PreparedRunnerLaunch {
+  readonly runnerJobPayload: RunnerJobPayload;
+  readonly runContextSnapshot: RunContextAxiomSnapshot;
+}
+
+interface QueuedPersistenceResult {
+  readonly persisted: DerivedPersistenceResult;
+  readonly queueDepth: number | null;
+}
+
 interface HttpRunCallback {
   readonly url: string;
   readonly secret: string;
@@ -4394,12 +4406,12 @@ function firewallSnapshots(
   });
 }
 
-function ingestRunContextSnapshot(args: {
+function buildRunContextSnapshot(args: {
   readonly runId: string;
   readonly userId: string;
   readonly body: CreateRunBody;
   readonly builtContext: BuiltStoredExecutionContext;
-}): void {
+}): RunContextAxiomSnapshot {
   const storedContext = args.builtContext.context;
   const manifest = storedContext.storageManifest;
   const sanitizedEnvironment = sanitizeEnvironment(
@@ -4438,8 +4450,43 @@ function ingestRunContextSnapshot(args: {
         : null,
     featureFlagEntries: featureFlagsRecordToEntries(storedContext.featureFlags),
   };
+  return snapshot;
+}
 
-  ingestToAxiom(getDatasetName("run-context"), [snapshot]);
+function ingestRunContextSnapshot(snapshot: RunContextAxiomSnapshot): void {
+  const result = safeSync(() => {
+    return ingestToAxiom(getDatasetName("run-context"), [snapshot]);
+  });
+  if ("error" in result) {
+    L.warn("Failed to ingest run context snapshot", {
+      runId: snapshot.runId,
+      error: result.error,
+    });
+  }
+}
+
+function recordQueuedRunEnqueueTelemetry(args: {
+  readonly runId: string;
+  readonly queueDepth: number;
+}): void {
+  const result = safeSync(() => {
+    recordSandboxOperation({
+      sandboxType: "runner",
+      actionType: "enqueue_zero_run",
+      durationMs: 0,
+      success: true,
+      runId: args.runId,
+      dimensions: {
+        queue_depth: args.queueDepth,
+      },
+    });
+  });
+  if ("error" in result) {
+    L.warn("Failed to record queued run enqueue telemetry", {
+      runId: args.runId,
+      error: result.error,
+    });
+  }
 }
 
 function buildStoredExecutionSecrets(args: {
@@ -4654,96 +4701,96 @@ function buildRunnerJobPayload(
     readonly featureSwitchContext: FeatureSwitchContext;
     readonly timing?: ApiDispatchTimingCollector;
   },
-): Computed<Promise<ReturnType<typeof queuedRunnerJobPayload>>> {
-  return computed(
-    async (get): Promise<ReturnType<typeof queuedRunnerJobPayload>> => {
-      const group =
-        runnerGroup(args.resolved.content) ??
-        optionalEnv("RUNNER_DEFAULT_GROUP");
-      if (!group) {
-        throw new Error("No executor configured: set RUNNER_DEFAULT_GROUP");
-      }
-      if (!isOfficialRunnerGroup(group)) {
-        throw new Error("Only vm0/* runner groups are supported");
-      }
+): Computed<Promise<PreparedRunnerLaunch>> {
+  return computed(async (get): Promise<PreparedRunnerLaunch> => {
+    const group =
+      runnerGroup(args.resolved.content) ?? optionalEnv("RUNNER_DEFAULT_GROUP");
+    if (!group) {
+      throw new Error("No executor configured: set RUNNER_DEFAULT_GROUP");
+    }
+    if (!isOfficialRunnerGroup(group)) {
+      throw new Error("Only vm0/* runner groups are supported");
+    }
 
-      const profile = runnerProfile(args.resolved.content);
-      const featureSwitchOverrides = args.includeZeroTokenSecret
-        ? args.featureSwitchContext.overrides
-        : undefined;
-      const body = args.includeZeroTokenSecret
-        ? withZeroTokenSecret(
-            args.body,
-            generateZeroToken(
-              args.userId,
-              args.run.id,
-              args.orgId,
-              featureSwitchOverrides,
-              {
-                ...(args.zeroTokenComputerUseHostId
-                  ? { computerUseHostId: args.zeroTokenComputerUseHostId }
-                  : {}),
-                ...(args.body.triggerSource
-                  ? { triggerSource: args.body.triggerSource }
-                  : {}),
-              },
-            ),
-          )
-        : args.body;
-      const storageManifest = await measureApiDispatchTiming(
-        args.timing,
-        "api_dispatch_prepare_storage_manifest",
-        "nested",
-        async () => {
-          return await get(
-            prepareAgentRunStorageManifest({
-              db,
-              content: args.resolved.content,
-              vars: body.vars,
-              agentOrgId: args.resolved.orgId,
-              runtimeOrgId: args.orgId,
-              userId: args.userId,
-              artifacts: args.artifacts,
-              volumeVersionOverrides: body.volumeVersions,
-              additionalVolumes: args.additionalVolumes,
-              framework: args.framework,
-              timing: args.timing,
-            }),
-          );
-        },
-      );
-      const builtContext = await measureApiDispatchTiming(
-        args.timing,
-        "api_dispatch_build_stored_execution_context",
-        "nested",
-        async () => {
-          return await buildStoredExecutionContext({
-            ...args,
-            body,
-            runId: args.run.id,
-            chatThreadId: args.chatThreadId,
-            storageManifest,
-            userTimezone: args.userTimezone,
-            featureSwitchContext: args.featureSwitchContext,
-          });
-        },
-      );
-      ingestRunContextSnapshot({
-        runId: args.run.id,
-        userId: args.userId,
-        body,
-        builtContext,
-      });
-      const storedContext = builtContext.context;
-      const cliAgentSessionId = storedContext.resumeSession?.sessionId ?? null;
-      return queuedRunnerJobPayload({
+    const profile = runnerProfile(args.resolved.content);
+    const featureSwitchOverrides = args.includeZeroTokenSecret
+      ? args.featureSwitchContext.overrides
+      : undefined;
+    const body = args.includeZeroTokenSecret
+      ? withZeroTokenSecret(
+          args.body,
+          generateZeroToken(
+            args.userId,
+            args.run.id,
+            args.orgId,
+            featureSwitchOverrides,
+            {
+              ...(args.zeroTokenComputerUseHostId
+                ? { computerUseHostId: args.zeroTokenComputerUseHostId }
+                : {}),
+              ...(args.body.triggerSource
+                ? { triggerSource: args.body.triggerSource }
+                : {}),
+            },
+          ),
+        )
+      : args.body;
+    const storageManifest = await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_prepare_storage_manifest",
+      "nested",
+      async () => {
+        return await get(
+          prepareAgentRunStorageManifest({
+            db,
+            content: args.resolved.content,
+            vars: body.vars,
+            agentOrgId: args.resolved.orgId,
+            runtimeOrgId: args.orgId,
+            userId: args.userId,
+            artifacts: args.artifacts,
+            volumeVersionOverrides: body.volumeVersions,
+            additionalVolumes: args.additionalVolumes,
+            framework: args.framework,
+            timing: args.timing,
+          }),
+        );
+      },
+    );
+    const builtContext = await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_build_stored_execution_context",
+      "nested",
+      async () => {
+        return await buildStoredExecutionContext({
+          ...args,
+          body,
+          runId: args.run.id,
+          chatThreadId: args.chatThreadId,
+          storageManifest,
+          userTimezone: args.userTimezone,
+          featureSwitchContext: args.featureSwitchContext,
+        });
+      },
+    );
+    const runContextSnapshot = buildRunContextSnapshot({
+      runId: args.run.id,
+      userId: args.userId,
+      body,
+      builtContext,
+    });
+    const storedContext = builtContext.context;
+    const cliAgentSessionId = storedContext.resumeSession?.sessionId ?? null;
+    return {
+      runnerJobPayload: queuedRunnerJobPayload({
         runnerGroup: group,
         profile,
         cliAgentSessionId,
         executionContext: storedContext,
-      });
-    },
-  );
+      }),
+      runContextSnapshot,
+    };
+  });
 }
 
 async function lockRunForDerivedPersistence(
@@ -4809,7 +4856,7 @@ function dispatchRun(
       },
     );
 
-    const payload = await measureApiDispatchTiming(
+    const launch = await measureApiDispatchTiming(
       args.timing,
       "api_dispatch_build_runner_job_payload",
       "top_level",
@@ -4817,6 +4864,7 @@ function dispatchRun(
         return await get(buildRunnerJobPayload(db, args));
       },
     );
+    const payload = launch.runnerJobPayload;
 
     const persisted = await measureApiDispatchTiming(
       args.timing,
@@ -4878,6 +4926,7 @@ function dispatchRun(
     );
 
     if (persisted.status === "pending") {
+      ingestRunContextSnapshot(launch.runContextSnapshot);
       await notifyRunnerJob(db, {
         runnerGroup: payload.runnerGroup,
         runId: args.run.id,
@@ -4927,58 +4976,57 @@ function enqueueRunForConcurrency(
   },
 ): Computed<Promise<DerivedPersistenceResult>> {
   return computed(async (get): Promise<DerivedPersistenceResult> => {
-    const payload = await get(buildRunnerJobPayload(db, args));
+    const launch = await get(buildRunnerJobPayload(db, args));
+    const payload = launch.runnerJobPayload;
     const encryptedParams = await encryptQueuedRunnerJobPayload(
       payload,
       args.featureSwitchContext,
     );
 
-    const persisted = await db.transaction(async (tx) => {
-      const currentRun = await lockRunForDerivedPersistence(tx, args.run.id);
-      if (!currentRun) {
-        throw new Error("Run disappeared before queue persistence");
-      }
-      if (currentRun.status !== "queued") {
-        return currentRun;
-      }
+    const queuedPersistence = await db.transaction(
+      async (tx): Promise<QueuedPersistenceResult> => {
+        const currentRun = await lockRunForDerivedPersistence(tx, args.run.id);
+        if (!currentRun) {
+          throw new Error("Run disappeared before queue persistence");
+        }
+        if (currentRun.status !== "queued") {
+          return { persisted: currentRun, queueDepth: null };
+        }
 
-      await tx.insert(agentRunQueue).values({
+        await tx.insert(agentRunQueue).values({
+          runId: args.run.id,
+          userId: args.userId,
+          orgId: args.orgId,
+          encryptedParams,
+          createdAt: args.run.createdAt,
+          expiresAt: sql`now() + interval '2 hours'`,
+        });
+        const [depthRow] = await tx
+          .select({ depth: count() })
+          .from(agentRunQueue)
+          .where(eq(agentRunQueue.orgId, args.orgId));
+        const queueDepth = Number(depthRow?.depth ?? 0);
+        await tx
+          .update(agentRuns)
+          .set({ runnerGroup: payload.runnerGroup })
+          .where(
+            and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "queued")),
+          );
+
+        return { persisted: { status: "queued" as const }, queueDepth };
+      },
+    );
+
+    if (queuedPersistence.persisted.status === "queued") {
+      recordQueuedRunEnqueueTelemetry({
         runId: args.run.id,
-        userId: args.userId,
-        orgId: args.orgId,
-        encryptedParams,
-        createdAt: args.run.createdAt,
-        expiresAt: sql`now() + interval '2 hours'`,
+        queueDepth: queuedPersistence.queueDepth ?? 0,
       });
-      const [depthRow] = await tx
-        .select({ depth: count() })
-        .from(agentRunQueue)
-        .where(eq(agentRunQueue.orgId, args.orgId));
-      recordSandboxOperation({
-        sandboxType: "runner",
-        actionType: "enqueue_zero_run",
-        durationMs: 0,
-        success: true,
-        runId: args.run.id,
-        dimensions: {
-          queue_depth: Number(depthRow?.depth ?? 0),
-        },
-      });
-      await tx
-        .update(agentRuns)
-        .set({ runnerGroup: payload.runnerGroup })
-        .where(
-          and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "queued")),
-        );
-
-      return { status: "queued" as const };
-    });
-
-    if (persisted.status === "queued") {
+      ingestRunContextSnapshot(launch.runContextSnapshot);
       await publishOrgSignal(args.orgId, "queue:changed");
     }
 
-    return persisted;
+    return queuedPersistence.persisted;
   });
 }
 
