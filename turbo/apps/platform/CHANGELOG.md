@@ -1,5 +1,20 @@
 # Changelog
 
+## [0.518.0](https://github.com/vm0-ai/vm0/compare/app-v0.517.0...app-v0.518.0) (2026-07-01)
+
+
+### Features
+
+* add Google Calendar event-updated workflow trigger ([#19562](https://github.com/vm0-ai/vm0/issues/19562)) ([814bd2f](https://github.com/vm0-ai/vm0/commit/814bd2ffb0d5e024463d1c90203f40512f792bae))
+
+
+### Dependencies
+
+* The following workspace dependencies were updated
+  * dependencies
+    * @vm0/api-contracts bumped to 1.134.0
+    * @vm0/core bumped to 8.381.1
+
 ## [0.517.0](https://github.com/vm0-ai/vm0/compare/app-v0.516.2...app-v0.517.0) (2026-07-01)
 
 
