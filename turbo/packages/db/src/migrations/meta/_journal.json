@@ -3683,6 +3683,13 @@
       "when": 1782966203349,
       "tag": "0525_wakeful_siren",
       "breakpoints": true
+    },
+    {
+      "idx": 526,
+      "version": "7",
+      "when": 1782974622459,
+      "tag": "0526_nosy_fixer",
+      "breakpoints": true
     }
   ]
 }

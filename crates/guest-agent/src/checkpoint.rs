@@ -21,6 +21,7 @@ use flate2::{Compression, write::GzEncoder};
 use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
 use serde_json::json;
+use sha2::{Digest, Sha256};
 use std::borrow::Cow;
 use std::io::{ErrorKind, Write};
 use std::time::Duration;
