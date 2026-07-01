@@ -278,12 +278,12 @@ Coverage: `zero-uploads-prepare`, `zero-uploads-complete`, `storages`, `storages
 
 ### FILE-02: Image, video, voice, audio, and built-in generation
 
-Given a user starts image, video, voice, audio transcription, generate-image, or built-in generation through API routes
+Given a user starts image, video, voice, audio transcription, or built-in generation through API routes
 When external providers succeed, fail, time out, or return usage metadata
 Then generation status, file/artifact, billing, and usage APIs expose the final visible state.
 Then unauthorized tokens, missing capability, unsupported options, missing pricing, insufficient credits, active-generation limits, and provider failures return expected responses.
 
-Coverage: `zero-image-io-generate`, `zero-video-io-generate`, `zero-voice-io-post`, `zero-voice-io-quota`, `audio-transcriptions-v1`, `generate-image`, `zero-built-in-generation`, `webhooks-built-in-generations`.
+Coverage: `zero-image-io-generate`, `zero-video-io-generate`, `zero-voice-io-post`, `zero-voice-io-quota`, `audio-transcriptions-v1`, `zero-built-in-generation`, `webhooks-built-in-generations`.
 
 ### FILE-03: Desktop computer-use runtime
 
@@ -528,7 +528,7 @@ Legacy test files deleted after verifying replacement coverage by the listed che
 | `automations.test.ts` | AUTOMATIONS-03 chains in `automations.bdd.test.ts` plus AUTOMATIONS-01 in `runs-schedules.bdd.test.ts`; current surface is unified `automations` | same |
 | `internal-callbacks-slack-org.test.ts` | INT-01/HOOK-01 Slack org callback chains in `integrations.bdd.test.ts` | same |
 | `zero-integrations-agentphone-link.test.ts`, `zero-integrations-agentphone-routes.test.ts` | INT-03 AgentPhone chains AP-A..AP-M1 in `agentphone.bdd.test.ts` | same |
-| `audio-transcriptions-v1.test.ts`, `generate-image.test.ts` | FILE-02 MEDIA-A/MEDIA-B in `billing-usage-media.bdd.test.ts` | same |
+| `audio-transcriptions-v1.test.ts` | FILE-02 MEDIA-A/MEDIA-B in `billing-usage-media.bdd.test.ts` | same |
 
 | `zero-slack-{events,commands,interactive}.test.ts` (re-deleted after the #17031 agent-switch-filter delta was re-covered), `desktop-auth.test.ts` (re-deleted after the handoff-status delta), `cron-execute-schedules.test.ts`, `connectors-type-callback.test.ts` (re-deleted; deltas statement-neutral or covered) | INT-01 visibility chains in `integrations.bdd.test.ts`; AUTH-02 handoff chains in `auth-device.bdd.test.ts`; existing SCHED-02 and CB chains, now routed through `cron-execute-automations` | same |
 | `automations.test.ts`, `cron-execute-schedules.test.ts`, `zero-schedules-run.test.ts`, `zero-logs-list.test.ts` (re-deleted after the #17334 automation trigger-source delta) | AUTOMATIONS/SCHED run-now and cron-visible dispatch chains in `automations.bdd.test.ts`/`runs-schedules.bdd.test.ts`; `schedule`/`automation` log filter compatibility in `run-reads.bdd.test.ts`; current cron route is `cron-execute-automations` | same |

@@ -7,7 +7,6 @@ import {
   cronAggregateUsageContract,
   cronProcessUsageEventsContract,
 } from "@vm0/api-contracts/contracts/cron";
-import { generateImageContract } from "@vm0/api-contracts/contracts/generate-image";
 import { onboardingSetupContract } from "@vm0/api-contracts/contracts/onboarding";
 import { usageContract } from "@vm0/api-contracts/contracts/usage";
 import { zeroAttributionContract } from "@vm0/api-contracts/contracts/zero-attribution";
@@ -280,10 +279,6 @@ export function createBillingMediaApi(context: TestContext) {
     );
   }
 
-  function configureGemini(): void {
-    mockEnv("GEMINI_API_KEY", "test-gemini-key");
-  }
-
   function configureMapsProvider(): void {
     mockEnv("ZERO_MAPS_GOOGLE_MAPS_TOKEN", "test-google-maps-key");
   }
@@ -291,7 +286,6 @@ export function createBillingMediaApi(context: TestContext) {
   return {
     configureBillingPrices,
     configureCampaign,
-    configureGemini,
     configureMapsProvider,
 
     async setupOnboarding(actor: ApiTestUser, body: OnboardingSetupBody) {
@@ -669,18 +663,6 @@ export function createBillingMediaApi(context: TestContext) {
       statuses: readonly VoiceSpeechStatus[],
     ) {
       const client = setupApp({ context })(zeroVoiceIoSpeechContract);
-      return await accept(
-        client.post({ headers: authenticate(actor), body }),
-        statuses,
-      );
-    },
-
-    async requestGenerateImage(
-      actor: ApiTestUser | null,
-      body: { readonly prompt?: string },
-      statuses: readonly (200 | 400 | 401 | 402 | 502 | 503)[],
-    ) {
-      const client = setupApp({ context })(generateImageContract);
       return await accept(
         client.post({ headers: authenticate(actor), body }),
         statuses,
