@@ -9,7 +9,6 @@ import {
   zeroAgentsByIdContract,
   zeroAgentInstructionsContract,
 } from "@vm0/api-contracts/contracts/zero-agents";
-import { zeroComposesMainContract } from "@vm0/api-contracts/contracts/zero-composes";
 import {
   type ApplyUserPermissionGrantsRequest,
   type UserPermissionGrantResponse,
@@ -284,24 +283,6 @@ function mockTeamAPIs(): void {
       threads: [],
       hasMore: false,
       nextCursor: null,
-    });
-  });
-  context.mocks.api(zeroComposesMainContract.getByName, ({ respond }) => {
-    return respond(200, {
-      id: researchAgentId,
-      name: "research-agent",
-      headVersionId: "version_2",
-      content: {
-        version: "1",
-        agents: {
-          "research-agent": {
-            description: "Finds and summarizes information",
-            framework: "claude-code",
-          },
-        },
-      },
-      createdAt: "2024-01-01T00:00:00Z",
-      updatedAt: "2024-01-02T00:00:00Z",
     });
   });
   context.mocks.api(zeroAgentsByIdContract.get, ({ params, respond }) => {

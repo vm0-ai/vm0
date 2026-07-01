@@ -825,6 +825,66 @@ describe("CHAIN-RUN: entitled run lifecycle through runner and sandbox webhooks"
     await api.requestCancelRun(actor, created.runId, [200]);
   });
 
+  it("keeps a direct launch claimable when run-context ingest fails", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const prompt = "run-context ingest should not block launch";
+    context.mocks.axiom.ingest.mockImplementation((dataset, events) => {
+      if (
+        dataset === "run-context" &&
+        Array.isArray(events) &&
+        events.some((event) => {
+          return isRecord(event) && event.prompt === prompt;
+        })
+      ) {
+        throw new Error("run-context ingest failed");
+      }
+      return true;
+    });
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(created.status).toBe("pending");
+    const claim = await api.claimRunnerJob(created.runId);
+    expect(claim.prompt).toBe(prompt);
+    expect(context.mocks.axiom.ingest).toHaveBeenCalledWith("run-context", [
+      expect.objectContaining({
+        runId: created.runId,
+        prompt,
+      }),
+    ]);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
+  it("keeps a direct launch claimable when sandbox telemetry ingest fails", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+    const prompt = "sandbox telemetry should not block launch";
+    context.mocks.axiom.sdkIngest.mockImplementation((dataset) => {
+      if (dataset === "vm0-sandbox-op-log-dev") {
+        throw new Error("sandbox telemetry ingest failed");
+      }
+      return true;
+    });
+
+    const created = await api.createRun(actor, {
+      agentId,
+      prompt,
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(created.status).toBe("pending");
+    const claim = await api.claimRunnerJob(created.runId);
+    expect(claim.prompt).toBe(prompt);
+
+    await api.requestCancelRun(actor, created.runId, [200]);
+  });
+
   it("emits compose resolution timing for direct compose version runs", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor } = await entitledRunActor();
@@ -1212,6 +1272,93 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await api.requestCancelRun(actor, third.runId, [200]);
     const emptied = await api.readRunQueue(actor);
     expect(emptied.body.concurrency.active).toBe(0);
+  });
+
+  it("keeps a queued launch visible when enqueue telemetry fails", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before telemetry failure one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before telemetry failure two",
+      modelProvider: "anthropic-api-key",
+    });
+    context.mocks.axiom.sdkIngest.mockImplementation((dataset, events) => {
+      if (
+        dataset === "vm0-sandbox-op-log-dev" &&
+        Array.isArray(events) &&
+        events.some((event) => {
+          return isRecord(event) && event.op_type === "enqueue_zero_run";
+        })
+      ) {
+        throw new Error("enqueue telemetry failed");
+      }
+      return true;
+    });
+
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should survive telemetry failure",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(queued.status).toBe("queued");
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).toContainEqual(
+      expect.objectContaining({ runId: queued.runId }),
+    );
+    expect(sandboxOperationEventsForRun(queued.runId)).toContainEqual(
+      expect.objectContaining({
+        op_type: "enqueue_zero_run",
+        run_id: queued.runId,
+      }),
+    );
+
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
+  it("keeps a queued launch visible when queue changed publish fails", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before queue publish failure one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before queue publish failure two",
+      modelProvider: "anthropic-api-key",
+    });
+    context.mocks.ably.publish.mockRejectedValueOnce(
+      new Error("queue changed publish failed"),
+    );
+
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should survive queue publish failure",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(queued.status).toBe("queued");
+    const stored = await api.readRun(actor, queued.runId);
+    expect(stored.status).toBe("queued");
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).toContainEqual(
+      expect.objectContaining({ runId: queued.runId }),
+    );
+
+    await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
   });
 
   it("removes cancelled runs from the claimable queue", async () => {

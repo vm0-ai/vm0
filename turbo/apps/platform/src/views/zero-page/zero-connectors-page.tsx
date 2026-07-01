@@ -15,7 +15,6 @@ import {
   IconPlus,
   IconLoader2,
   IconDotsVertical,
-  IconInfoCircle,
   IconFilter,
   IconChevronDown,
   IconCheck,
@@ -60,7 +59,6 @@ import {
   getConnectorConnectLaunchMode,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
-  connectorReconnectReasonTooltipText,
   type ConnectorTypeWithStatus,
   type ConnectorsConnectionFilter,
 } from "../../signals/zero-page/settings/connectors.ts";
@@ -628,8 +626,6 @@ function GlobalConnectorCard({
 }) {
   const connectionStatus = connectorCurrentConnectionStatus(connector);
   const status = (() => {
-    const reconnectReasonTooltip =
-      connectorReconnectReasonTooltipText(connector);
     if (isPolling) {
       const standaloneHint = isStandaloneMode()
         ? " Switch back here after completing sign-in."
@@ -643,28 +639,10 @@ function GlobalConnectorCard({
     }
     if (connector.connected && connectionStatus === "reconnect-required") {
       return (
-        <span className="flex min-w-0 flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+        <span className="flex shrink-0 items-center gap-2 whitespace-nowrap text-xs">
           <span className="h-1.5 w-1.5 rounded-full bg-amber-500 shrink-0" />
-          <span className="flex items-center gap-1 text-amber-600 dark:text-amber-400">
+          <span className="text-amber-600 dark:text-amber-400">
             Connection expired
-            {reconnectReasonTooltip ? (
-              <TooltipProvider delayDuration={200}>
-                <Tooltip>
-                  <TooltipTrigger asChild>
-                    <button
-                      type="button"
-                      aria-label="Why this connection expired"
-                      className="inline-flex h-4 w-4 shrink-0 items-center justify-center rounded-full text-amber-600 transition-colors hover:text-amber-700 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-amber-500 focus-visible:ring-offset-2 dark:text-amber-400 dark:hover:text-amber-300"
-                    >
-                      <IconInfoCircle size={12} stroke={1.8} />
-                    </button>
-                  </TooltipTrigger>
-                  <TooltipContent className="max-w-64 text-xs" side="top">
-                    {reconnectReasonTooltip}
-                  </TooltipContent>
-                </Tooltip>
-              </TooltipProvider>
-            ) : null}
           </span>
         </span>
       );
@@ -726,11 +704,11 @@ function GlobalConnectorCard({
         </span>
       </div>
       <div className="flex h-11 items-center justify-between border-t border-border/50 pl-5 pr-2">
-        <div className="flex min-w-0 flex-1 items-center gap-2 overflow-hidden">
+        <div className="flex shrink-0 items-center gap-2 overflow-hidden">
           {status}
         </div>
         {connector.connected && (
-          <div className="flex shrink-0 items-center gap-1">
+          <div className="flex min-w-0 flex-1 items-center justify-end gap-1">
             {showManageAccess && (
               <ConnectorAccessButton
                 connectorType={connector.type}

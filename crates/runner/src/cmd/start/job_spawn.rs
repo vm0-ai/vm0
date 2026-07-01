@@ -904,6 +904,7 @@ fn is_info_level_job_failure(diagnostic: &FailureDiagnostic) -> bool {
                 FailureReason::InsufficientCredits
                     | FailureReason::InvalidApiKey
                     | FailureReason::InvalidCredentials
+                    | FailureReason::ContextWindowExceeded
                     | FailureReason::OutputTokenLimit
                     | FailureReason::ProviderOverloaded
                     | FailureReason::ProviderStreamTimeout
@@ -1277,6 +1278,7 @@ mod tests {
             FailureReason::InsufficientCredits,
             FailureReason::InvalidApiKey,
             FailureReason::InvalidCredentials,
+            FailureReason::ContextWindowExceeded,
             FailureReason::OutputTokenLimit,
             FailureReason::ProviderOverloaded,
             FailureReason::ProviderStreamTimeout,
@@ -1400,6 +1402,7 @@ mod tests {
         for reason in [
             FailureReason::InvalidApiKey,
             FailureReason::InvalidCredentials,
+            FailureReason::ContextWindowExceeded,
             FailureReason::OutputTokenLimit,
             FailureReason::ProviderOverloaded,
             FailureReason::ProviderStreamTimeout,

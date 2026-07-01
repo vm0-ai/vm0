@@ -47,37 +47,6 @@ function composeResponse(row: {
   };
 }
 
-export function zeroComposeByName(args: {
-  readonly orgId: string;
-  readonly name: string;
-}): Computed<Promise<ComposeResponse | null>> {
-  return computed(async (get): Promise<ComposeResponse | null> => {
-    const [row] = await get(db$)
-      .select({
-        id: agentComposes.id,
-        name: agentComposes.name,
-        headVersionId: agentComposes.headVersionId,
-        createdAt: agentComposes.createdAt,
-        updatedAt: agentComposes.updatedAt,
-        content: agentComposeVersions.content,
-      })
-      .from(agentComposes)
-      .leftJoin(
-        agentComposeVersions,
-        eq(agentComposes.headVersionId, agentComposeVersions.id),
-      )
-      .where(
-        and(
-          eq(agentComposes.orgId, args.orgId),
-          eq(agentComposes.name, args.name),
-        ),
-      )
-      .limit(1);
-
-    return row ? composeResponse(row) : null;
-  });
-}
-
 export function zeroComposeExists(args: {
   readonly orgId: string;
   readonly composeId: string;
