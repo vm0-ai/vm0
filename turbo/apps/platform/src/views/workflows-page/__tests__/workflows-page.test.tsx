@@ -431,31 +431,6 @@ function mockAgentPageApis(): void {
   });
 }
 
-function mockWorkflowAuditMembers(): void {
-  context.mocks.data.orgMembers({
-    members: [
-      {
-        userId: CURRENT_USER_ID,
-        email: "ethan@example.com",
-        firstName: "Ethan",
-        lastName: "Zhang",
-        imageUrl: "",
-        role: "admin",
-        joinedAt: "2024-01-01T00:00:00Z",
-      },
-      {
-        userId: UPDATED_USER_ID,
-        email: "lancy@example.com",
-        firstName: "Lancy",
-        lastName: "Lan",
-        imageUrl: "",
-        role: "member",
-        joinedAt: "2024-01-01T00:00:00Z",
-      },
-    ],
-  });
-}
-
 function applyWorkflowUpdate(
   workflow: ZeroWorkflowDetailResponse,
   body: ZeroWorkflowUpdateRequest,
@@ -1133,8 +1108,7 @@ describe("workflow detail page", () => {
     await expectComposerText("/sales-research");
   });
 
-  it("orders workflow info sections with audit metadata last", async () => {
-    mockWorkflowAuditMembers();
+  it("orders workflow info sections without audit metadata", async () => {
     mockWorkflowApis([salesResearch()]);
 
     detachedSetupWorkflowDetailPage(workflowDetailPath("info"));
@@ -1143,14 +1117,11 @@ describe("workflow detail page", () => {
       expect(screen.getAllByText("Visibility").length).toBeGreaterThan(0);
     });
 
-    await waitFor(() => {
-      expect(textFor(document.body)).toContain("Created by Ethan Zhang");
-    });
     const pageText = textFor(document.body);
-    expect(pageText).toContain("Created by Ethan Zhang");
-    expect(pageText).toContain("Last updated by Lancy Lan");
-    expect(pageText).toContain("Jun 17, 2026");
-    expect(pageText).toContain("Jun 20, 2026");
+    expect(pageText).not.toContain("Created by");
+    expect(pageText).not.toContain("Last updated by");
+    expect(pageText).not.toContain("Jun 17, 2026");
+    expect(pageText).not.toContain("Jun 20, 2026");
     expect(pageText.indexOf("Slug")).toBeLessThan(
       pageText.indexOf("Visibility"),
     );
@@ -1159,9 +1130,6 @@ describe("workflow detail page", () => {
     );
     expect(pageText.indexOf("Copy workflow")).toBeLessThan(
       pageText.indexOf("Delete workflow"),
-    );
-    expect(pageText.indexOf("Delete workflow")).toBeLessThan(
-      pageText.indexOf("Created by"),
     );
   });
 

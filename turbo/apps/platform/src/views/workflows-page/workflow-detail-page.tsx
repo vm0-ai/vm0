@@ -124,10 +124,6 @@ import {
   workflowMetadataPatch$,
 } from "../../signals/workflows-page/workflows-signals.ts";
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
-import {
-  orgMembers$,
-  type OrgMember,
-} from "../../signals/external/org-members.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { detachedNavigateTo$ } from "../../signals/route.ts";
@@ -624,9 +620,6 @@ function WorkflowInfoTab({
           </div>
         </div>
       ) : null}
-      <div className="zero-card px-5 py-4">
-        <WorkflowAuditMetadata detail={detail} />
-      </div>
       <WorkflowCopyDialog
         detail={detail}
         open={actionDialog === "copy"}
@@ -877,66 +870,6 @@ function ShadowWarning({
       </p>
     </div>
   );
-}
-
-function WorkflowAuditMetadata({
-  detail,
-}: {
-  readonly detail: ZeroWorkflowDetailResponse;
-}) {
-  const membersLoadable = useLoadable(orgMembers$);
-  const members =
-    membersLoadable.state === "hasData" ? membersLoadable.data : [];
-  const membersById = new Map(
-    members.map((member) => {
-      return [member.userId, member];
-    }),
-  );
-
-  return (
-    <div className="px-3 py-2 text-xs leading-5 text-muted-foreground">
-      <div>
-        <p>
-          Created by {workflowUserLabel(detail.createdByUserId, membersById)}
-        </p>
-        <p>{formatWorkflowAuditDate(detail.createdAt)}</p>
-      </div>
-      <div className="mt-2">
-        <p>
-          Last updated by{" "}
-          {workflowUserLabel(detail.updatedByUserId, membersById)}
-        </p>
-        <p>{formatWorkflowAuditDate(detail.updatedAt)}</p>
-      </div>
-    </div>
-  );
-}
-
-function workflowUserLabel(
-  userId: string,
-  membersById: ReadonlyMap<string, OrgMember>,
-): string {
-  const member = membersById.get(userId);
-  return member ? orgMemberDisplayName(member) : userId;
-}
-
-function orgMemberDisplayName(member: OrgMember): string {
-  const fullName = [member.firstName, member.lastName]
-    .filter((part): part is string => {
-      return Boolean(part);
-    })
-    .join(" ");
-  return fullName || member.email || member.userId;
-}
-
-function formatWorkflowAuditDate(value: string): string {
-  return new Intl.DateTimeFormat("en-US", {
-    month: "short",
-    day: "numeric",
-    year: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  }).format(new Date(value));
 }
 
 function WorkflowPublicToggle({
