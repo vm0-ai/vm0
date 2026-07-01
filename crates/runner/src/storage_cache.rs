@@ -2454,6 +2454,73 @@ mod tests {
     }
 
     #[tokio::test]
+    async fn full_download_client_error_does_not_retry() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/download-forbidden.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/download-forbidden.tar.gz")
+                    .header_missing("range");
+                then.status(403);
+            })
+            .await;
+
+        let original = format!(
+            "{}?X-Amz-Signature=secret&X-Amz-Credential=credential",
+            server.url("/download-forbidden.tar.gz")
+        );
+        let name = "download-client-error";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        full.assert_calls_async(1).await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        let reason = ops
+            .iter()
+            .find(|(key, _, _)| key == "storage_cache_skipped_invalid_download")
+            .and_then(|(_, _, error)| error.as_deref())
+            .expect("expected storage_cache_skipped_invalid_download reason");
+        assert!(reason.contains("403"), "expected 403 in reason: {reason}");
+        assert!(
+            !reason.contains("retry exhausted"),
+            "4xx errors must not retry: {reason}"
+        );
+        assert!(
+            !reason.contains("X-Amz-Signature")
+                && !reason.contains("secret")
+                && !reason.contains("credential")
+                && !reason.contains("/download-forbidden.tar.gz"),
+            "telemetry error must not include presigned URL details: {reason}"
+        );
+    }
+
+    #[tokio::test]
     async fn full_download_retry_exhaustion_is_passthrough() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
