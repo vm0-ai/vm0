@@ -43,7 +43,6 @@ import {
 import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings-dialog.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
-import { webBaseForNavigation$ } from "../../signals/fetch.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
 
@@ -382,24 +381,14 @@ function AccountManagementGroup({
   );
 }
 
-function ExtraAccountActions({
-  showExportData,
-  webBase,
-}: {
-  showExportData: boolean;
-  webBase: string | undefined;
-}) {
+function ExtraAccountActions({ showExportData }: { showExportData: boolean }) {
   if (!showExportData) {
     return null;
   }
   return (
     <DropdownMenuItem
-      disabled={!webBase}
       onClick={() => {
-        if (!webBase) {
-          return;
-        }
-        return window.open(`${webBase}/export`, "_blank");
+        return window.open(`${window.location.origin}/export`, "_blank");
       }}
       className="gap-3 px-3 py-2.5 rounded-lg"
     >
@@ -445,7 +434,6 @@ export function AccountDropdown({
   const user =
     userInfoLoadable.state === "hasData" ? userInfoLoadable.data : undefined;
   const features = useLastResolved(featureSwitch$);
-  const webBase = useLastResolved(webBaseForNavigation$);
   const showExportData = features?.[FeatureSwitchKey.DataExport] ?? false;
   const memoryEnabled = features?.[FeatureSwitchKey.MemoryViewer] ?? false;
   const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
@@ -545,10 +533,7 @@ export function AccountDropdown({
           onSwitchSession={handleSwitchSession}
           onAddAccount={handleAddAccount}
         />
-        <ExtraAccountActions
-          showExportData={showExportData}
-          webBase={webBase}
-        />
+        <ExtraAccountActions showExportData={showExportData} />
         <DropdownMenuSeparator />
         <SignOutItem onAccountAction={handleAccountAction} />
       </DropdownMenuContent>

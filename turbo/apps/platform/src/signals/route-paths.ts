@@ -42,6 +42,7 @@ export const ROUTES = {
   lab: "/_/lab",
   insights: "/insights",
   usage: "/usage",
+  exportData: "/export",
   reportError: "/runs/:runId/report-error",
   redeemCampaign: "/redeem/:campaign",
   skeleton: "/_/skeleton",

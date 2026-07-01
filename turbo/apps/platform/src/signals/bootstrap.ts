@@ -56,6 +56,7 @@ import { setupReportErrorPage$ } from "./report-error/report-error-page-setup.ts
 import { setupLabPage$ } from "./lab-page/lab-page-setup.ts";
 import { setupNetworkInsightsPage$ } from "./network-insights/network-insights-page-setup.ts";
 import { setupUsagePage$ } from "./usage-page/usage-page-setup.ts";
+import { setupExportPage$ } from "./export-page/export-page-setup.ts";
 import { initSlackOrg$ as handleSlackRedirect$ } from "./zero-page/zero-slack.ts";
 import { setupSkeletonPage$, setupErrorPage$ } from "./skeleton-page-setup.ts";
 import { hideAppSkeleton$, startSkeletonCycling$ } from "./app-skeleton.ts";
@@ -283,6 +284,10 @@ const ROUTE_CONFIG = [
   {
     path: ROUTES.usage,
     setup: setupAuthSidebarPageWrapper(setupUsagePage$),
+  },
+  {
+    path: ROUTES.exportData,
+    setup: setupAuthPageWrapper(setupExportPage$),
   },
   {
     path: ROUTES.onboarding,
