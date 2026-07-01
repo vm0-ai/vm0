@@ -25,6 +25,8 @@
 //! treats missing local archives as a broken staging contract.
 
 use std::collections::{HashMap, hash_map::Entry};
+use std::fmt;
+use std::future::Future;
 use std::io;
 use std::path::{Path, PathBuf};
 use std::sync::{Arc, Mutex};
@@ -61,6 +63,8 @@ const GUEST_STAGE_DIR: &str = "/tmp/vm0-storage-cache";
 
 const HEAD_TIMEOUT: Duration = Duration::from_secs(10);
 const DOWNLOAD_TIMEOUT: Duration = Duration::from_secs(120);
+const CACHE_HTTP_MAX_ATTEMPTS: usize = 3;
+const CACHE_HTTP_RETRY_DELAY: Duration = Duration::from_millis(200);
 const STORAGE_CACHE_STAGE_TOTAL: &str = "storage_cache_stage_total";
 const STORAGE_CACHE_STAGE_BATCH_WRITE: &str = "storage_cache_stage_batch_write";
 const STORAGE_CACHE_STAGE_SINGLE_WRITE: &str = "storage_cache_stage_single_write";
@@ -800,7 +804,7 @@ async fn process_one(
     // guest downloads it as today. The exclusive lock stays held through cache
     // population so same-key runners do not duplicate downloads or race on the
     // staging directory.
-    let size = match probe_size(http, &target.archive_url).await {
+    let size = match retry_cache_fetch(|| probe_size(http, &target.archive_url)).await {
         Ok(SizeProbe::Known(n)) => n,
         Ok(SizeProbe::Unknown(reason)) => {
             let reason = reason.as_str();
@@ -847,7 +851,31 @@ async fn process_one(
     // Download, stage, fsync, atomic rename, then release cache ownership before
     // pushing the bytes to the guest.
     let t = Instant::now();
-    let bytes = match download_tarball(http, &target.archive_url, CACHE_MAX_SIZE).await? {
+    let bytes =
+        match retry_cache_fetch(|| download_tarball(http, &target.archive_url, CACHE_MAX_SIZE))
+            .await
+        {
+            Ok(body) => body,
+            Err(e) => {
+                let reason = e.to_string();
+                match e.into_error() {
+                    CacheDownloadError::Http(_) => {
+                        warn!(
+                            name = %target.name,
+                            version = %target.version,
+                            error = %reason,
+                            "storage_cache: full download failed, passthrough"
+                        );
+                        return Ok(ProcessedTarget {
+                            outcome: TargetOutcome::SkippedInvalidDownload { reason },
+                            stage_write: None,
+                        });
+                    }
+                    CacheDownloadError::Internal(e) => return Err(e),
+                }
+            }
+        };
+    let bytes = match bytes {
         DownloadBody::Complete(bytes) => bytes,
         DownloadBody::Empty => {
             warn!(
@@ -972,7 +1000,176 @@ enum ProbeContentRange {
     Invalid,
 }
 
-async fn probe_size(http: &Client, url: &str) -> RunnerResult<SizeProbe> {
+trait CacheRetryableError {
+    fn is_retryable(&self) -> bool;
+}
+
+#[derive(Debug)]
+enum CacheHttpError {
+    Status {
+        phase: &'static str,
+        status: reqwest::StatusCode,
+    },
+    UnexpectedStatus {
+        phase: &'static str,
+        status: reqwest::StatusCode,
+    },
+    Transport {
+        phase: &'static str,
+        detail: String,
+    },
+}
+
+impl CacheHttpError {
+    fn status(phase: &'static str, status: reqwest::StatusCode) -> Self {
+        Self::Status { phase, status }
+    }
+
+    fn unexpected_status(phase: &'static str, status: reqwest::StatusCode) -> Self {
+        Self::UnexpectedStatus { phase, status }
+    }
+
+    fn from_reqwest(phase: &'static str, error: reqwest::Error) -> Self {
+        if let Some(status) = error.status() {
+            return Self::status(phase, status);
+        }
+        Self::Transport {
+            phase,
+            detail: reqwest_error(error),
+        }
+    }
+}
+
+impl fmt::Display for CacheHttpError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Status { phase, status } => write!(f, "{phase}: HTTP status {status}"),
+            Self::UnexpectedStatus { phase, status } => {
+                write!(f, "{phase}: unexpected status {status}")
+            }
+            Self::Transport { phase, detail } => write!(f, "{phase}: {detail}"),
+        }
+    }
+}
+
+impl CacheRetryableError for CacheHttpError {
+    fn is_retryable(&self) -> bool {
+        match self {
+            Self::Status { status, .. } => {
+                *status == reqwest::StatusCode::TOO_MANY_REQUESTS || status.is_server_error()
+            }
+            Self::UnexpectedStatus { .. } => false,
+            Self::Transport { .. } => true,
+        }
+    }
+}
+
+#[derive(Debug)]
+enum CacheDownloadError {
+    Http(CacheHttpError),
+    Internal(RunnerError),
+}
+
+impl From<CacheHttpError> for CacheDownloadError {
+    fn from(error: CacheHttpError) -> Self {
+        Self::Http(error)
+    }
+}
+
+impl From<RunnerError> for CacheDownloadError {
+    fn from(error: RunnerError) -> Self {
+        Self::Internal(error)
+    }
+}
+
+impl fmt::Display for CacheDownloadError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            Self::Http(error) => write!(f, "{error}"),
+            Self::Internal(error) => write!(f, "{error}"),
+        }
+    }
+}
+
+impl CacheRetryableError for CacheDownloadError {
+    fn is_retryable(&self) -> bool {
+        match self {
+            Self::Http(error) => error.is_retryable(),
+            Self::Internal(_) => false,
+        }
+    }
+}
+
+#[derive(Debug)]
+struct CacheRetryError<E> {
+    error: E,
+    attempts: usize,
+    exhausted_retry: bool,
+}
+
+impl<E> CacheRetryError<E> {
+    fn into_error(self) -> E {
+        self.error
+    }
+}
+
+impl<E: fmt::Display> fmt::Display for CacheRetryError<E> {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        if self.exhausted_retry {
+            write!(
+                f,
+                "retry exhausted after {} attempts: {}",
+                self.attempts, self.error
+            )
+        } else {
+            write!(f, "{}", self.error)
+        }
+    }
+}
+
+async fn retry_cache_fetch<T, E, F, Fut>(mut operation: F) -> Result<T, CacheRetryError<E>>
+where
+    E: CacheRetryableError,
+    F: FnMut() -> Fut,
+    Fut: Future<Output = Result<T, E>>,
+{
+    let mut attempt = 1;
+    loop {
+        match operation().await {
+            Ok(value) => return Ok(value),
+            Err(error) => {
+                let retryable = error.is_retryable();
+                let should_retry = retryable && attempt < CACHE_HTTP_MAX_ATTEMPTS;
+                if !should_retry {
+                    return Err(CacheRetryError {
+                        error,
+                        attempts: attempt,
+                        exhausted_retry: retryable && attempt >= CACHE_HTTP_MAX_ATTEMPTS,
+                    });
+                }
+                sleep_cache_retry_delay().await;
+                attempt += 1;
+            }
+        }
+    }
+}
+
+async fn sleep_cache_retry_delay() {
+    let delay = cache_http_retry_delay();
+    if !delay.is_zero() {
+        tokio::time::sleep(delay).await;
+    }
+}
+
+fn cache_http_retry_delay() -> Duration {
+    if cfg!(test) {
+        Duration::ZERO
+    } else {
+        CACHE_HTTP_RETRY_DELAY
+    }
+}
+
+async fn probe_size(http: &Client, url: &str) -> Result<SizeProbe, CacheHttpError> {
     use reqwest::{StatusCode, header};
     let resp = http
         .get(url)
@@ -980,7 +1177,7 @@ async fn probe_size(http: &Client, url: &str) -> RunnerResult<SizeProbe> {
         .timeout(HEAD_TIMEOUT)
         .send()
         .await
-        .map_err(|e| RunnerError::Internal(format!("probe GET: {}", reqwest_error(e))))?;
+        .map_err(|e| CacheHttpError::from_reqwest("probe GET", e))?;
 
     let status = resp.status();
     if status == StatusCode::PARTIAL_CONTENT {
@@ -1020,12 +1217,11 @@ async fn probe_size(http: &Client, url: &str) -> RunnerResult<SizeProbe> {
         return Ok(total);
     }
     // 4xx / 5xx / 416 / anything else — treat as probe failure.
-    let err = resp
-        .error_for_status()
-        .err()
-        .map(reqwest_error)
-        .unwrap_or_else(|| format!("unexpected status {status}"));
-    Err(RunnerError::Internal(format!("probe GET: {err}")))
+    if status.is_success() {
+        Err(CacheHttpError::unexpected_status("probe GET", status))
+    } else {
+        Err(CacheHttpError::status("probe GET", status))
+    }
 }
 
 fn reqwest_error(e: reqwest::Error) -> String {
@@ -1088,15 +1284,21 @@ fn parse_ascii_decimal_u64(value: &str) -> Option<u64> {
     value.parse::<u64>().ok()
 }
 
-async fn download_tarball(http: &Client, url: &str, max_size: u64) -> RunnerResult<DownloadBody> {
+async fn download_tarball(
+    http: &Client,
+    url: &str,
+    max_size: u64,
+) -> Result<DownloadBody, CacheDownloadError> {
     let mut resp = http
         .get(url)
         .timeout(DOWNLOAD_TIMEOUT)
         .send()
         .await
-        .map_err(|e| RunnerError::Internal(format!("GET: {}", reqwest_error(e))))?
-        .error_for_status()
-        .map_err(|e| RunnerError::Internal(format!("GET status: {}", reqwest_error(e))))?;
+        .map_err(|e| CacheHttpError::from_reqwest("GET", e))?;
+    let status = resp.status();
+    if !status.is_success() {
+        return Err(CacheHttpError::status("GET", status).into());
+    }
 
     if let Some(content_length) = resp.content_length()
         && content_length > max_size
@@ -1112,7 +1314,7 @@ async fn download_tarball(http: &Client, url: &str, max_size: u64) -> RunnerResu
     while let Some(chunk) = resp
         .chunk()
         .await
-        .map_err(|e| RunnerError::Internal(format!("read body: {}", reqwest_error(e))))?
+        .map_err(|e| CacheHttpError::from_reqwest("read body", e))?
     {
         if let Some(observed_size) =
             append_limited_chunk(&mut bytes, &mut downloaded, &chunk, max_size)?
@@ -1773,6 +1975,41 @@ mod tests {
         (format!("http://{addr}/archive.tar.gz"), handle)
     }
 
+    async fn raw_http_sequence_url(
+        responses: Vec<Vec<u8>>,
+    ) -> (String, tokio::task::JoinHandle<std::io::Result<()>>) {
+        let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let handle = tokio::spawn(async move {
+            for response in responses {
+                let (mut socket, _) = listener.accept().await?;
+                let mut request = [0u8; 1024];
+                let _ = tokio::io::AsyncReadExt::read(&mut socket, &mut request).await?;
+                socket.write_all(&response).await?;
+            }
+            Ok(())
+        });
+        (format!("http://{addr}/archive.tar.gz"), handle)
+    }
+
+    fn status_response(status: &str) -> Vec<u8> {
+        format!("HTTP/1.1 {status}\r\nContent-Length: 0\r\n\r\n").into_bytes()
+    }
+
+    fn partial_content_response(total: usize) -> Vec<u8> {
+        format!(
+            "HTTP/1.1 206 Partial Content\r\nContent-Range: bytes 0-0/{total}\r\nContent-Length: 1\r\n\r\nx"
+        )
+        .into_bytes()
+    }
+
+    fn ok_response(body: &[u8]) -> Vec<u8> {
+        let mut response =
+            format!("HTTP/1.1 200 OK\r\nContent-Length: {}\r\n\r\n", body.len()).into_bytes();
+        response.extend_from_slice(body);
+        response
+    }
+
     fn assert_storage_cache_skipped_reason(ops: &[(String, bool, Option<String>)], expected: &str) {
         let reason = ops
             .iter()
@@ -2032,6 +2269,205 @@ mod tests {
         assert_op_count(&ops, STORAGE_CACHE_PROCESS_GROUP, 1);
         assert_op_count(&ops, STORAGE_CACHE_LOCK_WAIT, 2);
         assert_no_op(&ops, STORAGE_CACHE_HIT_READ);
+    }
+
+    #[tokio::test]
+    async fn probe_transient_status_retry_then_success_rewrites_url() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let body = tarball_bytes();
+        let responses = vec![
+            status_response("500 Internal Server Error"),
+            partial_content_response(body.len()),
+            ok_response(&body),
+        ];
+        let (url, handle) = raw_http_sequence_url(responses).await;
+        let name = "probe-retry-success";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(url, name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+        handle.await.unwrap().unwrap();
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(format!("file://{}", guest_archive_path(name, version)).as_str())
+        );
+        assert_eq!(
+            std::fs::read(home.storage_cache_dir(name, version).join("archive.tar.gz")).unwrap(),
+            body
+        );
+        assert_eq!(sandbox.write_file_calls().len(), 1);
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(ops.iter().any(|(key, _, _)| key == "storage_cache_miss"));
+        assert_no_op(&ops, "storage_cache_skipped_head_failed");
+    }
+
+    #[tokio::test]
+    async fn probe_client_error_does_not_retry() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/forbidden.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(403);
+            })
+            .await;
+        let full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/forbidden.tar.gz")
+                    .header_missing("range");
+                then.status(200).body(body.clone());
+            })
+            .await;
+
+        let original = server.url("/forbidden.tar.gz");
+        let name = "probe-client-error";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_calls_async(1).await;
+        full.assert_calls_async(0).await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        let ops = telemetry.pending_ops_snapshot();
+        let reason = ops
+            .iter()
+            .find(|(key, _, _)| key == "storage_cache_skipped_head_failed")
+            .and_then(|(_, _, error)| error.as_deref())
+            .expect("expected storage_cache_skipped_head_failed reason");
+        assert!(reason.contains("403"), "expected 403 in reason: {reason}");
+        assert!(
+            !reason.contains("retry exhausted"),
+            "4xx errors must not retry: {reason}"
+        );
+    }
+
+    #[tokio::test]
+    async fn full_download_transient_status_retry_then_success_rewrites_url() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let body = tarball_bytes();
+        let responses = vec![
+            partial_content_response(body.len()),
+            status_response("503 Service Unavailable"),
+            ok_response(&body),
+        ];
+        let (url, handle) = raw_http_sequence_url(responses).await;
+        let name = "download-retry-success";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(url, name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+        handle.await.unwrap().unwrap();
+
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(format!("file://{}", guest_archive_path(name, version)).as_str())
+        );
+        assert_eq!(
+            std::fs::read(home.storage_cache_dir(name, version).join("archive.tar.gz")).unwrap(),
+            body
+        );
+        assert_eq!(sandbox.write_file_calls().len(), 1);
+        let ops = telemetry.pending_ops_snapshot();
+        assert!(ops.iter().any(|(key, _, _)| key == "storage_cache_miss"));
+        assert_no_op(&ops, "storage_cache_skipped_invalid_download");
+    }
+
+    #[tokio::test]
+    async fn full_download_retry_exhaustion_is_passthrough() {
+        let temp = tempfile::tempdir().unwrap();
+        let home = home_at(&temp);
+        let sandbox = MockSandbox::new("test");
+        let mut telemetry = new_telemetry();
+        let server = MockServer::start_async().await;
+        let body = tarball_bytes();
+
+        let probe = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/download-fails.tar.gz")
+                    .header("range", "bytes=0-0");
+                then.status(206)
+                    .header("content-range", format!("bytes 0-0/{}", body.len()))
+                    .body(b"x");
+            })
+            .await;
+        let full = server
+            .mock_async(|when, then| {
+                when.method(GET)
+                    .path("/download-fails.tar.gz")
+                    .header_missing("range");
+                then.status(503);
+            })
+            .await;
+
+        let original = format!(
+            "{}?X-Amz-Signature=secret&X-Amz-Credential=credential",
+            server.url("/download-fails.tar.gz")
+        );
+        let name = "download-retry-exhausted";
+        let version = "v1";
+        let mut manifest = manifest_single_storage(original.clone(), name, version);
+
+        populate_cache(&mut manifest, &sandbox, &home, &mut telemetry)
+            .await
+            .unwrap();
+
+        probe.assert_async().await;
+        full.assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS).await;
+        assert_eq!(
+            manifest.storages[0].archive_url.as_deref(),
+            Some(original.as_str())
+        );
+        assert!(sandbox.write_file_calls().is_empty());
+        assert!(
+            !home
+                .storage_cache_dir(name, version)
+                .join("archive.tar.gz")
+                .exists()
+        );
+        let ops = telemetry.pending_ops_snapshot();
+        let reason = ops
+            .iter()
+            .find(|(key, _, _)| key == "storage_cache_skipped_invalid_download")
+            .and_then(|(_, _, error)| error.as_deref())
+            .expect("expected storage_cache_skipped_invalid_download reason");
+        assert!(
+            reason.contains("retry exhausted after 3 attempts") && reason.contains("503"),
+            "unexpected retry exhaustion reason: {reason}"
+        );
+        assert!(
+            !reason.contains("X-Amz-Signature")
+                && !reason.contains("secret")
+                && !reason.contains("credential")
+                && !reason.contains("/download-fails.tar.gz"),
+            "telemetry error must not include presigned URL details: {reason}"
+        );
     }
 
     #[tokio::test]
@@ -2766,7 +3202,7 @@ mod tests {
     }
 
     #[tokio::test]
-    async fn probe_failure_is_passthrough() {
+    async fn probe_retry_exhaustion_is_passthrough() {
         let temp = tempfile::tempdir().unwrap();
         let home = home_at(&temp);
         let sandbox = MockSandbox::new("test");
@@ -2792,7 +3228,7 @@ mod tests {
             .await
             .unwrap();
 
-        probe.assert_async().await;
+        probe.assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS).await;
 
         // archive_url untouched — guest-download will retry via the original URL.
         assert_eq!(
@@ -2809,6 +3245,10 @@ mod tests {
             .find(|(k, _, _)| k == "storage_cache_skipped_head_failed")
             .expect("expected skipped head telemetry");
         let error = error.as_deref().expect("expected telemetry error reason");
+        assert!(
+            error.contains("retry exhausted after 3 attempts") && error.contains("500"),
+            "unexpected retry exhaustion reason: {error}"
+        );
         assert!(
             !error.contains("X-Amz-Signature")
                 && !error.contains("secret")
@@ -3727,7 +4167,9 @@ mod tests {
             .await
             .unwrap();
 
-        failed_probe.assert_async().await;
+        failed_probe
+            .assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS)
+            .await;
         failed_full.assert_calls_async(0).await;
         successful_probe.assert_async().await;
         successful_full.assert_async().await;
@@ -3909,8 +4351,12 @@ mod tests {
             .await
             .unwrap();
 
-        failed_probe_a.assert_async().await;
-        failed_probe_b.assert_async().await;
+        failed_probe_a
+            .assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS)
+            .await;
+        failed_probe_b
+            .assert_calls_async(CACHE_HTTP_MAX_ATTEMPTS)
+            .await;
         failed_full_a.assert_calls_async(0).await;
         failed_full_b.assert_calls_async(0).await;
         assert!(
