@@ -354,6 +354,7 @@ type QueuedPersistenceResult =
   | {
       readonly status: "queued";
       readonly queueDepth: number;
+      readonly telemetryTimestamp: string;
     }
   | {
       readonly status: Exclude<RunStatus, "queued">;
@@ -4473,6 +4474,7 @@ function ingestRunContextSnapshot(snapshot: RunContextAxiomSnapshot): void {
 function recordQueuedRunEnqueueTelemetry(args: {
   readonly runId: string;
   readonly queueDepth: number;
+  readonly timestamp: string;
 }): void {
   const result = safeSync(() => {
     recordSandboxOperation({
@@ -4481,6 +4483,7 @@ function recordQueuedRunEnqueueTelemetry(args: {
       durationMs: 0,
       success: true,
       runId: args.runId,
+      timestamp: args.timestamp,
       dimensions: {
         queue_depth: args.queueDepth,
       },
@@ -5013,6 +5016,7 @@ function enqueueRunForConcurrency(
           .from(agentRunQueue)
           .where(eq(agentRunQueue.orgId, args.orgId));
         const queueDepth = Number(depthRow?.depth ?? 0);
+        const telemetryTimestamp = nowDate().toISOString();
         await tx
           .update(agentRuns)
           .set({ runnerGroup: payload.runnerGroup })
@@ -5020,7 +5024,7 @@ function enqueueRunForConcurrency(
             and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "queued")),
           );
 
-        return { status: "queued" as const, queueDepth };
+        return { status: "queued" as const, queueDepth, telemetryTimestamp };
       },
     );
 
@@ -5028,6 +5032,7 @@ function enqueueRunForConcurrency(
       recordQueuedRunEnqueueTelemetry({
         runId: args.run.id,
         queueDepth: queuedPersistence.queueDepth,
+        timestamp: queuedPersistence.telemetryTimestamp,
       });
       ingestRunContextSnapshot(launch.runContextSnapshot);
       await publishOrgSignal(args.orgId, "queue:changed");
