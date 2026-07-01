@@ -18,7 +18,20 @@ type ReplaceUserConnectorsResult =
 export type UserConnectorUpdateOperation = "replace" | "add" | "remove";
 
 type ReplaceUserCustomConnectorsResult =
-  | { readonly status: "replaced" }
+  | {
+      readonly status: "replaced";
+      readonly enabledIds: readonly string[];
+    }
+  | { readonly status: "agentNotFound" }
+  | {
+      readonly status: "customConnectorsNotFound";
+      readonly missingIds: readonly string[];
+    };
+
+export type UserCustomConnectorUpdateOperation = "replace" | "add" | "remove";
+
+type AddUserCustomConnectorResult =
+  | { readonly status: "added" }
   | { readonly status: "agentNotFound" }
   | {
       readonly status: "customConnectorsNotFound";
@@ -194,9 +207,11 @@ export async function replaceUserCustomConnectors(
     readonly userId: string;
     readonly agentId: string;
     readonly enabledIds: readonly string[];
+    readonly operation?: UserCustomConnectorUpdateOperation;
   },
 ): Promise<ReplaceUserCustomConnectorsResult> {
   const enabledIds = Array.from(new Set(args.enabledIds));
+  const operation = args.operation ?? "replace";
 
   return await db.transaction(async (tx) => {
     const composeLocked = await lockAgentComposeForConnectorReplace(tx, args);
@@ -204,44 +219,91 @@ export async function replaceUserCustomConnectors(
       return { status: "agentNotFound" };
     }
 
-    const missingIds = await lockCustomConnectorsForReplace(tx, {
-      orgId: args.orgId,
-      enabledIds,
-    });
-    if (missingIds.length > 0) {
-      return { status: "customConnectorsNotFound", missingIds };
+    if (operation !== "remove") {
+      const missingIds = await lockCustomConnectorsForReplace(tx, {
+        orgId: args.orgId,
+        enabledIds,
+      });
+      if (missingIds.length > 0) {
+        return { status: "customConnectorsNotFound", missingIds };
+      }
     }
 
-    // Serialize replace semantics for concurrent saves of the same agent.
     const agentLocked = await lockZeroAgentForConnectorReplace(tx, args);
     if (!agentLocked) {
       return { status: "agentNotFound" };
     }
 
-    await tx
-      .delete(userCustomConnectors)
-      .where(
-        and(
-          eq(userCustomConnectors.orgId, args.orgId),
-          eq(userCustomConnectors.userId, args.userId),
-          eq(userCustomConnectors.agentId, args.agentId),
-        ),
-      );
+    const connectorScope = and(
+      eq(userCustomConnectors.orgId, args.orgId),
+      eq(userCustomConnectors.userId, args.userId),
+      eq(userCustomConnectors.agentId, args.agentId),
+    );
 
-    if (enabledIds.length === 0) {
-      return { status: "replaced" };
+    if (operation === "replace") {
+      await tx.delete(userCustomConnectors).where(connectorScope);
+    } else if (operation === "remove" && enabledIds.length > 0) {
+      await tx
+        .delete(userCustomConnectors)
+        .where(
+          and(
+            connectorScope,
+            inArray(userCustomConnectors.customConnectorId, enabledIds),
+          ),
+        );
     }
 
-    await tx.insert(userCustomConnectors).values(
-      enabledIds.map((customConnectorId) => {
-        return {
-          orgId: args.orgId,
-          userId: args.userId,
-          agentId: args.agentId,
-          customConnectorId,
-        };
+    if (operation !== "remove" && enabledIds.length > 0) {
+      await tx
+        .insert(userCustomConnectors)
+        .values(
+          enabledIds.map((customConnectorId) => {
+            return {
+              orgId: args.orgId,
+              userId: args.userId,
+              agentId: args.agentId,
+              customConnectorId,
+            };
+          }),
+        )
+        .onConflictDoNothing();
+    }
+
+    if (operation === "replace") {
+      return { status: "replaced", enabledIds };
+    }
+
+    const rows = await tx
+      .select({ customConnectorId: userCustomConnectors.customConnectorId })
+      .from(userCustomConnectors)
+      .where(connectorScope);
+    return {
+      status: "replaced",
+      enabledIds: rows.map((row) => {
+        return row.customConnectorId;
       }),
-    );
-    return { status: "replaced" };
+    };
   });
+}
+
+export async function addUserCustomConnector(
+  db: Db,
+  args: {
+    readonly orgId: string;
+    readonly userId: string;
+    readonly agentId: string;
+    readonly customConnectorId: string;
+  },
+): Promise<AddUserCustomConnectorResult> {
+  const result = await replaceUserCustomConnectors(db, {
+    orgId: args.orgId,
+    userId: args.userId,
+    agentId: args.agentId,
+    enabledIds: [args.customConnectorId],
+    operation: "add",
+  });
+  if (result.status === "replaced") {
+    return { status: "added" };
+  }
+  return result;
 }

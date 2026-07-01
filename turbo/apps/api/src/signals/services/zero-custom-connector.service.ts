@@ -20,8 +20,6 @@ import {
 import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { orgCustomConnectorSecrets } from "@vm0/db/schema/org-custom-connector-secret";
 import { orgCustomConnectorValues } from "@vm0/db/schema/org-custom-connector-value";
-import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
-import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { db$, writeDb$, type ReadonlyDb } from "../external/db";
 import { badRequestMessage, notFound } from "../../lib/error";
@@ -33,6 +31,7 @@ import {
   decryptStoredSecretValue,
 } from "./crypto.utils";
 import { userFeatureSwitchContext } from "./feature-switches.service";
+import { addUserCustomConnector } from "./user-connectors.service";
 
 const L = logger("CustomConnectorService");
 
@@ -1617,27 +1616,19 @@ const authorizeProposalAgent$ = command(
       return undefined;
     }
     const writeDb = set(writeDb$);
-    const [agent] = await writeDb
-      .select({ id: zeroAgents.id })
-      .from(zeroAgents)
-      .where(
-        and(eq(zeroAgents.id, args.agentId), eq(zeroAgents.orgId, args.orgId)),
-      )
-      .limit(1);
+    const added = await addUserCustomConnector(writeDb, {
+      orgId: args.orgId,
+      userId: args.userId,
+      agentId: args.agentId,
+      customConnectorId: args.connectorId,
+    });
     signal.throwIfAborted();
-    if (!agent) {
+    if (added.status === "agentNotFound") {
       return notFound("Agent not found");
     }
-    await writeDb
-      .insert(userCustomConnectors)
-      .values({
-        orgId: args.orgId,
-        userId: args.userId,
-        agentId: args.agentId,
-        customConnectorId: args.connectorId,
-      })
-      .onConflictDoNothing();
-    signal.throwIfAborted();
+    if (added.status === "customConnectorsNotFound") {
+      return notFound("Custom connector not found");
+    }
     return args.agentId;
   },
 );

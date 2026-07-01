@@ -60,6 +60,24 @@ function applyUserConnectorUpdate(
   return [...body.enabledTypes];
 }
 
+function applyCustomConnectorUpdate(
+  current: readonly string[],
+  body: {
+    readonly enabledIds: readonly string[];
+    readonly operation?: "replace" | "add" | "remove";
+  },
+): string[] {
+  if (body.operation === "add") {
+    return Array.from(new Set([...current, ...body.enabledIds]));
+  }
+  if (body.operation === "remove") {
+    return current.filter((id) => {
+      return !body.enabledIds.includes(id);
+    });
+  }
+  return [...body.enabledIds];
+}
+
 function createAgent(id: string, displayName: string): TeamComposeItem {
   return {
     id,
@@ -296,7 +314,10 @@ function mockTeamAPIs(): void {
   context.mocks.api(
     zeroAgentCustomConnectorsContract.update,
     ({ body, respond }) => {
-      enabledCustomConnectorIds = body.enabledIds;
+      enabledCustomConnectorIds = applyCustomConnectorUpdate(
+        enabledCustomConnectorIds,
+        body,
+      );
       return respond(200, { enabledIds: enabledCustomConnectorIds });
     },
   );

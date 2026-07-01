@@ -742,12 +742,14 @@ const updateAgentCustomConnectorsInner$ = command(
 
     const writeDb = set(writeDb$);
     const enabledIds = Array.from(new Set(body.data.enabledIds));
+    const operation = body.data.operation ?? "replace";
 
     const replaced = await replaceUserCustomConnectors(writeDb, {
       orgId: auth.orgId,
       userId: auth.userId,
       agentId: params.id,
       enabledIds,
+      operation,
     });
     signal.throwIfAborted();
     if (replaced.status === "agentNotFound") {
@@ -767,7 +769,7 @@ const updateAgentCustomConnectorsInner$ = command(
 
     return {
       status: 200 as const,
-      body: { enabledIds: [...enabledIds] },
+      body: { enabledIds: [...replaced.enabledIds] },
     };
   },
 );

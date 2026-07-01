@@ -288,6 +288,52 @@ describe("PUT /api/zero/agents/:id/custom-connectors", () => {
     );
     expect(readBack).toHaveLength(1);
     expect([c1.id, c2.id]).toContain(readBack[0]);
+
+    await connectors.updateAgentCustomConnectors(
+      actor,
+      agent.agentId,
+      [],
+      "replace",
+    );
+    await Promise.all([
+      connectors.updateAgentCustomConnectors(
+        actor,
+        agent.agentId,
+        [c1.id],
+        "add",
+      ),
+      connectors.updateAgentCustomConnectors(
+        actor,
+        agent.agentId,
+        [c2.id],
+        "add",
+      ),
+    ]);
+    const readAfterAdds = await connectors.readAgentCustomConnectors(
+      actor,
+      agent.agentId,
+    );
+    expect(new Set(readAfterAdds)).toStrictEqual(new Set([c1.id, c2.id]));
+
+    await Promise.all([
+      connectors.updateAgentCustomConnectors(
+        actor,
+        agent.agentId,
+        [c1.id],
+        "remove",
+      ),
+      connectors.updateAgentCustomConnectors(
+        actor,
+        agent.agentId,
+        [c2.id],
+        "add",
+      ),
+    ]);
+    const readAfterRemoveAdd = await connectors.readAgentCustomConnectors(
+      actor,
+      agent.agentId,
+    );
+    expect(readAfterRemoveAdd).toStrictEqual([c2.id]);
   });
 
   it("clears authorizations with empty array", async () => {
