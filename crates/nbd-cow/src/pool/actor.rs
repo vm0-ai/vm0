@@ -18,8 +18,10 @@ use super::state::{DevicePool, DevicePoolConfig};
 ///
 /// The handle coordinates this process-local pool state, while host-global
 /// safety still comes from per-index lock files and sysfs checks. Dropping a
-/// handle is not normal device cleanup. Successful pooled devices must finish
-/// through an explicit [`crate::PooledNbdCowDevice`] finalizer such as
+/// handle is not normal device cleanup. Checked-out leases also carry return
+/// senders, so dropping every handle only stops the actor after outstanding
+/// leases release those senders. Successful pooled devices must finish through
+/// an explicit [`crate::PooledNbdCowDevice`] finalizer such as
 /// [`crate::PooledNbdCowDevice::destroy_with_retries`],
 /// [`crate::PooledNbdCowDevice::destroy_keep_cow_with_retries`], or
 /// [`crate::PooledNbdCowDevice::abandon`].
