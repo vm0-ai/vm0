@@ -798,16 +798,6 @@ export {
   type AudioTranscriptionV1,
 } from "./audio-transcriptions-v1";
 export {
-  generateImageContract,
-  generateImageRequestSchema,
-  generatedImageSchema,
-  generateImageResponseSchema,
-  type GenerateImageContract,
-  type GenerateImageRequest,
-  type GeneratedImage,
-  type GenerateImageResponse,
-} from "./generate-image";
-export {
   runnersPollContract,
   runnersJobClaimContract,
   runnersHeartbeatContract,

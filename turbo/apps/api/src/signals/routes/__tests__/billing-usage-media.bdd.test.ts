@@ -912,25 +912,6 @@ describe("FILE-02 and CHAIN-BILLING-MEDIA: media generation, quota, and status A
     expectApiError(missingSpeechText.body);
     expect(missingSpeechText.body.error.message).toBe("text is required");
 
-    api.configureGemini();
-    const invalidGeminiPrompt = await api.requestGenerateImage(
-      admin,
-      { prompt: "" },
-      [400],
-    );
-    expectApiError(invalidGeminiPrompt.body);
-    expect(invalidGeminiPrompt.body.error.message).toBe(
-      "prompt is required and must be a non-empty string",
-    );
-
-    const generatedImage = await api.requestGenerateImage(
-      admin,
-      { prompt: "a concise billing usage chart" },
-      [402],
-    );
-    expectApiError(generatedImage.body);
-    expect(generatedImage.body.error.code).toBe("INSUFFICIENT_CREDITS");
-
     const missingImageIoPrompt = await api.requestImageIoGenerate(
       admin,
       {},
@@ -1557,7 +1538,7 @@ function sttFormData(
   return formData;
 }
 
-describe("FILE-02: audio transcription v1 and Gemini generate-image provider contracts", () => {
+describe("FILE-02: audio transcription v1 provider contract", () => {
   it("transcribes raw PCM through OpenAI behind the feature switch with the WAV byte contract", async () => {
     const { api, admin } = testActors();
     const runsApi = createRunsAutomationsApi(context);
@@ -1915,92 +1896,5 @@ describe("FILE-02: audio transcription v1 and Gemini generate-image provider con
     expect(afterSpeech.credits).toBe(
       beforeSpeech.credits - speech.body.creditsCharged,
     );
-  });
-
-  it("generates Gemini images behind configuration and no-image gates", async () => {
-    const { api, admin } = testActors();
-    const runsApi = createRunsAutomationsApi(context);
-    await runsApi.grantProEntitlement(admin);
-
-    context.mocks.googleGenAi.constructorArgs.mockClear();
-    context.mocks.googleGenAi.generateContent.mockReset();
-    context.mocks.vercelOidc.getToken.mockResolvedValue("test-oidc-token");
-
-    // Production ignores the dev GEMINI_API_KEY and requires the GCP vars.
-    mockEnv("ENV", "production");
-    mockEnv("GEMINI_API_KEY", "stray-prod-key");
-    mockEnv("GCP_PROJECT_ID", undefined);
-    mockEnv("GCP_PROJECT_NUMBER", undefined);
-    mockEnv("GCP_SERVICE_ACCOUNT_EMAIL", undefined);
-    mockEnv("GCP_WORKLOAD_IDENTITY_POOL_ID", undefined);
-    mockEnv("GCP_WORKLOAD_IDENTITY_POOL_PROVIDER_ID", undefined);
-    const prodMisconfigured = await api.requestGenerateImage(
-      admin,
-      { prompt: "hello" },
-      [503],
-    );
-    expectApiError(prodMisconfigured.body);
-    expect(prodMisconfigured.body.error.code).toBe("NOT_CONFIGURED");
-
-    // Development without any Gemini credentials is equally unconfigured.
-    mockEnv("ENV", "development");
-    mockEnv("GEMINI_API_KEY", undefined);
-    const devMisconfigured = await api.requestGenerateImage(
-      admin,
-      { prompt: "hello" },
-      [503],
-    );
-    expectApiError(devMisconfigured.body);
-    expect(devMisconfigured.body.error.code).toBe("NOT_CONFIGURED");
-
-    const unauthenticated = await api.requestGenerateImage(
-      null,
-      { prompt: "hello" },
-      [401],
-    );
-    expectApiError(unauthenticated.body);
-
-    api.configureGemini();
-    context.mocks.googleGenAi.generateContent.mockResolvedValueOnce({
-      candidates: [
-        {
-          content: {
-            parts: [
-              { inlineData: { mimeType: "image/png", data: "base64data==" } },
-            ],
-          },
-        },
-      ],
-    });
-    const generated = await api.requestGenerateImage(
-      admin,
-      { prompt: "a cat" },
-      [200],
-    );
-    expect(generated.body).toStrictEqual({
-      images: [{ mimeType: "image/png", base64: "base64data==" }],
-    });
-    expect(context.mocks.googleGenAi.generateContent).toHaveBeenCalledWith({
-      model: "gemini-2.5-flash-image",
-      contents: [{ role: "user", parts: [{ text: "a cat" }] }],
-    });
-    // Flush the detached usage-event processing kicked off by the success.
-
-    context.mocks.googleGenAi.generateContent.mockResolvedValueOnce({
-      candidates: [
-        {
-          content: {
-            parts: [{ text: "sorry no image" }, { inlineData: null }],
-          },
-        },
-      ],
-    });
-    const noImage = await api.requestGenerateImage(
-      admin,
-      { prompt: "a cat" },
-      [502],
-    );
-    expectApiError(noImage.body);
-    expect(noImage.body.error.code).toBe("NO_IMAGE_RETURNED");
   });
 });
