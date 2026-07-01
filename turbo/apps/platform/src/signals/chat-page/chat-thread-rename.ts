@@ -6,7 +6,10 @@ import {
 } from "./chat-thread-panes.ts";
 import { openRenameChatThreadDialog$ } from "../zero-page/zero-sidebar-state.ts";
 import { renameChatThread$ } from "./chat-message.ts";
-import { applyChatThreadEmoji } from "./chat-thread-title.ts";
+import {
+  applyChatThreadEmoji,
+  removeChatThreadEmoji,
+} from "./chat-thread-title.ts";
 
 function paneThreadForId(
   threadId: string,
@@ -69,6 +72,24 @@ export const setChatThreadEmojiFromThreadData$ = command(
       { threadId, title: applyChatThreadEmoji(threadData?.title, emoji) },
       signal,
     );
+    set(reloadChatThreadDataForId$, threadId);
+  },
+);
+
+export const clearChatThreadEmojiFromThreadData$ = command(
+  async ({ get, set }, threadId: string, signal: AbortSignal) => {
+    const thread = paneThreadForId(
+      threadId,
+      get(currentLeftThread$),
+      get(currentRightThread$),
+    );
+    const threadData = thread ? await get(thread.threadData$) : null;
+    signal.throwIfAborted();
+    const title = removeChatThreadEmoji(threadData?.title);
+    if (!title) {
+      return;
+    }
+    await set(renameChatThread$, { threadId, title }, signal);
     set(reloadChatThreadDataForId$, threadId);
   },
 );

@@ -9,12 +9,14 @@ import {
 } from "./chat-thread-panes.ts";
 import type { ChatThreadSignals } from "./chat-thread-signals.ts";
 import {
+  clearChatThreadEmojiFromThreadData$,
   openRenameChatThreadDialogFromThreadData$,
   setChatThreadEmojiFromThreadData$,
 } from "./chat-thread-rename.ts";
 import {
   CHAT_THREAD_EMOJI_OPTIONS,
   chatThreadEmojiShortcutIndex,
+  isChatThreadEmojiClearShortcut,
 } from "./chat-thread-title.ts";
 import type { ScrollStepDirection } from "../auto-scroll.ts";
 import { onDomEventFn, onRef } from "../utils.ts";
@@ -140,9 +142,13 @@ export const setChatKeyboardScrollRoot$ = onRef(
       const renameShortcut = matchShortcut("f2", event);
       const emojiShortcut = matchShortcut("shift+f2", event);
       const emojiOptionIndex = chatThreadEmojiShortcutIndex(event);
+      const emojiClearShortcut = isChatThreadEmojiClearShortcut(event);
       if (
         event.defaultPrevented ||
-        (!renameShortcut && !emojiShortcut && emojiOptionIndex === null) ||
+        (!renameShortcut &&
+          !emojiShortcut &&
+          emojiOptionIndex === null &&
+          !emojiClearShortcut) ||
         hasOpenDialog(el.ownerDocument) ||
         !isChatShortcutTarget(el, event.target)
       ) {
@@ -150,7 +156,7 @@ export const setChatKeyboardScrollRoot$ = onRef(
       }
       const features = get(featureSwitch$);
       if (
-        (emojiShortcut || emojiOptionIndex !== null) &&
+        (emojiShortcut || emojiOptionIndex !== null || emojiClearShortcut) &&
         !features[FeatureSwitchKey.ChatThreadEmoji]
       ) {
         return;
@@ -170,6 +176,12 @@ export const setChatKeyboardScrollRoot$ = onRef(
             signal,
           );
         }
+      } else if (emojiClearShortcut) {
+        await set(
+          clearChatThreadEmojiFromThreadData$,
+          mainThread.threadId,
+          signal,
+        );
       } else if (emojiShortcut) {
         const threadData = await get(mainThread.threadData$);
         signal.throwIfAborted();

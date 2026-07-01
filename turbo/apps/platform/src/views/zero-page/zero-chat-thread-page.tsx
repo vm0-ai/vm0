@@ -65,6 +65,7 @@ import {
   DropdownMenu as UiDropdownMenu,
   DropdownMenuContent as UiDropdownMenuContent,
   DropdownMenuItem as UiDropdownMenuItem,
+  DropdownMenuSeparator as UiDropdownMenuSeparator,
   DropdownMenuTrigger as UiDropdownMenuTrigger,
   Dialog,
   DialogContent,
@@ -277,6 +278,8 @@ import {
 import {
   applyChatThreadEmoji,
   chatThreadEmojiShortcutIndex,
+  isChatThreadEmojiClearShortcut,
+  removeChatThreadEmoji,
   CHAT_THREAD_EMOJI_OPTIONS,
 } from "../../signals/chat-page/chat-thread-title.ts";
 import type { ChatThread } from "../../signals/agent-chat.ts";
@@ -367,7 +370,8 @@ const CHAT_SHORTCUT_SECTIONS = [
       { key: "mod+shift+a", label: "Open agent list" },
       { key: "f2", label: "Rename chat" },
       { key: "shift+f2", label: "Change emoji" },
-      { key: "shift+1", label: "Set emoji (shift+1-7)" },
+      { key: "shift+1", label: "Set emoji (shift+1-9)" },
+      { key: "shift+0", label: "Clear emoji" },
     ],
   },
   {
@@ -387,6 +391,12 @@ const CHAT_SHORTCUT_SECTIONS = [
     ],
   },
 ] as const;
+
+const CHAT_THREAD_EMOJI_SHORTCUT_KEYS: readonly string[] = [
+  "shift+f2",
+  "shift+1",
+  "shift+0",
+];
 
 function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
   return <ArtifactsButtonInner thread={thread} />;
@@ -1215,6 +1225,29 @@ function ChatThreadEmojiMenuButton({
     );
   }
 
+  function clearEmoji() {
+    const activeThreadId = emojiMenuThreadId;
+    if (!activeThreadId) {
+      return;
+    }
+    const nextTitle = removeChatThreadEmoji(emojiMenuTitle ?? title);
+    if (!nextTitle) {
+      closeMenu();
+      return;
+    }
+    detach(
+      (async () => {
+        await renameChatThread(
+          { threadId: activeThreadId, title: nextTitle },
+          pageSignal,
+        );
+        reloadChatThreadDataForId(activeThreadId);
+        closeMenu();
+      })(),
+      Reason.DomCallback,
+    );
+  }
+
   return (
     <TooltipProvider delayDuration={200}>
       <UiDropdownMenu
@@ -1253,13 +1286,17 @@ function ChatThreadEmojiMenuButton({
           }}
           onKeyDown={(event) => {
             const index = chatThreadEmojiShortcutIndex(event);
-            if (index === null) {
+            if (index !== null) {
+              event.preventDefault();
+              const option = CHAT_THREAD_EMOJI_OPTIONS[index];
+              if (option) {
+                selectEmoji(option.emoji);
+              }
               return;
             }
-            event.preventDefault();
-            const option = CHAT_THREAD_EMOJI_OPTIONS[index];
-            if (option) {
-              selectEmoji(option.emoji);
+            if (isChatThreadEmojiClearShortcut(event)) {
+              event.preventDefault();
+              clearEmoji();
             }
           }}
         >
@@ -1284,6 +1321,20 @@ function ChatThreadEmojiMenuButton({
               </UiDropdownMenuItem>
             );
           })}
+          <UiDropdownMenuSeparator />
+          <UiDropdownMenuItem
+            aria-label="Clear emoji"
+            onSelect={() => {
+              clearEmoji();
+            }}
+          >
+            <span>Clear emoji</span>
+            <span className="ml-auto flex items-center gap-0.5 text-xs text-muted-foreground">
+              {getShortcutParts("shift+0").map((part) => {
+                return <span key={part}>{part}</span>;
+              })}
+            </span>
+          </UiDropdownMenuItem>
         </UiDropdownMenuContent>
       </UiDropdownMenu>
     </TooltipProvider>
@@ -3007,6 +3058,7 @@ function ChatThread({
   const openRenameDialog = useOpenCurrentChatThreadRenameDialog(thread);
   const openEmojiMenu = useOpenCurrentChatThreadEmojiMenu(thread);
   const setThreadEmoji = useSetCurrentChatThreadEmoji(thread);
+  const clearThreadEmoji = useClearCurrentChatThreadEmoji(thread);
   const features = useLastResolved(featureSwitch$);
   const chatThreadEmojiEnabled =
     features?.[FeatureSwitchKey.ChatThreadEmoji] ?? false;
@@ -3023,6 +3075,11 @@ function ChatThread({
           setThreadEmoji(option.emoji);
           return;
         }
+      }
+      if (isChatThreadEmojiClearShortcut(event)) {
+        event.preventDefault();
+        clearThreadEmoji();
+        return;
       }
     }
     if (chatThreadEmojiEnabled && matchShortcut("shift+f2", event)) {
@@ -3089,6 +3146,29 @@ function useSetCurrentChatThreadEmoji(thread: ChatThreadSignals) {
             threadId: thread.threadId,
             title: applyChatThreadEmoji(title, emoji),
           },
+          pageSignal,
+        );
+        reloadChatThreadDataForId(thread.threadId);
+      })(),
+      Reason.DomCallback,
+    );
+  };
+}
+
+function useClearCurrentChatThreadEmoji(thread: ChatThreadSignals) {
+  const renameChatThread = useSet(renameChatThread$);
+  const reloadChatThreadDataForId = useSet(reloadChatThreadDataForId$);
+  const title = useCurrentChatThreadDialogTitle(thread);
+  const pageSignal = useGet(pageSignal$);
+  return () => {
+    const nextTitle = removeChatThreadEmoji(title);
+    if (!nextTitle) {
+      return;
+    }
+    detach(
+      (async () => {
+        await renameChatThread(
+          { threadId: thread.threadId, title: nextTitle },
           pageSignal,
         );
         reloadChatThreadDataForId(thread.threadId);
@@ -3296,7 +3376,7 @@ export function ZeroChatThreadPage() {
         return {
           ...section,
           shortcuts: section.shortcuts.filter((shortcut) => {
-            return shortcut.key !== "shift+f2" && shortcut.key !== "shift+1";
+            return !CHAT_THREAD_EMOJI_SHORTCUT_KEYS.includes(shortcut.key);
           }),
         };
       });

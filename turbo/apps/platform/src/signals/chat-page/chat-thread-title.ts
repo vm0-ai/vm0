@@ -6,6 +6,8 @@ export const CHAT_THREAD_EMOJI_OPTIONS = [
   { emoji: "💡", label: "Idea" },
   { emoji: "❓", label: "Question" },
   { emoji: "⏳", label: "Waiting" },
+  { emoji: "👀", label: "Watching" },
+  { emoji: "🚀", label: "Shipped" },
 ] as const;
 
 const CHAT_THREAD_EMOJI_PATTERN =
@@ -45,17 +47,25 @@ export function applyChatThreadEmoji(
   return text ? `${emoji} ${text}` : emoji;
 }
 
-export function chatThreadEmojiShortcutIndex(event: {
+export function removeChatThreadEmoji(
+  title: string | null | undefined,
+): string {
+  return getChatThreadTitleParts(title).text;
+}
+
+interface ChatThreadEmojiKeyboardEvent {
   key: string;
   code?: string;
   shiftKey: boolean;
-}): number | null {
+}
+
+function chatThreadEmojiShortcutDigit(
+  event: ChatThreadEmojiKeyboardEvent,
+): string | null {
   if (!event.shiftKey) {
     return null;
   }
-  const codeMatch = event.code?.match(/^(?:Digit|Numpad)([1-7])$/);
-  const key = codeMatch?.[1] ?? event.key;
-  const fallbackShiftedKeys: Record<string, string> = {
+  const shiftedDigitKeys: Record<string, string> = {
     "!": "1",
     "@": "2",
     "#": "3",
@@ -63,10 +73,28 @@ export function chatThreadEmojiShortcutIndex(event: {
     "%": "5",
     "^": "6",
     "&": "7",
+    "*": "8",
+    "(": "9",
+    ")": "0",
   };
-  const digit = fallbackShiftedKeys[key] ?? key;
-  if (!/^[1-7]$/.test(digit)) {
+  const codeMatch = event.code?.match(/^(?:Digit|Numpad)([0-9])$/);
+  const key = codeMatch?.[1] ?? event.key;
+  const digit = shiftedDigitKeys[key] ?? key;
+  return /^[0-9]$/.test(digit) ? digit : null;
+}
+
+export function chatThreadEmojiShortcutIndex(
+  event: ChatThreadEmojiKeyboardEvent,
+): number | null {
+  const digit = chatThreadEmojiShortcutDigit(event);
+  if (digit === null || digit === "0") {
     return null;
   }
   return Number(digit) - 1;
+}
+
+export function isChatThreadEmojiClearShortcut(
+  event: ChatThreadEmojiKeyboardEvent,
+): boolean {
+  return chatThreadEmojiShortcutDigit(event) === "0";
 }

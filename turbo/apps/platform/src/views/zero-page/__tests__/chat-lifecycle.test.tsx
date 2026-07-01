@@ -3079,7 +3079,7 @@ describe("chat lifecycle", () => {
     fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
 
     const menu = await screen.findByRole("menu");
-    expect(queryAllByRoleFast("menuitem", menu)).toHaveLength(7);
+    expect(queryAllByRoleFast("menuitem", menu)).toHaveLength(10);
     click(menuItemByLabel("Done ✅", menu));
 
     await waitFor(() => {
@@ -3231,6 +3231,79 @@ describe("chat lifecycle", () => {
         "✅ Current keyboard thread",
       );
     });
+  });
+
+  it("clears the current chat emoji directly with Shift+0", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({
+      currentTitle: "🔥 Current keyboard thread",
+    });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, {
+      key: "0",
+      code: "Digit0",
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        "keyboard-current-thread",
+        "Current keyboard thread",
+      );
+    });
+  });
+
+  it("does not clear the emoji when the chat has no other title text", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({ currentTitle: "🔥" });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, {
+      key: "0",
+      code: "Digit0",
+      shiftKey: true,
+    });
+
+    expect(renameRequest).not.toHaveBeenCalled();
   });
 
   it("opens run logs from assistant message actions", async () => {
