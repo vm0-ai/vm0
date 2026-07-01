@@ -196,7 +196,7 @@ function quote(value: string): string {
   return `"${value}"`;
 }
 
-function humanReadableTriggerRuleLabel(
+export function humanReadableTriggerRuleLabel(
   trigger: ZeroWorkflowTriggerSummary,
   displayTimezone: string,
 ): string {
@@ -243,7 +243,7 @@ function humanReadableTriggerRuleLabel(
   return gmailTriggerTitle(trigger);
 }
 
-function triggerTypeLabel(trigger: ZeroWorkflowTriggerSummary): string {
+export function triggerTypeLabel(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.kind === "schedule") {
     return "Schedule";
   }
@@ -483,7 +483,7 @@ function WorkflowAgentAvatar({
   );
 }
 
-function TriggerListIcon({
+export function TriggerListIcon({
   trigger,
 }: {
   readonly trigger: ZeroWorkflowTriggerSummary;
@@ -529,7 +529,7 @@ function TriggerListIcon({
   );
 }
 
-function WorkflowTriggerEnabledSwitch({
+export function WorkflowTriggerEnabledSwitch({
   entry,
 }: {
   readonly entry: WorkflowTriggerAutomationEntry;

@@ -62,6 +62,7 @@ interface ManageNavItem {
   readonly label: string;
   readonly icon: NavIcon;
   readonly featureGate?: FeatureSwitchKey;
+  readonly hideWhenFeatureEnabled?: FeatureSwitchKey;
 }
 
 const MANAGE_NAV: readonly ManageNavItem[] = [
@@ -85,6 +86,7 @@ const MANAGE_NAV: readonly ManageNavItem[] = [
     pathname: "/automations",
     label: "Automations",
     icon: IconCalendar as NavIcon,
+    hideWhenFeatureEnabled: FeatureSwitchKey.WorkflowAutomation,
   },
   {
     id: "workflows",
@@ -145,6 +147,12 @@ function useResolvedNavItems() {
   const features = useLastResolved(featureSwitch$);
   const defaultDisplayName = useLastResolved(defaultAgentName$) ?? "Zero";
   const manageNav = MANAGE_NAV.filter((item) => {
+    if (
+      item.hideWhenFeatureEnabled &&
+      features?.[item.hideWhenFeatureEnabled]
+    ) {
+      return false;
+    }
     if (item.featureGate && !features?.[item.featureGate]) {
       return false;
     }

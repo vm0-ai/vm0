@@ -1,16 +1,39 @@
 // Workflow list surfaces for agent-scoped tabs and the workspace index page.
-import { useLastLoadable, useSet } from "ccstate-react";
+import {
+  useGet,
+  useLastLoadable,
+  useLastResolved,
+  useSet,
+} from "ccstate-react";
 import type { ZeroWorkflowSummary } from "@vm0/api-contracts/contracts/zero-workflows";
-import { Button } from "@vm0/ui";
+import { Button, Tabs, TabsList, TabsTrigger, cn } from "@vm0/ui";
 
 import { openCreateWorkflowDialog$ } from "../../signals/automation-page/workflow-trigger-automation-dialog.ts";
 import { ROUTES } from "../../signals/route-paths.ts";
-import { allVisibleWorkflows$ } from "../../signals/workflows-page/workflows-signals.ts";
+import {
+  allVisibleWorkflows$,
+  allWorkflowTriggerEntries$,
+  setWorkflowIndexFilterTab$,
+  workflowIndexFilterTab$,
+  type WorkflowIndexFilterTab,
+  type WorkflowTriggerAutomationEntry,
+} from "../../signals/workflows-page/workflows-signals.ts";
+import { userPreferences$ } from "../../signals/zero-page/settings/user-preferences.ts";
 import { Link } from "../router/link.tsx";
-import { CreateWorkflowAutomationDialog } from "../zero-page/workflow-trigger-automations-page.tsx";
+import {
+  CreateWorkflowAutomationDialog,
+  humanReadableTriggerRuleLabel,
+  TriggerListIcon,
+  triggerTypeLabel,
+  WorkflowTriggerEnabledSwitch,
+} from "../zero-page/workflow-trigger-automations-page.tsx";
 import { agentLabel, workflowTitle } from "./workflow-shared.tsx";
 
 type WorkflowGroupKey = "pending" | "public" | "private";
+type WorkflowTriggerEntryMap = ReadonlyMap<
+  string,
+  readonly WorkflowTriggerAutomationEntry[]
+>;
 
 const WORKFLOW_GROUPS: readonly {
   readonly key: WorkflowGroupKey;
@@ -40,6 +63,46 @@ function groupWorkflows(
   );
 }
 
+function workflowTriggerEntryMap(
+  entries: readonly WorkflowTriggerAutomationEntry[],
+): WorkflowTriggerEntryMap {
+  const grouped = new Map<string, WorkflowTriggerAutomationEntry[]>();
+  for (const entry of entries) {
+    const workflowEntries = grouped.get(entry.workflow.id) ?? [];
+    workflowEntries.push(entry);
+    grouped.set(entry.workflow.id, workflowEntries);
+  }
+  return grouped;
+}
+
+function hasWorkflowTriggers(
+  workflow: ZeroWorkflowSummary,
+  triggerEntriesByWorkflowId: WorkflowTriggerEntryMap,
+): boolean {
+  return (triggerEntriesByWorkflowId.get(workflow.id)?.length ?? 0) > 0;
+}
+
+function filterWorkflows(
+  workflows: readonly ZeroWorkflowSummary[],
+  triggerEntriesByWorkflowId: WorkflowTriggerEntryMap,
+  filterTab: WorkflowIndexFilterTab,
+): readonly ZeroWorkflowSummary[] {
+  if (filterTab === "automations") {
+    return workflows.filter((workflow) => {
+      return hasWorkflowTriggers(workflow, triggerEntriesByWorkflowId);
+    });
+  }
+
+  return [...workflows].sort((a, b) => {
+    const aHasTriggers = hasWorkflowTriggers(a, triggerEntriesByWorkflowId);
+    const bHasTriggers = hasWorkflowTriggers(b, triggerEntriesByWorkflowId);
+    if (aHasTriggers !== bHasTriggers) {
+      return aHasTriggers ? -1 : 1;
+    }
+    return 0;
+  });
+}
+
 function pluralizeWorkflow(count: number): string {
   return `${count} workflow${count === 1 ? "" : "s"}`;
 }
@@ -61,12 +124,20 @@ export function WorkflowListPanel({
   loading,
   showAgentColumn,
   emptyDescription,
+  triggerEntriesByWorkflowId,
+  displayTimezone = new Intl.DateTimeFormat().resolvedOptions().timeZone,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[] | null;
   readonly loading: boolean;
   readonly showAgentColumn: boolean;
   readonly emptyDescription: string;
+  readonly triggerEntriesByWorkflowId?: WorkflowTriggerEntryMap;
+  readonly displayTimezone?: string;
 }) {
+  const resolvedTriggerEntriesByWorkflowId =
+    triggerEntriesByWorkflowId ??
+    new Map<string, readonly WorkflowTriggerAutomationEntry[]>();
+
   return (
     <section className="min-h-[520px]">
       {loading ? (
@@ -75,6 +146,8 @@ export function WorkflowListPanel({
         <WorkflowGroups
           workflows={workflows}
           showAgentColumn={showAgentColumn}
+          triggerEntriesByWorkflowId={resolvedTriggerEntriesByWorkflowId}
+          displayTimezone={displayTimezone}
         />
       ) : (
         <div className="zero-card flex min-h-[20rem] flex-col items-center justify-center px-6 text-center">
@@ -91,9 +164,13 @@ export function WorkflowListPanel({
 function WorkflowGroups({
   workflows,
   showAgentColumn,
+  triggerEntriesByWorkflowId,
+  displayTimezone,
 }: {
   readonly workflows: readonly ZeroWorkflowSummary[];
   readonly showAgentColumn: boolean;
+  readonly triggerEntriesByWorkflowId: WorkflowTriggerEntryMap;
+  readonly displayTimezone: string;
 }) {
   const groups = groupWorkflows(workflows);
 
@@ -122,6 +199,10 @@ function WorkflowGroups({
                     key={workflow.id}
                     workflow={workflow}
                     showAgentColumn={showAgentColumn}
+                    triggerEntries={
+                      triggerEntriesByWorkflowId.get(workflow.id) ?? []
+                    }
+                    displayTimezone={displayTimezone}
                   />
                 );
               })}
@@ -172,43 +253,160 @@ function WorkflowSlug({ name }: { readonly name: string }) {
 function WorkflowIndexCard({
   workflow,
   showAgentColumn,
+  triggerEntries,
+  displayTimezone,
 }: {
   readonly workflow: ZeroWorkflowSummary;
   readonly showAgentColumn: boolean;
+  readonly triggerEntries: readonly WorkflowTriggerAutomationEntry[];
+  readonly displayTimezone: string;
 }) {
+  const title = workflowTitle(workflow);
+
   return (
-    <Link
-      pathname={ROUTES.workflowDetailAutomations}
-      options={{
-        pathParams: {
-          workflowId: workflow.id,
-        },
-      }}
-      className="zero-card block px-5 py-4 text-left text-foreground no-underline transition-colors hover:bg-gray-50"
+    <article
+      className={cn(
+        "zero-card relative px-5 py-4 text-left text-foreground transition-colors hover:bg-gray-50",
+        triggerEntries.some((entry) => {
+          return !entry.trigger.enabled;
+        }) && "opacity-90",
+      )}
     >
-      <div className="flex items-start justify-between gap-4">
+      <Link
+        pathname={ROUTES.workflowDetailAutomations}
+        options={{
+          pathParams: {
+            workflowId: workflow.id,
+          },
+        }}
+        aria-label={`Open ${title}`}
+        className="absolute inset-0 z-0 rounded-[inherit] focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+      >
+        <span className="sr-only">{title}</span>
+      </Link>
+      <div className="pointer-events-none relative z-10 flex items-start justify-between gap-4">
         <div className="min-w-0 flex flex-wrap items-center gap-x-2 gap-y-1">
           <span className="min-w-0 truncate text-sm font-medium text-foreground">
-            {workflowTitle(workflow)}
+            {title}
           </span>
           <WorkflowSlug name={workflow.name} />
           {showAgentColumn && <WorkflowSlug name={agentLabel(workflow)} />}
         </div>
         <WorkflowOwner workflow={workflow} />
       </div>
-      <div className="mt-3 text-sm leading-6 text-muted-foreground">
+      <div className="pointer-events-none relative z-10 mt-3 text-sm leading-6 text-muted-foreground">
         {workflow.description ?? workflow.name}
       </div>
-    </Link>
+      <WorkflowCardTriggerFooter
+        entries={triggerEntries}
+        displayTimezone={displayTimezone}
+      />
+    </article>
+  );
+}
+
+function WorkflowCardTriggerFooter({
+  entries,
+  displayTimezone,
+}: {
+  readonly entries: readonly WorkflowTriggerAutomationEntry[];
+  readonly displayTimezone: string;
+}) {
+  const [primaryEntry] = entries;
+  if (!primaryEntry) {
+    return null;
+  }
+  const remainingCount = entries.length - 1;
+  const trigger = primaryEntry.trigger;
+
+  return (
+    <div className="pointer-events-none relative z-10 mt-4 border-t border-border/60 pt-3">
+      <div
+        className={cn(
+          "flex min-w-0 items-center gap-3",
+          !trigger.enabled && "opacity-75",
+        )}
+      >
+        <TriggerListIcon trigger={trigger} />
+        <div className="flex min-w-0 flex-1 items-center gap-1.5 text-sm leading-5 text-muted-foreground">
+          <span className="shrink-0">{triggerTypeLabel(trigger)}</span>
+          <span className="shrink-0 select-none text-muted-foreground/50">
+            ·
+          </span>
+          <span className="min-w-0 truncate font-medium text-foreground/85">
+            {humanReadableTriggerRuleLabel(trigger, displayTimezone)}
+          </span>
+          {remainingCount > 0 ? (
+            <span className="shrink-0 text-xs text-muted-foreground">
+              +{remainingCount} more
+            </span>
+          ) : null}
+        </div>
+        <div className="pointer-events-auto relative z-20 shrink-0">
+          <WorkflowTriggerEnabledSwitch entry={primaryEntry} />
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowFilterTabs({
+  value,
+  onValueChange,
+}: {
+  readonly value: WorkflowIndexFilterTab;
+  readonly onValueChange: (value: WorkflowIndexFilterTab) => void;
+}) {
+  return (
+    <Tabs
+      value={value}
+      onValueChange={(nextValue) => {
+        if (nextValue === "automations" || nextValue === "all") {
+          onValueChange(nextValue);
+        }
+      }}
+    >
+      <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+        <TabsTrigger
+          value="automations"
+          className="px-3 text-sm data-[state=active]:bg-background"
+        >
+          Automations
+        </TabsTrigger>
+        <TabsTrigger
+          value="all"
+          className="px-3 text-sm data-[state=active]:bg-background"
+        >
+          All
+        </TabsTrigger>
+      </TabsList>
+    </Tabs>
   );
 }
 
 export function WorkflowsPage() {
+  const filterTab = useGet(workflowIndexFilterTab$);
+  const setFilterTab = useSet(setWorkflowIndexFilterTab$);
   const workflowsLoadable = useLastLoadable(allVisibleWorkflows$);
+  const triggerEntriesLoadable = useLastLoadable(allWorkflowTriggerEntries$);
+  const preferences = useLastResolved(userPreferences$);
   const openCreateWorkflowDialog = useSet(openCreateWorkflowDialog$);
-  const loading = workflowsLoadable.state === "loading";
+  const loading =
+    workflowsLoadable.state === "loading" ||
+    triggerEntriesLoadable.state === "loading";
   const workflows =
     workflowsLoadable.state === "hasData" ? workflowsLoadable.data : null;
+  const triggerEntries =
+    triggerEntriesLoadable.state === "hasData"
+      ? triggerEntriesLoadable.data
+      : [];
+  const triggerEntriesByWorkflowId = workflowTriggerEntryMap(triggerEntries);
+  const displayTimezone =
+    preferences?.timezone ??
+    new Intl.DateTimeFormat().resolvedOptions().timeZone;
+  const filteredWorkflows = workflows
+    ? filterWorkflows(workflows, triggerEntriesByWorkflowId, filterTab)
+    : null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -236,12 +434,19 @@ export function WorkflowsPage() {
       </header>
 
       <main className="flex-1 overflow-auto px-4 pb-8 pt-3 sm:px-6">
-        <div className="mx-auto max-w-[900px]">
+        <div className="mx-auto flex max-w-[900px] flex-col gap-3">
+          <WorkflowFilterTabs value={filterTab} onValueChange={setFilterTab} />
           <WorkflowListPanel
-            workflows={workflows}
+            workflows={filteredWorkflows}
             loading={loading}
             showAgentColumn
-            emptyDescription="Create a workflow from chat or save one from a useful run."
+            emptyDescription={
+              filterTab === "automations"
+                ? "Add a trigger to a workflow and it will show up here."
+                : "Create a workflow from chat or save one from a useful run."
+            }
+            triggerEntriesByWorkflowId={triggerEntriesByWorkflowId}
+            displayTimezone={displayTimezone}
           />
         </div>
       </main>

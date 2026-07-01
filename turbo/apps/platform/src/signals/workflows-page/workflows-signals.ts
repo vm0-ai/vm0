@@ -24,6 +24,7 @@ import {
   detachedNavigateTo$,
   pathParams$,
   replacePathSilently$,
+  replaceSearchParams$,
   searchParams$,
 } from "../route.ts";
 import {
@@ -36,6 +37,7 @@ import { ensureDraft$ } from "../chat-page/create-chat-thread.ts";
 
 type WorkflowDetailActionDialog = "copy" | "delete" | null;
 export type WorkflowDetailTab = "automations" | "instructions" | "info";
+export type WorkflowIndexFilterTab = "automations" | "all";
 export type WorkflowCopyDialogAgent = {
   readonly id: string;
   readonly displayName: string | null;
@@ -196,6 +198,34 @@ export const workflowActionDialog$ = computed((get) => {
 export const workflowCopyDialogState$ = computed((get) => {
   return get(internalWorkflowCopyDialogState$);
 });
+
+const WORKFLOW_INDEX_FILTER_TAB_PARAM = "tab";
+const DEFAULT_WORKFLOW_INDEX_FILTER_TAB: WorkflowIndexFilterTab = "automations";
+
+function isWorkflowIndexFilterTab(tab: string): tab is WorkflowIndexFilterTab {
+  return tab === "automations" || tab === "all";
+}
+
+export const workflowIndexFilterTab$ = computed(
+  (get): WorkflowIndexFilterTab => {
+    const tab = get(searchParams$).get(WORKFLOW_INDEX_FILTER_TAB_PARAM) ?? "";
+    return isWorkflowIndexFilterTab(tab)
+      ? tab
+      : DEFAULT_WORKFLOW_INDEX_FILTER_TAB;
+  },
+);
+
+export const setWorkflowIndexFilterTab$ = command(
+  ({ get, set }, tab: WorkflowIndexFilterTab) => {
+    const params = new URLSearchParams(get(searchParams$));
+    if (tab === DEFAULT_WORKFLOW_INDEX_FILTER_TAB) {
+      params.delete(WORKFLOW_INDEX_FILTER_TAB_PARAM);
+    } else {
+      params.set(WORKFLOW_INDEX_FILTER_TAB_PARAM, tab);
+    }
+    set(replaceSearchParams$, params);
+  },
+);
 
 export const setWorkflowActionDialog$ = command(
   ({ set }, dialog: WorkflowDetailActionDialog) => {
