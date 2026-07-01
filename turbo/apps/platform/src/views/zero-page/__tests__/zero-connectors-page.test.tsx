@@ -647,9 +647,9 @@ describe("connectors page", () => {
     const searchInput = await screen.findByPlaceholderText("Find connectors");
     await fill(searchInput, "nonexistent-connector-xyz");
 
-    expect(
-      await screen.findByText(/No connectors matching/),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(/No connectors matching/),
+    ).resolves.toBeInTheDocument();
   });
 
   it("hides a fully feature-gated connector when its switch is disabled", async () => {
@@ -664,9 +664,9 @@ describe("connectors page", () => {
     const searchInput = await screen.findByPlaceholderText("Find connectors");
     await fill(searchInput, "aws");
 
-    expect(
-      await screen.findByText(/No connectors matching/),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(/No connectors matching/),
+    ).resolves.toBeInTheDocument();
     expect(screen.queryByLabelText("Connect AWS")).not.toBeInTheDocument();
   });
 
@@ -682,9 +682,9 @@ describe("connectors page", () => {
     const searchInput = await screen.findByPlaceholderText("Find connectors");
     await fill(searchInput, "aws");
 
-    expect(
-      await screen.findByText(/No connectors matching/),
-    ).toBeInTheDocument();
+    await expect(
+      screen.findByText(/No connectors matching/),
+    ).resolves.toBeInTheDocument();
 
     context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
       return respond(200, {
@@ -697,7 +697,9 @@ describe("connectors page", () => {
       context.signal,
     );
 
-    expect(await screen.findByLabelText("Connect AWS")).toBeInTheDocument();
+    await expect(
+      screen.findByLabelText("Connect AWS"),
+    ).resolves.toBeInTheDocument();
   });
 
   it("hides connector access management when its switch is disabled", async () => {
