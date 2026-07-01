@@ -152,6 +152,85 @@ describe("OPS-01: feature switches and report-error routes", () => {
     ).toBeUndefined();
   });
 
+  it("stores data export as an org-scoped feature switch override", async () => {
+    const orgId = `org_${randomUUID()}`;
+    const owner = api.user({ orgId });
+    const peer = api.user({ orgId });
+    const outsider = api.user();
+
+    const ownerUpdate = await accept(
+      featureSwitchesClient().update({
+        headers: headersFor(owner),
+        body: {
+          switches: {
+            [FeatureSwitchKey.DataExport]: true,
+            [FeatureSwitchKey.Dummy]: false,
+          },
+        },
+      }),
+      [200],
+    );
+    expect(ownerUpdate.body.switches[FeatureSwitchKey.DataExport]).toBeTruthy();
+    expect(ownerUpdate.body.switches[FeatureSwitchKey.Dummy]).toBeFalsy();
+
+    const peerRead = await accept(
+      featureSwitchesClient().get({ headers: headersFor(peer) }),
+      [200],
+    );
+    expect(peerRead.body.switches[FeatureSwitchKey.DataExport]).toBeTruthy();
+    expect(peerRead.body.switches[FeatureSwitchKey.Dummy]).toBeUndefined();
+
+    const outsiderRead = await accept(
+      featureSwitchesClient().get({ headers: headersFor(outsider) }),
+      [200],
+    );
+    expect(
+      outsiderRead.body.switches[FeatureSwitchKey.DataExport],
+    ).toBeUndefined();
+
+    const peerUpdate = await accept(
+      featureSwitchesClient().update({
+        headers: headersFor(peer),
+        body: {
+          switches: {
+            [FeatureSwitchKey.DataExport]: false,
+          },
+        },
+      }),
+      [200],
+    );
+    expect(peerUpdate.body.switches[FeatureSwitchKey.DataExport]).toBeFalsy();
+    expect(peerUpdate.body.switches[FeatureSwitchKey.Dummy]).toBeUndefined();
+
+    const ownerReadAfterPeerUpdate = await accept(
+      featureSwitchesClient().get({ headers: headersFor(owner) }),
+      [200],
+    );
+    expect(
+      ownerReadAfterPeerUpdate.body.switches[FeatureSwitchKey.DataExport],
+    ).toBeFalsy();
+    expect(
+      ownerReadAfterPeerUpdate.body.switches[FeatureSwitchKey.Dummy],
+    ).toBeFalsy();
+
+    const deleted = await accept(
+      featureSwitchesClient().delete({ headers: headersFor(owner) }),
+      [200],
+    );
+    expect(deleted.body).toStrictEqual({ deleted: true });
+
+    const peerReadAfterDelete = await accept(
+      featureSwitchesClient().get({ headers: headersFor(peer) }),
+      [200],
+    );
+    expect(
+      peerReadAfterDelete.body.switches[FeatureSwitchKey.DataExport],
+    ).toBeUndefined();
+    expect(
+      peerReadAfterDelete.body.switches[FeatureSwitchKey.Dummy],
+    ).toBeUndefined();
+  });
+
   it("reports invalid or missing failed runs as visible API errors", async () => {
     const admin = api.user();
 
