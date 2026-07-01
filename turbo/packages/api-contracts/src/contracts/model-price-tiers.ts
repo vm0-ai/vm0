@@ -5,6 +5,8 @@
  * without importing the full model provider contract schema.
  */
 export const SUPPORTED_RUN_MODELS = [
+  "claude-fable-5",
+  "gpt-5.5",
   "claude-opus-4-8",
   "claude-opus-4-7",
   "claude-opus-4-6",
@@ -17,14 +19,13 @@ export const SUPPORTED_RUN_MODELS = [
   "glm-5.1",
   "mimo-v2.5",
   "hy3-preview",
-  "gpt-5.5",
   "gpt-5.4",
   "gpt-5.4-mini",
 ] as const;
 
 export type SupportedRunModel = (typeof SUPPORTED_RUN_MODELS)[number];
 
-export type Vm0ModelPriceTier = "$" | "$$" | "$$$";
+export type Vm0ModelPriceTier = "$" | "$$" | "$$$" | "$$$$";
 
 /**
  * User-facing credit cost tier for Built-in model offerings. Only applies to
@@ -34,6 +35,8 @@ export type Vm0ModelPriceTier = "$" | "$$" | "$$$";
 export const VM0_MODEL_PRICE_TIER = Object.freeze<
   Record<SupportedRunModel, Vm0ModelPriceTier>
 >({
+  "claude-fable-5": "$$$$",
+  "gpt-5.5": "$$$",
   "claude-opus-4-8": "$$$",
   "claude-opus-4-7": "$$$",
   "claude-opus-4-6": "$$$",
@@ -46,7 +49,6 @@ export const VM0_MODEL_PRICE_TIER = Object.freeze<
   "glm-5.1": "$",
   "mimo-v2.5": "$",
   "hy3-preview": "$",
-  "gpt-5.5": "$$$",
   "gpt-5.4": "$$",
   "gpt-5.4-mini": "$",
 });
@@ -57,4 +59,5 @@ export const VM0_MODEL_PRICE_TIER_LABEL = Object.freeze<
   $: "Economy tier for everyday simple tasks",
   $$: "Balanced cost and performance",
   $$$: "Frontier flagship model",
+  $$$$: "Premium frontier model for the hardest tasks",
 });

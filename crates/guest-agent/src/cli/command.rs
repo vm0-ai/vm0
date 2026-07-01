@@ -19,6 +19,7 @@ pub(super) fn build_cli_command_for_runtime(
             runtime.use_mock_claude,
             runtime.mock_claude_path.as_ref(),
             ClaudeArgsConfig {
+                model: runtime.anthropic_model.as_ref(),
                 resume_id: runtime.resume_session_id.as_ref(),
                 append_system_prompt: runtime.append_system_prompt.as_ref(),
                 disallowed_tools: runtime.disallowed_tools.as_ref(),
@@ -57,6 +58,7 @@ fn push_comma_separated_flag_values(args: &mut Vec<String>, flag: &str, values: 
 
 /// Build the argument list from explicit parameters (testable).
 struct ClaudeArgsConfig<'a> {
+    model: &'a str,
     resume_id: &'a str,
     append_system_prompt: &'a str,
     disallowed_tools: &'a str,
@@ -100,7 +102,21 @@ fn build_claude_args(config: ClaudeArgsConfig<'_>) -> Vec<String> {
         args.push(config.settings.to_string());
     }
 
+    if let Some(effort) = default_claude_effort_for_model(config.model) {
+        args.push("--effort".to_string());
+        args.push(effort.to_string());
+    }
+
     args
+}
+
+/// Per-model default for Claude Code's `--effort` flag.
+fn default_claude_effort_for_model(model: &str) -> Option<&'static str> {
+    let bare = model.strip_prefix("anthropic/").unwrap_or(model);
+    match bare {
+        "claude-fable-5" | "fable" => Some("low"),
+        _ => None,
+    }
 }
 
 fn build_claude_command_with_config(
@@ -296,6 +312,7 @@ mod tests {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
         build_claude_args(ClaudeArgsConfig {
+            model: "",
             resume_id,
             append_system_prompt,
             disallowed_tools,
@@ -316,6 +333,7 @@ mod tests {
                 ""
             },
             ClaudeArgsConfig {
+                model: "",
                 resume_id: "",
                 append_system_prompt: "",
                 disallowed_tools: "",
@@ -324,6 +342,20 @@ mod tests {
                 replay_user_messages: true,
             },
         )
+    }
+
+    fn build_claude_args_for_model_test(model: &str) -> Vec<String> {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        disable_system_log();
+        build_claude_args(ClaudeArgsConfig {
+            model,
+            resume_id: "",
+            append_system_prompt: "",
+            disallowed_tools: "",
+            tools: "",
+            settings: "",
+            replay_user_messages: true,
+        })
     }
 
     fn assert_claude_prompt_is_not_positional(args: &[String], prompt: &str) {
@@ -381,6 +413,7 @@ mod tests {
         guest_common::log::set_system_log_file(system_log_path.to_string_lossy().as_ref());
 
         let args = build_claude_args(ClaudeArgsConfig {
+            model: "",
             resume_id: "sess-secret-123",
             append_system_prompt: "",
             disallowed_tools: "",
@@ -727,12 +760,29 @@ mod tests {
     }
 
     #[test]
-    fn build_claude_args_omits_effort() {
-        let args = build_claude_args_for_test("", "", "", "", "");
-        assert!(
-            !args.iter().any(|arg| arg == "--effort"),
-            "unexpected effort default: {args:?}"
-        );
+    fn build_claude_args_fable_defaults_effort_low() {
+        for model in ["claude-fable-5", "anthropic/claude-fable-5", "fable"] {
+            let args = build_claude_args_for_model_test(model);
+            let effort_idx = args.iter().position(|arg| arg == "--effort").unwrap();
+            assert_eq!(args[effort_idx + 1], "low");
+        }
+    }
+
+    #[test]
+    fn build_claude_args_non_fable_omits_effort() {
+        for model in [
+            "",
+            "claude-sonnet-5",
+            "claude-sonnet-4-6",
+            "anthropic/claude-sonnet-5",
+            "claude-opus-4-8",
+        ] {
+            let args = build_claude_args_for_model_test(model);
+            assert!(
+                !args.iter().any(|arg| arg == "--effort"),
+                "unexpected effort default for model {model:?}: {args:?}"
+            );
+        }
     }
 
     #[test]
