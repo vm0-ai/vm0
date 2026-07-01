@@ -728,6 +728,7 @@ export {
   resolvedAttachFileSchema,
   chatThreadArtifactFileSchema,
   chatThreadArtifactRunSchema,
+  htmlArtifactEditSnapshotSchema,
   chatThreadGithubPrCheckRunSchema,
   chatThreadGithubPrSchema,
   type ModelSelectionRequest,
@@ -758,6 +759,7 @@ export {
   type ResolvedAttachFile,
   type ChatThreadArtifactFile,
   type ChatThreadArtifactRun,
+  type HtmlArtifactEditSnapshot,
   type ChatThreadGithubPrCheckRun,
   type ChatThreadGithubPr,
 } from "./chat-threads";

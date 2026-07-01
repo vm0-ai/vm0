@@ -58,6 +58,21 @@ const chatThreadArtifactRunSchema = z.object({
   files: z.array(chatThreadArtifactFileSchema),
 });
 
+const htmlArtifactEditSnapshotQuerySchema = z.object({
+  url: z.string().url(),
+});
+
+const htmlArtifactEditSnapshotUpsertSchema = z.object({
+  url: z.string().url(),
+  html: z.string().min(1),
+});
+
+const htmlArtifactEditSnapshotSchema = z.object({
+  artifactUrl: z.string().url(),
+  snapshotUrl: z.string().url(),
+  updatedAt: z.string(),
+});
+
 const chatThreadGithubPrCheckRunSchema = z.object({
   name: z.string(),
   status: z.string(),
@@ -949,6 +964,50 @@ export const chatThreadArtifactsContract = c.router({
     },
     summary: "List uploaded files associated with every run in a chat thread",
   },
+  getHtmlEditSnapshot: {
+    method: "GET",
+    path: "/api/zero/chat-threads/:threadId/html-artifact-edit-snapshot",
+    headers: authHeadersSchema,
+    pathParams: chatThreadThreadIdPathParamsSchema,
+    query: htmlArtifactEditSnapshotQuerySchema,
+    responses: {
+      200: z.object({ snapshot: htmlArtifactEditSnapshotSchema.nullable() }),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Get a resumable HTML artifact edit snapshot for a chat thread",
+  },
+  upsertHtmlEditSnapshot: {
+    method: "PUT",
+    path: "/api/zero/chat-threads/:threadId/html-artifact-edit-snapshot",
+    headers: authHeadersSchema,
+    pathParams: chatThreadThreadIdPathParamsSchema,
+    body: htmlArtifactEditSnapshotUpsertSchema,
+    responses: {
+      200: htmlArtifactEditSnapshotSchema,
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      402: apiErrorSchema,
+      404: apiErrorSchema,
+      500: apiErrorSchema,
+    },
+    summary: "Upsert a resumable HTML artifact edit snapshot for a chat thread",
+  },
+  deleteHtmlEditSnapshot: {
+    method: "DELETE",
+    path: "/api/zero/chat-threads/:threadId/html-artifact-edit-snapshot",
+    headers: authHeadersSchema,
+    pathParams: chatThreadThreadIdPathParamsSchema,
+    query: htmlArtifactEditSnapshotQuerySchema,
+    responses: {
+      204: c.noBody(),
+      400: apiErrorSchema,
+      401: apiErrorSchema,
+      404: apiErrorSchema,
+    },
+    summary: "Delete a resumable HTML artifact edit snapshot for a chat thread",
+  },
   syncGoogleDrive: {
     method: "POST",
     path: "/api/zero/chat-threads/:threadId/artifacts",
@@ -1034,6 +1093,7 @@ export {
   chatThreadArtifactFileSchema,
   chatThreadArtifactGoogleDriveSyncSchema,
   chatThreadArtifactRunSchema,
+  htmlArtifactEditSnapshotSchema,
   chatThreadGithubPrCheckRunSchema,
   chatThreadGithubPrSchema,
 };
@@ -1080,6 +1140,9 @@ export type ChatThreadArtifactGoogleDriveSync = z.infer<
   typeof chatThreadArtifactGoogleDriveSyncSchema
 >;
 export type ChatThreadArtifactRun = z.infer<typeof chatThreadArtifactRunSchema>;
+export type HtmlArtifactEditSnapshot = z.infer<
+  typeof htmlArtifactEditSnapshotSchema
+>;
 export type ChatThreadGithubPrCheckRun = z.infer<
   typeof chatThreadGithubPrCheckRunSchema
 >;
