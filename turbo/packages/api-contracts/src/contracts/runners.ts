@@ -22,7 +22,13 @@ export const CANONICAL_CODEX_MEMORY_MOUNT_PATH = `${CANONICAL_GUEST_HOME_DIR}/.c
 // Shared resume history size contract. Rust consumers import the generated
 // binding from `api_contracts::generated::constants`.
 export const RESUME_SESSION_HISTORY_MAX_BYTES = 128 * 1024 * 1024;
-export const sessionHistoryEncodingSchema = z.enum(["identity", "gzip"]);
+export const SESSION_HISTORY_ENCODING_IDENTITY = "identity";
+export const SESSION_HISTORY_ENCODING_GZIP = "gzip";
+export const SESSION_HISTORY_GZIP_MIN_BYTES = 64 * 1024;
+export const sessionHistoryEncodingSchema = z.enum([
+  SESSION_HISTORY_ENCODING_IDENTITY,
+  SESSION_HISTORY_ENCODING_GZIP,
+]);
 
 export function elapsedSinceApiStartMs(
   apiStartTimeMs: number | undefined,

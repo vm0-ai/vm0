@@ -1,5 +1,7 @@
-export const SESSION_HISTORY_ENCODING_IDENTITY = "identity";
-export const SESSION_HISTORY_ENCODING_GZIP = "gzip";
+export {
+  SESSION_HISTORY_ENCODING_GZIP,
+  SESSION_HISTORY_ENCODING_IDENTITY,
+} from "@vm0/api-contracts/contracts/runners";
 
 export function resumeSessionHistoryRawBlobKey(hash: string): string {
   return `blobs/${hash}.blob`;

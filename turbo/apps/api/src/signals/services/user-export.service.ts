@@ -537,51 +537,6 @@ async function collectAgentInstructionFiles(
     }
   }
 
-  const sessionsWithConversations = await runtime.db
-    .select({
-      id: agentSessions.id,
-      conversationId: agentSessions.conversationId,
-    })
-    .from(agentSessions)
-    .where(eq(agentSessions.userId, userId));
-  runtime.signal.throwIfAborted();
-
-  for (const session of sessionsWithConversations) {
-    if (!session.conversationId) {
-      continue;
-    }
-
-    const [conversation] = await runtime.db
-      .select({
-        cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
-        cliAgentSessionHistory: conversations.cliAgentSessionHistory,
-        sessionHistoryBlobEncoding: blobs.encoding,
-        sessionHistoryBlobSize: blobs.size,
-      })
-      .from(conversations)
-      .leftJoin(blobs, eq(conversations.cliAgentSessionHistoryHash, blobs.hash))
-      .where(eq(conversations.id, session.conversationId))
-      .limit(1);
-    runtime.signal.throwIfAborted();
-
-    if (conversation) {
-      const history = await resolveSessionHistory(
-        runtime,
-        conversation.cliAgentSessionHistoryHash,
-        conversation.sessionHistoryBlobEncoding,
-        conversation.sessionHistoryBlobSize,
-        conversation.cliAgentSessionHistory,
-      );
-
-      if (history) {
-        entries.push({
-          path: `conversations/${session.id}-history.jsonl`,
-          content: history,
-        });
-      }
-    }
-  }
-
   return { entries, count: entries.length };
 }
 
@@ -854,6 +809,51 @@ async function collectConversationMessages(
         path: `conversations/chat-thread-${thread.id}.json`,
         content: JSON.stringify(messages, null, 2),
       });
+    }
+  }
+
+  const sessionsWithConversations = await runtime.db
+    .select({
+      id: agentSessions.id,
+      conversationId: agentSessions.conversationId,
+    })
+    .from(agentSessions)
+    .where(eq(agentSessions.userId, userId));
+  runtime.signal.throwIfAborted();
+
+  for (const session of sessionsWithConversations) {
+    if (!session.conversationId) {
+      continue;
+    }
+
+    const [conversation] = await runtime.db
+      .select({
+        cliAgentSessionHistoryHash: conversations.cliAgentSessionHistoryHash,
+        cliAgentSessionHistory: conversations.cliAgentSessionHistory,
+        sessionHistoryBlobEncoding: blobs.encoding,
+        sessionHistoryBlobSize: blobs.size,
+      })
+      .from(conversations)
+      .leftJoin(blobs, eq(conversations.cliAgentSessionHistoryHash, blobs.hash))
+      .where(eq(conversations.id, session.conversationId))
+      .limit(1);
+    runtime.signal.throwIfAborted();
+
+    if (conversation) {
+      const history = await resolveSessionHistory(
+        runtime,
+        conversation.cliAgentSessionHistoryHash,
+        conversation.sessionHistoryBlobEncoding,
+        conversation.sessionHistoryBlobSize,
+        conversation.cliAgentSessionHistory,
+      );
+
+      if (history) {
+        entries.push({
+          path: `conversations/${session.id}-history.jsonl`,
+          content: history,
+        });
+      }
     }
   }
 

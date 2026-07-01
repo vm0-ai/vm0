@@ -11,6 +11,10 @@ use crate::session_history;
 use crate::session_history_identity::{
     FinalSessionHistoryIdentityBuildError, build_final_session_history_identity,
 };
+use api_contracts::generated::constants::runners::{
+    SESSION_HISTORY_ENCODING_GZIP, SESSION_HISTORY_ENCODING_IDENTITY,
+    SESSION_HISTORY_GZIP_MIN_BYTES,
+};
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 use bytes::Bytes;
 use flate2::{Compression, write::GzEncoder};
@@ -22,10 +26,6 @@ use std::io::{ErrorKind, Write};
 use std::time::Duration;
 
 const LOG_TAG: &str = "sandbox:guest-agent";
-const SESSION_HISTORY_ENCODING_IDENTITY: &str = "identity";
-const SESSION_HISTORY_ENCODING_GZIP: &str = "gzip";
-const SESSION_HISTORY_GZIP_MIN_BYTES: usize = 64 * 1024;
-
 #[derive(Clone, Copy)]
 enum CheckpointMode {
     Success,
@@ -81,7 +81,7 @@ fn build_session_history_upload(
     history_bytes: Vec<u8>,
 ) -> Result<SessionHistoryUpload, AgentError> {
     let raw_size = history_bytes.len() as u64;
-    if history_bytes.len() < SESSION_HISTORY_GZIP_MIN_BYTES {
+    if history_bytes.len() < SESSION_HISTORY_GZIP_MIN_BYTES as usize {
         return Ok(SessionHistoryUpload {
             raw_size,
             body: SessionHistoryUploadBody::Identity(history_bytes),
