@@ -1161,6 +1161,36 @@ function createGroupedChatMessagesCache(
 type ServerMessages$ = State<PagedChatMessage[]>;
 type KnownServerMessageIds$ = State<ReadonlySet<string>>;
 
+function compareServerMessageOrder(
+  left: PagedChatMessage,
+  right: PagedChatMessage,
+): number {
+  const createdAtOrder = left.createdAt.localeCompare(right.createdAt);
+  if (createdAtOrder !== 0) {
+    return createdAtOrder;
+  }
+
+  const leftSequence = left.sequenceNumber ?? -1;
+  const rightSequence = right.sequenceNumber ?? -1;
+  if (leftSequence !== rightSequence) {
+    return leftSequence - rightSequence;
+  }
+
+  return left.id.localeCompare(right.id);
+}
+
+function mergeServerMessages(
+  messageSets: readonly (readonly PagedChatMessage[])[],
+): PagedChatMessage[] {
+  const byId = new Map<string, PagedChatMessage>();
+  for (const messages of messageSets) {
+    for (const message of messages) {
+      byId.set(message.id, message);
+    }
+  }
+  return Array.from(byId.values()).sort(compareServerMessageOrder);
+}
+
 function addKnownServerMessageIds(
   prev: ReadonlySet<string>,
   messages: readonly PagedChatMessage[],
@@ -1255,7 +1285,11 @@ function createRawMessagesComputed({
   return computed(async (get): Promise<ChatMessageProjectionEntry[]> => {
     const initial = await get(initialPage$);
     const history = get(historyMessages$);
-    const server = [...history, ...initial.messages, ...get(serverMessages$)];
+    const server = mergeServerMessages([
+      history,
+      initial.messages,
+      get(serverMessages$),
+    ]);
     const serverIds = new Set(
       server.map((message) => {
         return message.id;

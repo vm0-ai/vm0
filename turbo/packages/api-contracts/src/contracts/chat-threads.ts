@@ -247,6 +247,7 @@ const pagedChatMessageBaseSchema = z.object({
   error: z.string().optional(),
   attachFiles: z.array(resolvedAttachFileSchema).optional(),
   generationTemplate: generationTemplateRequestSchema.optional(),
+  sequenceNumber: z.number().nullable().optional(),
   // Present on user messages posted by a firing automation. `automationId`
   // links to the automation detail page; `automationSnapshot` preserves the
   // automation label and description at send time. `automationTitle` is

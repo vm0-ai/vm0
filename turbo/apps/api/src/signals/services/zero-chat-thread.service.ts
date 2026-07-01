@@ -635,6 +635,7 @@ function toPagedMessage(
       error: row.error ?? undefined,
       attachFiles: attachFiles ? [...attachFiles] : undefined,
       generationTemplate: row.generationTemplate ?? undefined,
+      sequenceNumber: row.sequenceNumber,
       workflowSnapshot,
       createdAt: row.createdAt.toISOString(),
     };

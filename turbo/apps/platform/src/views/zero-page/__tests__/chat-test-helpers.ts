@@ -254,6 +254,12 @@ type MockPagedMessage =
       id?: string;
     });
 
+function cloneMockPagedMessage<T extends MockPagedMessage & { id: string }>(
+  message: T,
+): T {
+  return structuredClone(message);
+}
+
 function isRecallMessageBody(body: {
   revokesMessageId?: string;
   prompt?: string;
@@ -669,7 +675,7 @@ export function mockChatLifecycle(
           beforeIndex,
         );
         return respond(200, {
-          messages: olderMessages,
+          messages: olderMessages.map(cloneMockPagedMessage),
           hasHistoryBefore: beforeIndex - olderMessages.length > 0,
         });
       });
@@ -686,7 +692,7 @@ export function mockChatLifecycle(
             ? pagedMessages.slice(Math.max(0, pagedMessages.length - 2))
             : [pagedMessages[pagedMessages.length - 1]!];
         return respond(200, {
-          messages,
+          messages: messages.map(cloneMockPagedMessage),
         });
       }
       return respond(200, { messages: [] });
@@ -695,9 +701,9 @@ export function mockChatLifecycle(
     lastDeliveredVersion = assistantVersion;
     const latestMessages = pagedMessages.slice(historyMessages.length);
     return respond(200, {
-      messages: latestMessages.slice(
-        Math.max(0, latestMessages.length - limit),
-      ),
+      messages: latestMessages
+        .slice(Math.max(0, latestMessages.length - limit))
+        .map(cloneMockPagedMessage),
       hasHistoryBefore:
         historyMessages.length > 0 || latestMessages.length > limit,
     });
@@ -717,7 +723,7 @@ export function mockChatLifecycle(
         error: { message: "Not found", code: "NOT_FOUND" },
       });
     }
-    return respond(200, message);
+    return respond(200, cloneMockPagedMessage(message));
   });
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     const lifecycleActiveRunIds =
