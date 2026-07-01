@@ -253,8 +253,9 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
   [FeatureSwitchKey.ChatThreadEmoji]: {
     maintainer: "ethan@vm0.ai",
     description:
-      "Show the chat thread emoji icon in chat headers and enable the Shift+F2 emoji picker shortcut. Individuals opt in via feature-switch overrides.",
+      "Show the chat thread emoji icon in chat headers and enable the Shift+F2 emoji picker shortcut for staff orgs.",
     enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
   },
   [FeatureSwitchKey.MemoryViewer]: {
     maintainer: "lancy@vm0.ai",

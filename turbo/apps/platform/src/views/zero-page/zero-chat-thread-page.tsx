@@ -50,7 +50,6 @@ import {
   IconClock,
   IconCoins,
   IconHourglass,
-  IconMoodSmile,
 } from "@tabler/icons-react";
 import {
   cn,
@@ -1229,12 +1228,10 @@ function ChatThreadEmojiMenuButton({
                 aria-label="Change emoji"
                 className="inline-flex h-7 w-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
               >
-                {emoji ? (
+                {emoji && (
                   <span aria-hidden="true" className="text-base leading-none">
                     {emoji}
                   </span>
-                ) : (
-                  <IconMoodSmile size={16} stroke={1.8} />
                 )}
               </button>
             </UiDropdownMenuTrigger>
