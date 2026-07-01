@@ -9,7 +9,6 @@ import {
 import {
   zeroComposesByIdContract,
   zeroComposesListContract,
-  zeroComposesMainContract,
   zeroComposesMetadataContract,
 } from "@vm0/api-contracts/contracts/zero-composes";
 import type { z } from "zod";
@@ -206,12 +205,6 @@ export function createComposesBddApi(context: TestContext) {
     );
   }
 
-  function zeroMainClient() {
-    return setupAppWithRoutes({ context, routes: composeRoutes })(
-      zeroComposesMainContract,
-    );
-  }
-
   function zeroByIdClient() {
     return setupAppWithRoutes({ context, routes: composeRoutes })(
       zeroComposesByIdContract,
@@ -345,20 +338,6 @@ export function createComposesBddApi(context: TestContext) {
         versionsClient().resolveVersion({
           headers: authenticate(auth),
           query,
-        }),
-        statuses,
-      );
-    },
-
-    async requestReadZeroComposeByName<TStatus extends ReadStatus>(
-      auth: ComposeAuth,
-      name: string,
-      statuses: readonly TStatus[],
-    ) {
-      return await accept(
-        zeroMainClient().getByName({
-          headers: authenticate(auth),
-          query: { name },
         }),
         statuses,
       );

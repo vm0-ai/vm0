@@ -2,39 +2,20 @@ import { command, computed } from "ccstate";
 import {
   zeroComposesByIdContract,
   zeroComposesListContract,
-  zeroComposesMainContract,
   zeroComposesMetadataContract,
 } from "@vm0/api-contracts/contracts/zero-composes";
 
 import { authContext$, organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf, pathParamsOf, queryOf } from "../context/request";
+import { bodyResultOf, pathParamsOf } from "../context/request";
 import { isNotFoundResponse, notFound } from "../../lib/error";
 import {
   deleteCompose$,
   updateComposeMetadata$,
   zeroComposeById,
-  zeroComposeByName,
   zeroComposeList,
 } from "../services/zero-compose-data.service";
 import type { RouteEntry } from "../route-entry";
-
-function composeNotFound(identifier: string) {
-  return notFound(`Agent compose not found: ${identifier}`);
-}
-
-const getComposeByNameInner$ = computed(async (get) => {
-  const auth = get(organizationAuthContext$);
-  const query = get(queryOf(zeroComposesMainContract.getByName));
-  const compose = await get(
-    zeroComposeByName({ orgId: auth.orgId, name: query.name }),
-  );
-  if (!compose) {
-    return composeNotFound(query.name);
-  }
-
-  return { status: 200 as const, body: compose };
-});
 
 const getComposeByIdInner$ = computed(async (get) => {
   const auth = get(organizationAuthContext$);
@@ -126,10 +107,6 @@ const orgAuth = {
 } as const;
 
 export const zeroComposesRoutes: readonly RouteEntry[] = [
-  {
-    route: zeroComposesMainContract.getByName,
-    handler: authRoute(orgAuth, getComposeByNameInner$),
-  },
   {
     route: zeroComposesListContract.list,
     handler: authRoute(
