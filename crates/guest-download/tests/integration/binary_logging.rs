@@ -357,6 +357,34 @@ fn binary_fails_with_invalid_run_id_for_runtime_log_setup() {
 }
 
 #[test]
+fn binary_uses_absolute_runtime_dir_without_validating_run_id_as_path_segment() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = write_manifest(&dir, &[], None).unwrap();
+    let logs = RuntimeLogPaths::new(&dir);
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest_path)
+        .env("VM0_RUN_ID", "ignored/when/runtime-dir/is-set")
+        .env(
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+            &logs.runtime_dir,
+        )
+        .output()
+        .unwrap();
+
+    assert!(
+        output.status.success(),
+        "stderr: {}",
+        String::from_utf8_lossy(&output.stderr)
+    );
+    let content = std::fs::read_to_string(&logs.system_log).unwrap();
+    assert!(
+        content.contains("[INFO] [sandbox:download] Download completed"),
+        "unexpected system log: {content:?}"
+    );
+}
+
+#[test]
 fn binary_fails_without_home_or_runtime_dir_for_runtime_log_setup() {
     let dir = tempfile::tempdir().unwrap();
     let manifest_path = write_manifest(&dir, &[], None).unwrap();
