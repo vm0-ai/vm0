@@ -2485,6 +2485,18 @@ const createNormalChatRun$ = command(
       return runResult;
     }
     if (runResult.body.status === "cancelled") {
+      if (args.body.clientMessageId) {
+        const clientMessageResolution = await resolveClientMessageSend({
+          db: prepared.db,
+          userId: args.userId,
+          threadId: prepared.thread.threadId,
+          clientMessageId: args.body.clientMessageId,
+        });
+        signal.throwIfAborted();
+        if (clientMessageResolution) {
+          return clientMessageResolution;
+        }
+      }
       if (args.body.revokesMessageId) {
         return conflict("Recommended follow-up has already been used");
       }
