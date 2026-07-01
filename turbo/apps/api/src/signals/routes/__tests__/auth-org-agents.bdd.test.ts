@@ -935,8 +935,6 @@ describe("COMPOSE-01", () => {
 
     const zeroById = await api.readZeroComposeById(admin, created.composeId);
     expect(zeroById.id).toBe(created.composeId);
-    const zeroByName = await api.readZeroComposeByName(admin, composeName);
-    expect(zeroByName.id).toBe(created.composeId);
 
     const zeroListed = await api.listZeroComposes(admin);
     expect(
