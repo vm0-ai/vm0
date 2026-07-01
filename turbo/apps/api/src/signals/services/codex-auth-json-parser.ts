@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { safeJsonParse, throwIfAbort } from "../utils";
+import { safeJsonParse, safeSync } from "../utils";
 
 /**
  * Server-side parser for the contents of `~/.codex/auth.json` produced by
@@ -36,16 +36,29 @@ function decodeJwtPayload(token: string): unknown {
   return parsed;
 }
 
+const chatgptNamedClaimSchema = z
+  .object({
+    title: z.string().nullable().optional(),
+    name: z.string().nullable().optional(),
+    display_name: z.string().nullable().optional(),
+    displayName: z.string().nullable().optional(),
+  })
+  .passthrough();
+
 const chatgptAuthClaimsSchema = z
   .object({
     chatgpt_account_id: z.string().optional(),
     chatgpt_plan_type: z.string().optional(),
-    organization: z
-      .object({ title: z.string().optional() })
-      .partial()
-      .optional(),
-    workspace: z.object({ name: z.string().optional() }).partial().optional(),
-    chatgpt_workspace_name: z.string().optional(),
+    organization: chatgptNamedClaimSchema.nullable().optional(),
+    workspace: chatgptNamedClaimSchema.nullable().optional(),
+    account: chatgptNamedClaimSchema.nullable().optional(),
+    chatgpt_workspace_name: z.string().nullable().optional(),
+    chatgpt_workspace_title: z.string().nullable().optional(),
+    chatgpt_workspace_display_name: z.string().nullable().optional(),
+    chatgpt_organization_name: z.string().nullable().optional(),
+    chatgpt_account_name: z.string().nullable().optional(),
+    organization_name: z.string().nullable().optional(),
+    workspace_name: z.string().nullable().optional(),
   })
   .passthrough();
 
@@ -57,12 +70,38 @@ const chatgptIdTokenClaimsSchema = z
   .passthrough();
 
 type ChatgptAuthClaims = z.infer<typeof chatgptAuthClaimsSchema>;
+type ChatgptNamedClaim = z.infer<typeof chatgptNamedClaimSchema>;
+
+function nonEmptyString(value: string | null | undefined): string | null {
+  const trimmed = value?.trim();
+  return trimmed && trimmed.length > 0 ? trimmed : null;
+}
+
+function extractNamedClaim(claim: ChatgptNamedClaim | null | undefined) {
+  if (!claim) {
+    return null;
+  }
+  return (
+    nonEmptyString(claim.title) ??
+    nonEmptyString(claim.name) ??
+    nonEmptyString(claim.display_name) ??
+    nonEmptyString(claim.displayName) ??
+    null
+  );
+}
 
 function extractWorkspaceName(authClaims: ChatgptAuthClaims): string | null {
   return (
-    authClaims.organization?.title ??
-    authClaims.workspace?.name ??
-    authClaims.chatgpt_workspace_name ??
+    extractNamedClaim(authClaims.organization) ??
+    extractNamedClaim(authClaims.workspace) ??
+    nonEmptyString(authClaims.chatgpt_workspace_name) ??
+    nonEmptyString(authClaims.chatgpt_workspace_title) ??
+    nonEmptyString(authClaims.chatgpt_workspace_display_name) ??
+    nonEmptyString(authClaims.chatgpt_organization_name) ??
+    nonEmptyString(authClaims.organization_name) ??
+    nonEmptyString(authClaims.workspace_name) ??
+    extractNamedClaim(authClaims.account) ??
+    nonEmptyString(authClaims.chatgpt_account_name) ??
     null
   );
 }
@@ -140,15 +179,13 @@ interface ParsedCodexAuth {
 }
 
 function readJwtExp(token: string): number | null {
-  let payload: unknown;
-  // eslint-disable-next-line no-restricted-syntax -- typed-error contract: JWT undecodable returns null so callers fall through to id_token.exp
-  try {
-    payload = decodeJwtPayload(token);
-  } catch (error) {
-    throwIfAbort(error);
+  const decoded = safeSync(() => {
+    return decodeJwtPayload(token);
+  });
+  if ("error" in decoded) {
     return null;
   }
-  const parsed = expSchema.safeParse(payload);
+  const parsed = expSchema.safeParse(decoded.ok);
   return parsed.success ? parsed.data.exp : null;
 }
 
@@ -175,16 +212,13 @@ export function parseCodexAuthJson(raw: string): ParsedCodexAuth {
   // Decode id_token first — its claims drive both account_id (cryptographically
   // signed source of truth) and the plan-type rejection. Match the OAuth
   // callback's ordering: shape errors win over free-plan errors.
-  let idClaims: z.infer<typeof chatgptIdTokenClaimsSchema>;
-  // eslint-disable-next-line no-restricted-syntax -- narrowing zod/JSON errors into the typed CodexAuthJsonShapeError contract
-  try {
-    idClaims = chatgptIdTokenClaimsSchema.parse(
-      decodeJwtPayload(tokens.id_token),
-    );
-  } catch (error) {
-    throwIfAbort(error);
+  const idClaimsResult = safeSync(() => {
+    return chatgptIdTokenClaimsSchema.parse(decodeJwtPayload(tokens.id_token));
+  });
+  if ("error" in idClaimsResult) {
     throw createCodexAuthJsonShapeError("auth.json id_token claims unparsable");
   }
+  const idClaims = idClaimsResult.ok;
   const auth = idClaims["https://api.openai.com/auth"];
   if (!auth?.chatgpt_account_id || !auth.chatgpt_plan_type) {
     throw createCodexAuthJsonShapeError(

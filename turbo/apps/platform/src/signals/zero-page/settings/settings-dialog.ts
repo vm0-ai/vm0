@@ -4,6 +4,7 @@ import { searchParams$, updateSearchParams$ } from "../../route.ts";
 import { reloadBillingStatus$ } from "../billing.ts";
 import { isOrgAdmin$ } from "../../org.ts";
 import { featureSwitch$ } from "../../external/feature-switch.ts";
+import { reloadPersonalModelProviders$ } from "../../external/personal-model-providers.ts";
 import {
   initProfileName$,
   setActiveOrgManageTab$,
@@ -70,6 +71,9 @@ export const settingsActiveSection$ = computed((get) => {
 export const setSettingsActiveSection$ = command(
   ({ get, set }, section: SettingsSection) => {
     set(internalActiveSection$, section);
+    if (section === "model") {
+      set(reloadPersonalModelProviders$);
+    }
     const params = new URLSearchParams(get(searchParams$));
     if (params.get("settings") !== section) {
       params.set("settings", section);
@@ -98,6 +102,9 @@ export const setSettingsDialogOpen$ = command(
       set(reloadBillingStatus$);
       const params = new URLSearchParams(get(searchParams$));
       const section = get(internalActiveSection$);
+      if (section === "model") {
+        set(reloadPersonalModelProviders$);
+      }
       if (params.get("settings") !== section) {
         params.set("settings", section);
         set(updateSearchParams$, params);

@@ -29,6 +29,7 @@ import { userFeatureSwitchContext } from "./feature-switches.service";
 const L = logger("zero-model-provider.service");
 
 const ORG_SENTINEL_USER_ID = "__org__";
+type ModelProviderRow = typeof modelProviders.$inferSelect;
 
 function hasUsableSecretValue(value: string | undefined): value is string {
   return value !== undefined && value.trim().length > 0;
@@ -43,6 +44,8 @@ function modelProviderResponse(row: {
   readonly secretName: string | null;
   readonly workspaceName: string | null;
   readonly planType: string | null;
+  readonly subscriptionResetPeriod: string | null;
+  readonly subscriptionNextResetAt: Date | null;
   readonly needsReconnect: boolean;
   readonly lastRefreshErrorCode: string | null;
   readonly createdAt: Date;
@@ -67,6 +70,8 @@ function modelProviderResponse(row: {
     selectedModel: row.selectedModel,
     workspaceName: row.workspaceName,
     planType: row.planType,
+    subscriptionResetPeriod: row.subscriptionResetPeriod,
+    subscriptionNextResetAt: row.subscriptionNextResetAt?.toISOString() ?? null,
     needsReconnect: row.needsReconnect,
     lastRefreshErrorCode: row.lastRefreshErrorCode,
     createdAt: row.createdAt.toISOString(),
@@ -89,6 +94,8 @@ function zeroModelProvidersForUser(
         secretName: secrets.name,
         workspaceName: modelProviders.workspaceName,
         planType: modelProviders.planType,
+        subscriptionResetPeriod: modelProviders.subscriptionResetPeriod,
+        subscriptionNextResetAt: modelProviders.subscriptionNextResetAt,
         needsReconnect: modelProviders.needsReconnect,
         lastRefreshErrorCode: modelProviders.lastRefreshErrorCode,
         createdAt: modelProviders.createdAt,
@@ -261,6 +268,8 @@ export interface ModelProviderInfo {
   readonly lastRefreshErrorCode: string | null;
   readonly workspaceName: string | null;
   readonly planType: string | null;
+  readonly subscriptionResetPeriod: string | null;
+  readonly subscriptionNextResetAt: Date | null;
   readonly createdAt: Date;
   readonly updatedAt: Date;
 }
@@ -279,6 +288,8 @@ function toModelProviderInfo(params: {
   lastRefreshErrorCode?: string | null;
   workspaceName?: string | null;
   planType?: string | null;
+  subscriptionResetPeriod?: string | null;
+  subscriptionNextResetAt?: Date | null;
   createdAt: Date;
   updatedAt: Date;
 }): ModelProviderInfo {
@@ -305,9 +316,41 @@ function toModelProviderInfo(params: {
     lastRefreshErrorCode: params.lastRefreshErrorCode ?? null,
     workspaceName: params.workspaceName ?? null,
     planType: params.planType ?? null,
+    subscriptionResetPeriod: params.subscriptionResetPeriod ?? null,
+    subscriptionNextResetAt: params.subscriptionNextResetAt ?? null,
     createdAt: params.createdAt,
     updatedAt: params.updatedAt,
   };
+}
+
+function toModelProviderInfoFromRow(args: {
+  readonly provider: ModelProviderRow;
+  readonly userId: string;
+  readonly type: ModelProviderType;
+  readonly secretName?: string | null;
+  readonly authMethod?: string | null;
+  readonly secretNames?: string[] | null;
+}): ModelProviderInfo {
+  const { provider } = args;
+  return toModelProviderInfo({
+    id: provider.id,
+    userId: args.userId,
+    type: args.type,
+    secretName: args.secretName,
+    authMethod: args.authMethod,
+    secretNames: args.secretNames,
+    isDefault: provider.isDefault,
+    selectedModel: provider.selectedModel,
+    tokenExpiresAt: provider.tokenExpiresAt,
+    needsReconnect: provider.needsReconnect,
+    lastRefreshErrorCode: provider.lastRefreshErrorCode,
+    workspaceName: provider.workspaceName,
+    planType: provider.planType,
+    subscriptionResetPeriod: provider.subscriptionResetPeriod,
+    subscriptionNextResetAt: provider.subscriptionNextResetAt,
+    createdAt: provider.createdAt,
+    updatedAt: provider.updatedAt,
+  });
 }
 
 /**
@@ -326,10 +369,12 @@ function assertVm0OrgOnly(
   return null;
 }
 
-interface MultiAuthMetadata {
+interface ModelProviderMetadata {
   readonly tokenExpiresAt?: Date | null;
   readonly workspaceName?: string | null;
   readonly planType?: string | null;
+  readonly subscriptionResetPeriod?: string | null;
+  readonly subscriptionNextResetAt?: Date | null;
 }
 
 interface EncryptedMultiAuthSecret {
@@ -339,7 +384,6 @@ interface EncryptedMultiAuthSecret {
 }
 
 type MultiAuthInsertValues = typeof modelProviders.$inferInsert;
-type ModelProviderRow = typeof modelProviders.$inferSelect;
 
 function buildMultiAuthInsertValues(args: {
   type: ModelProviderType;
@@ -347,7 +391,7 @@ function buildMultiAuthInsertValues(args: {
   authMethod: string;
   selectedModel: string | undefined;
   orgId: string;
-  metadata: MultiAuthMetadata | undefined;
+  metadata: ModelProviderMetadata | undefined;
 }): MultiAuthInsertValues {
   return {
     type: args.type,
@@ -359,13 +403,15 @@ function buildMultiAuthInsertValues(args: {
     tokenExpiresAt: args.metadata?.tokenExpiresAt ?? null,
     workspaceName: args.metadata?.workspaceName ?? null,
     planType: args.metadata?.planType ?? null,
+    subscriptionResetPeriod: args.metadata?.subscriptionResetPeriod ?? null,
+    subscriptionNextResetAt: args.metadata?.subscriptionNextResetAt ?? null,
   };
 }
 
 function buildMultiAuthConflictSet(
   authMethod: string,
   selectedModel: string | undefined,
-  metadata?: MultiAuthMetadata,
+  metadata?: ModelProviderMetadata,
 ): Record<string, unknown> {
   const base: Record<string, unknown> = {
     authMethod,
@@ -384,8 +430,47 @@ function buildMultiAuthConflictSet(
   if (metadata.planType !== undefined) {
     base.planType = metadata.planType;
   }
+  if (metadata.subscriptionResetPeriod !== undefined) {
+    base.subscriptionResetPeriod = metadata.subscriptionResetPeriod;
+  }
+  if (metadata.subscriptionNextResetAt !== undefined) {
+    base.subscriptionNextResetAt = metadata.subscriptionNextResetAt;
+  }
   base.needsReconnect = false;
   base.lastRefreshErrorCode = null;
+  return base;
+}
+
+function buildSingleAuthConflictSet(args: {
+  readonly secretId: string;
+  readonly selectedModel: string | undefined;
+  readonly metadata?: ModelProviderMetadata;
+}): Record<string, unknown> {
+  const base: Record<string, unknown> = {
+    secretId: args.secretId,
+    selectedModel: args.selectedModel ?? null,
+    needsReconnect: false,
+    lastRefreshErrorCode: null,
+    updatedAt: nowDate(),
+  };
+  if (!args.metadata) {
+    return base;
+  }
+  if (args.metadata.tokenExpiresAt !== undefined) {
+    base.tokenExpiresAt = args.metadata.tokenExpiresAt;
+  }
+  if (args.metadata.workspaceName !== undefined) {
+    base.workspaceName = args.metadata.workspaceName;
+  }
+  if (args.metadata.planType !== undefined) {
+    base.planType = args.metadata.planType;
+  }
+  if (args.metadata.subscriptionResetPeriod !== undefined) {
+    base.subscriptionResetPeriod = args.metadata.subscriptionResetPeriod;
+  }
+  if (args.metadata.subscriptionNextResetAt !== undefined) {
+    base.subscriptionNextResetAt = args.metadata.subscriptionNextResetAt;
+  }
   return base;
 }
 
@@ -458,6 +543,7 @@ export const upsertUserModelProvider$ = command(
       readonly type: ModelProviderType;
       readonly secret: string;
       readonly selectedModel?: string;
+      readonly metadata?: ModelProviderMetadata;
     },
     signal: AbortSignal,
   ): Promise<
@@ -551,6 +637,11 @@ export const upsertUserModelProvider$ = command(
         isDefault: false,
         selectedModel: args.selectedModel ?? null,
         orgId: args.orgId,
+        tokenExpiresAt: args.metadata?.tokenExpiresAt ?? null,
+        workspaceName: args.metadata?.workspaceName ?? null,
+        planType: args.metadata?.planType ?? null,
+        subscriptionResetPeriod: args.metadata?.subscriptionResetPeriod ?? null,
+        subscriptionNextResetAt: args.metadata?.subscriptionNextResetAt ?? null,
       })
       .onConflictDoUpdate({
         target: [
@@ -558,11 +649,11 @@ export const upsertUserModelProvider$ = command(
           modelProviders.userId,
           modelProviders.type,
         ],
-        set: {
+        set: buildSingleAuthConflictSet({
           secretId: upsertedSecret.id,
-          selectedModel: args.selectedModel ?? null,
-          updatedAt: nowDate(),
-        },
+          selectedModel: args.selectedModel,
+          metadata: args.metadata,
+        }),
       })
       .returning();
     signal.throwIfAborted();
@@ -574,20 +665,11 @@ export const upsertUserModelProvider$ = command(
     const wasCreated = !existingProvider;
 
     return {
-      provider: toModelProviderInfo({
-        id: provider.id,
+      provider: toModelProviderInfoFromRow({
+        provider,
         userId: args.userId,
         type: args.type,
         secretName,
-        isDefault: provider.isDefault,
-        selectedModel: provider.selectedModel,
-        tokenExpiresAt: provider.tokenExpiresAt,
-        needsReconnect: provider.needsReconnect,
-        lastRefreshErrorCode: provider.lastRefreshErrorCode,
-        workspaceName: provider.workspaceName,
-        planType: provider.planType,
-        createdAt: provider.createdAt,
-        updatedAt: provider.updatedAt,
       }),
       created: wasCreated,
     };
@@ -647,7 +729,7 @@ async function persistMultiAuthModelProvider(
     readonly type: ModelProviderType;
     readonly authMethod: string;
     readonly selectedModel?: string;
-    readonly metadata?: MultiAuthMetadata;
+    readonly metadata?: ModelProviderMetadata;
     readonly secretNames: readonly string[];
     readonly encryptedSecrets: readonly EncryptedMultiAuthSecret[];
   },
@@ -802,7 +884,7 @@ export const upsertUserMultiAuthModelProvider$ = command(
       readonly authMethod: string;
       readonly secretValues: Record<string, string>;
       readonly selectedModel?: string;
-      readonly metadata?: MultiAuthMetadata;
+      readonly metadata?: ModelProviderMetadata;
     },
     signal: AbortSignal,
   ): Promise<
@@ -851,21 +933,12 @@ export const upsertUserMultiAuthModelProvider$ = command(
     const { provider } = result;
 
     return {
-      provider: toModelProviderInfo({
-        id: provider.id,
+      provider: toModelProviderInfoFromRow({
+        provider,
         userId: args.userId,
         type: args.type,
         authMethod: args.authMethod,
         secretNames,
-        isDefault: provider.isDefault,
-        selectedModel: provider.selectedModel,
-        tokenExpiresAt: provider.tokenExpiresAt,
-        needsReconnect: provider.needsReconnect,
-        lastRefreshErrorCode: provider.lastRefreshErrorCode,
-        workspaceName: provider.workspaceName,
-        planType: provider.planType,
-        createdAt: provider.createdAt,
-        updatedAt: provider.updatedAt,
       }),
       created: result.wasCreated,
     };
@@ -880,6 +953,7 @@ export const upsertOrgModelProvider$ = command(
       readonly type: ModelProviderType;
       readonly secret: string;
       readonly selectedModel?: string;
+      readonly metadata?: ModelProviderMetadata;
     },
     signal: AbortSignal,
   ) => {
@@ -891,6 +965,7 @@ export const upsertOrgModelProvider$ = command(
         type: args.type,
         secret: args.secret,
         selectedModel: args.selectedModel,
+        metadata: args.metadata,
       },
       signal,
     );
@@ -906,7 +981,7 @@ export const upsertOrgMultiAuthModelProvider$ = command(
       readonly authMethod: string;
       readonly secretValues: Record<string, string>;
       readonly selectedModel?: string;
-      readonly metadata?: MultiAuthMetadata;
+      readonly metadata?: ModelProviderMetadata;
     },
     signal: AbortSignal,
   ) => {
@@ -993,19 +1068,10 @@ export const upsertOrgNoSecretModelProvider$ = command(
     }
 
     return {
-      provider: toModelProviderInfo({
-        id: provider.id,
+      provider: toModelProviderInfoFromRow({
+        provider,
         userId: ORG_SENTINEL_USER_ID,
         type: args.type,
-        isDefault: provider.isDefault,
-        selectedModel: provider.selectedModel,
-        tokenExpiresAt: provider.tokenExpiresAt,
-        needsReconnect: provider.needsReconnect,
-        lastRefreshErrorCode: provider.lastRefreshErrorCode,
-        workspaceName: provider.workspaceName,
-        planType: provider.planType,
-        createdAt: provider.createdAt,
-        updatedAt: provider.updatedAt,
       }),
       created: !existingProvider,
     };

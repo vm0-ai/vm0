@@ -54,9 +54,9 @@ import {
   permissionDialogType$,
   setPermissionDialogType$,
   isStandaloneMode,
-  getAvailableAuthCodeAuthMethod,
-  getOnlyAvailableAuthCodeAuthMethod,
-  getConnectorConnectLaunchMode,
+  getAvailableStatusAuthCodeAuthMethod,
+  getOnlyAvailableStatusAuthCodeAuthMethod,
+  getConnectorStatusConnectLaunchMode,
   connectorCurrentConnectionStatus,
   connectorExpiryCountdownText,
   type ConnectorTypeWithStatus,
@@ -984,18 +984,13 @@ export function ZeroConnectorsPage() {
     if (!ct) {
       return;
     }
-    const launchMode = getConnectorConnectLaunchMode({
-      type,
-      availableAuthMethods: ct.availableAuthMethods,
+    const launchMode = getConnectorStatusConnectLaunchMode(ct, {
       preferModalForConnectorNotice: true,
     });
     if (launchMode === "modal") {
       setSelected(type);
     } else {
-      const authMethod = getOnlyAvailableAuthCodeAuthMethod(
-        type,
-        ct.availableAuthMethods,
-      );
+      const authMethod = getOnlyAvailableStatusAuthCodeAuthMethod(ct);
       if (!authMethod) {
         setSelected(type);
         return;
@@ -1161,13 +1156,14 @@ export function ZeroConnectorsPage() {
             const connector = allConnectors.find((connector) => {
               return connector.type === type;
             });
-            const authMethod = connector?.connector
-              ? getAvailableAuthCodeAuthMethod(
-                  type,
-                  connector.availableAuthMethods,
-                  connector.connector.authMethod,
-                )
-              : null;
+            const connection = connector?.connector ?? null;
+            const authMethod =
+              connector && connection
+                ? getAvailableStatusAuthCodeAuthMethod(
+                    connector,
+                    connection.authMethod,
+                  )
+                : null;
             if (!authMethod) {
               setSelected(type);
               return;

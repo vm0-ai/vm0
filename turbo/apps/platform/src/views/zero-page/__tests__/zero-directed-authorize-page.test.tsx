@@ -1,3 +1,5 @@
+import { zeroConnectorOauthStartContract } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import type { ConnectorResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import type { ConnectorType } from "@vm0/connectors/connectors";
 import { screen, waitFor, within } from "@testing-library/react";
@@ -46,6 +48,25 @@ function getButtonByText(text: string): HTMLElement {
   return button;
 }
 
+function mockConnectorOauthStart(): { readonly authWindow: Window } {
+  const authWindow = context.mocks.browser.authWindow();
+  Object.defineProperty(authWindow, "location", {
+    value: { href: "" },
+    configurable: true,
+  });
+
+  context.mocks.api(
+    zeroConnectorOauthStartContract.start,
+    ({ params, respond }) => {
+      return respond(200, {
+        authorizationUrl: `https://oauth.test/${params.type}/authorize`,
+      });
+    },
+  );
+  context.mocks.browser.open(authWindow);
+  return { authWindow };
+}
+
 describe("directed connector authorize page", () => {
   it("authorizes a connected connector and recognizes existing authorization", async () => {
     mockConnectedConnector("gmail");
@@ -92,5 +113,41 @@ describe("directed connector authorize page", () => {
       expect(screen.getByText("Axiom authorized")).toBeInTheDocument();
       expect(screen.getByText("Authorized")).toBeInTheDocument();
     });
+  });
+
+  it("does not authorize the agent when OAuth connection is cancelled", async () => {
+    const { authWindow } = mockConnectorOauthStart();
+    let updateCalls = 0;
+    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+      return respond(200, { enabledTypes: [] });
+    });
+    context.mocks.api(
+      zeroUserConnectorsContract.update,
+      ({ body, respond }) => {
+        updateCalls += 1;
+        return respond(200, { enabledTypes: body.enabledTypes });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/github/authorize?agentId=${AGENT_ID}`,
+    });
+
+    await screen.findByText("Zero needs GitHub to proceed");
+    click(getButtonByText("Authorize Zero"));
+
+    await waitFor(() => {
+      expect(authWindow.location.href).toBe(
+        "https://oauth.test/github/authorize",
+      );
+    });
+    await screen.findByText("Connecting...");
+
+    authWindow.close();
+
+    await screen.findByText("Authorize Zero");
+    expect(updateCalls).toBe(0);
+    expect(screen.queryByText("GitHub authorized")).not.toBeInTheDocument();
   });
 });

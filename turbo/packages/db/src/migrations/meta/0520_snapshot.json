@@ -1,6 +1,6 @@
 {
-  "id": "c4ff93e5-c298-4809-a625-ec6ed03359c8",
-  "prevId": "0eb6896e-cf63-4e67-8fed-7dac1bff601c",
+  "id": "fa8b8867-622c-44dc-b836-095b544d05fc",
+  "prevId": "c4ff93e5-c298-4809-a625-ec6ed03359c8",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -7761,6 +7761,103 @@
         }
       },
       "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.html_artifact_edit_drafts": {
+      "name": "html_artifact_edit_drafts",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "chat_thread_id": {
+          "name": "chat_thread_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "artifact_url": {
+          "name": "artifact_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "timestamp",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "idx_html_artifact_edit_drafts_thread_artifact": {
+          "name": "idx_html_artifact_edit_drafts_thread_artifact",
+          "columns": [
+            {
+              "expression": "chat_thread_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "artifact_url",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "idx_html_artifact_edit_drafts_thread": {
+          "name": "idx_html_artifact_edit_drafts_thread",
+          "columns": [
+            {
+              "expression": "chat_thread_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "html_artifact_edit_drafts_chat_thread_id_chat_threads_id_fk": {
+          "name": "html_artifact_edit_drafts_chat_thread_id_chat_threads_id_fk",
+          "tableFrom": "html_artifact_edit_drafts",
+          "tableTo": "chat_threads",
+          "columnsFrom": [
+            "chat_thread_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},

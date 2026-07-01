@@ -1201,6 +1201,18 @@ export function getCustomModelPlaceholder(
     : undefined;
 }
 
+export const modelProviderSubscriptionUsageWindowSchema = z.object({
+  usedPercent: z.number().nullable(),
+  remainingPercent: z.number().nullable(),
+  resetAt: z.string().nullable(),
+  windowSeconds: z.number().nullable(),
+});
+
+export const modelProviderSubscriptionUsageSchema = z.object({
+  fiveHour: modelProviderSubscriptionUsageWindowSchema.nullable(),
+  weekly: modelProviderSubscriptionUsageWindowSchema.nullable(),
+});
+
 /**
  * Model provider response
  */
@@ -1215,10 +1227,15 @@ export const modelProviderResponseSchema = z.object({
   selectedModel: z.string().nullable(),
   createdAt: z.string(),
   updatedAt: z.string(),
-  // ChatGPT-only metadata populated by the codex-oauth-token auth.json paste
-  // flow. Other provider types omit these.
+  // OAuth account metadata populated by provider-specific connect flows. Other
+  // provider types omit these.
   workspaceName: z.string().nullable().optional(),
   planType: z.string().nullable().optional(),
+  // Subscription quota metadata. Providers omit these until an upstream source
+  // exposes the reset cadence or next reset timestamp.
+  subscriptionResetPeriod: z.string().nullable().optional(),
+  subscriptionNextResetAt: z.string().nullable().optional(),
+  subscriptionUsage: modelProviderSubscriptionUsageSchema.nullable().optional(),
   // OAuth refresh state. `needsReconnect` flips to true when the firewall's
   // refresh attempt fails (#11921 writes this on the model_providers row).
   // `lastRefreshErrorCode` carries the typed code from `ChatgptRefreshError`

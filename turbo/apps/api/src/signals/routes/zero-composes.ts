@@ -10,7 +10,6 @@ import { authRoute } from "../auth/auth-route";
 import { bodyResultOf, pathParamsOf } from "../context/request";
 import { isNotFoundResponse, notFound } from "../../lib/error";
 import {
-  deleteCompose$,
   updateComposeMetadata$,
   zeroComposeById,
   zeroComposeList,
@@ -46,29 +45,6 @@ const listComposesInner$ = computed(async (get) => {
   const result = await get(zeroComposeList(auth.orgId));
   return { status: 200 as const, body: { composes: [...result.composes] } };
 });
-
-const deleteComposeInner$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    const auth = get(authContext$);
-    const params = get(pathParamsOf(zeroComposesByIdContract.delete));
-    signal.throwIfAborted();
-
-    const result = await set(
-      deleteCompose$,
-      { composeId: params.id, userId: auth.userId },
-      signal,
-    );
-    signal.throwIfAborted();
-
-    if (isNotFoundResponse(result)) {
-      return result;
-    }
-    if (result?.status === 409) {
-      return result;
-    }
-    return { status: 204 as const, body: undefined };
-  },
-);
 
 const updateComposeMetadataInner$ = command(
   async ({ get, set }, signal: AbortSignal) => {
@@ -117,10 +93,6 @@ export const zeroComposesRoutes: readonly RouteEntry[] = [
   {
     route: zeroComposesByIdContract.getById,
     handler: authRoute(orgAuth, getComposeByIdInner$),
-  },
-  {
-    route: zeroComposesByIdContract.delete,
-    handler: authRoute({}, deleteComposeInner$),
   },
   {
     route: zeroComposesMetadataContract.update,

@@ -11,7 +11,9 @@ import {
   getPublicConnectorCatalogDetail,
   getPublicConnectorCatalogPermissionDetail,
   listPublicConnectorCatalog,
+  listPublicConnectorCatalogStatus,
 } from "../services/connector-catalog-reader.service";
+import { zeroConnectorList } from "../services/zero-connector-data.service";
 import { notFound } from "../../lib/error";
 
 const connectorCatalogAuth = {
@@ -47,6 +49,32 @@ const listConnectorCatalogInner$ = command(
     const connectors = await listPublicConnectorCatalog({
       featureStates: context.featureStates,
       apiAuthMethodPolicy: "include",
+    });
+    signal.throwIfAborted();
+
+    return { status: 200 as const, body: { connectors } };
+  },
+);
+
+const listConnectorCatalogStatusInner$ = command(
+  async ({ get, set }, signal: AbortSignal) => {
+    const auth = get(organizationAuthContext$);
+    const context = await set(connectorCatalogRequestContext$);
+    signal.throwIfAborted();
+
+    const connectorState = await get(
+      zeroConnectorList({
+        orgId: auth.orgId,
+        userId: auth.userId,
+        featureStates: context.featureStates,
+      }),
+    );
+    signal.throwIfAborted();
+
+    const connectors = await listPublicConnectorCatalogStatus({
+      featureStates: context.featureStates,
+      apiAuthMethodPolicy: "include",
+      connectors: connectorState.connectors,
     });
     signal.throwIfAborted();
 
@@ -98,6 +126,10 @@ export const zeroConnectorCatalogRoutes: readonly RouteEntry[] = [
   {
     route: zeroConnectorCatalogContract.list,
     handler: authRoute(connectorCatalogAuth, listConnectorCatalogInner$),
+  },
+  {
+    route: zeroConnectorCatalogContract.status,
+    handler: authRoute(connectorCatalogAuth, listConnectorCatalogStatusInner$),
   },
   {
     route: zeroConnectorCatalogContract.get,
