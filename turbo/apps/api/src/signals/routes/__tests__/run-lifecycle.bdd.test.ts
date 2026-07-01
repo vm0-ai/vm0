@@ -16,7 +16,7 @@ import { HttpResponse, http } from "msw";
 import { describe, expect, it, onTestFinished } from "vitest";
 import { v5 as uuidv5 } from "uuid";
 
-import { mockOptionalEnv } from "../../../lib/env";
+import { mockEnv, mockOptionalEnv } from "../../../lib/env";
 import { mockNow, now, nowDate } from "../../../lib/time";
 import { testContext } from "../../../__tests__/test-context";
 import { server } from "../../../mocks/server";
@@ -1357,6 +1357,43 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     );
 
     await api.requestCancelRun(actor, queued.runId, [200]);
+    await api.requestCancelRun(actor, first.runId, [200]);
+    await api.requestCancelRun(actor, second.runId, [200]);
+  });
+
+  it("records a failed queued launch when queue payload encryption fails", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before queued encryption failure one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before queued encryption failure two",
+      modelProvider: "anthropic-api-key",
+    });
+
+    mockEnv("SECRETS_KMS_KEY_ID", undefined);
+    const failed = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should fail when payload encryption fails",
+      modelProvider: "anthropic-api-key",
+    });
+
+    expect(failed.status).toBe("failed");
+    expect(failed.error).toBe(
+      "SECRETS_KMS_KEY_ID is required for KMS secret encryption",
+    );
+    const stored = await api.readRun(actor, failed.runId);
+    expect(stored.status).toBe("failed");
+    const queue = await api.readRunQueue(actor);
+    expect(queue.body.queue).not.toContainEqual(
+      expect.objectContaining({ runId: failed.runId }),
+    );
+
     await api.requestCancelRun(actor, first.runId, [200]);
     await api.requestCancelRun(actor, second.runId, [200]);
   });

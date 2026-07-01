@@ -6686,13 +6686,27 @@ function createAtomicLaunchRun(input: {
       });
     }
 
-    const encryptedQueuedParams = input.args.queueOnConcurrencyLimit
-      ? await encryptQueuedRunnerJobPayload(
+    let encryptedQueuedParams: string | undefined;
+    if (input.args.queueOnConcurrencyLimit) {
+      const encryptedQueuedParamsResult = await settle(
+        encryptQueuedRunnerJobPayload(
           launchResult.value.runnerJobPayload,
           input.context.featureSwitchContext,
-        )
-      : undefined;
-    input.signal.throwIfAborted();
+        ),
+      );
+      input.signal.throwIfAborted();
+      if (!encryptedQueuedParamsResult.ok) {
+        return await commitFailedLaunch({
+          db: input.db,
+          createArgs: input.args,
+          context: input.context,
+          identity,
+          callbackRows,
+          error: encryptedQueuedParamsResult.error,
+        });
+      }
+      encryptedQueuedParams = encryptedQueuedParamsResult.value;
+    }
 
     const committed = await input.timing.measure(
       "api_dispatch_insert_run_with_concurrency",
