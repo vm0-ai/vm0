@@ -5,12 +5,18 @@ import {
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { logger } from "../log.ts";
 import {
+  CHAT_MESSAGES_ORDER_INDEX,
   CHAT_IDB_VERSION,
   CHAT_MESSAGES_STORE,
   upgradeChatIdb,
 } from "./chat-idb-schema.ts";
 
 const L = logger("ChatIdbCache");
+
+type StoredPagedChatMessage = PagedChatMessage & {
+  readonly threadId: string;
+  readonly orderSequence: number;
+};
 
 interface ChatMessageReadStore {
   readLatest(
@@ -50,6 +56,9 @@ function toApiMessage(raw: unknown): unknown {
     if (key === "threadId") {
       continue;
     }
+    if (key === "orderSequence") {
+      continue;
+    }
     if (key === "status" && row.role === "user") {
       continue;
     }
@@ -60,6 +69,21 @@ function toApiMessage(raw: unknown): unknown {
 
 function validateMessage(raw: unknown): PagedChatMessage {
   return pagedChatMessageSchema.parse(toApiMessage(raw));
+}
+
+function storedMessage(
+  threadId: string,
+  message: PagedChatMessage,
+): StoredPagedChatMessage {
+  return {
+    ...message,
+    threadId,
+    orderSequence: message.sequenceNumber ?? -1,
+  };
+}
+
+function threadOrderRange(threadId: string): IDBKeyRange {
+  return IDBKeyRange.bound([threadId], [threadId, []]);
 }
 
 function createIdbMessageStores(userId: string, orgId: string) {
@@ -76,9 +100,9 @@ function createIdbMessageStores(userId: string, orgId: string) {
       // the schema currently defines, idempotently, so whichever module
       // triggers the version bump leaves a complete schema for the other.
       dbPromise = openDB(dbName, CHAT_IDB_VERSION, {
-        upgrade(db, oldVersion) {
+        upgrade(db, oldVersion, _newVersion, tx) {
           L.debug("openDB:upgrade", { dbName, storeName });
-          upgradeChatIdb(db, oldVersion);
+          upgradeChatIdb(db, oldVersion, tx);
         },
       });
     }
@@ -91,8 +115,8 @@ function createIdbMessageStores(userId: string, orgId: string) {
       const db = await getDb();
       signal?.throwIfAborted();
       const tx = db.transaction(storeName, "readonly");
-      const index = tx.store.index("byThreadAndTime");
-      const range = IDBKeyRange.bound([threadId, ""], [threadId, "￿"]);
+      const index = tx.store.index(CHAT_MESSAGES_ORDER_INDEX);
+      const range = threadOrderRange(threadId);
       const messages: PagedChatMessage[] = [];
       let cursor = await index.openCursor(range, "prev");
       while (cursor && (limit === undefined || messages.length < limit)) {
@@ -128,21 +152,15 @@ function createIdbMessageStores(userId: string, orgId: string) {
       const anchorMsg = validateMessage(anchor);
       signal?.throwIfAborted();
 
-      const index = tx.store.index("byThreadAndTime");
+      const index = tx.store.index(CHAT_MESSAGES_ORDER_INDEX);
       const range = IDBKeyRange.bound(
-        [threadId, ""],
-        [threadId, anchorMsg.createdAt],
+        [threadId],
+        [threadId, anchorMsg.createdAt, anchorMsg.sequenceNumber ?? -1, beforeId],
       );
       const messages: PagedChatMessage[] = [];
       let cursor = await index.openCursor(range, "prev");
-      // Skip the anchor and any rows with the same createdAt that sort after it
-      while (cursor) {
-        const msg = validateMessage(cursor.value);
-        if (msg.createdAt === anchorMsg.createdAt && msg.id >= beforeId) {
-          cursor = await cursor.continue();
-        } else {
-          break;
-        }
+      if (cursor?.primaryKey === beforeId) {
+        cursor = await cursor.continue();
       }
       while (cursor && messages.length < limit) {
         signal?.throwIfAborted();
@@ -169,9 +187,9 @@ function createIdbMessageStores(userId: string, orgId: string) {
       const tx = db.transaction(storeName, "readwrite");
       for (const msg of messages) {
         signal?.throwIfAborted();
-        // Stitch threadId onto the stored value so the byThreadAndTime
-        // index can find it. PagedChatMessage from the API has no threadId.
-        await tx.store.put({ ...msg, threadId });
+        // Stitch local ordering fields onto the stored value. PagedChatMessage
+        // from the API has no threadId and keeps sequenceNumber optional.
+        await tx.store.put(storedMessage(threadId, msg));
       }
       await tx.done;
       L.debug("upsertMessages:done", { threadId, count: messages.length });

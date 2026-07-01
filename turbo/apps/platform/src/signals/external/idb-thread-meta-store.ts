@@ -58,9 +58,9 @@ const getDb = (() => {
     }
     L.debug("openDB", { dbName });
     const promise = openDB(dbName, CHAT_IDB_VERSION, {
-      upgrade(db, oldVersion) {
+      upgrade(db, oldVersion, _newVersion, tx) {
         L.debug("openDB:upgrade", { dbName });
-        upgradeChatIdb(db, oldVersion);
+        upgradeChatIdb(db, oldVersion, tx);
       },
     });
     cache[dbName] = promise;
