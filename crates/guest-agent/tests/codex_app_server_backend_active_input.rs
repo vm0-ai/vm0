@@ -21,9 +21,12 @@ async fn codex_app_server_backend_steers_active_input_into_active_turn()
         common::setup_codex_app_server_env(
             &mock,
             tmp.path(),
-            "codex-app-server-backend-active-input-test",
-            "drive the app-server backend with active input",
-            "runtime-turn-started-before-steer",
+            common::CodexAppServerEnvConfig {
+                run_id: "codex-app-server-backend-active-input-test",
+                prompt: "drive the app-server backend with active input",
+                scenario: Some("runtime-turn-started-before-steer"),
+                resume_session_id: None,
+            },
         )?;
     }
     let _run_files = common::RunFilesGuard::new();

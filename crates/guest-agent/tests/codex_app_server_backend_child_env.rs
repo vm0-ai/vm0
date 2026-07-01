@@ -24,9 +24,12 @@ async fn codex_app_server_backend_child_env_uses_runtime_snapshot()
         common::setup_codex_app_server_env(
             &mock,
             tmp.path(),
-            run_id,
-            prompt,
-            "runtime-turn-complete-without-thread-started",
+            common::CodexAppServerEnvConfig {
+                run_id,
+                prompt,
+                scenario: Some("runtime-turn-complete-without-thread-started"),
+                resume_session_id: None,
+            },
         )?;
     }
 

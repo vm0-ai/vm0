@@ -20,9 +20,12 @@ async fn codex_app_server_backend_rejects_active_input_after_turn_completion()
         common::setup_codex_app_server_env(
             &mock,
             tmp.path(),
-            "codex-app-server-backend-active-input-after-completion-test",
-            "drive the app-server backend completion path",
-            "runtime-turn-complete",
+            common::CodexAppServerEnvConfig {
+                run_id: "codex-app-server-backend-active-input-after-completion-test",
+                prompt: "drive the app-server backend completion path",
+                scenario: Some("runtime-turn-complete"),
+                resume_session_id: None,
+            },
         )?;
     }
     let _run_files = common::RunFilesGuard::new();
