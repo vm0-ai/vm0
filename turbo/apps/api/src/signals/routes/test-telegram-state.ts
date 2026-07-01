@@ -3,6 +3,11 @@ import { createHash, randomUUID } from "node:crypto";
 import { command, computed } from "ccstate";
 import { and, desc, eq, inArray, isNull, sql } from "drizzle-orm";
 import {
+  DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+  getProviderRuntimeModel,
+  getVm0Vendor,
+} from "@vm0/api-contracts/contracts/model-providers";
+import {
   testTelegramStateContract,
   type TestTelegramStateActionBody,
 } from "@vm0/api-contracts/contracts/test-telegram-state";
@@ -949,6 +954,15 @@ async function seedTelegramPostModelKeys(
   signal: AbortSignal,
 ): Promise<void> {
   await db.insert(vm0ApiKeys).values([
+    {
+      vendor: getVm0Vendor(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL),
+      model: getProviderRuntimeModel(
+        "vm0",
+        DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
+      ),
+      apiKey: `vm0-key-default-${seed.composeId}`,
+      label: seed.composeId,
+    },
     {
       vendor: "anthropic",
       model: "claude-sonnet-4-6",
