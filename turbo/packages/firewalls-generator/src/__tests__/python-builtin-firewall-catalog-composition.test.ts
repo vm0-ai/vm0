@@ -19,7 +19,7 @@ const FULL_FIREWALL_SOURCE_TEST_TIMEOUT_MS = 60_000;
 function modelProviderFirewall(
   name = "model-provider:test",
 ): PythonBuiltinFirewallSourceFirewall {
-  return {
+  const firewall = {
     name,
     apis: [
       {
@@ -45,6 +45,7 @@ function modelProviderFirewall(
       MODEL_PROVIDER_TOKEN: "placeholder",
     },
   };
+  return firewall;
 }
 
 function findGeneratedContent(

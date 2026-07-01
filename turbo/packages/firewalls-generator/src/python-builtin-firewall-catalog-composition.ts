@@ -26,10 +26,6 @@ interface PythonBuiltinFirewallSourceApi {
 export interface PythonBuiltinFirewallSourceFirewall {
   readonly name: string;
   readonly apis: readonly PythonBuiltinFirewallSourceApi[];
-  readonly categories?: unknown;
-  readonly defaultPolicies?: unknown;
-  readonly label?: unknown;
-  readonly placeholders?: unknown;
 }
 
 interface PythonBuiltinFirewallCatalog {
