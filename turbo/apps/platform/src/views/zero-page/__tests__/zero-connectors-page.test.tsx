@@ -592,8 +592,8 @@ describe("connectors page", () => {
   });
 
   it("filters connectors by not connected status", async () => {
-    setupConnectorStatusFilterPage();
-    await expectConnectorCardsVisible({ github: true, asana: true });
+    setupConnectorStatusFilterPage("/connectors?connection=connected");
+    await expectConnectorCardsVisible({ github: true, asana: false });
 
     const filterTrigger = screen.getByLabelText("Filter connectors");
     click(filterTrigger);
@@ -604,8 +604,8 @@ describe("connectors page", () => {
   });
 
   it("clears connector status filter", async () => {
-    setupConnectorStatusFilterPage("/connectors?connection=connected");
-    await expectConnectorCardsVisible({ github: true, asana: false });
+    setupConnectorStatusFilterPage("/connectors?connection=not-connected");
+    await expectConnectorCardsVisible({ github: false, asana: true });
 
     const filterTrigger = screen.getByLabelText("Filter connectors");
     click(filterTrigger);
