@@ -244,7 +244,7 @@ describe("MISC-03: workflows lifecycle through public API", () => {
       member,
       memberAgent.agentId,
       memberWorkflowName,
-      "# Member private workflow",
+      { content: "# Member private workflow" },
       [201],
     );
     expect(memberCreated.body).toMatchObject({
@@ -271,7 +271,7 @@ describe("MISC-03: workflows lifecycle through public API", () => {
       admin,
       agent.agentId,
       workflowName,
-      "# BDD Workflow\n\nCreated through API.",
+      { content: "# BDD Workflow\n\nCreated through API." },
       [201],
     );
     if (created.status !== 201) {

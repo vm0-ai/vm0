@@ -16,6 +16,19 @@ import {
 
 const context = testContext();
 const mocks = createZeroRouteMocks(context);
+const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
+
+function teamsInstallUrl(tenantId?: string): string {
+  const url = new URL(
+    "https://teams.microsoft.com/l/app/00000000-0000-0000-0000-000000000001",
+  );
+  url.searchParams.set("installAppPackage", "true");
+  url.searchParams.set("appTenantId", TEAMS_APP_TENANT_ID);
+  if (tenantId) {
+    url.searchParams.set("tenantId", tenantId);
+  }
+  return url.toString();
+}
 
 function connectBody(
   fixture: TeamsConnectFixture,
@@ -81,6 +94,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
       isInstalled: false,
       isConnected: false,
       isAdmin: true,
+      installUrl: teamsInstallUrl(),
     });
   });
 
@@ -114,6 +128,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
       isInstalled: true,
       isConnected: false,
       isAdmin: true,
+      installUrl: teamsInstallUrl(fixture.teamsTenantId),
       tenantId: fixture.teamsTenantId,
       tenantName: fixture.teamsTenantName,
       teamId: fixture.teamsTeamId,
@@ -148,6 +163,7 @@ describe("GET /api/zero/integrations/teams/connect", () => {
       isInstalled: true,
       isConnected: true,
       isAdmin: false,
+      installUrl: teamsInstallUrl(fixture.teamsTenantId),
       tenantId: fixture.teamsTenantId,
       tenantName: fixture.teamsTenantName,
       teamId: fixture.teamsTeamId,
@@ -336,6 +352,42 @@ describe("DELETE /api/zero/integrations/teams/connect", () => {
       isInstalled: true,
       isConnected: false,
       tenantId: fixture.teamsTenantId,
+    });
+  });
+
+  it("lets admins uninstall Teams for the org", async () => {
+    const fixture = await seedTeamsInstallation(track);
+    mocks.clerk.session(fixture.userId, fixture.orgId, "org:admin");
+
+    const client = setupApp({ context })(zeroTeamsConnectContract);
+    await accept(
+      client.connect({
+        headers: { authorization: "Bearer clerk-session" },
+        body: connectBody(fixture),
+      }),
+      [200],
+    );
+    const response = await accept(
+      client.disconnect({
+        headers: { authorization: "Bearer clerk-session" },
+        query: { action: "uninstall" },
+      }),
+      [200],
+    );
+
+    expect(response.body).toStrictEqual({ success: true });
+
+    const status = await accept(
+      client.getStatus({
+        headers: { authorization: "Bearer clerk-session" },
+      }),
+      [200],
+    );
+    expect(status.body).toStrictEqual({
+      isInstalled: false,
+      isConnected: false,
+      isAdmin: true,
+      installUrl: teamsInstallUrl(),
     });
   });
 });

@@ -15,6 +15,7 @@ import { clearTeamsBotAuthCacheForTest } from "../../../../lib/teams-bot-auth";
 import { zeroTeamsBotRoutes } from "../../zero-teams-bot";
 
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
+const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const KEY_ID = "teams-test-key";
 const BOT_FRAMEWORK_METADATA_URL =
@@ -41,6 +42,7 @@ export function setupTeamsConnectTestEnv(
 ): void {
   clearTeamsBotAuthCacheForTest();
   mockEnv("MICROSOFT_TEAMS_BOT_APP_ID", BOT_APP_ID);
+  mockEnv("MICROSOFT_TEAMS_APP_TENANT_ID", TEAMS_APP_TENANT_ID);
   mockEnv("APP_URL", appUrl);
 }
 

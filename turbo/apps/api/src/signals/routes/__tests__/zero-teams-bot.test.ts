@@ -34,6 +34,7 @@ const trackTeamsFixture = createFixtureTracker<TeamsConnectFixture>(
 );
 const TEAMS_BOT_PATH = "http://api.test/api/zero/teams/bot";
 const BOT_APP_ID = "00000000-0000-0000-0000-000000000001";
+const TEAMS_APP_TENANT_ID = "11111111-1111-1111-1111-111111111111";
 const SERVICE_URL = "https://smba.trafficmanager.net/amer/";
 const APP_ORIGIN = "https://app.vm0.test";
 const KEY_ID = "teams-test-key";
@@ -56,6 +57,13 @@ function botFixture(): TeamsConnectFixture {
     teamsUserId: "29:user-1",
     serviceUrl: SERVICE_URL,
   });
+}
+
+function teamsInstallUrl(): string {
+  const url = new URL(`https://teams.microsoft.com/l/app/${BOT_APP_ID}`);
+  url.searchParams.set("installAppPackage", "true");
+  url.searchParams.set("appTenantId", TEAMS_APP_TENANT_ID);
+  return url.toString();
 }
 
 function botFrameworkHandlers(): void {
@@ -537,6 +545,7 @@ describe("POST /api/zero/teams/bot", () => {
       isInstalled: false,
       isConnected: false,
       isAdmin: true,
+      installUrl: teamsInstallUrl(),
     });
   });
 });

@@ -10,6 +10,8 @@ import { createPortal } from "react-dom";
 import {
   IconArrowsDiagonal,
   IconArrowsDiagonalMinimize2,
+  IconChevronLeft,
+  IconChevronRight,
   IconColumns2,
   IconFileMusic,
   IconPhoto,
@@ -47,6 +49,7 @@ import {
   lightboxDialogFullscreen$,
   lightboxDialogVisible$,
   lightboxDialogRef$,
+  navigateImageLightbox$,
   openAudioLightbox$,
   openDocumentLightbox$,
   openImageLightbox$,
@@ -80,6 +83,11 @@ import {
   artifactFallbackSubtitle,
   artifactTitleSubtitle,
 } from "./zero-artifact-display.ts";
+import {
+  currentMessageImageArtifactNavigation,
+  type ImageArtifactNavigationItem,
+  shouldIgnoreImageArtifactNavigationKey,
+} from "./zero-artifact-image-navigation.ts";
 import {
   ZoomableArtifactImageCanvas,
   type ZoomableImageControls,
@@ -345,6 +353,11 @@ type ArtifactDialogItem = {
   file: ChatThreadArtifactFile;
 };
 
+type ArtifactImageNavigationActions = {
+  readonly onNext?: () => void;
+  readonly onPrevious?: () => void;
+};
+
 function artifactDialogKindLabel(
   preview: AttachmentLightboxState,
   artifact: AttachmentArtifactMetadata | undefined,
@@ -531,6 +544,91 @@ function ArtifactDialogImageZoomControls({
   );
 }
 
+function ArtifactDialogImageNavigationControls({
+  navigation,
+}: {
+  navigation?: ArtifactImageNavigationActions;
+}) {
+  if (!navigation?.onPrevious && !navigation?.onNext) {
+    return null;
+  }
+
+  return (
+    <>
+      {navigation.onPrevious && (
+        <button
+          type="button"
+          onClick={navigation.onPrevious}
+          aria-label="Previous image artifact"
+          title="Previous image artifact"
+          data-testid="artifact-dialog-previous-image"
+          className="absolute left-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
+        >
+          <IconChevronLeft size={22} stroke={1.8} />
+        </button>
+      )}
+      {navigation.onNext && (
+        <button
+          type="button"
+          onClick={navigation.onNext}
+          aria-label="Next image artifact"
+          title="Next image artifact"
+          data-testid="artifact-dialog-next-image"
+          className="absolute right-4 top-1/2 z-20 flex h-10 w-10 -translate-y-1/2 items-center justify-center rounded-full border border-border/60 bg-background/90 text-foreground shadow-lg backdrop-blur-sm transition-colors hover:bg-muted"
+        >
+          <IconChevronRight size={22} stroke={1.8} />
+        </button>
+      )}
+    </>
+  );
+}
+
+function ArtifactDialogImageNavigationKeydown({
+  navigation,
+}: {
+  navigation?: ArtifactImageNavigationActions;
+}) {
+  let cleanup: (() => void) | null = null;
+
+  return (
+    <span
+      ref={(node) => {
+        cleanup?.();
+        cleanup = null;
+        if (!node || (!navigation?.onPrevious && !navigation?.onNext)) {
+          return;
+        }
+
+        const onKeyDown = (event: KeyboardEvent) => {
+          // The lightbox modal is an immersive overlay: arrow keys always
+          // navigate, regardless of focus.
+          if (
+            shouldIgnoreImageArtifactNavigationKey(event, {
+              considerFocus: false,
+            })
+          ) {
+            return;
+          }
+          if (event.key === "ArrowLeft" && navigation.onPrevious) {
+            event.preventDefault();
+            navigation.onPrevious();
+          }
+          if (event.key === "ArrowRight" && navigation.onNext) {
+            event.preventDefault();
+            navigation.onNext();
+          }
+        };
+
+        document.addEventListener("keydown", onKeyDown);
+        cleanup = () => {
+          document.removeEventListener("keydown", onKeyDown);
+        };
+      }}
+      hidden
+    />
+  );
+}
+
 function ArtifactDialogTextBody({
   kind,
   signal,
@@ -625,9 +723,11 @@ function ArtifactDialogTextBody({
 }
 
 function ArtifactDialogBody({
+  imageNavigation,
   pageSignal,
   preview,
 }: {
+  imageNavigation?: ArtifactImageNavigationActions;
   pageSignal: AbortSignal;
   preview: AttachmentLightboxState;
 }) {
@@ -638,19 +738,24 @@ function ArtifactDialogBody({
     return (
       <ArtifactDialogStage flush scrollable={false}>
         <ArtifactDialogCard fillHeight>
-          <ZoomableArtifactImageCanvas
-            src={publicAttachmentUrl(preview.url)}
-            alt={filename}
-            zoomKey={artifactDialogImageZoomKey(preview.url, fullscreen)}
-            imageTestId="attachment-lightbox-image"
-            contentClassName="p-6"
-            imageClassName="rounded-lg shadow-sm"
-            canvasTestId="artifact-dialog-image-stage"
-          >
-            {(controls) => {
-              return <ArtifactDialogImageZoomControls controls={controls} />;
-            }}
-          </ZoomableArtifactImageCanvas>
+          <div className="relative h-full min-h-0">
+            <ZoomableArtifactImageCanvas
+              src={publicAttachmentUrl(preview.url)}
+              alt={filename}
+              zoomKey={artifactDialogImageZoomKey(preview.url, fullscreen)}
+              imageTestId="attachment-lightbox-image"
+              contentClassName="p-6"
+              imageClassName="rounded-lg shadow-sm"
+              canvasTestId="artifact-dialog-image-stage"
+            >
+              {(controls) => {
+                return <ArtifactDialogImageZoomControls controls={controls} />;
+              }}
+            </ZoomableArtifactImageCanvas>
+            <ArtifactDialogImageNavigationControls
+              navigation={imageNavigation}
+            />
+          </div>
         </ArtifactDialogCard>
       </ArtifactDialogStage>
     );
@@ -828,11 +933,55 @@ function ArtifactPreviewDialogThreadResolver({
 }) {
   const loadable = useLastLoadable(thread.artifacts$);
   const agentId = useLastResolved(thread.agentId$);
+  const messageGroups = useLastResolved(thread.groupedChatMessages$);
+  const features = useGet(featureSwitch$);
+  const imageNavigationEnabled = Boolean(
+    features?.[FeatureSwitchKey.ImageArtifactKeyboardNavigation],
+  );
+  const navigateImageLightbox = useSet(navigateImageLightbox$);
   const reloadArtifacts = useSet(thread.reloadArtifacts$);
   const item =
     loadable.state === "hasData"
       ? findArtifactDialogItemForUrl(loadable.data, preview.url)
       : undefined;
+  const imageNavigation =
+    imageNavigationEnabled &&
+    preview.kind === "image" &&
+    loadable.state === "hasData"
+      ? currentMessageImageArtifactNavigation(
+          loadable.data,
+          (messageGroups ?? []).flatMap((group) => {
+            return group.messages;
+          }),
+          preview.url,
+        )
+      : {};
+  const openImageNavigationItem = (
+    navigationItem: ImageArtifactNavigationItem,
+  ) => {
+    navigateImageLightbox({
+      artifact: artifactDialogMetadataFromItem({
+        agentId,
+        item: navigationItem,
+        onSyncSuccess: () => {
+          reloadArtifacts();
+        },
+        threadId: thread.threadId,
+      }),
+      filename: navigationItem.file.filename,
+      url: navigationItem.file.url,
+    });
+  };
+  const imageNavigationAction = (
+    navigationItem: ImageArtifactNavigationItem | undefined,
+  ) => {
+    if (!navigationItem) {
+      return undefined;
+    }
+    return () => {
+      openImageNavigationItem(navigationItem);
+    };
+  };
 
   if (item) {
     return (
@@ -845,6 +994,10 @@ function ArtifactPreviewDialogThreadResolver({
           },
           threadId: thread.threadId,
         })}
+        imageNavigation={{
+          onNext: imageNavigationAction(imageNavigation.next),
+          onPrevious: imageNavigationAction(imageNavigation.previous),
+        }}
         preview={preview}
       />
     );
@@ -991,9 +1144,11 @@ function ArtifactPreviewDialogActions({
 
 function ArtifactPreviewDialogContent({
   artifact,
+  imageNavigation,
   preview,
 }: {
   artifact: AttachmentArtifactMetadata | undefined;
+  imageNavigation?: ArtifactImageNavigationActions;
   preview: AttachmentLightboxState;
 }) {
   const dialogRef = useSet(lightboxDialogRef$);
@@ -1030,6 +1185,9 @@ function ArtifactPreviewDialogContent({
       data-testid="attachment-lightbox"
     >
       <LightboxBodyScrollLock />
+      <ArtifactDialogImageNavigationKeydown
+        navigation={preview.kind === "image" ? imageNavigation : undefined}
+      />
       <div
         className={`zero-dialog-enter-content flex min-h-0 flex-col overflow-hidden bg-background text-foreground shadow-[0_24px_70px_rgba(0,0,0,0.30)] transition-transform duration-[180ms] ease ${
           visible ? "translate-y-0" : "translate-y-2"
@@ -1054,7 +1212,11 @@ function ArtifactPreviewDialogContent({
           />
         </div>
         <div className="min-h-0 flex-1 bg-background">
-          <ArtifactDialogBody pageSignal={pageSignal} preview={preview} />
+          <ArtifactDialogBody
+            imageNavigation={imageNavigation}
+            pageSignal={pageSignal}
+            preview={preview}
+          />
         </div>
       </div>
     </div>,

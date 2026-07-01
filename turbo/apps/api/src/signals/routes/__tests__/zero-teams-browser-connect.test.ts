@@ -144,7 +144,7 @@ describe("GET /api/zero/teams/connect", () => {
     expect(response.status).toBe(307);
     const location = response.headers.get("location");
     expect(location).toContain(`${APP_ORIGIN}/settings/teams?error=`);
-    expect(decodeURIComponent(location ?? "")).toContain(
+    expect(new URL(location!).searchParams.get("error")).toContain(
       "Invalid connect link.",
     );
   });
@@ -163,8 +163,19 @@ describe("GET /api/zero/teams/connect", () => {
     );
 
     expect(response.status).toBe(307);
-    expect(response.headers.get("location")).toContain(
-      `${APP_ORIGIN}/settings/teams?status=connected`,
+    const location = response.headers.get("location");
+    expect(location).toContain(`${APP_ORIGIN}/settings/teams?status=connected`);
+    const redirectUrl = new URL(location!);
+    expect(redirectUrl.searchParams.get("tenantId")).toBe(
+      fixture.teamsTenantId,
+    );
+    expect(redirectUrl.searchParams.get("teamsUserId")).toBe(
+      fixture.teamsUserId,
+    );
+    expect(redirectUrl.searchParams.get("displayName")).toBe("Ada Lovelace");
+    expect(redirectUrl.searchParams.get("upn")).toBe("ada@example.com");
+    expect(redirectUrl.searchParams.get("teamName")).toBe(
+      fixture.teamsTeamName,
     );
     await expectTeamsConnected(fixture);
   });
@@ -245,6 +256,8 @@ describe("GET /api/zero/teams/connect", () => {
     expect(response.status).toBe(307);
     const location = response.headers.get("location");
     expect(location).toContain(`${APP_ORIGIN}/settings/teams?error=`);
-    expect(decodeURIComponent(location ?? "")).toContain("active organization");
+    expect(new URL(location!).searchParams.get("error")).toContain(
+      "active organization",
+    );
   });
 });

@@ -3,11 +3,12 @@ import { zeroTeamsConnectContract } from "@vm0/api-contracts/contracts/zero-team
 
 import { organizationAuthContext$ } from "../auth/auth-context";
 import { authRoute } from "../auth/auth-route";
-import { bodyResultOf } from "../context/request";
+import { bodyResultOf, queryOf } from "../context/request";
 import {
   connectTeamsInstallation$,
   disconnectTeamsConnection$,
   publishTeamsChanged$,
+  uninstallTeamsInstallation$,
   zeroTeamsConnectStatus,
 } from "../services/zero-teams-connect.service";
 import type { RouteEntry } from "../route-entry";
@@ -94,6 +95,40 @@ const connectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
 
 const disconnectInner$ = command(async ({ get, set }, signal: AbortSignal) => {
   const auth = get(organizationAuthContext$);
+  const query = get(queryOf(zeroTeamsConnectContract.disconnect));
+
+  if (query.action === "uninstall") {
+    if (!("orgRole" in auth) || auth.orgRole !== "admin") {
+      return errorResponse(403, "Admin access required", "FORBIDDEN");
+    }
+
+    const uninstallResult = await set(
+      uninstallTeamsInstallation$,
+      { orgId: auth.orgId },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    if (uninstallResult.kind === "not_found") {
+      return errorResponse(404, uninstallResult.message, "NOT_FOUND");
+    }
+
+    await set(
+      publishTeamsChanged$,
+      {
+        orgId: uninstallResult.orgId,
+        userIds: [auth.userId, ...uninstallResult.userIds],
+      },
+      signal,
+    );
+    signal.throwIfAborted();
+
+    return {
+      status: 200 as const,
+      body: { success: true as const },
+    };
+  }
+
   const result = await set(
     disconnectTeamsConnection$,
     { orgId: auth.orgId, userId: auth.userId },

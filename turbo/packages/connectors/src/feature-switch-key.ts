@@ -52,7 +52,9 @@ export enum FeatureSwitchKey {
   ConnectorAccessManagement = "connectorAccessManagement",
   PresentationTemplateRunbook = "presentationTemplateRunbook",
   AgentUnreadIndicators = "agentUnreadIndicators",
+  ImageArtifactKeyboardNavigation = "imageArtifactKeyboardNavigation",
   AgentsPageRedesign = "agentsPageRedesign",
   SidebarSubscriptionUsage = "sidebarSubscriptionUsage",
   ChatInitialThinkingIndicator = "chatInitialThinkingIndicator",
+  TeamsIntegration = "teamsIntegration",
 }

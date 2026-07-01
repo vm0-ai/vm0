@@ -9,6 +9,7 @@ import {
   IconSettings,
 } from "@tabler/icons-react";
 import { Button } from "@vm0/ui";
+import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import {
   Popover,
   PopoverContent,
@@ -30,12 +31,21 @@ import {
   showUninstallDialog$,
   setShowUninstallDialog$,
 } from "../../signals/zero-page/zero-slack.ts";
+import {
+  disconnectTeamsOrg$,
+  teamsOrgData$,
+  showTeamsUninstallDialog$,
+  setShowTeamsUninstallDialog$,
+  uninstallTeamsOrg$,
+} from "../../signals/zero-page/zero-teams.ts";
 import { detach, Reason } from "../../signals/utils.ts";
 import { Link } from "../router/link.tsx";
 import { ROUTES } from "../../signals/route-paths.ts";
 import { now } from "../../lib/time.ts";
 import { AgentPhoneCard } from "./agentphone-card.tsx";
+import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import slackIconImg from "./components/settings/icons/slack.svg";
+import teamsIconImg from "./components/settings/icons/teams.svg";
 import telegramIconImg from "./components/settings/icons/telegram.svg";
 
 /** Append a cache-busting timestamp and forward ?prompt= so the OAuth flow can
@@ -276,6 +286,221 @@ function SlackCard({ displayName }: { displayName: string }) {
   );
 }
 
+function TeamsConnectedIndicator({
+  connectedDetail,
+}: {
+  connectedDetail?: string | null;
+}) {
+  return (
+    <span
+      data-testid="teams-connected-indicator"
+      className="inline-flex min-w-0 max-w-52 shrink-0 items-center gap-1.5 rounded-lg border border-border bg-background px-1.5 py-1 text-xs font-medium text-secondary-foreground"
+    >
+      <IconCircleCheck className="h-3 w-3 text-green-600" />
+      <span className="min-w-0 truncate" title={connectedDetail ?? ""}>
+        {connectedDetail ? `Connected (${connectedDetail})` : "Connected"}
+      </span>
+    </span>
+  );
+}
+
+function TeamsCardActions({
+  isConnected,
+  isInstalled,
+  isAdmin,
+  installUrl,
+  connectedDetail,
+  onDisconnect,
+  onUninstall,
+  disconnecting,
+}: {
+  isConnected: boolean;
+  isInstalled: boolean;
+  isAdmin: boolean;
+  installUrl: string | null | undefined;
+  connectedDetail?: string | null;
+  onDisconnect: () => void;
+  onUninstall: () => void;
+  disconnecting: boolean;
+}) {
+  return (
+    <>
+      {isConnected ? (
+        <TeamsConnectedIndicator connectedDetail={connectedDetail} />
+      ) : null}
+      {isAdmin && installUrl && (
+        <Button
+          data-testid="teams-install-button"
+          variant="outline"
+          size="sm"
+          className="h-8 shrink-0 gap-1.5 rounded-lg"
+          onClick={() => {
+            window.open(installUrl, "_blank");
+          }}
+        >
+          <IconDownload size={14} stroke={1.5} />
+          Install in Teams
+        </Button>
+      )}
+      {!isAdmin && isInstalled && !isConnected && installUrl && (
+        <Button
+          variant="outline"
+          size="sm"
+          className="h-8 shrink-0 gap-1.5 rounded-lg"
+          onClick={() => {
+            window.open(installUrl, "_blank");
+          }}
+        >
+          Open Teams
+        </Button>
+      )}
+      {isInstalled && (isConnected || isAdmin) && (
+        <Popover>
+          <PopoverTrigger asChild>
+            <button
+              type="button"
+              className="shrink-0 rounded p-1.5 text-muted-foreground hover:bg-muted hover:text-foreground transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label="More Microsoft Teams options"
+            >
+              <IconDotsVertical size={16} stroke={1.5} />
+            </button>
+          </PopoverTrigger>
+          <PopoverContent
+            align="end"
+            className="flex flex-col gap-0.5 w-40 p-2"
+          >
+            {isConnected && (
+              <button
+                type="button"
+                aria-label="Disconnect Microsoft Teams"
+                disabled={disconnecting}
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left hover:bg-accent hover:text-accent-foreground transition-colors disabled:opacity-50 disabled:pointer-events-none"
+                onClick={onDisconnect}
+              >
+                {disconnecting ? "Disconnecting..." : "Disconnect"}
+              </button>
+            )}
+            {isAdmin && (
+              <button
+                type="button"
+                aria-label="Uninstall Microsoft Teams"
+                className="flex w-full items-center gap-2 rounded-md px-3 py-2 text-sm text-left text-destructive hover:bg-accent hover:text-accent-foreground transition-colors"
+                onClick={onUninstall}
+              >
+                Uninstall
+              </button>
+            )}
+          </PopoverContent>
+        </Popover>
+      )}
+    </>
+  );
+}
+
+function TeamsCard({ displayName }: { displayName: string }) {
+  const teamsDataLoadable = useLastLoadable(teamsOrgData$);
+  const teamsData =
+    teamsDataLoadable.state === "hasData" ? teamsDataLoadable.data : null;
+  const [disconnectLoadable, disconnect] = useLoadableSet(disconnectTeamsOrg$);
+  const disconnecting = disconnectLoadable.state === "loading";
+  const [uninstallLoadable, uninstall] = useLoadableSet(uninstallTeamsOrg$);
+  const uninstalling = uninstallLoadable.state === "loading";
+  const pageSignal = useGet(pageSignal$);
+
+  const showUninstallDialog = useGet(showTeamsUninstallDialog$);
+  const setShowUninstallDialog = useSet(setShowTeamsUninstallDialog$);
+
+  const isConnected = teamsData?.isConnected ?? false;
+  const isInstalled = teamsData?.isInstalled ?? false;
+  const isAdmin = teamsData?.isAdmin ?? false;
+  const connectedDetail = teamsData?.teamName ?? teamsData?.tenantName;
+  const description =
+    !isInstalled && !isAdmin
+      ? "Ask your admin to install the Microsoft Teams integration"
+      : isInstalled && !isConnected
+        ? "Open Teams and connect from a Zero message"
+        : "Team communication and collaboration";
+
+  return (
+    <>
+      <div className="zero-card flex flex-col">
+        <div className="flex items-center gap-4 p-4">
+          <div className="shrink-0 inline-flex h-7 w-7 items-center justify-center overflow-hidden">
+            <img src={teamsIconImg} alt="" className="h-7 w-7" />
+          </div>
+          <div className="flex flex-1 flex-col gap-1 min-w-0">
+            <div className="text-sm font-medium text-foreground">
+              Microsoft Teams
+            </div>
+            <div className="text-sm text-muted-foreground">{description}</div>
+          </div>
+          <TeamsCardActions
+            isConnected={isConnected}
+            isInstalled={isInstalled}
+            isAdmin={isAdmin}
+            installUrl={teamsData?.installUrl}
+            connectedDetail={connectedDetail}
+            disconnecting={disconnecting}
+            onDisconnect={() => {
+              return detach(disconnect(pageSignal), Reason.DomCallback);
+            }}
+            onUninstall={() => {
+              return setShowUninstallDialog(true);
+            }}
+          />
+        </div>
+      </div>
+
+      <Dialog
+        open={showUninstallDialog}
+        onOpenChange={(v) => {
+          if (!uninstalling) {
+            setShowUninstallDialog(v);
+          }
+        }}
+      >
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Uninstall Microsoft Teams integration?</DialogTitle>
+            <DialogDescription>
+              This removes the Microsoft Teams integration from VM0 for your
+              workspace. All connected users will be disconnected and{" "}
+              {displayName} will no longer respond to Teams messages for this
+              workspace until an admin reconnects it.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <Button
+              variant="outline"
+              disabled={uninstalling}
+              onClick={() => {
+                return setShowUninstallDialog(false);
+              }}
+            >
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              disabled={uninstalling}
+              onClick={() => {
+                detach(
+                  (async () => {
+                    await uninstall(pageSignal);
+                    setShowUninstallDialog(false);
+                  })(),
+                  Reason.DomCallback,
+                );
+              }}
+            >
+              {uninstalling ? "Uninstalling..." : "Uninstall"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 function TelegramCard() {
   return (
     <Link
@@ -307,6 +532,8 @@ function TelegramCard() {
 }
 
 export function ZeroWorksPage() {
+  const features = useGet(featureSwitch$);
+  const teamsEnabled = features[FeatureSwitchKey.TeamsIntegration] ?? false;
   const displayNameLoadable = useLoadable(currentChatAgentDisplayName$);
   const displayName =
     displayNameLoadable.state === "hasData"
@@ -329,6 +556,7 @@ export function ZeroWorksPage() {
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
           <SlackCard displayName={displayName} />
+          {teamsEnabled ? <TeamsCard displayName={displayName} /> : null}
           <TelegramCard />
           <AgentPhoneCard />
         </div>

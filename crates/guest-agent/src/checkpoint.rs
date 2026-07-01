@@ -18,6 +18,7 @@ use guest_common::telemetry::record_sandbox_op;
 use guest_common::{log_error, log_info, log_warn};
 use serde_json::json;
 use sha2::{Digest, Sha256};
+use std::borrow::Cow;
 use std::io::ErrorKind;
 use std::time::Duration;
 
@@ -103,9 +104,9 @@ struct CheckpointInputs<'a> {
     framework: env::Framework,
     home_dir: &'a str,
     artifact_entries: &'a [env::ArtifactEnv],
-    session_id_file: &'a str,
-    session_history_path_file: &'a str,
-    final_session_history_identity_file: &'a str,
+    session_id_file: Cow<'a, str>,
+    session_history_path_file: Cow<'a, str>,
+    final_session_history_identity_file: Cow<'a, str>,
 }
 
 impl<'a> CheckpointInputs<'a> {
@@ -115,23 +116,26 @@ impl<'a> CheckpointInputs<'a> {
             framework: runtime.config.framework,
             home_dir: &runtime.config.home_dir,
             artifact_entries: &runtime.config.artifacts,
-            session_id_file: runtime.paths.session_id_file(),
-            session_history_path_file: runtime.paths.session_history_path_file(),
-            final_session_history_identity_file: runtime
-                .paths
-                .final_session_history_identity_file(),
+            session_id_file: Cow::Borrowed(runtime.paths.session_id_file()),
+            session_history_path_file: Cow::Borrowed(runtime.paths.session_history_path_file()),
+            final_session_history_identity_file: Cow::Borrowed(
+                runtime.paths.final_session_history_identity_file(),
+            ),
         }
     }
 
     fn from_legacy_env() -> Self {
+        let paths = paths::legacy_paths_from_process_env();
         Self {
             run_id: env::run_id(),
             framework: env::Framework::from_env(),
             home_dir: env::home_dir(),
             artifact_entries: env::artifacts(),
-            session_id_file: paths::session_id_file(),
-            session_history_path_file: paths::session_history_path_file(),
-            final_session_history_identity_file: paths::final_session_history_identity_file(),
+            session_id_file: Cow::Owned(paths.session_id_file().to_string()),
+            session_history_path_file: Cow::Owned(paths.session_history_path_file().to_string()),
+            final_session_history_identity_file: Cow::Owned(
+                paths.final_session_history_identity_file().to_string(),
+            ),
         }
     }
 }
@@ -428,7 +432,7 @@ async fn create_checkpoint_impl(
     // directly — an explicit `exists()` check would be a redundant stat plus a
     // TOCTOU race between check and read.
     let session_id_start = std::time::Instant::now();
-    let cli_agent_session_id = match std::fs::read_to_string(inputs.session_id_file) {
+    let cli_agent_session_id = match std::fs::read_to_string(inputs.session_id_file.as_ref()) {
         Ok(s) => s.trim().to_string(),
         Err(e) if e.kind() == ErrorKind::NotFound => {
             return Err(fail(
@@ -464,7 +468,7 @@ async fn create_checkpoint_impl(
     let history_marker_payload = match crate::session_metadata::resolve_history_marker_payload_from(
         inputs.framework,
         inputs.home_dir,
-        inputs.session_history_path_file,
+        inputs.session_history_path_file.as_ref(),
         &cli_agent_session_id,
     ) {
         Ok(payload) => payload,
@@ -605,7 +609,7 @@ async fn create_checkpoint_impl(
             history_size,
             &history_marker_payload,
             inputs.framework,
-            inputs.final_session_history_identity_file,
+            inputs.final_session_history_identity_file.as_ref(),
         );
         log_info!(LOG_TAG, "{} created successfully: {id}", mode.log_label());
         record_sandbox_op("checkpoint_api_call", api_start.elapsed(), true, None);
@@ -742,8 +746,9 @@ mod tests {
     }
 
     fn cleanup_checkpoint_files() {
-        let _ = std::fs::remove_file(paths::session_id_file());
-        let _ = std::fs::remove_file(paths::session_history_path_file());
+        let guest_paths = paths::legacy_paths_from_process_env();
+        let _ = std::fs::remove_file(guest_paths.session_id_file());
+        let _ = std::fs::remove_file(guest_paths.session_history_path_file());
     }
 
     #[test]
@@ -997,11 +1002,16 @@ mod tests {
             );
         }
         let _files_guard = CheckpointFilesGuard::new();
+        let guest_paths = paths::legacy_paths_from_process_env();
         let history_path = dir.path().join("history.jsonl");
         std::fs::write(&history_path, r#"{"type":"system"}"#).unwrap();
-        paths::write_private(paths::session_id_file(), "session-with-missing-artifact").unwrap();
         paths::write_private(
-            paths::session_history_path_file(),
+            guest_paths.session_id_file(),
+            "session-with-missing-artifact",
+        )
+        .unwrap();
+        paths::write_private(
+            guest_paths.session_history_path_file(),
             history_path.to_string_lossy().as_ref(),
         )
         .unwrap();
@@ -1042,9 +1052,11 @@ mod tests {
             framework: env::Framework::ClaudeCode,
             home_dir: env::home_dir(),
             artifact_entries: &entries,
-            session_id_file: paths::session_id_file(),
-            session_history_path_file: paths::session_history_path_file(),
-            final_session_history_identity_file: paths::final_session_history_identity_file(),
+            session_id_file: guest_paths.session_id_file().into(),
+            session_history_path_file: guest_paths.session_history_path_file().into(),
+            final_session_history_identity_file: guest_paths
+                .final_session_history_identity_file()
+                .into(),
         };
 
         let err = create_checkpoint_impl(&http, CheckpointMode::Success, &inputs)
