@@ -168,7 +168,8 @@ const createTriggerInner$ = command(
                 signal,
               )
             : bodyResult.data.eventType === "google-calendar-event-created" ||
-                bodyResult.data.eventType === "google-calendar-event-updated"
+                bodyResult.data.eventType === "google-calendar-event-updated" ||
+                bodyResult.data.eventType === "google-calendar-event-cancelled"
               ? await set(
                   createWorkflowTrigger$,
                   {

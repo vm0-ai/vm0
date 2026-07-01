@@ -37,13 +37,15 @@ function isGoogleCalendarTrigger(
     readonly kind: "event";
     readonly eventType:
       | "google-calendar-event-created"
-      | "google-calendar-event-updated";
+      | "google-calendar-event-updated"
+      | "google-calendar-event-cancelled";
   }
 > {
   return (
     trigger.kind === "event" &&
     (trigger.eventType === "google-calendar-event-created" ||
-      trigger.eventType === "google-calendar-event-updated")
+      trigger.eventType === "google-calendar-event-updated" ||
+      trigger.eventType === "google-calendar-event-cancelled")
   );
 }
 
@@ -129,6 +131,12 @@ function formatWorkflowTriggerEntry(
   ) {
     return `Google Calendar event updated: ${trigger.eventConfig.calendarId}`;
   }
+  if (
+    trigger.kind === "event" &&
+    trigger.eventType === "google-calendar-event-cancelled"
+  ) {
+    return `Google Calendar event cancelled: ${trigger.eventConfig.calendarId}`;
+  }
   if (isWebhookTrigger(trigger)) {
     return `Webhook: ${trigger.webhookUrl}`;
   }
@@ -163,6 +171,8 @@ function workflowTriggerKindLabel(trigger: ZeroWorkflowTriggerSummary): string {
       return "Google Calendar event created";
     case "google-calendar-event-updated":
       return "Google Calendar event updated";
+    case "google-calendar-event-cancelled":
+      return "Google Calendar event cancelled";
     case "webhook-received":
       return "Webhook";
   }

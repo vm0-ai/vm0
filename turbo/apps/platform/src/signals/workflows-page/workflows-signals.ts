@@ -6,6 +6,7 @@ import {
   zeroWorkflowVisibilityContract,
   type GmailLabelAppliedEventConfig,
   type GmailNewMessageEventConfig,
+  type GoogleCalendarEventCancelledEventConfig,
   type GoogleCalendarEventCreatedEventConfig,
   type GoogleCalendarEventUpdatedEventConfig,
   type GithubLabelAppliedEventConfig,
@@ -13,6 +14,7 @@ import {
   type ZeroWorkflowSchedule,
   type ZeroWorkflowSummary,
   type ZeroWorkflowTriggerAutomationEntry,
+  type ZeroWorkflowTriggerCreateRequest,
   type ZeroWorkflowTriggerSummary,
   type ZeroWorkflowUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -61,6 +63,7 @@ type WorkflowTriggerCreateDialog =
   | "github-label"
   | "google-calendar-created"
   | "google-calendar-updated"
+  | "google-calendar-cancelled"
   | "webhook"
   | null;
 type WorkflowWebhookTriggerSummary = Extract<
@@ -802,25 +805,37 @@ export const createWorkflowGoogleCalendarEventTrigger$ = command(
           readonly workflowId: string;
           readonly eventType: "google-calendar-event-updated";
           readonly eventConfig: GoogleCalendarEventUpdatedEventConfig;
+        }
+      | {
+          readonly workflowId: string;
+          readonly eventType: "google-calendar-event-cancelled";
+          readonly eventConfig: GoogleCalendarEventCancelledEventConfig;
         },
     signal: AbortSignal,
   ) => {
     const client = get(zeroClient$)(zeroWorkflowTriggersContract);
+    const body: ZeroWorkflowTriggerCreateRequest =
+      input.eventType === "google-calendar-event-created"
+        ? {
+            kind: "event",
+            eventType: "google-calendar-event-created",
+            eventConfig: input.eventConfig,
+          }
+        : input.eventType === "google-calendar-event-updated"
+          ? {
+              kind: "event",
+              eventType: "google-calendar-event-updated",
+              eventConfig: input.eventConfig,
+            }
+          : {
+              kind: "event",
+              eventType: "google-calendar-event-cancelled",
+              eventConfig: input.eventConfig,
+            };
     await accept(
       client.create({
         params: { workflowId: input.workflowId },
-        body:
-          input.eventType === "google-calendar-event-created"
-            ? {
-                kind: "event",
-                eventType: "google-calendar-event-created",
-                eventConfig: input.eventConfig,
-              }
-            : {
-                kind: "event",
-                eventType: "google-calendar-event-updated",
-                eventConfig: input.eventConfig,
-              },
+        body,
         fetchOptions: { signal },
       }),
       [201],

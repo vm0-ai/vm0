@@ -550,6 +550,129 @@ describe("POST /api/webhooks/google-calendar", () => {
     expect(afterThird.watches[0]?.syncToken).toBe("calendar-sync-updated-3");
   });
 
+  it("dispatches cancelled calendar events and de-duplicates minimal deleted payloads", async () => {
+    configureGoogleCalendarApiMock({
+      baselineItems: [
+        {
+          id: "event-existing",
+          etag: '"existing-etag"',
+          status: "confirmed",
+          summary: "Existing",
+          created: "2026-06-01T00:00:00.000Z",
+          updated: "2026-06-01T00:00:00.000Z",
+        },
+      ],
+      incrementalResponses: [
+        {
+          items: [
+            {
+              id: "event-existing",
+              status: "cancelled",
+            },
+          ],
+          nextSyncToken: "calendar-sync-cancelled-1",
+        },
+        {
+          items: [
+            {
+              id: "event-existing",
+              status: "cancelled",
+            },
+          ],
+          nextSyncToken: "calendar-sync-cancelled-2",
+        },
+      ],
+    });
+
+    const { fixture, runnerGroup, workflowId } = await setupFixture();
+    await track(Promise.resolve(fixture));
+    await enableGoogleCalendarWorkflowTriggers(fixture);
+    const connectorId = await seedGoogleCalendarConnector(fixture);
+
+    const cancelled = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-cancelled",
+        },
+      }),
+      [201],
+    );
+    const updated = await accept(
+      triggersClient().create({
+        headers: authHeaders(),
+        params: { workflowId },
+        body: {
+          kind: "event",
+          eventType: "google-calendar-event-updated",
+        },
+      }),
+      [201],
+    );
+
+    const watchState = await store.set(
+      getWorkflowGoogleCalendarWatchState$,
+      { connectorId, triggerId: cancelled.body.id },
+      context.signal,
+    );
+    const watch = watchState.watches[0];
+    if (!watch) {
+      throw new Error("Expected Google Calendar watch state");
+    }
+
+    const first = await postGoogleCalendarWebhook(webhookHeaders(watch));
+
+    expect(first.status).toBe(200);
+    expect(first.body).toStrictEqual({
+      success: true,
+      watchStates: 1,
+      dispatched: 1,
+      duplicates: 0,
+    });
+    await runsApi.heartbeatRunner(runnerGroup);
+    const firstJob = await runsApi.pollRunner(runnerGroup);
+    expect(firstJob.body.job?.runId).toStrictEqual(expect.any(String));
+    await runsApi.claimRunnerJob(firstJob.body.job!.runId);
+
+    const afterFirst = await store.set(
+      getWorkflowGoogleCalendarWatchState$,
+      { connectorId, triggerId: cancelled.body.id },
+      context.signal,
+    );
+    expect(afterFirst.processed).toStrictEqual([
+      {
+        calendarEventId: "event-existing",
+        eventChangeKey: "cancelled:event-existing",
+      },
+    ]);
+    expect(afterFirst.watches[0]?.syncToken).toBe("calendar-sync-cancelled-1");
+
+    const updatedRuns = await store.set(
+      getWorkflowTriggerRunState$,
+      { triggerId: updated.body.id },
+      context.signal,
+    );
+    expect(updatedRuns).toHaveLength(0);
+
+    const second = await postGoogleCalendarWebhook(webhookHeaders(watch));
+
+    expect(second.status).toBe(200);
+    expect(second.body).toStrictEqual({
+      success: true,
+      watchStates: 1,
+      dispatched: 0,
+      duplicates: 0,
+    });
+    const cancelledRuns = await store.set(
+      getWorkflowTriggerRunState$,
+      { triggerId: cancelled.body.id },
+      context.signal,
+    );
+    expect(cancelledRuns).toHaveLength(1);
+  });
+
   it("rejects webhook notifications with the wrong channel token", async () => {
     configureGoogleCalendarApiMock({});
 
