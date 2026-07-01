@@ -138,83 +138,87 @@ export async function handleCodexAuthJsonPaste(args: CodexAuthJsonPasteArgs) {
       ? { orgId: args.orgId, userId: args.userId }
       : { orgId: args.orgId };
 
-  // eslint-disable-next-line no-restricted-syntax -- centralized try/catch for typed CodexAuthJsonShapeError / CodexAuthJsonFreePlanError narrowing; abort propagates via isAbortError check
-  try {
-    const parsed = parseCodexAuthJson(args.rawAuthJson);
-    const usageMetadataResult = await settle(
-      fetchCodexUsageMetadata({
-        accessToken: parsed.accessToken,
-        accountId: parsed.accountId,
-        signal: args.signal,
-      }),
-    );
-    const usageMetadata = usageMetadataResult.ok
-      ? usageMetadataResult.value
-      : null;
-    if (!usageMetadataResult.ok) {
-      log.debug(
-        args.scope === "personal"
-          ? "personal codex usage metadata unavailable"
-          : "codex usage metadata unavailable",
-        {
-          ...logContext,
-          errorMessage: unknownErrorMessage(usageMetadataResult.error),
+  const pasteResult = await settle(
+    (async () => {
+      const parsed = parseCodexAuthJson(args.rawAuthJson);
+      const usageMetadataResult = await settle(
+        fetchCodexUsageMetadata({
+          accessToken: parsed.accessToken,
+          accountId: parsed.accountId,
+          signal: args.signal,
+        }),
+      );
+      const usageMetadata = usageMetadataResult.ok
+        ? usageMetadataResult.value
+        : null;
+      if (!usageMetadataResult.ok) {
+        log.debug(
+          args.scope === "personal"
+            ? "personal codex usage metadata unavailable"
+            : "codex usage metadata unavailable",
+          {
+            ...logContext,
+            errorMessage: unknownErrorMessage(usageMetadataResult.error),
+          },
+        );
+      }
+
+      const { provider, created } = await args.upsert({
+        authMethod: "auth_json",
+        secretValues: {
+          CHATGPT_ACCESS_TOKEN: parsed.accessToken,
+          CHATGPT_REFRESH_TOKEN: parsed.refreshToken,
+          CHATGPT_ACCOUNT_ID: parsed.accountId,
+          CHATGPT_ID_TOKEN: parsed.idToken,
         },
-      );
-    }
+        selectedModel: args.selectedModel,
+        metadata: {
+          tokenExpiresAt: parsed.tokenExpiresAt,
+          workspaceName: usageMetadata?.workspaceName ?? parsed.workspaceName,
+          planType: usageMetadata?.planType ?? parsed.planType,
+          ...(usageMetadata
+            ? {
+                subscriptionResetPeriod: usageMetadata.subscriptionResetPeriod,
+                subscriptionNextResetAt: usageMetadata.subscriptionNextResetAt,
+              }
+            : {}),
+        },
+      });
 
-    const { provider, created } = await args.upsert({
-      authMethod: "auth_json",
-      secretValues: {
-        CHATGPT_ACCESS_TOKEN: parsed.accessToken,
-        CHATGPT_REFRESH_TOKEN: parsed.refreshToken,
-        CHATGPT_ACCOUNT_ID: parsed.accountId,
-        CHATGPT_ID_TOKEN: parsed.idToken,
-      },
-      selectedModel: args.selectedModel,
-      metadata: {
-        tokenExpiresAt: parsed.tokenExpiresAt,
-        workspaceName: usageMetadata?.workspaceName ?? parsed.workspaceName,
-        planType: usageMetadata?.planType ?? parsed.planType,
-        ...(usageMetadata
-          ? {
-              subscriptionResetPeriod: usageMetadata.subscriptionResetPeriod,
-              subscriptionNextResetAt: usageMetadata.subscriptionNextResetAt,
-            }
-          : {}),
-      },
-    });
+      return {
+        status: (created ? 201 : 200) as 200 | 201,
+        body: { provider: serializeUpsertedProvider(provider), created },
+      };
+    })(),
+    args.signal,
+  );
 
-    return {
-      status: (created ? 201 : 200) as 200 | 201,
-      body: { provider: serializeUpsertedProvider(provider), created },
-    };
-  } catch (error) {
-    throwIfAbort(error);
-    if (isCodexAuthJsonFreePlanError(error)) {
-      log.debug(
-        args.scope === "personal"
-          ? "rejected personal codex auth_json paste: free plan"
-          : "rejected codex auth_json paste: free plan",
-        logContext,
-      );
-      return createErrorResponse(
-        "CODEX_FREE_PLAN_REJECTED",
-        "ChatGPT free plan is not supported — upgrade to Plus or higher.",
-      );
-    }
-    if (isCodexAuthJsonShapeError(error)) {
-      log.warn(
-        args.scope === "personal"
-          ? "rejected personal codex auth_json paste: shape"
-          : "rejected codex auth_json paste: shape",
-        { ...logContext, errorMessage: error.message },
-      );
-      return createErrorResponse(
-        "CODEX_AUTH_JSON_SHAPE_INVALID",
-        error.message,
-      );
-    }
-    throw error;
+  if (pasteResult.ok) {
+    return pasteResult.value;
   }
+
+  const { error } = pasteResult;
+  throwIfAbort(error);
+  if (isCodexAuthJsonFreePlanError(error)) {
+    log.debug(
+      args.scope === "personal"
+        ? "rejected personal codex auth_json paste: free plan"
+        : "rejected codex auth_json paste: free plan",
+      logContext,
+    );
+    return createErrorResponse(
+      "CODEX_FREE_PLAN_REJECTED",
+      "ChatGPT free plan is not supported — upgrade to Plus or higher.",
+    );
+  }
+  if (isCodexAuthJsonShapeError(error)) {
+    log.warn(
+      args.scope === "personal"
+        ? "rejected personal codex auth_json paste: shape"
+        : "rejected codex auth_json paste: shape",
+      { ...logContext, errorMessage: error.message },
+    );
+    return createErrorResponse("CODEX_AUTH_JSON_SHAPE_INVALID", error.message);
+  }
+  throw error;
 }

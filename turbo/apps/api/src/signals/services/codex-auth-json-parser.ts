@@ -1,6 +1,6 @@
 import { z } from "zod";
 
-import { safeJsonParse, throwIfAbort } from "../utils";
+import { safeJsonParse, safeSync } from "../utils";
 
 /**
  * Server-side parser for the contents of `~/.codex/auth.json` produced by
@@ -179,15 +179,13 @@ interface ParsedCodexAuth {
 }
 
 function readJwtExp(token: string): number | null {
-  let payload: unknown;
-  // eslint-disable-next-line no-restricted-syntax -- typed-error contract: JWT undecodable returns null so callers fall through to id_token.exp
-  try {
-    payload = decodeJwtPayload(token);
-  } catch (error) {
-    throwIfAbort(error);
+  const decoded = safeSync(() => {
+    return decodeJwtPayload(token);
+  });
+  if ("error" in decoded) {
     return null;
   }
-  const parsed = expSchema.safeParse(payload);
+  const parsed = expSchema.safeParse(decoded.ok);
   return parsed.success ? parsed.data.exp : null;
 }
 
@@ -214,16 +212,13 @@ export function parseCodexAuthJson(raw: string): ParsedCodexAuth {
   // Decode id_token first — its claims drive both account_id (cryptographically
   // signed source of truth) and the plan-type rejection. Match the OAuth
   // callback's ordering: shape errors win over free-plan errors.
-  let idClaims: z.infer<typeof chatgptIdTokenClaimsSchema>;
-  // eslint-disable-next-line no-restricted-syntax -- narrowing zod/JSON errors into the typed CodexAuthJsonShapeError contract
-  try {
-    idClaims = chatgptIdTokenClaimsSchema.parse(
-      decodeJwtPayload(tokens.id_token),
-    );
-  } catch (error) {
-    throwIfAbort(error);
+  const idClaimsResult = safeSync(() => {
+    return chatgptIdTokenClaimsSchema.parse(decodeJwtPayload(tokens.id_token));
+  });
+  if ("error" in idClaimsResult) {
     throw createCodexAuthJsonShapeError("auth.json id_token claims unparsable");
   }
+  const idClaims = idClaimsResult.ok;
   const auth = idClaims["https://api.openai.com/auth"];
   if (!auth?.chatgpt_account_id || !auth.chatgpt_plan_type) {
     throw createCodexAuthJsonShapeError(
