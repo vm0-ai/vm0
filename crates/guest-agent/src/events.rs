@@ -412,7 +412,8 @@ fn truncate_diagnostic_message(message: &str) -> String {
 
 /// POST a prepared event payload to the webhook endpoint.
 pub async fn post_event(http: &HttpClient, payload: &Value) -> Result<(), AgentError> {
-    post_event_with_error_flag(http, payload, paths::event_error_flag()).await
+    let paths = paths::legacy_paths_from_process_env();
+    post_event_with_error_flag(http, payload, paths.event_error_flag()).await
 }
 
 pub async fn post_event_with_error_flag(
@@ -508,11 +509,12 @@ pub(crate) struct SessionMetadataCapture {
 
 impl SessionMetadataCapture {
     pub(crate) fn new() -> Self {
+        let paths = paths::legacy_paths_from_process_env();
         Self::from_values(
             Framework::from_env(),
             env::home_dir(),
-            paths::session_id_file(),
-            paths::session_history_path_file(),
+            paths.session_id_file(),
+            paths.session_history_path_file(),
         )
     }
 

@@ -4,6 +4,14 @@ use guest_agent::masker::SecretMasker;
 use httpmock::prelude::*;
 use serde_json::json;
 
+fn session_file_paths() -> (String, String) {
+    let paths = shared_guest_paths();
+    (
+        paths.session_id_file().to_string(),
+        paths.session_history_path_file().to_string(),
+    )
+}
+
 // =========================================================================
 // Events
 // =========================================================================
@@ -84,8 +92,7 @@ async fn send_event_captures_session_metadata_before_masking() {
     let system_log_path = tmp.path().join("system.log");
     let _system_log_guard = SystemLogOverrideGuard::set(&system_log_path);
 
-    let sid_file = guest_agent::paths::session_id_file();
-    let hist_file = guest_agent::paths::session_history_path_file();
+    let (sid_file, hist_file) = session_file_paths();
 
     let mock = server.mock(|when, then| {
         when.method(POST)
@@ -107,12 +114,12 @@ async fn send_event_captures_session_metadata_before_masking() {
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
 
-    let stored = std::fs::read_to_string(sid_file).unwrap();
+    let stored = std::fs::read_to_string(&sid_file).unwrap();
     assert_eq!(
         stored, session_id,
         "checkpoint metadata should capture the unmasked session id"
     );
-    let history = std::fs::read_to_string(hist_file).unwrap();
+    let history = std::fs::read_to_string(&hist_file).unwrap();
     assert!(
         history.contains(session_id),
         "history path should contain the unmasked session id, got: {history}"
@@ -145,8 +152,7 @@ async fn prepare_event_does_not_capture_session_metadata() {
     let _api = SharedApiMock::new().await;
     let _session_files = SessionCheckpointFilesGuard::new();
 
-    let sid_file = guest_agent::paths::session_id_file();
-    let hist_file = guest_agent::paths::session_history_path_file();
+    let (sid_file, hist_file) = session_file_paths();
 
     let masker = SecretMasker::from_raw("");
     let event = json!({
@@ -159,11 +165,11 @@ async fn prepare_event_does_not_capture_session_metadata() {
     assert_eq!(payload["runId"], "test-run-001");
     assert_eq!(payload["events"][0]["sequenceNumber"], 1);
     assert!(
-        !std::path::Path::new(sid_file).exists(),
+        !std::path::Path::new(&sid_file).exists(),
         "prepare_event must not write the session ID file"
     );
     assert!(
-        !std::path::Path::new(hist_file).exists(),
+        !std::path::Path::new(&hist_file).exists(),
         "prepare_event must not write the session history path file"
     );
 }
@@ -174,8 +180,7 @@ async fn send_event_masks_invalid_session_id_without_checkpoint_metadata() {
     let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
 
-    let sid_file = guest_agent::paths::session_id_file();
-    let hist_file = guest_agent::paths::session_history_path_file();
+    let (sid_file, hist_file) = session_file_paths();
 
     let mock = server.mock(|when, then| {
         when.method(POST)
@@ -197,11 +202,11 @@ async fn send_event_masks_invalid_session_id_without_checkpoint_metadata() {
     mock.assert_calls_async(1).await;
     assert_eq!(masker.mask_string(session_id), "***");
     assert!(
-        !std::path::Path::new(sid_file).exists(),
+        !std::path::Path::new(&sid_file).exists(),
         "invalid session id must not be persisted"
     );
     assert!(
-        !std::path::Path::new(hist_file).exists(),
+        !std::path::Path::new(&hist_file).exists(),
         "invalid session id must not create a history marker"
     );
 }
@@ -212,10 +217,9 @@ async fn send_event_keeps_existing_session_metadata() {
     let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
 
-    let sid_file = guest_agent::paths::session_id_file();
-    let hist_file = guest_agent::paths::session_history_path_file();
-    guest_agent::paths::write_private(sid_file, "first-session").unwrap();
-    guest_agent::paths::write_private(hist_file, "/tmp/first-session.jsonl").unwrap();
+    let (sid_file, hist_file) = session_file_paths();
+    guest_agent::paths::write_private(&sid_file, "first-session").unwrap();
+    guest_agent::paths::write_private(&hist_file, "/tmp/first-session.jsonl").unwrap();
 
     let mock = server.mock(|when, then| {
         when.method(POST)
@@ -235,12 +239,12 @@ async fn send_event_keeps_existing_session_metadata() {
     assert!(result.is_ok());
     mock.assert_calls_async(1).await;
     assert_eq!(
-        std::fs::read_to_string(sid_file).unwrap(),
+        std::fs::read_to_string(&sid_file).unwrap(),
         "first-session",
         "later id-bearing events must not replace checkpoint session metadata"
     );
     assert_eq!(
-        std::fs::read_to_string(hist_file).unwrap(),
+        std::fs::read_to_string(&hist_file).unwrap(),
         "/tmp/first-session.jsonl",
         "later id-bearing events must not replace checkpoint history metadata"
     );
@@ -254,8 +258,7 @@ async fn send_event_seeds_existing_claude_session_id_without_repairing_history_m
     let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
 
-    let sid_file = guest_agent::paths::session_id_file();
-    let hist_file = guest_agent::paths::session_history_path_file();
+    let (sid_file, hist_file) = session_file_paths();
     let session_id = "session-repair";
 
     let mock = server.mock(|when, then| {
@@ -264,14 +267,14 @@ async fn send_event_seeds_existing_claude_session_id_without_repairing_history_m
     });
 
     for seed_empty_marker in [false, true] {
-        let _ = std::fs::remove_file(sid_file);
-        let _ = std::fs::remove_file(hist_file);
-        guest_agent::paths::write_private(sid_file, session_id).unwrap();
+        let _ = std::fs::remove_file(&sid_file);
+        let _ = std::fs::remove_file(&hist_file);
+        guest_agent::paths::write_private(&sid_file, session_id).unwrap();
         if seed_empty_marker {
-            guest_agent::paths::write_private(hist_file, "").unwrap();
+            guest_agent::paths::write_private(&hist_file, "").unwrap();
         } else {
             assert!(
-                !std::path::Path::new(hist_file).exists(),
+                !std::path::Path::new(&hist_file).exists(),
                 "history marker should start missing"
             );
         }
@@ -282,19 +285,19 @@ async fn send_event_seeds_existing_claude_session_id_without_repairing_history_m
 
         assert!(result.is_ok());
         assert_eq!(
-            std::fs::read_to_string(sid_file).unwrap(),
+            std::fs::read_to_string(&sid_file).unwrap(),
             session_id,
             "later events must keep the existing session id"
         );
         if seed_empty_marker {
             assert_eq!(
-                std::fs::read_to_string(hist_file).unwrap(),
+                std::fs::read_to_string(&hist_file).unwrap(),
                 "",
                 "ordinary events must not repair empty history markers"
             );
         } else {
             assert!(
-                !std::path::Path::new(hist_file).exists(),
+                !std::path::Path::new(&hist_file).exists(),
                 "ordinary events must not create missing history markers"
             );
         }
@@ -314,8 +317,7 @@ async fn send_event_extracts_claude_session_id() {
     let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
 
-    let sid_file = guest_agent::paths::session_id_file();
-    let hist_file = guest_agent::paths::session_history_path_file();
+    let (sid_file, hist_file) = session_file_paths();
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/events");
@@ -336,11 +338,11 @@ async fn send_event_extracts_claude_session_id() {
     mock.assert_calls_async(1).await;
 
     // Session ID persisted
-    let stored = std::fs::read_to_string(sid_file).unwrap();
+    let stored = std::fs::read_to_string(&sid_file).unwrap();
     assert_eq!(stored, "ses-abc-123");
 
     // Session history path written and contains the session ID
-    let history = std::fs::read_to_string(hist_file).unwrap();
+    let history = std::fs::read_to_string(&hist_file).unwrap();
     assert!(
         history.contains("ses-abc-123"),
         "history path should contain the session ID, got: {history}"
@@ -357,8 +359,7 @@ async fn send_event_rejects_unsafe_claude_session_id() {
     let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
 
-    let sid_file = guest_agent::paths::session_id_file();
-    let hist_file = guest_agent::paths::session_history_path_file();
+    let (sid_file, hist_file) = session_file_paths();
     let invalid_session_ids = ["../escape", "nested/id", "nested\\id", ".", "..", "bad\nid"];
 
     let mock = server.mock(|when, then| {
@@ -367,8 +368,8 @@ async fn send_event_rejects_unsafe_claude_session_id() {
     });
 
     for session_id in invalid_session_ids {
-        let _ = std::fs::remove_file(sid_file);
-        let _ = std::fs::remove_file(hist_file);
+        let _ = std::fs::remove_file(&sid_file);
+        let _ = std::fs::remove_file(&hist_file);
 
         let masker = SecretMasker::from_raw("");
         let event = json!({
@@ -380,11 +381,11 @@ async fn send_event_rejects_unsafe_claude_session_id() {
 
         assert!(result.is_ok());
         assert!(
-            !std::path::Path::new(sid_file).exists(),
+            !std::path::Path::new(&sid_file).exists(),
             "unsafe session_id must not be persisted: {session_id:?}"
         );
         assert!(
-            !std::path::Path::new(hist_file).exists(),
+            !std::path::Path::new(&hist_file).exists(),
             "unsafe session_id must not write a history marker: {session_id:?}"
         );
     }
@@ -398,7 +399,7 @@ async fn send_event_skips_session_id_for_non_init() {
     let server = api.server();
     let _session_files = SessionCheckpointFilesGuard::new();
 
-    let sid_file = guest_agent::paths::session_id_file();
+    let (sid_file, _) = session_file_paths();
 
     let mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/events");
@@ -413,7 +414,7 @@ async fn send_event_skips_session_id_for_non_init() {
     mock.assert_calls_async(1).await;
 
     assert!(
-        !std::path::Path::new(sid_file).exists(),
+        !std::path::Path::new(&sid_file).exists(),
         "session ID file should NOT be written for non-init events"
     );
 }
