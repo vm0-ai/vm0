@@ -1008,6 +1008,24 @@ export function createRunsAutomationsApi(context: TestContext) {
       );
     },
 
+    async requestCancelRunWithSignal(
+      actor: ApiTestUser,
+      runId: string,
+      signal: AbortSignal,
+    ): Promise<{ readonly status: number; readonly body: unknown }> {
+      const { authorization } = authenticate(context, actor);
+      const app = createAppWithRoutes({
+        signal,
+        routes: runsAutomationRoutes,
+      });
+      const response = await app.request(`/api/zero/runs/${runId}/cancel`, {
+        method: "POST",
+        headers: authorization === undefined ? {} : { authorization },
+      });
+      const body: unknown = await response.json();
+      return { status: response.status, body };
+    },
+
     async heartbeatRunner(group?: string) {
       return await accept(
         runsAutomationApp(context)(runnersHeartbeatContract).heartbeat({

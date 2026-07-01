@@ -2023,8 +2023,11 @@ const handleInterruptSend$ = command(
       return cancelResult;
     }
     if (!cancelResult.alreadyCancelled) {
+      const backgroundSignal = new AbortController().signal;
       waitUntil(
-        bestEffort(set(dispatchCancelSideEffects$, cancelResult, signal)),
+        bestEffort(
+          set(dispatchCancelSideEffects$, cancelResult, backgroundSignal),
+        ),
       );
     }
 
