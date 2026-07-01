@@ -1,5 +1,12 @@
 # Changelog
 
+## [1.203.4](https://github.com/vm0-ai/vm0/compare/api-v1.203.3...api-v1.203.4) (2026-07-01)
+
+
+### Performance Improvements
+
+* attribute zero source entrypoint timing ([#19713](https://github.com/vm0-ai/vm0/issues/19713)) ([5e897dc](https://github.com/vm0-ai/vm0/commit/5e897dc6e6ccee463e081c464d9d614f8d1b1ed3))
+
 ## [1.203.3](https://github.com/vm0-ai/vm0/compare/api-v1.203.2...api-v1.203.3) (2026-07-01)
 
 
