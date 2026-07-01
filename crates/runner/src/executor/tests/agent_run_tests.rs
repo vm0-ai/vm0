@@ -40,6 +40,7 @@ use super::support::{
 };
 use crate::active_input::ActiveInputSource;
 use crate::local_queue::{ActiveInputEntry, LocalQueue};
+use crate::restored_session_identity::RestoredSessionIdentityMismatchReason;
 use crate::storage_fingerprints::{StorageFingerprint, StorageFingerprints};
 use crate::types::{
     ResumeSession, ResumeSessionHistory, ResumeSessionHistoryRef, ResumeSessionHistoryRefKind,
@@ -637,6 +638,13 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
         .unwrap()
         .unwrap();
     release_response.notify_one();
+    tokio::time::timeout(RUN_IN_SANDBOX_TEST_TIMEOUT, async {
+        while !materializer.is_download_finished() {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .unwrap();
 
     let mut telemetry = test_telemetry(&config, &ctx);
     let result = run_in_sandbox(
@@ -667,16 +675,16 @@ async fn run_in_sandbox_uses_prestarted_session_history_materializer() {
     );
     assert_eq!(writes[0].content, history);
     let ops = telemetry.pending_ops_snapshot();
-    assert!(
-        ops.iter()
-            .any(|op| op.0 == "session_history_materialization_wait" && op.1),
-        "expected session history wait telemetry, got: {ops:?}"
+    assert_successful_action(
+        &ops,
+        "session_history_materializer_completed_before_restore",
     );
-    assert!(
-        ops.iter()
-            .any(|op| op.0 == "session_history_download" && op.1),
-        "expected session history download telemetry, got: {ops:?}"
-    );
+    assert_successful_action(&ops, "session_history_materialization_wait");
+    assert_successful_action(&ops, "session_history_download");
+    assert_successful_action(&ops, "session_history_download_request_status");
+    assert_successful_action(&ops, "session_history_download_body_read");
+    assert_successful_action(&ops, "session_history_download_validation");
+    assert_successful_action(&ops, "session_history_download_hash_verification");
 }
 
 #[tokio::test]
@@ -1123,7 +1131,9 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
         RunControls::new(tokio_util::sync::CancellationToken::new(), None)
             .with_session_history_restore_plan(SessionHistoryRestorePlan::Prestarted {
                 materializer,
-                fallback: Some(SessionHistoryRestoreFallback::IdentityMismatch),
+                fallback: Some(SessionHistoryRestoreFallback::IdentityMismatch(Some(
+                    RestoredSessionIdentityMismatchReason::HistoryHash,
+                ))),
             }),
     )
     .await
@@ -1145,6 +1155,7 @@ async fn run_in_sandbox_records_fallback_and_restores_prestarted_history() {
             .any(|op| op.0 == "session_history_restore_fallback_identity_mismatch" && op.1),
         "expected fallback telemetry, got: {ops:?}"
     );
+    assert_successful_action(&ops, "session_history_identity_mismatch_history_hash");
     assert!(
         ops.iter()
             .any(|op| op.0 == "session_history_download" && op.1),
@@ -1555,6 +1566,11 @@ async fn run_in_sandbox_redacts_session_history_download_details_from_telemetry(
         }),
         "expected redacted session history wait telemetry, got: {ops:?}"
     );
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_materializer_waited_at_restore",
+        "session history materialization failed",
+    );
     assert!(
         ops.iter().any(|op| {
             op.0 == "session_history_download"
@@ -1562,6 +1578,14 @@ async fn run_in_sandbox_redacts_session_history_download_details_from_telemetry(
                 && op.2.as_deref() == Some("session history download failed")
         }),
         "expected redacted session history download telemetry, got: {ops:?}"
+    );
+    assert_successful_action(&ops, "session_history_download_request_status");
+    assert_successful_action(&ops, "session_history_download_body_read");
+    assert_successful_action(&ops, "session_history_download_validation");
+    assert_failed_action_error_once(
+        &ops,
+        "session_history_download_hash_verification",
+        "session history download phase failed",
     );
     let telemetry_debug = format!("{ops:?}");
     assert!(!telemetry_debug.contains(&expected_hash));
