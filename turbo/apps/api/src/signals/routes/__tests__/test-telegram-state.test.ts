@@ -87,6 +87,31 @@ function recentRuns(value: readonly unknown[]): RecentRun[] {
   });
 }
 
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event) && event.run_id === runId;
+    });
+  });
+}
+
+function sandboxOperationActionTypes(
+  events: readonly Record<string, unknown>[],
+): Set<unknown> {
+  return new Set(
+    events.map((event) => {
+      return event.op_type;
+    }),
+  );
+}
+
 function mockClerkTestUser(args: {
   readonly userId: string;
   readonly orgId: string;
@@ -122,6 +147,10 @@ function mockTelegramTyping(): void {
 }
 
 function configureSlackDispatchMocks(): void {
+  mockOptionalEnv("RUNNER_DEFAULT_GROUP", "vm0/test");
+  mockOptionalEnv("VM0_API_URL", "http://localhost:3000");
+  mockOptionalEnv("VM0_WEB_URL", "http://localhost:3000");
+  mockEnv("APP_URL", "http://localhost:3002");
   context.mocks.s3.send.mockResolvedValue({});
   context.mocks.slack.assistant.threads.setStatus.mockResolvedValue({
     ok: true,
@@ -695,6 +724,62 @@ describe("POST /api/test/telegram-state", () => {
 
     expect(new Set(defaultAgentIds).size).toBe(1);
     expect(defaultAgentIds).not.toContain(null);
+  });
+
+  it("emits Slack source pre-create timing without leaking Slack payload values", async () => {
+    mockEnv("ENV", "development");
+    const userId = uniqueId("user");
+    const orgId = uniqueId("org");
+    const email = `${randomUUID()}@example.test`;
+    const slack = await seedSlackFixture({ userId, orgId, email });
+    const prompt = "slack timing should not leak prompt";
+
+    await dispatchSlackMessage({
+      fixture: slack,
+      text: prompt,
+    });
+
+    const slackState = await readSlackState(slack.teamId);
+    const run = recentRuns(slackState.recent_runs).find((candidate) => {
+      return candidate.promptPreview === prompt;
+    });
+    if (!run) {
+      throw new Error("Expected Slack dispatch probe to create a run");
+    }
+    const timingEvents = sandboxOperationEventsForRun(run.id);
+    const actionTypes = sandboxOperationActionTypes(timingEvents);
+    for (const actionType of [
+      "api_dispatch_pre_create_zero_slack_entrypoint_gap",
+      "api_dispatch_pre_create_zero_slack_resolve_message",
+      "api_dispatch_pre_create_zero_slack_set_thread_status",
+      "api_dispatch_pre_create_zero_slack_build_run_params",
+      "api_dispatch_pre_create_zero_slack_create_run",
+    ]) {
+      expect(actionTypes).toContain(actionType);
+    }
+    expect(actionTypes).not.toContain(
+      "api_dispatch_pre_create_zero_entrypoint_gap",
+    );
+    expect(timingEvents).toStrictEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          op_type: "api_dispatch_pre_create_zero_slack_create_run",
+          trigger_source: "slack",
+          zero_run_origin: "zero_run",
+          span_kind: "nested",
+        }),
+      ]),
+    );
+    const serializedTimingEvents = JSON.stringify(timingEvents);
+    for (const forbiddenValue of [
+      prompt,
+      slack.teamId,
+      slack.slackUserId,
+      "C-test",
+      "1710000000.000000",
+    ]) {
+      expect(serializedTimingEvents).not.toContain(forbiddenValue);
+    }
   });
 });
 

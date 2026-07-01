@@ -49,6 +49,21 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
+function sandboxOperationEventsForRun(
+  runId: string,
+): readonly Record<string, unknown>[] {
+  return context.mocks.axiom.sdkIngest.mock.calls.flatMap((call) => {
+    const dataset = call[0];
+    const events = call[1];
+    if (dataset !== "vm0-sandbox-op-log-dev" || !Array.isArray(events)) {
+      return [];
+    }
+    return events.filter((event): event is Record<string, unknown> => {
+      return isRecord(event) && event.run_id === runId;
+    });
+  });
+}
+
 function slackBotOauthResponse(args: {
   readonly accessToken: string;
   readonly botUserId: string;
@@ -1154,6 +1169,34 @@ describe("INT-01: Slack app deep webhook flows", () => {
     });
     const run1Id = await pollSlackRun(runnerGroup);
     const claim1 = await runs.claimRunnerJob(run1Id);
+    const slackTimingEvents = sandboxOperationEventsForRun(run1Id);
+    const slackTimingActionTypes = new Set(
+      slackTimingEvents.map((event) => {
+        return event.op_type;
+      }),
+    );
+    for (const actionType of [
+      "api_dispatch_pre_create_zero_slack_entrypoint_gap",
+      "api_dispatch_pre_create_zero_slack_background_start_gap",
+      "api_dispatch_pre_create_zero_slack_resolve_message",
+      "api_dispatch_pre_create_zero_slack_set_thread_status",
+      "api_dispatch_pre_create_zero_slack_build_run_params",
+      "api_dispatch_pre_create_zero_slack_create_run",
+    ]) {
+      expect(slackTimingActionTypes).toContain(actionType);
+    }
+    expect(slackTimingActionTypes).not.toContain(
+      "api_dispatch_pre_create_zero_entrypoint_gap",
+    );
+    const serializedSlackTimingEvents = JSON.stringify(slackTimingEvents);
+    for (const forbiddenValue of [
+      "summarize this thread",
+      channelId,
+      threadTs,
+      slackUserId,
+    ]) {
+      expect(serializedSlackTimingEvents).not.toContain(forbiddenValue);
+    }
     expect(claim1.prompt).toBe("summarize this thread");
     expect(claim1.appendSystemPrompt ?? "").toContain(
       "You are currently running inside: Slack",
