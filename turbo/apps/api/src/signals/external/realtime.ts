@@ -142,6 +142,34 @@ export async function publishChatThreadMessageCreatedSafely(
 }
 
 /**
+ * Notify a chat thread's UI that an existing message row changed. Payload
+ * carries the row identity so clients can fetch and upsert the exact message
+ * instead of treating the update as an append.
+ *
+ * Best-effort: a failed publish must not fail the mutation that triggered it.
+ */
+export async function publishChatThreadMessageUpdatedSafely(args: {
+  readonly userId: string;
+  readonly threadId: string;
+  readonly messageId: string;
+}): Promise<void> {
+  await tapError(
+    publishUserSignal(
+      [args.userId],
+      `chatThreadMessageUpdated:${args.threadId}`,
+      { messageId: args.messageId },
+    ),
+    (error) => {
+      L.warn("Failed to publish chat thread message updated signal", {
+        threadId: args.threadId,
+        messageId: args.messageId,
+        error,
+      });
+    },
+  );
+}
+
+/**
  * Notify a chat thread's UI that its linked automation set changed (created,
  * deleted, enabled, or disabled). The chat-thread header automation menu
  * subscribes to this topic and refetches its thread-scoped list.

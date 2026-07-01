@@ -4475,8 +4475,11 @@ function latestRecommendedFollowups(
 ): RecommendedFollowupSource | null {
   for (let groupIndex = groups.length - 1; groupIndex >= 0; groupIndex -= 1) {
     const group = groups[groupIndex];
-    if (!group || group.role !== "assistant") {
+    if (!group) {
       continue;
+    }
+    if (group.role !== "assistant") {
+      return null;
     }
 
     for (

@@ -6,11 +6,12 @@ import {
   chatThreadModelSelectionContract,
   chatThreadMessagesContract,
   chatMessagesContract,
+  type PagedChatMessage,
 } from "@vm0/api-contracts/contracts/chat-threads";
 import { accept } from "../../lib/accept.ts";
 import { nowDate } from "../../lib/time.ts";
 import { zeroClient$ } from "../api-client.ts";
-import { setAblyLoop$ } from "../realtime.ts";
+import { setAblyLoop$, setAblyPayloadLoop$ } from "../realtime.ts";
 import { logger } from "../log.ts";
 import { reloadSidebarDraftThreads$ } from "./sidebar-draft-threads.ts";
 import {
@@ -23,6 +24,7 @@ import type {
   ChatThreadDataSource,
   InitialPage,
   AppendQueuedMessageArgs,
+  GetMessageArgs,
   ListMessagesAfterArgs,
   ListMessagesBeforeArgs,
   MarkReadArgs,
@@ -229,6 +231,28 @@ const listMessagesBefore$ = command(
   },
 );
 
+const getMessage$ = command(
+  async (
+    { get },
+    { threadId, messageId }: GetMessageArgs,
+    signal: AbortSignal,
+  ): Promise<PagedChatMessage | null> => {
+    const client = get(zeroClient$)(chatThreadMessagesContract);
+    const result = await accept(
+      client.get({
+        params: { threadId, messageId },
+        fetchOptions: { signal },
+      }),
+      [200, 404],
+    );
+    signal.throwIfAborted();
+    if (result.status === 404) {
+      return null;
+    }
+    return result.body;
+  },
+);
+
 const cancelRuns$ = command(
   async (
     { get },
@@ -294,6 +318,12 @@ const subscribeRealtime$ = command(
         setAblyLoop$,
         `chatThreadMessageCreated:${threadId}`,
         handlers.onMessageCreated$,
+        signal,
+      ),
+      set(
+        setAblyPayloadLoop$,
+        `chatThreadMessageUpdated:${threadId}`,
+        handlers.onMessageUpdated$,
         signal,
       ),
       set(
@@ -396,6 +426,7 @@ export function createRemoteChatThreadDataSource(
     recallMessage$,
     listMessagesAfter$,
     listMessagesBefore$,
+    getMessage$,
     cancelRuns$,
     markRead$,
     subscribeRealtime$,

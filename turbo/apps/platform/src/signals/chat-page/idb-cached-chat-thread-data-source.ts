@@ -9,6 +9,7 @@ import { logger } from "../log.ts";
 import { createRemoteChatThreadDataSource } from "./remote-chat-thread-data-source.ts";
 import type {
   ChatThreadDataSource,
+  GetMessageArgs,
   InitialPage,
   ListMessagesAfterArgs,
   ListMessagesBeforeArgs,
@@ -224,6 +225,40 @@ function createListMessagesAfter(
   );
 }
 
+function createGetMessage(
+  remote: ChatThreadDataSource,
+  getStores: (userId: string, orgId: string) => Stores,
+) {
+  return command(
+    async (
+      { get, set },
+      { threadId: tid, messageId }: GetMessageArgs,
+      signal: AbortSignal,
+    ) => {
+      const message = await set(
+        remote.getMessage$,
+        { threadId: tid, messageId },
+        signal,
+      );
+      signal.throwIfAborted();
+
+      const clerk = await get(clerk$);
+      signal.throwIfAborted();
+      const userId = clerk.user?.id;
+      const orgId = clerk.organization?.id;
+
+      if (!userId || !orgId || message === null) {
+        return message;
+      }
+
+      const stores = getStores(userId, orgId);
+      await stores.writeStore.upsertMessages(tid, [message], signal);
+      L.debug("getMessage:cacheFilled", { threadId: tid, messageId });
+      return message;
+    },
+  );
+}
+
 export const warmLatestChatThreadMessages$ = command(
   async ({ get, set }, threadId: string, signal: AbortSignal) => {
     const clerk = await get(clerk$);
@@ -363,6 +398,7 @@ export function createIdbCachedDataSource(
   });
 
   const listMessagesAfter$ = createListMessagesAfter(remote, getStores);
+  const getMessage$ = createGetMessage(remote, getStores);
 
   return {
     getThread$: remote.getThread$,
@@ -375,6 +411,7 @@ export function createIdbCachedDataSource(
     recallMessage$: remote.recallMessage$,
     listMessagesAfter$,
     listMessagesBefore$: createListMessagesBefore(remote, getStores),
+    getMessage$,
     cancelRuns$: remote.cancelRuns$,
     markRead$: remote.markRead$,
     subscribeRealtime$: createSubscribeRealtime(remote),

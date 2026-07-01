@@ -9,6 +9,10 @@ import type { ChatThread } from "../agent-chat.ts";
 
 export interface ChatThreadRealtimeHandlers {
   onMessageCreated$: Command<Promise<boolean>, [AbortSignal]>;
+  onMessageUpdated$: Command<
+    Promise<boolean> | boolean,
+    [unknown, AbortSignal]
+  >;
   onRunChanged$: Command<Promise<boolean>, [AbortSignal]>;
   onAutomationsChanged$: Command<Promise<boolean> | boolean, [AbortSignal]>;
 }
@@ -70,6 +74,11 @@ export interface ListMessagesBeforeArgs {
   beforeId: string;
 }
 
+export interface GetMessageArgs {
+  threadId: string;
+  messageId: string;
+}
+
 export interface CancelRunsArgs {
   threadId: string;
   agentId: string;
@@ -114,6 +123,10 @@ export interface ChatThreadDataSource {
   listMessagesBefore$: Command<
     Promise<{ messages: PagedChatMessage[]; hasMore: boolean }>,
     [ListMessagesBeforeArgs, AbortSignal]
+  >;
+  getMessage$: Command<
+    Promise<PagedChatMessage | null>,
+    [GetMessageArgs, AbortSignal]
   >;
   cancelRuns$: Command<Promise<void>, [CancelRunsArgs, AbortSignal]>;
   markRead$: Command<Promise<string | null>, [MarkReadArgs, AbortSignal]>;

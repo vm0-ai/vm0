@@ -908,6 +908,36 @@ export function createChatFilesBddApi(context: TestContext) {
       );
     },
 
+    async getThreadMessage(
+      actor: ApiTestUser,
+      threadId: string,
+      messageId: string,
+    ): Promise<PagedChatMessage> {
+      const response = await accept(
+        threadMessagesClient().get({
+          headers: authenticate(context, actor),
+          params: { threadId, messageId },
+        }),
+        [200],
+      );
+      return response.body;
+    },
+
+    async requestGetThreadMessage(
+      actor: ApiTestUser | null,
+      threadId: string,
+      messageId: string,
+      statuses: readonly (200 | 401 | 404)[],
+    ) {
+      return await accept(
+        threadMessagesClient().get({
+          headers: authenticate(context, actor),
+          params: { threadId, messageId },
+        }),
+        statuses,
+      );
+    },
+
     async listThreadArtifacts(
       actor: ApiTestUser,
       threadId: string,

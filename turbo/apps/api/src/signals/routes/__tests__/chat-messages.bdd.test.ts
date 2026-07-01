@@ -482,12 +482,152 @@ async function postChatMessagesStateAction(
   return (await response.json()) as TestChatMessagesStateActionResponse;
 }
 
+type SeedThreadMessage = Extract<
+  TestChatMessagesStateActionBody,
+  { action: "seed-thread-messages" }
+>["messages"][number];
+
+async function seedThreadMessages(
+  threadId: string,
+  messages: readonly SeedThreadMessage[],
+): Promise<void> {
+  await postChatMessagesStateAction({
+    action: "seed-thread-messages",
+    thread_id: threadId,
+    messages: [...messages],
+  });
+}
+
 function sessionHeaders(actor: ApiTestUser): {
   readonly authorization: string;
 } {
   routeMocks.clerk.session(actor.userId, actor.orgId, actor.orgRole);
   return { authorization: "Bearer clerk-session" };
 }
+
+describe("CHAT-02: chat thread message pagination", () => {
+  it("uses message id as the cursor tie-breaker and scopes cursors to the thread", async () => {
+    const { actor, agentId } = await entitledChatActor();
+    const threadId = randomUUID();
+    const otherThreadId = randomUUID();
+    await chat.createThread(actor, {
+      agentId,
+      title: "Cursor ties",
+      clientThreadId: threadId,
+    });
+    await chat.createThread(actor, {
+      agentId,
+      title: "Other cursor thread",
+      clientThreadId: otherThreadId,
+    });
+
+    const createdAt = "2026-06-09T10:00:00.000Z";
+    const ids = [
+      randomUUID(),
+      randomUUID(),
+      randomUUID(),
+      randomUUID(),
+    ].sort() as [string, string, string, string];
+
+    await seedThreadMessages(threadId, [
+      {
+        id: ids[0],
+        role: "user",
+        content: "first tied message",
+        created_at: createdAt,
+        sequence_number: null,
+      },
+      {
+        id: ids[1],
+        role: "assistant",
+        content: "second tied message",
+        created_at: createdAt,
+        sequence_number: null,
+      },
+      {
+        id: ids[2],
+        role: "assistant",
+        content: "third tied message",
+        created_at: createdAt,
+        sequence_number: null,
+      },
+      {
+        id: ids[3],
+        role: "assistant",
+        content: null,
+        created_at: createdAt,
+        sequence_number: null,
+        run_lifecycle_event: "completed",
+        recommended_followups: [
+          { prompt: "Turn this into a checklist", kind: "talk" },
+        ],
+      },
+    ]);
+
+    const otherMessageId = randomUUID();
+    await seedThreadMessages(otherThreadId, [
+      {
+        id: otherMessageId,
+        role: "user",
+        content: "other thread cursor",
+        created_at: "2026-06-09T09:59:59.000Z",
+        sequence_number: null,
+      },
+    ]);
+
+    const initial = await chat.listThreadMessages(actor, threadId, {
+      limit: 2,
+    });
+    expect(
+      initial.messages.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual([ids[2], ids[3]]);
+    expect(initial.hasHistoryBefore).toBeTruthy();
+
+    const afterFirst = await chat.listThreadMessages(actor, threadId, {
+      sinceId: ids[0],
+    });
+    expect(
+      afterFirst.messages.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual([ids[1], ids[2], ids[3]]);
+
+    const beforeLast = await chat.listThreadMessages(actor, threadId, {
+      beforeId: ids[3],
+    });
+    expect(
+      beforeLast.messages.map((message) => {
+        return message.id;
+      }),
+    ).toStrictEqual([ids[0], ids[1], ids[2]]);
+
+    const foreignCursor = await chat.listThreadMessages(actor, threadId, {
+      sinceId: otherMessageId,
+    });
+    expect(foreignCursor.messages).toStrictEqual([]);
+
+    const marker = await chat.getThreadMessage(actor, threadId, ids[3]);
+    expect(marker).toMatchObject({
+      id: ids[3],
+      role: "assistant",
+      content: null,
+      runLifecycleEvent: "completed",
+      recommendedFollowups: [
+        { prompt: "Turn this into a checklist", kind: "talk" },
+      ],
+    });
+
+    const crossThreadRead = await chat.requestGetThreadMessage(
+      actor,
+      otherThreadId,
+      ids[3],
+      [404],
+    );
+    expect(crossThreadRead.status).toBe(404);
+  });
+});
 
 /** Org-admin model provider upsert through the public route. */
 async function upsertOrgModelProvider(

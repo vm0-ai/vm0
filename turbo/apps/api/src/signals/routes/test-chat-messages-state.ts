@@ -5,6 +5,7 @@ import {
   type TestChatMessagesStateActionBody,
 } from "@vm0/api-contracts/contracts/test-chat-messages-state";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatMessages } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { secrets } from "@vm0/db/schema/secret";
 import { vm0ApiKeys } from "@vm0/db/schema/vm0-api-key";
@@ -186,6 +187,29 @@ async function attachPreDispatchCancelledRunToThreadForAction(
   return actionOk();
 }
 
+async function seedThreadMessagesForAction(
+  db: Db,
+  body: ChatMessagesAction<"seed-thread-messages">,
+  signal: AbortSignal,
+) {
+  await db.insert(chatMessages).values(
+    body.messages.map((message) => {
+      return {
+        id: message.id,
+        chatThreadId: body.thread_id,
+        role: message.role,
+        content: message.content,
+        createdAt: new Date(message.created_at),
+        sequenceNumber: message.sequence_number ?? null,
+        runLifecycleEvent: message.run_lifecycle_event,
+        recommendedFollowups: message.recommended_followups,
+      };
+    }),
+  );
+  signal.throwIfAborted();
+  return actionOk();
+}
+
 const mutateChatMessagesState$ = command(
   async ({ get, set }, signal: AbortSignal) => {
     if (!isTestEndpointAllowed(get(request$))) {
@@ -225,6 +249,9 @@ const mutateChatMessagesState$ = command(
           body,
           signal,
         );
+      }
+      case "seed-thread-messages": {
+        return await seedThreadMessagesForAction(db, body, signal);
       }
     }
   },

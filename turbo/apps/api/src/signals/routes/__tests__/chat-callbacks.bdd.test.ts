@@ -909,6 +909,7 @@ describe("CHAT-02: completed chat callback", () => {
       "api_dispatch_pre_create_zero_chat_callback_auto_send_publish_signals",
     ]);
 
+    context.mocks.ably.publish.mockClear();
     openRouterGate.release();
     const afterFollowups = await waitForThreadMessages(
       actor,
@@ -936,6 +937,14 @@ describe("CHAT-02: completed chat callback", () => {
     expect(markerAfterRelease?.recommendedFollowups).toStrictEqual([
       { prompt: "Review the queued result", kind: "talk" },
     ]);
+    expect(context.mocks.ably.publish).toHaveBeenCalledWith(
+      `chatThreadMessageUpdated:${first.threadId}`,
+      { messageId: markerBeforeRelease.id },
+    );
+    expect(context.mocks.ably.publish).not.toHaveBeenCalledWith(
+      `chatThreadMessageCreated:${first.threadId}`,
+      null,
+    );
     expect(titlePrompts).toHaveLength(1);
     expect(titlePrompts[0]).toContain("finish the current turn");
     expect(titlePrompts[0]).not.toContain("queued while side effects wait");

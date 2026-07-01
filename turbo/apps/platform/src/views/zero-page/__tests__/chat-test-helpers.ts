@@ -408,6 +408,7 @@ export function mockChatLifecycle(
       computerUseHostId?: string | null;
       revokesMessageId?: string;
     }) => void;
+    onMessageGet?: (messageId: string) => void;
   },
 ): MockLifecycleControl {
   let threadId = options?.threadId ?? "thread-test-1";
@@ -502,6 +503,76 @@ export function mockChatLifecycle(
     );
   };
 
+  const buildPagedMessages = () => {
+    const assistantId = `msg-assistant-run-v${assistantVersion}`;
+    const historicalMessages = historyMessages.map((message, i) => {
+      return {
+        id: `msg-history-${i}`,
+        ...message,
+      };
+    });
+
+    const pagedMessages: (MockPagedMessage & { id: string })[] = [];
+
+    for (const message of historicalMessages) {
+      pagedMessages.push(message);
+    }
+
+    // Seed with pre-existing chatMessages (e.g. history on resume). Seeded
+    // entries represent historical messages, so default `runId` to the mock
+    // run when the test didn't include the key — without it, user messages
+    // would look "unassociated" (runId === undefined) and be treated as
+    // queued. Tests that *want* a queued seed should explicitly pass
+    // `runId: undefined`, which we respect via the `in` check.
+    appendSeedChatMessages({
+      pagedMessages,
+      chatMessages,
+      activeRunIds: optionActiveRunIds,
+    });
+
+    for (const message of queuedMessages) {
+      pagedMessages.push({
+        id: message.id ?? `queued-${pagedMessages.length}`,
+        ...message,
+      });
+    }
+
+    // After a run is associated, append user + assistant messages.
+    if (runAssociated) {
+      pagedMessages.push({
+        id: runUserMessageId,
+        role: "user",
+        content: runPrompt ?? "Hello",
+        runId: MOCK_RUN_ID,
+        createdAt: "2026-03-10T00:00:01Z",
+      });
+      pagedMessages.push({
+        id: assistantId,
+        role: "assistant",
+        content: resultContent || null,
+        runId: MOCK_RUN_ID,
+        error: runError ?? undefined,
+        runLifecycleEvent:
+          runStatus === "failed" || runStatus === "cancelled"
+            ? runStatus
+            : undefined,
+        createdAt: "2026-03-10T00:00:02Z",
+      });
+      if (runStatus === "completed") {
+        pagedMessages.push({
+          id: `msg-assistant-run-marker-v${assistantVersion}`,
+          role: "assistant",
+          content: null,
+          runId: MOCK_RUN_ID,
+          runLifecycleEvent: "completed",
+          createdAt: "2026-03-10T00:00:03Z",
+        });
+      }
+    }
+
+    return pagedMessages;
+  };
+
   const appendQueuedUserMessage = async (body: {
     prompt?: string;
     attachFiles?: {
@@ -583,73 +654,7 @@ export function mockChatLifecycle(
     const beforeId = query.beforeId;
     const limit = query.limit ?? 50;
     const beforeHistoryGate = options?.beforeHistoryGate ?? Promise.resolve();
-
-    const assistantId = `msg-assistant-run-v${assistantVersion}`;
-
-    const historicalMessages = historyMessages.map((message, i) => {
-      return {
-        id: `msg-history-${i}`,
-        ...message,
-      };
-    });
-
-    const pagedMessages: (MockPagedMessage & { id: string })[] = [];
-
-    for (const message of historicalMessages) {
-      pagedMessages.push(message);
-    }
-
-    // Seed with pre-existing chatMessages (e.g. history on resume). Seeded
-    // entries represent historical messages, so default `runId` to the mock
-    // run when the test didn't include the key — without it, user messages
-    // would look "unassociated" (runId === undefined) and be treated as
-    // queued. Tests that *want* a queued seed should explicitly pass
-    // `runId: undefined`, which we respect via the `in` check.
-    appendSeedChatMessages({
-      pagedMessages,
-      chatMessages,
-      activeRunIds: optionActiveRunIds,
-    });
-
-    for (const message of queuedMessages) {
-      pagedMessages.push({
-        id: message.id ?? `queued-${pagedMessages.length}`,
-        ...message,
-      });
-    }
-
-    // After a run is associated, append user + assistant messages
-    if (runAssociated) {
-      pagedMessages.push({
-        id: runUserMessageId,
-        role: "user",
-        content: runPrompt ?? "Hello",
-        runId: MOCK_RUN_ID,
-        createdAt: "2026-03-10T00:00:01Z",
-      });
-      pagedMessages.push({
-        id: assistantId,
-        role: "assistant",
-        content: resultContent || null,
-        runId: MOCK_RUN_ID,
-        error: runError ?? undefined,
-        runLifecycleEvent:
-          runStatus === "failed" || runStatus === "cancelled"
-            ? runStatus
-            : undefined,
-        createdAt: "2026-03-10T00:00:02Z",
-      });
-      if (runStatus === "completed") {
-        pagedMessages.push({
-          id: `msg-assistant-run-marker-v${assistantVersion}`,
-          role: "assistant",
-          content: null,
-          runId: MOCK_RUN_ID,
-          runLifecycleEvent: "completed",
-          createdAt: "2026-03-10T00:00:03Z",
-        });
-      }
-    }
+    const pagedMessages = buildPagedMessages();
 
     if (beforeId) {
       return beforeHistoryGate.then(() => {
@@ -696,6 +701,23 @@ export function mockChatLifecycle(
       hasHistoryBefore:
         historyMessages.length > 0 || latestMessages.length > limit,
     });
+  });
+  context.mocks.api(chatThreadMessagesContract.get, ({ params, respond }) => {
+    options?.onMessageGet?.(params.messageId);
+    if (params.threadId !== threadId) {
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
+    }
+    const message = buildPagedMessages().find((item) => {
+      return item.id === params.messageId;
+    });
+    if (!message) {
+      return respond(404, {
+        error: { message: "Not found", code: "NOT_FOUND" },
+      });
+    }
+    return respond(200, message);
   });
   context.mocks.api(chatThreadByIdContract.get, ({ respond }) => {
     const lifecycleActiveRunIds =

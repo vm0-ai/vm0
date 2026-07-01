@@ -1513,6 +1513,61 @@ function createFetchNextPageCommand({
   });
 }
 
+function messageUpdatedPayloadMessageId(payload: unknown): string | null {
+  if (
+    typeof payload !== "object" ||
+    payload === null ||
+    !("messageId" in payload) ||
+    typeof payload.messageId !== "string"
+  ) {
+    return null;
+  }
+  return payload.messageId;
+}
+
+function createFetchUpdatedMessageCommand({
+  threadId,
+  dataSource,
+  appendServerMessages$,
+  refreshGroupedChatMessagesCache$,
+}: {
+  threadId: string;
+  dataSource: ChatThreadDataSource;
+  appendServerMessages$: Command<void, [PagedChatMessage[]]>;
+  refreshGroupedChatMessagesCache$: Command<Promise<void>, [AbortSignal]>;
+}): Command<Promise<boolean>, [unknown, AbortSignal]> {
+  return command(
+    async (
+      { set },
+      payload: unknown,
+      signal: AbortSignal,
+    ): Promise<boolean> => {
+      const messageId = messageUpdatedPayloadMessageId(payload);
+      if (messageId === null) {
+        L.warn("Ignoring chat message update with invalid payload", {
+          threadId,
+        });
+        return false;
+      }
+
+      const message = await set(
+        dataSource.getMessage$,
+        { threadId, messageId },
+        signal,
+      );
+      signal.throwIfAborted();
+      if (message === null) {
+        return false;
+      }
+
+      set(appendServerMessages$, [message]);
+      await set(refreshGroupedChatMessagesCache$, signal);
+      signal.throwIfAborted();
+      return false;
+    },
+  );
+}
+
 function createPagedMessages(
   threadId: string,
   threadData$: Computed<Promise<ChatThread | null>>,
@@ -1603,6 +1658,12 @@ function createPagedMessages(
     knownServerMessageIds$,
     dataSource,
   });
+  const fetchUpdatedMessage$ = createFetchUpdatedMessageCommand({
+    threadId,
+    dataSource,
+    appendServerMessages$,
+    refreshGroupedChatMessagesCache$,
+  });
 
   const refreshLatestMessages$ = command(
     async ({ set }, signal: AbortSignal): Promise<void> => {
@@ -1641,6 +1702,7 @@ function createPagedMessages(
     latestRunStatus$,
     activeGoal$,
     fetchNextPage$,
+    fetchUpdatedMessage$,
     refreshLatestMessages$,
     loadHistory$,
   };
@@ -1979,6 +2041,7 @@ interface RunTrackingDeps {
   latestRunStatus$: Computed<Promise<string | null>>;
   initialPage$: Computed<Promise<InitialPage>>;
   fetchNextPage$: Command<Promise<boolean>, [AbortSignal]>;
+  fetchUpdatedMessage$: Command<Promise<boolean>, [unknown, AbortSignal]>;
   silentBackfillHistory$: Command<Promise<void>, [AbortSignal]>;
   refreshLatestMessages$: Command<Promise<void>, [AbortSignal]>;
   autoScroll$: Command<void, []>;
@@ -2156,6 +2219,7 @@ function createRunTracking({
   latestRunStatus$,
   initialPage$,
   fetchNextPage$,
+  fetchUpdatedMessage$,
   silentBackfillHistory$,
   refreshLatestMessages$,
   autoScroll$,
@@ -2220,6 +2284,13 @@ function createRunTracking({
       return false;
     });
 
+    const onMessageUpdated$ = command(
+      async ({ set }, payload: unknown, sig: AbortSignal) => {
+        L.debug("onMessageUpdated$ fired", { threadId });
+        return await set(fetchUpdatedMessage$, payload, sig);
+      },
+    );
+
     const onRunChanged$ = command(async ({ get, set }, sig: AbortSignal) => {
       L.debug("onRunChanged$ fired", { threadId });
       set(reloadThread$);
@@ -2252,6 +2323,7 @@ function createRunTracking({
           threadId,
           handlers: {
             onMessageCreated$,
+            onMessageUpdated$,
             onRunChanged$,
             onAutomationsChanged$,
           },
@@ -2890,6 +2962,7 @@ export function createChatThreadSignals(
     latestRunStatus$: messages.latestRunStatus$,
     initialPage$: messages.initialPage$,
     fetchNextPage$: messages.fetchNextPage$,
+    fetchUpdatedMessage$: messages.fetchUpdatedMessage$,
     silentBackfillHistory$: messages.silentBackfillHistory$,
     refreshLatestMessages$: messages.refreshLatestMessages$,
     autoScroll$: scrollSignals.autoScroll$,
