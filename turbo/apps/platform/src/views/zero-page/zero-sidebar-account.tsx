@@ -45,6 +45,10 @@ import { openSettingsDialogAt$ } from "../../signals/zero-page/settings/settings
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { isOrgAdmin$ } from "../../signals/org.ts";
 import { billingStatusAsync$ } from "../../signals/zero-page/billing.ts";
+import {
+  AccountMenuSubscriptionsPanel,
+  useSubscriptionUsageRows,
+} from "./zero-sidebar-subscriptions.tsx";
 
 interface SessionAccount {
   sessionId: string;
@@ -199,25 +203,31 @@ function CurrentAccountHeader({
   );
 }
 
-function AdminCreditBalanceItem({
+function AccountUsageGroup({
   onOpenCreditBalance,
+  subscriptionsEnabled,
 }: {
   onOpenCreditBalance: () => void;
+  subscriptionsEnabled: boolean;
 }) {
   const isAdminLoadable = useLastLoadable(isOrgAdmin$);
   const isAdmin =
     isAdminLoadable.state === "hasData" && isAdminLoadable.data === true;
 
-  if (!isAdmin) {
-    return null;
+  if (subscriptionsEnabled) {
+    return isAdmin ? (
+      <AccountUsageGroupWithCredit onOpenCreditBalance={onOpenCreditBalance} />
+    ) : (
+      <AccountSubscriptionsGroup />
+    );
   }
 
-  return (
-    <AdminCreditBalanceItemContent onOpenCreditBalance={onOpenCreditBalance} />
-  );
+  return isAdmin ? (
+    <AccountCreditBalanceGroup onOpenCreditBalance={onOpenCreditBalance} />
+  ) : null;
 }
 
-function AdminCreditBalanceItemContent({
+function AccountCreditBalanceGroup({
   onOpenCreditBalance,
 }: {
   onOpenCreditBalance: () => void;
@@ -238,21 +248,117 @@ function AdminCreditBalanceItemContent({
 
   return (
     <>
-      <DropdownMenuItem
-        onClick={onOpenCreditBalance}
-        className="gap-3 px-3 py-2.5 rounded-lg"
-      >
-        <IconCoins size={18} stroke={1.5} className="text-muted-foreground" />
-        <span className="min-w-0 flex-1 truncate text-sm tabular-nums">
-          {loading ? (
-            <span className="block h-4 w-24 rounded bg-muted/60" />
-          ) : (
-            creditLabel
-          )}
-        </span>
-      </DropdownMenuItem>
+      <CreditBalanceItem
+        creditLabel={creditLabel}
+        loading={loading}
+        onOpenCreditBalance={onOpenCreditBalance}
+      />
       <DropdownMenuSeparator />
     </>
+  );
+}
+
+function AccountUsageGroupWithCredit({
+  onOpenCreditBalance,
+}: {
+  onOpenCreditBalance: () => void;
+}) {
+  const billingLoadable = useLastLoadable(billingStatusAsync$);
+  const {
+    loading: subscriptionsLoading,
+    refreshSubscriptions,
+    rows,
+  } = useSubscriptionUsageRows();
+  const credits =
+    billingLoadable.state === "hasData" ? billingLoadable.data.credits : null;
+  const creditLoading = billingLoadable.state === "loading" && credits === null;
+  const creditLabel =
+    credits !== null
+      ? `${credits.toLocaleString("en-US")} ${credits === 1 ? "credit" : "credits"}`
+      : null;
+  const showCredit = creditLoading || creditLabel !== null;
+  const showSubscriptions = subscriptionsLoading || rows.length > 0;
+
+  if (!showCredit && !showSubscriptions) {
+    return null;
+  }
+
+  return (
+    <>
+      {showCredit && (
+        <CreditBalanceItem
+          creditLabel={creditLabel}
+          loading={creditLoading}
+          onOpenCreditBalance={onOpenCreditBalance}
+        />
+      )}
+      {showSubscriptions && (
+        <AccountMenuSubscriptionsPanel
+          loading={subscriptionsLoading}
+          onRefresh={() => {
+            detach(
+              refreshSubscriptions(),
+              Reason.DomCallback,
+              "refresh account menu subscriptions",
+            );
+          }}
+          rows={rows}
+        />
+      )}
+      <DropdownMenuSeparator />
+    </>
+  );
+}
+
+function AccountSubscriptionsGroup() {
+  const { loading, refreshSubscriptions, rows } = useSubscriptionUsageRows();
+  const showSubscriptions = loading || rows.length > 0;
+
+  if (!showSubscriptions) {
+    return null;
+  }
+
+  return (
+    <>
+      <AccountMenuSubscriptionsPanel
+        loading={loading}
+        onRefresh={() => {
+          detach(
+            refreshSubscriptions(),
+            Reason.DomCallback,
+            "refresh account menu subscriptions",
+          );
+        }}
+        rows={rows}
+      />
+      <DropdownMenuSeparator />
+    </>
+  );
+}
+
+function CreditBalanceItem({
+  creditLabel,
+  loading,
+  onOpenCreditBalance,
+}: {
+  creditLabel: string | null;
+  loading: boolean;
+  onOpenCreditBalance: () => void;
+}) {
+  return (
+    <DropdownMenuItem
+      onClick={onOpenCreditBalance}
+      className="gap-3 px-3 py-2.5 rounded-lg"
+    >
+      <IconCoins size={18} stroke={1.5} className="text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate text-sm tabular-nums">
+        {loading ? (
+          <span className="block h-4 w-24 rounded bg-muted/60" />
+        ) : (
+          creditLabel
+        )}
+      </span>
+    </DropdownMenuItem>
   );
 }
 
@@ -437,6 +543,8 @@ export function AccountDropdown({
   const showExportData = features?.[FeatureSwitchKey.DataExport] ?? false;
   const memoryEnabled = features?.[FeatureSwitchKey.MemoryViewer] ?? false;
   const labEnabled = features?.[FeatureSwitchKey.Lab] ?? false;
+  const subscriptionsEnabled =
+    features?.[FeatureSwitchKey.SidebarSubscriptionUsage] ?? false;
   const selectNav = useSet(handleZeroNavSelect$);
   const openSettings = useSet(openSettingsDialogAt$);
   const setSidebarExpanded = useSet(setSidebarExpanded$);
@@ -515,8 +623,9 @@ export function AccountDropdown({
           visible={current !== undefined || user !== undefined}
         />
         {!hidePreferences && (
-          <AdminCreditBalanceItem
+          <AccountUsageGroup
             onOpenCreditBalance={handleOpenCreditBalance}
+            subscriptionsEnabled={subscriptionsEnabled}
           />
         )}
         {!hidePreferences && (

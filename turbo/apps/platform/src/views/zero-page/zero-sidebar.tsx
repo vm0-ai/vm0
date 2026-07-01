@@ -50,7 +50,6 @@ import { ChatThreadsSection } from "./sidebar-threads.tsx";
 import { PinnedAgentListSection } from "./zero-sidebar-pinned.tsx";
 import { OverlayScrollArea } from "./zero-sidebar-scroll.tsx";
 import { SidebarUpgradeCard } from "./zero-sidebar-upgrade.tsx";
-import { SidebarSubscriptionsGate } from "./zero-sidebar-subscriptions.tsx";
 
 export { AccountDropdown } from "./zero-sidebar-account.tsx";
 
@@ -564,7 +563,6 @@ function ExpandedFooter() {
             );
           },
         )}
-        <SidebarSubscriptionsGate />
         <div className="h-px bg-border/30 mx-1 my-1" />
         <ExpandedFooterAccountInsights />
       </div>
