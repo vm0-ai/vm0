@@ -28,6 +28,7 @@ import {
   cappedBaseConcurrencyLimit,
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
+import { tapError } from "../utils";
 
 const L = logger("ZeroRunQueue");
 
@@ -380,7 +381,12 @@ async function loadQueuedRunnerJobPayload(
 async function publishRemovedStaleQueueSideEffects(
   orgId: string,
 ): Promise<void> {
-  await publishOrgSignal(orgId, "queue:changed");
+  await tapError(publishOrgSignal(orgId, "queue:changed"), (error) => {
+    L.error("Failed to publish queue changed after stale queue removal", {
+      orgId,
+      error,
+    });
+  });
 }
 
 async function publishPromotedQueueSideEffects(
@@ -391,18 +397,46 @@ async function publishPromotedQueueSideEffects(
     readonly runnerNotification: RunnerNotification | null;
   },
 ): Promise<void> {
-  await publishOrgSignal(args.orgId, "queue:changed");
+  await tapError(publishOrgSignal(args.orgId, "queue:changed"), (error) => {
+    L.error("Failed to publish queue changed after queued run promotion", {
+      orgId: args.orgId,
+      error,
+    });
+  });
 
   if (args.queueMarkerNotification) {
-    await publishUserSignal(
-      [args.queueMarkerNotification.userId],
-      `chatThreadMessageCreated:${args.queueMarkerNotification.chatThreadId}`,
+    await tapError(
+      publishUserSignal(
+        [args.queueMarkerNotification.userId],
+        `chatThreadMessageCreated:${args.queueMarkerNotification.chatThreadId}`,
+      ),
+      (error) => {
+        L.error("Failed to publish queued marker notification", {
+          userId: args.queueMarkerNotification?.userId,
+          chatThreadId: args.queueMarkerNotification?.chatThreadId,
+          error,
+        });
+      },
     );
-    await publishThreadListChanged(args.queueMarkerNotification.userId);
+    await tapError(
+      publishThreadListChanged(args.queueMarkerNotification.userId),
+      (error) => {
+        L.error("Failed to publish thread list changed after queue promotion", {
+          userId: args.queueMarkerNotification?.userId,
+          error,
+        });
+      },
+    );
   }
 
   if (args.runnerNotification) {
-    await notifyRunnerJob(db, args.runnerNotification);
+    await tapError(notifyRunnerJob(db, args.runnerNotification), (error) => {
+      L.error("Failed to notify runner after queued run promotion", {
+        runId: args.runnerNotification?.runId,
+        runnerGroup: args.runnerNotification?.runnerGroup,
+        error,
+      });
+    });
   }
 }
 

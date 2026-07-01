@@ -1511,6 +1511,60 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     await api.requestCancelRun(actor, queued.runId, [200]);
   });
 
+  it("drains queued runs when queue changed publish fails after cancellation", async () => {
+    const api = createRunsAutomationsApi(context);
+    const { actor, agentId } = await entitledRunActor();
+
+    const first = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before publish failure one",
+      modelProvider: "anthropic-api-key",
+    });
+    const second = await api.createRun(actor, {
+      agentId,
+      prompt: "active run before publish failure two",
+      modelProvider: "anthropic-api-key",
+    });
+    const queued = await api.createRun(actor, {
+      agentId,
+      prompt: "queued run should drain despite queue publish failure",
+      modelProvider: "anthropic-api-key",
+    });
+    expect(queued.status).toBe("queued");
+
+    context.mocks.ably.publish.mockImplementation((topic: unknown) => {
+      if (topic === "queue:changed") {
+        return Promise.reject(new Error("queue changed publish failed"));
+      }
+      return Promise.resolve(undefined);
+    });
+
+    await api.requestCancelRun(actor, first.runId, [200]);
+    const promoted = await waitForRunStatus(
+      api,
+      actor,
+      queued.runId,
+      "pending",
+    );
+    expect(promoted.status).toBe("pending");
+    await expect
+      .poll(() => {
+        return context.mocks.ably.publish.mock.calls.some(
+          ([topic, payload]) => {
+            return (
+              topic === "job" &&
+              isRecord(payload) &&
+              payload.runId === queued.runId
+            );
+          },
+        );
+      })
+      .toBe(true);
+
+    await api.requestCancelRun(actor, second.runId, [200]);
+    await api.requestCancelRun(actor, queued.runId, [200]);
+  });
+
   it("keeps a queued launch visible when enqueue telemetry fails", async () => {
     const api = createRunsAutomationsApi(context);
     const { actor, agentId } = await entitledRunActor();

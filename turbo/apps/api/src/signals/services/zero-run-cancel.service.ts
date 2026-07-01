@@ -174,14 +174,38 @@ export const dispatchCancelSideEffects$ = command(
     }
     const db = set(writeDb$);
     if (result.previousStatus === "running" && result.runnerGroup) {
-      await publishCancelToRunnerGroup(result.runnerGroup, result.runId);
+      await tapError(
+        publishCancelToRunnerGroup(result.runnerGroup, result.runId),
+        (error) => {
+          L.error("Failed to publish cancel to runner group", {
+            runId: result.runId,
+            runnerGroup: result.runnerGroup,
+            error,
+          });
+        },
+      );
       signal.throwIfAborted();
     }
-    await publishOrgSignal(result.orgId, "queue:changed");
-    signal.throwIfAborted();
-    await publishUserSignal([result.userId], `runChanged:${result.runId}`, {
-      status: "cancelled",
+    await tapError(publishOrgSignal(result.orgId, "queue:changed"), (error) => {
+      L.error("Failed to publish queue changed after run cancellation", {
+        runId: result.runId,
+        orgId: result.orgId,
+        error,
+      });
     });
+    signal.throwIfAborted();
+    await tapError(
+      publishUserSignal([result.userId], `runChanged:${result.runId}`, {
+        status: "cancelled",
+      }),
+      (error) => {
+        L.error("Failed to publish cancelled run changed signal", {
+          runId: result.runId,
+          userId: result.userId,
+          error,
+        });
+      },
+    );
     signal.throwIfAborted();
 
     await tapError(
