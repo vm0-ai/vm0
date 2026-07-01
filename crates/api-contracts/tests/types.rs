@@ -212,14 +212,10 @@ fn generated_storage_manifest_deserializes_web_claim_shape() {
         Some("AGENTS.md")
     );
     assert_eq!(manifest.artifacts[0].vas_storage_id, "storage-id-1");
-    assert_eq!(
-        manifest.artifacts[0].manifest_url.as_deref(),
-        Some("https://storage.example/manifest.json")
-    );
 }
 
 #[test]
-fn generated_storage_manifest_serializes_without_absent_manifest_url() {
+fn generated_storage_manifest_serializes_claim_shape() {
     let manifest = runner_storage::StorageManifest {
         storages: vec![runner_storage::StorageEntry {
             name: "workspace".to_string(),
@@ -235,7 +231,6 @@ fn generated_storage_manifest_serializes_without_absent_manifest_url() {
             vas_storage_id: "storage-id-1".to_string(),
             vas_version_id: "version-2".to_string(),
             archive_url: "https://storage.example/artifact.tar.gz".to_string(),
-            manifest_url: None,
             missing_root_policy: None,
         }],
     };

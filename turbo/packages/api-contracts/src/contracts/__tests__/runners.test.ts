@@ -31,7 +31,6 @@ describe("runner storage manifest contract", () => {
             vasStorageId: "storage-id-1",
             vasVersionId: "version-2",
             archiveUrl: "https://storage.example/artifact.tar.gz",
-            manifestUrl: "https://storage.example/manifest.json",
           },
         ],
       }),
@@ -52,13 +51,12 @@ describe("runner storage manifest contract", () => {
           vasStorageId: "storage-id-1",
           vasVersionId: "version-2",
           archiveUrl: "https://storage.example/artifact.tar.gz",
-          manifestUrl: "https://storage.example/manifest.json",
         },
       ],
     });
   });
 
-  it("accepts artifact entries without manifest urls", () => {
+  it("strips legacy artifact manifest urls", () => {
     expect(
       storageManifestSchema.parse({
         storages: [],
@@ -69,6 +67,7 @@ describe("runner storage manifest contract", () => {
             vasStorageId: "storage-id-1",
             vasVersionId: "version-2",
             archiveUrl: "https://storage.example/artifact.tar.gz",
+            manifestUrl: "https://storage.example/manifest.json",
           },
         ],
       }),
@@ -113,7 +112,6 @@ describe("runner storage manifest contract", () => {
           vasStorageId: "storage-id-1",
           vasVersionId: "version-2",
           archiveUrl: "https://storage.example/artifact.tar.gz",
-          manifestUrl: "https://storage.example/manifest.json",
           missingRootPolicy: "preserveParentVersion",
         },
       ],

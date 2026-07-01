@@ -855,8 +855,7 @@ mod tests {
                 "archiveUrl": "https://example.com/artifacts.tar.gz",
                 "vasStorageName": "my-artifact",
                 "vasStorageId": "sid-1",
-                "vasVersionId": "v1",
-                "manifestUrl": "https://example.com/manifest.json"
+                "vasVersionId": "v1"
             }]
         });
         let manifest: StorageManifest = serde_json::from_value(json).unwrap();
@@ -864,10 +863,6 @@ mod tests {
         assert_eq!(manifest.storages[0].name, "workspace");
         assert_eq!(manifest.artifacts.len(), 1);
         assert_eq!(manifest.artifacts[0].vas_storage_name, "my-artifact");
-        assert_eq!(
-            manifest.artifacts[0].manifest_url.as_deref(),
-            Some("https://example.com/manifest.json")
-        );
     }
 
     #[test]
@@ -922,7 +917,6 @@ mod tests {
                 vas_storage_name: "memory".into(),
                 vas_storage_id: "sid-1".into(),
                 vas_version_id: "v2".into(),
-                manifest_url: Some("https://example.com/manifest.json".into()),
                 missing_root_policy: Some(ArtifactEntryMissingRootPolicy::PreserveParentVersion),
             }],
         };
@@ -969,7 +963,6 @@ mod tests {
                 vas_storage_name: "memory".into(),
                 vas_storage_id: "sid-1".into(),
                 vas_version_id: "v2".into(),
-                manifest_url: Some("https://example.com/manifest.json".into()),
                 missing_root_policy: None,
             }],
         };
