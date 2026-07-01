@@ -302,6 +302,16 @@ async fn upload_session_history(
     Ok(())
 }
 
+async fn build_and_upload_session_history(
+    http: &HttpClient,
+    run_id: &str,
+    history_hash: &str,
+    history_bytes: Vec<u8>,
+) -> Result<(), AgentError> {
+    let history_upload = build_session_history_upload(history_bytes)?;
+    upload_session_history(http, run_id, history_hash, history_upload).await
+}
+
 /// Snapshot artifact entries. Memory rides in `VM0_ARTIFACTS` post-#10602, so
 /// there is no longer a separate memory arm. Payload shape is
 /// `Array<{name, version, mountPath}>`, matching the webhook
@@ -629,14 +639,9 @@ async fn create_checkpoint_impl(
     // path is web-API bound (prepare + S3 PUT); the artifact path is VAS-bound
     // (prepare + HEAD update). Serial, wall time was dominated by whichever
     // was longer plus the other; concurrent, it's just the longer one.
-    let (_, artifact_snapshots) = tokio::try_join!(
-        upload_session_history(
-            http,
-            inputs.run_id,
-            &history_hash,
-            build_session_history_upload(history_bytes)?
-        ),
+    let (artifact_snapshots, _) = tokio::try_join!(
         snapshot_artifact_entries(http, inputs.run_id, inputs.artifact_entries),
+        build_and_upload_session_history(http, inputs.run_id, &history_hash, history_bytes),
     )?;
 
     // Build and send checkpoint payload (session history hash only, content uploaded to S3)
