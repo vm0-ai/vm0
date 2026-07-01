@@ -49,6 +49,7 @@ pub(super) fn build_cli_command_for_runtime(
             runtime.use_mock_codex,
             runtime.mock_codex_path.as_ref(),
             runtime.openai_model.as_ref(),
+            runtime.openai_base_url.as_ref(),
             runtime.resume_session_id.as_ref(),
             runtime.append_system_prompt.as_ref(),
             runtime.prompt.as_ref(),
@@ -190,6 +191,11 @@ fn build_codex_memories_config() -> String {
     "features.memories=true".to_string()
 }
 
+fn build_codex_openai_base_url_config(openai_base_url: &str) -> String {
+    let value = quote_toml_basic_string(openai_base_url);
+    format!("openai_base_url={value}")
+}
+
 /// Per-model default for the codex `model_reasoning_effort` config. GPT-5.5
 /// invests heavily in reasoning depth, so default it to `xhigh` rather than
 /// the codex CLI's stock `medium`.
@@ -203,6 +209,7 @@ pub(super) fn default_codex_reasoning_effort_for_model(model: &str) -> Option<&'
 
 fn build_codex_args(
     model: &str,
+    openai_base_url: &str,
     resume_id: &str,
     append_system_prompt: &str,
     prompt: &str,
@@ -219,6 +226,11 @@ fn build_codex_args(
 
     args.push("-c".to_string());
     args.push(build_codex_memories_config());
+
+    if !openai_base_url.is_empty() {
+        args.push("-c".to_string());
+        args.push(build_codex_openai_base_url_config(openai_base_url));
+    }
 
     if !model.is_empty() {
         args.push("-m".to_string());
@@ -258,6 +270,7 @@ fn build_codex_command(use_mock: bool) -> Vec<String> {
         use_mock,
         mock_codex_path.as_deref().unwrap_or(""),
         env::openai_model(),
+        env::openai_base_url(),
         env::resume_session_id(),
         env::append_system_prompt(),
         env::prompt(),
@@ -268,6 +281,7 @@ fn build_codex_command_with_config(
     use_mock: bool,
     mock_codex_path: &str,
     model: &str,
+    openai_base_url: &str,
     resume_id: &str,
     append_system_prompt: &str,
     prompt: &str,
@@ -282,6 +296,7 @@ fn build_codex_command_with_config(
     let mut cmd = vec![bin];
     cmd.extend(build_codex_args(
         model,
+        openai_base_url,
         resume_id,
         append_system_prompt,
         prompt,
@@ -443,7 +458,18 @@ mod tests {
     fn build_codex_args_for_test(model: &str, resume_id: &str, prompt: &str) -> Vec<String> {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
-        build_codex_args(model, resume_id, "", prompt)
+        build_codex_args(model, "", resume_id, "", prompt)
+    }
+
+    fn build_codex_args_with_base_url_for_test(
+        model: &str,
+        openai_base_url: &str,
+        resume_id: &str,
+        prompt: &str,
+    ) -> Vec<String> {
+        let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
+        disable_system_log();
+        build_codex_args(model, openai_base_url, resume_id, "", prompt)
     }
 
     fn build_codex_args_with_append_for_test(
@@ -454,7 +480,7 @@ mod tests {
     ) -> Vec<String> {
         let _guard = SYSTEM_LOG_TEST_MUTEX.lock().unwrap();
         disable_system_log();
-        build_codex_args(model, resume_id, append_system_prompt, prompt)
+        build_codex_args(model, "", resume_id, append_system_prompt, prompt)
     }
 
     fn codex_args_have_config(args: &[String], config: &str) -> bool {
@@ -475,7 +501,7 @@ mod tests {
         let system_log_path = tmp.path().join("system.log");
         guest_common::log::set_system_log_file(system_log_path.to_string_lossy().as_ref());
 
-        let args = build_codex_args("", "thread-secret-123", "", "prompt");
+        let args = build_codex_args("", "", "thread-secret-123", "", "prompt");
         guest_common::log::clear_system_log_file();
         let system_log = std::fs::read_to_string(system_log_path).unwrap();
 
@@ -511,6 +537,20 @@ mod tests {
         let args = build_codex_args_for_test("gpt-5", "", "p");
         let m_idx = args.iter().position(|a| a == "-m").unwrap();
         assert_eq!(args[m_idx + 1], "gpt-5");
+    }
+
+    #[test]
+    fn build_codex_args_with_openai_base_url() {
+        let args = build_codex_args_with_base_url_for_test(
+            "MiniMax-M3",
+            "https://api.minimax.io/v1",
+            "",
+            "p",
+        );
+        assert!(codex_args_have_config(
+            &args,
+            r#"openai_base_url="https://api.minimax.io/v1""#
+        ));
     }
 
     #[test]

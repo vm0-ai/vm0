@@ -20,6 +20,9 @@ const INFLATE_HYSTERESIS_MIB: i64 = 128;
 /// much (MiB).
 /// Smaller than inflate hysteresis — respond faster to guest memory pressure.
 const DEFLATE_HYSTERESIS_MIB: i64 = 64;
+/// Guest available-memory pressure boundary used by both the continuous
+/// controller and one-shot idle park inflation.
+pub(crate) const PRESSURE_AVAILABLE_MIB: i64 = TARGET_FREE_MIB - DEFLATE_HYSTERESIS_MIB;
 /// Maximum MiB to inflate in a single tick.
 /// Caps the per-tick increase to prevent sudden memory pressure spikes in the
 /// guest when a large amount of free memory is detected on the first tick.
@@ -201,7 +204,7 @@ async fn tick(client: &ApiClient<'_>, max_inflate: u32, tick_count: u64) {
 
     // Deflate decision: use available_memory (includes reclaimable cache)
     if let Some(available_mib) = available_mib
-        && available_mib < TARGET_FREE_MIB - DEFLATE_HYSTERESIS_MIB
+        && available_mib < PRESSURE_AVAILABLE_MIB
     {
         let deficit = (TARGET_FREE_MIB - available_mib) as u32;
         let new_target = current.saturating_sub(deficit);
