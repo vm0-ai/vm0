@@ -16,6 +16,26 @@ import chalk from "chalk";
 const SOURCE_ID = "22222222-2222-2222-2222-222222222222";
 const TARGET_AGENT_ID = "33333333-3333-3333-3333-333333333333";
 const NEW_ID = "44444444-4444-4444-4444-444444444444";
+const SOURCE_AGENT_ID = "55555555-5555-4555-8555-555555555555";
+const RESOLVED_SOURCE_ID = "66666666-6666-4666-8666-666666666666";
+
+function workflowSummary(overrides: Record<string, unknown> = {}) {
+  return {
+    id: RESOLVED_SOURCE_ID,
+    agentId: SOURCE_AGENT_ID,
+    agentName: "source-agent",
+    agentDisplayName: "Source Agent",
+    name: "tell-a-joke",
+    displayName: "Tell a joke",
+    description: null,
+    visibility: "private",
+    requestToPublish: false,
+    ownerUserId: "user-123",
+    canManage: true,
+    shadowedBy: null,
+    ...overrides,
+  };
+}
 
 describe("zero workflow copy command", () => {
   const mockExit = vi.spyOn(process, "exit").mockImplementation((() => {
@@ -36,6 +56,7 @@ describe("zero workflow copy command", () => {
     mockExit.mockClear();
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
+    vi.unstubAllEnvs();
   });
 
   describe("successful copy", () => {
@@ -80,6 +101,49 @@ describe("zero workflow copy command", () => {
       expect(logCalls).toContain(NEW_ID);
       expect(logCalls).toContain("Agent Name:   Target Agent");
       expect(logCalls).toContain(`Agent ID:     ${TARGET_AGENT_ID}`);
+    });
+
+    it("should resolve a source workflow name before copying", async () => {
+      let copiedWorkflowId: string | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/zero/workflows", () => {
+          return HttpResponse.json([workflowSummary()]);
+        }),
+        http.post(
+          "http://localhost:3000/api/zero/workflows/:workflowId/copy",
+          ({ params }) => {
+            copiedWorkflowId = params.workflowId as string;
+            return HttpResponse.json(
+              {
+                id: NEW_ID,
+                agentId: TARGET_AGENT_ID,
+                agentName: "target-agent",
+                agentDisplayName: "Target Agent",
+                name: "tell-a-joke",
+                displayName: "Tell a joke",
+                description: null,
+                visibility: "private",
+                requestToPublish: false,
+                ownerUserId: "user-123",
+                canManage: true,
+              },
+              { status: 201 },
+            );
+          },
+        ),
+      );
+
+      await copyCommand.parseAsync([
+        "node",
+        "cli",
+        "tell-a-joke",
+        "--agent",
+        SOURCE_AGENT_ID,
+        "--to-agent",
+        TARGET_AGENT_ID,
+      ]);
+
+      expect(copiedWorkflowId).toBe(RESOLVED_SOURCE_ID);
     });
   });
 

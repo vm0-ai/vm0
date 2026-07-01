@@ -740,6 +740,7 @@ export const zeroWorkflowsDetailContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Get a workflow with its instruction and files",
   },
@@ -785,6 +786,7 @@ export const zeroWorkflowsDetailContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary: "Copy (fork) a workflow onto another agent",
   },
@@ -901,6 +903,7 @@ export const zeroWorkflowVisibilityContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
+      409: apiErrorSchema,
     },
     summary:
       "Agent write-permission holder demotes a public workflow to private",
