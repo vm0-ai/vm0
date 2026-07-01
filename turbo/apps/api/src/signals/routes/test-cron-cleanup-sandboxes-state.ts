@@ -17,7 +17,7 @@ import { exportJobs } from "@vm0/db/schema/export-job";
 import { orgMetadata } from "@vm0/db/schema/org-metadata";
 import { runnerJobQueue } from "@vm0/db/schema/runner-job-queue";
 import { command } from "ccstate";
-import { eq, inArray } from "drizzle-orm";
+import { eq, inArray, sql } from "drizzle-orm";
 
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
@@ -205,7 +205,13 @@ async function deleteRunForAction(
   if (runThreadIds.length > 0) {
     await db.delete(chatMessages).where(eq(chatMessages.runId, runId));
     signal.throwIfAborted();
-    await db.delete(chatThreads).where(inArray(chatThreads.id, runThreadIds));
+    await db.delete(chatThreads).where(
+      sql`${inArray(chatThreads.id, runThreadIds)} AND NOT EXISTS (
+        SELECT 1
+        FROM ${chatMessages}
+        WHERE ${chatMessages.chatThreadId} = ${chatThreads.id}
+      )`,
+    );
     signal.throwIfAborted();
   }
   await db.delete(agentRunQueue).where(eq(agentRunQueue.runId, runId));
