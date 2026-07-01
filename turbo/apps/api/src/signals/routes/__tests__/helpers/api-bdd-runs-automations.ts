@@ -27,6 +27,7 @@ import {
 import { runnerRealtimeTokenContract } from "@vm0/api-contracts/contracts/realtime";
 import { zeroModelPoliciesMainContract } from "@vm0/api-contracts/contracts/zero-model-policies";
 import { zeroModelProvidersMainContract } from "@vm0/api-contracts/contracts/zero-model-providers";
+import type { ModelProviderResponse } from "@vm0/api-contracts/contracts/model-providers";
 import {
   cronAggregateInsightsContract,
   cronAggregateUsageContract,
@@ -778,6 +779,18 @@ export function createRunsAutomationsApi(context: TestContext) {
         [200],
       );
       return response.body.enabledTypes;
+    },
+
+    async listOrgModelProviders(
+      actor: ApiTestUser,
+    ): Promise<readonly ModelProviderResponse[]> {
+      const response = await accept(
+        runsAutomationApp(context)(zeroModelProvidersMainContract).list({
+          headers: authenticate(context, actor),
+        }),
+        [200],
+      );
+      return response.body.modelProviders;
     },
 
     /**

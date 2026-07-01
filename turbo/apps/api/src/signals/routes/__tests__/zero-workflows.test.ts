@@ -394,6 +394,47 @@ describe("zero workflows", () => {
     );
   });
 
+  it("rejects same-owner private workflow slugs while allowing other-owner private slugs", async () => {
+    const actor = user();
+    const other = user({ orgId: actor.orgId });
+    const agent = await createAgent(actor, {
+      displayName: "Private Slug Agent",
+      visibility: "public",
+    });
+    const workflowName = `private-workflow-${randomUUID().slice(0, 8)}`;
+
+    await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: workflowName,
+      instruction: "# private workflow",
+    });
+
+    const duplicate = await requestCreateWorkflow(
+      actor,
+      {
+        agentId: agent.agentId,
+        name: workflowName,
+        instruction: "# duplicate private workflow",
+      },
+      [409],
+    );
+    expect(duplicate.body.error.message).toContain(
+      `private workflow named "/${workflowName}"`,
+    );
+
+    const otherPrivate = await createWorkflow(other, {
+      agentId: agent.agentId,
+      name: workflowName,
+      instruction: "# other user private workflow",
+    });
+    expect(otherPrivate.body).toMatchObject({
+      agentId: agent.agentId,
+      name: workflowName,
+      ownerUserId: other.userId,
+      visibility: "private",
+    });
+  });
+
   it("renames workflow slugs through metadata update and rejects duplicate public slugs", async () => {
     const actor = user();
     const agent = await createAgent(actor, {
@@ -439,6 +480,35 @@ describe("zero workflows", () => {
     );
   });
 
+  it("rejects renaming a private workflow to another same-owner private slug", async () => {
+    const actor = user();
+    const agent = await createAgent(actor, {
+      displayName: "Private Rename Agent",
+      visibility: "public",
+    });
+    const existingName = `private-existing-${randomUUID().slice(0, 8)}`;
+    await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: existingName,
+      instruction: "# existing private workflow",
+    });
+    const source = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: `private-rename-source-${randomUUID().slice(0, 8)}`,
+      instruction: "# source private workflow",
+    });
+
+    const duplicate = await requestUpdateWorkflow(
+      actor,
+      source.body.id,
+      { name: existingName },
+      [409],
+    );
+    expect(duplicate.body.error.message).toContain(
+      `private workflow named "/${existingName}"`,
+    );
+  });
+
   it("rejects publishing a private workflow when the public slug is already taken", async () => {
     const actor = user();
     const agent = await createAgent(actor, {
@@ -467,6 +537,72 @@ describe("zero workflows", () => {
     );
     expect(response.body.error.message).toContain(
       `/${workflowName}" already exists on this agent`,
+    );
+  });
+
+  it("rejects copying a workflow when the caller already has that private slug on the target agent", async () => {
+    const actor = user();
+    const sourceAgent = await createAgent(actor, {
+      displayName: "Private Copy Source Agent",
+      visibility: "private",
+    });
+    const targetAgent = await createAgent(actor, {
+      displayName: "Private Copy Target Agent",
+      visibility: "private",
+    });
+    const workflowName = `copy-conflict-${randomUUID().slice(0, 8)}`;
+    const source = await createWorkflow(actor, {
+      agentId: sourceAgent.agentId,
+      name: workflowName,
+      instruction: "# source workflow",
+    });
+    await createWorkflow(actor, {
+      agentId: targetAgent.agentId,
+      name: workflowName,
+      instruction: "# existing private workflow",
+    });
+
+    const duplicate = await accept(
+      detailClient().copy({
+        headers: authHeaders(actor),
+        params: { workflowId: source.body.id },
+        body: { toAgentId: targetAgent.agentId },
+      }),
+      [409],
+    );
+    expect(duplicate.body.error.message).toContain(
+      `private workflow named "/${workflowName}"`,
+    );
+  });
+
+  it("rejects demoting a public workflow when the owner already has that private slug", async () => {
+    const actor = user();
+    const agent = await createAgent(actor, {
+      displayName: "Private Demote Agent",
+      visibility: "public",
+    });
+    const workflowName = `demote-conflict-${randomUUID().slice(0, 8)}`;
+    await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: workflowName,
+      instruction: "# existing private workflow",
+    });
+    const publicWorkflow = await createWorkflow(actor, {
+      agentId: agent.agentId,
+      name: workflowName,
+      visibility: "public",
+      instruction: "# public workflow",
+    });
+
+    const duplicate = await accept(
+      visibilityClient().demote({
+        headers: authHeaders(actor),
+        params: { workflowId: publicWorkflow.body.id },
+      }),
+      [409],
+    );
+    expect(duplicate.body.error.message).toContain(
+      `private workflow named "/${workflowName}"`,
     );
   });
 

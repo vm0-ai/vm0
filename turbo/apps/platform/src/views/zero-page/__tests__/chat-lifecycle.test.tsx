@@ -32,6 +32,7 @@ import {
 import { zeroQueuePositionContract } from "@vm0/api-contracts/contracts/zero-queue-position";
 import { zeroGoalsContract } from "@vm0/api-contracts/contracts/zero-goals";
 import {
+  zeroWorkflowsCollectionContract,
   zeroWorkflowTriggersContract,
   type ZeroWorkflowTriggerUpdateRequest,
 } from "@vm0/api-contracts/contracts/zero-workflows";
@@ -56,6 +57,7 @@ import {
   sendMessageInUI,
   splitChatThreadListResponse,
 } from "./chat-test-helpers.ts";
+import { CREATE_WORKFLOW_WITH_CHAT_PROMPT } from "../workflow-chat-prompts.ts";
 
 const context = testContext();
 
@@ -747,6 +749,24 @@ function buttonByText(text: string, container?: ParentNode): HTMLElement {
     throw new Error(`${text} button not found`);
   }
   return button;
+}
+
+async function findWorkflowComposerEditor(): Promise<HTMLElement> {
+  return await waitFor(() => {
+    const editor = document.querySelector(
+      '.zero-composer [contenteditable="true"]',
+    );
+    if (!(editor instanceof HTMLElement)) {
+      throw new Error("Composer editor not found");
+    }
+    return editor;
+  });
+}
+
+function mockWorkflowComposerWorkflows(): void {
+  context.mocks.api(zeroWorkflowsCollectionContract.list, ({ respond }) => {
+    return respond(200, []);
+  });
 }
 
 function selectOptionByLabel(
@@ -3256,6 +3276,184 @@ describe("chat lifecycle", () => {
     await waitFor(() => {
       expect(clipboard.writes).toStrictEqual([assistantReply]);
     });
+  });
+
+  it("starts a workflow prompt from an assistant message when the composer is empty", async () => {
+    const threadId = "assistant-message-create-workflow-empty";
+    const assistantReply = "We can turn this into a workflow.";
+    mockWorkflowComposerWorkflows();
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Assistant workflow",
+      chatMessages: [
+        {
+          id: "msg-workflow-empty-user",
+          role: "user",
+          content: "Make this repeatable",
+          runId: "run-workflow-empty",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-workflow-empty-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-workflow-empty",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.WorkflowAutomation]: true,
+      },
+    });
+
+    const assistantMessage = await screen.findByText(assistantReply);
+    const assistantGroup = assistantMessage.closest('[data-role="assistant"]');
+    if (!(assistantGroup instanceof HTMLElement)) {
+      throw new Error("assistant message group not found");
+    }
+    const copyButton = within(assistantGroup).getByLabelText("Copy message");
+    const workflowButton =
+      within(assistantGroup).getByLabelText("Create workflow");
+    expect(
+      copyButton.compareDocumentPosition(workflowButton) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBeTruthy();
+
+    click(workflowButton);
+
+    const editor = await findWorkflowComposerEditor();
+    await waitFor(() => {
+      expect(editor).toHaveTextContent(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
+    });
+    expect(
+      screen.queryByRole("dialog", { name: "Replace composer draft?" }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("confirms before replacing an existing composer draft with a workflow prompt", async () => {
+    const threadId = "assistant-message-create-workflow-draft";
+    const assistantReply = "This is a good workflow candidate.";
+    const draft = "Keep this draft";
+    mockWorkflowComposerWorkflows();
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Assistant workflow draft",
+      chatMessages: [
+        {
+          id: "msg-workflow-draft-user",
+          role: "user",
+          content: "Can this be automated?",
+          runId: "run-workflow-draft",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-workflow-draft-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-workflow-draft",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.WorkflowAutomation]: true,
+      },
+    });
+
+    const editor = await findWorkflowComposerEditor();
+    await fill(editor, draft);
+    await waitFor(() => {
+      expect(editor).toHaveTextContent(draft);
+    });
+
+    const assistantMessage = await screen.findByText(assistantReply);
+    const assistantGroup = assistantMessage.closest('[data-role="assistant"]');
+    if (!(assistantGroup instanceof HTMLElement)) {
+      throw new Error("assistant message group not found");
+    }
+    const workflowButton =
+      within(assistantGroup).getByLabelText("Create workflow");
+
+    click(workflowButton);
+
+    const dialog = await screen.findByRole("dialog", {
+      name: "Replace composer draft?",
+    });
+    expect(
+      within(dialog).getByText(
+        "Continuing will clear your current composer draft and start a workflow prompt.",
+      ),
+    ).toBeInTheDocument();
+
+    click(buttonByText("Cancel", dialog));
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Replace composer draft?" }),
+      ).not.toBeInTheDocument();
+      expect(editor).toHaveTextContent(draft);
+    });
+
+    click(workflowButton);
+    const confirmDialog = await screen.findByRole("dialog", {
+      name: "Replace composer draft?",
+    });
+    click(buttonByText("Continue", confirmDialog));
+
+    await waitFor(() => {
+      expect(editor).toHaveTextContent(CREATE_WORKFLOW_WITH_CHAT_PROMPT);
+      expect(editor).not.toHaveTextContent(draft);
+    });
+  });
+
+  it("hides the workflow prompt action when workflow automation is disabled", async () => {
+    const threadId = "assistant-message-create-workflow-disabled";
+    const assistantReply = "This could be automated later.";
+    mockChatLifecycle(context, {
+      threadId,
+      threadTitle: "Assistant workflow disabled",
+      chatMessages: [
+        {
+          id: "msg-workflow-disabled-user",
+          role: "user",
+          content: "Can this repeat?",
+          runId: "run-workflow-disabled",
+          createdAt: "2026-06-09T10:00:00Z",
+        },
+        {
+          id: "msg-workflow-disabled-assistant",
+          role: "assistant",
+          content: assistantReply,
+          runId: "run-workflow-disabled",
+          createdAt: "2026-06-09T10:01:00Z",
+        },
+      ],
+    });
+
+    detachedSetupPage({
+      context,
+      path: `/chats/${threadId}`,
+      featureSwitches: {
+        [FeatureSwitchKey.WorkflowAutomation]: false,
+      },
+    });
+
+    const assistantMessage = await screen.findByText(assistantReply);
+    const assistantGroup = assistantMessage.closest('[data-role="assistant"]');
+    if (!(assistantGroup instanceof HTMLElement)) {
+      throw new Error("assistant message group not found");
+    }
+    expect(
+      within(assistantGroup).queryByLabelText("Create workflow"),
+    ).not.toBeInTheDocument();
   });
 
   it("shows linked automations from the chat header sidebar", async () => {

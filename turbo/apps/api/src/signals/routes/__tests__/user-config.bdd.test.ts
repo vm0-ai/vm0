@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { afterEach, describe, expect, it } from "vitest";
+import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 
 import { testContext } from "../../../__tests__/test-context";
 import { clearMockNow, mockNow, now } from "../../../lib/time";
@@ -378,9 +379,9 @@ describe("AUTH-03 user model preference", () => {
     expect(defaults).toStrictEqual({ selectedModel: null, updatedAt: null });
 
     const updated = await cfg.updateModelPreference(admin, {
-      selectedModel: "claude-sonnet-4-6",
+      selectedModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
     });
-    expect(updated.selectedModel).toBe("claude-sonnet-4-6");
+    expect(updated.selectedModel).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
     expect(updated.updatedAt).toStrictEqual(expect.any(String));
     const readUpdated = await cfg.readModelPreference(admin);
     expect(readUpdated).toStrictEqual(updated);

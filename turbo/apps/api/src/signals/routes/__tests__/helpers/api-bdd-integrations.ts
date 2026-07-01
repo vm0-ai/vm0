@@ -1111,7 +1111,7 @@ export function createBddIntegrationApi(context: TestContext) {
           body: {
             policies: [
               {
-                model: "claude-sonnet-4-6",
+                model: "claude-sonnet-5",
                 isDefault: true,
                 defaultProviderType: "anthropic-api-key",
                 credentialScope: "org",
