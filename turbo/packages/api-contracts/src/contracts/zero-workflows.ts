@@ -740,7 +740,6 @@ export const zeroWorkflowsDetailContract = c.router({
       401: apiErrorSchema,
       403: apiErrorSchema,
       404: apiErrorSchema,
-      409: apiErrorSchema,
     },
     summary: "Get a workflow with its instruction and files",
   },
