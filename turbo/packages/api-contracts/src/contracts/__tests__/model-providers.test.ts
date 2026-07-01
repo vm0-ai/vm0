@@ -547,6 +547,27 @@ describe("model selection for Claude-compatible gateway providers", () => {
       );
     },
   );
+
+  it.each(["moonshot-api-key", "minimax-api-key", "deepseek-api-key"] as const)(
+    "%s disables Claude Code attachments",
+    (type) => {
+      const envBindings = getModelProviderEnvBindings(type);
+      expect(envBindings).toBeDefined();
+      expect(envBindings!["CLAUDE_CODE_DISABLE_ATTACHMENTS"]).toBe("1");
+    },
+  );
+
+  it.each([
+    "anthropic-api-key",
+    "claude-code-oauth-token",
+    "openrouter-api-key",
+    "vercel-ai-gateway",
+    "zai-api-key",
+  ] as const)("%s keeps Claude Code attachments enabled", (type) => {
+    const envBindings = getModelProviderEnvBindings(type);
+    expect(envBindings).toBeDefined();
+    expect(envBindings!["CLAUDE_CODE_DISABLE_ATTACHMENTS"]).toBeUndefined();
+  });
 });
 
 describe("getVm0VisibleModels", () => {

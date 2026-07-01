@@ -1,6 +1,7 @@
 import { command } from "ccstate";
 import {
   testChatMessagesStateContract,
+  VM0_BDD_API_KEY_PREFIXES,
   type TestChatMessagesStateActionBody,
 } from "@vm0/api-contracts/contracts/test-chat-messages-state";
 import { agentRuns } from "@vm0/db/schema/agent-run";
@@ -33,13 +34,14 @@ function actionOk(extra: Record<string, unknown> = {}) {
   return { status: 200 as const, body: { ok: true as const, ...extra } };
 }
 
-function bddVm0OpenRouterKeyFilter(model: string) {
+function bddVm0ApiKeyFilter(vendor: string, model: string) {
+  const [fakePrefix, devSeedPrefix] = VM0_BDD_API_KEY_PREFIXES;
   return and(
-    eq(vm0ApiKeys.vendor, "openrouter"),
+    eq(vm0ApiKeys.vendor, vendor),
     eq(vm0ApiKeys.model, model),
     or(
-      like(vm0ApiKeys.apiKey, "vm0-key-bdd-fake-%"),
-      like(vm0ApiKeys.apiKey, "vm0-key-bdd-dev-seed-%"),
+      like(vm0ApiKeys.apiKey, `${fakePrefix}%`),
+      like(vm0ApiKeys.apiKey, `${devSeedPrefix}%`),
     ),
   );
 }
@@ -94,21 +96,42 @@ async function replaceOpenRouterVm0ApiKeysForAction(
   body: ChatMessagesAction<"replace-openrouter-vm0-api-keys">,
   signal: AbortSignal,
 ) {
-  await db.delete(vm0ApiKeys).where(bddVm0OpenRouterKeyFilter(body.model));
-  signal.throwIfAborted();
-  if (body.keys.length > 0) {
-    await db.insert(vm0ApiKeys).values(
-      body.keys.map((key) => {
-        return {
-          vendor: "openrouter",
-          model: body.model,
-          apiKey: key.api_key,
-          label: key.label,
-        };
-      }),
-    );
+  return await replaceVm0ApiKeysForAction(
+    db,
+    {
+      action: "replace-vm0-api-keys",
+      vendor: "openrouter",
+      model: body.model,
+      keys: body.keys,
+    },
+    signal,
+  );
+}
+
+async function replaceVm0ApiKeysForAction(
+  db: Db,
+  body: ChatMessagesAction<"replace-vm0-api-keys">,
+  signal: AbortSignal,
+) {
+  await db.transaction(async (tx) => {
+    await tx
+      .delete(vm0ApiKeys)
+      .where(bddVm0ApiKeyFilter(body.vendor, body.model));
     signal.throwIfAborted();
-  }
+    if (body.keys.length > 0) {
+      await tx.insert(vm0ApiKeys).values(
+        body.keys.map((key) => {
+          return {
+            vendor: body.vendor,
+            model: body.model,
+            apiKey: key.api_key,
+            label: key.label,
+          };
+        }),
+      );
+      signal.throwIfAborted();
+    }
+  });
   return actionOk();
 }
 
@@ -117,7 +140,25 @@ async function deleteOpenRouterVm0ApiKeysForAction(
   body: ChatMessagesAction<"delete-openrouter-vm0-api-keys">,
   signal: AbortSignal,
 ) {
-  await db.delete(vm0ApiKeys).where(bddVm0OpenRouterKeyFilter(body.model));
+  return await deleteVm0ApiKeysForAction(
+    db,
+    {
+      action: "delete-vm0-api-keys",
+      vendor: "openrouter",
+      model: body.model,
+    },
+    signal,
+  );
+}
+
+async function deleteVm0ApiKeysForAction(
+  db: Db,
+  body: ChatMessagesAction<"delete-vm0-api-keys">,
+  signal: AbortSignal,
+) {
+  await db
+    .delete(vm0ApiKeys)
+    .where(bddVm0ApiKeyFilter(body.vendor, body.model));
   signal.throwIfAborted();
   return actionOk();
 }
@@ -171,6 +212,12 @@ const mutateChatMessagesState$ = command(
       }
       case "delete-openrouter-vm0-api-keys": {
         return await deleteOpenRouterVm0ApiKeysForAction(db, body, signal);
+      }
+      case "replace-vm0-api-keys": {
+        return await replaceVm0ApiKeysForAction(db, body, signal);
+      }
+      case "delete-vm0-api-keys": {
+        return await deleteVm0ApiKeysForAction(db, body, signal);
       }
       case "attach-pre-dispatch-cancelled-run-to-thread": {
         return await attachPreDispatchCancelledRunToThreadForAction(

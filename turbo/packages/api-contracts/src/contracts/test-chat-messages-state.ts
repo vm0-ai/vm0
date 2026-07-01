@@ -8,10 +8,33 @@ export const testChatMessagesStateErrorSchema = z.object({
   error: z.string(),
 });
 
+export const VM0_BDD_API_KEY_PREFIXES = [
+  "vm0-key-bdd-fake-",
+  "vm0-key-bdd-dev-seed-",
+] as const;
+
+const vm0BddApiKeySchema = z.string().refine(
+  (apiKey) => {
+    return VM0_BDD_API_KEY_PREFIXES.some((prefix) => {
+      return apiKey.length > prefix.length && apiKey.startsWith(prefix);
+    });
+  },
+  { message: "Expected a bdd-scoped vm0 API key" },
+);
+
 const vm0ApiKeySeedSchema = z.object({
-  api_key: z.string(),
+  api_key: vm0BddApiKeySchema,
   label: z.string(),
 });
+
+const vm0ApiKeyVendorSchema = z.enum([
+  "anthropic",
+  "deepseek",
+  "minimax",
+  "moonshot",
+  "openai",
+  "openrouter",
+]);
 
 export const testChatMessagesStateActionBodySchema = z.discriminatedUnion(
   "action",
@@ -33,6 +56,17 @@ export const testChatMessagesStateActionBodySchema = z.discriminatedUnion(
     }),
     z.object({
       action: z.literal("delete-openrouter-vm0-api-keys"),
+      model: z.string(),
+    }),
+    z.object({
+      action: z.literal("replace-vm0-api-keys"),
+      vendor: vm0ApiKeyVendorSchema,
+      model: z.string(),
+      keys: z.array(vm0ApiKeySeedSchema),
+    }),
+    z.object({
+      action: z.literal("delete-vm0-api-keys"),
+      vendor: vm0ApiKeyVendorSchema,
       model: z.string(),
     }),
     z.object({

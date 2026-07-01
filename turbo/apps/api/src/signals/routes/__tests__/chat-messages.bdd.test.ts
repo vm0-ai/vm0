@@ -1343,6 +1343,7 @@ describe("CHAT-02: explicit provider pins", () => {
       "https://api.deepseek.com/anthropic",
     );
     expect(environment.ANTHROPIC_MODEL).toBe("deepseek-v4-pro");
+    expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
     expect(environment.ANTHROPIC_API_KEY).toBeUndefined();
 
     // Explicit pins persist on the thread as model-only state.
@@ -1421,6 +1422,7 @@ describe("CHAT-02: explicit provider pins", () => {
     expect(environment.CLAUDE_CODE_SUBAGENT_MODEL).toBe(
       "anthropic/claude-opus-4.7",
     );
+    expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBeUndefined();
 
     if (!claim.encryptedSecrets) {
       throw new Error("Expected OpenRouter claim to carry encrypted secrets");
@@ -1451,6 +1453,70 @@ describe("CHAT-02: explicit provider pins", () => {
     expect(thread.modelProviderId ?? null).toBeNull();
 
     await api.requestCancelRun(actor, run.runId, [200]);
+  }, 90_000);
+
+  it("routes vm0 Kimi through Moonshot attachment-disabled env bindings", async () => {
+    const { actor, agentId, runnerGroup } = await entitledChatActor();
+    const keySuffix = randomUUID();
+
+    await postChatMessagesStateAction({
+      action: "replace-vm0-api-keys",
+      vendor: "moonshot",
+      model: "kimi-k2.7-code",
+      keys: [
+        {
+          api_key: `vm0-key-bdd-dev-seed-${keySuffix}`,
+          label: "dev-seed",
+        },
+      ],
+    });
+
+    let runId: string | null = null;
+    const cancelRunIfCreated = async () => {
+      if (runId) {
+        await api.requestCancelRun(actor, runId, [200]);
+      }
+    };
+    const deleteVm0KimiKeys = async () => {
+      await postChatMessagesStateAction({
+        action: "delete-vm0-api-keys",
+        vendor: "moonshot",
+        model: "kimi-k2.7-code",
+      });
+    };
+    const cleanupRunAndKeys = async () => {
+      await Promise.all([deleteVm0KimiKeys(), cancelRunIfCreated()]);
+    };
+
+    await (async () => {
+      const { providerId } = await upsertOrgModelProvider(actor, {
+        type: "vm0",
+      });
+
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "run with the selected vm0 kimi provider",
+        modelSelection: {
+          modelProviderId: providerId,
+          selectedModel: "kimi-k2.7-code",
+        },
+      });
+      runId = run.runId;
+
+      const { claim } = await claimChatRun(runnerGroup, run.runId);
+      const environment = claimEnvironment(claim);
+      expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
+        modelProviderSecretPlaceholder("moonshot-api-key", "MOONSHOT_API_KEY"),
+      );
+      expect(environment.ANTHROPIC_BASE_URL).toBe(
+        "https://api.moonshot.ai/anthropic",
+      );
+      expect(environment.ANTHROPIC_MODEL).toBe("kimi-k2.7-code");
+      expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
+    })().then(cleanupRunAndKeys, async (error: unknown) => {
+      await cleanupRunAndKeys();
+      throw error;
+    });
   }, 90_000);
 
   it("prefers dev-seed vm0 managed keys over concurrent test keys", async () => {
