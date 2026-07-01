@@ -24,13 +24,18 @@ use serde_json::{Value, json};
 use std::io;
 use std::os::fd::{AsFd, AsRawFd, OwnedFd};
 use std::path::{Path, PathBuf};
-use std::sync::{Arc, Mutex};
-use std::time::{Duration, Instant};
+use std::sync::{
+    Arc, Mutex,
+    atomic::{AtomicU64, Ordering},
+};
+use std::time::{Duration, Instant, SystemTime, UNIX_EPOCH};
 use tokio::io::unix::AsyncFd;
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 use tokio::net::TcpListener;
 
 pub type SystemLogOverrideGuard = system_log::SystemLogOverrideGuard;
+
+static UNIQUE_TEMP_PATH_COUNTER: AtomicU64 = AtomicU64::new(0);
 
 /// 128 + SIGTERM(15). Rust / glibc's default signal handler maps a
 /// SIGTERM-terminated process to this exit code.
@@ -53,6 +58,18 @@ pub const CLI_STDERR_RESULT_MAX_LINE_BYTES: usize = 16 * 1024;
 /// Documented replacement for a stderr line that exceeds the diagnostic limit.
 pub const CLI_STDERR_OMITTED_LONG_LINE: &str =
     "[stderr line omitted: exceeded diagnostic size limit]";
+
+pub fn unique_temp_path(prefix: &str) -> PathBuf {
+    let timestamp_nanos = match SystemTime::now().duration_since(UNIX_EPOCH) {
+        Ok(duration) => duration.as_nanos(),
+        Err(error) => error.duration().as_nanos(),
+    };
+    let counter = UNIQUE_TEMP_PATH_COUNTER.fetch_add(1, Ordering::SeqCst);
+    std::env::temp_dir().join(format!(
+        "{prefix}-{}-{timestamp_nanos}-{counter}",
+        std::process::id()
+    ))
+}
 
 #[derive(Clone, Debug, PartialEq, Eq)]
 pub struct RecordedRequest {

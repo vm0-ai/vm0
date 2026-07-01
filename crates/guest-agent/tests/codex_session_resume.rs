@@ -53,11 +53,8 @@ fn setup_env_once() {
             std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
             std::env::set_var("VM0_PROMPT", "test prompt");
             // `home_dir` is loaded eagerly via `expect`. Keep it stable within
-            // this process while avoiding cross-runner collisions on /tmp.
-            std::env::set_var(
-                "HOME",
-                std::env::temp_dir().join(format!("codex-resume-home-{}", std::process::id())),
-            );
+            // this process while avoiding cross-runner and stale /tmp collisions.
+            std::env::set_var("HOME", common::unique_temp_path("codex-resume-home"));
         }
     });
 }
