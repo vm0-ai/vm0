@@ -1235,16 +1235,11 @@ mod tests {
 
     static TEST_STATE_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
     static COMPLETE_EXECUTION_MOCK_SERVER: LazyLock<MockServer> = LazyLock::new(MockServer::start);
-    static MAIN_TEST_RUNTIME_ROOT: LazyLock<std::path::PathBuf> = LazyLock::new(|| {
-        let timestamp_nanos =
-            match std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH) {
-                Ok(duration) => duration.as_nanos(),
-                Err(error) => error.duration().as_nanos(),
-            };
-        std::env::temp_dir().join(format!(
-            "vm0-guest-agent-main-tests-{}-{timestamp_nanos}",
-            std::process::id()
-        ))
+    static MAIN_TEST_RUNTIME_ROOT: LazyLock<tempfile::TempDir> = LazyLock::new(|| {
+        tempfile::Builder::new()
+            .prefix("vm0-guest-agent-main-tests-")
+            .tempdir()
+            .expect("create guest-agent main test runtime root")
     });
 
     fn lock_test_state() -> std::sync::MutexGuard<'static, ()> {
@@ -1279,7 +1274,9 @@ mod tests {
     }
 
     fn test_runtime_dir() -> std::path::PathBuf {
-        MAIN_TEST_RUNTIME_ROOT.join("main-recovery-checkpoint")
+        MAIN_TEST_RUNTIME_ROOT
+            .path()
+            .join("main-recovery-checkpoint")
     }
 
     struct EnvVarRestoreGuard {
