@@ -143,18 +143,20 @@ const INCLUDED_SCOPELESS = new Map<string, IncludedScopelessEndpoint>([
 // The Xero OpenAPI specs carry most permission descriptions as OAuth scope
 // text. These overrides cover local-only permissions and known upstream text
 // defects that would otherwise leak into user-facing metadata.
-const XERO_PERMISSION_DESCRIPTION_OVERRIDES = {
-  "accounting.budgets.read": "Grant read-only access to budgets.",
-  "accounting.transactions.read":
-    "Grant read-only access to accounting transactions, including bank transactions, credit notes, invoices, payments, purchase orders, quotes, receipts, and related history.",
-  connections:
-    "List and disconnect Xero tenant connections for the authorized user.",
-  "finance.cashvalidation.read":
-    "Grant read-only access to bank statement and reconciliation data.",
-  "finance.statements.read": "Grant read-only access to financial statements.",
-  "marketplace.billing":
-    "Read Xero App Store subscriptions and manage metered usage records.",
-} satisfies Record<string, string>;
+const XERO_PERMISSION_DESCRIPTION_OVERRIDES: Readonly<Record<string, string>> =
+  {
+    "accounting.budgets.read": "Grant read-only access to budgets.",
+    "accounting.transactions.read":
+      "Grant read-only access to accounting transactions, including bank transactions, credit notes, invoices, payments, purchase orders, quotes, receipts, and related history.",
+    connections:
+      "List and disconnect Xero tenant connections for the authorized user.",
+    "finance.cashvalidation.read":
+      "Grant read-only access to bank statement and reconciliation data.",
+    "finance.statements.read":
+      "Grant read-only access to financial statements.",
+    "marketplace.billing":
+      "Read Xero App Store subscriptions and manage metered usage records.",
+  };
 
 function narrowRuleToBasePath(
   baseUrl: string,
@@ -309,9 +311,8 @@ function xeroPermissionDescription(
   scopeDescriptions: ReadonlyMap<string, string>,
 ): string | undefined {
   return (
-    XERO_PERMISSION_DESCRIPTION_OVERRIDES[
-      permissionName as keyof typeof XERO_PERMISSION_DESCRIPTION_OVERRIDES
-    ] ?? scopeDescriptions.get(permissionName)
+    XERO_PERMISSION_DESCRIPTION_OVERRIDES[permissionName] ??
+    scopeDescriptions.get(permissionName)
   );
 }
 
