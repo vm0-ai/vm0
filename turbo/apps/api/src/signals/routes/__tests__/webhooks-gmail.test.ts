@@ -41,6 +41,7 @@ const GMAIL_TOPIC_NAME = "projects/vm0-ai-488909/topics/gmail-events";
 const GMAIL_AUDIENCE = "https://api.vm0.ai/api/webhooks/gmail";
 const GMAIL_PUSH_SERVICE_ACCOUNT =
   "gmail-pubsub-push@vm0-ai-488909.iam.gserviceaccount.com";
+const GMAIL_WORKSPACE_MODEL = "claude-sonnet-5";
 const GOOGLE_OIDC_CERT_KID = "gmail-pubsub-test-key";
 const googleOidcKeyPair = generateKeyPairSync("rsa", { modulusLength: 2048 });
 const googleOidcPublicKeyPem = googleOidcKeyPair.publicKey.export({
@@ -338,10 +339,12 @@ async function configureWorkspaceModelProvider(
   const providerId = provider.body.provider.id;
   const policies = await miscApi.listModelPolicies(actor);
   const sonnetPolicy = policies.policies.find((policy) => {
-    return policy.model === "claude-sonnet-4-6";
+    return policy.model === GMAIL_WORKSPACE_MODEL;
   });
   if (!sonnetPolicy) {
-    throw new Error("Expected claude-sonnet-4-6 model policy to be available");
+    throw new Error(
+      `Expected ${GMAIL_WORKSPACE_MODEL} model policy to be available`,
+    );
   }
   await miscApi.updateModelPolicies(
     actor,
@@ -359,7 +362,7 @@ async function configureWorkspaceModelProvider(
   const updated = await miscApi.listModelPolicies(actor);
   expect(
     updated.policies.find((policy) => {
-      return policy.model === "claude-sonnet-4-6";
+      return policy.model === GMAIL_WORKSPACE_MODEL;
     }),
   ).toMatchObject({
     defaultProviderType: "anthropic-api-key",

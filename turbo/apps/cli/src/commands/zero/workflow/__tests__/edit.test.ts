@@ -18,6 +18,7 @@ import chalk from "chalk";
 
 const AGENT_ID = "11111111-1111-1111-1111-111111111111";
 const WORKFLOW_ID = "22222222-2222-2222-2222-222222222222";
+const RESOLVED_WORKFLOW_ID = "33333333-3333-4333-8333-333333333333";
 
 function detailResponse(overrides: Record<string, unknown> = {}) {
   return {
@@ -36,6 +37,24 @@ function detailResponse(overrides: Record<string, unknown> = {}) {
     files: [],
     fileContents: [],
     triggers: [],
+    ...overrides,
+  };
+}
+
+function workflowSummary(overrides: Record<string, unknown> = {}) {
+  return {
+    id: RESOLVED_WORKFLOW_ID,
+    agentId: AGENT_ID,
+    agentName: "my-agent",
+    agentDisplayName: "My Agent",
+    name: "tell-a-joke",
+    displayName: "Tell a joke",
+    description: null,
+    visibility: "private",
+    requestToPublish: false,
+    ownerUserId: "user-123",
+    canManage: true,
+    shadowedBy: null,
     ...overrides,
   };
 }
@@ -65,6 +84,7 @@ describe("zero workflow edit command", () => {
     mockConsoleLog.mockClear();
     mockConsoleError.mockClear();
     rmSync(workflowDir, { recursive: true, force: true });
+    vi.unstubAllEnvs();
   });
 
   describe("successful edit", () => {
@@ -92,6 +112,43 @@ describe("zero workflow edit command", () => {
       const logCalls = mockConsoleLog.mock.calls.flat().join("\n");
       expect(logCalls).toContain("my-workflow");
       expect(logCalls).toContain("updated");
+    });
+
+    it("should resolve a workflow name before PATCH", async () => {
+      let capturedBody: Record<string, unknown> | undefined;
+      let patchedWorkflowId: string | undefined;
+      server.use(
+        http.get("http://localhost:3000/api/zero/workflows", () => {
+          return HttpResponse.json([workflowSummary()]);
+        }),
+        http.patch(
+          "http://localhost:3000/api/zero/workflows/:workflowId",
+          async ({ request, params }) => {
+            patchedWorkflowId = params.workflowId as string;
+            capturedBody = (await request.json()) as Record<string, unknown>;
+            return HttpResponse.json(
+              detailResponse({
+                id: RESOLVED_WORKFLOW_ID,
+                name: "tell-a-joke",
+                displayName: "Tell a joke",
+              }),
+            );
+          },
+        ),
+      );
+
+      await editCommand.parseAsync([
+        "node",
+        "cli",
+        "tell-a-joke",
+        "--agent",
+        AGENT_ID,
+        "--description",
+        "Updated description",
+      ]);
+
+      expect(patchedWorkflowId).toBe(RESOLVED_WORKFLOW_ID);
+      expect(capturedBody?.description).toBe("Updated description");
     });
 
     it("should send supplementary files from --dir", async () => {

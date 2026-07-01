@@ -14,11 +14,14 @@ import {
   enableWorkflowTrigger,
   getWorkflowTrigger,
   listWorkflowTriggers,
-  listWorkflows,
   updateWorkflowTrigger,
 } from "../../../../lib/api";
 import { withErrorHandler } from "../../../../lib/command";
 import { parseDurationSeconds } from "../../automation/duration";
+import {
+  resolveWorkflowRef,
+  type WorkflowRefOptions,
+} from "../resolve-workflow-ref";
 import {
   printWorkflowTriggerDetails,
   printWorkflowTriggersTable,
@@ -51,12 +54,6 @@ interface UpdateOptions extends GmailTriggerOptions {
   readonly actor?: string;
 }
 
-interface WorkflowRefOptions {
-  readonly agent?: string;
-}
-
-const UUID_RE =
-  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const SCHEDULE_KINDS = ["cron", "once", "loop"] as const;
 const EVENT_KINDS = [
   "gmail-new-message",
@@ -666,33 +663,6 @@ function buildUpdate(
   return buildScheduleUpdate(options);
 }
 
-async function resolveWorkflowId(
-  ref: string,
-  options: WorkflowRefOptions,
-): Promise<string> {
-  if (UUID_RE.test(ref)) {
-    return ref;
-  }
-
-  const agentId = options.agent ?? process.env.ZERO_AGENT_ID;
-  const workflows = await listWorkflows(agentId ? { agentId } : {});
-  const matches = workflows.filter((workflow) => {
-    return workflow.name === ref;
-  });
-  if (matches.length === 0) {
-    const hint = agentId
-      ? ` under agent "${agentId}"`
-      : ". Provide --agent <agent-id> or use the workflow ID";
-    throw new Error(`Workflow not found: "${ref}"${hint}`);
-  }
-  if (matches.length > 1) {
-    throw new Error(
-      `Ambiguous workflow name: "${ref}". Provide --agent <agent-id> or use the workflow ID`,
-    );
-  }
-  return matches[0]!.id;
-}
-
 const addCommand = addGithubTriggerOptions(
   addGmailTriggerOptions(
     new Command()
@@ -721,20 +691,20 @@ const addCommand = addGithubTriggerOptions(
     "after",
     `
 Examples:
-  zero workflow trigger add tell-a-joke cron --expr "0 9 * * *" -z Asia/Shanghai
-  zero workflow trigger add tell-a-joke once --at "2026-06-10T09:00" -z Asia/Shanghai
-  zero workflow trigger add tell-a-joke loop --every 15m
-  zero workflow trigger add triage gmail-new-message --from-contains "@example.com"
-  zero workflow trigger add triage gmail-new-message --config ./gmail-trigger.json
-  zero workflow trigger add triage gmail-label-applied --label "Support"
-  zero workflow trigger add triage github-label-applied --label "triage" --subject both --actor me
-  zero workflow trigger add triage google-calendar-event-created
-  zero workflow trigger add triage google-calendar-event-updated
-  zero workflow trigger add triage google-calendar-event-cancelled
-  zero workflow trigger add triage webhook
+  zero workflow trigger add tell-a-joke --agent <agent-id> cron --expr "0 9 * * *" -z Asia/Shanghai
+  zero workflow trigger add tell-a-joke --agent <agent-id> once --at "2026-06-10T09:00" -z Asia/Shanghai
+  zero workflow trigger add tell-a-joke --agent <agent-id> loop --every 15m
+  zero workflow trigger add triage --agent <agent-id> gmail-new-message --from-contains "@example.com"
+  zero workflow trigger add triage --agent <agent-id> gmail-new-message --config ./gmail-trigger.json
+  zero workflow trigger add triage --agent <agent-id> gmail-label-applied --label "Support"
+  zero workflow trigger add triage --agent <agent-id> github-label-applied --label "triage" --subject both --actor me
+  zero workflow trigger add triage --agent <agent-id> google-calendar-event-created
+  zero workflow trigger add triage --agent <agent-id> google-calendar-event-updated
+  zero workflow trigger add triage --agent <agent-id> google-calendar-event-cancelled
+  zero workflow trigger add triage --agent <agent-id> webhook
 
 Notes:
-  - Workflow names resolve under --agent, then ZERO_AGENT_ID, then all visible workflows
+  - Workflow names resolve under --agent, then ZERO_AGENT_ID
   - Gmail triggers match all inbound messages when no text match rules are provided
   - GitHub label triggers require the GitHub App installation in the workspace
   - Webhook triggers print the signing secret only once after creation
@@ -751,7 +721,7 @@ Notes:
         ) {
           throw new Error("--timezone only applies to cron and once triggers");
         }
-        const workflowId = await resolveWorkflowId(workflowRef, options);
+        const workflowId = await resolveWorkflowRef(workflowRef, options);
         const body = buildCreateRequest(kind, options);
         const trigger = await createWorkflowTrigger(workflowId, body);
 
@@ -812,13 +782,13 @@ const listCommand = new Command()
     "after",
     `
 Examples:
-  zero workflow trigger list tell-a-joke
-  zero workflow trigger list tell-a-joke --agent <agent-id>`,
+  zero workflow trigger list tell-a-joke --agent <agent-id>
+  zero workflow trigger list <workflow-id>`,
   )
   .action(
     withErrorHandler(
       async (workflowRef: string, options: WorkflowRefOptions) => {
-        const workflowId = await resolveWorkflowId(workflowRef, options);
+        const workflowId = await resolveWorkflowRef(workflowRef, options);
         const triggers = await listWorkflowTriggers(workflowId);
 
         if (triggers.length === 0) {
@@ -895,10 +865,10 @@ export const triggerCommand = new Command()
     "after",
     `
 Examples:
-  Add a trigger:      zero workflow trigger add <workflow> cron --expr "0 9 * * *"
-  Add a webhook:      zero workflow trigger add <workflow> webhook
+  Add a trigger:      zero workflow trigger add <workflow-id> cron --expr "0 9 * * *"
+  Add a webhook:      zero workflow trigger add <workflow-id> webhook
   Update a schedule:  zero workflow trigger update <trigger-id> --every 10m
-  List triggers:      zero workflow trigger list <workflow>
+  List triggers:      zero workflow trigger list <workflow-id>
   Inspect a trigger:  zero workflow trigger show <trigger-id>
   Pause one trigger:  zero workflow trigger disable <trigger-id>`,
   );
