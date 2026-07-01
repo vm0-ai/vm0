@@ -4,7 +4,61 @@ import pytest
 
 import generated.builtin_firewalls as builtin_firewalls
 import matching
-from tests.firewall_helpers import compile_firewalls_or_fail, wrap_firewalls
+from tests.firewall_helpers import (
+    compile_firewalls_or_fail,
+    firewall_api,
+    firewall_entry,
+    firewall_permission,
+    match_compiled_firewalls,
+    network_policy,
+    wrap_firewalls,
+)
+
+ITEMS_BASE = "https://api.example.com"
+ITEMS_RULE = "GET /items/{id}"
+ITEMS_URL = "https://api.example.com/items/123"
+ITEMS_READ_PERMISSION = "items-read"
+AUDIT_READ_PERMISSION = "audit-read"
+
+
+def _broad_firewall():
+    return firewall_entry(
+        "broad",
+        firewall_api(ITEMS_BASE, [], auth_label="broad"),
+    )
+
+
+def _specific_firewall():
+    return firewall_entry(
+        "specific",
+        firewall_api(
+            ITEMS_BASE,
+            [firewall_permission(ITEMS_READ_PERMISSION, ITEMS_RULE)],
+            auth_label="specific",
+        ),
+    )
+
+
+def _primary_firewall():
+    return firewall_entry(
+        "primary",
+        firewall_api(
+            ITEMS_BASE,
+            [firewall_permission(ITEMS_READ_PERMISSION, ITEMS_RULE)],
+            auth_label="primary",
+        ),
+    )
+
+
+def _auditor_firewall():
+    return firewall_entry(
+        "auditor",
+        firewall_api(
+            ITEMS_BASE,
+            [firewall_permission(AUDIT_READ_PERMISSION, ITEMS_RULE)],
+            auth_label="auditor",
+        ),
+    )
 
 
 def test_compiled_matches_ask_permission_block():
@@ -45,43 +99,17 @@ def test_later_allowed_firewall_wins_after_earlier_unknown_match(
     broad_unknown_policy,
 ):
     fws = [
-        {
-            "name": "broad",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer broad"}},
-                    "permissions": [],
-                }
-            ],
-        },
-        {
-            "name": "specific",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer specific"}},
-                    "permissions": [
-                        {"name": "items-read", "rules": ["GET /items/{id}"]},
-                    ],
-                }
-            ],
-        },
+        _broad_firewall(),
+        _specific_firewall(),
     ]
     policies = {
-        "broad": {"allow": [], "deny": [], "unknownPolicy": broad_unknown_policy},
-        "specific": {"allow": ["items-read"], "deny": [], "unknownPolicy": "deny"},
+        "broad": network_policy(unknown_policy=broad_unknown_policy),
+        "specific": network_policy(allow=[ITEMS_READ_PERMISSION]),
     }
-    url = "https://api.example.com/items/123"
-    compiled = matching.match_compiled_firewall_request(
-        url,
-        "GET",
-        compile_firewalls_or_fail(fws),
-        policies,
-    )
+    compiled = match_compiled_firewalls(ITEMS_URL, fws, policies)
     assert isinstance(compiled, matching.FirewallAllow)
     assert compiled.name == "specific"
-    assert compiled.permission == "items-read"
+    assert compiled.permission == ITEMS_READ_PERMISSION
 
 
 def test_specific_permission_api_wins_after_earlier_unknown_same_firewall():
@@ -178,179 +206,73 @@ def test_cloudflare_upload_api_preserves_auth_without_shadowing_normal_api():
 
 def test_later_denied_firewall_wins_after_earlier_unknown_allow():
     fws = [
-        {
-            "name": "broad",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer broad"}},
-                    "permissions": [],
-                }
-            ],
-        },
-        {
-            "name": "specific",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer specific"}},
-                    "permissions": [
-                        {"name": "items-read", "rules": ["GET /items/{id}"]},
-                    ],
-                }
-            ],
-        },
+        _broad_firewall(),
+        _specific_firewall(),
     ]
     policies = {
-        "broad": {"allow": [], "deny": [], "unknownPolicy": "allow"},
-        "specific": {"allow": [], "deny": ["items-read"], "unknownPolicy": "deny"},
+        "broad": network_policy(unknown_policy="allow"),
+        "specific": network_policy(deny=[ITEMS_READ_PERMISSION]),
     }
 
-    result = matching.match_compiled_firewall_request(
-        "https://api.example.com/items/123",
-        "GET",
-        compile_firewalls_or_fail(fws),
-        policies,
-    )
+    result = match_compiled_firewalls(ITEMS_URL, fws, policies)
 
     assert isinstance(result, matching.FirewallBlock)
     assert result.name == "specific"
-    assert result.permissions == ("items-read",)
+    assert result.permissions == (ITEMS_READ_PERMISSION,)
     assert result.reason == "permission_denied"
 
 
 def test_later_allowed_firewall_wins_after_earlier_denied_permission_match():
     fws = [
-        {
-            "name": "auditor",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer auditor"}},
-                    "permissions": [
-                        {"name": "audit-read", "rules": ["GET /items/{id}"]},
-                    ],
-                }
-            ],
-        },
-        {
-            "name": "primary",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer primary"}},
-                    "permissions": [
-                        {"name": "items-read", "rules": ["GET /items/{id}"]},
-                    ],
-                }
-            ],
-        },
+        _auditor_firewall(),
+        _primary_firewall(),
     ]
     policies = {
-        "auditor": {"allow": [], "deny": ["audit-read"], "unknownPolicy": "deny"},
-        "primary": {"allow": ["items-read"], "deny": [], "unknownPolicy": "deny"},
+        "auditor": network_policy(deny=[AUDIT_READ_PERMISSION]),
+        "primary": network_policy(allow=[ITEMS_READ_PERMISSION]),
     }
 
-    result = matching.match_compiled_firewall_request(
-        "https://api.example.com/items/123",
-        "GET",
-        compile_firewalls_or_fail(fws),
-        policies,
-    )
+    result = match_compiled_firewalls(ITEMS_URL, fws, policies)
 
     assert isinstance(result, matching.FirewallAllow)
     assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer primary"
     assert result.name == "primary"
-    assert result.permission == "items-read"
-    assert result.rule == "GET /items/{id}"
+    assert result.permission == ITEMS_READ_PERMISSION
+    assert result.rule == ITEMS_RULE
 
 
 def test_earlier_allowed_firewall_still_wins_after_later_denied_permission_match():
     fws = [
-        {
-            "name": "primary",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer primary"}},
-                    "permissions": [
-                        {"name": "items-read", "rules": ["GET /items/{id}"]},
-                    ],
-                }
-            ],
-        },
-        {
-            "name": "auditor",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer auditor"}},
-                    "permissions": [
-                        {"name": "audit-read", "rules": ["GET /items/{id}"]},
-                    ],
-                }
-            ],
-        },
+        _primary_firewall(),
+        _auditor_firewall(),
     ]
     policies = {
-        "primary": {"allow": ["items-read"], "deny": [], "unknownPolicy": "deny"},
-        "auditor": {"allow": [], "deny": ["audit-read"], "unknownPolicy": "deny"},
+        "primary": network_policy(allow=[ITEMS_READ_PERMISSION]),
+        "auditor": network_policy(deny=[AUDIT_READ_PERMISSION]),
     }
 
-    result = matching.match_compiled_firewall_request(
-        "https://api.example.com/items/123",
-        "GET",
-        compile_firewalls_or_fail(fws),
-        policies,
-    )
+    result = match_compiled_firewalls(ITEMS_URL, fws, policies)
 
     assert isinstance(result, matching.FirewallAllow)
     assert result.api_entry["auth"]["headers"]["Authorization"] == "Bearer primary"
     assert result.name == "primary"
-    assert result.permission == "items-read"
-    assert result.rule == "GET /items/{id}"
+    assert result.permission == ITEMS_READ_PERMISSION
+    assert result.rule == ITEMS_RULE
 
 
 def test_denied_permission_names_collect_across_firewalls():
     fws = [
-        {
-            "name": "auditor",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer auditor"}},
-                    "permissions": [
-                        {"name": "audit-read", "rules": ["GET /items/{id}"]},
-                    ],
-                }
-            ],
-        },
-        {
-            "name": "primary",
-            "apis": [
-                {
-                    "base": "https://api.example.com",
-                    "auth": {"headers": {"Authorization": "Bearer primary"}},
-                    "permissions": [
-                        {"name": "items-read", "rules": ["GET /items/{id}"]},
-                    ],
-                }
-            ],
-        },
+        _auditor_firewall(),
+        _primary_firewall(),
     ]
     policies = {
-        "auditor": {"allow": [], "deny": ["audit-read"], "unknownPolicy": "deny"},
-        "primary": {"allow": [], "deny": ["items-read"], "unknownPolicy": "deny"},
+        "auditor": network_policy(deny=[AUDIT_READ_PERMISSION]),
+        "primary": network_policy(deny=[ITEMS_READ_PERMISSION]),
     }
 
-    result = matching.match_compiled_firewall_request(
-        "https://api.example.com/items/123",
-        "GET",
-        compile_firewalls_or_fail(fws),
-        policies,
-    )
+    result = match_compiled_firewalls(ITEMS_URL, fws, policies)
 
     assert isinstance(result, matching.FirewallBlock)
     assert result.name == "auditor"
-    assert result.permissions == ("audit-read", "items-read")
+    assert result.permissions == (AUDIT_READ_PERMISSION, ITEMS_READ_PERMISSION)
     assert result.reason == "permission_denied"
