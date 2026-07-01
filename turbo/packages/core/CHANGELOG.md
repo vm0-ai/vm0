@@ -1,5 +1,12 @@
 # Changelog
 
+## [8.380.1](https://github.com/vm0-ai/vm0/compare/core-v8.380.0...core-v8.380.1) (2026-07-01)
+
+
+### Bug Fixes
+
+* open chat thread emoji for staff orgs ([#19541](https://github.com/vm0-ai/vm0/issues/19541)) ([7d733de](https://github.com/vm0-ai/vm0/commit/7d733de9cca502a4b3139c5e2e4b8c506e55331a))
+
 ## [8.380.0](https://github.com/vm0-ai/vm0/compare/core-v8.379.3...core-v8.380.0) (2026-07-01)
 
 
