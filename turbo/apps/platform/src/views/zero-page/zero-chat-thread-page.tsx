@@ -7597,17 +7597,21 @@ function PagedGroupPrimaryActions({
         </TooltipProvider>
       )}
       {workflowAutomationEnabled && (
-        <button
-          type="button"
-          onClick={onCreateWorkflow}
-          className="inline-flex h-[26px] items-center overflow-hidden rounded-md p-1 text-muted-foreground/60 transition-colors duration-150 hover:bg-accent hover:text-foreground [&:focus-visible>span]:ml-1.5 [&:focus-visible>span]:max-w-24 [&:focus-visible>span]:opacity-100 [&:hover>span]:ml-1.5 [&:hover>span]:max-w-24 [&:hover>span]:opacity-100"
-          aria-label="Create workflow"
-        >
-          <IconRoute size={18} stroke={1.5} className="shrink-0" />
-          <span className="ml-0 max-w-0 overflow-hidden whitespace-nowrap text-xs font-medium opacity-0 transition-all duration-150">
-            Create workflow
-          </span>
-        </button>
+        <TooltipProvider delayDuration={300}>
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <button
+                type="button"
+                onClick={onCreateWorkflow}
+                className="p-1 rounded-md text-muted-foreground/60 hover:text-foreground hover:bg-accent transition-colors duration-150"
+                aria-label="Create workflow"
+              >
+                <IconRoute size={18} stroke={1.5} />
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">Create workflow</TooltipContent>
+          </Tooltip>
+        </TooltipProvider>
       )}
       {usage && firstRunId && <RunUsageChip runId={firstRunId} usage={usage} />}
     </div>
