@@ -442,6 +442,52 @@ pub struct CodexAppServerEnvConfig<'a> {
     pub resume_session_id: Option<&'a str>,
 }
 
+/// Clear runner/bootstrap environment that could be inherited from a parent
+/// runner process. Test setup helpers then write the exact env snapshot they
+/// want `GuestRuntime::from_process_env` to capture.
+///
+/// # Safety
+/// Call before any other test thread reads process environment.
+pub unsafe fn clear_guest_agent_bootstrap_env_for_test() {
+    for key in [
+        guest_contracts::env::API_URL_ENV,
+        guest_contracts::env::RUN_ID_ENV,
+        guest_contracts::env::API_TOKEN_ENV,
+        guest_contracts::env::SANDBOX_ID_ENV,
+        guest_contracts::env::SANDBOX_REUSE_RESULT_ENV,
+        guest_contracts::env::PROMPT_ENV,
+        guest_contracts::env::APPEND_SYSTEM_PROMPT_ENV,
+        guest_contracts::env::VERCEL_PROTECTION_BYPASS_ENV,
+        guest_contracts::env::RESUME_SESSION_ID_ENV,
+        guest_contracts::env::API_START_TIME_ENV,
+        guest_contracts::env::SECRET_VALUES_ENV,
+        guest_contracts::env::DISALLOWED_TOOLS_ENV,
+        guest_contracts::env::TOOLS_ENV,
+        guest_contracts::env::SETTINGS_ENV,
+        guest_contracts::env::CLI_AGENT_TYPE_ENV,
+        guest_contracts::env::USER_ENV_FILE_ENV,
+        guest_contracts::env::ARTIFACTS_ENV,
+        guest_contracts::env::FEATURE_FLAGS_ENV,
+        guest_contracts::env::STUCK_TOOL_TIMEOUT_SECS_ENV,
+        guest_contracts::env::POST_RESULT_SIGTERM_GRACE_SECS_ENV,
+        guest_contracts::env::POST_RESULT_TOTAL_CAP_SECS_ENV,
+        guest_contracts::env::POST_RESULT_SIGKILL_GRACE_SECS_ENV,
+        guest_contracts::env::USE_MOCK_CLAUDE_ENV,
+        guest_contracts::env::USE_MOCK_CODEX_ENV,
+        guest_contracts::env::CODEX_APP_SERVER_BACKEND_ENV,
+        guest_contracts::env::MOCK_CLAUDE_PATH_ENV,
+        guest_contracts::env::MOCK_CODEX_PATH_ENV,
+        guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        process_control_ipc::BOOTSTRAP_ENV,
+        "MOCK_CODEX_FIXTURE",
+        "MOCK_CODEX_APP_SERVER_SCENARIO",
+    ] {
+        unsafe {
+            std::env::remove_var(key);
+        }
+    }
+}
+
 /// Configure one test binary for the experimental Codex app-server backend.
 ///
 /// Must be called before building a `GuestRuntime` or using legacy env accessors
@@ -456,11 +502,11 @@ pub unsafe fn setup_codex_app_server_env(
     config: CodexAppServerEnvConfig<'_>,
 ) -> Result<(), String> {
     unsafe {
+        clear_guest_agent_bootstrap_env_for_test();
         std::env::set_var("CLI_AGENT_TYPE", "codex");
         std::env::set_var("VM0_CODEX_APP_SERVER_BACKEND", "1");
         std::env::set_var("VM0_MOCK_CODEX_PATH", mock_path);
         std::env::set_var("USE_MOCK_CODEX", "true");
-        std::env::remove_var("MOCK_CODEX_FIXTURE");
         if let Some(scenario) = config.scenario {
             std::env::set_var("MOCK_CODEX_APP_SERVER_SCENARIO", scenario);
         } else {
@@ -473,7 +519,6 @@ pub unsafe fn setup_codex_app_server_env(
         std::env::set_var("VM0_SANDBOX_ID", "00000000-0000-4000-8000-000000000abc");
         std::env::set_var("VM0_SANDBOX_REUSE_RESULT", "reused");
         std::env::set_var("HOME", home);
-        std::env::remove_var(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
         if let Some(resume_session_id) = config.resume_session_id {
             std::env::set_var("VM0_RESUME_SESSION_ID", resume_session_id);
         } else {
@@ -551,6 +596,7 @@ pub unsafe fn setup_env(
     sigkill_grace_secs: u64,
 ) -> Result<(), String> {
     unsafe {
+        clear_guest_agent_bootstrap_env_for_test();
         // Route the CLI binary resolution to the cargo-built mock.
         std::env::set_var("CLI_AGENT_TYPE", "claude-code");
         std::env::set_var("VM0_MOCK_CLAUDE_PATH", mock_path);
@@ -586,7 +632,6 @@ pub unsafe fn setup_env(
         // the tempdir and gets cleaned up with it, instead of
         // accumulating in the dev's real ~/.claude on every run.
         std::env::set_var("HOME", workdir);
-        std::env::remove_var(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
     }
     std::fs::create_dir_all(workdir).map_err(|e| format!("create workdir: {e}"))?;
     ensure_canonical_workspace_for_test()?;

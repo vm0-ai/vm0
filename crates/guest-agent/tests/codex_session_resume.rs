@@ -41,6 +41,7 @@ fn setup_env_once() {
         // body has read `guest_agent::env::*`. No other thread is
         // touching the env at this point.
         unsafe {
+            common::clear_guest_agent_bootstrap_env_for_test();
             std::env::set_var("CLI_AGENT_TYPE", "codex");
             // Empty API token → `send_event` skips the HTTP POST after
             // running session-id extraction (which is the part we want
@@ -54,7 +55,6 @@ fn setup_env_once() {
             // `home_dir` is loaded eagerly via `expect`. The marker
             // payload embeds it, so set a stable dummy.
             std::env::set_var("HOME", "/tmp/codex-resume-home");
-            std::env::remove_var(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV);
         }
     });
 }
