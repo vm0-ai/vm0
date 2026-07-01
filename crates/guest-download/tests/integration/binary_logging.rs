@@ -335,6 +335,50 @@ fn binary_fails_with_relative_runtime_dir_for_runtime_log_setup() {
 }
 
 #[test]
+fn binary_fails_with_invalid_run_id_for_runtime_log_setup() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = write_manifest(&dir, &[], None).unwrap();
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest_path)
+        .env("VM0_RUN_ID", "invalid/run/id")
+        .env_remove(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains(
+            "failed to resolve guest-download runtime paths: VM0_RUN_ID must be a single safe path segment"
+        ),
+        "unexpected stderr: {stderr}"
+    );
+}
+
+#[test]
+fn binary_fails_without_home_or_runtime_dir_for_runtime_log_setup() {
+    let dir = tempfile::tempdir().unwrap();
+    let manifest_path = write_manifest(&dir, &[], None).unwrap();
+    let run_id = unique_run_id("missing-home");
+
+    let output = std::process::Command::new(env!("CARGO_BIN_EXE_guest-download"))
+        .arg(&manifest_path)
+        .env("VM0_RUN_ID", run_id)
+        .env_remove(guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV)
+        .env_remove("HOME")
+        .output()
+        .unwrap();
+
+    assert!(!output.status.success());
+    let stderr = String::from_utf8_lossy(&output.stderr);
+    assert!(
+        stderr.contains("failed to resolve guest-download runtime paths: HOME is required for guest runtime paths"),
+        "unexpected stderr: {stderr}"
+    );
+}
+
+#[test]
 fn binary_does_not_log_http_archive_url_on_success() {
     let server = MockServer::start();
     let tar_gz = create_tar_gz(&[("secret.txt", b"downloaded")]).unwrap();
