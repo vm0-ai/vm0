@@ -28,8 +28,8 @@ async fn codex_app_server_backend_masks_resume_id_in_rpc_errors()
             },
         )?;
     }
-    let _run_files = common::RunFilesGuard::new();
     let runtime = common::guest_runtime_from_process_env()?;
+    let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
 
     let masker = SecretMasker::from_raw("");
     let result = tokio::time::timeout(

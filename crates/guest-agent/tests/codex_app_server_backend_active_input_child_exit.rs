@@ -27,8 +27,8 @@ async fn codex_app_server_backend_fails_visible_when_child_exits_during_steer()
             },
         )?;
     }
-    let _run_files = common::RunFilesGuard::new();
     let runtime = common::guest_runtime_from_process_env()?;
+    let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
 
     let active_input = ActiveInputRuntime::new_with_initial_prompt(
         &runtime.config.run_id,

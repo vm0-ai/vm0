@@ -21,9 +21,8 @@ async fn post_result_reap_total_cap_bounds_periodic_meaningful_events()
         )?;
         std::env::set_var("VM0_POST_RESULT_TOTAL_CAP_SECS", "3");
     }
-    let _run_files = common::RunFilesGuard::new();
-
     let runtime = common::guest_runtime_from_process_env()?;
+    let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
 
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();
@@ -43,7 +42,7 @@ async fn post_result_reap_total_cap_bounds_periodic_meaningful_events()
     assert_eq!(termination.reason, CliTerminationReason::PostResultReap);
     assert_eq!(termination.signal_sent, Some(CliTerminationSignal::Sigterm));
 
-    let ops = std::fs::read_to_string(guest_common::telemetry::sandbox_ops_log())?;
+    let ops = std::fs::read_to_string(runtime.paths.sandbox_ops_file())?;
     let cleanup_line = ops
         .lines()
         .find(|line| line.contains("post_result_cleanup_terminated"))

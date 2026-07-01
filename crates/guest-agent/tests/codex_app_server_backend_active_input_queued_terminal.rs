@@ -28,8 +28,8 @@ async fn codex_app_server_backend_closes_input_before_ingesting_queued_terminal(
             },
         )?;
     }
-    let _run_files = common::RunFilesGuard::new();
     let runtime = common::guest_runtime_from_process_env()?;
+    let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
 
     let active_input = ActiveInputRuntime::new_with_initial_prompt(
         &runtime.config.run_id,

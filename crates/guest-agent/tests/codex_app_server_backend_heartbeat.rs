@@ -28,8 +28,8 @@ async fn codex_app_server_backend_heartbeat_interrupts_hung_turn_start()
             },
         )?;
     }
-    let _run_files = common::RunFilesGuard::new();
     let runtime = common::guest_runtime_from_process_env()?;
+    let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
     let session_id_path = PathBuf::from(runtime.paths.session_id_file());
     if let Some(parent) = session_id_path.parent() {
         std::fs::create_dir_all(parent)?;

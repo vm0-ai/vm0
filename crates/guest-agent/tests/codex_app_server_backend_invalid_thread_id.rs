@@ -26,8 +26,8 @@ async fn codex_app_server_backend_rejects_invalid_thread_start_id()
             },
         )?;
     }
-    let _run_files = common::RunFilesGuard::new();
     let runtime = common::guest_runtime_from_process_env()?;
+    let _run_files = common::RunFilesGuard::new_for_paths(&runtime.paths);
 
     let masker = SecretMasker::from_raw("");
     let result = tokio::time::timeout(

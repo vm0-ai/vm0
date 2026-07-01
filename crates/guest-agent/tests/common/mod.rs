@@ -177,35 +177,30 @@ impl Drop for RecordingServer {
 
 #[derive(Debug)]
 pub struct RunFilesGuard {
-    ops_file: String,
+    paths: guest_agent::paths::GuestPaths,
 }
 
 impl RunFilesGuard {
-    pub fn new() -> Self {
-        let ops_file = guest_common::telemetry::sandbox_ops_log().to_string();
-        cleanup_run_files(&ops_file);
-        Self { ops_file }
-    }
-}
-
-impl Default for RunFilesGuard {
-    fn default() -> Self {
-        Self::new()
+    pub fn new_for_paths(paths: &guest_agent::paths::GuestPaths) -> Self {
+        cleanup_run_files_for_paths(paths);
+        Self {
+            paths: paths.clone(),
+        }
     }
 }
 
 impl Drop for RunFilesGuard {
     fn drop(&mut self) {
-        cleanup_run_files(&self.ops_file);
+        cleanup_run_files_for_paths(&self.paths);
     }
 }
 
-fn cleanup_run_files(ops_file: &str) {
-    let _ = std::fs::remove_file(guest_agent::paths::agent_log_file());
-    let _ = std::fs::remove_file(guest_agent::paths::event_error_flag());
-    let _ = std::fs::remove_file(guest_agent::paths::session_id_file());
-    let _ = std::fs::remove_file(guest_agent::paths::session_history_path_file());
-    let _ = std::fs::remove_file(ops_file);
+fn cleanup_run_files_for_paths(paths: &guest_agent::paths::GuestPaths) {
+    let _ = std::fs::remove_file(paths.agent_log_file());
+    let _ = std::fs::remove_file(paths.event_error_flag());
+    let _ = std::fs::remove_file(paths.session_id_file());
+    let _ = std::fs::remove_file(paths.session_history_path_file());
+    let _ = std::fs::remove_file(paths.sandbox_ops_file());
 }
 
 async fn read_http_request(socket: &mut tokio::net::TcpStream) -> Result<RecordedRequest, String> {
