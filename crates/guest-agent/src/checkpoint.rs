@@ -82,7 +82,9 @@ fn build_session_history_upload(
     history_bytes: Vec<u8>,
 ) -> Result<SessionHistoryUpload, AgentError> {
     let raw_size = history_bytes.len() as u64;
-    if history_bytes.len() < SESSION_HISTORY_GZIP_MIN_BYTES as usize {
+    if history_bytes.len() < SESSION_HISTORY_GZIP_MIN_BYTES as usize
+        || std::str::from_utf8(&history_bytes).is_err()
+    {
         return Ok(SessionHistoryUpload {
             raw_size,
             body: SessionHistoryUploadBody::Identity(history_bytes),
