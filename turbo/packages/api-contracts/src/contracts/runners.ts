@@ -454,6 +454,10 @@ export type ArtifactEntry = z.infer<typeof artifactEntrySchema>;
 export type StorageManifest = z.infer<typeof storageManifestSchema>;
 export type StoredResumeSession = z.infer<typeof storedResumeSessionSchema>;
 export type ResumeSession = z.infer<typeof resumeSessionSchema>;
+
+// Compatibility layer for mixed-version runner deployments only. Runners should
+// be old only during a rollout, so each capability needs an explicit retirement
+// path once production runners have been fully deployed with support for it.
 export type RunnerClaimCapability =
   | "resumeSessionHistoryRef"
   | "resumeSessionHistoryCompressedRef";
