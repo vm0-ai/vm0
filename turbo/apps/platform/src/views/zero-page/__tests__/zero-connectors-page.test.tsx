@@ -265,6 +265,43 @@ function mockCustomConnectorStory(): void {
   );
 }
 
+function setupConnectorStatusFilterPage(path = "/connectors"): void {
+  mockConnectors([{ type: "github", externalUsername: "octocat" }]);
+  context.mocks.data.team([
+    teamAgent("c0000000-0000-4000-a000-000000000020", "Research", "preset:0"),
+  ]);
+  context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
+    return respond(200, { enabledTypes: ["github"] });
+  });
+
+  detachedSetupPage({
+    context,
+    path,
+    featureSwitches: {
+      [FeatureSwitchKey.ConnectorAccessManagement]: true,
+    },
+  });
+}
+
+async function expectConnectorCardsVisible(expected: {
+  readonly github: boolean;
+  readonly asana: boolean;
+}): Promise<void> {
+  await waitFor(() => {
+    if (expected.github) {
+      expect(screen.getByText("GitHub")).toBeInTheDocument();
+    } else {
+      expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
+    }
+
+    if (expected.asana) {
+      expect(screen.getByText("Asana")).toBeInTheDocument();
+    } else {
+      expect(screen.queryByText("Asana")).not.toBeInTheDocument();
+    }
+  });
+}
+
 describe("connectors page", () => {
   const restoreConnectorRegistry: (() => void)[] = [];
 
@@ -535,54 +572,38 @@ describe("connectors page", () => {
   });
 
   it("filters connectors by connected status", async () => {
-    mockConnectors([{ type: "github", externalUsername: "octocat" }]);
-    context.mocks.data.team([
-      teamAgent("c0000000-0000-4000-a000-000000000020", "Research", "preset:0"),
-    ]);
-    context.mocks.api(zeroUserConnectorsContract.get, ({ respond }) => {
-      return respond(200, { enabledTypes: ["github"] });
-    });
-
-    detachedSetupPage({
-      context,
-      path: "/connectors",
-      featureSwitches: {
-        [FeatureSwitchKey.ConnectorAccessManagement]: true,
-      },
-    });
-
-    await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
-      expect(screen.getByText("Asana")).toBeInTheDocument();
-    });
+    setupConnectorStatusFilterPage();
+    await expectConnectorCardsVisible({ github: true, asana: true });
 
     const filterTrigger = screen.getByLabelText("Filter connectors");
-
     click(filterTrigger);
     click(menuItemByText("Connected"));
 
-    await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
-      expect(screen.queryByText("Asana")).not.toBeInTheDocument();
-    });
+    await expectConnectorCardsVisible({ github: true, asana: false });
     expect(search()).toBe("?connection=connected");
+  });
 
+  it("filters connectors by not connected status", async () => {
+    setupConnectorStatusFilterPage();
+    await expectConnectorCardsVisible({ github: true, asana: true });
+
+    const filterTrigger = screen.getByLabelText("Filter connectors");
     click(filterTrigger);
     click(menuItemByText("Not connected"));
 
-    await waitFor(() => {
-      expect(screen.getByText("Asana")).toBeInTheDocument();
-      expect(screen.queryByText("GitHub")).not.toBeInTheDocument();
-    });
+    await expectConnectorCardsVisible({ github: false, asana: true });
     expect(search()).toBe("?connection=not-connected");
+  });
 
+  it("clears connector status filter", async () => {
+    setupConnectorStatusFilterPage("/connectors?connection=connected");
+    await expectConnectorCardsVisible({ github: true, asana: false });
+
+    const filterTrigger = screen.getByLabelText("Filter connectors");
     click(filterTrigger);
     click(menuItemByText("All"));
 
-    await waitFor(() => {
-      expect(screen.getByText("GitHub")).toBeInTheDocument();
-      expect(screen.getByText("Asana")).toBeInTheDocument();
-    });
+    await expectConnectorCardsVisible({ github: true, asana: true });
     expect(search()).toBe("");
   });
 
