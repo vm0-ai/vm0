@@ -10,7 +10,6 @@ export { ApiRequestError } from "./core/client-factory";
 export {
   getComposeByName,
   getComposeById,
-  resolveCompose,
   getComposeVersion,
   createOrUpdateCompose,
 } from "./domains/composes";
