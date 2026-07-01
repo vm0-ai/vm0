@@ -21,9 +21,12 @@ async fn codex_app_server_backend_closes_input_before_ingesting_queued_terminal(
         common::setup_codex_app_server_env(
             &mock,
             tmp.path(),
-            "codex-app-server-backend-active-input-queued-terminal-test",
-            "drive the app-server backend queued terminal path",
-            "runtime-turn-complete-before-steer-response",
+            common::CodexAppServerEnvConfig {
+                run_id: "codex-app-server-backend-active-input-queued-terminal-test",
+                prompt: "drive the app-server backend queued terminal path",
+                scenario: Some("runtime-turn-complete-before-steer-response"),
+                resume_session_id: None,
+            },
         )?;
     }
     let _run_files = common::RunFilesGuard::new();
