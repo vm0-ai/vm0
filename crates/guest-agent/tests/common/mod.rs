@@ -492,10 +492,6 @@ pub fn active_input_payload(text: &str) -> Result<Vec<u8>, serde_json::Error> {
     }))
 }
 
-pub fn read_codex_session_history_events() -> Result<Vec<Value>, Box<dyn std::error::Error>> {
-    read_codex_session_history_events_for_path(guest_agent::paths::session_history_path_file())
-}
-
 pub fn read_codex_session_history_events_for_paths(
     paths: &guest_agent::paths::GuestPaths,
 ) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
