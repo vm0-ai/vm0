@@ -96,9 +96,13 @@ describe("upgradeChatIdb", () => {
 
     expect(deleteObjectStore).not.toHaveBeenCalled();
     expect(createObjectStore).not.toHaveBeenCalled();
-    expect(objectStores.get(CHAT_MESSAGES_STORE)?.createIndex).toHaveBeenCalledWith(
-      CHAT_MESSAGES_ORDER_INDEX,
-      ["threadId", "createdAt", "orderSequence", "id"],
-    );
+    expect(
+      objectStores.get(CHAT_MESSAGES_STORE)?.createIndex,
+    ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, [
+      "threadId",
+      "createdAt",
+      "orderSequence",
+      "id",
+    ]);
   });
 });

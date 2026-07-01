@@ -111,6 +111,33 @@ function assistantRunGroups(params: {
   });
 }
 
+function chatRunGroups(params: {
+  readonly label: string;
+  readonly count: number;
+  readonly runGroupId?: string;
+}): GroupedChatMessageGroup[] {
+  return Array.from({ length: params.count }, (_, index) => {
+    const itemNumber = index + 1;
+    const runId = `${params.label}-run-${itemNumber}`;
+    return [
+      group("user", [
+        userMessage({
+          id: `${params.label}-${itemNumber}-user`,
+          runId,
+          runGroupId: params.runGroupId,
+        }),
+      ]),
+      group("assistant", [
+        assistantMessage({
+          id: `${params.label}-${itemNumber}-assistant`,
+          runId,
+          runGroupId: params.runGroupId,
+        }),
+      ]),
+    ];
+  }).flat();
+}
+
 describe("buildRunGroupFolding", () => {
   it("folds earlier consecutive runs in the same run group", () => {
     const groups: GroupedChatMessageGroup[] = [
@@ -303,6 +330,35 @@ describe("runGroupVisualWindowStartIndex", () => {
     ]);
   });
 
+  it("counts a folded tail chat run group as one visual item", () => {
+    const groups = [
+      ...chatRunGroups({
+        label: "A",
+        count: 11,
+        runGroupId: "group-a",
+      }),
+      ...chatRunGroups({
+        label: "B",
+        count: 1,
+        runGroupId: "group-b",
+      }),
+    ];
+
+    const startIndex = runGroupVisualWindowStartIndex(groups, null, 10);
+    const folding = buildRunGroupFolding(groups.slice(startIndex));
+
+    expect(startIndex).toBe(0);
+    expect(
+      folding?.foldsByNextGroupId.get("A-11-user")?.[0]?.hiddenRunCount,
+    ).toBe(10);
+    expect(messageIds(folding?.visibleGroups ?? [])).toStrictEqual([
+      "A-11-user",
+      "A-11-assistant",
+      "B-1-user",
+      "B-1-assistant",
+    ]);
+  });
+
   it("keeps the item before a folded middle run group in the initial window", () => {
     const groups = [
       ...assistantRunGroups({
@@ -333,6 +389,42 @@ describe("runGroupVisualWindowStartIndex", () => {
       "A-1",
       "B-10",
       "C-1",
+    ]);
+  });
+
+  it("keeps the item before a folded middle chat run group in the initial window", () => {
+    const groups = [
+      ...chatRunGroups({
+        label: "A",
+        count: 1,
+        runGroupId: "group-a",
+      }),
+      ...chatRunGroups({
+        label: "B",
+        count: 10,
+        runGroupId: "group-b",
+      }),
+      ...chatRunGroups({
+        label: "C",
+        count: 1,
+        runGroupId: "group-c",
+      }),
+    ];
+
+    const startIndex = runGroupVisualWindowStartIndex(groups, null, 10);
+    const folding = buildRunGroupFolding(groups.slice(startIndex));
+
+    expect(startIndex).toBe(0);
+    expect(
+      folding?.foldsByNextGroupId.get("B-10-user")?.[0]?.hiddenRunCount,
+    ).toBe(9);
+    expect(messageIds(folding?.visibleGroups ?? [])).toStrictEqual([
+      "A-1-user",
+      "A-1-assistant",
+      "B-10-user",
+      "B-10-assistant",
+      "C-1-user",
+      "C-1-assistant",
     ]);
   });
 

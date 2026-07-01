@@ -284,7 +284,7 @@ function appendSeedChatMessages(args: {
   chatMessages: MockPagedMessage[];
   activeRunIds: readonly string[];
 }) {
-  const completionCandidateRunIds = new Set<string>();
+  const completionCandidateRuns = new Map<string, string>();
   const terminalRunIds = new Set<string>();
   for (let i = 0; i < args.chatMessages.length; i++) {
     const seed = args.chatMessages[i]!;
@@ -292,7 +292,7 @@ function appendSeedChatMessages(args: {
     collectSeedRunState({
       seed,
       runId,
-      completionCandidateRunIds,
+      completionCandidateRuns,
       terminalRunIds,
     });
     args.pagedMessages.push({
@@ -303,20 +303,40 @@ function appendSeedChatMessages(args: {
   }
   appendDefaultCompletionMarkers({
     pagedMessages: args.pagedMessages,
-    completionCandidateRunIds,
+    completionCandidateRuns,
     terminalRunIds,
     activeRunIds: new Set(args.activeRunIds),
   });
 }
 
+function markerCreatedAtAfter(createdAt: string): string {
+  return new Date(new Date(createdAt).getTime() + 1).toISOString();
+}
+
+function addCompletionCandidate(
+  runs: Map<string, string>,
+  runId: string,
+  createdAt: string,
+): void {
+  const markerCreatedAt = markerCreatedAtAfter(createdAt);
+  const current = runs.get(runId);
+  if (current === undefined || current < markerCreatedAt) {
+    runs.set(runId, markerCreatedAt);
+  }
+}
+
 function collectSeedRunState(args: {
   seed: MockPagedMessage;
   runId: string | undefined;
-  completionCandidateRunIds: Set<string>;
+  completionCandidateRuns: Map<string, string>;
   terminalRunIds: Set<string>;
 }) {
   if (!("runId" in args.seed) && args.runId !== undefined) {
-    args.completionCandidateRunIds.add(args.runId);
+    addCompletionCandidate(
+      args.completionCandidateRuns,
+      args.runId,
+      args.seed.createdAt,
+    );
   }
   if (
     args.seed.role === "assistant" &&
@@ -331,17 +351,21 @@ function collectSeedRunState(args: {
     args.seed.content !== null &&
     args.seed.runEventId === undefined
   ) {
-    args.completionCandidateRunIds.add(args.runId);
+    addCompletionCandidate(
+      args.completionCandidateRuns,
+      args.runId,
+      args.seed.createdAt,
+    );
   }
 }
 
 function appendDefaultCompletionMarkers(args: {
   pagedMessages: (MockPagedMessage & { id: string })[];
-  completionCandidateRunIds: Set<string>;
+  completionCandidateRuns: Map<string, string>;
   terminalRunIds: Set<string>;
   activeRunIds: Set<string>;
 }) {
-  for (const runId of args.completionCandidateRunIds) {
+  for (const [runId, createdAt] of args.completionCandidateRuns) {
     if (args.terminalRunIds.has(runId) || args.activeRunIds.has(runId)) {
       continue;
     }
@@ -351,7 +375,7 @@ function appendDefaultCompletionMarkers(args: {
       content: null,
       runId,
       runLifecycleEvent: "completed",
-      createdAt: "2026-03-10T00:00:59Z",
+      createdAt,
     });
   }
 }

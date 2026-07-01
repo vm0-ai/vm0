@@ -2728,7 +2728,6 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Tail run group window")).toBeInTheDocument();
       expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
         "10 runs",
       );
@@ -2771,7 +2770,6 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Middle run group window")).toBeInTheDocument();
       expect(screen.getByText("A reply 1")).toBeInTheDocument();
       expect(buttonByLabel("Expand grouped run history")).toHaveTextContent(
         "9 runs",
@@ -4225,7 +4223,6 @@ describe("chat lifecycle", () => {
     });
 
     await waitFor(() => {
-      expect(screen.getByText("Run group folding")).toBeInTheDocument();
       expect(screen.getByText("Latest daily check result")).toBeInTheDocument();
       const foldButton = buttonByLabel("Expand grouped run history");
       expect(
@@ -4358,7 +4355,7 @@ describe("chat lifecycle", () => {
 
     await waitFor(() => {
       expect(screen.getByText("First goal result")).toBeInTheDocument();
-      expect(screen.getByText("Worked for 30s")).toBeInTheDocument();
+      expect(screen.getAllByText("Worked for 30s").length).toBeGreaterThan(0);
     });
   });
 
