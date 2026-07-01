@@ -19,8 +19,8 @@ const FAST_CHAT_MODEL = "google/gemini-3.1-flash-lite-preview";
 const INITIAL_THINKING_RUN_EVENT_ID = "thinking:initial";
 const THINKING_CONTEXT_MESSAGE_CAP = 8;
 const THINKING_CONTEXT_CHAR_CAP = 700;
-const THINKING_MAX_TOKENS = 48;
-const THINKING_TEXT_CHAR_CAP = 120;
+const THINKING_MAX_TOKENS = 160;
+const THINKING_TEXT_CHAR_CAP = 600;
 
 interface ThinkingContextMessage {
   readonly role: "user" | "assistant";
@@ -36,14 +36,25 @@ function sanitizeThinkingText(text: string | null): string | null {
     return null;
   }
   const normalized = text
-    .replace(/\s+/g, " ")
+    .replace(/\r\n?/g, "\n")
+    .replace(/[^\S\n]+/g, " ")
+    .split("\n")
+    .map((line) => {
+      return line.trim();
+    })
+    .join("\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim()
     .replace(/^["'`]+/, "")
-    .replace(/["'`.]+$/, "")
+    .replace(/["'`]+$/, "")
     .trim();
   if (!normalized) {
     return null;
   }
-  return graphemes(normalized).slice(0, THINKING_TEXT_CHAR_CAP).join("");
+  return graphemes(normalized)
+    .slice(0, THINKING_TEXT_CHAR_CAP)
+    .join("")
+    .trimEnd();
 }
 
 async function loadThinkingContextMessages(args: {
@@ -133,10 +144,11 @@ async function generateInitialThinkingText(args: {
       {
         role: "system",
         content: [
-          "Write one short user-visible status line for a chat UI while the assistant starts responding.",
-          "Use the current user message and recent history only to describe what is being prepared.",
-          "Do not answer the user. Do not reveal hidden reasoning or chain-of-thought. Do not mention tools unless the user explicitly asked for a tool-like task.",
-          "Match the user's language. Return plain text only, with no markdown, no quotes, and no trailing punctuation.",
+          "Write user-visible progress copy for a chat UI while the assistant is preparing its response.",
+          "Use the current user message and recent thread history to describe what is being prepared. It can be a few short paragraphs when useful, and should feel concrete, relevant, and specific rather than generic.",
+          "Do not answer the user. Do not reveal hidden reasoning, chain-of-thought, private analysis, or internal steps. Do not mention tools unless the user explicitly asked for a tool-like task.",
+          "Match the current user's language.",
+          "Return plain text only, with no markdown, headings, bullets, or quotes.",
         ].join("\n"),
       },
       {

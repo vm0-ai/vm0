@@ -1975,7 +1975,7 @@ describe("CHAT-02: incomplete-round context", () => {
 });
 
 describe("CHAT-02: initial thinking indicator", () => {
-  it("persists a fast assistant thinking marker for active web chat runs", async () => {
+  it("persists a fast assistant thinking marker with paragraphs for active web chat runs", async () => {
     const { actor, agentId } = await entitledChatActor();
     chatCallbacks.failIfChatCallbackRouteIsFetched();
     mockOptionalEnv("OPENROUTER_API_KEY", "thinking-key");
@@ -1995,6 +1995,8 @@ describe("CHAT-02: initial thinking indicator", () => {
 
     let upstreamAuthorization: string | null = null;
     let promptPayload = "";
+    const thinkingResponse =
+      "Reviewing the launch request and recent context.\n\nOrganizing the checklist into practical sections before the main response starts.";
     server.use(
       http.post(
         "https://openrouter.ai/api/v1/chat/completions",
@@ -2010,7 +2012,7 @@ describe("CHAT-02: initial thinking indicator", () => {
             choices: [
               {
                 finish_reason: "stop",
-                message: { content: "Reviewing the request" },
+                message: { content: thinkingResponse },
               },
             ],
           });
@@ -2028,14 +2030,13 @@ describe("CHAT-02: initial thinking indicator", () => {
         return (
           message.runId === run.runId &&
           message.content === null &&
-          message.thinking === "Reviewing the request"
+          message.thinking === thinkingResponse
         );
       });
     });
     const marker = assistantMessages(page.messages).find((message) => {
       return (
-        message.runId === run.runId &&
-        message.thinking === "Reviewing the request"
+        message.runId === run.runId && message.thinking === thinkingResponse
       );
     });
     expect(marker).toMatchObject({
@@ -2043,9 +2044,11 @@ describe("CHAT-02: initial thinking indicator", () => {
       content: null,
       runId: run.runId,
       runEventId: "thinking:initial",
-      thinking: "Reviewing the request",
+      thinking: thinkingResponse,
     });
     expect(upstreamAuthorization).toBe("Bearer thinking-key");
+    expect(promptPayload).toContain("few short paragraphs");
+    expect(promptPayload).toContain("Match the current user's language");
     expect(promptPayload).toContain("Draft a launch checklist");
 
     await cancelChatRun(actor, run.runId);
