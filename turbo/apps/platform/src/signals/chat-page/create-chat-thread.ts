@@ -3045,14 +3045,10 @@ export function createChatThreadSignals(
   });
 
   const inputRef = createInputRef();
-  const {
-    blockColors$,
-    rotatingPhrase$,
-    donePhrase$,
-    displayedThinkingText$,
-    setThinkingIndicatorTextRef$,
-    runPhraseLoop$,
-  } = createPhraseLoop(messages.groupedChatMessages$, runTracking.allFinished$);
+  const phraseLoop = createPhraseLoop(
+    messages.groupedChatMessages$,
+    runTracking.allFinished$,
+  );
   const { artifacts$, reloadArtifacts$, setArtifactsRealtimeRef$ } =
     createArtifacts(threadId, messages.groupedChatMessages$);
 
@@ -3096,12 +3092,7 @@ export function createChatThreadSignals(
     fetchNextPage$: messages.fetchNextPage$,
     loadHistory$: messages.loadHistory$,
     subscribeChatThread$: runTracking.subscribeChatThread$,
-    blockColors$,
-    rotatingPhrase$,
-    donePhrase$,
-    displayedThinkingText$,
-    setThinkingIndicatorTextRef$,
-    runPhraseLoop$,
+    ...phraseLoop,
     artifacts$,
     reloadArtifacts$,
     setArtifactsRealtimeRef$,
