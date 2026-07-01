@@ -77,12 +77,19 @@ pub(super) async fn execute_codex_app_server_for_runtime(
     let (event_tx, mut event_rx) = tokio::sync::mpsc::unbounded_channel::<PreparedEvent>();
     let should_send_events = http.has_api();
     let event_http = http.clone();
+    let event_error_flag = runtime.event_error_flag.to_string();
     let event_sender = tokio::spawn(async move {
         let mut acked_prefix = AckedEventPrefix::default();
         while let Some(event) = event_rx.recv().await {
             match event {
                 PreparedEvent::Webhook { sequence, payload } => {
-                    match events::post_event(&event_http, &payload).await {
+                    match events::post_event_with_error_flag(
+                        &event_http,
+                        &payload,
+                        &event_error_flag,
+                    )
+                    .await
+                    {
                         Ok(()) => {
                             acked_prefix.record_success(sequence);
                         }

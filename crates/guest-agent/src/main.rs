@@ -275,11 +275,11 @@ async fn execute(
     if let Err(e) = setup_working_dir(paths::CANONICAL_WORKING_DIR) {
         let msg = format!("Working dir setup failed: {e}");
         log_error!(LOG_TAG, "{msg}");
-        write_guest_error_file(&msg);
-        write_guest_failure_diagnostic(&base_failure_diagnostic_for_config(
-            config,
-            FailureClass::WorkingDirSetupFailed,
-        ));
+        write_guest_error_file(runtime_paths.checkpoint_error_file(), &msg);
+        write_guest_failure_diagnostic(
+            runtime_paths.failure_diagnostic_file(),
+            &base_failure_diagnostic_for_config(config, FailureClass::WorkingDirSetupFailed),
+        );
         record_sandbox_op("working_dir_setup", wd_start.elapsed(), false, Some(&msg));
         return 1;
     }
@@ -296,11 +296,11 @@ async fn execute(
             masker.mask_string(&e.to_string())
         );
         log_error!(LOG_TAG, "{msg}");
-        write_guest_error_file(&msg);
-        write_guest_failure_diagnostic(&base_failure_diagnostic_for_config(
-            config,
-            FailureClass::CliExecutionError,
-        ));
+        write_guest_error_file(runtime_paths.checkpoint_error_file(), &msg);
+        write_guest_failure_diagnostic(
+            runtime_paths.failure_diagnostic_file(),
+            &base_failure_diagnostic_for_config(config, FailureClass::CliExecutionError),
+        );
         return 1;
     }
 
@@ -343,6 +343,7 @@ async fn execute(
                 let msg = control_error.to_string();
                 let diagnostic = cli_result_failure_diagnostic_for_config(
                     config,
+                    runtime_paths,
                     FailureClass::CliExecutionError,
                     cli_exit_code,
                     cli_result.claude_result,
@@ -359,6 +360,7 @@ async fn execute(
                 );
                 let diagnostic = cli_result_failure_diagnostic_for_config(
                     config,
+                    runtime_paths,
                     FailureClass::CliNonzero,
                     cli_exit_code,
                     cli_result.claude_result,
@@ -376,7 +378,8 @@ async fn execute(
                 )
             } else if http.has_api() && is_claude_zero_turn_result(config.framework, &cli_result) {
                 let history_check_start = Instant::now();
-                let session_history_status = claude_history_target_status();
+                let session_history_status =
+                    claude_history_target_status_for_config(config, runtime_paths);
                 if session_history_unavailable(session_history_status) {
                     let msg = "Claude Code emitted a zero-turn result without creating session history; skipping checkpoint";
                     record_sandbox_op(
@@ -447,8 +450,7 @@ async fn execute(
             skip_recovery_checkpoint_for_no_history,
         },
         telemetry,
-        &http,
-        config,
+        runtime,
     )
     .await
 }
@@ -496,14 +498,16 @@ fn with_cli_termination(
 
 fn cli_result_failure_diagnostic_for_config(
     config: &env::GuestConfig,
+    runtime_paths: &paths::GuestPaths,
     failure_class: FailureClass,
     cli_exit_code: i32,
     claude_result: Option<cli::ClaudeResultSummary>,
 ) -> FailureDiagnostic {
     let mut diagnostic = base_failure_diagnostic_for_config(config, failure_class)
         .with_cli_exit_code(cli_exit_code)
-        .with_session_history_status(diagnostic_session_history_status_for_framework(
-            config.framework,
+        .with_session_history_status(diagnostic_session_history_status_for_config(
+            config,
+            runtime_paths,
         ));
     if let Some(result) = claude_result {
         diagnostic = diagnostic.with_claude_num_turns(result.num_turns);
@@ -805,11 +809,14 @@ fn has_exact_codex_oauth_connector(value: &Value) -> bool {
         })
 }
 
-fn diagnostic_session_history_status_for_framework(
-    framework: env::Framework,
+fn diagnostic_session_history_status_for_config(
+    config: &env::GuestConfig,
+    runtime_paths: &paths::GuestPaths,
 ) -> SessionHistoryStatus {
-    match framework {
-        env::Framework::ClaudeCode => claude_history_target_status(),
+    match config.framework {
+        env::Framework::ClaudeCode => {
+            claude_history_target_status_for_config(config, runtime_paths)
+        }
         env::Framework::Codex => SessionHistoryStatus::NotApplicable,
     }
 }
@@ -821,8 +828,16 @@ fn session_history_unavailable(status: SessionHistoryStatus) -> bool {
     )
 }
 
-fn claude_history_target_status() -> SessionHistoryStatus {
-    let marker = match session_metadata::resolve_history_marker_payload_for_diagnostics() {
+fn claude_history_target_status_for_config(
+    config: &env::GuestConfig,
+    runtime_paths: &paths::GuestPaths,
+) -> SessionHistoryStatus {
+    let marker = match session_metadata::resolve_history_marker_payload_for_diagnostics_from(
+        config.framework,
+        &config.home_dir,
+        runtime_paths.session_id_file(),
+        runtime_paths.session_history_path_file(),
+    ) {
         Ok(Some(marker)) => marker,
         Ok(None) => return SessionHistoryStatus::Missing,
         Err(_) => return SessionHistoryStatus::Unknown,
@@ -844,18 +859,18 @@ fn history_target_status(path: &Path) -> SessionHistoryStatus {
     }
 }
 
-fn write_guest_error_file(message: &str) {
+fn write_guest_error_file(checkpoint_error_file: &str, message: &str) {
     let message = message.trim();
     if message.is_empty() {
         return;
     }
 
-    if let Err(e) = paths::write_private(paths::checkpoint_error_file(), message) {
+    if let Err(e) = paths::write_private(checkpoint_error_file, message) {
         log_warn!(LOG_TAG, "Failed to write guest error file: {e}");
     }
 }
 
-fn write_guest_failure_diagnostic(diagnostic: &FailureDiagnostic) {
+fn write_guest_failure_diagnostic(failure_diagnostic_file: &str, diagnostic: &FailureDiagnostic) {
     let bytes = match serde_json::to_vec(diagnostic) {
         Ok(bytes) => bytes,
         Err(e) => {
@@ -864,7 +879,7 @@ fn write_guest_failure_diagnostic(diagnostic: &FailureDiagnostic) {
         }
     };
 
-    if let Err(e) = paths::write_private(paths::failure_diagnostic_file(), bytes) {
+    if let Err(e) = paths::write_private(failure_diagnostic_file, bytes) {
         log_warn!(
             LOG_TAG,
             "Failed to write guest failure diagnostic file: {e}"
@@ -978,36 +993,39 @@ async fn complete_execution(
     cli_elapsed: Duration,
     state: CompletionState<'_>,
     telemetry: &Telemetry,
-    http: &HttpClient,
-    config: &env::GuestConfig,
+    runtime: &GuestRuntime,
 ) -> i32 {
+    let config = &runtime.config;
+    let runtime_paths = &runtime.paths;
+    let http = &runtime.http;
     let has_failure_message = state
         .failure_message
         .is_some_and(|message| !message.trim().is_empty());
     if let Some(message) = state.failure_message {
-        write_guest_error_file(message);
+        write_guest_error_file(runtime_paths.checkpoint_error_file(), message);
     }
     let mut wrote_failure_diagnostic = false;
     if let Some(diagnostic) = &state.failure_diagnostic {
-        write_guest_failure_diagnostic(diagnostic);
+        write_guest_failure_diagnostic(runtime_paths.failure_diagnostic_file(), diagnostic);
         wrote_failure_diagnostic = true;
     }
 
     // Check if any events failed to send (before logging execution result)
-    if std::path::Path::new(paths::event_error_flag()).exists() {
+    if std::path::Path::new(runtime_paths.event_error_flag()).exists() {
         let msg = "Some events failed to send, marking run as failed";
         log_error!(LOG_TAG, "{msg}");
         if !has_failure_message {
-            write_guest_error_file(msg);
+            write_guest_error_file(runtime_paths.checkpoint_error_file(), msg);
         }
         if !wrote_failure_diagnostic {
             let diagnostic =
                 base_failure_diagnostic_for_config(config, FailureClass::EventUploadFailed)
                     .with_cli_exit_code(cli_exit_code)
-                    .with_session_history_status(diagnostic_session_history_status_for_framework(
-                        config.framework,
+                    .with_session_history_status(diagnostic_session_history_status_for_config(
+                        config,
+                        runtime_paths,
                     ));
-            write_guest_failure_diagnostic(&diagnostic);
+            write_guest_failure_diagnostic(runtime_paths.failure_diagnostic_file(), &diagnostic);
             wrote_failure_diagnostic = true;
         }
         exit_code = 1;
@@ -1031,7 +1049,7 @@ async fn complete_execution(
         log_info!(LOG_TAG, "▷ Checkpoint");
         let cp_start = Instant::now();
         let (cp_result, _) = tokio::join!(
-            checkpoint::create_checkpoint(http),
+            checkpoint::create_checkpoint_for_runtime(runtime),
             telemetry.flush(UploadMode::Live),
         );
         match cp_result {
@@ -1073,15 +1091,18 @@ async fn complete_execution(
                     "✗ Checkpoint failed ({}s)",
                     cp_start.elapsed().as_secs()
                 );
-                write_guest_error_file(&msg);
+                write_guest_error_file(runtime_paths.checkpoint_error_file(), &msg);
                 if !wrote_failure_diagnostic {
                     let diagnostic =
                         base_failure_diagnostic_for_config(config, FailureClass::CheckpointFailed)
                             .with_cli_exit_code(cli_exit_code)
                             .with_session_history_status(
-                                diagnostic_session_history_status_for_framework(config.framework),
+                                diagnostic_session_history_status_for_config(config, runtime_paths),
                             );
-                    write_guest_failure_diagnostic(&diagnostic);
+                    write_guest_failure_diagnostic(
+                        runtime_paths.failure_diagnostic_file(),
+                        &diagnostic,
+                    );
                 }
                 exit_code = 1;
 
@@ -1114,7 +1135,7 @@ async fn complete_execution(
                 );
             } else {
                 log_info!(LOG_TAG, "Attempting best-effort recovery checkpoint");
-                match checkpoint::create_recovery_checkpoint(http).await {
+                match checkpoint::create_recovery_checkpoint_for_runtime(runtime).await {
                     Ok(()) => log_info!(LOG_TAG, "Recovery checkpoint created"),
                     Err(e) => log_warn!(LOG_TAG, "Recovery checkpoint skipped: {e}"),
                 }
@@ -1235,6 +1256,14 @@ mod tests {
             ..env::GuestConfigRaw::default()
         })
         .unwrap()
+    }
+
+    fn test_guest_runtime(config: env::GuestConfig, http: HttpClient) -> GuestRuntime {
+        GuestRuntime {
+            config,
+            paths: paths::GuestPaths::from_runtime_dir(test_runtime_dir()),
+            http,
+        }
     }
 
     fn test_runtime_dir() -> std::path::PathBuf {
@@ -2835,6 +2864,7 @@ mod tests {
         let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http.clone());
         let config = test_guest_config(server, Some("/event-upload-failure"));
+        let runtime = test_guest_runtime(config, http.clone());
         let exit_code = complete_execution(
             0,
             0,
@@ -2846,8 +2876,7 @@ mod tests {
                 skip_recovery_checkpoint_for_no_history: false,
             },
             &telemetry,
-            &http,
-            &config,
+            &runtime,
         )
         .await;
         telemetry.shutdown().await;
@@ -2904,6 +2933,7 @@ mod tests {
         let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http.clone());
         let config = test_guest_config(server, Some("/checkpoint-failure"));
+        let runtime = test_guest_runtime(config, http.clone());
         let exit_code = complete_execution(
             0,
             0,
@@ -2915,8 +2945,7 @@ mod tests {
                 skip_recovery_checkpoint_for_no_history: false,
             },
             &telemetry,
-            &http,
-            &config,
+            &runtime,
         )
         .await;
         telemetry.shutdown().await;
@@ -2972,6 +3001,7 @@ mod tests {
         let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http.clone());
         let config = test_guest_config(server, Some("plain prompt"));
+        let runtime = test_guest_runtime(config, http.clone());
         let failure_message = "CLI failed before all events uploaded";
         let failure_diagnostic = FailureDiagnostic::new(
             FailureClass::CliNonzero,
@@ -2991,8 +3021,7 @@ mod tests {
                 skip_recovery_checkpoint_for_no_history: false,
             },
             &telemetry,
-            &http,
-            &config,
+            &runtime,
         )
         .await;
         telemetry.shutdown().await;
@@ -3051,6 +3080,7 @@ mod tests {
         let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http.clone());
         let config = test_guest_config(server, Some("/help"));
+        let runtime = test_guest_runtime(config, http.clone());
         let failure_message = "Claude Code emitted a zero-turn result without creating session history; skipping checkpoint";
         let failure_diagnostic = FailureDiagnostic::new(
             FailureClass::ClaudeZeroTurnNoHistory,
@@ -3071,8 +3101,7 @@ mod tests {
                 skip_recovery_checkpoint_for_no_history: true,
             },
             &telemetry,
-            &http,
-            &config,
+            &runtime,
         )
         .await;
         telemetry.shutdown().await;
@@ -3163,6 +3192,7 @@ mod tests {
         let http = test_http_client(server);
         let telemetry = Telemetry::spawn(masker, http.clone());
         let config = test_guest_config(server, Some("plain prompt"));
+        let runtime = test_guest_runtime(config, http.clone());
         let failure_message = "You've hit your usage limit.";
         let failure_diagnostic = FailureDiagnostic::new(
             FailureClass::CliNonzero,
@@ -3182,8 +3212,7 @@ mod tests {
                 skip_recovery_checkpoint_for_no_history: false,
             },
             &telemetry,
-            &http,
-            &config,
+            &runtime,
         )
         .await;
         telemetry.shutdown().await;
