@@ -6357,14 +6357,27 @@ export function ZeroChatComposer({
 
   const handleConnectSuccess = async (type: ConnectorType) => {
     const label = connectorMap.get(type)?.label ?? type;
-    await tapError(authorizeFn(type, pageSignal), () => {
-      toast.error(`${label} was authorized but could not be saved`, {
-        id: `connector-save-error-${type}`,
-      });
-    });
+    const authorized = await tapError(
+      (async () => {
+        await authorizeFn(type, pageSignal);
+        return true;
+      })(),
+      () => {
+        toast.error(
+          `${label} connected but could not be authorized for ${displayName}`,
+          {
+            id: `connector-save-error-${type}`,
+          },
+        );
+      },
+    );
+    if (authorized !== true) {
+      return false;
+    }
     toast.success(`${label} connected and authorized for ${displayName}`, {
       id: `connector-connected-${type}`,
     });
+    return true;
   };
 
   const handleToggle = async (type: ConnectorType, checked: boolean) => {
@@ -6637,7 +6650,10 @@ export function ZeroChatComposer({
           onSuccess={async () => {
             const type = pendingConnectType ?? selectedConnType;
             if (type && !authorizedSet.has(type)) {
-              await handleConnectSuccess(type);
+              const authorized = await handleConnectSuccess(type);
+              if (!authorized) {
+                return;
+              }
             }
             setPendingConnectType(null);
             setShowAddDialog(false);
