@@ -95,12 +95,6 @@ const KNOWN_MISSING_PERMISSION_DESCRIPTION_GAPS: Partial<
     missingNamesSha256:
       "ddae869f18724903f394137a9a30186c0199c174c7a569bcb6f40349c0eaf904",
   },
-  vercel: {
-    issue: 19613,
-    missingCount: 68,
-    missingNamesSha256:
-      "8ccddb8850744d7bdc07fc73a57b0cd5831cdc6a482c724a920abadd3317782e",
-  },
   xero: {
     issue: 19614,
     missingCount: 35,

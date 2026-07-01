@@ -14,6 +14,7 @@
 import {
   ALL_METHODS,
   OPENAPI_PATH_KEYS,
+  applyPermissionDescriptions,
   fetchSpec,
   logStats,
   renderCategories,
@@ -61,6 +62,116 @@ const VERCEL_CATEGORY_ORDER = ["Read", "Deploy", "Write", "Admin"];
 // Format: vcp_[A-Za-z0-9]{56} (60 chars total)
 const PLACEHOLDER_VALUE =
   "vcp_CoffeeSafeLocalCoffeeSafeLocalCoffeeSafeLocalCoffeeSafeL";
+
+const VERCEL_PERMISSION_DESCRIPTIONS = {
+  "access-groups:read": "Read access groups, members, and associated projects.",
+  "access-groups:write":
+    "Create, update, delete access groups and manage their project associations.",
+  "aliases:read": "Read deployment aliases and URL alias metadata.",
+  "aliases:write":
+    "Assign, update, and delete deployment aliases and protection bypass settings.",
+  "api-observability:read":
+    "Read Observability Plus disabled-project settings.",
+  "api-observability:write":
+    "Update Observability Plus disabled-project settings.",
+  "artifacts:read":
+    "Read remote cache status, download artifacts, and check artifact availability.",
+  "artifacts:write":
+    "Record remote cache usage events, upload artifacts, and query artifact metadata.",
+  "authentication:read": "Read Vercel authentication token metadata.",
+  "authentication:write": "Create and revoke Vercel authentication tokens.",
+  "billing:read": "Read billing charges and contract commitment data.",
+  "billing:write": "Purchase credits using the team's billing setup.",
+  "bulk-redirects:read":
+    "Read project-level redirect rules and redirect version history.",
+  "bulk-redirects:write":
+    "Stage, create, update, and delete project-level redirect rules.",
+  "certs:read": "Read certificate metadata.",
+  "certs:write": "Issue, upload, and remove certificates.",
+  "checks-v2:read": "Read Vercel Checks v2 checks, runs, and artifacts.",
+  "checks-v2:write": "Create, update, delete, and rerun Vercel Checks v2.",
+  "checks:read": "Read deployment check metadata.",
+  "checks:write": "Create, update, and rerequest deployment checks.",
+  "connect:write":
+    "Create Vercel Connect connectors, tokens, and authorization requests.",
+  "deployments:read":
+    "Read deployments, deployment events, files, aliases, and metadata.",
+  "deployments:write":
+    "Create, update, cancel, delete, and redeploy deployments.",
+  "dns:read": "Read DNS records.",
+  "dns:write": "Create, update, and delete DNS records.",
+  "domains-registrar:read":
+    "Read registrar TLD, pricing, order, and domain availability data.",
+  "domains-registrar:write":
+    "Check domain availability and purchase domains through Vercel Registrar.",
+  "domains:read": "Read domain configuration, verification, and transfer data.",
+  "domains:write": "Claim, add, update, move, verify, and delete domains.",
+  "drains:read": "Read log drain configuration.",
+  "drains:write": "Create, update, and delete log drain configuration.",
+  "edge-cache:write":
+    "Invalidate or delete Edge Cache entries by tag, path, or source image.",
+  "edge-config:read":
+    "Read Edge Config stores, items, tokens, backups, and schema metadata.",
+  "edge-config:write":
+    "Create, update, delete, transfer, and restore Edge Config stores and items.",
+  "environment:read":
+    "Read shared and project environment variables and custom environment metadata.",
+  "environment:write":
+    "Create, update, delete, and copy shared and project environment variables.",
+  "feature-flags:read":
+    "Read feature flags, variants, experiments, exposures, and usage data.",
+  "feature-flags:write":
+    "Create, update, archive, and manage feature flags, variants, experiments, and exposures.",
+  "integrations:read":
+    "Read integration namespaces, repositories, billing plans, and configuration metadata.",
+  "integrations:write":
+    "Connect, update, and delete integration resources and configurations.",
+  "logDrains:read": "Read legacy configurable and integration log drains.",
+  "logDrains:write":
+    "Create, update, and delete legacy configurable and integration log drains.",
+  "logs:read": "Read deployment logs.",
+  "marketplace:read":
+    "Read marketplace account, member, invoice, product, and resource metadata.",
+  "marketplace:write":
+    "Create, update, and delete marketplace installations, resources, events, and artifacts.",
+  "microfrontends:read":
+    "Read microfrontend groups, project membership, and deployment configuration.",
+  "microfrontends:write":
+    "Create microfrontend groups and application assignments.",
+  "networking:read": "Read Secure Compute network metadata.",
+  "networking:write": "Create, update, and delete Secure Compute networks.",
+  "project-routes:read":
+    "Read project routing rules and routing version history.",
+  "project-routes:write":
+    "Stage, create, update, and delete project routing rules.",
+  "projectMembers:read": "Read project member lists.",
+  "projectMembers:write": "Add and remove project members.",
+  "projects:read":
+    "Read projects, domains, transfers, transfer requests, and related project metadata.",
+  "projects:write":
+    "Create, update, delete, pause, transfer, and manage projects and project transfer requests.",
+  "rolling-release:read":
+    "Read rolling release billing status, configuration, and active release state.",
+  "rolling-release:write":
+    "Create, update, delete, approve, and advance rolling release configuration.",
+  "sandboxes:read":
+    "Read sandboxes, drives, snapshots, sessions, ports, and usage data.",
+  "sandboxes:write":
+    "Create, update, delete, and manage sandboxes, drives, snapshots, sessions, and ports.",
+  "security:read":
+    "Read firewall configuration, attack data, bypass configuration, and firewall event data.",
+  "security:write":
+    "Update firewall configuration, attack challenge mode, and system bypass settings.",
+  "static-ips:write": "Configure Static IPs for projects.",
+  "teams:read":
+    "Read team membership, access request status, and team metadata.",
+  "teams:write":
+    "Invite, join, update, and remove team members and team access requests.",
+  "user:read": "Read user profile, event, and event type metadata.",
+  "user:write": "Delete the user account.",
+  "webhooks:read": "Read webhook configuration.",
+  "webhooks:write": "Create and delete webhooks.",
+} satisfies Readonly<Record<string, string>>;
 
 // ── OpenAPI types ────────────────────────────────────────────────────────
 
@@ -365,7 +476,11 @@ export async function generate(): Promise<void> {
   const spec = (await res.json()) as OpenApiSpec;
   console.error(`  Spec version: ${spec.info?.version ?? "unknown"}`);
 
-  const permissions = buildGroups(spec);
+  const permissions = applyPermissionDescriptions(
+    "Vercel",
+    buildGroups(spec),
+    VERCEL_PERMISSION_DESCRIPTIONS,
+  );
   const ts = generateTypeScript(permissions);
 
   logStats(permissions);

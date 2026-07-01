@@ -4,6 +4,10 @@ import { findMatchingPermissions } from "../../firewall-rule-matcher";
 import type { FirewallConfig } from "../../firewall-types";
 import { loadRequiredConnectorFirewall } from "../firewall-test-helpers";
 
+type FirewallPermission = NonNullable<
+  FirewallConfig["apis"][number]["permissions"]
+>[number];
+
 const RUNTIME_METHODS = [
   "GET",
   "POST",
@@ -30,6 +34,16 @@ function expectVercelMatches(
   );
 }
 
+function vercelPermissionsByName(): Map<string, FirewallPermission> {
+  return new Map(
+    firewall.apis.flatMap((api) => {
+      return (api.permissions ?? []).map((permission) => {
+        return [permission.name, permission] as const;
+      });
+    }),
+  );
+}
+
 function expandRuntimeRules(rule: string): string[] {
   const spaceIndex = rule.indexOf(" ");
   const method = rule.slice(0, spaceIndex);
@@ -43,6 +57,35 @@ function expandRuntimeRules(rule: string): string[] {
 describe("vercel firewall", () => {
   beforeAll(async () => {
     firewall = await loadRequiredConnectorFirewall("vercel");
+  });
+
+  it("describes every generated permission", () => {
+    const permissions = vercelPermissionsByName();
+    const missingDescriptions = [...permissions.values()]
+      .filter((permission) => {
+        const description = permission.description;
+        return description === undefined || description.trim().length === 0;
+      })
+      .map((permission) => {
+        return permission.name;
+      });
+
+    expect(missingDescriptions).toStrictEqual([]);
+    expect(permissions.get("environment:write")?.description).toContain(
+      "environment variables",
+    );
+    expect(permissions.get("billing:write")?.description).toContain(
+      "Purchase credits",
+    );
+    expect(permissions.get("security:write")?.description).toContain(
+      "firewall configuration",
+    );
+    expect(permissions.get("user:write")?.description).toContain(
+      "Delete the user account",
+    );
+    expect(permissions.get("static-ips:write")?.description).toContain(
+      "Static IPs",
+    );
   });
 
   it("assigns one permission owner to every runtime route", () => {
