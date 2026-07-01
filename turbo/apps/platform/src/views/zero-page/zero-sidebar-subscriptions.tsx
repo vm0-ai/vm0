@@ -1,6 +1,5 @@
-import { useLastLoadable, useLastResolved, useSet } from "ccstate-react";
+import { useLastLoadable, useSet } from "ccstate-react";
 import { IconRefresh } from "@tabler/icons-react";
-import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
 import type {
   ModelProviderResponse,
   ModelProviderType,
@@ -12,17 +11,15 @@ import {
   TooltipTrigger,
 } from "@vm0/ui";
 
-import { featureSwitch$ } from "../../signals/external/feature-switch.ts";
 import { reloadPersonalModelProviders$ } from "../../signals/external/personal-model-providers.ts";
 import { personalConfiguredProviders$ } from "../../signals/zero-page/settings/personal-model-providers.ts";
-import { detach, Reason } from "../../signals/utils.ts";
 
-type SubscriptionUsage = NonNullable<
+export type SubscriptionUsage = NonNullable<
   ModelProviderResponse["subscriptionUsage"]
 >;
 type SubscriptionUsageWindow = NonNullable<SubscriptionUsage["fiveHour"]>;
 
-const SIDEBAR_SUBSCRIPTION_PROVIDERS = [
+const SUBSCRIPTION_PROVIDERS = [
   { type: "codex-oauth-token", label: "Codex" },
   { type: "claude-code-oauth-token", label: "Claude Code" },
 ] as const satisfies readonly {
@@ -30,35 +27,36 @@ const SIDEBAR_SUBSCRIPTION_PROVIDERS = [
   readonly label: string;
 }[];
 
-export function SidebarSubscriptionsGate() {
-  const features = useLastResolved(featureSwitch$);
-
-  if (!features?.[FeatureSwitchKey.SidebarSubscriptionUsage]) {
-    return null;
-  }
-
-  return <SidebarSubscriptionsPanel />;
+export interface SubscriptionUsageRow {
+  readonly type: ModelProviderType;
+  readonly label: string;
+  readonly usage: SubscriptionUsage;
 }
 
-function SidebarSubscriptionsPanel() {
+export function useSubscriptionUsageRows() {
   const providersLoadable = useLastLoadable(personalConfiguredProviders$);
   const refreshSubscriptions = useSet(reloadPersonalModelProviders$);
   const providers =
     providersLoadable.state === "hasData" ? providersLoadable.data : [];
-  const rows = sidebarSubscriptionRows(providers);
+  const rows = subscriptionUsageRows(providers);
   const loading = providersLoadable.state === "loading";
 
-  if (!loading && rows.length === 0) {
-    return null;
-  }
+  return { loading, refreshSubscriptions, rows };
+}
 
+export function AccountMenuSubscriptionsPanel({
+  loading,
+  onRefresh,
+  rows,
+}: {
+  readonly loading: boolean;
+  readonly onRefresh: () => void;
+  readonly rows: readonly SubscriptionUsageRow[];
+}) {
   return (
-    <section
-      data-testid="sidebar-subscriptions"
-      className="mt-1 rounded-xl border border-border/60 bg-sidebar-accent/25 px-2.5 py-2"
-    >
+    <div data-testid="account-menu-subscriptions" className="px-3 py-2.5">
       <div className="mb-2 flex min-w-0 items-center justify-between gap-2">
-        <h3 className="truncate text-[11px] font-semibold leading-4 text-sidebar-foreground/70">
+        <h3 className="truncate text-[11px] font-semibold leading-4 text-muted-foreground">
           Subscriptions
         </h3>
         <TooltipProvider delayDuration={150}>
@@ -66,16 +64,10 @@ function SidebarSubscriptionsPanel() {
             <TooltipTrigger asChild>
               <button
                 type="button"
-                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-sidebar-foreground/55 transition-colors hover:bg-sidebar-accent hover:text-sidebar-foreground disabled:cursor-default disabled:opacity-60"
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-accent hover:text-foreground disabled:cursor-default disabled:opacity-60"
                 aria-label="Refresh subscriptions"
                 disabled={loading}
-                onClick={() => {
-                  detach(
-                    refreshSubscriptions(),
-                    Reason.DomCallback,
-                    "refresh sidebar subscriptions",
-                  );
-                }}
+                onClick={onRefresh}
               >
                 <IconRefresh
                   size={13}
@@ -90,13 +82,13 @@ function SidebarSubscriptionsPanel() {
         </TooltipProvider>
       </div>
       {loading && rows.length === 0 ? (
-        <SidebarSubscriptionsSkeleton />
+        <AccountMenuSubscriptionsSkeleton />
       ) : (
         <TooltipProvider delayDuration={100}>
-          <div className="flex flex-col gap-1.5">
+          <div className="flex flex-col gap-1">
             {rows.map((row) => {
               return (
-                <SidebarSubscriptionProviderRow
+                <AccountMenuSubscriptionProviderRows
                   key={row.type}
                   label={row.label}
                   usage={row.usage}
@@ -106,24 +98,22 @@ function SidebarSubscriptionsPanel() {
           </div>
         </TooltipProvider>
       )}
-    </section>
+    </div>
   );
 }
 
-function SidebarSubscriptionsSkeleton() {
+function AccountMenuSubscriptionsSkeleton() {
   return (
     <div className="flex flex-col gap-1.5" aria-hidden="true">
-      {SIDEBAR_SUBSCRIPTION_PROVIDERS.map((provider) => {
+      {SUBSCRIPTION_PROVIDERS.map((provider) => {
         return (
           <div
             key={provider.type}
-            className="rounded-lg border border-border/35 bg-background/55 px-2 py-1.5"
+            className="grid grid-cols-[68px_minmax(0,1fr)_34px] items-center gap-1.5"
           >
-            <div className="h-3 w-20 animate-pulse rounded bg-sidebar-foreground/10" />
-            <div className="mt-2 space-y-1.5">
-              <div className="h-1.5 animate-pulse rounded-full bg-sidebar-foreground/10" />
-              <div className="h-1.5 animate-pulse rounded-full bg-sidebar-foreground/10" />
-            </div>
+            <div className="h-2.5 animate-pulse rounded bg-muted/60" />
+            <div className="h-1.5 animate-pulse rounded-full bg-muted/60" />
+            <div className="h-2.5 animate-pulse rounded bg-muted/60" />
           </div>
         );
       })}
@@ -131,7 +121,7 @@ function SidebarSubscriptionsSkeleton() {
   );
 }
 
-function SidebarSubscriptionProviderRow({
+function AccountMenuSubscriptionProviderRows({
   label,
   usage,
 }: {
@@ -141,33 +131,31 @@ function SidebarSubscriptionProviderRow({
   const windows = usageWindows(usage);
 
   return (
-    <div className="rounded-lg border border-border/40 bg-background/65 px-2 py-1.5">
-      <div className="mb-1.5 truncate text-[12px] font-medium leading-4 text-sidebar-foreground">
-        {label}
-      </div>
-      <div className="flex flex-col gap-1.5">
-        {windows.map(({ label: windowLabel, window }) => {
-          return (
-            <SidebarSubscriptionUsageBar
-              key={windowLabel}
-              providerLabel={label}
-              label={windowLabel}
-              window={window}
-            />
-          );
-        })}
-      </div>
-    </div>
+    <>
+      {windows.map(({ label: windowLabel, window }, index) => {
+        return (
+          <AccountMenuSubscriptionUsageBar
+            key={windowLabel}
+            displayLabel={index === 0 ? label : windowLabel}
+            providerLabel={label}
+            windowLabel={windowLabel}
+            window={window}
+          />
+        );
+      })}
+    </>
   );
 }
 
-function SidebarSubscriptionUsageBar({
+function AccountMenuSubscriptionUsageBar({
+  displayLabel,
   providerLabel,
-  label,
+  windowLabel,
   window,
 }: {
+  readonly displayLabel: string;
   readonly providerLabel: string;
-  readonly label: string;
+  readonly windowLabel: string;
   readonly window: SubscriptionUsageWindow;
 }) {
   const rawRemainingPercent =
@@ -186,20 +174,20 @@ function SidebarSubscriptionUsageBar({
       : Math.min(100, Math.max(0, remainingPercent));
 
   return (
-    <div className="grid grid-cols-[28px_minmax(0,1fr)_34px] items-center gap-1.5">
-      <span className="text-[10px] font-medium leading-none text-sidebar-foreground/55">
-        {label}
+    <div className="grid grid-cols-[68px_minmax(0,1fr)_34px] items-center gap-1.5">
+      <span className="truncate text-[10px] font-medium leading-none text-muted-foreground">
+        {displayLabel}
       </span>
       <Tooltip>
         <TooltipTrigger asChild>
           <span
             tabIndex={0}
             role="progressbar"
-            aria-label={`${providerLabel} ${label} remaining`}
+            aria-label={`${providerLabel} ${windowLabel} remaining`}
             aria-valuemin={0}
             aria-valuemax={100}
             aria-valuenow={remainingPercent ?? undefined}
-            className={`block h-1.5 min-w-0 overflow-hidden rounded-full outline-none ring-offset-1 ring-offset-sidebar transition-shadow focus-visible:ring-2 focus-visible:ring-ring ${tone.trackClassName}`}
+            className={`block h-1.5 min-w-0 overflow-hidden rounded-full outline-none ring-offset-1 ring-offset-popover transition-shadow focus-visible:ring-2 focus-visible:ring-ring ${tone.trackClassName}`}
           >
             <span
               className={`block h-full rounded-full transition-[width] ${tone.barClassName}`}
@@ -220,8 +208,10 @@ function SidebarSubscriptionUsageBar({
   );
 }
 
-function sidebarSubscriptionRows(providers: readonly ModelProviderResponse[]) {
-  return SIDEBAR_SUBSCRIPTION_PROVIDERS.flatMap((definition) => {
+function subscriptionUsageRows(
+  providers: readonly ModelProviderResponse[],
+): readonly SubscriptionUsageRow[] {
+  return SUBSCRIPTION_PROVIDERS.flatMap((definition) => {
     const provider = providers.find((candidate) => {
       return candidate.type === definition.type;
     });
