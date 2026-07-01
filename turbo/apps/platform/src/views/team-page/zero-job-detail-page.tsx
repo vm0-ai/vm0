@@ -629,6 +629,7 @@ export function AgentPermissionsDrawer({
   targetId,
   targetKind = "agent",
   connectorType,
+  connectorLabel,
   displayName,
   initialPolicies,
   initialGrants,
@@ -643,6 +644,7 @@ export function AgentPermissionsDrawer({
   targetId: string;
   targetKind?: "agent" | "workflow";
   connectorType: ConnectorType | null;
+  connectorLabel: string;
   displayName: string;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
@@ -667,6 +669,7 @@ export function AgentPermissionsDrawer({
       agentId={targetId}
       targetKind={targetKind}
       connectorType={connectorType}
+      connectorLabel={connectorLabel}
       displayName={displayName}
       initialPolicies={initialPolicies}
       initialGrants={initialGrants}
@@ -735,6 +738,11 @@ function JobPermissionsTab({
   const connectedConnectors = allConnectors.filter((c) => {
     return c.connected;
   });
+  const connectorLabel = connectorType
+    ? (allConnectors.find((connector) => {
+        return connector.type === connectorType;
+      })?.label ?? connectorType)
+    : "";
   const filteredConnectors = connectedConnectors.filter((c) => {
     return matchesConnectorSearch(search, c);
   });
@@ -791,6 +799,7 @@ function JobPermissionsTab({
           <AgentPermissionsDrawer
             targetId={agentId}
             connectorType={connectorType}
+            connectorLabel={connectorLabel}
             displayName={displayName}
             initialPolicies={drawerInitialPolicies}
             initialGrants={userGrants}

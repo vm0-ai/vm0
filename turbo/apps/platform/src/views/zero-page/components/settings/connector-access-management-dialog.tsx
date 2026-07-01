@@ -49,10 +49,10 @@ import { toast } from "@vm0/ui/components/ui/sonner";
 import { AvatarFromUrl } from "../../zero-sidebar-shared.tsx";
 import { ConnectorIcon } from "./connector-icons.tsx";
 import { PermissionsDialog } from "./permissions-dialog.tsx";
-import { allConnectorTypes$ } from "../../../../signals/zero-page/settings/connectors.ts";
 
 interface ConnectorAccessManagementDialogProps {
   readonly connectorType: ConnectorType;
+  readonly connectorLabel: string;
   readonly onClose: () => void;
 }
 
@@ -375,15 +375,9 @@ function AgentPermissionDialog({
 
 export function ConnectorAccessManagementDialog({
   connectorType,
+  connectorLabel,
   onClose,
 }: ConnectorAccessManagementDialogProps) {
-  const connectorTypes = useLastLoadable(allConnectorTypes$);
-  const connectorLabel =
-    connectorTypes.state === "hasData"
-      ? (connectorTypes.data.find((connector) => {
-          return connector.type === connectorType;
-        })?.label ?? connectorType)
-      : connectorType;
   const rowsLoadable = useLastLoadable(
     connectorAgentAccessRows({ connectorType }),
   );

@@ -45,6 +45,7 @@ import {
   justConnectedTypes$,
   scopeReviewType$,
   setScopeReviewType$,
+  permissionDialogLabel$,
   permissionDialogType$,
   setPermissionDialogType$,
   isStandaloneMode,
@@ -917,6 +918,20 @@ function renderBuiltinList({
   });
 }
 
+function connectorLabelForType(
+  connectors: readonly ConnectorTypeWithStatus[],
+  type: ConnectorType | null,
+): string | null {
+  if (!type) {
+    return null;
+  }
+  return (
+    connectors.find((connector) => {
+      return connector.type === type;
+    })?.label ?? type
+  );
+}
+
 export function ZeroConnectorsPage() {
   const allTypesLoadable = useLastLoadable(allConnectorTypes$);
   const filteredTypesLoadable = useLastLoadable(filteredConnectorTypes$);
@@ -930,6 +945,7 @@ export function ZeroConnectorsPage() {
   const scopeReviewType = useGet(scopeReviewType$);
   const setScopeReviewType = useSet(setScopeReviewType$);
   const permissionDialogType = useGet(permissionDialogType$);
+  const permissionDialogLabel = useGet(permissionDialogLabel$);
   const setPermissionDialogType = useSet(setPermissionDialogType$);
   const managedConnectorType = useGet(managedConnectorAccessType$);
   const setManagedConnectorType = useSet(setManagedConnectorAccessType$);
@@ -961,6 +977,10 @@ export function ZeroConnectorsPage() {
     filteredTypesLoadable.state === "hasData" ? filteredTypesLoadable.data : [];
   const allConnectors =
     allTypesLoadable.state === "hasData" ? allTypesLoadable.data : [];
+  const managedConnectorLabel = connectorLabelForType(
+    allConnectors,
+    managedConnectorType,
+  );
   const disconnecting = disconnectLoadable.state === "loading";
 
   const connectHandler = (type: ConnectorType) => {
@@ -1180,15 +1200,17 @@ export function ZeroConnectorsPage() {
       {permissionDialogType && (
         <ConnectorPermissionDialog
           connectorType={permissionDialogType}
+          connectorLabel={permissionDialogLabel ?? permissionDialogType}
           onClose={() => {
             setPermissionDialogType(null);
           }}
         />
       )}
 
-      {managedConnectorType && (
+      {managedConnectorType && managedConnectorLabel && (
         <ConnectorAccessManagementDialog
           connectorType={managedConnectorType}
+          connectorLabel={managedConnectorLabel}
           onClose={closeManagedConnector}
         />
       )}

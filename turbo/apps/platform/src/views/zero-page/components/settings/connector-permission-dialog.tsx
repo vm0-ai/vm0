@@ -24,17 +24,18 @@ import {
   confirmPermissionDialog$,
 } from "../../../../signals/zero-page/settings/permission-dialog.ts";
 import { pageSignal$ } from "../../../../signals/page-signal.ts";
-import { allConnectorTypes$ } from "../../../../signals/zero-page/settings/connectors.ts";
 
 const VISIBLE_AGENT_COUNT = 16;
 
 interface ConnectorPermissionDialogProps {
   connectorType: ConnectorType;
+  connectorLabel: string;
   onClose: () => void;
 }
 
 export function ConnectorPermissionDialog({
   connectorType,
+  connectorLabel,
   onClose,
 }: ConnectorPermissionDialogProps) {
   const allAgents = useLastResolved(agents$);
@@ -44,13 +45,8 @@ export function ConnectorPermissionDialog({
   const setSearch = useSet(setPermissionDialogSearch$);
   const [confirmLoadable, confirm] = useLoadableSet(confirmPermissionDialog$);
   const pageSignal = useGet(pageSignal$);
-  const connectorTypes = useLastResolved(allConnectorTypes$);
 
   const submitting = confirmLoadable.state === "loading";
-  const connectorLabel =
-    connectorTypes?.find((connector) => {
-      return connector.type === connectorType;
-    })?.label ?? connectorType;
 
   const filtered = (() => {
     if (!allAgents) {

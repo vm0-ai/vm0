@@ -817,6 +817,7 @@ const finishConnectorConnection$ = command(
     }
     if (options.showPermissionDialog) {
       set(internalPermissionDialogType$, type);
+      set(internalPermissionDialogLabel$, options.connectorLabel ?? type);
     }
     if (options.clearSelectedConnector) {
       set(internalSelectedConnectorType$, null);
@@ -970,10 +971,15 @@ export const disconnectConnector$ = command(
 // ---------------------------------------------------------------------------
 
 const internalPermissionDialogType$ = state<ConnectorType | null>(null);
+const internalPermissionDialogLabel$ = state<string | null>(null);
 
 /** Connector type to show the permission dialog for (null = hidden). */
 export const permissionDialogType$ = computed((get) => {
   return get(internalPermissionDialogType$);
+});
+
+export const permissionDialogLabel$ = computed((get) => {
+  return get(internalPermissionDialogLabel$);
 });
 
 export const setPermissionDialogType$ = command(
@@ -982,6 +988,7 @@ export const setPermissionDialogType$ = command(
       set(resetPermissionDialog$);
     }
     set(internalPermissionDialogType$, type);
+    set(internalPermissionDialogLabel$, type);
   },
 );
 

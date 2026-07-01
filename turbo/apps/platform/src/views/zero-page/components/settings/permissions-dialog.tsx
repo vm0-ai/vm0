@@ -104,7 +104,7 @@ interface PermissionsDrawerProps {
   agentId: string;
   targetKind?: "agent" | "workflow";
   connectorType: ConnectorType;
-  connectorLabel?: string;
+  connectorLabel: string;
   displayName: string;
   initialPolicies: FirewallPolicies;
   initialGrants: readonly UserPermissionGrantResponse[];
@@ -196,10 +196,9 @@ function PermissionsDrawerHeader({
 > & {
   readonly surface: PermissionsSurface;
 }) {
-  const label = connectorLabel ?? connectorType;
   const title = (
     <>
-      {label} permissions
+      {connectorLabel} permissions
       <span className="text-sm font-normal text-muted-foreground ml-1">
         for {displayName}
       </span>
