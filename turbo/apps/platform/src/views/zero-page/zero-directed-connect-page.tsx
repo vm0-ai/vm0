@@ -443,8 +443,10 @@ function DirectedConnectCard() {
   }
 
   const agentName =
-    agentNameLoadable.state === "hasData" && agentNameLoadable.data
-      ? agentNameLoadable.data
+    agentNameLoadable.state === "hasData" &&
+    agentNameLoadable.data.agentId === agentId &&
+    agentNameLoadable.data.displayName
+      ? agentNameLoadable.data.displayName
       : "Zero";
   const isConnecting =
     pollingAuthCodeType === connectorType ||

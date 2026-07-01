@@ -27,25 +27,25 @@ export const directedAuthorizeAgentId$ = computed((get): string | null => {
 export const directedAuthorizeAgentName$ = computed(async (get) => {
   const agentId = get(directedAuthorizeAgentId$);
   if (!agentId) {
-    return null;
+    return { agentId: null, displayName: null };
   }
   const agents = await get(agents$);
   const agent = agents.find((a) => {
     return a.id === agentId;
   });
-  return agent?.displayName ?? null;
+  return { agentId, displayName: agent?.displayName ?? null };
 });
 
 /** Fetch enabled connector types for the agent from the API. */
 export const agentEnabledTypes$ = computed(async (get) => {
   const agentId = get(directedAuthorizeAgentId$);
   if (!agentId) {
-    return [];
+    return { agentId: null, enabledTypes: [] };
   }
   const createClient = get(zeroClient$);
   const client = createClient(zeroUserConnectorsContract);
   const result = await accept(client.get({ params: { id: agentId } }), [200]);
-  return result.body.enabledTypes;
+  return { agentId, enabledTypes: result.body.enabledTypes };
 });
 
 function connectorAgentAuthorizationKey(args: {

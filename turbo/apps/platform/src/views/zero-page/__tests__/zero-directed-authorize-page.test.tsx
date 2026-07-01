@@ -175,6 +175,51 @@ describe("directed connector authorize page", () => {
     });
   });
 
+  it("does not reuse stale loaded authorization across agents", async () => {
+    mockConnectedConnector("gmail");
+    const secondAgentResponse = Promise.withResolvers<void>();
+    let secondAgentRequested = false;
+    context.mocks.api(
+      zeroUserConnectorsContract.get,
+      async ({ params, respond }) => {
+        if (params.id === SECOND_AGENT_ID) {
+          secondAgentRequested = true;
+          await secondAgentResponse.promise;
+          return respond(200, { enabledTypes: [] });
+        }
+        return respond(200, { enabledTypes: ["gmail"] });
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/gmail/authorize?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(screen.getByText("Gmail authorized")).toBeInTheDocument();
+      expect(screen.getByText("Authorized")).toBeInTheDocument();
+    });
+
+    pushState({}, "", `/connectors/gmail/authorize?agentId=${SECOND_AGENT_ID}`);
+    window.dispatchEvent(new PopStateEvent("popstate"));
+
+    await waitFor(() => {
+      expect(secondAgentRequested).toBeTruthy();
+    });
+    expect(screen.queryByText("Gmail authorized")).not.toBeInTheDocument();
+    expect(screen.queryByText("Authorized")).not.toBeInTheDocument();
+
+    secondAgentResponse.resolve();
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Gmail to proceed"),
+      ).toBeInTheDocument();
+      expect(screen.getByText("Authorize Zero")).toBeInTheDocument();
+    });
+  });
+
   it("connects a manual-token connector before authorizing the agent", async () => {
     mockPublicConnectorStatus([
       publicStatusItem({

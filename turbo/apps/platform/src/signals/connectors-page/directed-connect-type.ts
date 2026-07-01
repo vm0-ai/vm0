@@ -23,13 +23,13 @@ export const directedConnectAgentId$ = computed((get): string | null => {
 export const directedConnectAgentName$ = computed(async (get) => {
   const agentId = get(directedConnectAgentId$);
   if (!agentId) {
-    return null;
+    return { agentId: null, displayName: null };
   }
   const agents = await get(agents$);
   const agent = agents.find((a) => {
     return a.id === agentId;
   });
-  return agent?.displayName ?? null;
+  return { agentId, displayName: agent?.displayName ?? null };
 });
 
 const internalManualGrantDialogOpen$ = state(false);

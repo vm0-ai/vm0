@@ -122,8 +122,13 @@ function useDirectedAuthorizePermissionState(
 ) {
   const justAuthorizedKeys = useGet(justAuthorizedConnectorAgentKeys$);
   const enabledLoadable = useLastLoadable(agentEnabledTypes$);
-  const enabledTypes =
-    enabledLoadable.state === "hasData" ? enabledLoadable.data : [];
+  const enabledData =
+    agentId !== null &&
+    enabledLoadable.state === "hasData" &&
+    enabledLoadable.data.agentId === agentId
+      ? enabledLoadable.data
+      : null;
+  const enabledTypes = enabledData === null ? [] : enabledData.enabledTypes;
   return {
     isAuthorized:
       connectorType !== null &&
@@ -133,8 +138,22 @@ function useDirectedAuthorizePermissionState(
         agentId,
       }) ||
         enabledTypes.includes(connectorType)),
-    permissionLoading: enabledLoadable.state === "loading",
+    permissionLoading:
+      agentId !== null &&
+      (enabledLoadable.state === "loading" || enabledData === null),
   };
+}
+
+function useDirectedAuthorizeAgentName(agentId: string | null): string {
+  const agentNameLoadable = useLastLoadable(directedAuthorizeAgentName$);
+  if (
+    agentNameLoadable.state !== "hasData" ||
+    agentNameLoadable.data.agentId !== agentId ||
+    !agentNameLoadable.data.displayName
+  ) {
+    return "Zero";
+  }
+  return agentNameLoadable.data.displayName;
 }
 
 function canAuthorizeConnector(
@@ -220,7 +239,6 @@ function runDirectedAuthorize(params: {
 
 function DirectedAuthorizeCard() {
   const params = useDirectedAuthorizeParams();
-  const agentNameLoadable = useLastLoadable(directedAuthorizeAgentName$);
   const pollingType = useGet(pollingOAuthAuthCodeConnectorType$);
   const connect = useSet(connectConnectorOAuthAuthCode$);
   const authorize = useSet(authorizeConnector$);
@@ -228,6 +246,7 @@ function DirectedAuthorizeCard() {
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelectedConnectorType = useSet(setSelectedConnectorType$);
   const connectorTypeForState = params?.connectorType ?? null;
+  const agentName = useDirectedAuthorizeAgentName(params?.agentId ?? null);
   const { item, isConnected, catalogLoading, unavailable } =
     useDirectedAuthorizeCatalogState(connectorTypeForState);
   const { isAuthorized, permissionLoading } =
@@ -241,10 +260,6 @@ function DirectedAuthorizeCard() {
   }
 
   const { connectorType, agentId } = params;
-  const agentName =
-    agentNameLoadable.state === "hasData" && agentNameLoadable.data
-      ? agentNameLoadable.data
-      : "Zero";
   const isConnecting = pollingType === connectorType;
   if (unavailable) {
     return null;
