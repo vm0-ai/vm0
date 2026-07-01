@@ -1,5 +1,6 @@
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { chatMessages } from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { and, eq, sql } from "drizzle-orm";
 
 import type { Db } from "../external/db";
@@ -18,6 +19,10 @@ export interface QueueMarkerRevokeNotification {
 
 interface LockedRunStatusRow extends Record<string, unknown> {
   readonly status: string;
+}
+
+interface RevokedQueueMarkerRow extends Record<string, unknown> {
+  readonly chatThreadId: string;
 }
 
 export async function appendQueuedRunAssistantMarker(
@@ -75,46 +80,40 @@ export async function revokeQueuedRunAssistantMarkers(
     readonly userId: string;
   },
 ): Promise<QueueMarkerRevokeNotification | null> {
-  const markers = await tx
-    .select({
-      id: chatMessages.id,
-      chatThreadId: chatMessages.chatThreadId,
-      runGroupId: chatMessages.runGroupId,
-    })
-    .from(chatMessages)
-    .where(
-      and(
-        eq(chatMessages.runId, args.runId),
-        eq(chatMessages.role, "assistant"),
-        eq(chatMessages.runEventId, QUEUED_RUN_MARKER_EVENT_ID),
-        sql<boolean>`NOT EXISTS (
-          SELECT 1
-          FROM ${chatMessages} AS revoker
-          WHERE revoker.revokes_message_id = ${chatMessages.id}
-        )`,
-      ),
-    );
-
-  let notifiedThreadId: string | null = null;
-  for (const marker of markers) {
-    const [inserted] = await tx
-      .insert(chatMessages)
-      .values({
-        chatThreadId: marker.chatThreadId,
-        role: "assistant",
-        content: null,
-        runId: args.runId,
-        runGroupId: marker.runGroupId ?? undefined,
-        revokesMessageId: marker.id,
-        runEventId: QUEUED_RUN_MARKER_REVOKE_EVENT_ID,
-      })
-      .onConflictDoNothing({ target: chatMessages.revokesMessageId })
-      .returning({ id: chatMessages.id });
-    if (inserted) {
-      notifiedThreadId = marker.chatThreadId;
-    }
-  }
-
+  const insertedRows = await tx.execute<RevokedQueueMarkerRow>(sql`
+    INSERT INTO chat_messages (
+      chat_thread_id,
+      role,
+      content,
+      run_id,
+      run_group_id,
+      revokes_message_id,
+      run_event_id
+    )
+    SELECT
+      marker.chat_thread_id,
+      ${"assistant"},
+      NULL,
+      ${args.runId},
+      marker.run_group_id,
+      marker.id,
+      ${QUEUED_RUN_MARKER_REVOKE_EVENT_ID}
+    FROM ${chatMessages} AS marker
+    INNER JOIN ${chatThreads} AS thread
+      ON thread.id = marker.chat_thread_id
+    WHERE marker.run_id = ${args.runId}
+      AND marker.role = ${"assistant"}
+      AND marker.run_event_id = ${QUEUED_RUN_MARKER_EVENT_ID}
+      AND NOT EXISTS (
+        SELECT 1
+        FROM ${chatMessages} AS revoker
+        WHERE revoker.revokes_message_id = marker.id
+      )
+    FOR KEY SHARE OF thread
+    ON CONFLICT (revokes_message_id) DO NOTHING
+    RETURNING chat_thread_id AS "chatThreadId"
+  `);
+  const notifiedThreadId = insertedRows.rows.at(-1)?.chatThreadId ?? null;
   return notifiedThreadId
     ? { chatThreadId: notifiedThreadId, userId: args.userId }
     : null;
