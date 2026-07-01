@@ -6,6 +6,9 @@ import { onRejection } from "../utils";
 
 type ApiDispatchTimingSpanKind = "top_level" | "nested";
 export type ApiDispatchTimingDimensions = Readonly<Record<string, string>>;
+export type ApiDispatchTimingDimensionsInput =
+  | ApiDispatchTimingDimensions
+  | (() => ApiDispatchTimingDimensions | undefined);
 
 export type ApiDispatchTimingActionType =
   | "api_dispatch_pre_create_agent_run"
@@ -117,14 +120,14 @@ export class ApiDispatchTimingCollector {
     spanKind: ApiDispatchTimingSpanKind,
     startedAt: number,
     finishedAt: number = now(),
-    dimensions?: ApiDispatchTimingDimensions,
+    dimensions?: ApiDispatchTimingDimensionsInput,
   ): void {
     this.records.push({
       actionType,
       spanKind,
       durationMs: Math.max(0, finishedAt - startedAt),
       timestamp: new Date(finishedAt).toISOString(),
-      dimensions,
+      dimensions: resolveApiDispatchTimingDimensions(dimensions),
     });
   }
 
@@ -132,7 +135,7 @@ export class ApiDispatchTimingCollector {
     actionType: ApiDispatchTimingActionType,
     spanKind: ApiDispatchTimingSpanKind,
     operation: () => T | Promise<T>,
-    dimensions?: ApiDispatchTimingDimensions,
+    dimensions?: ApiDispatchTimingDimensionsInput,
   ): Promise<T> {
     const startedAt = now();
     const result = await onRejection(
@@ -187,10 +190,16 @@ export async function measureApiDispatchTiming<T>(
   actionType: ApiDispatchTimingActionType,
   spanKind: ApiDispatchTimingSpanKind,
   operation: () => T | Promise<T>,
-  dimensions?: ApiDispatchTimingDimensions,
+  dimensions?: ApiDispatchTimingDimensionsInput,
 ): Promise<T> {
   if (!collector) {
     return await operation();
   }
   return await collector.measure(actionType, spanKind, operation, dimensions);
+}
+
+function resolveApiDispatchTimingDimensions(
+  dimensions: ApiDispatchTimingDimensionsInput | undefined,
+): ApiDispatchTimingDimensions | undefined {
+  return typeof dimensions === "function" ? dimensions() : dimensions;
 }
