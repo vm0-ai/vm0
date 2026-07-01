@@ -1,19 +1,13 @@
-import {
-  useGet,
-  useLastLoadable,
-  useLastResolved,
-  useSet,
-} from "ccstate-react";
+import { useGet, useLastLoadable, useLastResolved } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { toast } from "@vm0/ui/components/ui/sonner";
 import type { CustomConnectorResponse } from "@vm0/api-contracts/contracts/zero-custom-connectors";
 import { LoadingSwitch } from "../components/loading-switch.tsx";
 import { customConnectors$ } from "../../signals/zero-page/settings/custom-connectors.ts";
 import {
-  addAgentCustomConnector$,
-  removeAgentCustomConnector$,
-  saveAgentCustomConnectors$,
+  agentCustomConnectorToggleSaving$,
   agentAddedCustomConnectors$,
+  toggleAgentCustomConnector$,
 } from "../../signals/zero-page/job-detail/custom-connectors.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { detach, Reason } from "../../signals/utils.ts";
@@ -70,11 +64,9 @@ export function JobCustomConnectorsSection() {
   const addedLoadable = useLastLoadable(agentAddedCustomConnectors$);
   const added = addedLoadable.state === "hasData" ? addedLoadable.data : [];
   const addedSet = new Set(added);
-  const addCustom = useSet(addAgentCustomConnector$);
-  const removeCustom = useSet(removeAgentCustomConnector$);
-  const [saveLoadable, save] = useLoadableSet(saveAgentCustomConnectors$);
+  const [, toggle] = useLoadableSet(toggleAgentCustomConnector$);
   const pageSignal = useGet(pageSignal$);
-  const saving = saveLoadable.state === "loading";
+  const saving = useGet(agentCustomConnectorToggleSaving$);
 
   if (!connectors || connectors.length === 0) {
     return null;
@@ -84,14 +76,12 @@ export function JobCustomConnectorsSection() {
     if (saving) {
       return;
     }
-    const mutate = checked
-      ? addCustom(id, pageSignal)
-      : removeCustom(id, pageSignal);
     detach(
       (async () => {
-        await mutate;
-        await save(id, checked ? "add" : "remove", pageSignal);
-        toast.success("Custom connectors saved");
+        const saved = await toggle(id, checked, pageSignal);
+        if (saved) {
+          toast.success("Custom connectors saved");
+        }
       })(),
       Reason.DomCallback,
     );

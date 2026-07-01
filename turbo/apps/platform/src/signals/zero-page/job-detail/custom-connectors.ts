@@ -1,6 +1,7 @@
 import { command, computed, state } from "ccstate";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import { zeroClient$ } from "../../api-client.ts";
+import { withCleanup } from "../../utils.ts";
 import { accept } from "../../../lib/accept.ts";
 import { agentDetail$ } from "./detail.ts";
 
@@ -32,6 +33,7 @@ const seededCustomConnectors$ = computed(async (get): Promise<string[]> => {
 });
 
 const internalAdded$ = state<string[] | null>(null);
+const internalToggleSaving$ = state(false);
 
 export const agentAddedCustomConnectors$ = computed(
   async (get): Promise<string[]> => {
@@ -43,7 +45,11 @@ export const agentAddedCustomConnectors$ = computed(
   },
 );
 
-export const addAgentCustomConnector$ = command(
+export const agentCustomConnectorToggleSaving$ = computed((get): boolean => {
+  return get(internalToggleSaving$);
+});
+
+const addAgentCustomConnector$ = command(
   async ({ get, set }, id: string, _signal: AbortSignal) => {
     if (get(internalAdded$) === null) {
       set(internalAdded$, await get(seededCustomConnectors$));
@@ -54,7 +60,7 @@ export const addAgentCustomConnector$ = command(
   },
 );
 
-export const removeAgentCustomConnector$ = command(
+const removeAgentCustomConnector$ = command(
   async ({ get, set }, id: string, _signal: AbortSignal) => {
     if (get(internalAdded$) === null) {
       set(internalAdded$, await get(seededCustomConnectors$));
@@ -67,7 +73,7 @@ export const removeAgentCustomConnector$ = command(
   },
 );
 
-export const saveAgentCustomConnectors$ = command(
+const saveAgentCustomConnectors$ = command(
   async (
     { get, set },
     id: string,
@@ -93,5 +99,39 @@ export const saveAgentCustomConnectors$ = command(
 
     set(internalAdded$, null);
     set(reloadAgentCustomConnectors$);
+  },
+);
+
+export const toggleAgentCustomConnector$ = command(
+  async (
+    { get, set },
+    id: string,
+    checked: boolean,
+    signal: AbortSignal,
+  ): Promise<boolean> => {
+    if (get(internalToggleSaving$)) {
+      return false;
+    }
+    set(internalToggleSaving$, true);
+    await withCleanup(
+      (async () => {
+        if (checked) {
+          await set(addAgentCustomConnector$, id, signal);
+        } else {
+          await set(removeAgentCustomConnector$, id, signal);
+        }
+        await set(
+          saveAgentCustomConnectors$,
+          id,
+          checked ? "add" : "remove",
+          signal,
+        );
+      })(),
+      () => {
+        set(internalToggleSaving$, false);
+      },
+    );
+    signal.throwIfAborted();
+    return true;
   },
 );
