@@ -12,8 +12,8 @@ use crate::session_history_identity::{
     FinalSessionHistoryIdentityBuildError, build_final_session_history_identity,
 };
 use api_contracts::generated::constants::runners::{
-    SESSION_HISTORY_ENCODING_GZIP, SESSION_HISTORY_ENCODING_IDENTITY,
-    SESSION_HISTORY_GZIP_MIN_BYTES,
+    RESUME_SESSION_HISTORY_MAX_BYTES, SESSION_HISTORY_ENCODING_GZIP,
+    SESSION_HISTORY_ENCODING_IDENTITY, SESSION_HISTORY_GZIP_MIN_BYTES,
 };
 use api_contracts::generated::types::runners::storage::ArtifactEntryMissingRootPolicy;
 use bytes::Bytes;
@@ -543,18 +543,31 @@ async fn create_checkpoint_impl(
             ));
         }
     };
-    let history_bytes =
-        match session_history::read_session_history_from_payload(&history_marker_payload) {
-            Ok(b) => b,
-            Err(e) => {
-                return Err(fail(
-                    mode,
-                    "session_history_read",
-                    history_read_start,
-                    e.to_string(),
-                ));
-            }
-        };
+    let history_bytes = match session_history::read_session_history_from_payload_bounded(
+        &history_marker_payload,
+        RESUME_SESSION_HISTORY_MAX_BYTES,
+    ) {
+        Ok(b) => b,
+        Err(e) => {
+            return Err(fail(
+                mode,
+                "session_history_read",
+                history_read_start,
+                e.to_string(),
+            ));
+        }
+    };
+    let history_size = history_bytes.len() as u64;
+    if history_size > RESUME_SESSION_HISTORY_MAX_BYTES {
+        return Err(fail(
+            mode,
+            "session_history_read",
+            history_read_start,
+            format!(
+                "Session history exceeds maximum size of {RESUME_SESSION_HISTORY_MAX_BYTES} bytes"
+            ),
+        ));
+    }
 
     let session_history_text = match std::str::from_utf8(&history_bytes) {
         Ok(s) => Some(s),
@@ -605,7 +618,6 @@ async fn create_checkpoint_impl(
 
     // Compute SHA-256 hash of session history for presigned URL upload
     let history_hash = hex::encode(Sha256::digest(&history_bytes));
-    let history_size = history_bytes.len() as u64;
     log_info!(
         LOG_TAG,
         "Session history hash={}, size={history_size}",
