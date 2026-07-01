@@ -3,7 +3,7 @@ import { useGet, useLastResolved, useLoadable, useSet } from "ccstate-react";
 import { useLoadableSet } from "ccstate-react/experimental";
 import { pageSignal$ } from "../../signals/page-signal.ts";
 import { FeatureSwitchKey } from "@vm0/connectors/feature-switch-key";
-import { IconLoader2, IconLock, IconPlus, IconWand } from "@tabler/icons-react";
+import { IconLoader2, IconWand } from "@tabler/icons-react";
 import {
   Card,
   CardContent,
@@ -14,6 +14,14 @@ import {
   DialogTitle,
   Button,
   Input,
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+  Tabs,
+  TabsList,
+  TabsTrigger,
   Tooltip,
   TooltipContent,
   TooltipProvider,
@@ -47,12 +55,17 @@ import {
   setJobsAvatarUrl$,
   jobsVisibility$,
   setJobsVisibility$,
+  jobsActiveTab$,
+  setJobsActiveTab$,
   resetJobsDialog$,
 } from "../../signals/zero-page/zero-jobs-page.ts";
 import { serializeAvatarSvgConfig } from "../zero-page/avatar-svg-utils.ts";
 import { AvatarMaker } from "../zero-page/avatar-maker.tsx";
+import emptyPrivateAgents from "./assets/empty-private-agents.png";
 
 const MAX_PUBLIC_AGENTS = 7;
+
+type Visibility = "public" | "private";
 
 export function AgentsPage() {
   const dialogOpen = useGet(jobsDialogOpen$);
@@ -61,6 +74,8 @@ export function AgentsPage() {
   const setNewName = useSet(setJobsNewName$);
   const visibility = useGet(jobsVisibility$);
   const setVisibility = useSet(setJobsVisibility$);
+  const activeTab = useGet(jobsActiveTab$);
+  const setActiveTab = useSet(setJobsActiveTab$);
   const [createLoadable, createSubagentFn] = useLoadableSet(createSubagent$);
   const creating = createLoadable.state === "loading";
   const resetDialog = useSet(resetJobsDialog$);
@@ -75,9 +90,8 @@ export function AgentsPage() {
         }).length
       : 0;
   const atPublicLimit = publicAgentCount >= MAX_PUBLIC_AGENTS;
-  const publicRemaining = Math.max(0, MAX_PUBLIC_AGENTS - publicAgentCount);
 
-  const openCreateDialog = (target: "public" | "private") => {
+  const openCreateDialog = (target: Visibility) => {
     setVisibility(target);
     setDialogOpen(true);
   };
@@ -111,9 +125,11 @@ export function AgentsPage() {
 
       <main className="flex-1 overflow-auto px-4 sm:px-6 pt-3 pb-8">
         <div className="mx-auto max-w-[900px] flex flex-col gap-4">
-          <AgentSplitView
+          <AgentTabsView
+            activeTab={activeTab}
+            onTabChange={setActiveTab}
+            publicAgentCount={publicAgentCount}
             atPublicLimit={atPublicLimit}
-            publicRemaining={publicRemaining}
             onCreate={openCreateDialog}
           />
         </div>
@@ -127,19 +143,24 @@ export function AgentsPage() {
         onConfirm={handleCreateTeammate}
         creating={creating}
         visibility={visibility}
+        onVisibilityChange={setVisibility}
       />
     </div>
   );
 }
 
-function AgentSplitView({
+function AgentTabsView({
+  activeTab,
+  onTabChange,
+  publicAgentCount,
   atPublicLimit,
-  publicRemaining,
   onCreate,
 }: {
+  activeTab: Visibility;
+  onTabChange: (tab: Visibility) => void;
+  publicAgentCount: number;
   atPublicLimit: boolean;
-  publicRemaining: number;
-  onCreate: (visibility: "public" | "private") => void;
+  onCreate: (visibility: Visibility) => void;
 }) {
   const agentsLoadable = useLoadable(sortedAgents$);
   const membersLoadable = useLoadable(orgMembers$);
@@ -159,118 +180,148 @@ function AgentSplitView({
   );
   const skeleton = loading && !agents;
 
-  const publicAgents =
+  const visibleAgents =
     agents?.filter((a) => {
-      return a.visibility !== "private";
-    }) ?? [];
-  const privateAgents =
-    agents?.filter((a) => {
-      return a.visibility === "private";
+      return activeTab === "public"
+        ? a.visibility !== "private"
+        : a.visibility === "private";
     }) ?? [];
 
+  const createDisabled = activeTab === "public" && atPublicLimit;
+
   return (
-    <div className="flex flex-col gap-6">
-      <AgentSplitSection
-        title="Public"
-        agents={publicAgents}
-        membersById={membersById}
-        unreadAgentIds={unreadAgentIds}
-        unreadIndicatorsEnabled={agentUnreadIndicatorsEnabled}
-        skeleton={skeleton}
-        headerAction={
-          <div className="flex items-center gap-3">
-            <TooltipProvider delayDuration={200}>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <span className="text-xs text-muted-foreground cursor-default">
-                    {publicRemaining} remains
-                  </span>
-                </TooltipTrigger>
-                <TooltipContent side="top">
-                  <p className="text-xs">
-                    max {MAX_PUBLIC_AGENTS} public agent for workspace
-                  </p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
-            <Button
-              variant="outline"
-              size="sm"
-              className="zero-btn-morandi h-8 gap-2 rounded-lg border"
-              disabled={atPublicLimit}
-              onClick={() => {
-                return onCreate("public");
-              }}
+    <div className="flex flex-col gap-4">
+      <div className="flex items-center justify-between gap-3">
+        <Tabs
+          value={activeTab}
+          onValueChange={(value) => {
+            if (value === "public" || value === "private") {
+              onTabChange(value);
+            }
+          }}
+        >
+          <TabsList className="zero-tabs h-9 gap-1 px-1 py-1">
+            <TabsTrigger
+              value="public"
+              className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
             >
-              <IconPlus size={14} stroke={2} />
-              Create
-            </Button>
-          </div>
-        }
-      />
-      <AgentSplitSection
-        title="Private"
-        agents={privateAgents}
-        membersById={membersById}
-        unreadAgentIds={unreadAgentIds}
-        unreadIndicatorsEnabled={agentUnreadIndicatorsEnabled}
-        skeleton={skeleton}
-        headerAction={
+              Public
+            </TabsTrigger>
+            <TabsTrigger
+              value="private"
+              className="gap-1.5 px-3 text-sm data-[state=active]:bg-background"
+            >
+              Private
+            </TabsTrigger>
+          </TabsList>
+        </Tabs>
+        <div className="flex items-center gap-4">
+          {activeTab === "public" && (
+            <PublicSlotIndicator
+              used={publicAgentCount}
+              total={MAX_PUBLIC_AGENTS}
+            />
+          )}
           <Button
             variant="outline"
             size="sm"
-            className="zero-btn-morandi h-8 gap-2 rounded-lg border"
+            className="zero-btn-morandi h-8 rounded-lg border"
+            disabled={createDisabled}
             onClick={() => {
-              return onCreate("private");
+              return onCreate(activeTab);
             }}
           >
-            <IconPlus size={14} stroke={2} />
             Create
           </Button>
-        }
-      />
+        </div>
+      </div>
+
+      {skeleton ? (
+        <AgentGridSkeleton />
+      ) : visibleAgents.length > 0 ? (
+        <AgentGrid
+          agents={visibleAgents}
+          membersById={membersById}
+          unreadAgentIds={unreadAgentIds}
+          unreadIndicatorsEnabled={agentUnreadIndicatorsEnabled}
+        />
+      ) : activeTab === "private" ? (
+        <PrivateEmptyState
+          onCreate={() => {
+            return onCreate("private");
+          }}
+        />
+      ) : null}
     </div>
   );
 }
 
-function AgentSplitSection({
-  title,
-  agents,
-  membersById,
-  unreadAgentIds,
-  unreadIndicatorsEnabled,
-  skeleton,
-  headerAction,
-}: {
-  title: string;
-  agents: AgentProps["agent"][];
-  membersById: ReadonlyMap<string, OrgMember>;
-  unreadAgentIds: ReadonlySet<string> | undefined;
-  unreadIndicatorsEnabled: boolean;
-  skeleton: boolean;
-  headerAction: ReactNode;
-}) {
+function PublicSlotIndicator({ used, total }: { used: number; total: number }) {
+  const radius = 6.5;
+  const circumference = 2 * Math.PI * radius;
+  const fraction = total > 0 ? Math.min(1, used / total) : 0;
   return (
-    <section className="flex flex-col gap-3">
-      <header className="flex items-center justify-between gap-3">
-        <h2 className="text-base font-semibold text-foreground">{title}</h2>
-        {headerAction}
-      </header>
-      {skeleton ? (
-        <AgentSplitSkeleton />
-      ) : agents.length > 0 ? (
-        <AgentSplitBody
-          agents={agents}
-          membersById={membersById}
-          unreadAgentIds={unreadAgentIds}
-          unreadIndicatorsEnabled={unreadIndicatorsEnabled}
+    <span
+      className="flex items-center gap-2 text-xs text-muted-foreground"
+      aria-label={`${used} of ${total} public agents used`}
+    >
+      <svg width="16" height="16" viewBox="0 0 18 18" aria-hidden="true">
+        <circle
+          cx="9"
+          cy="9"
+          r={radius}
+          fill="none"
+          stroke="hsl(var(--gray-300))"
+          strokeWidth="3"
         />
-      ) : null}
-    </section>
+        <circle
+          cx="9"
+          cy="9"
+          r={radius}
+          fill="none"
+          stroke="hsl(var(--foreground))"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeDasharray={`${circumference * fraction} ${circumference}`}
+          transform="rotate(-90 9 9)"
+        />
+      </svg>
+      <span aria-hidden="true">
+        <span className="font-semibold text-foreground">{used}</span> / {total}{" "}
+        public
+      </span>
+    </span>
   );
 }
 
-function AgentSplitBody({
+function PrivateEmptyState({ onCreate }: { onCreate: () => void }) {
+  return (
+    <div className="flex flex-col items-center gap-1.5 py-14 text-center">
+      <img
+        src={emptyPrivateAgents}
+        alt=""
+        aria-hidden="true"
+        className="mb-2 h-40 w-40 object-contain"
+      />
+      <p className="text-base font-semibold text-foreground">
+        No private agents yet
+      </p>
+      <p className="max-w-[340px] text-sm text-muted-foreground">
+        Create an agent only you can see and use. Private agents are unlimited.
+      </p>
+      <Button
+        variant="outline"
+        size="sm"
+        className="zero-btn-morandi mt-4 h-8 rounded-lg border"
+        onClick={onCreate}
+      >
+        Create agent
+      </Button>
+    </div>
+  );
+}
+
+function AgentGrid({
   agents,
   membersById,
   unreadAgentIds,
@@ -306,7 +357,7 @@ function AgentSplitBody({
   );
 }
 
-function AgentSplitSkeleton() {
+function AgentGridSkeleton() {
   return (
     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
       {[1, 2, 3].map((i) => {
@@ -335,6 +386,7 @@ function CreateTeammateDialog({
   onConfirm,
   creating,
   visibility,
+  onVisibilityChange,
 }: {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -342,7 +394,8 @@ function CreateTeammateDialog({
   onNameChange: (name: string) => void;
   onConfirm: (avatarUrl: string) => void;
   creating: boolean;
-  visibility: "public" | "private";
+  visibility: Visibility;
+  onVisibilityChange: (visibility: Visibility) => void;
 }) {
   return (
     <Dialog open={open} onOpenChange={creating ? undefined : onOpenChange}>
@@ -357,9 +410,54 @@ function CreateTeammateDialog({
           }}
           creating={creating}
           visibility={visibility}
+          onVisibilityChange={onVisibilityChange}
         />
       )}
     </Dialog>
+  );
+}
+
+function CreateAgentAvatarPreview() {
+  const avatarUrl = useGet(jobsAvatarUrl$);
+  const setAvatarUrl = useSet(setJobsAvatarUrl$);
+
+  return (
+    <div className="flex flex-col items-center pt-10 pb-6 bg-muted/30">
+      <AvatarMaker
+        onConfirm={(cfg) => {
+          setAvatarUrl(serializeAvatarSvgConfig(cfg));
+          return Promise.resolve();
+        }}
+        trigger={(openMaker) => {
+          return (
+            <button
+              type="button"
+              onClick={openMaker}
+              className="relative rounded-full transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
+              aria-label="Customize avatar"
+            >
+              <AvatarFromUrl
+                avatarUrl={avatarUrl}
+                alt="New agent"
+                className="h-16 w-16 rounded-full object-cover object-top"
+              />
+              <TooltipProvider delayDuration={200}>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="absolute -right-0.5 -bottom-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border">
+                      <IconWand size={10} stroke={1.5} />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent side="bottom">
+                    <p className="text-xs">Customize avatar</p>
+                  </TooltipContent>
+                </Tooltip>
+              </TooltipProvider>
+            </button>
+          );
+        }}
+      />
+    </div>
   );
 }
 
@@ -370,16 +468,17 @@ function CreateTeammateDialogContent({
   onCancel,
   creating,
   visibility,
+  onVisibilityChange,
 }: {
   newName: string;
   onNameChange: (name: string) => void;
   onConfirm: (avatarUrl: string) => void;
   onCancel: () => void;
   creating: boolean;
-  visibility: "public" | "private";
+  visibility: Visibility;
+  onVisibilityChange: (visibility: Visibility) => void;
 }) {
   const avatarUrl = useGet(jobsAvatarUrl$);
-  const setAvatarUrl = useSet(setJobsAvatarUrl$);
 
   return (
     <DialogContent className="sm:max-w-[480px] p-0 gap-0 overflow-hidden">
@@ -390,68 +489,69 @@ function CreateTeammateDialogContent({
         </DialogDescription>
       </DialogHeader>
 
-      {/* Avatar preview */}
-      <div className="flex flex-col items-center pt-10 pb-6 bg-muted/30">
-        <AvatarMaker
-          onConfirm={(cfg) => {
-            setAvatarUrl(serializeAvatarSvgConfig(cfg));
-            return Promise.resolve();
-          }}
-          trigger={(openMaker) => {
-            return (
-              <button
-                type="button"
-                onClick={openMaker}
-                className="relative rounded-full transition-transform duration-200 hover:scale-110 focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2"
-                aria-label="Customize avatar"
-              >
-                <AvatarFromUrl
-                  avatarUrl={avatarUrl}
-                  alt="New agent"
-                  className="h-16 w-16 rounded-full object-cover object-top"
-                />
-                <TooltipProvider delayDuration={200}>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <span className="absolute -right-0.5 -bottom-0.5 flex h-5 w-5 items-center justify-center rounded-full bg-background text-muted-foreground shadow-sm border border-border">
-                        <IconWand size={10} stroke={1.5} />
-                      </span>
-                    </TooltipTrigger>
-                    <TooltipContent side="bottom">
-                      <p className="text-xs">Customize avatar</p>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
-              </button>
-            );
-          }}
-        />
-      </div>
+      <CreateAgentAvatarPreview />
 
       {/* Content */}
-      <div className="flex flex-col items-center gap-4 px-6 py-6">
+      <div className="flex flex-col gap-4 px-6 py-6">
         <div className="text-center">
-          <p className="text-base font-semibold">
-            Create a new {visibility} agent
-          </p>
+          <p className="text-base font-semibold">Create a new agent</p>
           <p className="text-sm text-muted-foreground mt-0.5">
-            Name your agent to get started.
+            Name your agent and set who can use it.
           </p>
         </div>
-        <Input
-          value={newName}
-          onChange={(e) => {
-            return onNameChange(e.target.value);
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && newName.trim() && !creating) {
-              onConfirm(avatarUrl);
-            }
-          }}
-          placeholder="e.g. Research Assistant"
-          autoFocus
-          disabled={creating}
-        />
+        <div className="flex flex-col gap-1.5">
+          <label
+            htmlFor="new-agent-name"
+            className="text-sm font-medium text-foreground"
+          >
+            Name
+          </label>
+          <Input
+            id="new-agent-name"
+            value={newName}
+            onChange={(e) => {
+              return onNameChange(e.target.value);
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && newName.trim() && !creating) {
+                onConfirm(avatarUrl);
+              }
+            }}
+            placeholder="e.g. Research Assistant"
+            autoFocus
+            disabled={creating}
+          />
+        </div>
+        <div className="flex flex-col gap-1.5">
+          <span className="text-xs text-muted-foreground">Visibility</span>
+          <Select
+            value={visibility}
+            onValueChange={(value) => {
+              if (value === "public" || value === "private") {
+                onVisibilityChange(value);
+              }
+            }}
+            disabled={creating}
+          >
+            <SelectTrigger className="h-9 w-full" aria-label="Visibility">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="private">
+                Private{" "}
+                <span className="text-muted-foreground">
+                  (only you can see and use it)
+                </span>
+              </SelectItem>
+              <SelectItem value="public">
+                Public{" "}
+                <span className="text-muted-foreground">
+                  (anyone in this workspace can use it)
+                </span>
+              </SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       {/* Footer */}
@@ -538,27 +638,6 @@ function CreatorAvatar({ creator }: { creator: AgentCreator }) {
   );
 }
 
-function CreatorBadge({ creator }: { creator: AgentCreator }) {
-  return (
-    <TooltipProvider delayDuration={200}>
-      <Tooltip>
-        <TooltipTrigger asChild>
-          <span
-            role="img"
-            aria-label={`Created by ${creator.name}`}
-            className="absolute right-3 top-3 flex h-5 w-5 items-center justify-center rounded-full border border-background bg-background shadow-sm"
-          >
-            <CreatorAvatar creator={creator} />
-          </span>
-        </TooltipTrigger>
-        <TooltipContent side="top" align="end">
-          <p className="text-xs">Created by {creator.name}</p>
-        </TooltipContent>
-      </Tooltip>
-    </TooltipProvider>
-  );
-}
-
 function AgentUnreadIndicator() {
   return (
     <span
@@ -572,45 +651,37 @@ function AgentCard({ agent, creator, hasUnread }: AgentProps) {
   const defaultAgentId = useLastResolved(defaultAgentId$);
   const lead = agent.id === defaultAgentId;
   const displayName = agent.displayName ?? agent.id;
-  const isPrivate = agent.visibility === "private";
   const description = defaultAgentId
     ? agent.description || (lead ? "Your core agent" : "Sub-agent")
     : "";
   return (
-    <Card className="zero-card relative cursor-pointer flex flex-col hover:bg-muted/30 transition-colors h-full">
-      {!isPrivate && <CreatorBadge creator={creator} />}
-      <CardContent
-        className={
-          isPrivate
-            ? "px-5 py-4 flex items-center gap-3"
-            : "pl-5 pr-12 py-4 flex items-center gap-3"
-        }
-      >
-        <span className="relative h-10 w-10 shrink-0">
-          <AgentAvatarImg
-            name={agent.id}
-            alt={displayName}
-            className="h-10 w-10 rounded-full object-cover object-top"
-          />
-          {hasUnread && <AgentUnreadIndicator />}
-        </span>
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-1.5 min-w-0">
-            <span className="text-sm font-medium text-foreground truncate">
+    <Card className="zero-card cursor-pointer flex flex-col hover:bg-muted/30 transition-colors h-full">
+      <CardContent className="flex flex-1 flex-col gap-3 px-5 py-4">
+        <div className="flex items-center gap-3">
+          <span className="relative h-10 w-10 shrink-0">
+            <AgentAvatarImg
+              name={agent.id}
+              alt={displayName}
+              className="h-10 w-10 rounded-full object-cover object-top"
+            />
+            {hasUnread && <AgentUnreadIndicator />}
+          </span>
+          <div className="flex-1 min-w-0">
+            <span className="block truncate text-sm font-medium text-foreground">
               {displayName}
             </span>
-            {isPrivate && (
-              <IconLock
-                size={12}
-                stroke={1.5}
-                className="shrink-0 text-muted-foreground"
-                aria-label="Private agent"
-              />
-            )}
+            <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
+              {description}
+            </p>
           </div>
-          <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">
-            {description}
-          </p>
+        </div>
+        <div className="mt-auto flex items-center gap-2 border-t border-border/60 pt-3">
+          <span className="flex h-5 w-5 shrink-0 items-center justify-center overflow-hidden rounded-full">
+            <CreatorAvatar creator={creator} />
+          </span>
+          <span className="truncate text-xs text-muted-foreground">
+            Created by {creator.name}
+          </span>
         </div>
       </CardContent>
     </Card>

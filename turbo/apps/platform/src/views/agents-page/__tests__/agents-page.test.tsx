@@ -35,6 +35,27 @@ const agents = [
   },
 ] satisfies TeamComposeItem[];
 
+const orgMembers = [
+  {
+    userId: "user_alice",
+    email: "alice@example.com",
+    firstName: "Alice",
+    lastName: "Admin",
+    imageUrl: "https://example.com/alice.png",
+    role: "admin" as const,
+    joinedAt: "2024-01-01T00:00:00Z",
+  },
+  {
+    userId: "user_bob",
+    email: "bob@example.com",
+    firstName: "Bob",
+    lastName: "Builder",
+    imageUrl: "",
+    role: "member" as const,
+    joinedAt: "2024-01-01T00:00:00Z",
+  },
+];
+
 function agentCard(name: string): HTMLElement {
   const nameElement = screen.getAllByText(name).find((element) => {
     return element.closest("main");
@@ -46,74 +67,47 @@ function agentCard(name: string): HTMLElement {
   return card;
 }
 
-async function expectVisibleTooltip(text: string): Promise<void> {
-  const matches = await screen.findAllByText(text);
-  const visibleMatch = matches.find((element) => {
-    try {
-      expect(element).toBeVisible();
-      return true;
-    } catch {
-      return false;
-    }
-  });
-  expect(visibleMatch).toBeDefined();
-}
-
 describe("agents page", () => {
-  it("shows the creator of a public agent on hover", async () => {
+  it("shows the creator on every agent card across both tabs", async () => {
     const user = userEvent.setup();
     context.mocks.data.team(agents);
-    context.mocks.data.orgMembers({
-      members: [
-        {
-          userId: "user_alice",
-          email: "alice@example.com",
-          firstName: "Alice",
-          lastName: "Admin",
-          imageUrl: "https://example.com/alice.png",
-          role: "admin",
-          joinedAt: "2024-01-01T00:00:00Z",
-        },
-        {
-          userId: "user_bob",
-          email: "bob@example.com",
-          firstName: "Bob",
-          lastName: "Builder",
-          imageUrl: "",
-          role: "member",
-          joinedAt: "2024-01-01T00:00:00Z",
-        },
-      ],
-    });
+    context.mocks.data.orgMembers({ members: orgMembers });
 
     detachedSetupPage({ context, path: "/agents" });
+
+    // The private tab is selected by default.
+    await waitFor(() => {
+      expect(agentCard("Private Ops")).toBeInTheDocument();
+    });
+    expect(
+      within(agentCard("Private Ops")).getByText("Created by Bob Builder"),
+    ).toBeInTheDocument();
+    // Public agents are hidden until the public tab is selected.
+    expect(screen.queryByText("Research Agent")).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Public" }));
 
     await waitFor(() => {
       expect(agentCard("Research Agent")).toBeInTheDocument();
     });
-
     expect(
-      screen.queryByText("Created by Alice Admin"),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByText("Created by Bob Builder"),
-    ).not.toBeInTheDocument();
+      within(agentCard("Research Agent")).getByText("Created by Alice Admin"),
+    ).toBeInTheDocument();
+  });
 
-    const researchCreator = within(agentCard("Research Agent")).getByRole(
-      "img",
-      { name: "Created by Alice Admin" },
-    );
-    expect(
-      within(agentCard("Private Ops")).queryByRole("img", {
-        name: "Created by Bob Builder",
-      }),
-    ).not.toBeInTheDocument();
+  it("shows the private empty state when there are no private agents", async () => {
+    context.mocks.data.team([agents[0]]);
+    context.mocks.data.orgMembers({ members: orgMembers });
 
-    await user.hover(researchCreator);
-    await expectVisibleTooltip("Created by Alice Admin");
+    detachedSetupPage({ context, path: "/agents" });
+
+    await waitFor(() => {
+      expect(screen.getByText("No private agents yet")).toBeInTheDocument();
+    });
   });
 
   it("shows agent unread indicators behind the feature switch", async () => {
+    const user = userEvent.setup();
     context.mocks.data.team(agents);
     context.mocks.data.orgMembers({ members: [] });
 
@@ -130,21 +124,24 @@ describe("agents page", () => {
     });
 
     await waitFor(() => {
-      expect(agentCard("Research Agent")).toBeInTheDocument();
       expect(agentCard("Private Ops")).toBeInTheDocument();
     });
+    expect(
+      within(agentCard("Private Ops")).getByLabelText("Unread"),
+    ).toHaveClass("border-card");
 
-    const researchUnread = within(agentCard("Research Agent")).getByLabelText(
-      "Unread",
-    );
-    const privateUnread = within(agentCard("Private Ops")).getByLabelText(
-      "Unread",
-    );
-    expect(researchUnread).toHaveClass("border-card");
-    expect(privateUnread).toHaveClass("border-card");
+    await user.click(screen.getByRole("tab", { name: "Public" }));
+
+    await waitFor(() => {
+      expect(agentCard("Research Agent")).toBeInTheDocument();
+    });
+    expect(
+      within(agentCard("Research Agent")).getByLabelText("Unread"),
+    ).toHaveClass("border-card");
   });
 
   it("hides agent unread indicators when the feature switch is off", async () => {
+    const user = userEvent.setup();
     context.mocks.data.team(agents);
     context.mocks.data.orgMembers({ members: [] });
 
@@ -161,15 +158,19 @@ describe("agents page", () => {
     });
 
     await waitFor(() => {
-      expect(agentCard("Research Agent")).toBeInTheDocument();
       expect(agentCard("Private Ops")).toBeInTheDocument();
     });
-
-    expect(
-      within(agentCard("Research Agent")).queryByLabelText("Unread"),
-    ).not.toBeInTheDocument();
     expect(
       within(agentCard("Private Ops")).queryByLabelText("Unread"),
+    ).not.toBeInTheDocument();
+
+    await user.click(screen.getByRole("tab", { name: "Public" }));
+
+    await waitFor(() => {
+      expect(agentCard("Research Agent")).toBeInTheDocument();
+    });
+    expect(
+      within(agentCard("Research Agent")).queryByLabelText("Unread"),
     ).not.toBeInTheDocument();
   });
 });
