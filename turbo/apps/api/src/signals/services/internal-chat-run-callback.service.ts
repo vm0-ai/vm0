@@ -465,7 +465,8 @@ function queuedZeroRunModelMetadataOverride(
   if (
     message.modelProviderType === null &&
     message.modelProviderId === null &&
-    message.modelProviderCredentialScope === null
+    message.modelProviderCredentialScope === null &&
+    message.selectedModel === null
   ) {
     return undefined;
   }
