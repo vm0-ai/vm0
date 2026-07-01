@@ -4205,6 +4205,22 @@ function initialRunBody(args: CreateAgentRunArgs): CreateRunBody {
     : args.body;
 }
 
+function validateChatLaunchAssociationArgs(
+  args: CreateAgentRunArgs,
+): CreateRunErrorResult | null {
+  const association = args.chatLaunchAssociation;
+  if (!association) {
+    return null;
+  }
+  if (args.chatThreadId !== association.threadId) {
+    return badRequestMessage("Chat launch association thread mismatch");
+  }
+  if (args.userId !== association.userId) {
+    return badRequestMessage("Chat launch association user mismatch");
+  }
+  return null;
+}
+
 function zeroRunModelProviderValues(
   modelProvider: ResolvedModelProviderEnvironment | null,
   zeroRunModelPin: ChatLaunchZeroRunModelPin | undefined,
@@ -6466,6 +6482,11 @@ export const createAgentRun$ = command(
     signal.throwIfAborted();
     if (tierGate) {
       return tierGate;
+    }
+
+    const chatLaunchAssociationGate = validateChatLaunchAssociationArgs(args);
+    if (chatLaunchAssociationGate) {
+      return chatLaunchAssociationGate;
     }
 
     const context = await timing.measure(
