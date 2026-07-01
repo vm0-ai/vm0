@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://${{ vars.TEST_OAUTH_TENANT_ID }}.{pr}.vm6.ai/api/test/oauth-provider",
       "permissions": [
         {
-          "description": "Test echo endpoint used to verify token injection",
           "name": "echo",
           "rules": [
             "GET /echo"
@@ -31,7 +30,6 @@ JSON_PART = r"""{
       "base": "https://{pr}.vm6.ai/api/test/oauth-provider",
       "permissions": [
         {
-          "description": "Test echo endpoint used to verify token injection",
           "name": "echo",
           "rules": [
             "GET /echo"

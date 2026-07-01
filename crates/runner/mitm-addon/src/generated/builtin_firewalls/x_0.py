@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://api.x.com",
       "permissions": [
         {
-          "description": "App-only endpoints (no user context required)",
           "name": "app-only",
           "rules": [
             "GET /2/account_activity/subscriptions/count",
@@ -64,14 +63,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View accounts you have blocked.",
           "name": "block.read",
           "rules": [
             "GET /2/users/{id}/blocking"
           ]
         },
         {
-          "description": "Read your bookmarked Posts.",
           "name": "bookmark.read",
           "rules": [
             "GET /2/users/{id}/bookmarks",
@@ -80,7 +77,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create and delete your bookmarks.",
           "name": "bookmark.write",
           "rules": [
             "POST /2/users/{id}/bookmarks",
@@ -88,7 +84,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read all your Direct Messages.",
           "name": "dm.read",
           "rules": [
             "POST /2/activity/subscriptions",
@@ -105,7 +100,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Send and manage your Direct Messages.",
           "name": "dm.write",
           "rules": [
             "GET /2/account_activity/webhooks/{webhook_id}/subscriptions/all",
@@ -127,7 +121,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View accounts you follow and accounts following you.",
           "name": "follows.read",
           "rules": [
             "GET /2/users/{id}/followers",
@@ -135,7 +128,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Follow and unfollow accounts on your behalf.",
           "name": "follows.write",
           "rules": [
             "POST /2/users/{id}/following",
@@ -143,7 +135,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View Posts you have liked and likes you can see.",
           "name": "like.read",
           "rules": [
             "GET /2/tweets/{id}/liking_users",
@@ -151,7 +142,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Like and unlike Posts on your behalf.",
           "name": "like.write",
           "rules": [
             "POST /2/users/{id}/likes",
@@ -159,7 +149,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View Lists, members, and followers of Lists you created or are a member of, including private Lists.",
           "name": "list.read",
           "rules": [
             "GET /2/communities/{id}",
@@ -174,7 +163,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create and manage Lists on your behalf.",
           "name": "list.write",
           "rules": [
             "POST /2/lists",
@@ -189,7 +177,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Upload media, such as photos and videos, on your behalf.",
           "name": "media.write",
           "rules": [
             "POST /2/chat/media/upload/initialize",
@@ -207,14 +194,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View accounts you have muted.",
           "name": "mute.read",
           "rules": [
             "GET /2/users/{id}/muting"
           ]
         },
         {
-          "description": "Mute and unmute accounts on your behalf.",
           "name": "mute.write",
           "rules": [
             "POST /2/users/{id}/muting",
@@ -222,7 +207,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View all Spaces you have access to.",
           "name": "space.read",
           "rules": [
             "GET /2/spaces",
@@ -234,21 +218,18 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View all Custom Timelines you can see, including public Custom Timelines from other developers.",
           "name": "timeline.read",
           "rules": [
             "GET /2/users/reposts_of_me"
           ]
         },
         {
-          "description": "Hide and unhide replies to your Posts.",
           "name": "tweet.moderate.write",
           "rules": [
             "PUT /2/tweets/{tweet_id}/hidden"
           ]
         },
         {
-          "description": "View all Posts you can see, including those from protected accounts.",
           "name": "tweet.read",
           "rules": [
             "GET /2/activity/subscriptions",
@@ -269,7 +250,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Post and repost on your behalf.",
           "name": "tweet.write",
           "rules": [
             "POST /2/articles/draft",
@@ -284,7 +264,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "View any account you can see, including protected accounts.",
           "name": "users.read",
           "rules": [
             "GET /2/communities/search",

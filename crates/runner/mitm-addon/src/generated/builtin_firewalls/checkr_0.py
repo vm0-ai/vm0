@@ -14,14 +14,12 @@ JSON_PART = r"""{
       "base": "https://api.checkr.com/v1",
       "permissions": [
         {
-          "description": "Read Checkr resources",
           "name": "read",
           "rules": [
             "GET /{path+}"
           ]
         },
         {
-          "description": "Create, update, and delete Checkr resources",
           "name": "write",
           "rules": [
             "POST /{path+}",

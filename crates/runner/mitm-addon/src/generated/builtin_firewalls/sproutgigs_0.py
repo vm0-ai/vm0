@@ -14,7 +14,6 @@ JSON_PART = r"""{
       "base": "https://sproutgigs.com/api",
       "permissions": [
         {
-          "description": "Read gig categories, listings, details, questions, and reviews",
           "name": "gigs:read",
           "rules": [
             "GET /gigs/get-categories.php",
@@ -25,7 +24,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read job categories, jobs, zones, rated and unrated tasks, and predicted position",
           "name": "jobs:read",
           "rules": [
             "GET /jobs/get-categories.php",
@@ -38,7 +36,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Create, update, feature, pause, resume, restart, stop, and configure jobs",
           "name": "jobs:write",
           "rules": [
             "POST /jobs/add-positions.php",
@@ -56,7 +53,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Approve or reject single and multiple submitted tasks",
           "name": "tasks:rate",
           "rules": [
             "POST /jobs/rate-multiple-tasks.php",
@@ -64,7 +60,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read public and account freelancer lists",
           "name": "lists:read",
           "rules": [
             "GET /jobs/get-lists.php",
@@ -72,7 +67,6 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Add, block, and unblock freelancers in lists",
           "name": "lists:write",
           "rules": [
             "POST /lists/add-workers.php",
@@ -81,14 +75,12 @@ JSON_PART = r"""{
           ]
         },
         {
-          "description": "Read freelancer profile details",
           "name": "profiles:read",
           "rules": [
             "GET /profiles/get-profile.php"
           ]
         },
         {
-          "description": "Read account balances",
           "name": "users:read",
           "rules": [
             "GET /users/get-balances.php"
