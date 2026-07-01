@@ -4009,7 +4009,7 @@ function loadResumeSession(
         (): Promise<StoredExecutionContext["resumeSession"] | null> => {
           const cliAgentSessionId = conversation.cliAgentSessionId;
           const hash = conversation.cliAgentSessionHistoryHash;
-          let encoding: "identity" | "gzip" | undefined;
+          let encoding: typeof SESSION_HISTORY_ENCODING_GZIP | undefined;
           if (conversation.sessionHistoryBlobEncoding !== null) {
             const parsedEncoding = normalizeSessionHistoryBlobEncoding(
               conversation.sessionHistoryBlobEncoding,
