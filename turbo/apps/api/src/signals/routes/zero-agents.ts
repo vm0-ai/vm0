@@ -1,7 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { command, computed } from "ccstate";
-import { and, count, eq, inArray } from "drizzle-orm";
+import { and, count, eq } from "drizzle-orm";
 import { zeroAgentCustomConnectorsContract } from "@vm0/api-contracts/contracts/zero-agent-custom-connectors";
 import {
   zeroAgentsByIdContract,
@@ -14,7 +14,6 @@ import {
   type ConnectorType,
 } from "@vm0/connectors/connectors";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import { organizationAuthContext$ } from "../auth/auth-context";
@@ -744,38 +743,6 @@ const updateAgentCustomConnectorsInner$ = command(
     const writeDb = set(writeDb$);
     const enabledIds = Array.from(new Set(body.data.enabledIds));
 
-    if (enabledIds.length > 0) {
-      const found = await writeDb
-        .select({ id: orgCustomConnectors.id })
-        .from(orgCustomConnectors)
-        .where(
-          and(
-            eq(orgCustomConnectors.orgId, auth.orgId),
-            inArray(orgCustomConnectors.id, enabledIds),
-          ),
-        );
-      signal.throwIfAborted();
-      const foundSet = new Set(
-        found.map((row) => {
-          return row.id;
-        }),
-      );
-      const missing = enabledIds.filter((id) => {
-        return !foundSet.has(id);
-      });
-      if (missing.length > 0) {
-        return {
-          status: 400 as const,
-          body: {
-            error: {
-              message: `Unknown custom connector ids: ${missing.join(", ")}`,
-              code: "VALIDATION_ERROR",
-            },
-          },
-        };
-      }
-    }
-
     const replaced = await replaceUserCustomConnectors(writeDb, {
       orgId: auth.orgId,
       userId: auth.userId,
@@ -783,8 +750,19 @@ const updateAgentCustomConnectorsInner$ = command(
       enabledIds,
     });
     signal.throwIfAborted();
-    if (!replaced) {
+    if (replaced.status === "agentNotFound") {
       return agentNotFound(params.id);
+    }
+    if (replaced.status === "customConnectorsNotFound") {
+      return {
+        status: 400 as const,
+        body: {
+          error: {
+            message: `Unknown custom connector ids: ${replaced.missingIds.join(", ")}`,
+            code: "VALIDATION_ERROR",
+          },
+        },
+      };
     }
 
     return {

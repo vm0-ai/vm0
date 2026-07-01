@@ -1,10 +1,19 @@
-import { and, eq } from "drizzle-orm";
+import { and, eq, inArray } from "drizzle-orm";
 import type { ConnectorType } from "@vm0/connectors/connectors";
+import { orgCustomConnectors } from "@vm0/db/schema/org-custom-connector";
 import { userCustomConnectors } from "@vm0/db/schema/user-custom-connector";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 
 import type { Db } from "../external/db";
+
+type ReplaceUserCustomConnectorsResult =
+  | { readonly status: "replaced" }
+  | { readonly status: "agentNotFound" }
+  | {
+      readonly status: "customConnectorsNotFound";
+      readonly missingIds: readonly string[];
+    };
 
 async function lockAgentForConnectorReplace(
   db: Pick<Db, "select">,
@@ -22,6 +31,38 @@ async function lockAgentForConnectorReplace(
     .for("update")
     .limit(1);
   return agent !== undefined;
+}
+
+async function lockCustomConnectorsForReplace(
+  db: Pick<Db, "select">,
+  args: {
+    readonly orgId: string;
+    readonly enabledIds: readonly string[];
+  },
+): Promise<readonly string[]> {
+  if (args.enabledIds.length === 0) {
+    return [];
+  }
+
+  const lockedRows = await db
+    .select({ id: orgCustomConnectors.id })
+    .from(orgCustomConnectors)
+    .where(
+      and(
+        eq(orgCustomConnectors.orgId, args.orgId),
+        inArray(orgCustomConnectors.id, [...args.enabledIds]),
+      ),
+    )
+    .orderBy(orgCustomConnectors.id)
+    .for("update");
+  const lockedIds = new Set(
+    lockedRows.map((row) => {
+      return row.id;
+    }),
+  );
+  return args.enabledIds.filter((id) => {
+    return !lockedIds.has(id);
+  });
 }
 
 export async function replaceUserConnectors(
@@ -78,14 +119,22 @@ export async function replaceUserCustomConnectors(
     readonly agentId: string;
     readonly enabledIds: readonly string[];
   },
-): Promise<boolean> {
+): Promise<ReplaceUserCustomConnectorsResult> {
   const enabledIds = Array.from(new Set(args.enabledIds));
 
   return await db.transaction(async (tx) => {
+    const missingIds = await lockCustomConnectorsForReplace(tx, {
+      orgId: args.orgId,
+      enabledIds,
+    });
+    if (missingIds.length > 0) {
+      return { status: "customConnectorsNotFound", missingIds };
+    }
+
     // Serialize replace semantics for concurrent saves of the same agent.
     const agentLocked = await lockAgentForConnectorReplace(tx, args);
     if (!agentLocked) {
-      return false;
+      return { status: "agentNotFound" };
     }
 
     await tx
@@ -99,7 +148,7 @@ export async function replaceUserCustomConnectors(
       );
 
     if (enabledIds.length === 0) {
-      return true;
+      return { status: "replaced" };
     }
 
     await tx.insert(userCustomConnectors).values(
@@ -112,6 +161,6 @@ export async function replaceUserCustomConnectors(
         };
       }),
     );
-    return true;
+    return { status: "replaced" };
   });
 }
