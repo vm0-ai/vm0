@@ -65,6 +65,10 @@ import {
 } from "../external/slack-message-client";
 import { now, nowDate } from "../external/time";
 import { writeDb$, type Db } from "../external/db";
+import {
+  ApiDispatchTimingCollector,
+  measureApiDispatchTiming,
+} from "./api-dispatch-timing.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
 import { decryptPersistentSecretValue } from "./crypto.utils";
 import {
@@ -220,6 +224,7 @@ interface RunAgentParams {
   readonly modelProviderType?: string;
   readonly selectedModelOverride?: string;
   readonly computerUseHostId?: string;
+  readonly timing: ApiDispatchTimingCollector;
 }
 
 type SlackChannelType = "channel" | "dm" | "group_dm";
@@ -251,6 +256,8 @@ interface SlackAgentMessageArgs {
   readonly threadTs?: string;
   readonly files?: readonly SlackFile[];
   readonly apiStartTime: number;
+  readonly backgroundScheduledAt?: number;
+  readonly timing: ApiDispatchTimingCollector;
   readonly signal: AbortSignal;
 }
 
@@ -1165,6 +1172,11 @@ const runAgentForSlackOrg$ = command(
     params: RunAgentParams,
     signal: AbortSignal,
   ): Promise<RunAgentResult> => {
+    params.timing.recordElapsed(
+      "api_dispatch_pre_create_zero_slack_create_run",
+      "nested",
+      now(),
+    );
     const result = await set(
       createZeroRun$,
       {
@@ -1198,6 +1210,7 @@ const runAgentForSlackOrg$ = command(
             payload: params.callbackContext,
           },
         ],
+        timing: params.timing,
       },
       signal,
     );
@@ -1566,6 +1579,7 @@ const buildRunAgentParams$ = command(
       modelProviderType: modelRoute?.modelProviderType ?? undefined,
       selectedModelOverride: modelRoute?.selectedModel ?? undefined,
       computerUseHostId,
+      timing: args.timing,
     };
   },
 );
@@ -1635,18 +1649,46 @@ const handleSlackRunResult$ = command(
 
 const handleSlackAgentMessage$ = command(
   async ({ set }, args: SlackAgentMessageArgs): Promise<void> => {
-    const resolved = await set(resolveSlackAgentMessage$, args);
+    if (args.backgroundScheduledAt !== undefined) {
+      args.timing.recordElapsed(
+        "api_dispatch_pre_create_zero_slack_background_start_gap",
+        "nested",
+        args.backgroundScheduledAt,
+      );
+    }
+    const resolved = await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_slack_resolve_message",
+      "nested",
+      async () => {
+        return await set(resolveSlackAgentMessage$, args);
+      },
+    );
     if (!resolved) {
       return;
     }
 
-    await setThreadStatus(
-      resolved.client,
-      args.channelId,
-      resolved.threadTs,
-      "is thinking...",
+    await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_slack_set_thread_status",
+      "nested",
+      async () => {
+        await setThreadStatus(
+          resolved.client,
+          args.channelId,
+          resolved.threadTs,
+          "is thinking...",
+        );
+      },
     );
-    const runParams = await set(buildRunAgentParams$, args, resolved);
+    const runParams = await measureApiDispatchTiming(
+      args.timing,
+      "api_dispatch_pre_create_zero_slack_build_run_params",
+      "nested",
+      async () => {
+        return await set(buildRunAgentParams$, args, resolved);
+      },
+    );
     const result = await set(runAgentForSlackOrg$, runParams, args.signal);
     await set(handleSlackRunResult$, { message: args, resolved, result });
   },
@@ -1658,6 +1700,12 @@ export const dispatchZeroSlackProbe$ = command(
     input: ZeroSlackDispatchProbeInput,
     signal: AbortSignal,
   ): Promise<void> => {
+    const timing = new ApiDispatchTimingCollector();
+    timing.recordElapsed(
+      "api_dispatch_pre_create_zero_slack_entrypoint_gap",
+      "nested",
+      input.apiStartTime,
+    );
     await set(handleSlackAgentMessage$, {
       db: set(writeDb$),
       workspaceId: input.workspaceId,
@@ -1667,6 +1715,7 @@ export const dispatchZeroSlackProbe$ = command(
       messageText: input.messageText,
       messageTs: input.messageTs,
       apiStartTime: input.apiStartTime,
+      timing,
       signal,
     });
   },
@@ -1758,6 +1807,8 @@ const handleEventCallback$ = command(
       readonly db: Db;
       readonly payload: SlackEventCallback;
       readonly apiStartTime: number;
+      readonly backgroundScheduledAt: number;
+      readonly timing: ApiDispatchTimingCollector;
       readonly signal: AbortSignal;
     },
   ): void => {
@@ -1768,6 +1819,8 @@ const handleEventCallback$ = command(
           set(handleSlackAgentMessage$, {
             db: args.db,
             apiStartTime: args.apiStartTime,
+            backgroundScheduledAt: args.backgroundScheduledAt,
+            timing: args.timing,
             signal: args.signal,
             workspaceId: args.payload.team_id,
             channelId: event.channel,
@@ -1801,6 +1854,8 @@ const handleEventCallback$ = command(
           set(handleSlackAgentMessage$, {
             db: args.db,
             apiStartTime: args.apiStartTime,
+            backgroundScheduledAt: args.backgroundScheduledAt,
+            timing: args.timing,
             signal: args.signal,
             workspaceId: args.payload.team_id,
             channelId: event.channel,
@@ -1904,10 +1959,18 @@ export const handleZeroSlackEvents$ = command(
       if (request.header("x-slack-retry-num")) {
         return textResponse("OK");
       }
+      const timing = new ApiDispatchTimingCollector();
+      timing.recordElapsed(
+        "api_dispatch_pre_create_zero_slack_entrypoint_gap",
+        "nested",
+        apiStartTime,
+      );
       set(handleEventCallback$, {
         db: set(writeDb$),
         payload,
         apiStartTime,
+        backgroundScheduledAt: now(),
+        timing,
         signal,
       });
       return textResponse("OK");
