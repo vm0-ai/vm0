@@ -20,6 +20,7 @@ export const flightaware = {
           fields: {
             FLIGHTAWARE_TOKEN: {
               label: "AeroAPI Key",
+              publicId: "apiKey",
               required: true,
             },
           },

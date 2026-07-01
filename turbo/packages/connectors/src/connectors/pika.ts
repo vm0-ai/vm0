@@ -20,6 +20,7 @@ export const pika = {
           fields: {
             PIKA_TOKEN: {
               label: "Developer Key",
+              publicId: "developerKey",
               required: true,
               placeholder: "dk_...",
             },

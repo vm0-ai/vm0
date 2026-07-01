@@ -20,6 +20,7 @@ export const wrike = {
           fields: {
             WRIKE_TOKEN: {
               label: "Permanent Access Token",
+              publicId: "accessToken",
               required: true,
             },
           },

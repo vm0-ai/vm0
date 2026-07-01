@@ -19,6 +19,7 @@ export const salesgraph = {
           fields: {
             SALESGRAPH_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-salesgraph-api-key",
             },

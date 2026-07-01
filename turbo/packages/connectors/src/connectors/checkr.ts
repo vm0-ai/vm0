@@ -27,6 +27,7 @@ export const checkr = {
           fields: {
             CHECKR_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-checkr-api-key",
             },

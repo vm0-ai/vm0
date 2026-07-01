@@ -21,6 +21,7 @@ export const replicate = {
           fields: {
             REPLICATE_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "r8_...",
             },

@@ -20,6 +20,7 @@ export const supermemory = {
           fields: {
             SUPERMEMORY_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "sm_...",
             },

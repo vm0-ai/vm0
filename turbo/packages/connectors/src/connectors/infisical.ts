@@ -20,6 +20,7 @@ export const infisical = {
           fields: {
             INFISICAL_TOKEN: {
               label: "Token",
+              publicId: "token",
               required: true,
               placeholder: "your-infisical-token",
             },

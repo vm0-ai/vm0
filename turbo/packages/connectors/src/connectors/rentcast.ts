@@ -20,6 +20,7 @@ export const rentcast = {
           fields: {
             RENTCAST_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-rentcast-api-key",
             },

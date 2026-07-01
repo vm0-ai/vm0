@@ -21,6 +21,7 @@ export const runway = {
           fields: {
             RUNWAY_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-runway-api-key",
             },

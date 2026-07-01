@@ -20,6 +20,7 @@ export const silmaril = {
           fields: {
             SILMARIL_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-silmaril-api-key",
             },

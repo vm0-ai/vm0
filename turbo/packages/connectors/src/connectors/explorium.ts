@@ -20,6 +20,7 @@ export const explorium = {
           fields: {
             EXPLORIUM_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-explorium-api-key",
             },

@@ -21,10 +21,12 @@ export const gitlab = {
           fields: {
             GITLAB_TOKEN: {
               label: "Personal Access Token",
+              publicId: "accessToken",
               required: true,
             },
             GITLAB_HOST: {
               label: "GitLab Host",
+              publicId: "host",
               required: false,
               placeholder: "gitlab.com",
               storage: "variable",

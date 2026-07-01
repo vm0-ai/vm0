@@ -20,6 +20,7 @@ export const square = {
           fields: {
             SQUARE_TOKEN: {
               label: "Access Token",
+              publicId: "accessToken",
               required: true,
               placeholder: "EAAA...",
             },

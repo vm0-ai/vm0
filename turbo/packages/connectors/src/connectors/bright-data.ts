@@ -20,6 +20,7 @@ export const brightData = {
           fields: {
             BRIGHTDATA_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
             },
           },

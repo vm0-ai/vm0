@@ -21,6 +21,7 @@ export const v0 = {
           fields: {
             V0_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "v0-...",
             },

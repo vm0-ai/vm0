@@ -20,10 +20,12 @@ export const mathpix = {
           fields: {
             MATHPIX_APP_KEY: {
               label: "App Key",
+              publicId: "appKey",
               required: true,
             },
             MATHPIX_APP_ID: {
               label: "App ID",
+              publicId: "appId",
               required: true,
               storage: "variable",
             },

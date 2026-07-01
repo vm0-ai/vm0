@@ -20,6 +20,7 @@ export const hunter = {
           fields: {
             HUNTER_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
           },

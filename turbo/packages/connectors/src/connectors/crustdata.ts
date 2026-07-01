@@ -20,6 +20,7 @@ export const crustdata = {
           fields: {
             CRUSTDATA_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
           },

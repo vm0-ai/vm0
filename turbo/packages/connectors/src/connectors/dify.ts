@@ -21,6 +21,7 @@ export const dify = {
           fields: {
             DIFY_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "app-...",
             },

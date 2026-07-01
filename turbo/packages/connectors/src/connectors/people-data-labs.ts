@@ -20,6 +20,7 @@ export const peopleDataLabs = {
           fields: {
             PEOPLE_DATA_LABS_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-people-data-labs-api-key",
             },

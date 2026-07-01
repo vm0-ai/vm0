@@ -28,12 +28,14 @@ export const sproutgigs = {
           fields: {
             SPROUTGIGS_USER_ID: {
               label: "User ID",
+              publicId: "userId",
               required: true,
               storage: "variable",
               placeholder: "your-user-id",
             },
             SPROUTGIGS_API_SECRET: {
               label: "API Secret",
+              publicId: "apiSecret",
               required: true,
               placeholder: "your-sproutgigs-api-secret",
             },

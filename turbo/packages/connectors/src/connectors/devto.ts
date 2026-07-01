@@ -20,6 +20,7 @@ export const devto = {
           fields: {
             DEVTO_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-devto-api-key",
             },

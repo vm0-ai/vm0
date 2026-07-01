@@ -20,6 +20,7 @@ export const loops = {
           fields: {
             LOOPS_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "d2d561f5ff80136f69b4b5a31b9fb3c9",
             },

@@ -20,6 +20,7 @@ export const discord = {
           fields: {
             DISCORD_BOT_TOKEN: {
               label: "Bot Token",
+              publicId: "botToken",
               required: true,
               placeholder: "your-discord-bot-token",
             },

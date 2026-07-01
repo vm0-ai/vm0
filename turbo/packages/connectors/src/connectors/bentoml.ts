@@ -24,11 +24,13 @@ export const bentoml = {
           fields: {
             BENTO_CLOUD_API_KEY: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "cur7h...",
             },
             BENTO_CLOUD_API_ENDPOINT: {
               label: "BentoCloud Endpoint",
+              publicId: "endpoint",
               required: true,
               placeholder: "https://your-org.cloud.bentoml.com",
               storage: "variable",

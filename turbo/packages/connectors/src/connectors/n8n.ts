@@ -20,11 +20,13 @@ export const n8n = {
           fields: {
             N8N_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "n8n_api_CoffeeSafeLocalCoffeeSafeLocalCo",
             },
             N8N_BASE_URL: {
               label: "Instance URL",
+              publicId: "instanceUrl",
               required: true,
               storage: "variable",
               placeholder: "https://your-instance.app.n8n.cloud",

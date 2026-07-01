@@ -21,11 +21,13 @@ export const amplitude = {
           fields: {
             AMPLITUDE_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "32-char hex key",
             },
             AMPLITUDE_SECRET_KEY: {
               label: "Secret Key",
+              publicId: "secretKey",
               required: true,
               placeholder: "32-char hex secret",
             },

@@ -62,6 +62,7 @@ import {
   connectorCredentialReconnectReason,
   connectorCredentialStatus,
 } from "./connector-credential-status.service";
+import { normalizeManualGrantSubmittedValues } from "./connector-catalog-form-fields.service";
 import { searchConnectorCatalog } from "./connector-catalog-reader.service";
 
 type StoredConnectorRow = {
@@ -294,6 +295,18 @@ function prepareManualGrantConnect(
   authMethod: ConnectorAuthMethodId,
   values: Readonly<Record<string, string>>,
 ): PreparedManualGrantConnectResult {
+  const normalizedValuesResult = normalizeManualGrantSubmittedValues({
+    type,
+    authMethod,
+    values,
+  });
+  if (!normalizedValuesResult.ok) {
+    return {
+      ok: false,
+      message: normalizedValuesResult.message,
+    };
+  }
+
   const fields = manualGrantFieldsForAuthMethod(type, authMethod);
   if (!fields) {
     return {
@@ -302,21 +315,8 @@ function prepareManualGrantConnect(
     };
   }
 
-  const configuredFieldNames = new Set(Object.keys(fields));
-  const unknownFieldNames = Object.keys(values).filter((name) => {
-    return !configuredFieldNames.has(name);
-  });
-  if (unknownFieldNames.length > 0) {
-    return {
-      ok: false,
-      message: `Unknown manual grant field(s): ${formatManualGrantFieldList(
-        unknownFieldNames,
-      )}`,
-    };
-  }
-
   const sanitizedValues = new Map<string, string>();
-  for (const [name, value] of Object.entries(values)) {
+  for (const [name, value] of Object.entries(normalizedValuesResult.values)) {
     sanitizedValues.set(name, sanitizeManualGrantValue(value));
   }
 
@@ -341,7 +341,9 @@ function prepareManualGrantConnect(
         : sanitized;
     if (!value) {
       if (config.required) {
-        missingRequiredNames.push(name);
+        missingRequiredNames.push(
+          normalizedValuesResult.errorNamesByPrivateName[name] ?? name,
+        );
       }
       continue;
     }

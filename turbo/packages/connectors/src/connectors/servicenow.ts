@@ -21,16 +21,19 @@ export const servicenow = {
           fields: {
             SERVICENOW_USERNAME: {
               label: "Username",
+              publicId: "username",
               required: true,
               placeholder: "service-account-user",
             },
             SERVICENOW_PASSWORD: {
               label: "Password",
+              publicId: "password",
               required: true,
               placeholder: "service-account-password",
             },
             SERVICENOW_INSTANCE: {
               label: "Instance",
+              publicId: "instance",
               required: true,
               storage: "variable",
               placeholder: "your-subdomain",

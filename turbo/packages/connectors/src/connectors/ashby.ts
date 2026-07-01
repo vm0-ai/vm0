@@ -20,6 +20,7 @@ export const ashby = {
           fields: {
             ASHBY_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-ashby-api-key",
             },

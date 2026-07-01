@@ -20,6 +20,7 @@ export const armature = {
           fields: {
             ARMATURE_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-armature-api-key",
             },

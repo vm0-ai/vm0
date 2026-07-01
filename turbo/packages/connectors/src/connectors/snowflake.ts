@@ -21,11 +21,13 @@ export const snowflake = {
           fields: {
             SNOWFLAKE_PAT: {
               label: "Programmatic Access Token",
+              publicId: "accessToken",
               required: true,
               placeholder: "your-snowflake-pat",
             },
             SNOWFLAKE_ACCOUNT: {
               label: "Account Identifier",
+              publicId: "accountId",
               required: true,
               placeholder: "myorganization-myaccount",
               storage: "variable",

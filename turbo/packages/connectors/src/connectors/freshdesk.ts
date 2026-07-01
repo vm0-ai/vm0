@@ -21,10 +21,12 @@ export const freshdesk = {
           fields: {
             FRESHDESK_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
             FRESHDESK_DOMAIN: {
               label: "Subdomain",
+              publicId: "subdomain",
               required: true,
               storage: "variable",
               placeholder: "your-subdomain",

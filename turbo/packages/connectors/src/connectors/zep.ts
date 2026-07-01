@@ -20,6 +20,7 @@ export const zep = {
           fields: {
             ZEP_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "z_...",
             },

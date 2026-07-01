@@ -22,6 +22,7 @@ export const gemini = {
           fields: {
             GEMINI_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "AIza...",
             },

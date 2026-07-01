@@ -18,6 +18,7 @@ export const scrapeninja = {
           fields: {
             SCRAPENINJA_TOKEN: {
               label: "RapidAPI Key",
+              publicId: "apiKey",
               required: true,
             },
           },

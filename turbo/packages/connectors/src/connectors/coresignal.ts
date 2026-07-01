@@ -20,6 +20,7 @@ export const coresignal = {
           fields: {
             CORESIGNAL_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-coresignal-api-key",
             },

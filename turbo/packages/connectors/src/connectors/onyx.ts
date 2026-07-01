@@ -20,6 +20,7 @@ export const onyx = {
           fields: {
             ONYX_TOKEN: {
               label: "API Key or Personal Access Token",
+              publicId: "apiKey",
               required: true,
               placeholder: "onyx_pat_...",
             },

@@ -20,6 +20,7 @@ export const langsmith = {
           fields: {
             LANGSMITH_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "lsv2_pt_...",
             },

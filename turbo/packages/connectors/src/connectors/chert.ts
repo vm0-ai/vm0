@@ -20,6 +20,7 @@ export const chert = {
           fields: {
             CHERT_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-chert-api-key",
             },

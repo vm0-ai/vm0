@@ -21,16 +21,19 @@ export const modal = {
           fields: {
             MODAL_TOKEN_ID: {
               label: "Token ID",
+              publicId: "tokenId",
               required: true,
               placeholder: "ak-CoffeeSafeLocalCoffeeSafeLocalCoffee",
             },
             MODAL_TOKEN_SECRET: {
               label: "Token Secret",
+              publicId: "tokenSecret",
               required: true,
               placeholder: "as-CoffeeSafeLocalCoffeeSafeLocalCoffee",
             },
             MODAL_ENVIRONMENT: {
               label: "Environment",
+              publicId: "environment",
               required: false,
               placeholder: "main",
               storage: "variable",

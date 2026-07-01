@@ -20,6 +20,7 @@ export const calendly = {
           fields: {
             CALENDLY_TOKEN: {
               label: "Personal Access Token",
+              publicId: "accessToken",
               required: true,
               placeholder: "your-calendly-token",
             },

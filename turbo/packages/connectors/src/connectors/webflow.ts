@@ -67,6 +67,7 @@ export const webflow = {
           fields: {
             WEBFLOW_TOKEN: {
               label: "Site Token",
+              publicId: "siteToken",
               required: true,
             },
           },

@@ -20,6 +20,7 @@ export const klaviyo = {
           fields: {
             KLAVIYO_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "pk_...",
             },

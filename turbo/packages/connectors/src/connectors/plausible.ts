@@ -20,6 +20,7 @@ export const plausible = {
           fields: {
             PLAUSIBLE_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "your-plausible-api-key",
             },

@@ -20,6 +20,7 @@ export const pinecone = {
           fields: {
             PINECONE_TOKEN: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "pcsk_...",
             },

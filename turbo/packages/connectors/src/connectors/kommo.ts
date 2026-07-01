@@ -20,10 +20,12 @@ export const kommo = {
           fields: {
             KOMMO_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
             },
             KOMMO_SUBDOMAIN: {
               label: "Subdomain",
+              publicId: "subdomain",
               required: true,
               storage: "variable",
               placeholder: "your-subdomain",

@@ -18,6 +18,7 @@ export const pushinator = {
           fields: {
             PUSHINATOR_TOKEN: {
               label: "API Token",
+              publicId: "apiToken",
               required: true,
               placeholder: "your-pushinator-api-token",
             },

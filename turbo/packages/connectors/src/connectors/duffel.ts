@@ -20,6 +20,7 @@ export const duffel = {
           fields: {
             DUFFEL_TOKEN: {
               label: "Access Token",
+              publicId: "accessToken",
               required: true,
               placeholder: "duffel_test_...",
             },

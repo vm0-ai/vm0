@@ -20,6 +20,7 @@ export const db9 = {
           fields: {
             DB9_API_KEY: {
               label: "API Key",
+              publicId: "apiKey",
               required: true,
               placeholder: "128-char hex token",
             },

@@ -21,11 +21,13 @@ export const moss = {
           fields: {
             MOSS_PROJECT_ID: {
               label: "Project ID",
+              publicId: "projectId",
               required: true,
               placeholder: "prj_...",
             },
             MOSS_PROJECT_KEY: {
               label: "Project Key",
+              publicId: "projectKey",
               required: true,
               placeholder: "msk_...",
             },
