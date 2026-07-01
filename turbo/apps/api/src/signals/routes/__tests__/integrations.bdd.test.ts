@@ -2308,7 +2308,7 @@ describe("INT-01: Slack app deep webhook flows", () => {
     expect(auditedBlocks).toContain(
       `https://app.vm0.test/activities/${run1Id}`,
     );
-    expect(auditedBlocks).toContain("Claude Sonnet 4.6");
+    expect(auditedBlocks).toContain("Claude Sonnet 5");
     await waitForExpectation(() => {
       expect(
         context.mocks.slack.assistant.threads.setStatus,
