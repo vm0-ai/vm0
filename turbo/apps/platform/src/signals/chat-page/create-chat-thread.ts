@@ -2780,6 +2780,86 @@ function createCancelRunWithQueuedRecall({
 // Sub-factory: thinking phrase animation
 // ---------------------------------------------------------------------------
 
+const THINKING_TYPEWRITER_INTERVAL_MS = 28;
+
+function isAssistantTextMessage(message: EnrichedChatMessage): boolean {
+  return (
+    message.role === "assistant" &&
+    (Boolean(message.content) || Boolean(message.error))
+  );
+}
+
+type ThinkingMarkerMessage = EnrichedChatMessage & {
+  readonly role: "assistant";
+  readonly content: null;
+  readonly error?: undefined;
+  readonly runId: string;
+  readonly thinking: string;
+};
+
+function isThinkingMarkerMessage(
+  message: EnrichedChatMessage,
+): message is ThinkingMarkerMessage {
+  return (
+    message.role === "assistant" &&
+    message.content === null &&
+    message.error === undefined &&
+    typeof message.thinking === "string" &&
+    message.thinking.trim().length > 0 &&
+    message.runId !== undefined
+  );
+}
+
+function thinkingTextGraphemes(text: string): string[] {
+  return Array.from(text);
+}
+
+function lastRunThinkingMessageForIndicator(
+  groups: readonly GroupedChatMessageGroup[],
+): ThinkingMarkerMessage | undefined {
+  const messages = groups.flatMap((group) => {
+    return group.messages.filter((message) => {
+      return !message.isQueued;
+    });
+  });
+  const lastMessage = messages[messages.length - 1];
+  if (!lastMessage || !isThinkingMarkerMessage(lastMessage)) {
+    return undefined;
+  }
+
+  const runId = lastMessage.runId;
+  const runHasAssistantText = messages.some((message) => {
+    return message.runId === runId && isAssistantTextMessage(message);
+  });
+  return runHasAssistantText ? undefined : lastMessage;
+}
+
+function displayedThinkingTextFromGroups(
+  index: number,
+  groups: readonly GroupedChatMessageGroup[],
+): string {
+  const message = lastRunThinkingMessageForIndicator(groups);
+  const text = message?.thinking?.trim() ?? "";
+  if (index <= 0 || text.length === 0) {
+    return "";
+  }
+  return thinkingTextGraphemes(text).slice(0, index).join("");
+}
+
+function nextThinkingTypewriterIndex(args: {
+  readonly text: string;
+  readonly currentIndex: number;
+  readonly width: number;
+}): number {
+  const length = thinkingTextGraphemes(args.text).length;
+  if (args.currentIndex >= length) {
+    return length;
+  }
+
+  const step = args.width >= 520 ? 3 : args.width >= 320 ? 2 : 1;
+  return Math.min(length, args.currentIndex + step);
+}
+
 function createPhraseLoop(
   groupedChatMessages$: Computed<Promise<GroupedChatMessageGroup[]>>,
   allFinished$: Computed<Promise<boolean>>,
@@ -2800,6 +2880,45 @@ function createPhraseLoop(
     return get(internalDonePhrase$);
   });
   const lastDoneMessageId$ = state<string | undefined>(undefined);
+  const thinkingTypewriterIndex$ = state(0);
+  const displayedThinkingText$ = computed(async (get): Promise<string> => {
+    const index = get(thinkingTypewriterIndex$);
+    const groups = await get(groupedChatMessages$);
+    return displayedThinkingTextFromGroups(index, groups);
+  });
+  const resetThinkingTypewriterLoopSignal$ = resetSignal();
+
+  const setThinkingIndicatorTextRef$ = onRef(
+    command(async ({ get, set }, el: HTMLElement, signal: AbortSignal) => {
+      const loopSignal = set(resetThinkingTypewriterLoopSignal$, signal);
+      set(thinkingTypewriterIndex$, 0);
+
+      await setLoop(
+        async (sig) => {
+          const groups = await get(groupedChatMessages$);
+          sig.throwIfAborted();
+
+          const thinkingMessage = lastRunThinkingMessageForIndicator(groups);
+          const text = thinkingMessage?.thinking?.trim() ?? "";
+          if (!thinkingMessage || text.length === 0) {
+            set(thinkingTypewriterIndex$, 0);
+            return true;
+          }
+
+          const width = el.getBoundingClientRect().width;
+          const nextIndex = nextThinkingTypewriterIndex({
+            text,
+            currentIndex: get(thinkingTypewriterIndex$),
+            width,
+          });
+          set(thinkingTypewriterIndex$, nextIndex);
+          return nextIndex >= thinkingTextGraphemes(text).length;
+        },
+        THINKING_TYPEWRITER_INTERVAL_MS,
+        loopSignal,
+      );
+    }),
+  );
 
   const runPhraseLoop$ = command(
     async ({ get, set }, signal: AbortSignal): Promise<void> => {
@@ -2819,7 +2938,14 @@ function createPhraseLoop(
           }
           const allFinished = await get(allFinished$);
           sig.throwIfAborted();
-          if (!allFinished || (!!lastGroup && !lastIsAssistant)) {
+          const thinkingMessage = lastRunThinkingMessageForIndicator(groups);
+          if (!thinkingMessage) {
+            set(thinkingTypewriterIndex$, 0);
+          }
+          if (
+            !thinkingMessage &&
+            (!allFinished || (!!lastGroup && !lastIsAssistant))
+          ) {
             set(
               phraseIndex$,
               (get(phraseIndex$) + 1) % THINKING_PHRASES.length,
@@ -2833,7 +2959,14 @@ function createPhraseLoop(
     },
   );
 
-  return { blockColors$, rotatingPhrase$, donePhrase$, runPhraseLoop$ };
+  return {
+    blockColors$,
+    rotatingPhrase$,
+    donePhrase$,
+    displayedThinkingText$,
+    setThinkingIndicatorTextRef$,
+    runPhraseLoop$,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -2912,8 +3045,14 @@ export function createChatThreadSignals(
   });
 
   const inputRef = createInputRef();
-  const { blockColors$, rotatingPhrase$, donePhrase$, runPhraseLoop$ } =
-    createPhraseLoop(messages.groupedChatMessages$, runTracking.allFinished$);
+  const {
+    blockColors$,
+    rotatingPhrase$,
+    donePhrase$,
+    displayedThinkingText$,
+    setThinkingIndicatorTextRef$,
+    runPhraseLoop$,
+  } = createPhraseLoop(messages.groupedChatMessages$, runTracking.allFinished$);
   const { artifacts$, reloadArtifacts$, setArtifactsRealtimeRef$ } =
     createArtifacts(threadId, messages.groupedChatMessages$);
 
@@ -2960,6 +3099,8 @@ export function createChatThreadSignals(
     blockColors$,
     rotatingPhrase$,
     donePhrase$,
+    displayedThinkingText$,
+    setThinkingIndicatorTextRef$,
     runPhraseLoop$,
     artifacts$,
     reloadArtifacts$,

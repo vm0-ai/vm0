@@ -130,6 +130,11 @@ export interface ChatThreadSignals {
   blockColors$: Computed<[string, string, string]>;
   rotatingPhrase$: Computed<string>;
   donePhrase$: Computed<string>;
+  displayedThinkingText$: Computed<Promise<string>>;
+  setThinkingIndicatorTextRef$: Command<
+    (() => void) | undefined,
+    [HTMLElement | null]
+  >;
   runPhraseLoop$: Command<Promise<void>, [AbortSignal]>;
   // -- Artifacts ------------------------------------------------------------
   artifacts$: Computed<Promise<ChatThreadArtifactRun[]>>;

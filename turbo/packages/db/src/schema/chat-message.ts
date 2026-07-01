@@ -180,6 +180,7 @@ export const chatMessages = pgTable(
     ).$type<ChatMessageAutomationSnapshot>(),
     role: text("role").notNull(), // "user" | "assistant"
     content: text("content"),
+    thinking: text("thinking"),
     error: text("error"),
     /** "completed" | "failed" | "cancelled"; null for non-terminal rows. */
     runLifecycleEvent: text("run_lifecycle_event"),
@@ -224,6 +225,9 @@ export const chatMessages = pgTable(
       uniqueIndex("chat_messages_run_lifecycle_unique")
         .on(table.runId)
         .where(sql`${table.runLifecycleEvent} IS NOT NULL`),
+      uniqueIndex("chat_messages_run_thinking_unique")
+        .on(table.runId)
+        .where(sql`${table.thinking} IS NOT NULL`),
     ];
   },
 );
