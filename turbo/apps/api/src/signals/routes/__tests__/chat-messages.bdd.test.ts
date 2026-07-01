@@ -1471,35 +1471,52 @@ describe("CHAT-02: explicit provider pins", () => {
       ],
     });
 
-    const { providerId } = await upsertOrgModelProvider(actor, {
-      type: "vm0",
-    });
+    let runId: string | null = null;
+    const cancelRunIfCreated = async () => {
+      if (runId) {
+        await api.requestCancelRun(actor, runId, [200]);
+      }
+    };
+    const deleteVm0KimiKeys = async () => {
+      await postChatMessagesStateAction({
+        action: "delete-vm0-api-keys",
+        vendor: "moonshot",
+        model: "kimi-k2.7-code",
+      });
+    };
+    const cleanupRunAndKeys = async () => {
+      await deleteVm0KimiKeys();
+      await cancelRunIfCreated();
+    };
 
-    const run = await sendChatRun(actor, {
-      agentId,
-      prompt: "run with the selected vm0 kimi provider",
-      modelSelection: {
-        modelProviderId: providerId,
-        selectedModel: "kimi-k2.7-code",
-      },
-    });
+    await (async () => {
+      const { providerId } = await upsertOrgModelProvider(actor, {
+        type: "vm0",
+      });
 
-    const { claim } = await claimChatRun(runnerGroup, run.runId);
-    const environment = claimEnvironment(claim);
-    expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
-      modelProviderSecretPlaceholder("moonshot-api-key", "MOONSHOT_API_KEY"),
-    );
-    expect(environment.ANTHROPIC_BASE_URL).toBe(
-      "https://api.moonshot.ai/anthropic",
-    );
-    expect(environment.ANTHROPIC_MODEL).toBe("kimi-k2.7-code");
-    expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
+      const run = await sendChatRun(actor, {
+        agentId,
+        prompt: "run with the selected vm0 kimi provider",
+        modelSelection: {
+          modelProviderId: providerId,
+          selectedModel: "kimi-k2.7-code",
+        },
+      });
+      runId = run.runId;
 
-    await api.requestCancelRun(actor, run.runId, [200]);
-    await postChatMessagesStateAction({
-      action: "delete-vm0-api-keys",
-      vendor: "moonshot",
-      model: "kimi-k2.7-code",
+      const { claim } = await claimChatRun(runnerGroup, run.runId);
+      const environment = claimEnvironment(claim);
+      expect(environment.ANTHROPIC_AUTH_TOKEN).toBe(
+        modelProviderSecretPlaceholder("moonshot-api-key", "MOONSHOT_API_KEY"),
+      );
+      expect(environment.ANTHROPIC_BASE_URL).toBe(
+        "https://api.moonshot.ai/anthropic",
+      );
+      expect(environment.ANTHROPIC_MODEL).toBe("kimi-k2.7-code");
+      expect(environment.CLAUDE_CODE_DISABLE_ATTACHMENTS).toBe("1");
+    })().then(cleanupRunAndKeys, async (error: unknown) => {
+      await cleanupRunAndKeys();
+      throw error;
     });
   }, 90_000);
 
