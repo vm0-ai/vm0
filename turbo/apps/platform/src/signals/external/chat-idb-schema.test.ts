@@ -48,13 +48,13 @@ function fakeDb(existingStores: readonly string[]) {
 }
 
 describe("upgradeChatIdb", () => {
-  it("clears legacy chat cache when upgrading to v5", () => {
+  it("clears legacy chat cache when upgrading from before v4", () => {
     const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
       CHAT_MESSAGES_STORE,
       CHAT_THREAD_META_STORE,
     ]);
 
-    upgradeChatIdb(db, 4);
+    upgradeChatIdb(db, 3);
 
     expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
     expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_THREAD_META_STORE);
@@ -67,6 +67,30 @@ describe("upgradeChatIdb", () => {
     expect(
       createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
     ).toHaveBeenCalledWith("byThreadAndTime", ["threadId", "createdAt"]);
+    expect(
+      createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
+    ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, [
+      "threadId",
+      "createdAt",
+      "orderSequence",
+      "id",
+    ]);
+  });
+
+  it("keeps thread metadata when resetting v4 messages for the order index", () => {
+    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_META_STORE,
+    ]);
+
+    upgradeChatIdb(db, 4);
+
+    expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
+    expect(deleteObjectStore).not.toHaveBeenCalledWith(CHAT_THREAD_META_STORE);
+    expect(createObjectStore).toHaveBeenCalledTimes(1);
+    expect(createObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE, {
+      keyPath: "id",
+    });
     expect(
       createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
     ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, [
