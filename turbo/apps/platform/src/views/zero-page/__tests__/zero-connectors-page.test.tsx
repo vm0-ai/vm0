@@ -543,7 +543,13 @@ describe("connectors page", () => {
       return respond(200, { enabledTypes: ["github"] });
     });
 
-    detachedSetupPage({ context, path: "/connectors" });
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: {
+        [FeatureSwitchKey.ConnectorAccessManagement]: true,
+      },
+    });
 
     await waitFor(() => {
       expect(screen.getByText("GitHub")).toBeInTheDocument();
