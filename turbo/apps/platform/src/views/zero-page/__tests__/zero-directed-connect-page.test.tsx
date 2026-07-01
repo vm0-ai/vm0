@@ -17,16 +17,72 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
+import { detachedNavigateTo$ } from "../../../signals/route.ts";
+import { ROUTES } from "../../../signals/route-paths.ts";
 
 const context = testContext();
 const AGENT_ID = "00000000-0000-0000-0000-000000000001";
+const SECOND_AGENT_ID = "00000000-0000-0000-0000-000000000002";
 
 function mockPublicConnectorStatus(
   connector: PublicConnectorCatalogStatusItem,
 ): void {
+  mockPublicConnectorStatuses([connector]);
+}
+
+function mockPublicConnectorStatuses(
+  connectors: readonly PublicConnectorCatalogStatusItem[],
+): void {
   context.mocks.api(zeroConnectorCatalogContract.status, ({ respond }) => {
-    return respond(200, { connectors: [connector] });
+    return respond(200, { connectors: [...connectors] });
   });
+}
+
+function publicManualTokenConnectorStatus(args: {
+  readonly connectorRef: PublicConnectorCatalogStatusItem["connectorRef"];
+  readonly label: string;
+  readonly placeholder: string;
+}): PublicConnectorCatalogStatusItem {
+  return {
+    connectorRef: args.connectorRef,
+    label: args.label,
+    description: `${args.label} description`,
+    category: "data-automation-infrastructure",
+    generation: [],
+    tags: [],
+    authMethods: [
+      {
+        id: "api-token",
+        label: "Public API Token",
+        description: null,
+        grantKind: "manual",
+        manualFields: [
+          {
+            id: "apiToken",
+            label: "Public API token",
+            required: true,
+            placeholder: args.placeholder,
+            inputType: "password",
+          },
+        ],
+        startOptions: [],
+      },
+    ],
+    permissionSummary: {
+      hasPermissions: false,
+      permissionCount: 0,
+      hasCategories: false,
+      hasDefaultPolicyOverrides: false,
+    },
+    connection: null,
+    connected: false,
+    connectionStatus: "not-connected",
+    scopeMismatch: false,
+    authMethodSupportsRefresh: false,
+    tokenExpiresAt: null,
+    singleAuthCodeAuthMethodId: null,
+    connectNotice: null,
+  };
 }
 
 function mockConnectorOauthStart(): { readonly authWindow: Window } {
@@ -112,46 +168,13 @@ describe("directed connector connect page", () => {
   });
 
   it("waits for manual grant agent authorization before closing", async () => {
-    mockPublicConnectorStatus({
-      connectorRef: "axiom",
-      label: "Public Axiom",
-      description: "Public Axiom description",
-      category: "data-automation-infrastructure",
-      generation: [],
-      tags: [],
-      authMethods: [
-        {
-          id: "api-token",
-          label: "Public API Token",
-          description: null,
-          grantKind: "manual",
-          manualFields: [
-            {
-              id: "apiToken",
-              label: "Public API token",
-              required: true,
-              placeholder: "public-xaat",
-              inputType: "password",
-            },
-          ],
-          startOptions: [],
-        },
-      ],
-      permissionSummary: {
-        hasPermissions: false,
-        permissionCount: 0,
-        hasCategories: false,
-        hasDefaultPolicyOverrides: false,
-      },
-      connection: null,
-      connected: false,
-      connectionStatus: "not-connected",
-      scopeMismatch: false,
-      authMethodSupportsRefresh: false,
-      tokenExpiresAt: null,
-      singleAuthCodeAuthMethodId: null,
-      connectNotice: null,
-    });
+    mockPublicConnectorStatus(
+      publicManualTokenConnectorStatus({
+        connectorRef: "axiom",
+        label: "Public Axiom",
+        placeholder: "public-xaat",
+      }),
+    );
     let submittedValues: Record<string, string> | null = null;
     context.mocks.api(
       zeroConnectorManualGrantContract.connect,
@@ -228,6 +251,94 @@ describe("directed connector connect page", () => {
       expect(
         screen.queryByRole("dialog", { name: "Public Axiom" }),
       ).not.toBeInTheDocument();
+    });
+  });
+
+  it("does not reuse an open manual grant dialog across routed connector types", async () => {
+    mockPublicConnectorStatuses([
+      publicManualTokenConnectorStatus({
+        connectorRef: "axiom",
+        label: "Public Axiom",
+        placeholder: "public-xaat",
+      }),
+      publicManualTokenConnectorStatus({
+        connectorRef: "stripe",
+        label: "Public Stripe",
+        placeholder: "public-stripe-key",
+      }),
+    ]);
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/axiom/connect?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Public Axiom to proceed"),
+      ).toBeInTheDocument();
+    });
+    click(getButtonByText("Connect"));
+
+    await screen.findByRole("dialog", {
+      name: "Public Axiom",
+    });
+
+    context.store.set(detachedNavigateTo$, ROUTES.directedConnect, {
+      pathParams: { type: "stripe" },
+      searchParams: new URLSearchParams({ agentId: AGENT_ID }),
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Public Axiom" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("dialog", { name: "Public Stripe" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText("Zero needs Public Stripe to proceed"),
+      ).toBeInTheDocument();
+    });
+  });
+
+  it("does not reuse an open manual grant dialog across routed agent ids", async () => {
+    mockPublicConnectorStatus(
+      publicManualTokenConnectorStatus({
+        connectorRef: "axiom",
+        label: "Public Axiom",
+        placeholder: "public-xaat",
+      }),
+    );
+
+    detachedSetupPage({
+      context,
+      path: `/connectors/axiom/connect?agentId=${AGENT_ID}`,
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Zero needs Public Axiom to proceed"),
+      ).toBeInTheDocument();
+    });
+    click(getButtonByText("Connect"));
+
+    await screen.findByRole("dialog", {
+      name: "Public Axiom",
+    });
+
+    context.store.set(detachedNavigateTo$, ROUTES.directedConnect, {
+      pathParams: { type: "axiom" },
+      searchParams: new URLSearchParams({ agentId: SECOND_AGENT_ID }),
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.queryByRole("dialog", { name: "Public Axiom" }),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.getByText("Zero needs Public Axiom to proceed"),
+      ).toBeInTheDocument();
     });
   });
 });

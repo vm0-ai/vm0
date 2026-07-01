@@ -1,4 +1,5 @@
 import { command, computed, state } from "ccstate";
+import type { ConnectorType } from "@vm0/connectors/connectors";
 import { pathParams$, searchParams$ } from "../route.ts";
 import { agents$ } from "../agent.ts";
 
@@ -32,10 +33,19 @@ export const directedConnectAgentName$ = computed(async (get) => {
   return { agentId, displayName: agent?.displayName ?? null };
 });
 
-const internalManualGrantDialogOpen$ = state(false);
-export const manualGrantDialogOpen$ = computed((get) => {
-  return get(internalManualGrantDialogOpen$);
+export type DirectedConnectManualGrantDialogKey = {
+  readonly connectorType: ConnectorType;
+  readonly agentId: string | null;
+  readonly signal: AbortSignal;
+};
+
+const internalManualGrantDialogKey$ =
+  state<DirectedConnectManualGrantDialogKey | null>(null);
+export const manualGrantDialogKey$ = computed((get) => {
+  return get(internalManualGrantDialogKey$);
 });
-export const setManualGrantDialogOpen$ = command(({ set }, open: boolean) => {
-  set(internalManualGrantDialogOpen$, open);
-});
+export const setManualGrantDialogKey$ = command(
+  ({ set }, key: DirectedConnectManualGrantDialogKey | null) => {
+    set(internalManualGrantDialogKey$, key);
+  },
+);

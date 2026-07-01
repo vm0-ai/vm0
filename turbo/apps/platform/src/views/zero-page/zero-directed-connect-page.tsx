@@ -46,8 +46,9 @@ import {
   directedConnectType$,
   directedConnectAgentId$,
   directedConnectAgentName$,
-  manualGrantDialogOpen$,
-  setManualGrantDialogOpen$,
+  manualGrantDialogKey$,
+  setManualGrantDialogKey$,
+  type DirectedConnectManualGrantDialogKey,
 } from "../../signals/connectors-page/directed-connect-type.ts";
 import { authorizeConnector$ } from "../../signals/connectors-page/directed-authorize-type.ts";
 import { pageSignal$ } from "../../signals/page-signal.ts";
@@ -416,6 +417,21 @@ function useDirectedConnectCatalogState(connectorType: ConnectorType | null): {
   };
 }
 
+function directedConnectManualGrantDialogOpen(
+  key: DirectedConnectManualGrantDialogKey | null,
+  args: {
+    readonly connectorType: ConnectorType | null;
+    readonly agentId: string | null;
+    readonly signal: AbortSignal;
+  },
+): boolean {
+  return (
+    key?.connectorType === args.connectorType &&
+    key.agentId === args.agentId &&
+    key.signal === args.signal
+  );
+}
+
 function DirectedConnectCard() {
   const connectorType = useDirectedConnectConnectorType();
   const agentId = useGet(directedConnectAgentId$);
@@ -427,10 +443,14 @@ function DirectedConnectCard() {
   const signal = useGet(pageSignal$);
   const { item, isConnected, isLoading, unavailable } =
     useDirectedConnectCatalogState(connectorType);
-  const manualGrantDialogOpen = useGet(manualGrantDialogOpen$);
-  const setManualGrantDialogOpen = useSet(setManualGrantDialogOpen$);
+  const manualGrantDialogKey = useGet(manualGrantDialogKey$);
+  const setManualGrantDialogKey = useSet(setManualGrantDialogKey$);
   const selectedConnectorType = useGet(selectedConnectorType$);
   const setSelectedConnectorType = useSet(setSelectedConnectorType$);
+  const manualGrantDialogOpen = directedConnectManualGrantDialogOpen(
+    manualGrantDialogKey,
+    { connectorType, agentId, signal },
+  );
 
   if (!connectorType) {
     return null;
@@ -473,7 +493,7 @@ function DirectedConnectCard() {
       connect,
       onConnected: runPostConnectActions,
       openManualGrantDialog: () => {
-        return setManualGrantDialogOpen(true);
+        return setManualGrantDialogKey({ connectorType, agentId, signal });
       },
       openConnectModal: () => {
         setSelectedConnectorType(connectorType);
@@ -531,7 +551,11 @@ function DirectedConnectCard() {
         connectorLabel={connectorLabel}
         manualGrantMethod={manualGrantMethod}
         manualGrantDialogOpen={manualGrantDialogOpen}
-        setManualGrantDialogOpen={setManualGrantDialogOpen}
+        setManualGrantDialogOpen={(open) => {
+          setManualGrantDialogKey(
+            open ? { connectorType, agentId, signal } : null,
+          );
+        }}
         agentId={agentId}
         runPostConnectActions={runPostConnectActions}
         selectedConnectorType={selectedConnectorType}
