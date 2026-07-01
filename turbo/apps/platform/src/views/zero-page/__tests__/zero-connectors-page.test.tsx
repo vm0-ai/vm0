@@ -1285,9 +1285,11 @@ describe("connectors page", () => {
       }),
     ]);
     let capturedOptions: Record<string, string> | null = null;
+    let startCount = 0;
     context.mocks.api(
       zeroConnectorOauthDeviceAuthSessionContract.create,
       ({ body, params, respond }) => {
+        startCount += 1;
         expect(params.type).toBe("stripe");
         capturedOptions = body.options ?? null;
         return respond(200, {
@@ -1311,11 +1313,14 @@ describe("connectors page", () => {
     click(await screen.findByLabelText("Connect Stripe"));
 
     const dialog = await screen.findByRole("dialog", { name: "Stripe" });
-    click(buttonByText("Connect Stripe", dialog));
+    const connectButton = buttonByText("Connect Stripe", dialog);
+    click(connectButton);
+    click(connectButton);
 
     await waitFor(() => {
       expect(capturedOptions).toStrictEqual({ mode: "test" });
     });
+    expect(startCount).toBe(1);
   });
 
   it("connects a manual token connector", async () => {
@@ -1346,9 +1351,11 @@ describe("connectors page", () => {
       }),
     ]);
     let submittedValues: Record<string, string> | null = null;
+    let submitCount = 0;
     context.mocks.api(
       zeroConnectorManualGrantContract.connect,
       ({ body, params, respond }) => {
+        submitCount += 1;
         expect(params.type).toBe("axiom");
         submittedValues = body.values;
         return respond(200, {
@@ -1386,10 +1393,13 @@ describe("connectors page", () => {
       within(axiomDialog).getByPlaceholderText("public-xaat"),
       "xaat-test",
     );
-    click(buttonByText("Save", axiomDialog));
+    const saveButton = buttonByText("Save", axiomDialog);
+    click(saveButton);
+    click(saveButton);
 
     await waitFor(() => {
       expect(submittedValues).toStrictEqual({ apiToken: "xaat-test" });
+      expect(submitCount).toBe(1);
       expect(
         within(connectorCardByLabel("Public Axiom")).getByText("Connected"),
       ).toBeInTheDocument();

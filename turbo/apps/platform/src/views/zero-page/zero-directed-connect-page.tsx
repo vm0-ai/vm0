@@ -40,6 +40,7 @@ import {
   detach,
   onDomEventFn,
   Reason,
+  withCleanup,
 } from "../../signals/utils.ts";
 import {
   directedConnectType$,
@@ -150,25 +151,32 @@ function ManualGrantForm({
         return;
       }
       setSubmitting(type);
-      await bestEffort(
-        (async () => {
-          await submit(
-            {
-              type,
-              authMethod: manualGrantMethod.id,
-              inputValues: manualGrantInputValuesForMethod(
-                manualGrantMethod,
-                fieldValues,
-              ),
-              options: { connectorLabel },
-            },
-            pageSignal,
-          );
-          clearForm(type);
-          onSuccess();
-        })(),
+      await withCleanup(
+        bestEffort(
+          (async () => {
+            const connected = await submit(
+              {
+                type,
+                authMethod: manualGrantMethod.id,
+                inputValues: manualGrantInputValuesForMethod(
+                  manualGrantMethod,
+                  fieldValues,
+                ),
+                options: { connectorLabel },
+              },
+              pageSignal,
+            );
+            if (!connected) {
+              return;
+            }
+            clearForm(type);
+            onSuccess();
+          })(),
+        ),
+        () => {
+          setSubmitting(null);
+        },
       );
-      setSubmitting(null);
     },
   );
 

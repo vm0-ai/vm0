@@ -672,6 +672,45 @@ export const connectorExternalCodeState$ = computed((get) => {
   return get(internalConnectorExternalCodeState$);
 });
 
+function connectorOAuthDeviceAuthStateIsActive(
+  state: ConnectorOAuthDeviceAuthState,
+): boolean {
+  return (
+    state.status === "starting" ||
+    state.status === "pending" ||
+    state.status === "polling"
+  );
+}
+
+function connectorExternalCodeStateIsActive(
+  state: ConnectorExternalCodeState,
+): boolean {
+  return (
+    state.status === "starting" ||
+    state.status === "pending" ||
+    state.status === "completing"
+  );
+}
+
+function connectorConnectOperationIsActive({
+  authCodeConnectorType,
+  connectFlow,
+  deviceAuthState,
+  externalCodeState,
+}: {
+  readonly authCodeConnectorType: ConnectorType | null;
+  readonly connectFlow: ConnectorConnectFlowState | null;
+  readonly deviceAuthState: ConnectorOAuthDeviceAuthState;
+  readonly externalCodeState: ConnectorExternalCodeState;
+}): boolean {
+  return (
+    authCodeConnectorType !== null ||
+    connectFlow !== null ||
+    connectorOAuthDeviceAuthStateIsActive(deviceAuthState) ||
+    connectorExternalCodeStateIsActive(externalCodeState)
+  );
+}
+
 function connectorOAuthDeviceAuthStartOptionsKey(
   type: ConnectorType,
   authMethod: ConnectorAuthMethodId,
@@ -845,7 +884,18 @@ export const submitManualGrant$ = command(
     { get, set },
     { type, authMethod, inputValues, options }: SubmitManualGrantParams,
     signal: AbortSignal,
-  ) => {
+  ): Promise<boolean> => {
+    if (
+      connectorConnectOperationIsActive({
+        authCodeConnectorType: get(internalPollingOAuthAuthCodeConnectorType$),
+        connectFlow: get(internalConnectFlowState$),
+        deviceAuthState: get(internalConnectorOAuthDeviceAuthState$),
+        externalCodeState: get(internalConnectorExternalCodeState$),
+      })
+    ) {
+      return false;
+    }
+
     const flow = createConnectorConnectFlowState(type);
     set(internalConnectFlowState$, flow);
     return await withCleanup(
@@ -868,6 +918,7 @@ export const submitManualGrant$ = command(
           ...options,
           toastMessage: `${options.connectorLabel ?? type} connected successfully`,
         });
+        return true;
       })(),
       () => {
         set(internalConnectFlowState$, (current) => {
@@ -1258,6 +1309,17 @@ const connectConnectorOAuthDeviceAuth$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const { type, authMethod, options, startOptions } = args;
+    if (
+      connectorConnectOperationIsActive({
+        authCodeConnectorType: get(internalPollingOAuthAuthCodeConnectorType$),
+        connectFlow: get(internalConnectFlowState$),
+        deviceAuthState: get(internalConnectorOAuthDeviceAuthState$),
+        externalCodeState: get(internalConnectorExternalCodeState$),
+      })
+    ) {
+      return false;
+    }
+
     const flow = createConnectorConnectFlowState(type);
     set(internalConnectFlowState$, flow);
     let requestId: string | null = null;
@@ -1510,6 +1572,17 @@ export const connectConnectorExternalCode$ = command(
     signal: AbortSignal,
   ): Promise<boolean> => {
     const { type, authMethod } = args;
+    if (
+      connectorConnectOperationIsActive({
+        authCodeConnectorType: get(internalPollingOAuthAuthCodeConnectorType$),
+        connectFlow: get(internalConnectFlowState$),
+        deviceAuthState: get(internalConnectorOAuthDeviceAuthState$),
+        externalCodeState: get(internalConnectorExternalCodeState$),
+      })
+    ) {
+      return false;
+    }
+
     const flow = createConnectorConnectFlowState(type);
     set(internalConnectFlowState$, flow);
     let requestId: string | null = null;
@@ -1801,6 +1874,45 @@ function connectorMatchesAuthMethod(
   return connector.type === type && connector.authMethod === authMethod;
 }
 
+function createConnectorOAuthAuthCodeChangedCommand(
+  type: ConnectorType,
+  authMethod: ConnectorAuthMethodId,
+) {
+  // Snapshot taken on the first body invocation: `null` marks "no connector
+  // yet" and an `updatedAt` value marks "reconnect scenario — wait for it to
+  // change". The snapshot must happen inside the loop body so we start from the
+  // freshest server state, not a cached signal value.
+  let initialUpdatedAt: string | null | undefined;
+
+  return command(async ({ get }, sig: AbortSignal): Promise<boolean> => {
+    const client = get(zeroClient$)(zeroConnectorsMainContract);
+    const result = await accept(
+      client.list({ fetchOptions: { signal: sig } }),
+      [200],
+    );
+    const polled = (result.body as ConnectorListResponse).connectors;
+    const current = polled.find((c) => {
+      return connectorMatchesAuthMethod(c, type, authMethod);
+    });
+
+    if (initialUpdatedAt === undefined) {
+      initialUpdatedAt = current?.updatedAt ?? null;
+      return false;
+    }
+    if (current) {
+      // initialUpdatedAt === null means the connector didn't exist on the first
+      // fetch; any subsequent appearance signals completion.
+      if (initialUpdatedAt === null) {
+        return true;
+      }
+      if (current.updatedAt !== initialUpdatedAt) {
+        return true;
+      }
+    }
+    return false;
+  });
+}
+
 const openConnectorOAuthAuthCodeWindow$ = command(
   async (
     { get },
@@ -1866,7 +1978,14 @@ export const connectConnectorOAuthAuthCode$ = command(
     signal: AbortSignal,
   ) => {
     signal.throwIfAborted();
-    if (get(internalPollingOAuthAuthCodeConnectorType$) !== null) {
+    if (
+      connectorConnectOperationIsActive({
+        authCodeConnectorType: get(internalPollingOAuthAuthCodeConnectorType$),
+        connectFlow: get(internalConnectFlowState$),
+        deviceAuthState: get(internalConnectorOAuthDeviceAuthState$),
+        externalCodeState: get(internalConnectorExternalCodeState$),
+      })
+    ) {
       return false;
     }
 
@@ -1886,41 +2005,9 @@ export const connectConnectorOAuthAuthCode$ = command(
 
         // Wait for the auth-code OAuth flow to complete. The callback publishes
         // `connector:changed`, and the subscription rechecks the server state.
-        // Snapshot taken on the first body invocation: `null` marks "no
-        // connector yet" and an `updatedAt` value marks "reconnect scenario —
-        // wait for it to change". The snapshot must happen *inside* the loop
-        // body so we start from the freshest server state, not a cached signal
-        // value.
-        let initialUpdatedAt: string | null | undefined;
-
-        const onConnectorChanged$ = command(
-          async ({ get }, sig: AbortSignal): Promise<boolean> => {
-            const client = get(zeroClient$)(zeroConnectorsMainContract);
-            const result = await accept(
-              client.list({ fetchOptions: { signal: sig } }),
-              [200],
-            );
-            const polled = (result.body as ConnectorListResponse).connectors;
-            const current = polled.find((c) => {
-              return connectorMatchesAuthMethod(c, type, authMethod);
-            });
-
-            if (initialUpdatedAt === undefined) {
-              initialUpdatedAt = current?.updatedAt ?? null;
-              return false;
-            }
-            if (current) {
-              // initialUpdatedAt === null means the connector didn't exist on
-              // the first fetch; any subsequent appearance signals completion.
-              if (initialUpdatedAt === null) {
-                return true;
-              }
-              if (current.updatedAt !== initialUpdatedAt) {
-                return true;
-              }
-            }
-            return false;
-          },
+        const onConnectorChanged$ = createConnectorOAuthAuthCodeChangedCommand(
+          type,
+          authMethod,
         );
 
         // Prime once so `initialUpdatedAt` snapshots the current server state.

@@ -100,7 +100,7 @@ type SubmitManualGrantFn = (
   inputValues: Record<string, string>,
   options: PostConnectOptions,
   signal: AbortSignal,
-) => Promise<void>;
+) => Promise<boolean>;
 
 type ConnectOAuthAuthCodeAndSettleFn = (
   type: ConnectorType,
@@ -256,7 +256,7 @@ function ManualGrantForm({
       if (!allFilled || submitting) {
         return;
       }
-      await submit(
+      const connected = await submit(
         type,
         authMethod,
         manualGrantInputValuesForMethod(method, fieldValues),
@@ -266,6 +266,9 @@ function ManualGrantForm({
         },
         pageSignal,
       );
+      if (!connected) {
+        return;
+      }
       clearForm(type);
       await onSuccess();
     },
@@ -1088,7 +1091,7 @@ function ConnectModalContent({
     options,
     signal,
   ) => {
-    await submitManualGrantCommand(
+    return await submitManualGrantCommand(
       { type, authMethod, inputValues, options },
       signal,
     );
