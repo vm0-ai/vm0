@@ -4,6 +4,7 @@ import { command } from "ccstate";
 import { formatRunErrorForExternalSurface } from "@vm0/api-contracts/contracts/errors";
 import type { ModelProviderCredentialScope } from "@vm0/api-contracts/contracts/model-providers";
 import { agentRuns } from "@vm0/db/schema/agent-run";
+import { chatOutputMaterializations } from "@vm0/db/schema/chat-output-materialization";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
@@ -23,6 +24,7 @@ import {
   inArray,
   isNotNull,
   isNull,
+  lte,
   ne,
   sql,
 } from "drizzle-orm";
@@ -91,6 +93,9 @@ type ChatCallbackPreCreateTimingActionType =
   | "api_dispatch_pre_create_zero_chat_callback_load_terminal"
   | "api_dispatch_pre_create_zero_chat_callback_prepare_completed"
   | "api_dispatch_pre_create_zero_chat_callback_prepare_failed"
+  | "api_dispatch_pre_create_zero_chat_callback_load_db_output_state"
+  | "api_dispatch_pre_create_zero_chat_callback_db_output_complete"
+  | "api_dispatch_pre_create_zero_chat_callback_db_output_incomplete"
   | "api_dispatch_pre_create_zero_chat_callback_query_output_events"
   | "api_dispatch_pre_create_zero_chat_callback_insert_assistant_items"
   | "api_dispatch_pre_create_zero_chat_callback_lookup_existing_assistant"
@@ -268,6 +273,21 @@ interface AssistantEventItem {
 interface ResultEventItem {
   readonly sequenceNumber: number;
   readonly content: string;
+}
+
+type DbCompletedChatOutputState =
+  | {
+      readonly kind: "complete";
+      readonly latestAssistantContent: string | null;
+      readonly hasResultFallbackCandidate: boolean;
+    }
+  | { readonly kind: "incomplete" };
+
+interface CompletedChatOutputLoad {
+  readonly assistantItems: readonly AssistantEventItem[];
+  readonly resultFallback: ResultEventItem | null;
+  readonly lastResultText: string | null;
+  readonly skipExistingAssistantLookup: boolean;
 }
 
 interface IncompleteRoundRow {
@@ -519,11 +539,13 @@ function extractCodexAgentMessageContent(item: CodexItem): string | null {
 }
 
 function extractAssistantContent(event: AxiomChatOutputEvent): string | null {
-  const content = event.eventData?.message?.content;
+  const content =
+    event.eventType === "assistant" ? event.eventData?.message?.content : null;
   if (content) {
     return extractAnthropicContent(content);
   }
-  const item = event.eventData?.item;
+  const item =
+    event.eventType === "item.completed" ? event.eventData?.item : null;
   if (item) {
     return extractCodexAgentMessageContent(item);
   }
@@ -534,6 +556,10 @@ function extractResultFallback(
   sequenceNumber: number,
   event: AxiomChatOutputEvent,
 ): ResultEventItem | null {
+  if (event.eventType !== "result") {
+    return null;
+  }
+
   const result = event.eventData?.result;
   if (typeof result !== "string") {
     return null;
@@ -556,9 +582,14 @@ async function queryChatOutputEvents(args: {
   args.signal.throwIfAborted();
 
   const dataset = getDatasetName(AGENT_RUN_EVENTS_DATASET);
+  const sequenceCap =
+    args.lastEventSequence === null
+      ? ""
+      : `\n| where sequenceNumber <= ${args.lastEventSequence}`;
   const apl = `['${dataset}']
 | where runId == "${escapeAplString(args.runId)}"
 | where eventType == "assistant" or eventType == "result" or eventType == "item.completed"
+${sequenceCap}
 | order by sequenceNumber asc
 | limit 200`;
 
@@ -573,6 +604,12 @@ async function queryChatOutputEvents(args: {
     const sequenceNumber =
       event.sequenceNumber ?? event.eventData?.sequenceNumber;
     if (typeof sequenceNumber !== "number") {
+      continue;
+    }
+    if (
+      args.lastEventSequence !== null &&
+      sequenceNumber > args.lastEventSequence
+    ) {
       continue;
     }
 
@@ -594,6 +631,7 @@ async function queryChatOutputEvents(args: {
 async function latestEventBackedAssistantMessage(
   db: Db,
   runId: string,
+  options: { readonly maxSequenceNumber?: number } = {},
 ): Promise<{ readonly content: string } | null> {
   const [message] = await db
     .select({ content: chatMessages.content })
@@ -605,6 +643,9 @@ async function latestEventBackedAssistantMessage(
         isNotNull(chatMessages.sequenceNumber),
         isNotNull(chatMessages.content),
         sql<boolean>`NOT (${chatMessages.content} ~ '^[[:space:]]*$')`,
+        ...(options.maxSequenceNumber === undefined
+          ? []
+          : [lte(chatMessages.sequenceNumber, options.maxSequenceNumber)]),
       ),
     )
     .orderBy(desc(chatMessages.sequenceNumber))
@@ -614,6 +655,115 @@ async function latestEventBackedAssistantMessage(
     return null;
   }
   return { content: message.content };
+}
+
+async function loadDbCompletedChatOutputState(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly lastEventSequence: number | null;
+}): Promise<DbCompletedChatOutputState> {
+  if (args.lastEventSequence === null) {
+    return { kind: "incomplete" };
+  }
+
+  const [state] = await args.db
+    .select({
+      processedThroughSequence:
+        chatOutputMaterializations.processedThroughSequence,
+      latestResultSequence: chatOutputMaterializations.latestResultSequence,
+    })
+    .from(chatOutputMaterializations)
+    .where(eq(chatOutputMaterializations.runId, args.runId))
+    .limit(1);
+
+  if (!state || state.processedThroughSequence < args.lastEventSequence) {
+    return { kind: "incomplete" };
+  }
+
+  const latestAssistant = await latestEventBackedAssistantMessage(
+    args.db,
+    args.runId,
+    { maxSequenceNumber: args.lastEventSequence },
+  );
+  return {
+    kind: "complete",
+    latestAssistantContent: latestAssistant?.content ?? null,
+    hasResultFallbackCandidate:
+      state.latestResultSequence !== null &&
+      state.latestResultSequence <= args.lastEventSequence,
+  };
+}
+
+async function recordDbOutputStateTiming(
+  timing: ChatCallbackPreCreateTimingCollector,
+  state: DbCompletedChatOutputState,
+): Promise<void> {
+  await measureChatCallbackPreCreateTiming(
+    timing,
+    state.kind === "complete"
+      ? "api_dispatch_pre_create_zero_chat_callback_db_output_complete"
+      : "api_dispatch_pre_create_zero_chat_callback_db_output_incomplete",
+    "nested",
+    () => {},
+  );
+}
+
+async function loadCompletedChatOutput(args: {
+  readonly db: Db;
+  readonly runId: string;
+  readonly lastEventSequence: number | null;
+  readonly timing: ChatCallbackPreCreateTimingCollector;
+  readonly signal: AbortSignal;
+}): Promise<CompletedChatOutputLoad> {
+  const dbOutputState = await measureChatCallbackPreCreateTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_chat_callback_load_db_output_state",
+    "nested",
+    () => {
+      return loadDbCompletedChatOutputState({
+        db: args.db,
+        runId: args.runId,
+        lastEventSequence: args.lastEventSequence,
+      });
+    },
+  );
+  args.signal.throwIfAborted();
+
+  await recordDbOutputStateTiming(args.timing, dbOutputState);
+  args.signal.throwIfAborted();
+
+  if (
+    dbOutputState.kind === "complete" &&
+    (dbOutputState.latestAssistantContent !== null ||
+      !dbOutputState.hasResultFallbackCandidate)
+  ) {
+    return {
+      assistantItems: [],
+      resultFallback: null,
+      lastResultText: dbOutputState.latestAssistantContent,
+      skipExistingAssistantLookup: true,
+    };
+  }
+
+  const axiomOutput = await measureChatCallbackPreCreateTiming(
+    args.timing,
+    "api_dispatch_pre_create_zero_chat_callback_query_output_events",
+    "nested",
+    () => {
+      return queryChatOutputEvents({
+        runId: args.runId,
+        lastEventSequence: args.lastEventSequence,
+        signal: args.signal,
+      });
+    },
+  );
+
+  return {
+    assistantItems: axiomOutput.assistantItems,
+    resultFallback: axiomOutput.resultFallback,
+    lastResultText: null,
+    skipExistingAssistantLookup: false,
+  };
 }
 
 async function recordLastEventToComplete(db: Db, runId: string): Promise<void> {
@@ -905,21 +1055,16 @@ async function handleCompletedChatCallback(args: {
     items: readonly AssistantEventItem[],
   ) => Promise<void>;
 }): Promise<CompletedChatCallbackResult> {
-  const { assistantItems, resultFallback } =
-    await measureChatCallbackPreCreateTiming(
-      args.timing,
-      "api_dispatch_pre_create_zero_chat_callback_query_output_events",
-      "nested",
-      () => {
-        return queryChatOutputEvents({
-          runId: args.runId,
-          lastEventSequence: args.run.lastEventSequence,
-          signal: args.signal,
-        });
-      },
-    );
+  const output = await loadCompletedChatOutput({
+    db: args.db,
+    runId: args.runId,
+    lastEventSequence: args.run.lastEventSequence,
+    timing: args.timing,
+    signal: args.signal,
+  });
   args.signal.throwIfAborted();
 
+  const { assistantItems, resultFallback } = output;
   if (assistantItems.length > 0) {
     await measureChatCallbackPreCreateTiming(
       args.timing,
@@ -933,16 +1078,19 @@ async function handleCompletedChatCallback(args: {
   }
 
   let lastResultText =
-    assistantItems.length > 0
+    output.lastResultText ??
+    (assistantItems.length > 0
       ? assistantItems[assistantItems.length - 1]!.content
-      : null;
-  if (lastResultText === null) {
+      : null);
+  if (lastResultText === null && !output.skipExistingAssistantLookup) {
     const existingAssistant = await measureChatCallbackPreCreateTiming(
       args.timing,
       "api_dispatch_pre_create_zero_chat_callback_lookup_existing_assistant",
       "nested",
       () => {
-        return latestEventBackedAssistantMessage(args.db, args.runId);
+        return latestEventBackedAssistantMessage(args.db, args.runId, {
+          maxSequenceNumber: args.run.lastEventSequence ?? undefined,
+        });
       },
     );
     args.signal.throwIfAborted();
