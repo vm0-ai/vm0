@@ -226,10 +226,13 @@ async function waitForThreadMessages(
 ) {
   let page: Awaited<ReturnType<typeof chat.listThreadMessages>> | undefined;
   await expect
-    .poll(async () => {
-      page = await chat.listThreadMessages(actor, threadId);
-      return predicate(page.messages);
-    })
+    .poll(
+      async () => {
+        page = await chat.listThreadMessages(actor, threadId);
+        return predicate(page.messages);
+      },
+      { interval: 100, timeout: 10_000 },
+    )
     .toBe(true);
   if (!page) {
     throw new Error(`Expected chat thread ${threadId} messages to be readable`);
