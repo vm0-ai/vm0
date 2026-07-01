@@ -61,9 +61,7 @@ const ASSISTANT_MESSAGE_ID_NAMESPACE = "bfec4fb6-d5b8-43e4-a72a-9f58f87d7e01";
 const MODEL_FIRST_SELECTION_PROVIDER_ID =
   "00000000-0000-4000-8000-000000000000";
 const API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES = [
-  "api_dispatch_lock_run_for_queue_persistence",
   "api_dispatch_insert_runner_job_queue",
-  "api_dispatch_update_run_runner_group",
 ] as const;
 const CLAIM_ROUTE_TOP_LEVEL_TIMING_ACTION_TYPES = [
   "claim_route_request_prepare",
@@ -120,7 +118,6 @@ const API_DISPATCH_TIMING_ACTION_TYPES = [
   "api_dispatch_prepare_context_load_user_timezone",
   "api_dispatch_prepare_context_prepare_output_metadata",
   "api_dispatch_insert_run_with_concurrency",
-  "api_dispatch_mark_pending_heartbeat",
   "api_dispatch_build_runner_job_payload",
   "api_dispatch_persist_runner_job_queue",
   ...API_DISPATCH_QUEUE_PERSISTENCE_ACTION_TYPES,
@@ -1234,7 +1231,7 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
 
   it("queues runs over the concurrency limit and promotes them after cancellation", async () => {
     const api = createRunsAutomationsApi(context);
-    const { actor, agentId } = await entitledRunActor();
+    const { actor, agentId, runnerGroup } = await entitledRunActor();
 
     const first = await api.createRun(actor, {
       agentId,
@@ -1267,6 +1264,9 @@ describe("RUN-01: admission boundaries beyond request validation", () => {
     expect(promoted.status).toBe("pending");
     const drained = await waitForRunQueueLength(api, actor, 0);
     expect(drained.body.queue).toHaveLength(0);
+    await api.heartbeatRunner(runnerGroup);
+    const thirdClaim = await api.claimRunnerJob(third.runId);
+    expect(thirdClaim.prompt).toBe("queued run three");
 
     await api.requestCancelRun(actor, second.runId, [200]);
     await api.requestCancelRun(actor, third.runId, [200]);
@@ -3949,6 +3949,37 @@ describe("RUN-03: user-runner protocol and runner authentication", () => {
     });
     expect(failedRun.status).toBe("failed");
     expect(failedRun.error).toBe("Only vm0/* runner groups are supported");
+    const storedFailedRun = await api.readRun(actor, failedRun.runId);
+    expect(storedFailedRun.status).toBe("failed");
+    const failedClaim = await api.requestClaimRunnerJob(
+      true,
+      failedRun.runId,
+      [404],
+    );
+    expectApiError(failedClaim.body);
+    expect(failedClaim.body.error.message).toBe("Job not found in queue");
+
+    const firstActive = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "active direct run one",
+    });
+    const secondActive = await api.createDirectRun(actor, {
+      agentComposeId: compose.composeId,
+      prompt: "active direct run two",
+    });
+    const rejected = await api.requestDirectRun(
+      actor,
+      {
+        agentComposeId: foreignCompose.composeId,
+        prompt: "concurrency should win before runner payload validation",
+      },
+      [429],
+    );
+    expectApiError(rejected.body);
+    expect(rejected.body.error.code).toBe("CONCURRENT_RUN_LIMIT");
+
+    await api.requestCancelRun(actor, firstActive.runId, [200]);
+    await api.requestCancelRun(actor, secondActive.runId, [200]);
   });
 });
 
