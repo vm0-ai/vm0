@@ -158,6 +158,11 @@ impl DevicePoolHandle {
     /// drains the pending scan set, and clears the pool's cooldown queue and
     /// in-flight bookkeeping.
     ///
+    /// Scans run on Tokio's blocking task pool, so cleanup may still wait for a
+    /// scan that has already started to return before the acknowledgement is
+    /// sent. Deactivation happens first, so late scan results are discarded
+    /// rather than handed to acquire waiters.
+    ///
     /// Cleanup does not replace per-device finalization. Outstanding
     /// [`DeviceLease`] values still own their NBD claim until they are returned
     /// or dropped, and [`crate::PooledNbdCowDevice`] values still own device
