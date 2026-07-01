@@ -149,8 +149,16 @@ const CONDITIONAL_CAPABILITIES: ReadonlyMap<ZeroCapability, FeatureSwitchKey> =
 Evaluation has two layers (lowest to highest priority):
 
 1. **Core registry** — static config in source code, evaluated against `userId` / `email` / `orgId` hashes.
-2. **Per-user DB overrides** — row in `user_feature_switches` keyed by `(orgId, userId)`. Written via the Lab page toggles or `window._vm0.featureSwitches.myFeature = true` (both call `POST /api/zero/feature-switches`). Cleared via the Lab page "Reset all" button (`DELETE /api/zero/feature-switches`).
+2. **DB overrides** — most switches are per-user rows in
+   `user_feature_switches` keyed by `(orgId, userId)`. Some switches are
+   org-scoped and stored under the org sentinel user id (`__org__`); currently
+   `DataExport` is org-scoped. Written via the Lab page toggles or
+   `window._vm0.featureSwitches.myFeature = true` (both call
+   `POST /api/zero/feature-switches`). Cleared via the Lab page "Reset all"
+   button (`DELETE /api/zero/feature-switches`).
 
-The same two-layer resolution applies on the server: route handlers that call `isFeatureEnabled(..., { userId, orgId, overrides })` pass overrides loaded via `loadFeatureSwitchOverrides(orgId, userId)`.
+The same two-layer resolution applies on the server: route handlers that call
+`isFeatureEnabled(..., { userId, orgId, overrides })` pass overrides loaded via
+`loadFeatureSwitchOverrides(orgId, userId)`.
 
 There is **no** client-only layer. `window._vm0.featureSwitches` requires auth and persists across refreshes; there is no device-local override.
