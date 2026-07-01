@@ -92,6 +92,7 @@ async fn process_control_channel_reaches_guest_agent() -> TestResult<()> {
         ("HOME", workdir.as_str()),
     ];
 
+    common::ensure_canonical_workspace_for_test()?;
     let connection = start_host_and_guest(tmp.path()).await?;
     let command = guest_agent_wrapper_command(guest_agent);
     let sudo = needs_sudo_for_canonical_workspace();
@@ -196,6 +197,7 @@ async fn process_control_enabled_plain_run_does_not_wait_for_stdin_eof() -> Test
         ("HOME", workdir.as_str()),
     ];
 
+    common::ensure_canonical_workspace_for_test()?;
     let connection = start_host_and_guest(tmp.path()).await?;
     let command = guest_agent_wrapper_command(guest_agent);
     let sudo = needs_sudo_for_canonical_workspace();
