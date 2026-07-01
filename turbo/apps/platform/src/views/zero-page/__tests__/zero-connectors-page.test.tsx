@@ -8,6 +8,7 @@ import {
   zeroConnectorOauthStartContract,
   zeroConnectorScopeDiffContract,
 } from "@vm0/api-contracts/contracts/zero-connectors";
+import { zeroFeatureSwitchesContract } from "@vm0/api-contracts/contracts/zero-feature-switches";
 import { zeroUserConnectorsContract } from "@vm0/api-contracts/contracts/user-connectors";
 import { zeroUserPermissionGrantsContract } from "@vm0/api-contracts/contracts/zero-user-permission-grants";
 import type { TeamComposeItem } from "@vm0/api-contracts/contracts/zero-team";
@@ -29,6 +30,7 @@ import {
   queryAllByRoleFast,
 } from "../../../__tests__/page-helper.ts";
 import { search } from "../../../signals/location.ts";
+import { setFeatureSwitch$ } from "../../../signals/external/feature-switch.ts";
 import { detachedNavigateTo$ } from "../../../signals/route.ts";
 import { ROUTES } from "../../../signals/route-paths.ts";
 import { testContext } from "../../../signals/__tests__/test-helpers.ts";
@@ -666,6 +668,38 @@ describe("connectors page", () => {
       expect(screen.getByText(/No connectors matching/)).toBeInTheDocument();
     });
     expect(screen.queryByLabelText("Connect AWS")).not.toBeInTheDocument();
+  });
+
+  it("refreshes connector catalog status when connector feature switches change", async () => {
+    mockConnectors([]);
+
+    detachedSetupPage({
+      context,
+      path: "/connectors",
+      featureSwitches: { [FeatureSwitchKey.AwsConnector]: false },
+    });
+
+    const searchInput = await screen.findByPlaceholderText("Find connectors");
+    await fill(searchInput, "aws");
+
+    await waitFor(() => {
+      expect(screen.getByText(/No connectors matching/)).toBeInTheDocument();
+    });
+
+    context.mocks.api(zeroFeatureSwitchesContract.get, ({ respond }) => {
+      return respond(200, {
+        switches: { [FeatureSwitchKey.AwsConnector]: true },
+      });
+    });
+    await context.store.set(
+      setFeatureSwitch$,
+      { [FeatureSwitchKey.AwsConnector]: true },
+      context.signal,
+    );
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Connect AWS")).toBeInTheDocument();
+    });
   });
 
   it("hides connector access management when its switch is disabled", async () => {

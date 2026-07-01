@@ -11,6 +11,7 @@ import type { ConnectorType } from "@vm0/connectors/connectors";
 import type { ConnectorListResponse } from "@vm0/api-contracts/contracts/connector-schemas";
 import { zeroClient$ } from "../api-client";
 import { accept } from "../../lib/accept.ts";
+import { featureSwitch$ } from "./feature-switch.ts";
 
 /**
  * Reload trigger for connector signals.
@@ -35,6 +36,7 @@ export const connectors$ = computed(async (get) => {
  */
 export const connectorCatalogStatus$ = computed(async (get) => {
   get(internalReloadConnectors$);
+  get(featureSwitch$);
 
   const createClient = get(zeroClient$);
   const client = createClient(zeroConnectorCatalogContract);
