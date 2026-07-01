@@ -152,7 +152,8 @@ impl DevicePoolHandle {
     /// Clean up the underlying pool state.
     ///
     /// If the actor is still accepting commands, this waits for cleanup to be
-    /// acknowledged. Cleanup deactivates the pool, fails queued and later
+    /// acknowledged. When the cleanup command is processed, cleanup deactivates
+    /// the pool, fails acquire waiters still queued in the pool and later
     /// acquire attempts, prevents pending scan results from satisfying waiters,
     /// drains the pending scan set, and clears the pool's cooldown queue and
     /// in-flight bookkeeping.
