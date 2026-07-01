@@ -269,6 +269,7 @@ async fn run_start_with_home(
             "server.url is required (set in config or via --api-url / VM0_API_URL)".into(),
         ));
     }
+    server.url = config::normalize_api_base_url(&server.url)?;
     if server.token.is_empty() {
         return Err(RunnerError::Config(
             "server.token is required (set in config or via --token / VM0_RUNNER_TOKEN)".into(),

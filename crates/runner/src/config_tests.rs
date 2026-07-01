@@ -167,6 +167,59 @@ fn mode_of(path: &std::path::Path) -> u32 {
     std::fs::metadata(path).unwrap().permissions().mode() & 0o777
 }
 
+#[track_caller]
+fn assert_invalid_api_base_url(value: &str, expected: &str) {
+    let error = normalize_api_base_url(value).unwrap_err();
+    let message = error.to_string();
+    assert!(
+        message.contains("server.url"),
+        "error should identify server.url, got: {message}"
+    );
+    assert!(
+        message.contains(expected),
+        "error should mention {expected}, got: {message}"
+    );
+    assert!(
+        !message.contains(value),
+        "error should not echo the raw URL: {message}"
+    );
+}
+
+#[test]
+fn normalize_api_base_url_accepts_http_https_and_preserves_path_prefix() {
+    let cases = [
+        ("https://api.example.com", "https://api.example.com"),
+        ("https://api.example.com/", "https://api.example.com"),
+        ("http://localhost:3000/api/", "http://localhost:3000/api"),
+        (
+            "https://api.example.com/prefix/v1",
+            "https://api.example.com/prefix/v1",
+        ),
+        ("http://[::1]:8080/base/", "http://[::1]:8080/base"),
+    ];
+
+    for (input, expected) in cases {
+        assert_eq!(normalize_api_base_url(input).unwrap(), expected);
+    }
+}
+
+#[test]
+fn normalize_api_base_url_rejects_sensitive_or_non_base_components() {
+    let cases = [
+        ("https://user:pass@api.example.com", "credentials"),
+        ("https://@api.example.com", "credentials"),
+        ("https://api.example.com?token=secret", "query"),
+        ("https://api.example.com#access-token", "fragment"),
+        ("ftp://api.example.com", "http or https"),
+        ("https://", "absolute http(s) URL"),
+        ("api.example.com", "absolute http(s) URL"),
+    ];
+
+    for (input, expected) in cases {
+        assert_invalid_api_base_url(input, expected);
+    }
+}
+
 #[tokio::test]
 async fn diagnostic_config_read_accepts_regular_yaml() {
     let dir = tempfile::tempdir().unwrap();
@@ -299,6 +352,51 @@ server:
     let server = config.server.unwrap();
     assert_eq!(server.url, "https://api.example.com");
     assert_eq!(server.token, "secret");
+}
+
+#[tokio::test]
+async fn load_normalizes_server_url() {
+    let fixture = ConfigFixture::new().await;
+    let yaml = fixture.yaml_with_default_profile(
+        r#"server:
+  url: https://api.example.com/prefix/
+  token: secret
+"#,
+    );
+
+    let config = fixture.load_config(&yaml, true).await.unwrap();
+    let server = config.server.unwrap();
+    assert_eq!(server.url, "https://api.example.com/prefix");
+}
+
+#[tokio::test]
+async fn load_rejects_server_url_with_sensitive_components() {
+    let fixture = ConfigFixture::new().await;
+    let cases = [
+        ("https://user:pass@api.example.com", "credentials"),
+        ("https://api.example.com?token=secret", "query"),
+        ("https://api.example.com#access-token", "fragment"),
+    ];
+
+    for (url, expected) in cases {
+        let yaml = fixture.yaml_with_default_profile(&format!(
+            r#"server:
+  url: "{url}"
+  token: secret
+"#
+        ));
+
+        let error = fixture.load_config(&yaml, true).await.unwrap_err();
+        let message = error.to_string();
+        assert!(
+            message.contains(expected),
+            "expected {expected} error for {url}, got: {message}"
+        );
+        assert!(
+            !message.contains(url),
+            "error should not echo raw URL for {url}: {message}"
+        );
+    }
 }
 
 #[tokio::test]
