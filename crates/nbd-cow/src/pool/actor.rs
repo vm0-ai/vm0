@@ -155,9 +155,9 @@ impl DevicePoolHandle {
     /// state.
     ///
     /// Cleanup does not replace per-device finalization. Outstanding
-    /// [`DeviceLease`] values, including leases held by
-    /// [`crate::PooledNbdCowDevice`], still own their device cleanup authority.
-    /// Finish successful pooled devices with
+    /// [`DeviceLease`] values still own their NBD claim until they are returned
+    /// or dropped, and [`crate::PooledNbdCowDevice`] values still own device
+    /// finalization. Finish successful pooled devices with
     /// [`crate::PooledNbdCowDevice::destroy_with_retries`],
     /// [`crate::PooledNbdCowDevice::destroy_keep_cow_with_retries`], or
     /// [`crate::PooledNbdCowDevice::abandon`].
