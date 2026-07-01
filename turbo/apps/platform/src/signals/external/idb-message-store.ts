@@ -100,9 +100,9 @@ function createIdbMessageStores(userId: string, orgId: string) {
       // the schema currently defines, idempotently, so whichever module
       // triggers the version bump leaves a complete schema for the other.
       dbPromise = openDB(dbName, CHAT_IDB_VERSION, {
-        upgrade(db, oldVersion, _newVersion, tx) {
+        upgrade(db, oldVersion) {
           L.debug("openDB:upgrade", { dbName, storeName });
-          upgradeChatIdb(db, oldVersion, tx);
+          upgradeChatIdb(db, oldVersion);
         },
       });
     }

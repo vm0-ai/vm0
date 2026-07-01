@@ -1,7 +1,6 @@
-import type { IDBPDatabase, IDBPTransaction } from "idb";
+import type { IDBPDatabase } from "idb";
 
-const CHAT_IDB_CACHE_RESET_VERSION = 4;
-const CHAT_IDB_ORDER_INDEX_VERSION = 5;
+const CHAT_IDB_CACHE_RESET_VERSION = 5;
 
 export const CHAT_IDB_VERSION = 5;
 export const CHAT_MESSAGES_STORE = "chat_messages";
@@ -23,11 +22,7 @@ function createThreadMetaStore(db: IDBPDatabase): void {
   db.createObjectStore(CHAT_THREAD_META_STORE, { keyPath: "threadId" });
 }
 
-export function upgradeChatIdb(
-  db: IDBPDatabase,
-  oldVersion: number,
-  tx?: IDBPTransaction<unknown, string[], "versionchange">,
-): void {
+export function upgradeChatIdb(db: IDBPDatabase, oldVersion: number): void {
   if (oldVersion < CHAT_IDB_CACHE_RESET_VERSION) {
     if (db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {
       db.deleteObjectStore(CHAT_MESSAGES_STORE);
@@ -39,16 +34,6 @@ export function upgradeChatIdb(
 
   if (!db.objectStoreNames.contains(CHAT_MESSAGES_STORE)) {
     createChatMessagesStore(db);
-  } else if (oldVersion < CHAT_IDB_ORDER_INDEX_VERSION) {
-    if (!tx) {
-      throw new Error("chat IDB order index upgrade requires transaction");
-    }
-    tx.objectStore(CHAT_MESSAGES_STORE).createIndex(CHAT_MESSAGES_ORDER_INDEX, [
-      "threadId",
-      "createdAt",
-      "orderSequence",
-      "id",
-    ]);
   }
   if (!db.objectStoreNames.contains(CHAT_THREAD_META_STORE)) {
     createThreadMetaStore(db);

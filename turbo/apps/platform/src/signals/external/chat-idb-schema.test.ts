@@ -31,17 +31,6 @@ function fakeDb(existingStores: readonly string[]) {
   for (const name of existingStores) {
     objectStores.set(name, { createIndex: vi.fn() });
   }
-  const objectStore = vi.fn((name: string) => {
-    const store = objectStores.get(name);
-    if (!store) {
-      throw new Error(`unknown fake object store: ${name}`);
-    }
-    return store;
-  });
-  const tx = {
-    objectStore,
-  } as unknown as Parameters<typeof upgradeChatIdb>[2];
-
   return {
     db: {
       objectStoreNames: {
@@ -52,8 +41,6 @@ function fakeDb(existingStores: readonly string[]) {
       deleteObjectStore,
       createObjectStore,
     } as unknown as IDBPDatabase,
-    tx,
-    objectStores,
     createdStores,
     createObjectStore,
     deleteObjectStore,
@@ -61,11 +48,13 @@ function fakeDb(existingStores: readonly string[]) {
 }
 
 describe("upgradeChatIdb", () => {
-  it("clears legacy chat cache when upgrading to v4", () => {
-    const { db, tx, createdStores, createObjectStore, deleteObjectStore } =
-      fakeDb([CHAT_MESSAGES_STORE, CHAT_THREAD_META_STORE]);
+  it("clears legacy chat cache when upgrading to v5", () => {
+    const { db, createdStores, createObjectStore, deleteObjectStore } = fakeDb([
+      CHAT_MESSAGES_STORE,
+      CHAT_THREAD_META_STORE,
+    ]);
 
-    upgradeChatIdb(db, 3, tx);
+    upgradeChatIdb(db, 4);
 
     expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_MESSAGES_STORE);
     expect(deleteObjectStore).toHaveBeenCalledWith(CHAT_THREAD_META_STORE);
@@ -80,24 +69,6 @@ describe("upgradeChatIdb", () => {
     ).toHaveBeenCalledWith("byThreadAndTime", ["threadId", "createdAt"]);
     expect(
       createdStores.get(CHAT_MESSAGES_STORE)?.createIndex,
-    ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, [
-      "threadId",
-      "createdAt",
-      "orderSequence",
-      "id",
-    ]);
-  });
-
-  it("adds the stable order index when upgrading existing v4 chat cache", () => {
-    const { db, tx, objectStores, createObjectStore, deleteObjectStore } =
-      fakeDb([CHAT_MESSAGES_STORE, CHAT_THREAD_META_STORE]);
-
-    upgradeChatIdb(db, 4, tx);
-
-    expect(deleteObjectStore).not.toHaveBeenCalled();
-    expect(createObjectStore).not.toHaveBeenCalled();
-    expect(
-      objectStores.get(CHAT_MESSAGES_STORE)?.createIndex,
     ).toHaveBeenCalledWith(CHAT_MESSAGES_ORDER_INDEX, [
       "threadId",
       "createdAt",
