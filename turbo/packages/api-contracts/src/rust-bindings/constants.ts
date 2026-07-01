@@ -5,16 +5,27 @@ import {
 import {
   CANONICAL_GUEST_HOME_DIR,
   CANONICAL_WORKING_DIR,
+  RESUME_SESSION_HISTORY_MAX_BYTES,
 } from "../contracts/runners";
 
-export interface RustStringConstantBinding {
+export type RustConstantValue =
+  | {
+      readonly kind: "string";
+      readonly value: string;
+    }
+  | {
+      readonly kind: "u64";
+      readonly value: number;
+    };
+
+export interface RustConstantBinding {
   readonly rustModulePath: readonly string[];
   readonly rustConstName: string;
-  readonly value: string;
+  readonly value: RustConstantValue;
   readonly rustDoc: readonly string[];
 }
 
-export interface RustStringConstantModuleDoc {
+export interface RustConstantModuleDoc {
   readonly rustModulePath: readonly string[];
   readonly rustDoc: readonly string[];
 }
@@ -51,14 +62,14 @@ const modelProviderEnvPlaceholderModule = [
 ] as const;
 const runnerPathsModule = ["runners", "paths"] as const;
 
-export const rustStringConstantRootDoc = [
-  "Generated Rust string constants for `@vm0/api-contracts`.",
+export const rustConstantRootDoc = [
+  "Generated Rust constants for `@vm0/api-contracts`.",
   "Do not edit by hand; regenerate with `cd turbo && pnpm -F @vm0/api-contracts generate:rust`.",
   "These constants are shared TypeScript/Rust contract values.",
   "Token-shaped placeholder values in this module are fake marker bytes, not secrets.",
 ] as const;
 
-export const rustStringConstantModuleDocs = [
+export const rustConstantModuleDocs = [
   {
     rustModulePath: ["codex_oauth_token"],
     rustDoc: [
@@ -95,7 +106,7 @@ export const rustStringConstantModuleDocs = [
       "Runner and guest filesystem path constants shared across Rust and TypeScript.",
     ],
   },
-] satisfies readonly RustStringConstantModuleDoc[];
+] satisfies readonly RustConstantModuleDoc[];
 
 function codexOauthPlaceholder(name: CodexOauthPlaceholderName): string {
   const value =
@@ -128,11 +139,28 @@ function placeholderRustDoc(name: string): readonly string[] {
   ];
 }
 
-export const rustStringConstantBindings = [
+function rustString(value: string): RustConstantValue {
+  return { kind: "string", value };
+}
+
+function rustU64(value: number): RustConstantValue {
+  return { kind: "u64", value };
+}
+
+export const rustConstantBindings = [
+  {
+    rustModulePath: ["runners"],
+    rustConstName: "RESUME_SESSION_HISTORY_MAX_BYTES",
+    value: rustU64(RESUME_SESSION_HISTORY_MAX_BYTES),
+    rustDoc: [
+      "Maximum resume session history blob size accepted by the API and runner.",
+      "Rust and TypeScript components use this shared contract value when validating resume history refs and downloads.",
+    ],
+  },
   {
     rustModulePath: runnerPathsModule,
     rustConstName: "CANONICAL_GUEST_HOME_DIR",
-    value: CANONICAL_GUEST_HOME_DIR,
+    value: rustString(CANONICAL_GUEST_HOME_DIR),
     rustDoc: [
       "Canonical home directory path expected for the sandbox user inside runner guests.",
       "Rust and TypeScript components use this shared contract value when building runner guest paths.",
@@ -141,7 +169,7 @@ export const rustStringConstantBindings = [
   {
     rustModulePath: runnerPathsModule,
     rustConstName: "CANONICAL_WORKING_DIR",
-    value: CANONICAL_WORKING_DIR,
+    value: rustString(CANONICAL_WORKING_DIR),
     rustDoc: [
       "Canonical working directory path expected inside runner guests.",
       "Rust and TypeScript components use this shared contract value when building runner commands and paths.",
@@ -151,7 +179,7 @@ export const rustStringConstantBindings = [
     return {
       rustModulePath: codexOauthPlaceholderModule,
       rustConstName: name,
-      value: codexOauthPlaceholder(name),
+      value: rustString(codexOauthPlaceholder(name)),
       rustDoc: placeholderRustDoc(name),
     };
   }),
@@ -159,8 +187,8 @@ export const rustStringConstantBindings = [
     return {
       rustModulePath: modelProviderEnvPlaceholderModule,
       rustConstName: name,
-      value: modelProviderEnvPlaceholder(name),
+      value: rustString(modelProviderEnvPlaceholder(name)),
       rustDoc: placeholderRustDoc(name),
     };
   }),
-] satisfies readonly RustStringConstantBinding[];
+] satisfies readonly RustConstantBinding[];
