@@ -25,7 +25,7 @@ import type { AuthContext } from "../../types/auth";
 import { writeDb$, type Db } from "../external/db";
 import {
   createAgentRun$,
-  type BeforeRunDispatch,
+  type ChatLaunchAssociation,
   type CreateAgentRunArgs,
   type DispatchFailedRunCallbacks,
 } from "./agent-run-create.service";
@@ -155,13 +155,13 @@ interface CreateZeroRunCommandArgs {
   >;
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
+  readonly chatLaunchAssociation?: ChatLaunchAssociation;
   readonly computerUseHostId?: string;
   readonly modelProviderId?: string;
   readonly modelProviderCredentialScope?: ModelProviderCredentialScope;
   readonly selectedModelOverride?: string;
   readonly zeroRunMetadata?: ZeroRunMetadata;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
-  readonly beforeDispatch?: BeforeRunDispatch;
   readonly timing?: ApiDispatchTimingCollector;
   readonly zeroPreCreateSource?: ZeroPreCreateSource;
 }
@@ -755,6 +755,7 @@ function buildZeroCreateAgentRunArgs(args: {
     selectedModelOverride:
       command.selectedModelOverride ?? args.agent.selectedModel ?? undefined,
     chatThreadId: command.chatThreadId,
+    chatLaunchAssociation: command.chatLaunchAssociation,
     extraEnvironment: buildZeroRunExtraEnvironment({
       agentId: args.agent.id,
       chatThreadId: command.chatThreadId,
@@ -779,7 +780,6 @@ function buildZeroCreateAgentRunArgs(args: {
       triggerAgentId: args.triggerAgentId,
     },
     dispatchFailedCallbacks: command.dispatchFailedCallbacks,
-    beforeDispatch: command.beforeDispatch,
     timing: args.timing,
     timingDimensions: zeroRunTimingDimensions({
       origin: zeroRunOrigin({

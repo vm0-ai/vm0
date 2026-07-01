@@ -62,9 +62,9 @@ import {
 import {
   type CreateRunResponse,
   type RunStatus,
-  runStatusSchema,
   unifiedRunRequestSchema,
 } from "@vm0/api-contracts/contracts/runs";
+import type { GenerationTemplateRequest } from "@vm0/api-contracts/contracts/chat-threads";
 import {
   isSupportedFramework,
   type SupportedFramework,
@@ -97,6 +97,12 @@ import { agentRunCallbacks } from "@vm0/db/schema/agent-run-callback";
 import { agentRunQueue } from "@vm0/db/schema/agent-run-queue";
 import { agentRuns } from "@vm0/db/schema/agent-run";
 import { agentSessions } from "@vm0/db/schema/agent-session";
+import {
+  chatMessages,
+  type ChatMessageAttachFileMetadata,
+  type ChatMessageGenerationTemplate,
+} from "@vm0/db/schema/chat-message";
+import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { conversations } from "@vm0/db/schema/conversation";
 import { checkpoints } from "@vm0/db/schema/checkpoint";
 import { modelProviders } from "@vm0/db/schema/model-provider";
@@ -155,7 +161,6 @@ import {
   queuedRunnerJobPayload,
 } from "./agent-run-queue-payload.service";
 import { userFeatureSwitchOverrides } from "./feature-switches.service";
-import { drainOrgQueue$ } from "./zero-run-queue.service";
 import { notifyRunnerJob } from "./runner-dispatch.service";
 import {
   connectorRuntimeCredentialStatus,
@@ -170,6 +175,7 @@ import {
   totalConcurrencyLimit,
 } from "./org-concurrency-entitlements.service";
 import { checkLimitedFreeRunModelAdmission } from "./zero-run-admission.service";
+import { appendQueuedRunAssistantMarker } from "./zero-chat-queue-marker.service";
 import {
   ApiDispatchTimingCollector,
   measureApiDispatchTiming,
@@ -349,16 +355,6 @@ interface LaunchRunIdentity {
 
 type LaunchRunStatus = "pending" | "queued" | "failed";
 
-interface LockedRunPersistenceRow extends Record<string, unknown> {
-  readonly status: string;
-  readonly sandboxId: string | null;
-}
-
-interface DerivedPersistenceResult {
-  readonly status: RunStatus;
-  readonly sandboxId?: string;
-}
-
 type RunnerJobPayload = ReturnType<typeof queuedRunnerJobPayload>;
 
 interface PreparedRunnerLaunch {
@@ -383,11 +379,16 @@ type AtomicLaunchCommitResult =
       readonly runContextSnapshot: RunContextAxiomSnapshot;
     }
   | {
+      readonly kind: "chat-association-cancelled";
+      readonly run: RunRecord;
+    }
+  | {
       readonly kind: "queue-payload-required";
     };
 type CommittedAtomicLaunchResult = Exclude<
   AtomicLaunchCommitResult,
-  { readonly kind: "queue-payload-required" }
+  | { readonly kind: "queue-payload-required" }
+  | { readonly kind: "chat-association-cancelled" }
 >;
 
 interface CommitPreparedLaunchArgs {
@@ -400,17 +401,6 @@ interface CommitPreparedLaunchArgs {
   readonly encryptedQueuedParams: string | undefined;
   readonly timing: ApiDispatchTimingCollector;
 }
-
-type QueuedPersistenceResult =
-  | {
-      readonly status: "queued";
-      readonly queueDepth: number;
-      readonly telemetryTimestamp: string;
-    }
-  | {
-      readonly status: Exclude<RunStatus, "queued">;
-      readonly sandboxId?: string;
-    };
 
 interface HttpRunCallback {
   readonly url: string;
@@ -425,6 +415,49 @@ interface InternalRunCallback {
 }
 
 type RunCallback = HttpRunCallback | InternalRunCallback;
+
+interface ChatLaunchZeroRunModelPin {
+  readonly modelProvider: string | null | undefined;
+  readonly modelProviderId: string | null;
+  readonly modelProviderCredentialScope: ModelProviderCredentialScope | null;
+  readonly selectedModel: string | null;
+}
+
+type ChatLaunchGenerationTemplate =
+  | GenerationTemplateRequest
+  | ChatMessageGenerationTemplate
+  | null
+  | undefined;
+
+interface BaseChatLaunchAssociation {
+  readonly threadId: string;
+  readonly userId: string;
+  readonly zeroRunModelPin: ChatLaunchZeroRunModelPin;
+}
+
+export type ChatLaunchAssociation =
+  | (BaseChatLaunchAssociation & {
+      readonly kind: "normal-user-message";
+      readonly content: string;
+      readonly clientMessageId: string | undefined;
+      readonly revokesMessageId: string | undefined;
+      readonly attachFiles: readonly string[] | null;
+      readonly attachFileMetadata:
+        | readonly ChatMessageAttachFileMetadata[]
+        | null;
+      readonly generationTemplate: ChatLaunchGenerationTemplate;
+      readonly clearDraft: boolean;
+    })
+  | (BaseChatLaunchAssociation & {
+      readonly kind: "auto-send-queued-message-claim";
+      readonly queuedMessageId: string;
+      readonly content: string | null;
+      readonly attachFiles: readonly string[] | null;
+      readonly attachFileMetadata:
+        | readonly ChatMessageAttachFileMetadata[]
+        | null;
+      readonly generationTemplate: ChatLaunchGenerationTemplate;
+    });
 
 interface ResolvedModelProviderEnvironment {
   readonly id: string | null;
@@ -503,11 +536,6 @@ export type DispatchFailedRunCallbacks = (
   error: string,
 ) => Promise<void>;
 
-export type BeforeRunDispatch = (args: {
-  readonly runId: string;
-  readonly status: "queued" | "pending";
-}) => Promise<boolean>;
-
 export interface CreateAgentRunArgs {
   readonly userId: string;
   readonly orgId: string;
@@ -519,6 +547,7 @@ export interface CreateAgentRunArgs {
   readonly selectedModelOverride?: string;
   readonly callbacks?: readonly RunCallback[];
   readonly chatThreadId?: string;
+  readonly chatLaunchAssociation?: ChatLaunchAssociation;
   readonly includeZeroTokenSecret?: boolean;
   readonly zeroTokenComputerUseHostId?: string;
   readonly extraEnvironment?: Record<string, string>;
@@ -538,7 +567,6 @@ export interface CreateAgentRunArgs {
   readonly queueOnConcurrencyLimit?: boolean;
   readonly enforceVm0Credits?: boolean;
   readonly dispatchFailedCallbacks?: DispatchFailedRunCallbacks;
-  readonly beforeDispatch?: BeforeRunDispatch;
   readonly timing?: ApiDispatchTimingCollector;
   readonly timingDimensions?: ApiDispatchTimingDimensions;
 }
@@ -4179,20 +4207,35 @@ function initialRunBody(args: CreateAgentRunArgs): CreateRunBody {
 
 function zeroRunModelProviderValues(
   modelProvider: ResolvedModelProviderEnvironment | null,
+  zeroRunModelPin: ChatLaunchZeroRunModelPin | undefined,
 ): Pick<
   typeof zeroRuns.$inferInsert,
-  "modelProvider" | "modelProviderId" | "selectedModel"
+  | "modelProvider"
+  | "modelProviderId"
+  | "modelProviderCredentialScope"
+  | "selectedModel"
 > {
+  if (zeroRunModelPin) {
+    return {
+      modelProvider: zeroRunModelPin.modelProvider ?? null,
+      modelProviderId: zeroRunModelPin.modelProviderId,
+      modelProviderCredentialScope:
+        zeroRunModelPin.modelProviderCredentialScope,
+      selectedModel: zeroRunModelPin.selectedModel,
+    };
+  }
   if (!modelProvider) {
     return {
       modelProvider: null,
       modelProviderId: null,
+      modelProviderCredentialScope: null,
       selectedModel: null,
     };
   }
   return {
     modelProvider: modelProvider.type,
     modelProviderId: modelProvider.id,
+    modelProviderCredentialScope: null,
     selectedModel: modelProvider.selectedModel,
   };
 }
@@ -4255,6 +4298,7 @@ async function insertZeroRunRecord(
     readonly runId: string;
     readonly body: CreateRunBody;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
+    readonly zeroRunModelPin: ChatLaunchZeroRunModelPin | undefined;
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
   },
@@ -4270,7 +4314,7 @@ async function insertZeroRunRecord(
     runGroupId: metadata.runGroupId ?? null,
     goalId: metadata.goalId ?? null,
     triggerAgentId: metadata.triggerAgentId ?? null,
-    ...zeroRunModelProviderValues(args.modelProvider),
+    ...zeroRunModelProviderValues(args.modelProvider, args.zeroRunModelPin),
     chatThreadId: args.chatThreadId ?? null,
   });
 }
@@ -4287,6 +4331,7 @@ async function insertLaunchRunRows(
     readonly artifacts: readonly ContextArtifact[];
     readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
     readonly modelProvider: ResolvedModelProviderEnvironment | null;
+    readonly zeroRunModelPin: ChatLaunchZeroRunModelPin | undefined;
     readonly callbackRows: readonly AgentRunCallbackInsert[];
     readonly chatThreadId: string | undefined;
     readonly zeroRunMetadata: ZeroRunMetadata | undefined;
@@ -4335,6 +4380,7 @@ async function insertLaunchRunRows(
     runId: args.identity.runId,
     body: args.body,
     modelProvider: args.modelProvider,
+    zeroRunModelPin: args.zeroRunModelPin,
     chatThreadId: args.chatThreadId,
     zeroRunMetadata: args.zeroRunMetadata,
   });
@@ -4344,88 +4390,6 @@ async function insertLaunchRunRows(
   }
 
   return { createdAt };
-}
-
-async function insertRunRecord(
-  tx: Db,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-    readonly resolved: ResolvedCompose;
-    readonly body: CreateRunBody;
-    readonly artifacts: readonly ContextArtifact[];
-    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
-    readonly modelProvider: ResolvedModelProviderEnvironment | null;
-    readonly callbacks: readonly RunCallback[] | undefined;
-    readonly chatThreadId: string | undefined;
-    readonly zeroRunMetadata: ZeroRunMetadata | undefined;
-    readonly featureSwitchContext: FeatureSwitchContext;
-  },
-): Promise<RunRecord> {
-  const identity = prepareLaunchRunIdentity({ resolved: args.resolved });
-  const callbackRows = await prepareRunCallbackRows({
-    runId: identity.runId,
-    callbacks: args.callbacks,
-    featureSwitchContext: args.featureSwitchContext,
-  });
-  const { createdAt } = await insertLaunchRunRows(tx, {
-    userId: args.userId,
-    orgId: args.orgId,
-    identity,
-    status: "pending",
-    resolved: args.resolved,
-    body: args.body,
-    artifacts: args.artifacts,
-    additionalVolumes: args.additionalVolumes,
-    modelProvider: args.modelProvider,
-    callbackRows,
-    chatThreadId: args.chatThreadId,
-    zeroRunMetadata: args.zeroRunMetadata,
-    runnerGroup: undefined,
-    error: undefined,
-  });
-  return runRecordFromLaunchIdentity(identity, "pending", createdAt);
-}
-
-async function insertQueuedRunRecord(
-  tx: Db,
-  args: {
-    readonly userId: string;
-    readonly orgId: string;
-    readonly resolved: ResolvedCompose;
-    readonly body: CreateRunBody;
-    readonly artifacts: readonly ContextArtifact[];
-    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
-    readonly modelProvider: ResolvedModelProviderEnvironment | null;
-    readonly callbacks: readonly RunCallback[] | undefined;
-    readonly chatThreadId: string | undefined;
-    readonly zeroRunMetadata: ZeroRunMetadata | undefined;
-    readonly featureSwitchContext: FeatureSwitchContext;
-  },
-): Promise<RunRecord> {
-  const identity = prepareLaunchRunIdentity({ resolved: args.resolved });
-  const callbackRows = await prepareRunCallbackRows({
-    runId: identity.runId,
-    callbacks: args.callbacks,
-    featureSwitchContext: args.featureSwitchContext,
-  });
-  const { createdAt } = await insertLaunchRunRows(tx, {
-    userId: args.userId,
-    orgId: args.orgId,
-    identity,
-    status: "queued",
-    resolved: args.resolved,
-    body: args.body,
-    artifacts: args.artifacts,
-    additionalVolumes: args.additionalVolumes,
-    modelProvider: args.modelProvider,
-    callbackRows,
-    chatThreadId: args.chatThreadId,
-    zeroRunMetadata: args.zeroRunMetadata,
-    runnerGroup: undefined,
-    error: undefined,
-  });
-  return runRecordFromLaunchIdentity(identity, "queued", createdAt);
 }
 
 async function buildStoredExecutionContext(args: {
@@ -4809,49 +4773,6 @@ function modelUsageProviderForContext(
   return isSupportedRunModel(canonicalModel) ? canonicalModel : undefined;
 }
 
-async function markRunFailed(
-  db: Db,
-  runId: string,
-  error: unknown,
-  dispatchFailedCallbacks: DispatchFailedRunCallbacks | undefined,
-): Promise<boolean> {
-  const message = error instanceof Error ? error.message : "Run failed";
-  const [updated] = await db
-    .update(agentRuns)
-    .set({
-      status: "failed",
-      error: message,
-      completedAt: nowDate(),
-    })
-    .where(
-      and(
-        eq(agentRuns.id, runId),
-        or(
-          eq(agentRuns.status, "queued"),
-          eq(agentRuns.status, "pending"),
-          eq(agentRuns.status, "running"),
-        ),
-      ),
-    )
-    .returning({
-      userId: agentRuns.userId,
-    });
-
-  if (!updated) {
-    return false;
-  }
-
-  await publishRunChangedForUserSafely(updated.userId, runId, {
-    status: "failed",
-  });
-  if (dispatchFailedCallbacks) {
-    await tapError(dispatchFailedCallbacks(db, runId, message), (error) => {
-      L.error("Failed to dispatch failed-run callbacks", { runId, error });
-    });
-  }
-  return true;
-}
-
 function buildRunnerJobPayload(
   db: Db,
   args: {
@@ -4977,250 +4898,6 @@ function buildRunnerJobPayload(
   });
 }
 
-async function lockRunForDerivedPersistence(
-  tx: DbTransaction,
-  runId: string,
-): Promise<DerivedPersistenceResult | null> {
-  const rows = await tx.execute<LockedRunPersistenceRow>(sql`
-    SELECT
-      ${agentRuns.status} AS "status",
-      ${agentRuns.sandboxId} AS "sandboxId"
-    FROM ${agentRuns}
-    WHERE ${agentRuns.id} = ${runId}
-    FOR UPDATE
-  `);
-  const row = rows.rows[0];
-  if (!row) {
-    return null;
-  }
-  const status = runStatusSchema.parse(row.status);
-  return row.sandboxId ? { status, sandboxId: row.sandboxId } : { status };
-}
-
-function dispatchRun(
-  db: Db,
-  args: {
-    readonly run: RunRecord;
-    readonly userId: string;
-    readonly orgId: string;
-    readonly resolved: ResolvedCompose;
-    readonly body: CreateRunBody;
-    readonly artifacts: readonly ContextArtifact[];
-    readonly framework: SupportedFramework;
-    readonly modelProvider: ResolvedModelProviderEnvironment | null;
-    readonly connectorContext: ConnectorRuntimeContext;
-    readonly customConnectorContext: CustomConnectorRuntimeContext;
-    readonly permissionManifest: PermissionManifest | undefined;
-    readonly billableFirewalls: readonly string[];
-    readonly modelUsageProvider: string | undefined;
-    readonly apiStartTime: number;
-    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
-    readonly includeZeroTokenSecret: boolean | undefined;
-    readonly zeroTokenComputerUseHostId: string | undefined;
-    readonly chatThreadId: string | undefined;
-    readonly extraEnvironment: Record<string, string> | undefined;
-    readonly userTimezone: string | undefined;
-    readonly featureSwitchContext: FeatureSwitchContext;
-    readonly timing: ApiDispatchTimingCollector;
-    readonly timingDimensions: ApiDispatchTimingDimensions | undefined;
-  },
-): Computed<Promise<DerivedPersistenceResult>> {
-  return computed(async (get): Promise<DerivedPersistenceResult> => {
-    await measureApiDispatchTiming(
-      args.timing,
-      "api_dispatch_mark_pending_heartbeat",
-      "top_level",
-      async () => {
-        await db
-          .update(agentRuns)
-          .set({ lastHeartbeatAt: nowDate() })
-          .where(
-            and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "pending")),
-          );
-      },
-    );
-
-    const launch = await measureApiDispatchTiming(
-      args.timing,
-      "api_dispatch_build_runner_job_payload",
-      "top_level",
-      async () => {
-        return await get(buildRunnerJobPayload(db, args));
-      },
-    );
-    const payload = launch.runnerJobPayload;
-
-    const persisted = await measureApiDispatchTiming(
-      args.timing,
-      "api_dispatch_persist_runner_job_queue",
-      "top_level",
-      async () => {
-        return await db.transaction(async (tx) => {
-          const currentRun = await measureApiDispatchTiming(
-            args.timing,
-            "api_dispatch_lock_run_for_queue_persistence",
-            "nested",
-            async () => {
-              return await lockRunForDerivedPersistence(tx, args.run.id);
-            },
-          );
-          if (!currentRun) {
-            throw new Error("Run disappeared before runner job persistence");
-          }
-          if (currentRun.status !== "pending") {
-            return currentRun;
-          }
-
-          await measureApiDispatchTiming(
-            args.timing,
-            "api_dispatch_insert_runner_job_queue",
-            "nested",
-            async () => {
-              await tx.insert(runnerJobQueue).values({
-                runId: args.run.id,
-                runnerGroup: payload.runnerGroup,
-                profile: payload.profile,
-                cliAgentSessionId: payload.cliAgentSessionId,
-                executionContext: payload.executionContext,
-                expiresAt: sql`now() + interval '2 hours'`,
-              });
-            },
-          );
-
-          await measureApiDispatchTiming(
-            args.timing,
-            "api_dispatch_update_run_runner_group",
-            "nested",
-            async () => {
-              await tx
-                .update(agentRuns)
-                .set({ runnerGroup: payload.runnerGroup })
-                .where(
-                  and(
-                    eq(agentRuns.id, args.run.id),
-                    eq(agentRuns.status, "pending"),
-                  ),
-                );
-            },
-          );
-
-          return { status: "pending" as const };
-        });
-      },
-    );
-
-    if (persisted.status === "pending") {
-      ingestRunContextSnapshot(launch.runContextSnapshot);
-      await notifyRunnerJob(db, {
-        runnerGroup: payload.runnerGroup,
-        runId: args.run.id,
-        profile: payload.profile,
-        cliAgentSessionId: payload.cliAgentSessionId,
-      });
-      args.timing.flush({
-        runId: args.run.id,
-        runnerGroup: payload.runnerGroup,
-        profile: payload.profile,
-        dispatchPath: "direct",
-        ...(args.timingDimensions ? { dimensions: args.timingDimensions } : {}),
-        ...(args.body.triggerSource
-          ? { triggerSource: args.body.triggerSource }
-          : {}),
-      });
-    }
-
-    return persisted;
-  });
-}
-
-function enqueueRunForConcurrency(
-  db: Db,
-  args: {
-    readonly run: RunRecord;
-    readonly userId: string;
-    readonly orgId: string;
-    readonly resolved: ResolvedCompose;
-    readonly body: CreateRunBody;
-    readonly artifacts: readonly ContextArtifact[];
-    readonly framework: SupportedFramework;
-    readonly modelProvider: ResolvedModelProviderEnvironment | null;
-    readonly connectorContext: ConnectorRuntimeContext;
-    readonly customConnectorContext: CustomConnectorRuntimeContext;
-    readonly permissionManifest: PermissionManifest | undefined;
-    readonly billableFirewalls: readonly string[];
-    readonly modelUsageProvider: string | undefined;
-    readonly apiStartTime: number;
-    readonly additionalVolumes: readonly AdditionalVolume[] | undefined;
-    readonly includeZeroTokenSecret: boolean | undefined;
-    readonly zeroTokenComputerUseHostId: string | undefined;
-    readonly chatThreadId: string | undefined;
-    readonly extraEnvironment: Record<string, string> | undefined;
-    readonly userTimezone: string | undefined;
-    readonly featureSwitchContext: FeatureSwitchContext;
-  },
-): Computed<Promise<DerivedPersistenceResult>> {
-  return computed(async (get): Promise<DerivedPersistenceResult> => {
-    const launch = await get(buildRunnerJobPayload(db, args));
-    const payload = launch.runnerJobPayload;
-    const encryptedParams = await encryptQueuedRunnerJobPayload(
-      payload,
-      args.featureSwitchContext,
-    );
-
-    const queuedPersistence = await db.transaction(
-      async (tx): Promise<QueuedPersistenceResult> => {
-        const currentRun = await lockRunForDerivedPersistence(tx, args.run.id);
-        if (!currentRun) {
-          throw new Error("Run disappeared before queue persistence");
-        }
-        if (currentRun.status !== "queued") {
-          return currentRun.sandboxId
-            ? { status: currentRun.status, sandboxId: currentRun.sandboxId }
-            : { status: currentRun.status };
-        }
-
-        await tx.insert(agentRunQueue).values({
-          runId: args.run.id,
-          userId: args.userId,
-          orgId: args.orgId,
-          encryptedParams,
-          createdAt: args.run.createdAt,
-          expiresAt: sql`now() + interval '2 hours'`,
-        });
-        const [depthRow] = await tx
-          .select({ depth: count() })
-          .from(agentRunQueue)
-          .where(eq(agentRunQueue.orgId, args.orgId));
-        const queueDepth = Number(depthRow?.depth ?? 0);
-        const telemetryTimestamp = nowDate().toISOString();
-        await tx
-          .update(agentRuns)
-          .set({ runnerGroup: payload.runnerGroup })
-          .where(
-            and(eq(agentRuns.id, args.run.id), eq(agentRuns.status, "queued")),
-          );
-
-        return { status: "queued" as const, queueDepth, telemetryTimestamp };
-      },
-    );
-
-    if (queuedPersistence.status === "queued") {
-      recordQueuedRunEnqueueTelemetry({
-        runId: args.run.id,
-        queueDepth: queuedPersistence.queueDepth,
-        timestamp: queuedPersistence.telemetryTimestamp,
-      });
-      ingestRunContextSnapshot(launch.runContextSnapshot);
-      await publishQueueChangedSafely({
-        orgId: args.orgId,
-        runId: args.run.id,
-      });
-    }
-
-    return queuedPersistence;
-  });
-}
-
 async function checkRunConcurrencyPreflight(args: {
   readonly db: Db;
   readonly orgId: string;
@@ -5253,10 +4930,18 @@ async function commitFailedLaunch(args: {
   readonly identity: LaunchRunIdentity;
   readonly callbackRows: readonly AgentRunCallbackInsert[];
   readonly error: unknown;
-}): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> {
+}): Promise<CreateRunRouteResult> {
   const message = runFailureMessage(args.error);
-  const { createdAt } = await args.db.transaction(async (tx) => {
-    return await insertLaunchRunRows(tx, {
+  const result = await args.db.transaction(async (tx) => {
+    const lockError = await lockChatLaunchThread(
+      tx,
+      args.createArgs.chatLaunchAssociation,
+    );
+    if (lockError) {
+      return { kind: "route-error" as const, error: lockError };
+    }
+
+    const { createdAt } = await insertLaunchRunRows(tx, {
       userId: args.createArgs.userId,
       orgId: args.createArgs.orgId,
       identity: args.identity,
@@ -5266,13 +4951,36 @@ async function commitFailedLaunch(args: {
       artifacts: args.context.artifacts,
       additionalVolumes: args.context.additionalVolumes,
       modelProvider: args.context.modelProvider,
+      zeroRunModelPin: args.createArgs.chatLaunchAssociation?.zeroRunModelPin,
       callbackRows: args.callbackRows,
       chatThreadId: args.createArgs.chatThreadId,
       zeroRunMetadata: args.createArgs.zeroRunMetadata,
       runnerGroup: undefined,
       error: message,
     });
+    const run = runRecordFromLaunchIdentity(
+      args.identity,
+      "pending",
+      createdAt,
+    );
+    const chatAssociated = await writeChatLaunchAssociationRows(tx, {
+      association: args.createArgs.chatLaunchAssociation,
+      run,
+      status: "failed",
+    });
+    if (!chatAssociated) {
+      await cancelChatLaunchAssociationRun(tx, args.identity.runId);
+      return { kind: "chat-association-cancelled" as const, run };
+    }
+    return { kind: "failed" as const, createdAt };
   });
+
+  if (result.kind === "route-error") {
+    return result.error;
+  }
+  if (result.kind === "chat-association-cancelled") {
+    return cancelledBeforeDispatchRunResponse(result.run);
+  }
 
   await publishRunChangedForUserSafely(
     args.createArgs.userId,
@@ -5297,9 +5005,176 @@ async function commitFailedLaunch(args: {
     );
   }
   return failedRunResponse(
-    runRecordFromLaunchIdentity(args.identity, "pending", createdAt),
+    runRecordFromLaunchIdentity(args.identity, "pending", result.createdAt),
     args.error,
   );
+}
+
+async function lockChatLaunchThread(
+  tx: DbTransaction,
+  association: ChatLaunchAssociation | undefined,
+): Promise<CreateRunErrorResult | null> {
+  if (!association) {
+    return null;
+  }
+
+  const rows = await tx.execute<{ readonly id: string }>(sql`
+    SELECT ${chatThreads.id} AS "id"
+    FROM ${chatThreads}
+    WHERE ${chatThreads.id} = ${association.threadId}
+      AND ${chatThreads.userId} = ${association.userId}
+    FOR UPDATE
+  `);
+  return rows.rows[0] ? null : notFound("Chat thread not found");
+}
+
+async function writeNormalChatLaunchAssociation(
+  tx: DbTransaction,
+  args: {
+    readonly association: Extract<
+      ChatLaunchAssociation,
+      { readonly kind: "normal-user-message" }
+    >;
+    readonly run: RunRecord;
+    readonly status: LaunchRunStatus;
+  },
+): Promise<boolean> {
+  const association = args.association;
+  if (association.clearDraft) {
+    await tx
+      .update(chatThreads)
+      .set({ draftContent: null, draftAttachments: null })
+      .where(
+        and(
+          eq(chatThreads.id, association.threadId),
+          eq(chatThreads.userId, association.userId),
+        ),
+      );
+  }
+
+  const [inserted] = await tx
+    .insert(chatMessages)
+    .values({
+      ...(association.clientMessageId
+        ? { id: association.clientMessageId }
+        : {}),
+      chatThreadId: association.threadId,
+      role: "user",
+      content: association.content,
+      runId: args.run.id,
+      revokesMessageId: association.revokesMessageId,
+      attachFiles: association.attachFiles
+        ? [...association.attachFiles]
+        : null,
+      attachFileMetadata: association.attachFileMetadata
+        ? [...association.attachFileMetadata]
+        : null,
+      generationTemplate: association.generationTemplate,
+    })
+    .onConflictDoNothing({ target: chatMessages.id })
+    .returning({ createdAt: chatMessages.createdAt });
+  if (!inserted) {
+    return false;
+  }
+  if (args.status === "queued") {
+    await appendQueuedRunAssistantMarker(tx, {
+      chatThreadId: association.threadId,
+      runId: args.run.id,
+      createdAfter: inserted.createdAt,
+    });
+  }
+  return true;
+}
+
+async function writeAutoSendChatLaunchAssociation(
+  tx: DbTransaction,
+  args: {
+    readonly association: Extract<
+      ChatLaunchAssociation,
+      { readonly kind: "auto-send-queued-message-claim" }
+    >;
+    readonly run: RunRecord;
+    readonly status: LaunchRunStatus;
+  },
+): Promise<boolean> {
+  const association = args.association;
+  const [inserted] = await tx
+    .insert(chatMessages)
+    .values({
+      chatThreadId: association.threadId,
+      role: "user",
+      content: association.content,
+      runId: args.run.id,
+      attachFiles: association.attachFiles
+        ? [...association.attachFiles]
+        : null,
+      attachFileMetadata: association.attachFileMetadata
+        ? [...association.attachFileMetadata]
+        : null,
+      generationTemplate: association.generationTemplate,
+      revokesMessageId: association.queuedMessageId,
+    })
+    .onConflictDoNothing({ target: chatMessages.revokesMessageId })
+    .returning({ createdAt: chatMessages.createdAt });
+  if (!inserted) {
+    return false;
+  }
+  if (args.status === "queued") {
+    await appendQueuedRunAssistantMarker(tx, {
+      chatThreadId: association.threadId,
+      runId: args.run.id,
+      createdAfter: inserted.createdAt,
+    });
+  }
+  return true;
+}
+
+async function writeChatLaunchAssociationRows(
+  tx: DbTransaction,
+  args: {
+    readonly association: ChatLaunchAssociation | undefined;
+    readonly run: RunRecord;
+    readonly status: LaunchRunStatus;
+  },
+): Promise<boolean> {
+  if (!args.association) {
+    return true;
+  }
+  switch (args.association.kind) {
+    case "normal-user-message": {
+      return await writeNormalChatLaunchAssociation(tx, {
+        association: args.association,
+        run: args.run,
+        status: args.status,
+      });
+    }
+    case "auto-send-queued-message-claim": {
+      return await writeAutoSendChatLaunchAssociation(tx, {
+        association: args.association,
+        run: args.run,
+        status: args.status,
+      });
+    }
+  }
+}
+
+async function cancelChatLaunchAssociationRun(
+  tx: DbTransaction,
+  runId: string,
+): Promise<void> {
+  await tx
+    .update(agentRuns)
+    .set({
+      status: "cancelled",
+      completedAt: nowDate(),
+      error: BEFORE_DISPATCH_CANCELLED_ERROR,
+    })
+    .where(
+      and(
+        eq(agentRuns.id, runId),
+        inArray(agentRuns.status, ["queued", "pending", "failed"]),
+      ),
+    );
 }
 
 async function insertAtomicLaunchRunRecord(args: {
@@ -5322,6 +5197,8 @@ async function insertAtomicLaunchRunRecord(args: {
         artifacts: args.commit.context.artifacts,
         additionalVolumes: args.commit.context.additionalVolumes,
         modelProvider: args.commit.context.modelProvider,
+        zeroRunModelPin:
+          args.commit.createArgs.chatLaunchAssociation?.zeroRunModelPin,
         callbackRows: args.commit.callbackRows,
         chatThreadId: args.commit.createArgs.chatThreadId,
         zeroRunMetadata: args.commit.createArgs.zeroRunMetadata,
@@ -5341,7 +5218,13 @@ async function commitQueuedPreparedLaunch(
   tx: DbTransaction,
   args: CommitPreparedLaunchArgs,
   payload: RunnerJobPayload,
-): Promise<Extract<AtomicLaunchCommitResult, { readonly kind: "queued" }>> {
+): Promise<
+  | Extract<AtomicLaunchCommitResult, { readonly kind: "queued" }>
+  | Extract<
+      AtomicLaunchCommitResult,
+      { readonly kind: "chat-association-cancelled" }
+    >
+> {
   if (!args.encryptedQueuedParams) {
     throw new Error("Missing encrypted queued runner job payload");
   }
@@ -5352,6 +5235,15 @@ async function commitQueuedPreparedLaunch(
     status: "queued",
     runnerGroup: payload.runnerGroup,
   });
+  const chatAssociated = await writeChatLaunchAssociationRows(tx, {
+    association: args.createArgs.chatLaunchAssociation,
+    run,
+    status: "queued",
+  });
+  if (!chatAssociated) {
+    await cancelChatLaunchAssociationRun(tx, args.identity.runId);
+    return { kind: "chat-association-cancelled", run };
+  }
   await tx.insert(agentRunQueue).values({
     runId: args.identity.runId,
     userId: args.createArgs.userId,
@@ -5377,13 +5269,28 @@ async function commitPendingPreparedLaunch(
   tx: DbTransaction,
   args: CommitPreparedLaunchArgs,
   payload: RunnerJobPayload,
-): Promise<Extract<AtomicLaunchCommitResult, { readonly kind: "pending" }>> {
+): Promise<
+  | Extract<AtomicLaunchCommitResult, { readonly kind: "pending" }>
+  | Extract<
+      AtomicLaunchCommitResult,
+      { readonly kind: "chat-association-cancelled" }
+    >
+> {
   const run = await insertAtomicLaunchRunRecord({
     tx,
     commit: args,
     status: "pending",
     runnerGroup: payload.runnerGroup,
   });
+  const chatAssociated = await writeChatLaunchAssociationRows(tx, {
+    association: args.createArgs.chatLaunchAssociation,
+    run,
+    status: "pending",
+  });
+  if (!chatAssociated) {
+    await cancelChatLaunchAssociationRun(tx, args.identity.runId);
+    return { kind: "chat-association-cancelled", run };
+  }
   await args.timing.measure(
     "api_dispatch_persist_runner_job_queue",
     "top_level",
@@ -5417,6 +5324,13 @@ async function commitPreparedLaunch(
 ): Promise<AtomicLaunchCommitResult | CreateRunErrorResult> {
   const payload = args.launch.runnerJobPayload;
   return await args.db.transaction(async (tx) => {
+    const lockError = await lockChatLaunchThread(
+      tx,
+      args.createArgs.chatLaunchAssociation,
+    );
+    if (lockError) {
+      return lockError;
+    }
     await args.timing.measure(
       "api_dispatch_admission_lock_wait",
       "nested",
@@ -5531,44 +5445,6 @@ function cancelledBeforeDispatchRunResponse(
       createdAt: run.createdAt.toISOString(),
     },
   };
-}
-
-async function cancelRunBeforeDispatch(
-  db: Db,
-  runId: string,
-): Promise<boolean> {
-  const updated = await db.transaction(async (tx) => {
-    const [row] = await tx
-      .update(agentRuns)
-      .set({
-        status: "cancelled",
-        completedAt: nowDate(),
-        error: BEFORE_DISPATCH_CANCELLED_ERROR,
-      })
-      .where(
-        and(
-          eq(agentRuns.id, runId),
-          inArray(agentRuns.status, ["queued", "pending"]),
-        ),
-      )
-      .returning({ userId: agentRuns.userId });
-    if (!row) {
-      return undefined;
-    }
-
-    await tx.delete(agentRunQueue).where(eq(agentRunQueue.runId, runId));
-    await tx.delete(runnerJobQueue).where(eq(runnerJobQueue.runId, runId));
-    return row;
-  });
-
-  if (!updated) {
-    return false;
-  }
-
-  await publishRunChangedForUserSafely(updated.userId, runId, {
-    status: "cancelled",
-  });
-  return true;
 }
 
 interface PreparedRunContext {
@@ -6315,315 +6191,6 @@ function prepareRunContext(
   );
 }
 
-async function insertRunWithConcurrency(
-  db: Db,
-  args: CreateAgentRunArgs,
-  context: PreparedRunContext,
-  timing: ApiDispatchTimingCollector,
-): Promise<RunRecord | CreateRunErrorResult> {
-  return await db.transaction(async (tx) => {
-    await timing.measure(
-      "api_dispatch_admission_lock_wait",
-      "nested",
-      async () => {
-        await tx.execute(
-          sql`SELECT pg_advisory_xact_lock(hashtext(${args.orgId}))`,
-        );
-      },
-    );
-    const concurrency = await timing.measure(
-      "api_dispatch_check_concurrency_limit",
-      "nested",
-      async () => {
-        return await checkRunConcurrencyLimit(tx, args.orgId);
-      },
-    );
-    if (concurrency) {
-      if (args.queueOnConcurrencyLimit) {
-        return await insertQueuedRunRecord(tx, {
-          userId: args.userId,
-          orgId: args.orgId,
-          resolved: context.resolved,
-          body: context.body,
-          artifacts: context.artifacts,
-          additionalVolumes: context.additionalVolumes,
-          modelProvider: context.modelProvider,
-          callbacks: args.callbacks,
-          chatThreadId: args.chatThreadId,
-          zeroRunMetadata: args.zeroRunMetadata,
-          featureSwitchContext: context.featureSwitchContext,
-        });
-      }
-      return concurrency;
-    }
-    return await timing.measure(
-      "api_dispatch_insert_run_record",
-      "nested",
-      async () => {
-        return await insertRunRecord(tx, {
-          userId: args.userId,
-          orgId: args.orgId,
-          resolved: context.resolved,
-          body: context.body,
-          artifacts: context.artifacts,
-          additionalVolumes: context.additionalVolumes,
-          modelProvider: context.modelProvider,
-          callbacks: args.callbacks,
-          chatThreadId: args.chatThreadId,
-          zeroRunMetadata: args.zeroRunMetadata,
-          featureSwitchContext: context.featureSwitchContext,
-        });
-      },
-    );
-  });
-}
-
-function completeQueuedRun(input: {
-  readonly db: Db;
-  readonly args: CreateAgentRunArgs;
-  readonly context: PreparedRunContext;
-  readonly run: RunRecord;
-  readonly signal: AbortSignal;
-}): Computed<Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>>> {
-  return computed(
-    async (
-      get,
-    ): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> => {
-      const enqueueResult = await settle(
-        get(
-          enqueueRunForConcurrency(input.db, {
-            run: input.run,
-            userId: input.args.userId,
-            orgId: input.args.orgId,
-            resolved: input.context.resolved,
-            body: input.context.body,
-            artifacts: input.context.artifacts,
-            framework: input.context.framework,
-            modelProvider: input.context.modelProvider,
-            connectorContext: input.context.connectorContext,
-            customConnectorContext: input.context.customConnectorContext,
-            permissionManifest: input.context.permissionManifest,
-            billableFirewalls: input.context.billableFirewalls,
-            modelUsageProvider: input.context.modelUsageProvider,
-            apiStartTime: input.args.apiStartTime,
-            additionalVolumes: input.context.additionalVolumes,
-            includeZeroTokenSecret: input.args.includeZeroTokenSecret,
-            zeroTokenComputerUseHostId: input.args.zeroTokenComputerUseHostId,
-            chatThreadId: input.args.chatThreadId,
-            extraEnvironment: input.args.extraEnvironment,
-            userTimezone: input.context.userTimezone,
-            featureSwitchContext: input.context.featureSwitchContext,
-          }),
-        ),
-      );
-      input.signal.throwIfAborted();
-      if (!enqueueResult.ok) {
-        await markRunFailed(
-          input.db,
-          input.run.id,
-          enqueueResult.error,
-          input.args.dispatchFailedCallbacks,
-        );
-        input.signal.throwIfAborted();
-        return failedRunResponse(input.run, enqueueResult.error);
-      }
-      return createdRunResponse(input.run, enqueueResult.value);
-    },
-  );
-}
-
-function completePendingRun(input: {
-  readonly db: Db;
-  readonly args: CreateAgentRunArgs;
-  readonly context: PreparedRunContext;
-  readonly run: RunRecord;
-  readonly drainOrgQueue: () => Promise<void>;
-  readonly signal: AbortSignal;
-  readonly timing: ApiDispatchTimingCollector;
-}): Computed<Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>>> {
-  return computed(
-    async (
-      get,
-    ): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }>> => {
-      const dispatchResult = await settle(
-        get(
-          dispatchRun(input.db, {
-            run: input.run,
-            userId: input.args.userId,
-            orgId: input.args.orgId,
-            resolved: input.context.resolved,
-            body: input.context.body,
-            artifacts: input.context.artifacts,
-            framework: input.context.framework,
-            modelProvider: input.context.modelProvider,
-            connectorContext: input.context.connectorContext,
-            customConnectorContext: input.context.customConnectorContext,
-            permissionManifest: input.context.permissionManifest,
-            billableFirewalls: input.context.billableFirewalls,
-            modelUsageProvider: input.context.modelUsageProvider,
-            apiStartTime: input.args.apiStartTime,
-            additionalVolumes: input.context.additionalVolumes,
-            includeZeroTokenSecret: input.args.includeZeroTokenSecret,
-            zeroTokenComputerUseHostId: input.args.zeroTokenComputerUseHostId,
-            chatThreadId: input.args.chatThreadId,
-            extraEnvironment: input.args.extraEnvironment,
-            userTimezone: input.context.userTimezone,
-            featureSwitchContext: input.context.featureSwitchContext,
-            timing: input.timing,
-            timingDimensions: input.args.timingDimensions,
-          }),
-        ),
-      );
-      input.signal.throwIfAborted();
-
-      if (dispatchResult.ok) {
-        return createdRunResponse(input.run, dispatchResult.value);
-      }
-
-      const transitioned = await markRunFailed(
-        input.db,
-        input.run.id,
-        dispatchResult.error,
-        input.args.dispatchFailedCallbacks,
-      );
-      input.signal.throwIfAborted();
-      if (transitioned) {
-        await tapError(input.drainOrgQueue(), (error) => {
-          L.error("Failed to drain org queue after run dispatch failure", {
-            runId: input.run.id,
-            error,
-          });
-        });
-        input.signal.throwIfAborted();
-      }
-      return failedRunResponse(input.run, dispatchResult.error);
-    },
-  );
-}
-
-async function beforeDispatchResponse(args: {
-  readonly db: Db;
-  readonly run: RunRecord;
-  readonly createArgs: CreateAgentRunArgs;
-  readonly signal: AbortSignal;
-  readonly drainOrgQueue: () => Promise<void>;
-}): Promise<Extract<CreateRunRouteResult, { readonly status: 201 }> | null> {
-  const beforeDispatch = args.createArgs.beforeDispatch;
-  if (!beforeDispatch) {
-    return null;
-  }
-
-  // Do not bind the outer request signal here. A successful gate may have
-  // persisted pre-dispatch state that must be followed by queue/job persistence.
-  const beforeDispatchResult = await settle(
-    beforeDispatch({
-      runId: args.run.id,
-      status: args.run.status,
-    }),
-  );
-  if (!beforeDispatchResult.ok) {
-    const transitioned = await markRunFailed(
-      args.db,
-      args.run.id,
-      beforeDispatchResult.error,
-      args.createArgs.dispatchFailedCallbacks,
-    );
-    args.signal.throwIfAborted();
-    if (transitioned && args.run.status === "pending") {
-      await tapError(args.drainOrgQueue(), (error) => {
-        L.error("Failed to drain org queue after run pre-dispatch failure", {
-          runId: args.run.id,
-          error,
-        });
-      });
-      args.signal.throwIfAborted();
-    }
-    return failedRunResponse(args.run, beforeDispatchResult.error);
-  }
-  if (beforeDispatchResult.value) {
-    return null;
-  }
-
-  const cancelled = await cancelRunBeforeDispatch(args.db, args.run.id);
-  args.signal.throwIfAborted();
-  if (cancelled && args.run.status === "pending") {
-    await tapError(args.drainOrgQueue(), (error) => {
-      L.error("Failed to drain org queue after run dispatch cancellation", {
-        runId: args.run.id,
-        error,
-      });
-    });
-    args.signal.throwIfAborted();
-  }
-  return cancelledBeforeDispatchRunResponse(args.run);
-}
-
-function createLegacyBeforeDispatchRun(input: {
-  readonly db: Db;
-  readonly args: CreateAgentRunArgs;
-  readonly context: PreparedRunContext;
-  readonly signal: AbortSignal;
-  readonly timing: ApiDispatchTimingCollector;
-  readonly drainOrgQueue: () => Promise<void>;
-}): Computed<Promise<CreateRunRouteResult>> {
-  return computed(async (get): Promise<CreateRunRouteResult> => {
-    // The chat auto-send pre-dispatch gate is intentionally left on the
-    // legacy split persistence path until #19530 migrates message claims.
-    const transactionResult = await input.timing.measure(
-      "api_dispatch_insert_run_with_concurrency",
-      "top_level",
-      async () => {
-        return await insertRunWithConcurrency(
-          input.db,
-          input.args,
-          input.context,
-          input.timing,
-        );
-      },
-    );
-    input.signal.throwIfAborted();
-
-    if (isRouteError(transactionResult)) {
-      return transactionResult;
-    }
-
-    const beforeDispatch = await beforeDispatchResponse({
-      db: input.db,
-      run: transactionResult,
-      createArgs: input.args,
-      signal: input.signal,
-      drainOrgQueue: input.drainOrgQueue,
-    });
-    if (beforeDispatch) {
-      return beforeDispatch;
-    }
-
-    if (transactionResult.status === "queued") {
-      return await get(
-        completeQueuedRun({
-          db: input.db,
-          args: input.args,
-          context: input.context,
-          run: transactionResult,
-          signal: input.signal,
-        }),
-      );
-    }
-
-    return await get(
-      completePendingRun({
-        db: input.db,
-        args: input.args,
-        context: input.context,
-        run: transactionResult,
-        drainOrgQueue: input.drainOrgQueue,
-        signal: input.signal,
-        timing: input.timing,
-      }),
-    );
-  });
-}
-
 async function committedAtomicLaunchResponse(args: {
   readonly db: Db;
   readonly createArgs: CreateAgentRunArgs;
@@ -6664,6 +6231,133 @@ async function committedAtomicLaunchResponse(args: {
       : {}),
   });
   return createdRunResponse(args.committed.run, { status: "pending" });
+}
+
+interface AtomicLaunchCommitRouteArgs {
+  readonly db: Db;
+  readonly createArgs: CreateAgentRunArgs;
+  readonly context: PreparedRunContext;
+  readonly identity: LaunchRunIdentity;
+  readonly callbackRows: readonly AgentRunCallbackInsert[];
+  readonly launch: PreparedRunnerLaunch;
+  readonly signal: AbortSignal;
+  readonly timing: ApiDispatchTimingCollector;
+}
+
+async function commitAtomicLaunchAttempt(
+  args: AtomicLaunchCommitRouteArgs,
+  encryptedQueuedParams: string | undefined,
+): Promise<AtomicLaunchCommitResult | CreateRunErrorResult> {
+  return await args.timing.measure(
+    "api_dispatch_insert_run_with_concurrency",
+    "top_level",
+    async () => {
+      return await commitPreparedLaunch({
+        db: args.db,
+        createArgs: args.createArgs,
+        context: args.context,
+        identity: args.identity,
+        callbackRows: args.callbackRows,
+        launch: args.launch,
+        encryptedQueuedParams,
+        timing: args.timing,
+      });
+    },
+  );
+}
+
+function cancelledChatAssociationCommitResponse(
+  result: Extract<
+    AtomicLaunchCommitResult,
+    { readonly kind: "chat-association-cancelled" }
+  >,
+  signal: AbortSignal,
+): Extract<CreateRunRouteResult, { readonly status: 201 }> {
+  signal.throwIfAborted();
+  return cancelledBeforeDispatchRunResponse(result.run);
+}
+
+async function resolveQueuedAtomicLaunchCommit(
+  args: AtomicLaunchCommitRouteArgs,
+): Promise<CreateRunRouteResult | CommittedAtomicLaunchResult> {
+  args.signal.throwIfAborted();
+  const encryptedQueuedParamsResult = await settle(
+    encryptQueuedRunnerJobPayload(
+      args.launch.runnerJobPayload,
+      args.context.featureSwitchContext,
+    ),
+  );
+  args.signal.throwIfAborted();
+  if (!encryptedQueuedParamsResult.ok) {
+    const retryWithoutQueuedPayload = await commitAtomicLaunchAttempt(
+      args,
+      undefined,
+    );
+    if (isReturnableRouteError(retryWithoutQueuedPayload, args.signal)) {
+      return retryWithoutQueuedPayload;
+    }
+    if (retryWithoutQueuedPayload.kind !== "queue-payload-required") {
+      if (retryWithoutQueuedPayload.kind === "chat-association-cancelled") {
+        return cancelledChatAssociationCommitResponse(
+          retryWithoutQueuedPayload,
+          args.signal,
+        );
+      }
+      return retryWithoutQueuedPayload;
+    }
+    args.signal.throwIfAborted();
+    return await commitFailedLaunch({
+      db: args.db,
+      createArgs: args.createArgs,
+      context: args.context,
+      identity: args.identity,
+      callbackRows: args.callbackRows,
+      error: encryptedQueuedParamsResult.error,
+    });
+  }
+
+  const committed = await commitAtomicLaunchAttempt(
+    args,
+    encryptedQueuedParamsResult.value,
+  );
+  if (isReturnableRouteError(committed, args.signal)) {
+    return committed;
+  }
+  if (committed.kind === "chat-association-cancelled") {
+    return cancelledChatAssociationCommitResponse(committed, args.signal);
+  }
+  if (committed.kind === "queue-payload-required") {
+    args.signal.throwIfAborted();
+    throw new Error("Queued launch still required encrypted payload");
+  }
+  return committed;
+}
+
+async function commitAtomicLaunchRouteResponse(
+  args: AtomicLaunchCommitRouteArgs,
+): Promise<CreateRunRouteResult> {
+  let committed = await commitAtomicLaunchAttempt(args, undefined);
+  if (isReturnableRouteError(committed, args.signal)) {
+    return committed;
+  }
+  if (committed.kind === "chat-association-cancelled") {
+    return cancelledChatAssociationCommitResponse(committed, args.signal);
+  }
+
+  if (committed.kind === "queue-payload-required") {
+    const queuedCommitResult = await resolveQueuedAtomicLaunchCommit(args);
+    if ("status" in queuedCommitResult) {
+      return queuedCommitResult;
+    }
+    committed = queuedCommitResult;
+  }
+
+  return await committedAtomicLaunchResponse({
+    db: args.db,
+    createArgs: args.createArgs,
+    committed,
+    timing: args.timing,
+  });
 }
 
 function createAtomicLaunchRun(input: {
@@ -6724,77 +6418,14 @@ function createAtomicLaunchRun(input: {
       });
     }
 
-    const commitLaunch = async (encryptedQueuedParams: string | undefined) => {
-      return await input.timing.measure(
-        "api_dispatch_insert_run_with_concurrency",
-        "top_level",
-        async () => {
-          return await commitPreparedLaunch({
-            db: input.db,
-            createArgs: input.args,
-            context: input.context,
-            identity,
-            callbackRows,
-            launch: launchResult.value,
-            encryptedQueuedParams,
-            timing: input.timing,
-          });
-        },
-      );
-    };
-
-    let committed = await commitLaunch(undefined);
-    if (isReturnableRouteError(committed, input.signal)) {
-      return committed;
-    }
-
-    if (committed.kind === "queue-payload-required") {
-      input.signal.throwIfAborted();
-      const encryptedQueuedParamsResult = await settle(
-        encryptQueuedRunnerJobPayload(
-          launchResult.value.runnerJobPayload,
-          input.context.featureSwitchContext,
-        ),
-      );
-      input.signal.throwIfAborted();
-      if (!encryptedQueuedParamsResult.ok) {
-        const retryWithoutQueuedPayload = await commitLaunch(undefined);
-        if (isReturnableRouteError(retryWithoutQueuedPayload, input.signal)) {
-          return retryWithoutQueuedPayload;
-        }
-        if (retryWithoutQueuedPayload.kind !== "queue-payload-required") {
-          return await committedAtomicLaunchResponse({
-            db: input.db,
-            createArgs: input.args,
-            committed: retryWithoutQueuedPayload,
-            timing: input.timing,
-          });
-        }
-        input.signal.throwIfAborted();
-        return await commitFailedLaunch({
-          db: input.db,
-          createArgs: input.args,
-          context: input.context,
-          identity,
-          callbackRows,
-          error: encryptedQueuedParamsResult.error,
-        });
-      }
-
-      committed = await commitLaunch(encryptedQueuedParamsResult.value);
-      if (isReturnableRouteError(committed, input.signal)) {
-        return committed;
-      }
-      if (committed.kind === "queue-payload-required") {
-        input.signal.throwIfAborted();
-        throw new Error("Queued launch still required encrypted payload");
-      }
-    }
-
-    return await committedAtomicLaunchResponse({
+    return await commitAtomicLaunchRouteResponse({
       db: input.db,
       createArgs: input.args,
-      committed,
+      context: input.context,
+      identity,
+      callbackRows,
+      launch: launchResult.value,
+      signal: input.signal,
       timing: input.timing,
     });
   });
@@ -6860,21 +6491,6 @@ export const createAgentRun$ = command(
       if (creditGate) {
         return creditGate;
       }
-    }
-
-    if (args.beforeDispatch) {
-      return await get(
-        createLegacyBeforeDispatchRun({
-          db,
-          args,
-          context,
-          signal,
-          timing,
-          drainOrgQueue: async () => {
-            await set(drainOrgQueue$, { orgId: args.orgId }, signal);
-          },
-        }),
-      );
     }
 
     return await get(

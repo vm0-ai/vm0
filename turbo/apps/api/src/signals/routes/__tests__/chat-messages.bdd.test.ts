@@ -626,13 +626,7 @@ describe("CHAT-02: web chat send and client-id idempotency", () => {
     );
     expect(run.appendSystemPrompt).not.toContain("# Artifact Template Context");
 
-    const messages = await waitForThreadMessages(
-      actor,
-      clientThreadId,
-      (items) => {
-        return userMessages(items).length === 1;
-      },
-    );
+    const messages = await chat.listThreadMessages(actor, clientThreadId);
     expect(userMessages(messages.messages)).toHaveLength(1);
     expect(userMessages(messages.messages)[0]).toMatchObject({
       id: clientMessageId,
@@ -1140,18 +1134,7 @@ describe("CHAT-02: org queue markers", () => {
     expect(queuedRun.body.status).toBe("queued");
 
     const queuedThread = queuedRun.body.threadId;
-    const beforeDequeue = await waitForThreadMessages(
-      actor,
-      queuedThread,
-      (items) => {
-        return (
-          userMessages(items).length === 1 &&
-          assistantMessages(items).some((message) => {
-            return message.runEventId === "queue:queued";
-          })
-        );
-      },
-    );
+    const beforeDequeue = await chat.listThreadMessages(actor, queuedThread);
     expect(userMessages(beforeDequeue.messages)).toHaveLength(1);
     expect(userMessages(beforeDequeue.messages)[0]).toMatchObject({
       content: "wait behind the active run",

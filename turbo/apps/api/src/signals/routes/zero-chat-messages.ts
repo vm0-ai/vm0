@@ -10,7 +10,6 @@ import { agentRuns } from "@vm0/db/schema/agent-run";
 import {
   chatMessages,
   type ChatMessageAttachFileMetadata,
-  type ChatMessageAutomationSnapshot,
 } from "@vm0/db/schema/chat-message";
 import { chatThreads } from "@vm0/db/schema/chat-thread";
 import { computerUseHosts } from "@vm0/db/schema/computer-use-host";
@@ -77,7 +76,6 @@ import {
   resolveModelSelectionPin,
 } from "../services/zero-model-selection.service";
 import { visibleChatMessageCondition } from "../services/zero-chat-message-shared.service";
-import { appendQueuedRunAssistantMarker } from "../services/zero-chat-queue-marker.service";
 import { loadUserFeatureSwitchContext } from "../services/feature-switches.service";
 import { bestEffort } from "../utils";
 import { isFeatureEnabled } from "@vm0/core/feature-switch";
@@ -1615,76 +1613,6 @@ function appendUnassociatedUserMessage(params: {
   });
 }
 
-async function clearThreadDraft(
-  tx: Pick<Db, "update">,
-  threadId: string,
-  userId: string,
-): Promise<void> {
-  await tx
-    .update(chatThreads)
-    .set({ draftContent: null, draftAttachments: null })
-    .where(and(eq(chatThreads.id, threadId), eq(chatThreads.userId, userId)));
-}
-
-async function appendAssociatedUserMessage(params: {
-  readonly db: Db;
-  readonly threadId: string;
-  readonly userId: string;
-  readonly prompt: string;
-  readonly runId: string;
-  readonly attachFiles: readonly AttachFile[] | undefined;
-  readonly clientMessageId: string | undefined;
-  readonly revokesMessageId: string | undefined;
-  readonly generationTemplate: IncomingGenerationTemplate;
-  readonly appendQueueMarker: boolean;
-  // When false, the thread's in-progress draft is preserved. Automation posts
-  // are not user-initiated typing, so they must not clear the user's draft.
-  readonly clearDraft: boolean;
-  // Set when this message is posted by a firing automation. `automationSnapshot`
-  // snapshots the automation's basic display details at send time so the bubble
-  // keeps its label even after an edit/delete. `automationTitle` is retained for
-  // legacy fallback display.
-  readonly automationId?: string;
-  readonly automationTitle?: string;
-  readonly automationSnapshot?: ChatMessageAutomationSnapshot;
-}): Promise<void> {
-  await params.db.transaction(async (tx) => {
-    if (params.clearDraft) {
-      await clearThreadDraft(tx, params.threadId, params.userId);
-    }
-    const explicitId = params.clientMessageId ?? undefined;
-    const fileIds = attachFileIds(params.attachFiles);
-    const fileMetadata = attachFileMetadata(params.userId, params.attachFiles);
-    const [inserted] = await tx
-      .insert(chatMessages)
-      .values({
-        ...(explicitId ? { id: explicitId } : {}),
-        chatThreadId: params.threadId,
-        role: "user",
-        content: params.prompt,
-        runId: params.runId,
-        revokesMessageId: params.revokesMessageId,
-        attachFiles: fileIds,
-        attachFileMetadata: fileMetadata,
-        generationTemplate: params.generationTemplate,
-        // #17307 D3: only the automation_* columns receive writes; the legacy
-        // schedule_* columns are frozen and drop in the next phase.
-        automationId: params.automationId,
-        automationTitle: params.automationTitle,
-        automationSnapshot: params.automationSnapshot,
-      })
-      .onConflictDoNothing({ target: chatMessages.id })
-      .returning({ createdAt: chatMessages.createdAt });
-    if (params.appendQueueMarker) {
-      await appendQueuedRunAssistantMarker(tx, {
-        chatThreadId: params.threadId,
-        runId: params.runId,
-        createdAfter: inserted?.createdAt ?? nowDate(),
-      });
-    }
-  });
-}
-
 function appendRecallUserMessage(params: {
   readonly db: Db;
   readonly threadId: string;
@@ -2211,56 +2139,6 @@ function scheduleChatTitleGeneration(params: {
   );
 }
 
-function scheduleAssociatedUserMessage(params: {
-  readonly db: Db;
-  readonly body: NormalSendBody;
-  readonly threadId: string;
-  readonly userId: string;
-  readonly runId: string;
-  readonly appendQueueMarker: boolean;
-  readonly appendInitialThinking: boolean;
-}): void {
-  waitUntil(
-    (async () => {
-      await appendAssociatedUserMessage({
-        db: params.db,
-        threadId: params.threadId,
-        userId: params.userId,
-        prompt: params.body.prompt,
-        runId: params.runId,
-        attachFiles: params.body.attachFiles,
-        clientMessageId: params.body.clientMessageId,
-        revokesMessageId: params.body.revokesMessageId,
-        generationTemplate: params.body.generationTemplate,
-        appendQueueMarker: params.appendQueueMarker,
-        clearDraft: true,
-      });
-      await publishUserSignal(
-        [params.userId],
-        `chatThreadMessageCreated:${params.threadId}`,
-      );
-      await publishUserSignal(
-        [params.userId],
-        `chatThreadRunCreated:${params.threadId}`,
-      );
-      if (params.appendInitialThinking) {
-        await bestEffort(
-          generateAndPersistInitialThinkingMessage({
-            db: params.db,
-            threadId: params.threadId,
-            userId: params.userId,
-            runId: params.runId,
-            currentPrompt: params.body.prompt,
-          }),
-        );
-      }
-      // No threadListChanged here: the sending client reloads its own
-      // sidebar after the POST, sorting only moves on run-terminal events,
-      // and the terminal callback broadcasts to other clients.
-    })(),
-  );
-}
-
 function scheduleCreatedChatRunSideEffects(params: {
   readonly db: Db;
   readonly body: NormalSendBody;
@@ -2276,19 +2154,37 @@ function scheduleCreatedChatRunSideEffects(params: {
     thread: params.thread,
     userId: params.userId,
   });
-  scheduleAssociatedUserMessage({
-    db: params.db,
-    body: params.body,
-    threadId: params.thread.threadId,
-    userId: params.userId,
-    runId: params.runId,
-    appendQueueMarker: params.runStatus === "queued",
-    appendInitialThinking:
-      params.initialThinkingEnabled &&
-      params.runStatus !== "queued" &&
-      params.body.hasTextContent !== false &&
-      params.body.prompt.trim().length > 0,
-  });
+  waitUntil(
+    (async () => {
+      await publishUserSignal(
+        [params.userId],
+        `chatThreadMessageCreated:${params.thread.threadId}`,
+      );
+      await publishUserSignal(
+        [params.userId],
+        `chatThreadRunCreated:${params.thread.threadId}`,
+      );
+      if (
+        params.initialThinkingEnabled &&
+        params.runStatus !== "queued" &&
+        params.body.hasTextContent !== false &&
+        params.body.prompt.trim().length > 0
+      ) {
+        await bestEffort(
+          generateAndPersistInitialThinkingMessage({
+            db: params.db,
+            threadId: params.thread.threadId,
+            userId: params.userId,
+            runId: params.runId,
+            currentPrompt: params.body.prompt,
+          }),
+        );
+      }
+      // No threadListChanged here: the sending client reloads its own
+      // sidebar after the POST, sorting only moves on run-terminal events,
+      // and the terminal callback broadcasts to other clients.
+    })(),
+  );
 }
 
 async function buildInsufficientCreditsAssistantMessage(params: {
@@ -2456,6 +2352,27 @@ function buildCreateZeroRunArgs(params: {
     auth: args.auth,
     apiStartTime: args.apiStartTime,
     chatThreadId: prepared.thread.threadId,
+    chatLaunchAssociation: {
+      kind: "normal-user-message" as const,
+      threadId: prepared.thread.threadId,
+      userId: args.userId,
+      content: args.body.prompt,
+      clientMessageId: args.body.clientMessageId,
+      revokesMessageId: args.body.revokesMessageId,
+      attachFiles: attachFileIds(args.body.attachFiles),
+      attachFileMetadata: attachFileMetadata(
+        args.userId,
+        args.body.attachFiles,
+      ),
+      generationTemplate: args.body.generationTemplate,
+      clearDraft: true,
+      zeroRunModelPin: {
+        modelProvider: providerAdmission.effectiveModelProvider,
+        modelProviderId: modelPin.modelProviderId,
+        modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
+        selectedModel: modelPin.selectedModel,
+      },
+    },
     computerUseHostId: prepared.computerUseHostGrant?.hostId,
     modelProviderId: modelPin.modelProviderId ?? undefined,
     modelProviderCredentialScope:
@@ -2567,17 +2484,17 @@ const createNormalChatRun$ = command(
     if (runResult.status !== 201) {
       return runResult;
     }
-
-    await prepared.db
-      .update(zeroRuns)
-      .set({
-        modelProvider: providerAdmission.effectiveModelProvider,
-        modelProviderId: modelPin.modelProviderId,
-        modelProviderCredentialScope: modelPin.modelProviderCredentialScope,
-        selectedModel: modelPin.selectedModel,
-      })
-      .where(eq(zeroRuns.id, runResult.body.runId));
-    signal.throwIfAborted();
+    if (runResult.body.status === "cancelled") {
+      return {
+        status: 201 as const,
+        body: {
+          runId: runResult.body.runId,
+          threadId: prepared.thread.threadId,
+          status: runResult.body.status,
+          createdAt: runResult.body.createdAt,
+        },
+      };
+    }
 
     scheduleCreatedChatRunSideEffects({
       db: prepared.db,
