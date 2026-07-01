@@ -1760,6 +1760,7 @@ async function latestSessionForThreadFromDb(
       and(
         eq(zeroRuns.chatThreadId, threadId),
         eq(zeroRuns.triggerSource, "web"),
+        sql`(${agentRuns.status} IS DISTINCT FROM ${"cancelled"} OR ${agentRuns.error} IS DISTINCT FROM ${BEFORE_DISPATCH_CANCELLED_ERROR})`,
       ),
     )
     .orderBy(desc(agentRuns.createdAt))
