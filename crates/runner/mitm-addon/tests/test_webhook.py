@@ -364,7 +364,9 @@ class TestUsageWebhookDelivery:
         with patch.object(
             usage.webhook._opener,
             "open",
-            side_effect=urllib.error.URLError(f"failed {SENSITIVE_WEBHOOK_URL}"),
+            side_effect=urllib.error.URLError(
+                f"failed {SENSITIVE_WEBHOOK_URL} and {SENSITIVE_WEBHOOK_URL.removesuffix('#frag')}"
+            ),
         ):
             outcome = usage.webhook._do_post_webhook_attempts(
                 SENSITIVE_WEBHOOK_URL,

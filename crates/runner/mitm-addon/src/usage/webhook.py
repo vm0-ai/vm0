@@ -11,6 +11,7 @@ import json
 import threading
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 from collections.abc import Callable
 from concurrent.futures import ThreadPoolExecutor
@@ -92,7 +93,27 @@ def _log_webhook_entry(
 def _sanitize_webhook_log_text(value: str, raw_url: str, display_url: str) -> str:
     if not raw_url:
         return value
-    return value.replace(raw_url, display_url)
+    for url_variant in _raw_webhook_url_log_text_variants(raw_url):
+        value = value.replace(url_variant, display_url)
+    return value
+
+
+def _raw_webhook_url_log_text_variants(raw_url: str) -> tuple[str, ...]:
+    variants = {raw_url}
+    try:
+        parts = urllib.parse.urlsplit(raw_url)
+    except ValueError:
+        variants.add(raw_url.split("#", 1)[0])
+        variants.add(raw_url.split("?", 1)[0])
+    else:
+        if parts.fragment:
+            variants.add(
+                urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, parts.query, ""))
+            )
+        if parts.query or parts.fragment:
+            variants.add(urllib.parse.urlunsplit((parts.scheme, parts.netloc, parts.path, "", "")))
+    variants.discard("")
+    return tuple(sorted(variants, key=len, reverse=True))
 
 
 def _post_webhook(url: str, sandbox_token: str, data: bytes) -> None:
