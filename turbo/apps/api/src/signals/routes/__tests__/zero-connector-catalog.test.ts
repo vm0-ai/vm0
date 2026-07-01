@@ -60,16 +60,13 @@ describe("GET /api/zero/connector-catalog", () => {
   }[] = [];
   const seededOrgs: OrgMembershipFixture[] = [];
 
-  async function enablePublicCatalog(
+  async function enableConnectorFeatureSwitches(
     orgId: string,
     userId: string,
-    switches: Partial<Record<FeatureSwitchKey, boolean>> = {},
+    switches: Partial<Record<FeatureSwitchKey, boolean>>,
   ): Promise<void> {
     seededFeatureSwitches.push({ orgId, userId });
-    await enableFeatureSwitches(orgId, userId, {
-      [FeatureSwitchKey.ConnectorCatalogApi]: true,
-      ...switches,
-    });
+    await enableFeatureSwitches(orgId, userId, switches);
   }
 
   afterEach(async () => {
@@ -106,24 +103,22 @@ describe("GET /api/zero/connector-catalog", () => {
     expect(response.body.error.code).toBe("UNAUTHORIZED");
   });
 
-  it("returns 403 while the public catalog feature is disabled", async () => {
+  it("returns public catalog metadata without a catalog feature switch", async () => {
     mocks.clerk.session(`user_${randomUUID()}`, `org_${randomUUID()}`);
 
     const client = setupApp({ context })(zeroConnectorCatalogContract);
     const response = await accept(
       client.list({ headers: { authorization: "Bearer clerk-session" } }),
-      [403],
+      [200],
     );
 
-    expect(response.body.error.message).toBe(
-      "Connector catalog API is not enabled",
-    );
+    assertPublicConnectorCatalogHasNoPrivateFields(response.body);
+    expect(response.body.connectors.length).toBeGreaterThan(0);
   });
 
-  it("returns compact public connector metadata when enabled", async () => {
+  it("returns compact public connector metadata", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await enablePublicCatalog(orgId, userId);
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroConnectorCatalogContract);
@@ -161,7 +156,6 @@ describe("GET /api/zero/connector-catalog", () => {
   it("accepts a ZERO_TOKEN carrying the connector:read capability", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await enablePublicCatalog(orgId, userId);
     seededOrgs.push(
       await store.set(
         seedOrgMembership$,
@@ -192,7 +186,6 @@ describe("GET /api/zero/connector-catalog", () => {
   it("rejects a ZERO_TOKEN missing the connector:read capability with 403", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await enablePublicCatalog(orgId, userId);
     seededOrgs.push(
       await store.set(
         seedOrgMembership$,
@@ -226,7 +219,6 @@ describe("GET /api/zero/connector-catalog", () => {
   it("returns connector detail without leaking manual field storage names", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await enablePublicCatalog(orgId, userId);
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroConnectorCatalogContract);
@@ -256,7 +248,6 @@ describe("GET /api/zero/connector-catalog", () => {
   it("omits auth text and placeholders derived from private names", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await enablePublicCatalog(orgId, userId);
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroConnectorCatalogContract);
@@ -287,7 +278,7 @@ describe("GET /api/zero/connector-catalog", () => {
   it("returns every visible connector detail without private metadata", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await enablePublicCatalog(orgId, userId, {
+    await enableConnectorFeatureSwitches(orgId, userId, {
       [FeatureSwitchKey.NeonConnector]: true,
     });
     mocks.clerk.session(userId, orgId);
@@ -313,7 +304,6 @@ describe("GET /api/zero/connector-catalog", () => {
   it("returns 404 for hidden connector catalog refs", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await enablePublicCatalog(orgId, userId);
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroConnectorCatalogContract);
@@ -333,7 +323,7 @@ describe("GET /api/zero/connector-catalog", () => {
   it("returns semantic public ids for device-auth start options", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await enablePublicCatalog(orgId, userId, {
+    await enableConnectorFeatureSwitches(orgId, userId, {
       [FeatureSwitchKey.TestOauthConnector]: true,
     });
     mocks.clerk.session(userId, orgId);
@@ -369,7 +359,6 @@ describe("GET /api/zero/connector-catalog", () => {
   it("hides feature-gated auth methods from connector detail", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await enablePublicCatalog(orgId, userId);
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroConnectorCatalogContract);
@@ -392,7 +381,7 @@ describe("GET /api/zero/connector-catalog", () => {
   it("shows feature-gated auth methods when their connector feature is enabled", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await enablePublicCatalog(orgId, userId, {
+    await enableConnectorFeatureSwitches(orgId, userId, {
       [FeatureSwitchKey.NeonConnector]: true,
     });
     mocks.clerk.session(userId, orgId);
@@ -417,7 +406,6 @@ describe("GET /api/zero/connector-catalog", () => {
   it("returns public permission detail without firewall execution metadata", async () => {
     const userId = `user_${randomUUID()}`;
     const orgId = `org_${randomUUID()}`;
-    await enablePublicCatalog(orgId, userId);
     mocks.clerk.session(userId, orgId);
 
     const client = setupApp({ context })(zeroConnectorCatalogContract);
