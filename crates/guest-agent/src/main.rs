@@ -1273,6 +1273,33 @@ mod tests {
             .join("main-recovery-checkpoint")
     }
 
+    struct EnvVarRestoreGuard {
+        saved: Vec<(&'static str, Option<std::ffi::OsString>)>,
+    }
+
+    impl EnvVarRestoreGuard {
+        fn capture(keys: impl IntoIterator<Item = &'static str>) -> Self {
+            let saved = keys
+                .into_iter()
+                .map(|key| (key, std::env::var_os(key)))
+                .collect();
+            Self { saved }
+        }
+    }
+
+    impl Drop for EnvVarRestoreGuard {
+        fn drop(&mut self) {
+            for (key, value) in &self.saved {
+                unsafe {
+                    match value {
+                        Some(value) => std::env::set_var(key, value),
+                        None => std::env::remove_var(key),
+                    }
+                }
+            }
+        }
+    }
+
     #[test]
     fn framework_supports_active_input_for_claude_and_codex_app_server_only() {
         assert!(framework_supports_active_input(
@@ -2829,6 +2856,97 @@ mod tests {
             .block_on(
                 complete_execution_preserves_existing_failure_diagnostic_when_events_fail_inner(),
             );
+    }
+
+    #[test]
+    fn complete_execution_uses_explicit_paths_after_process_env_changes() {
+        let _test_state_guard = lock_test_state();
+        tokio::runtime::Builder::new_current_thread()
+            .enable_all()
+            .build()
+            .unwrap()
+            .block_on(complete_execution_uses_explicit_paths_after_process_env_changes_inner());
+    }
+
+    async fn complete_execution_uses_explicit_paths_after_process_env_changes_inner() {
+        let tmp = tempfile::tempdir().unwrap();
+        let explicit_paths = paths::GuestPaths::from_runtime_dir(tmp.path().join("captured-run"));
+        let stale_paths = paths::GuestPaths::from_runtime_dir(tmp.path().join("stale-run"));
+        let config = env::GuestConfig::from_raw(env::GuestConfigRaw {
+            run_id: "captured-run".to_string(),
+            prompt: "captured prompt".to_string(),
+            home: Some(
+                tmp.path()
+                    .join("captured-home")
+                    .to_string_lossy()
+                    .into_owned(),
+            ),
+            guest_runtime_dir: Some(explicit_paths.runtime_dir().to_path_buf()),
+            ..env::GuestConfigRaw::default()
+        })
+        .unwrap();
+        let http = HttpClient::for_config(&config).unwrap();
+        let masker = Arc::new(masker::SecretMasker::from_config(&config));
+        let runtime = GuestRuntime {
+            config,
+            paths: explicit_paths,
+            http,
+        };
+
+        let _env_guard = EnvVarRestoreGuard::capture([
+            "VM0_RUN_ID",
+            guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+        ]);
+        unsafe {
+            std::env::set_var("VM0_RUN_ID", "stale-run");
+            std::env::set_var(
+                guest_contracts::runtime_paths::GUEST_RUNTIME_DIR_ENV,
+                stale_paths.runtime_dir(),
+            );
+        }
+        paths::write_private(runtime.paths.event_error_flag(), "").unwrap();
+
+        let telemetry = Telemetry::spawn_for_paths(
+            runtime.config.run_id.clone(),
+            &runtime.paths,
+            masker,
+            runtime.http.clone(),
+        );
+        let exit_code = complete_execution(
+            0,
+            0,
+            Duration::ZERO,
+            CompletionState {
+                last_event_sequence: None,
+                failure_message: None,
+                failure_diagnostic: None,
+                skip_recovery_checkpoint_for_no_history: false,
+            },
+            &telemetry,
+            &runtime,
+        )
+        .await;
+        telemetry.shutdown().await;
+
+        assert_eq!(exit_code, 1);
+        assert_eq!(
+            std::fs::read_to_string(runtime.paths.checkpoint_error_file()).unwrap(),
+            "Some events failed to send, marking run as failed"
+        );
+        let diagnostic: FailureDiagnostic = serde_json::from_slice(
+            &std::fs::read(runtime.paths.failure_diagnostic_file()).unwrap(),
+        )
+        .unwrap();
+        assert_eq!(diagnostic.failure_class, FailureClass::EventUploadFailed);
+        assert_eq!(diagnostic.cli_exit_code, Some(0));
+        assert!(
+            !std::path::Path::new(stale_paths.checkpoint_error_file()).exists(),
+            "completion should not write checkpoint errors through stale process env paths"
+        );
+        assert!(
+            !std::path::Path::new(stale_paths.failure_diagnostic_file()).exists(),
+            "completion should not write failure diagnostics through stale process env paths"
+        );
     }
 
     async fn complete_execution_writes_event_upload_failure_diagnostic_inner() {
