@@ -392,11 +392,9 @@ const CHAT_SHORTCUT_SECTIONS = [
   },
 ] as const;
 
-const CHAT_THREAD_EMOJI_SHORTCUT_KEYS: readonly string[] = [
-  "shift+f2",
-  "shift+1",
-  "shift+0",
-];
+function isChatThreadEmojiShortcutKey(key: string): boolean {
+  return key === "shift+f2" || key === "shift+1" || key === "shift+0";
+}
 
 function ArtifactsButton({ thread }: { thread: ChatThreadSignals }) {
   return <ArtifactsButtonInner thread={thread} />;
@@ -1176,12 +1174,10 @@ function ChatThreadHeader({ thread }: { thread: ChatThreadSignals }) {
   );
 }
 
-function ChatThreadEmojiMenuButton({
-  emoji,
+function useChatThreadEmojiMenuActions({
   threadId,
   title,
 }: {
-  emoji: string | null | undefined;
   threadId: string;
   title: string | null | undefined;
 }) {
@@ -1247,6 +1243,21 @@ function ChatThreadEmojiMenuButton({
       Reason.DomCallback,
     );
   }
+
+  return { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji };
+}
+
+function ChatThreadEmojiMenuButton({
+  emoji,
+  threadId,
+  title,
+}: {
+  emoji: string | null | undefined;
+  threadId: string;
+  title: string | null | undefined;
+}) {
+  const { open, openChatThreadEmojiMenu, closeMenu, selectEmoji, clearEmoji } =
+    useChatThreadEmojiMenuActions({ threadId, title });
 
   return (
     <TooltipProvider delayDuration={200}>
@@ -3376,7 +3387,7 @@ export function ZeroChatThreadPage() {
         return {
           ...section,
           shortcuts: section.shortcuts.filter((shortcut) => {
-            return !CHAT_THREAD_EMOJI_SHORTCUT_KEYS.includes(shortcut.key);
+            return !isChatThreadEmojiShortcutKey(shortcut.key);
           }),
         };
       });
