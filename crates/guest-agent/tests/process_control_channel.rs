@@ -407,22 +407,7 @@ fn join_guest(guest: thread::JoinHandle<io::Result<()>>) -> TestResult<()> {
 }
 
 fn guest_agent_wrapper_command(guest_agent: &str) -> String {
-    format!(
-        "cleanup_home_user=0; \
-         cleanup_workspace=0; \
-         if [ ! -e /home/user ]; then cleanup_home_user=1; fi; \
-         if [ ! -e /home/user/workspace ]; then cleanup_workspace=1; fi; \
-         {}; \
-         status=$?; \
-         if [ \"$cleanup_workspace\" = 1 ]; then \
-           rmdir /home/user/workspace 2>/dev/null || true; \
-         fi; \
-         if [ \"$cleanup_home_user\" = 1 ]; then \
-           rmdir /home/user 2>/dev/null || true; \
-        fi; \
-         exit $status",
-        quote_shell_arg(guest_agent)
-    )
+    quote_shell_arg(guest_agent)
 }
 
 fn needs_sudo_for_canonical_workspace() -> bool {
