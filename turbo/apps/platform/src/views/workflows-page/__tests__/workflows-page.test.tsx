@@ -114,6 +114,10 @@ type WorkflowGoogleCalendarEventUpdatedTriggerSummary = Extract<
   ZeroWorkflowTriggerSummary,
   { kind: "event"; eventType: "google-calendar-event-updated" }
 >;
+type WorkflowGoogleCalendarEventCancelledTriggerSummary = Extract<
+  ZeroWorkflowTriggerSummary,
+  { kind: "event"; eventType: "google-calendar-event-cancelled" }
+>;
 
 function workflowTriggers(): ZeroWorkflowTriggerSummary[] {
   return [weekdayWorkflowTrigger()];
@@ -240,6 +244,26 @@ function googleCalendarUpdatedWorkflowTrigger(): WorkflowGoogleCalendarEventUpda
     ownerUserId: CURRENT_USER_ID,
     enabled: true,
     chatThreadId: "thread_google_calendar_event_updated",
+    nextRunAt: null,
+    lastRunAt: null,
+  };
+}
+
+function googleCalendarCancelledWorkflowTrigger(): WorkflowGoogleCalendarEventCancelledTriggerSummary {
+  return {
+    id: "workflow-trigger-google-calendar-cancelled",
+    kind: "event",
+    eventType: "google-calendar-event-cancelled",
+    eventConfig: {
+      provider: "google-calendar",
+      event: "event_cancelled",
+      calendarId: "primary",
+    },
+    schedule: null,
+    scheduleSummary: null,
+    ownerUserId: CURRENT_USER_ID,
+    enabled: true,
+    chatThreadId: "thread_google_calendar_event_cancelled",
     nextRunAt: null,
     lastRunAt: null,
   };
@@ -654,6 +678,12 @@ function mockCreateWorkflowTrigger(
       if (body.eventType === "google-calendar-event-updated") {
         return respond(201, {
           ...googleCalendarUpdatedWorkflowTrigger(),
+          eventConfig: body.eventConfig,
+        });
+      }
+      if (body.eventType === "google-calendar-event-cancelled") {
+        return respond(201, {
+          ...googleCalendarCancelledWorkflowTrigger(),
           eventConfig: body.eventConfig,
         });
       }
@@ -1626,6 +1656,51 @@ describe("workflow detail page", () => {
         eventConfig: {
           provider: "google-calendar",
           event: "event_updated",
+          calendarId: "team@example.com",
+        },
+      });
+    });
+  });
+
+  it("creates a Google Calendar event-cancelled trigger", async () => {
+    const createBodies: ZeroWorkflowTriggerCreateRequest[] = [];
+    mockWorkflowApis([salesResearch()]);
+    mockCreateWorkflowTrigger((body) => {
+      createBodies.push(body);
+    });
+
+    detachedSetupWorkflowDetailPage(workflowDetailPath("automations"), {
+      [FeatureSwitchKey.WorkflowAutomation]: true,
+    });
+
+    await waitFor(() => {
+      expect(buttonByText("Add automation")).toBeInTheDocument();
+    });
+    click(buttonByText("Add automation"));
+
+    await waitFor(() => {
+      expect(
+        menuItemByText(/^Google Calendar event cancelled/),
+      ).toBeInTheDocument();
+    });
+    click(menuItemByText(/^Google Calendar event cancelled/));
+
+    const createTriggerForm = await screen.findByRole("form", {
+      name: "Add Google Calendar automation",
+    });
+    await fill(
+      within(createTriggerForm).getByLabelText("Calendar ID"),
+      "team@example.com",
+    );
+    fireEvent.submit(createTriggerForm);
+
+    await waitFor(() => {
+      expect(createBodies.at(-1)).toStrictEqual({
+        kind: "event",
+        eventType: "google-calendar-event-cancelled",
+        eventConfig: {
+          provider: "google-calendar",
+          event: "event_cancelled",
           calendarId: "team@example.com",
         },
       });

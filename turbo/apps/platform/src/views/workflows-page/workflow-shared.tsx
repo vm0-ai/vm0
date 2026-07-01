@@ -200,6 +200,9 @@ export function gmailTriggerTitle(trigger: ZeroWorkflowTriggerSummary): string {
   if (trigger.eventType === "google-calendar-event-updated") {
     return "Google Calendar event updated";
   }
+  if (trigger.eventType === "google-calendar-event-cancelled") {
+    return "Google Calendar event cancelled";
+  }
   return "Webhook automation";
 }
 
@@ -220,7 +223,8 @@ export function gmailTriggerSummary(
   }
   if (
     trigger.eventType === "google-calendar-event-created" ||
-    trigger.eventType === "google-calendar-event-updated"
+    trigger.eventType === "google-calendar-event-updated" ||
+    trigger.eventType === "google-calendar-event-cancelled"
   ) {
     return `Calendar ${quote(trigger.eventConfig.calendarId)}`;
   }
