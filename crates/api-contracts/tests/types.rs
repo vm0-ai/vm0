@@ -183,7 +183,7 @@ fn generated_commit_response_deserializes_success_shape() {
 }
 
 #[test]
-fn generated_storage_manifest_deserializes_web_claim_shape() {
+fn generated_storage_manifest_ignores_legacy_artifact_manifest_url() {
     let manifest: runner_storage::StorageManifest = serde_json::from_value(json!({
         "storages": [{
             "name": "workspace",
