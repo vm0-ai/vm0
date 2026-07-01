@@ -1522,7 +1522,12 @@ describe("zero sidebar", () => {
     });
 
     expect(within(nav).getByText("Agents")).toBeInTheDocument();
-    expect(within(nav).getByText("Workflows")).toBeInTheDocument();
+    const workflows = within(nav).getByText("Workflows");
+    const connectors = within(nav).getByText("Connectors");
+    expect(
+      workflows.compareDocumentPosition(connectors) &
+        Node.DOCUMENT_POSITION_FOLLOWING,
+    ).toBe(Node.DOCUMENT_POSITION_FOLLOWING);
     expect(within(nav).queryByText("Automations")).not.toBeInTheDocument();
   });
 
