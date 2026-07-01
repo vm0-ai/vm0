@@ -258,6 +258,15 @@ async function deleteObjects(
   }
 }
 
+function isAsyncIterableByteStream(
+  value: unknown,
+): value is AsyncIterable<Uint8Array> {
+  if (!value || typeof value !== "object") {
+    return false;
+  }
+  return typeof Reflect.get(value, Symbol.asyncIterator) === "function";
+}
+
 async function downloadBuffer(
   client: S3Client,
   bucket: string,
@@ -270,8 +279,10 @@ async function downloadBuffer(
     throw new Error(`S3 object body is empty: ${key}`);
   }
   const chunks: Buffer[] = [];
-  const stream = response.Body as unknown as AsyncIterable<Uint8Array>;
-  for await (const chunk of stream) {
+  if (!isAsyncIterableByteStream(response.Body)) {
+    throw new Error(`S3 object body is not streamable: ${key}`);
+  }
+  for await (const chunk of response.Body) {
     chunks.push(Buffer.from(chunk));
   }
   return Buffer.concat(chunks);

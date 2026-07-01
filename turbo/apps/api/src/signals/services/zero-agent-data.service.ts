@@ -23,9 +23,14 @@ export function agentResponse(row: {
   readonly preferPersonalProvider: boolean;
   readonly visibility: "public" | "private";
 }): ZeroAgentResponse {
+  const ownerId = row.owner ?? row.composeUserId;
+  if (!ownerId) {
+    throw new Error(`Zero agent ${row.agentId} is missing an owner`);
+  }
+
   return {
     agentId: row.agentId,
-    ownerId: row.owner ?? row.composeUserId ?? "",
+    ownerId,
     displayName: row.displayName,
     description: row.description,
     sound: row.sound,

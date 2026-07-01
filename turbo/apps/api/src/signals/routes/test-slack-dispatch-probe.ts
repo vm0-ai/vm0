@@ -67,7 +67,10 @@ function readOptionalErrorString(
   error: Error,
   key: string,
 ): string | undefined {
-  const value = (error as unknown as Record<string, unknown>)[key];
+  if (!isRecord(error)) {
+    return undefined;
+  }
+  const value = error[key];
   return typeof value === "string" ? value : undefined;
 }
 
