@@ -12,6 +12,7 @@
 //!
 //! The layered implementation is split across:
 //! - [`cow`] for COW storage and dirty bitmap persistence.
+//! - [`cow_io`] for the async boundary around blocking COW storage operations.
 //! - [`pool`] for host-locked `/dev/nbdN` device claim allocation.
 //! - [`netlink`] for Linux NBD generic netlink setup and disconnect.
 //! - [`server`] for the in-process NBD dispatch loop.

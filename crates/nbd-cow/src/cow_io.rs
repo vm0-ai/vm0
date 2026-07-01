@@ -8,6 +8,11 @@ use tokio::sync::Semaphore;
 use crate::cow::CowLayer;
 use crate::error::{NbdCowError, Result};
 
+/// Async handle for serialized COW storage operations.
+///
+/// `CowLayer` performs synchronous positioned file I/O. `CowIo` keeps that
+/// blocking work out of async dispatch tasks while preserving one active COW
+/// operation per device.
 #[derive(Clone)]
 pub struct CowIo {
     inner: Arc<CowIoInner>,
@@ -18,14 +23,19 @@ struct CowIoInner {
     operation_slot: Arc<Semaphore>,
 }
 
+/// Snapshot of COW state counters used for diagnostics and tests.
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub struct CowIoStatus {
+    /// Blocks already materialized in the sparse COW file.
     pub dirty_blocks: usize,
+    /// Blocks currently buffered in memory and not yet flushed.
     pub buffered_blocks: usize,
+    /// Approximate memory used by the write buffer.
     pub buffer_bytes: usize,
 }
 
 impl CowIo {
+    /// Create a new async COW I/O boundary around a synchronous COW layer.
     pub fn new(cow: CowLayer) -> Self {
         Self {
             inner: Arc::new(CowIoInner {
@@ -35,6 +45,7 @@ impl CowIo {
         }
     }
 
+    /// Read data at `offset` into the provided buffer and return it.
     pub async fn read(&self, offset: u64, mut data: Vec<u8>) -> Result<Vec<u8>> {
         self.run("read", move |cow| {
             cow.read(offset, &mut data)?;
@@ -43,6 +54,7 @@ impl CowIo {
         .await
     }
 
+    /// Write `data` at `offset`, flushing buffered data when the threshold is reached.
     pub async fn write(&self, offset: u64, data: Vec<u8>) -> Result<Vec<u8>> {
         self.run("write", move |cow| {
             let needs_flush = cow.write(offset, &data)?;
@@ -54,15 +66,17 @@ impl CowIo {
         .await
     }
 
+    /// Flush pending data and sync the COW file when it exists.
     pub async fn sync(&self) -> Result<()> {
         self.run("sync", CowLayer::sync).await
     }
 
-    pub async fn save_bitmap(&self, path: PathBuf) -> Result<()> {
+    pub(crate) async fn save_bitmap(&self, path: PathBuf) -> Result<()> {
         self.run("save bitmap", move |cow| cow.save_bitmap(&path))
             .await
     }
 
+    /// Return a consistent snapshot of COW counters.
     pub async fn status(&self) -> Result<CowIoStatus> {
         self.run("status", |cow| {
             Ok(CowIoStatus {
