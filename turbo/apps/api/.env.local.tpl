@@ -134,6 +134,7 @@ MICROSOFT_OAUTH_CLIENT_SECRET=op://Development/microsoft/MICROSOFT_OAUTH_CLIENT_
 
 # Optional: Microsoft Teams Bot
 MICROSOFT_TEAMS_BOT_APP_ID=op://Development/microsoft/MICROSOFT_TEAMS_BOT_APP_ID
+MICROSOFT_TEAMS_BOT_APP_PASSWORD=op://Development/microsoft/MICROSOFT_TEAMS_BOT_APP_PASSWORD
 
 # Optional: HubSpot OAuth Connector
 HUBSPOT_OAUTH_CLIENT_ID=op://Development/hubspot/HUBSPOT_OAUTH_CLIENT_ID

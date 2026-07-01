@@ -13,6 +13,7 @@ function knownSessionHistoryBodies(runId: string): readonly string[] {
     `bdd schedule history ${runId}`,
     `bdd session history ${runId}`,
     `bdd slack history ${runId}`,
+    `bdd teams history ${runId}`,
     `bdd snapshot history ${runId}`,
     `bdd cleanup-first session history ${runId}`,
   ];
