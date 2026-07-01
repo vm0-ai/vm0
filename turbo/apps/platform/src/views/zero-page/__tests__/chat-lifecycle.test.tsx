@@ -3108,7 +3108,7 @@ describe("chat lifecycle", () => {
     });
 
     await user.click(emojiButton);
-    expect(await screen.findByRole("menu")).toBeInTheDocument();
+    await expect(screen.findByRole("menu")).resolves.toBeInTheDocument();
 
     fireEvent.pointerOut(emojiButton);
     fireEvent.mouseOut(emojiButton);
