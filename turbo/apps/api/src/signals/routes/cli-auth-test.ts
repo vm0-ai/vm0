@@ -1,6 +1,5 @@
 import { env, optionalEnv } from "../../lib/env";
 import {
-  cliAuthTestApproveContract,
   cliAuthTestCodexOauthContract,
   cliAuthTestConnectorContract,
   cliAuthTestEnableConnectorContract,
@@ -20,7 +19,6 @@ import {
   type ConnectorOutputTarget,
 } from "@vm0/connectors/connector-utils";
 import { agentComposes } from "@vm0/db/schema/agent-compose";
-import { deviceCodes } from "@vm0/db/schema/device-codes";
 import { modelProviders } from "@vm0/db/schema/model-provider";
 import { userConnectors } from "@vm0/db/schema/user-connector";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
@@ -54,8 +52,6 @@ import { settle } from "../utils";
 
 const ORG_SENTINEL_USER_ID = "__org__";
 
-const testApproveBody$ = bodyResultOf(cliAuthTestApproveContract.approve);
-const testApproveQuery$ = queryOf(cliAuthTestApproveContract.approve);
 const testTokenQuery$ = queryOf(cliAuthTestTokenContract.create);
 const testConnectorBody$ = bodyResultOf(cliAuthTestConnectorContract.create);
 const testConnectorQuery$ = queryOf(cliAuthTestConnectorContract.create);
@@ -181,61 +177,6 @@ function testEndpointAllowed(request: {
 
   return false;
 }
-
-const approveDeviceForTest$ = command(
-  async ({ get, set }, signal: AbortSignal) => {
-    if (optionalEnv("USE_MOCK_CLAUDE") !== "true") {
-      return testEndpointNotFoundResponse();
-    }
-
-    const bodyResult = await get(testApproveBody$);
-    signal.throwIfAborted();
-    if (!bodyResult.ok) {
-      return stringError(400, "device_code required");
-    }
-
-    const deviceCode = bodyResult.data.device_code;
-    if (!deviceCode) {
-      return stringError(400, "device_code required");
-    }
-
-    const normalizedCode = deviceCode.toUpperCase();
-    const writeDb = set(writeDb$);
-    const [session] = await writeDb
-      .select()
-      .from(deviceCodes)
-      .where(
-        and(
-          eq(deviceCodes.code, normalizedCode),
-          eq(deviceCodes.purpose, "cli"),
-        ),
-      )
-      .limit(1);
-    signal.throwIfAborted();
-
-    if (!session) {
-      return new Response("Not found", { status: 404 });
-    }
-    if (session.status !== "pending") {
-      return stringError(400, "Device code is not in pending status");
-    }
-    if (nowDate() > session.expiresAt) {
-      return stringError(400, "Device code has expired");
-    }
-
-    const query = get(testApproveQuery$);
-    const userId = await get(testUserId(query.email ?? DEFAULT_TEST_EMAIL));
-    signal.throwIfAborted();
-
-    await writeDb
-      .update(deviceCodes)
-      .set({ status: "authenticated", userId, updatedAt: nowDate() })
-      .where(eq(deviceCodes.code, normalizedCode));
-    signal.throwIfAborted();
-
-    return { status: 200 as const, body: { success: true as const, userId } };
-  },
-);
 
 const createTestToken$ = command(async ({ get, set }, signal: AbortSignal) => {
   if (!testEndpointAllowed(get(request$))) {
@@ -595,7 +536,6 @@ const seedCodexOauth$ = command(async ({ get, set }, signal: AbortSignal) => {
 });
 
 export const cliAuthTestRoutes: readonly RouteEntry[] = [
-  { route: cliAuthTestApproveContract.approve, handler: approveDeviceForTest$ },
   { route: cliAuthTestTokenContract.create, handler: createTestToken$ },
   { route: cliAuthTestConnectorContract.create, handler: createTestConnector$ },
   {
