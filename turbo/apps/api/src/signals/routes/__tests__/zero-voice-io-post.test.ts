@@ -596,7 +596,7 @@ describe("POST /api/zero/voice-io/*", () => {
       segments: [{ start: 0.08, end: 1.28, text: "hello from byteplus" }],
     });
     expect(calledOpenAi).toBeFalsy();
-    expect(observedApiKey).toBe("test-byteplus-key");
+    expect(observedApiKey).toBe("test-byteplus-stt-key");
     expect(observedResourceId).toBe("volc.seedasr.auc_turbo");
     expect(observedSequence).toBe("-1");
     expect(observedRequestId).toStrictEqual(expect.any(String));
@@ -624,6 +624,45 @@ describe("POST /api/zero/voice-io/*", () => {
     expect(counts.get(AUDIO_INPUT_BEHAVIOR_KEY)).toBe(1);
     expect(counts.get(sttDailyRateKey())).toBe(1);
     expect(counts.get(sttDailyDurationKey())).toBe(2);
+  });
+
+  it("accepts BytePlus no-speech responses as empty transcripts", async () => {
+    const fixture = await track(seedVoiceFixture({}));
+    await updateFeatureSwitchesForUser(context, fixture, {
+      [FeatureSwitchKey.BytePlusVoiceInputStt]: true,
+    });
+    mocks.clerk.session(fixture.userId, fixture.orgId);
+
+    server.use(
+      http.post(BYTEPLUS_ASR_FLASH_URL, () => {
+        return HttpResponse.json(
+          {
+            audio_info: { duration: 2700 },
+            result: {
+              additions: { duration: "2700" },
+              text: "",
+            },
+          },
+          { headers: { "x-api-status-code": "20000003" } },
+        );
+      }),
+    );
+
+    const app = createVoiceIoTestApp();
+    const response = await app.request("/api/zero/voice-io/stt", {
+      method: "POST",
+      headers: authHeaders(),
+      body: sttForm(sttFile(wavBytes(2))),
+    });
+
+    expect(response.status).toBe(200);
+    await expect(response.json()).resolves.toStrictEqual({ text: "" });
+    await expect(readBehaviorCount(fixture, sttDailyRateKey())).resolves.toBe(
+      1,
+    );
+    await expect(
+      readBehaviorCount(fixture, sttDailyDurationKey()),
+    ).resolves.toBe(2);
   });
 
   it("meters /stt WAV duration from the data chunk, not a fixed 44-byte offset", async () => {

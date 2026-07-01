@@ -27,6 +27,7 @@ const SCHEMA = {
   OPENAI_API_KEY: z.string().min(1),
   FAL_KEY: z.string().min(1).optional(),
   BYTEPLUS_API_KEY: z.string().min(1).optional(),
+  BYTEPLUS_STT_API_KEY: z.string().min(1).optional(),
   ZERO_MAPS_GOOGLE_MAPS_TOKEN: z.string().min(1).optional(),
   UNSPLASH_ACCESS_KEY: z.string().min(1).optional(),
   FINICITY_APP_KEY: z.string().min(1).optional(),

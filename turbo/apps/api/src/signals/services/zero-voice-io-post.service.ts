@@ -22,9 +22,9 @@ import { processOrgUsageEvents$ } from "./zero-credit-usage.service";
 const L = logger("ZeroVoiceIoPost");
 
 export const OPENAI_AUDIO_SPEECH_URL = "https://api.openai.com/v1/audio/speech";
-export const OPENAI_AUDIO_TRANSCRIPTIONS_URL =
+const OPENAI_AUDIO_TRANSCRIPTIONS_URL =
   "https://api.openai.com/v1/audio/transcriptions";
-export const BYTEPLUS_ASR_FLASH_URL =
+const BYTEPLUS_ASR_FLASH_URL =
   "https://voice.ap-southeast-1.bytepluses.com/api/v3/auc/bigmodel/recognize/flash";
 const BYTEPLUS_ASR_RESOURCE_ID = "volc.seedasr.auc_turbo";
 const BYTEPLUS_ASR_MODEL = "bigmodel";
@@ -32,7 +32,7 @@ const BYTEPLUS_ERROR_BODY_LOG_MAX_LENGTH = 4000;
 export const VOICE_IO_TTS_MODEL = "gpt-4o-mini-tts";
 // Verbose transcription (per-segment timestamps) requires whisper-1;
 // gpt-4o-mini-transcribe does not return segment timestamps.
-export const VOICE_IO_STT_VERBOSE_MODEL = "whisper-1";
+const VOICE_IO_STT_VERBOSE_MODEL = "whisper-1";
 const SPEECH_CONTENT_TYPE = "audio/wav";
 export const SPEECH_RESPONSE_FORMAT = "wav";
 export const SPEECH_MAX_INPUT_TOKENS = 2000;
@@ -110,25 +110,23 @@ interface QuotaErrorBody extends ErrorBody {
   };
 }
 
-export type ErrorResponse = {
+type ErrorResponse = {
   readonly status: ErrorStatus;
   readonly body: ErrorBody | QuotaErrorBody;
 };
 
-export interface VoiceInputSttSegment {
+interface VoiceInputSttSegment {
   readonly start: number;
   readonly end: number;
   readonly text: string;
 }
 
-export interface VoiceInputSttTranscript {
+interface VoiceInputSttTranscript {
   readonly text: string;
   readonly segments?: readonly VoiceInputSttSegment[];
 }
 
-export type VoiceInputSttProviderResult =
-  | VoiceInputSttTranscript
-  | ErrorResponse;
+type VoiceInputSttProviderResult = VoiceInputSttTranscript | ErrorResponse;
 
 interface SttDailyPolicy {
   readonly orgTier: OrgTier;
@@ -218,13 +216,13 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null;
 }
 
-export function isTranscriptionBody(
+function isTranscriptionBody(
   value: unknown,
 ): value is { readonly text: string } {
   return isRecord(value) && typeof value.text === "string";
 }
 
-export function isVerboseTranscriptionSegment(value: unknown): value is {
+function isVerboseTranscriptionSegment(value: unknown): value is {
   readonly start: number;
   readonly end: number;
   readonly text: string;
@@ -335,6 +333,16 @@ function bytePlusTranscriptionStatus(response: Response): string | null {
   );
 }
 
+function isBytePlusTranscriptionSuccessStatus(
+  providerStatus: string | null,
+): boolean {
+  return (
+    providerStatus === null ||
+    providerStatus === "20000000" ||
+    providerStatus === "20000003"
+  );
+}
+
 function isBytePlusTranscriptionBody(value: unknown): value is {
   readonly result: {
     readonly text: string;
@@ -429,7 +437,7 @@ export async function transcribeBytePlusVoiceInputFile(
   file: File,
   signal: AbortSignal,
 ): Promise<VoiceInputSttProviderResult> {
-  const apiKey = env("BYTEPLUS_API_KEY");
+  const apiKey = env("BYTEPLUS_STT_API_KEY");
   if (!apiKey) {
     return serviceUnavailable(
       "BytePlus STT is not configured",
@@ -476,7 +484,7 @@ export async function transcribeBytePlusVoiceInputFile(
   const providerStatus = bytePlusTranscriptionStatus(bytePlusResponse);
   if (
     !bytePlusResponse.ok ||
-    (providerStatus !== null && providerStatus !== "20000000")
+    !isBytePlusTranscriptionSuccessStatus(providerStatus)
   ) {
     const responseBody = await providerErrorBodyForLog(bytePlusResponse);
     signal.throwIfAborted();
