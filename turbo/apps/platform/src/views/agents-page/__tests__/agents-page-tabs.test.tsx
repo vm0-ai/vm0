@@ -38,11 +38,15 @@ const agents = [
   },
 ] satisfies TeamComposeItem[];
 
-function agentCard(name: string): HTMLElement {
-  const nameElement = screen.getAllByText(name).find((element) => {
+function findAgentCard(name: string): HTMLElement | null {
+  const nameElement = screen.queryAllByText(name).find((element) => {
     return element.closest("main");
   });
-  const card = nameElement?.closest("a");
+  return nameElement?.closest("a") ?? null;
+}
+
+function agentCard(name: string): HTMLElement {
+  const card = findAgentCard(name);
   if (!card) {
     throw new Error(`Agent card not found: ${name}`);
   }
@@ -101,7 +105,7 @@ describe("agents page (redesign)", () => {
     await waitFor(() => {
       expect(agentCard("Private Ops")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Research Agent")).not.toBeInTheDocument();
+    expect(findAgentCard("Research Agent")).toBeNull();
     expect(
       within(agentCard("Private Ops")).getByText("Created by Bob Builder"),
     ).toBeInTheDocument();
@@ -111,7 +115,7 @@ describe("agents page (redesign)", () => {
     await waitFor(() => {
       expect(agentCard("Research Agent")).toBeInTheDocument();
     });
-    expect(screen.queryByText("Private Ops")).not.toBeInTheDocument();
+    expect(findAgentCard("Private Ops")).toBeNull();
     expect(
       within(agentCard("Research Agent")).getByText("Created by Alice Admin"),
     ).toBeInTheDocument();
