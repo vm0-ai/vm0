@@ -258,7 +258,7 @@ fn send_event_seeds_existing_codex_thread_id_without_repairing_history_marker() 
 }
 
 #[test]
-fn recovery_checkpoint_derives_missing_codex_history_marker() {
+fn legacy_recovery_checkpoint_derives_missing_codex_history_marker() {
     setup_env_once();
     let _guard = TEST_MUTEX.lock().unwrap();
     reset_session_files();

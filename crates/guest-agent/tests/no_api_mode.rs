@@ -1,50 +1,55 @@
 //! No-API mode is used by local/reap tests and skips all webhook calls.
 //!
-//! This test lives in its own binary because `guest_agent::env` caches
-//! environment values in process-wide `LazyLock`s.
+//! This test captures an explicit runtime from process env, then exercises
+//! disabled-HTTP users through explicit runtime/config/path entry points. The
+//! `send_event` call intentionally remains legacy compatibility coverage for
+//! no-API session metadata capture.
 
 mod common;
 
 use common::SystemLogOverrideGuard;
+use guest_agent::active_input::ActiveInputRuntime;
 use guest_agent::error::AgentError;
-use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
+use guest_agent::paths::GuestPaths;
+use guest_agent::run_context::GuestRuntime;
 use serde_json::json;
 use std::sync::Arc;
 use std::time::Duration;
 use tokio_util::sync::CancellationToken;
 
-fn cleanup_session_files() {
-    let _ = std::fs::remove_file(guest_agent::paths::session_id_file());
-    let _ = std::fs::remove_file(guest_agent::paths::session_history_path_file());
+fn cleanup_session_files(paths: &GuestPaths) {
+    let _ = std::fs::remove_file(paths.session_id_file());
+    let _ = std::fs::remove_file(paths.session_history_path_file());
 }
 
-fn cleanup_run_files(ops_file: &str) {
-    let _ = std::fs::remove_file(guest_agent::paths::agent_log_file());
-    let _ = std::fs::remove_file(guest_agent::paths::event_error_flag());
-    cleanup_session_files();
-    let _ = std::fs::remove_file(ops_file);
+fn cleanup_run_files(paths: &GuestPaths) {
+    let _ = std::fs::remove_file(paths.agent_log_file());
+    let _ = std::fs::remove_file(paths.event_error_flag());
+    cleanup_session_files(paths);
+    let _ = std::fs::remove_file(paths.sandbox_ops_file());
 }
 
 struct RunFilesGuard {
-    ops_file: String,
+    paths: GuestPaths,
 }
 
 impl RunFilesGuard {
-    fn new() -> Self {
-        let ops_file = guest_common::telemetry::sandbox_ops_log().to_string();
-        cleanup_run_files(&ops_file);
-        Self { ops_file }
+    fn new(paths: &GuestPaths) -> Self {
+        cleanup_run_files(paths);
+        Self {
+            paths: paths.clone(),
+        }
     }
 
     fn ops_file(&self) -> &str {
-        &self.ops_file
+        self.paths.sandbox_ops_file()
     }
 }
 
 impl Drop for RunFilesGuard {
     fn drop(&mut self) {
-        cleanup_run_files(&self.ops_file);
+        cleanup_run_files(&self.paths);
     }
 }
 
@@ -57,8 +62,9 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         common::setup_env(&mock, tmp.path(), "@exit-after-result", 3, 1)?;
     }
 
-    let http = HttpClient::for_current_env()?;
-    let run_files = RunFilesGuard::new();
+    let runtime = GuestRuntime::from_process_env()?;
+    let http = runtime.http.clone();
+    let run_files = RunFilesGuard::new(&runtime.paths);
     let ops_file = run_files.ops_file();
 
     let disabled = http
@@ -70,7 +76,12 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
     assert!(message.contains("HTTP client is disabled"));
 
     let masker = Arc::new(SecretMasker::from_raw(""));
-    let telemetry = guest_agent::telemetry::Telemetry::spawn(Arc::clone(&masker), http.clone());
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        runtime.config.run_id.clone(),
+        &runtime.paths,
+        Arc::clone(&masker),
+        http.clone(),
+    );
     telemetry.final_flush_and_shutdown().await?;
 
     let shutdown = CancellationToken::new();
@@ -92,14 +103,21 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
     });
     guest_agent::events::send_event(&http, event, 1, &masker).await?;
     assert_eq!(
-        std::fs::read_to_string(guest_agent::paths::session_id_file())?,
+        std::fs::read_to_string(runtime.paths.session_id_file())?,
         "session-no-api"
     );
-    cleanup_session_files();
+    cleanup_session_files(&runtime.paths);
 
     let complete_log_path = tmp.path().join("complete-system.log");
     let complete_log_guard = SystemLogOverrideGuard::set(&complete_log_path);
-    guest_agent::complete::report_success(&http, "sandbox-no-api", "reused", Some(1)).await;
+    guest_agent::complete::report_success_for_run(
+        &http,
+        &runtime.config.run_id,
+        "sandbox-no-api",
+        "reused",
+        Some(1),
+    )
+    .await;
     drop(complete_log_guard);
     let complete_log = std::fs::read_to_string(&complete_log_path).unwrap_or_default();
     assert!(
@@ -107,9 +125,21 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         "no-API complete path must return before touching the disabled HTTP client: {complete_log}"
     );
 
+    let active_input = ActiveInputRuntime::new_with_initial_prompt(
+        &runtime.config.run_id,
+        false,
+        &runtime.config.prompt,
+    );
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
-        guest_agent::cli::execute_cli(&masker, common::spawn_dummy_heartbeat(), http.clone()),
+        guest_agent::cli::execute_cli_with_active_input_for_config(
+            &masker,
+            common::spawn_dummy_heartbeat(),
+            http.clone(),
+            active_input.into_writer(),
+            &runtime.config,
+            &runtime.paths,
+        ),
     )
     .await
     .expect("no-API execute_cli should return promptly with disabled HTTP client")?;
@@ -119,16 +149,15 @@ async fn no_api_mode_drains_background_webhook_users_without_network_client()
         "no-API execute_cli must not enqueue webhook events"
     );
     assert!(
-        !std::path::Path::new(guest_agent::paths::event_error_flag()).exists(),
+        !std::path::Path::new(runtime.paths.event_error_flag()).exists(),
         "no-API execute_cli must not write event error flag"
     );
-    let cli_session_id = std::fs::read_to_string(guest_agent::paths::session_id_file())?;
+    let cli_session_id = std::fs::read_to_string(runtime.paths.session_id_file())?;
     assert!(
         cli_session_id.starts_with("mock-"),
         "no-API execute_cli should capture session metadata from stdout events, got {cli_session_id}"
     );
-    let cli_history_path =
-        std::fs::read_to_string(guest_agent::paths::session_history_path_file())?;
+    let cli_history_path = std::fs::read_to_string(runtime.paths.session_history_path_file())?;
     assert!(
         cli_history_path.contains(cli_session_id.trim()),
         "history path should contain the captured CLI session id, got {cli_history_path}"

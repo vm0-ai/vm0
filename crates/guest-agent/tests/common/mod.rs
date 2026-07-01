@@ -2,13 +2,11 @@
 //!
 //! # Why separate test binaries instead of cases in one
 //!
-//! `guest_agent::env` caches all `VM0_*` values in process-wide
-//! `LazyLock`s on first read. Consolidating scenarios with different
-//! prompts or grace windows into one `#[tokio::test]` binary would
-//! require each test to see its own `VM0_PROMPT`, which is impossible
-//! once the `LazyLock` is initialised. Splitting into separate binaries
-//! gives each one a fresh process + fresh LazyLock state, paid for by
-//! a small cargo build-cache hit (idempotent).
+//! Many CLI tests mutate process env, current directory, and guest runtime path
+//! overrides as setup input. Consolidating scenarios with different prompts or
+//! grace windows into one `#[tokio::test]` binary would make those process-wide
+//! side effects race. Splitting into separate binaries gives each scenario a
+//! fresh process, paid for by a small cargo build-cache hit (idempotent).
 //!
 //! # Error handling
 //!
@@ -447,8 +445,8 @@ pub struct CodexAppServerEnvConfig<'a> {
 
 /// Configure one test binary for the experimental Codex app-server backend.
 ///
-/// Must be called before any `guest_agent::env::*` accessor because those
-/// values are cached in process-wide `LazyLock`s.
+/// Must be called before building a `GuestRuntime` or using legacy env accessors
+/// because those APIs capture process env at initialization time.
 ///
 /// # Safety
 /// Callers must use this from a single-test integration binary before any other
@@ -496,9 +494,19 @@ pub fn active_input_payload(text: &str) -> Result<Vec<u8>, serde_json::Error> {
 }
 
 pub fn read_codex_session_history_events() -> Result<Vec<Value>, Box<dyn std::error::Error>> {
-    let history = guest_agent::session_history::read_session_history(
-        guest_agent::paths::session_history_path_file(),
-    )?;
+    read_codex_session_history_events_for_path(guest_agent::paths::session_history_path_file())
+}
+
+pub fn read_codex_session_history_events_for_paths(
+    paths: &guest_agent::paths::GuestPaths,
+) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+    read_codex_session_history_events_for_path(paths.session_history_path_file())
+}
+
+fn read_codex_session_history_events_for_path(
+    session_history_path_file: &str,
+) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+    let history = guest_agent::session_history::read_session_history(session_history_path_file)?;
     let history = String::from_utf8(history)?;
     history
         .lines()
@@ -506,9 +514,9 @@ pub fn read_codex_session_history_events() -> Result<Vec<Value>, Box<dyn std::er
         .collect()
 }
 
-/// Configure the process environment for a reap test. Must be called
-/// BEFORE any `guest_agent::env::*` accessor — the library's LazyLocks
-/// capture these values on first read.
+/// Configure the process environment for a reap test. Must be called before
+/// building a `GuestRuntime` or using legacy env accessors because those APIs
+/// capture process env at initialization time.
 ///
 /// `prompt` decides which mock-claude test prefix runs:
 /// - `@hang-after-result` → SIGTERM path
@@ -535,7 +543,7 @@ pub fn read_codex_session_history_events() -> Result<Vec<Value>, Box<dyn std::er
 /// - Mutates the process-wide working directory (`set_current_dir`).
 ///
 /// Call AT MOST ONCE per test binary; calling from multiple `#[test]`s
-/// in the same binary races on CWD and on `LazyLock` capture order.
+/// in the same binary races on CWD and runtime capture order.
 ///
 /// SAFETY: callers run in a single-test test binary, so no other thread
 /// is reading the process env concurrently.
@@ -612,6 +620,46 @@ where
 /// code path entirely.
 pub fn spawn_dummy_heartbeat() -> guest_agent::cli::HeartbeatMonitor {
     None
+}
+
+pub fn guest_runtime_from_process_env() -> Result<guest_agent::run_context::GuestRuntime, String> {
+    guest_agent::run_context::GuestRuntime::from_process_env()
+}
+
+pub async fn execute_cli_for_runtime(
+    runtime: &guest_agent::run_context::GuestRuntime,
+    masker: &guest_agent::masker::SecretMasker,
+    heartbeat: guest_agent::cli::HeartbeatMonitor,
+) -> Result<guest_agent::cli::CliExecutionResult, guest_agent::error::AgentError> {
+    let active_input = guest_agent::active_input::ActiveInputRuntime::new_with_initial_prompt(
+        &runtime.config.run_id,
+        false,
+        &runtime.config.prompt,
+    );
+    execute_cli_with_active_input_for_runtime(
+        runtime,
+        masker,
+        heartbeat,
+        active_input.into_writer(),
+    )
+    .await
+}
+
+pub async fn execute_cli_with_active_input_for_runtime(
+    runtime: &guest_agent::run_context::GuestRuntime,
+    masker: &guest_agent::masker::SecretMasker,
+    heartbeat: guest_agent::cli::HeartbeatMonitor,
+    active_input: guest_agent::active_input::ActiveInputWriter,
+) -> Result<guest_agent::cli::CliExecutionResult, guest_agent::error::AgentError> {
+    guest_agent::cli::execute_cli_with_active_input_for_config(
+        masker,
+        heartbeat,
+        runtime.http.clone(),
+        active_input,
+        &runtime.config,
+        &runtime.paths,
+    )
+    .await
 }
 
 pub async fn wait_for_path(path: &Path, timeout: Duration) -> io::Result<()> {

@@ -1,11 +1,10 @@
 //! Scope validation coverage for the experimental Codex app-server backend.
 //!
-//! This test lives in its own binary because `guest_agent::env` caches values
-//! in process-wide `LazyLock`s.
+//! This test lives in its own binary to isolate process env, working directory,
+//! and guest runtime path overrides used during setup.
 
 mod common;
 
-use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use serde_json::Value;
 use std::time::Duration;
@@ -29,15 +28,12 @@ async fn codex_app_server_backend_rejects_unexpected_thread_event_scope()
         )?;
     }
     let _run_files = common::RunFilesGuard::new();
+    let runtime = common::guest_runtime_from_process_env()?;
 
     let masker = SecretMasker::from_raw("");
     let result = tokio::time::timeout(
         Duration::from_secs(5),
-        guest_agent::cli::execute_cli(
-            &masker,
-            common::spawn_dummy_heartbeat(),
-            HttpClient::for_current_env()?,
-        ),
+        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
     )
     .await
     .expect("execute_cli should return promptly");
@@ -49,7 +45,7 @@ async fn codex_app_server_backend_rejects_unexpected_thread_event_scope()
         "unexpected error: {message}"
     );
 
-    let events = read_agent_log_events()?;
+    let events = read_agent_log_events(&runtime.paths)?;
     assert!(
         events.iter().all(|event| {
             event.get("thread_id").and_then(Value::as_str) != Some("unexpected-thread-id")
@@ -60,8 +56,10 @@ async fn codex_app_server_backend_rejects_unexpected_thread_event_scope()
     Ok(())
 }
 
-fn read_agent_log_events() -> Result<Vec<Value>, Box<dyn std::error::Error>> {
-    let log = std::fs::read_to_string(guest_agent::paths::agent_log_file())?;
+fn read_agent_log_events(
+    paths: &guest_agent::paths::GuestPaths,
+) -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+    let log = std::fs::read_to_string(paths.agent_log_file())?;
     log.lines()
         .map(|line| serde_json::from_str(line).map_err(Into::into))
         .collect()

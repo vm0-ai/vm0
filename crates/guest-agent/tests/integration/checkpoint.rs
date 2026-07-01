@@ -9,6 +9,10 @@ use std::ffi::OsString;
 
 const LARGE_SESSION_HISTORY_SIZE_BYTES: usize = 1024 * 1024 + 1;
 
+fn runtime_from_process_env() -> Result<guest_agent::run_context::GuestRuntime, String> {
+    guest_agent::run_context::GuestRuntime::from_process_env()
+}
+
 struct EnvVarRestore {
     key: &'static str,
     value: Option<OsString>,
@@ -83,6 +87,7 @@ async fn success_checkpoint_uploads_non_utf8_session_history() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
+    let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
     let history = b"{\"type\":\"system\"}\nnon-utf8:\xC3(\n".to_vec();
     let _history_dir = write_literal_session_history("success-non-utf8-session", &history).unwrap();
@@ -124,7 +129,7 @@ async fn success_checkpoint_uploads_non_utf8_session_history() {
             .json_body(json!({"checkpointId": "checkpoint-success-non-utf8"}));
     });
 
-    let result = guest_agent::checkpoint::create_checkpoint(&http_client!()).await;
+    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime).await;
 
     assert!(result.is_ok());
     prepare_mock.assert_calls_async(1).await;
@@ -132,7 +137,7 @@ async fn success_checkpoint_uploads_non_utf8_session_history() {
     checkpoint_mock.assert_calls_async(1).await;
 
     let identity_bytes =
-        std::fs::read(guest_agent::paths::final_session_history_identity_file()).unwrap();
+        std::fs::read(runtime.paths.final_session_history_identity_file()).unwrap();
     let identity = FinalSessionHistoryIdentity::from_json_slice(&identity_bytes).unwrap();
     assert_eq!(identity.framework, FinalSessionHistoryFramework::ClaudeCode);
     assert_eq!(identity.history_ref_kind, FinalSessionHistoryRefKind::Blob);
@@ -153,6 +158,7 @@ async fn success_checkpoint_writes_large_final_identity_metadata() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
+    let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
     let history = vec![b'a'; LARGE_SESSION_HISTORY_SIZE_BYTES];
     let _history_dir = write_literal_session_history("success-large-session", &history).unwrap();
@@ -194,7 +200,7 @@ async fn success_checkpoint_writes_large_final_identity_metadata() {
             .json_body(json!({"checkpointId": "checkpoint-success-large"}));
     });
 
-    let result = guest_agent::checkpoint::create_checkpoint(&http_client!()).await;
+    let result = guest_agent::checkpoint::create_checkpoint_for_runtime(&runtime).await;
 
     assert!(result.is_ok());
     prepare_mock.assert_calls_async(1).await;
@@ -202,7 +208,7 @@ async fn success_checkpoint_writes_large_final_identity_metadata() {
     checkpoint_mock.assert_calls_async(1).await;
 
     let identity_bytes =
-        std::fs::read(guest_agent::paths::final_session_history_identity_file()).unwrap();
+        std::fs::read(runtime.paths.final_session_history_identity_file()).unwrap();
     let identity = FinalSessionHistoryIdentity::from_json_slice(&identity_bytes).unwrap();
     assert_eq!(identity.framework, FinalSessionHistoryFramework::ClaudeCode);
     assert_eq!(identity.history_ref_kind, FinalSessionHistoryRefKind::Blob);
@@ -326,6 +332,7 @@ async fn recovery_checkpoint_uploads_valid_session_history() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
+    let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
     let dir = tempfile::tempdir().unwrap();
     let history_path = dir.path().join("history.jsonl");
@@ -366,14 +373,14 @@ async fn recovery_checkpoint_uploads_valid_session_history() {
             .json_body(json!({"checkpointId": "checkpoint-recovery"}));
     });
 
-    let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
+    let result = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&runtime).await;
 
     assert!(result.is_ok());
     prepare_mock.assert_calls_async(1).await;
     upload_mock.assert_calls_async(1).await;
     checkpoint_mock.assert_calls_async(1).await;
     assert!(
-        !std::path::Path::new(guest_agent::paths::final_session_history_identity_file()).exists(),
+        !std::path::Path::new(runtime.paths.final_session_history_identity_file()).exists(),
         "recovery checkpoint must not write final session history identity metadata"
     );
 }
@@ -385,6 +392,7 @@ async fn assert_recovery_checkpoint_derives_claude_history_marker(
     let api = SharedApiMock::new().await;
     let server = api.server();
 
+    let runtime = runtime_from_process_env()?;
     let _files_guard = SessionCheckpointFilesGuard::new();
     let session_id = if seed_empty_marker {
         "derived-empty-marker-session"
@@ -425,7 +433,7 @@ async fn assert_recovery_checkpoint_derives_claude_history_marker(
             .json_body(json!({"checkpointId": "checkpoint-derived-history"}));
     });
 
-    let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
+    let result = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&runtime).await;
 
     assert!(result.is_ok());
     prepare_mock.assert_calls_async(1).await;
@@ -459,6 +467,7 @@ async fn recovery_checkpoint_rejects_partial_jsonl_without_error_file() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
+    let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
     let dir = tempfile::tempdir().unwrap();
     let history_path = dir.path().join("partial.jsonl");
@@ -485,7 +494,7 @@ async fn recovery_checkpoint_rejects_partial_jsonl_without_error_file() {
         then.status(200);
     });
 
-    let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
+    let result = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&runtime).await;
 
     let err = result.unwrap_err();
     assert!(
@@ -494,7 +503,7 @@ async fn recovery_checkpoint_rejects_partial_jsonl_without_error_file() {
         "expected recovery checkpoint to fail on partial JSONL history, got: {err}"
     );
     assert!(
-        !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
+        !std::path::Path::new(runtime.paths.checkpoint_error_file()).exists(),
         "recovery checkpoint must not write the success-path checkpoint error file"
     );
     prepare_mock.assert_calls_async(0).await;
@@ -506,6 +515,7 @@ async fn recovery_checkpoint_rejects_non_utf8_session_history() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
+    let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
     let _history_dir = write_literal_session_history(
         "recovery-non-utf8-session",
@@ -523,7 +533,7 @@ async fn recovery_checkpoint_rejects_non_utf8_session_history() {
         then.status(200);
     });
 
-    let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
+    let result = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&runtime).await;
 
     let err = result.unwrap_err();
     assert!(
@@ -532,7 +542,7 @@ async fn recovery_checkpoint_rejects_non_utf8_session_history() {
         "expected recovery checkpoint to fail on invalid UTF-8 history, got: {err}"
     );
     assert!(
-        !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
+        !std::path::Path::new(runtime.paths.checkpoint_error_file()).exists(),
         "recovery checkpoint must not write the success-path checkpoint error file"
     );
     prepare_mock.assert_calls_async(0).await;
@@ -544,6 +554,7 @@ async fn recovery_checkpoint_skips_when_session_id_is_missing() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
+    let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
 
     let prepare_mock = server.mock(|when, then| {
@@ -556,7 +567,7 @@ async fn recovery_checkpoint_skips_when_session_id_is_missing() {
         then.status(200);
     });
 
-    let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
+    let result = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&runtime).await;
 
     let err = result.unwrap_err();
     assert!(
@@ -564,7 +575,7 @@ async fn recovery_checkpoint_skips_when_session_id_is_missing() {
         "expected recovery checkpoint to fail on missing session ID, got: {err}"
     );
     assert!(
-        !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
+        !std::path::Path::new(runtime.paths.checkpoint_error_file()).exists(),
         "recovery checkpoint must not write the success-path checkpoint error file"
     );
     prepare_mock.assert_calls_async(0).await;
@@ -576,6 +587,7 @@ async fn recovery_checkpoint_skips_when_derived_history_is_missing() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
+    let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
     guest_agent::paths::write_private(guest_agent::paths::session_id_file(), "missing-history")
         .unwrap();
@@ -590,7 +602,7 @@ async fn recovery_checkpoint_skips_when_derived_history_is_missing() {
         then.status(200);
     });
 
-    let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
+    let result = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&runtime).await;
 
     let err = result.unwrap_err();
     assert!(
@@ -598,7 +610,7 @@ async fn recovery_checkpoint_skips_when_derived_history_is_missing() {
         "expected recovery checkpoint to fail on missing derived history, got: {err}"
     );
     assert!(
-        !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
+        !std::path::Path::new(runtime.paths.checkpoint_error_file()).exists(),
         "recovery checkpoint must not write the success-path checkpoint error file"
     );
     prepare_mock.assert_calls_async(0).await;
@@ -610,6 +622,7 @@ async fn recovery_checkpoint_rejects_invalid_session_id_without_marker() {
     let api = SharedApiMock::new().await;
     let server = api.server();
 
+    let runtime = runtime_from_process_env().unwrap();
     let _files_guard = SessionCheckpointFilesGuard::new();
     guest_agent::paths::write_private(guest_agent::paths::session_id_file(), "../unsafe-session")
         .unwrap();
@@ -624,7 +637,7 @@ async fn recovery_checkpoint_rejects_invalid_session_id_without_marker() {
         then.status(200);
     });
 
-    let result = guest_agent::checkpoint::create_recovery_checkpoint(&http_client!()).await;
+    let result = guest_agent::checkpoint::create_recovery_checkpoint_for_runtime(&runtime).await;
 
     let err = result.unwrap_err();
     assert!(
@@ -633,7 +646,7 @@ async fn recovery_checkpoint_rejects_invalid_session_id_without_marker() {
         "expected recovery checkpoint to fail on invalid session ID, got: {err}"
     );
     assert!(
-        !std::path::Path::new(guest_agent::paths::checkpoint_error_file()).exists(),
+        !std::path::Path::new(runtime.paths.checkpoint_error_file()).exists(),
         "recovery checkpoint must not write the success-path checkpoint error file"
     );
     prepare_mock.assert_calls_async(0).await;

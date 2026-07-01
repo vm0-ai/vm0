@@ -7,13 +7,48 @@ const TELEMETRY_DELTA_READ_LIMIT: usize = 256 * 1024;
 const OVERSIZED_SYSTEM_LOG_LINE_MARKER_FRAGMENT: &str =
     "vm0 telemetry omitted oversized system log line";
 
-fn remove_telemetry_files() {
-    let _ = std::fs::remove_file(guest_agent::paths::system_log_file());
-    let _ = std::fs::remove_file(guest_agent::paths::metrics_log_file());
-    let _ = std::fs::remove_file(guest_agent::paths::sandbox_ops_file());
-    let _ = std::fs::remove_file(guest_agent::paths::telemetry_system_log_pos_file());
-    let _ = std::fs::remove_file(guest_agent::paths::telemetry_metrics_pos_file());
-    let _ = std::fs::remove_file(guest_agent::paths::telemetry_sandbox_ops_pos_file());
+struct SandboxOpsOverrideGuard;
+
+impl SandboxOpsOverrideGuard {
+    fn set(path: &str) -> Self {
+        guest_common::telemetry::set_sandbox_ops_log_file(path);
+        Self
+    }
+}
+
+impl Drop for SandboxOpsOverrideGuard {
+    fn drop(&mut self) {
+        guest_common::telemetry::clear_sandbox_ops_log_file();
+    }
+}
+
+struct ExplicitTelemetryFiles {
+    _tmp: tempfile::TempDir,
+    paths: guest_agent::paths::GuestPaths,
+    _sandbox_ops_override: SandboxOpsOverrideGuard,
+}
+
+impl ExplicitTelemetryFiles {
+    fn new(name: &str) -> std::io::Result<Self> {
+        let tmp = tempfile::tempdir()?;
+        let paths = guest_agent::paths::GuestPaths::from_runtime_dir(tmp.path().join(name));
+        let sandbox_ops_override = SandboxOpsOverrideGuard::set(paths.sandbox_ops_file());
+        remove_telemetry_files(&paths);
+        Ok(Self {
+            _tmp: tmp,
+            paths,
+            _sandbox_ops_override: sandbox_ops_override,
+        })
+    }
+}
+
+fn remove_telemetry_files(paths: &guest_agent::paths::GuestPaths) {
+    let _ = std::fs::remove_file(paths.system_log_file());
+    let _ = std::fs::remove_file(paths.metrics_log_file());
+    let _ = std::fs::remove_file(paths.sandbox_ops_file());
+    let _ = std::fs::remove_file(paths.telemetry_system_log_pos_file());
+    let _ = std::fs::remove_file(paths.telemetry_metrics_pos_file());
+    let _ = std::fs::remove_file(paths.telemetry_sandbox_ops_pos_file());
 }
 
 fn ensure_parent_dir(path: &str) {
@@ -27,8 +62,8 @@ fn ensure_parent_dir(path: &str) {
 async fn spawn_for_paths_uploads_explicit_runtime_files() {
     let api = SharedApiMock::new().await;
     let server = api.server();
-    let tmp = tempfile::tempdir().unwrap();
-    let paths = guest_agent::paths::GuestPaths::from_runtime_dir(tmp.path().join("runtime"));
+    let files = ExplicitTelemetryFiles::new("spawn-for-paths").unwrap();
+    let paths = &files.paths;
 
     let upload_mock = server.mock(|when, then| {
         when.method(POST)
@@ -44,7 +79,7 @@ async fn spawn_for_paths_uploads_explicit_runtime_files() {
     let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
     let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
         "explicit-run".to_string(),
-        &paths,
+        paths,
         masker,
         http_client!(),
     );
@@ -75,14 +110,8 @@ async fn spawn_for_paths_uploads_explicit_runtime_files() {
 async fn flush_is_incremental_between_calls() {
     let api = SharedApiMock::new().await;
     let server = api.server();
-
-    // Reset per-run telemetry state so this test drives sandbox_ops
-    // deterministically (other tests in this file don't record sandbox_ops,
-    // but be defensive against cross-test leakage).
-    let ops_file = guest_common::telemetry::sandbox_ops_log();
-    let pos_file = guest_agent::paths::telemetry_sandbox_ops_pos_file();
-    let _ = std::fs::remove_file(ops_file);
-    let _ = std::fs::remove_file(pos_file);
+    let files = ExplicitTelemetryFiles::new("flush-incremental").unwrap();
+    let paths = &files.paths;
 
     // Two mocks, registered in this order. httpmock matches by ID ascending
     // and returns the first hit, so `first_op_mock` wins when the payload
@@ -99,7 +128,12 @@ async fn flush_is_incremental_between_calls() {
     });
 
     let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
-    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker, http_client!());
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "test-run-001".to_string(),
+        paths,
+        masker,
+        http_client!(),
+    );
 
     // Pre-checkpoint record → first flush captures it.
     guest_common::telemetry::record_sandbox_op("first_op", Duration::from_millis(10), true, None);
@@ -127,19 +161,16 @@ async fn flush_is_incremental_between_calls() {
 
     first_op_mock.delete_async().await;
     catchup_mock.delete_async().await;
-    let _ = std::fs::remove_file(ops_file);
-    let _ = std::fs::remove_file(pos_file);
+    remove_telemetry_files(paths);
 }
 
 #[tokio::test]
 async fn final_flush_and_shutdown_uploads_log_emitted_immediately_before_it() {
     let api = SharedApiMock::new().await;
     let server = api.server();
-
-    let system_log = guest_agent::paths::system_log_file();
-    let pos_file = guest_agent::paths::telemetry_system_log_pos_file();
-    let _ = std::fs::remove_file(system_log);
-    let _ = std::fs::remove_file(pos_file);
+    let files = ExplicitTelemetryFiles::new("final-flush-tail").unwrap();
+    let paths = &files.paths;
+    let system_log = paths.system_log_file();
 
     let marker = "fatal-tail-before-final-telemetry";
     let upload_mock = server.mock(|when, then| {
@@ -151,7 +182,12 @@ async fn final_flush_and_shutdown_uploads_log_emitted_immediately_before_it() {
 
     let system_log_guard = SystemLogOverrideGuard::set(system_log);
     let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
-    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker, http_client!());
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "test-run-001".to_string(),
+        paths,
+        masker,
+        http_client!(),
+    );
 
     guest_common::log_warn!("sandbox:guest-agent", "{marker}");
     telemetry
@@ -162,19 +198,18 @@ async fn final_flush_and_shutdown_uploads_log_emitted_immediately_before_it() {
 
     upload_mock.assert_calls_async(1).await;
     upload_mock.delete_async().await;
-    let _ = std::fs::remove_file(system_log);
-    let _ = std::fs::remove_file(pos_file);
+    remove_telemetry_files(paths);
 }
 
 #[tokio::test]
 async fn telemetry_masks_runtime_session_id_registered_after_spawn() {
     let api = SharedApiMock::new().await;
     let server = api.server();
-    remove_telemetry_files();
+    let files = ExplicitTelemetryFiles::new("runtime-session-mask").unwrap();
+    let paths = &files.paths;
     let _session_files = SessionCheckpointFilesGuard::new();
 
-    let system_log = guest_agent::paths::system_log_file();
-    let pos_file = guest_agent::paths::telemetry_system_log_pos_file();
+    let system_log = paths.system_log_file();
     ensure_parent_dir(system_log);
 
     let session_id = "telemetry-session-secret";
@@ -198,8 +233,12 @@ async fn telemetry_masks_runtime_session_id_registered_after_spawn() {
     });
 
     let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
-    let telemetry =
-        guest_agent::telemetry::Telemetry::spawn(std::sync::Arc::clone(&masker), http_client!());
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "test-run-001".to_string(),
+        paths,
+        std::sync::Arc::clone(&masker),
+        http_client!(),
+    );
     let event = serde_json::json!({
         "type": "system",
         "subtype": "init",
@@ -224,8 +263,7 @@ async fn telemetry_masks_runtime_session_id_registered_after_spawn() {
     event_mock.delete_async().await;
     raw_telemetry_mock.delete_async().await;
     masked_telemetry_mock.delete_async().await;
-    let _ = std::fs::remove_file(system_log);
-    let _ = std::fs::remove_file(pos_file);
+    remove_telemetry_files(paths);
 }
 
 /// Regression for #11008. Combines two distinct guarantees that
@@ -249,11 +287,10 @@ async fn telemetry_masks_runtime_session_id_registered_after_spawn() {
 async fn concurrent_flushes_do_not_regress_pos_file() {
     let api = SharedApiMock::new().await;
     let server = api.server();
-
-    let ops_file = guest_common::telemetry::sandbox_ops_log();
-    let pos_file = guest_agent::paths::telemetry_sandbox_ops_pos_file();
-    let _ = std::fs::remove_file(ops_file);
-    let _ = std::fs::remove_file(pos_file);
+    let files = ExplicitTelemetryFiles::new("concurrent-flushes").unwrap();
+    let paths = &files.paths;
+    let ops_file = paths.sandbox_ops_file();
+    let pos_file = paths.telemetry_sandbox_ops_pos_file();
 
     let upload_mock = server.mock(|when, then| {
         when.method(POST).path("/api/webhooks/agent/telemetry");
@@ -261,7 +298,12 @@ async fn concurrent_flushes_do_not_regress_pos_file() {
     });
 
     let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
-    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker, http_client!());
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "test-run-001".to_string(),
+        paths,
+        masker,
+        http_client!(),
+    );
 
     // Record one op, then fire several concurrent flushes. Pre-refactor a
     // tick + final could both read the same pos and race on save_position;
@@ -293,8 +335,7 @@ async fn concurrent_flushes_do_not_regress_pos_file() {
     upload_mock.assert_calls_async(1).await;
 
     upload_mock.delete_async().await;
-    let _ = std::fs::remove_file(ops_file);
-    let _ = std::fs::remove_file(pos_file);
+    remove_telemetry_files(paths);
 }
 
 /// Pins three invariants that have no other test coverage:
@@ -309,14 +350,16 @@ async fn concurrent_flushes_do_not_regress_pos_file() {
 async fn flush_propagates_error_then_loop_recovers() {
     let api = SharedApiMock::new().await;
     let server = api.server();
-
-    let ops_file = guest_common::telemetry::sandbox_ops_log();
-    let pos_file = guest_agent::paths::telemetry_sandbox_ops_pos_file();
-    let _ = std::fs::remove_file(ops_file);
-    let _ = std::fs::remove_file(pos_file);
+    let files = ExplicitTelemetryFiles::new("flush-error-recovery").unwrap();
+    let paths = &files.paths;
 
     let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
-    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker, http_client!());
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "test-run-001".to_string(),
+        paths,
+        masker,
+        http_client!(),
+    );
 
     // Force upload_telemetry to fire HTTP by writing a delta.
     guest_common::telemetry::record_sandbox_op(
@@ -361,18 +404,18 @@ async fn flush_propagates_error_then_loop_recovers() {
     telemetry.shutdown().await;
 
     success_mock.delete_async().await;
-    let _ = std::fs::remove_file(ops_file);
-    let _ = std::fs::remove_file(pos_file);
+    remove_telemetry_files(paths);
 }
 
 #[tokio::test]
 async fn skip_only_metrics_progress_saves_position_without_posting_empty_payload() {
     let api = SharedApiMock::new().await;
     let server = api.server();
-    remove_telemetry_files();
+    let files = ExplicitTelemetryFiles::new("skip-only-metrics").unwrap();
+    let paths = &files.paths;
 
-    let metrics_file = guest_agent::paths::metrics_log_file();
-    let metrics_pos_file = guest_agent::paths::telemetry_metrics_pos_file();
+    let metrics_file = paths.metrics_log_file();
+    let metrics_pos_file = paths.telemetry_metrics_pos_file();
     ensure_parent_dir(metrics_file);
     assert!(
         std::fs::write(metrics_file, "x".repeat(TELEMETRY_DELTA_READ_LIMIT + 1)).is_ok(),
@@ -385,7 +428,12 @@ async fn skip_only_metrics_progress_saves_position_without_posting_empty_payload
     });
 
     let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
-    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker, http_client!());
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "test-run-001".to_string(),
+        paths,
+        masker,
+        http_client!(),
+    );
 
     telemetry
         .flush(guest_agent::telemetry::UploadMode::Live)
@@ -403,17 +451,18 @@ async fn skip_only_metrics_progress_saves_position_without_posting_empty_payload
     assert_eq!(pos, TELEMETRY_DELTA_READ_LIMIT as u64);
 
     upload_mock.delete_async().await;
-    remove_telemetry_files();
+    remove_telemetry_files(paths);
 }
 
 #[tokio::test]
 async fn oversized_system_log_uploads_marker_without_raw_line_fragment() {
     let api = SharedApiMock::new().await;
     let server = api.server();
-    remove_telemetry_files();
+    let files = ExplicitTelemetryFiles::new("oversized-system-log").unwrap();
+    let paths = &files.paths;
 
-    let system_log = guest_agent::paths::system_log_file();
-    let system_log_pos_file = guest_agent::paths::telemetry_system_log_pos_file();
+    let system_log = paths.system_log_file();
+    let system_log_pos_file = paths.telemetry_system_log_pos_file();
     let raw_token = "raw-secret-token";
     ensure_parent_dir(system_log);
     assert!(
@@ -439,7 +488,12 @@ async fn oversized_system_log_uploads_marker_without_raw_line_fragment() {
     });
 
     let masker = std::sync::Arc::new(SecretMasker::from_raw(""));
-    let telemetry = guest_agent::telemetry::Telemetry::spawn(masker, http_client!());
+    let telemetry = guest_agent::telemetry::Telemetry::spawn_for_paths(
+        "test-run-001".to_string(),
+        paths,
+        masker,
+        http_client!(),
+    );
 
     telemetry
         .flush(guest_agent::telemetry::UploadMode::Live)
@@ -459,5 +513,5 @@ async fn oversized_system_log_uploads_marker_without_raw_line_fragment() {
 
     raw_fragment_mock.delete_async().await;
     marker_mock.delete_async().await;
-    remove_telemetry_files();
+    remove_telemetry_files(paths);
 }

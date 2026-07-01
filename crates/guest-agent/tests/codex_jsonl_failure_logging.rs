@@ -1,12 +1,11 @@
 //! Codex stdout JSONL failure events should be visible in the system log.
 //!
-//! This test lives in its own binary because `guest_agent::env` caches
-//! environment values in process-wide `LazyLock`s.
+//! This test lives in its own binary to isolate process env, working directory,
+//! and guest runtime path overrides used during setup.
 
 mod common;
 
 use common::SystemLogOverrideGuard;
-use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use guest_contracts::diagnostics::{FailureDetailSource, FailureReason};
 use std::path::Path;
@@ -22,15 +21,12 @@ async fn codex_jsonl_failure_events_are_reported() -> Result<(), Box<dyn std::er
         setup_codex_env(&mock, tmp.path(), "error-event")?;
     }
 
+    let runtime = common::guest_runtime_from_process_env()?;
     let _system_log = SystemLogOverrideGuard::set(&system_log_path);
     let masker = SecretMasker::from_raw("");
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
-        guest_agent::cli::execute_cli(
-            &masker,
-            common::spawn_dummy_heartbeat(),
-            HttpClient::for_current_env()?,
-        ),
+        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
     )
     .await
     .expect("execute_cli should return promptly")?;
@@ -64,11 +60,7 @@ async fn codex_jsonl_failure_events_are_reported() -> Result<(), Box<dyn std::er
 
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
-        guest_agent::cli::execute_cli(
-            &masker,
-            common::spawn_dummy_heartbeat(),
-            HttpClient::for_current_env()?,
-        ),
+        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
     )
     .await
     .expect("execute_cli should return promptly")?;

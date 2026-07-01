@@ -2,7 +2,6 @@
 
 mod common;
 
-use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use std::os::unix::fs::PermissionsExt;
 use std::time::Duration;
@@ -24,14 +23,12 @@ async fn claude_exit_before_stdin_read_preserves_stderr() -> Result<(), Box<dyn 
         common::setup_env(&mock, tmp.path(), "prompt written through stdin", 3, 1)?;
     }
 
+    let runtime = common::guest_runtime_from_process_env()?;
+
     let masker = SecretMasker::from_raw("");
     let cli_result = tokio::time::timeout(
         Duration::from_secs(5),
-        guest_agent::cli::execute_cli(
-            &masker,
-            common::spawn_dummy_heartbeat(),
-            HttpClient::for_current_env()?,
-        ),
+        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
     )
     .await
     .expect("execute_cli should return promptly")?;

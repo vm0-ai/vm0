@@ -1,11 +1,10 @@
 //! Resume response validation for the experimental Codex app-server backend.
 //!
-//! This test lives in its own binary because `guest_agent::env` caches values
-//! in process-wide `LazyLock`s.
+//! This test lives in its own binary to isolate process env, working directory,
+//! and guest runtime path overrides used during setup.
 
 mod common;
 
-use guest_agent::http::HttpClient;
 use guest_agent::masker::SecretMasker;
 use std::time::Duration;
 
@@ -29,15 +28,12 @@ async fn codex_app_server_backend_rejects_mismatched_resume_thread_id()
         )?;
     }
     let _run_files = common::RunFilesGuard::new();
+    let runtime = common::guest_runtime_from_process_env()?;
 
     let masker = SecretMasker::from_raw("");
     let result = tokio::time::timeout(
         Duration::from_secs(5),
-        guest_agent::cli::execute_cli(
-            &masker,
-            common::spawn_dummy_heartbeat(),
-            HttpClient::for_current_env()?,
-        ),
+        common::execute_cli_for_runtime(&runtime, &masker, common::spawn_dummy_heartbeat()),
     )
     .await
     .expect("execute_cli should return promptly");
@@ -48,7 +44,7 @@ async fn codex_app_server_backend_rejects_mismatched_resume_thread_id()
         message.contains("thread/resume returned a different thread id"),
         "unexpected error: {message}"
     );
-    let session_id_path = guest_agent::paths::session_id_file();
+    let session_id_path = runtime.paths.session_id_file();
     assert!(
         !std::path::Path::new(session_id_path).exists(),
         "mismatched resume response should not write a session id"

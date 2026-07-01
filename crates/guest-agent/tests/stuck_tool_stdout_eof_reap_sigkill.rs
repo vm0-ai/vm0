@@ -18,6 +18,8 @@ async fn stuck_tool_reap_survives_stdout_eof_before_child_exit()
         common::setup_env(&mock, tmp.path(), "@stuck-tool-closed-stdout-deaf", 1, 1)?;
     }
 
+    let runtime = common::guest_runtime_from_process_env()?;
+
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();
 
@@ -25,11 +27,7 @@ async fn stuck_tool_reap_survives_stdout_eof_before_child_exit()
     // + sigkill grace (1s, unignorable) + slack.
     let result = tokio::time::timeout(
         Duration::from_secs(15),
-        guest_agent::cli::execute_cli(
-            &masker,
-            heartbeat,
-            guest_agent::http::HttpClient::new().unwrap(),
-        ),
+        common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
     )
     .await
     .expect("execute_cli did not return within 15s - stdout EOF forced reap likely broken");

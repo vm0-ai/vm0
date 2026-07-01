@@ -17,16 +17,14 @@ async fn post_result_reap_refreshes_quiet_deadline_on_meaningful_event()
     }
     let _run_files = common::RunFilesGuard::new();
 
+    let runtime = common::guest_runtime_from_process_env()?;
+
     let masker = guest_agent::masker::SecretMasker::from_raw("");
     let heartbeat = common::spawn_dummy_heartbeat();
 
     let result = tokio::time::timeout(
         Duration::from_secs(12),
-        guest_agent::cli::execute_cli(
-            &masker,
-            heartbeat,
-            guest_agent::http::HttpClient::new().unwrap(),
-        ),
+        common::execute_cli_for_runtime(&runtime, &masker, heartbeat),
     )
     .await
     .expect("execute_cli did not return within 12s");
