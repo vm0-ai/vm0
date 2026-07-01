@@ -9,6 +9,8 @@ import { warmLatestChatThreadMessages$ } from "./idb-cached-chat-thread-data-sou
 
 const L = logger("BackgroundChatThreadCache");
 const CHAT_THREAD_RUN_FINISHED_TOPIC = "chatThreadRunFinished";
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 function threadIdFromRunFinishedPayload(payload: unknown): string | null {
   if (
@@ -20,7 +22,9 @@ function threadIdFromRunFinishedPayload(payload: unknown): string | null {
   }
 
   const threadId = (payload as { readonly threadId: unknown }).threadId;
-  return typeof threadId === "string" ? threadId : null;
+  return typeof threadId === "string" && uuidPattern.test(threadId)
+    ? threadId
+    : null;
 }
 
 const warmFinishedThread$ = command(

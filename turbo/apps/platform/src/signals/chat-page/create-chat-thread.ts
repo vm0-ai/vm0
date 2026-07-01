@@ -108,6 +108,8 @@ export type {
 } from "./chat-thread-signals.ts";
 
 const L = logger("ChatThread");
+const uuidPattern =
+  /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
 const QUEUED_RUN_MARKER_EVENT_ID = "queue:queued";
 const SILENT_HISTORY_BACKFILL_INTERVAL_MS = 100;
@@ -1581,7 +1583,8 @@ function messageUpdatedPayloadMessageId(payload: unknown): string | null {
     typeof payload !== "object" ||
     payload === null ||
     !("messageId" in payload) ||
-    typeof payload.messageId !== "string"
+    typeof payload.messageId !== "string" ||
+    !uuidPattern.test(payload.messageId)
   ) {
     return null;
   }

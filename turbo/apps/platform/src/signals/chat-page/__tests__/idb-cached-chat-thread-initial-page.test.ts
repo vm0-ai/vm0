@@ -221,9 +221,13 @@ describe("createIdbCachedDataSource initial page cache", () => {
       expect(seenThreadIds).toContain(staleThreadId);
     });
 
+    ctx.mocks.ably.trigger("chatThreadRunFinished", {
+      threadId: "not-a-valid-thread-id",
+    });
     ctx.mocks.ably.trigger("chatThreadRunFinished", { threadId: liveThreadId });
     await waitFor(() => {
       expect(seenThreadIds).toContain(liveThreadId);
+      expect(seenThreadIds).not.toContain("not-a-valid-thread-id");
       expect(idbStoreMock.upsertMessages).toHaveBeenCalledWith(
         liveThreadId,
         [message(2)],

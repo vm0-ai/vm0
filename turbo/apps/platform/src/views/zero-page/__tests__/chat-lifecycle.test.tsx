@@ -4980,7 +4980,7 @@ describe("chat lifecycle", () => {
     const followupPrompt = "Create a presentation outline";
     const updateTopic = `chatThreadMessageUpdated:${FOLLOWUP_THREAD_ID}`;
     const completedMarker: Extract<PagedChatMessage, { role: "assistant" }> = {
-      id: "msg-followup-completed",
+      id: "00000000-0000-4000-8000-000000004001",
       role: "assistant",
       content: null,
       runId: "run-followup",
@@ -5025,6 +5025,7 @@ describe("chat lifecycle", () => {
       expect(context.mocks.ably.hasSubscription(updateTopic)).toBeTruthy();
     });
 
+    context.mocks.ably.trigger(updateTopic, { messageId: "not-a-valid-id" });
     completedMarker.recommendedFollowups = [
       {
         prompt: followupPrompt,
@@ -5108,7 +5109,7 @@ describe("chat lifecycle", () => {
     const followupPrompt = "Create a presentation outline";
     const updateTopic = `chatThreadMessageUpdated:${FOLLOWUP_THREAD_ID}`;
     const completedMarker: Extract<PagedChatMessage, { role: "assistant" }> = {
-      id: "msg-followup-old-completed",
+      id: "00000000-0000-4000-8000-000000004002",
       role: "assistant",
       content: null,
       runId: "run-followup-old",
