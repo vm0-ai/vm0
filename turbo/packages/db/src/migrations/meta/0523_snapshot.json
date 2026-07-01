@@ -1,6 +1,6 @@
 {
-  "id": "cc42546d-8c6e-41d3-bd27-1670ce0093d7",
-  "prevId": "b6dac1a0-bd23-4623-87ac-e83b44ecb7b2",
+  "id": "f90d839a-6eb0-4b88-a46f-4aec8853338f",
+  "prevId": "cc42546d-8c6e-41d3-bd27-1670ce0093d7",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2929,6 +2929,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "thinking": {
+          "name": "thinking",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "error": {
           "name": "error",
           "type": "text",
@@ -3123,6 +3129,22 @@
           ],
           "isUnique": true,
           "where": "\"chat_messages\".\"run_lifecycle_event\" IS NOT NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "chat_messages_run_thinking_unique": {
+          "name": "chat_messages_run_thinking_unique",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "where": "\"chat_messages\".\"thinking\" IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}

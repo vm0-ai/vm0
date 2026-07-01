@@ -3079,7 +3079,7 @@ describe("chat lifecycle", () => {
     fireEvent.keyDown(threadRegion, { key: "F2", shiftKey: true });
 
     const menu = await screen.findByRole("menu");
-    expect(queryAllByRoleFast("menuitem", menu)).toHaveLength(7);
+    expect(queryAllByRoleFast("menuitem", menu)).toHaveLength(10);
     click(menuItemByLabel("Done ✅", menu));
 
     await waitFor(() => {
@@ -3088,6 +3088,47 @@ describe("chat lifecycle", () => {
         "✅",
       );
     });
+  });
+
+  it("adds an emoji to the current chat directly with Shift+1", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({ currentDetailTitle: null });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(
+        screen.getByText("Current thread launch note"),
+      ).toBeInTheDocument();
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, {
+      key: "1",
+      code: "Digit1",
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        "keyboard-current-thread",
+        "✅",
+      );
+    });
+    expect(screen.queryByRole("menu")).not.toBeInTheDocument();
   });
 
   it("does not refocus the chat emoji button or show its tooltip after closing the picker from outside", async () => {
@@ -3182,7 +3223,7 @@ describe("chat lifecycle", () => {
         return item.getAttribute("aria-label") === "Important 📌";
       }),
     ).toBeFalsy();
-    fireEvent.keyDown(menu, { key: "1", code: "Digit1" });
+    fireEvent.keyDown(menu, { key: "1", code: "Digit1", shiftKey: true });
 
     await waitFor(() => {
       expect(renameRequest).toHaveBeenCalledWith(
@@ -3190,6 +3231,79 @@ describe("chat lifecycle", () => {
         "✅ Current keyboard thread",
       );
     });
+  });
+
+  it("clears the current chat emoji directly with Shift+0", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({
+      currentTitle: "🔥 Current keyboard thread",
+    });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, {
+      key: "0",
+      code: "Digit0",
+      shiftKey: true,
+    });
+
+    await waitFor(() => {
+      expect(renameRequest).toHaveBeenCalledWith(
+        "keyboard-current-thread",
+        "Current keyboard thread",
+      );
+    });
+  });
+
+  it("does not clear the emoji when the chat has no other title text", async () => {
+    const renameRequest = vi.fn();
+    mockResizeObserver();
+    mockKeyboardNavigationThreads({ currentTitle: "🔥" });
+    context.mocks.api(
+      chatThreadRenameContract.rename,
+      ({ body, params, respond }) => {
+        renameRequest(params.id, body.title);
+        return respond(204);
+      },
+    );
+
+    detachedSetupPage({
+      context,
+      path: "/chats/keyboard-current-thread",
+      featureSwitches: { [FeatureSwitchKey.ChatThreadEmoji]: true },
+    });
+
+    await waitFor(() => {
+      expect(screen.getByLabelText("Change emoji")).toHaveTextContent("🔥");
+    });
+
+    const threadRegion = screen.getByLabelText("Chat thread");
+    threadRegion.focus();
+    fireEvent.keyDown(threadRegion, {
+      key: "0",
+      code: "Digit0",
+      shiftKey: true,
+    });
+
+    expect(renameRequest).not.toHaveBeenCalled();
   });
 
   it("opens run logs from assistant message actions", async () => {
@@ -3279,6 +3393,7 @@ describe("chat lifecycle", () => {
   });
 
   it("starts a workflow prompt from an assistant message when the composer is empty", async () => {
+    const user = userEvent.setup({ delay: null });
     const threadId = "assistant-message-create-workflow-empty";
     const assistantReply = "We can turn this into a workflow.";
     mockWorkflowComposerWorkflows();
@@ -3323,6 +3438,15 @@ describe("chat lifecycle", () => {
       copyButton.compareDocumentPosition(workflowButton) &
         Node.DOCUMENT_POSITION_FOLLOWING,
     ).toBeTruthy();
+
+    await user.hover(workflowButton);
+    const workflowTooltip = await screen.findByText("Create workflow", {
+      selector: "div",
+    });
+    await waitFor(() => {
+      expect(workflowTooltip).toBeVisible();
+    });
+    await user.unhover(workflowButton);
 
     click(workflowButton);
 

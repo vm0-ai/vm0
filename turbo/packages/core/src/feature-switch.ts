@@ -296,6 +296,13 @@ const FEATURE_SWITCHES: Record<FeatureSwitchKey, FeatureSwitch> = {
       "Show chat unread indicators in sidebar pinned agent lists and the conversation picker.",
     enabled: false,
   },
+  [FeatureSwitchKey.ImageArtifactKeyboardNavigation]: {
+    maintainer: "bingjie@vm0.ai",
+    description:
+      "Enable left/right keyboard and button navigation between image artifacts within the same chat message, in both the lightbox modal and the artifact sidebar.",
+    enabled: false,
+    enabledOrgIdHashes: STAFF_ORG_ID_HASHES,
+  },
   [FeatureSwitchKey.AgentsPageRedesign]: {
     maintainer: "ming@vm0.ai",
     description:
