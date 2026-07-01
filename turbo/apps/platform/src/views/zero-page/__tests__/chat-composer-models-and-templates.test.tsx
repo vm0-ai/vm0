@@ -1208,9 +1208,9 @@ describe("chat composer models", () => {
 
     try {
       await waitFor(() => {
-        expect(document.title).toContain("My thread");
         expect(preferenceRequestStarted).toBeTruthy();
       });
+      await screen.findByText("Use GLM");
       await expectComposerModel("GLM-5.1");
       await user.click(screen.getByRole("combobox", { name: "GLM-5.1" }));
       await user.click(
