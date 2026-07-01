@@ -1586,6 +1586,7 @@ async function nextQueuedUserMessage(
         isNull(chatMessages.runId),
         isNull(chatMessages.revokesMessageId),
         isNull(chatMessages.interruptsRunId),
+        isNull(chatMessages.error),
         sql`NOT EXISTS (
           SELECT 1
           FROM ${chatMessages} AS revoker
