@@ -1076,11 +1076,20 @@ describe("POST /api/zero/email/inbound", () => {
       from_address: "Zero <vm0@mail.example.com>",
     });
     expect(Array.isArray(outbox)).toBeTruthy();
-    const outboxItem = (outbox as EmailOutboxState[]).find((item) => {
+    const outboxItems = outbox as EmailOutboxState[];
+    const outboxItem = outboxItems.find((item) => {
+      const toAddresses = Array.isArray(item.toAddresses)
+        ? item.toAddresses
+        : [item.toAddresses];
       return (
-        item.toAddresses === fx.userEmail && item.subject === "Re: Continue"
+        item.subject === "Re: Continue" && toAddresses.includes(fx.userEmail)
       );
     });
+    if (!outboxItem) {
+      throw new Error(
+        `Expected invalid reply outbox email for ${fx.userEmail}`,
+      );
+    }
     expect(outboxItem).toMatchObject({
       toAddresses: fx.userEmail,
       subject: "Re: Continue",

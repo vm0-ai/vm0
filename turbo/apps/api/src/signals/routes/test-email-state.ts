@@ -23,7 +23,7 @@ import { userCache } from "@vm0/db/schema/user-cache";
 import { users } from "@vm0/db/schema/user";
 import { zeroAgents } from "@vm0/db/schema/zero-agent";
 import { zeroRuns } from "@vm0/db/schema/zero-run";
-import { and, asc, desc, eq, inArray, or } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, or, sql } from "drizzle-orm";
 
 import { request$ } from "../context/hono";
 import { bodyResultOf } from "../context/request";
@@ -41,6 +41,7 @@ const actionBody$ = bodyResultOf(testEmailStateContract.action);
 const CALLBACK_SECRET = "test-callback-secret";
 const REPLY_PATH = "/api/zero/email/callbacks/reply";
 const TRIGGER_PATH = "/api/zero/email/callbacks/trigger";
+const VM0_OUTBOX_FROM = "Zero <vm0@mail.example.com>";
 const OUTBOX_TEST_FROM = "Zero <bdd-outbox@mail.example.com>";
 const OUTBOX_TEST_CREATED_AT_OFFSET_MS = 10 * 60 * 1000;
 
@@ -382,6 +383,24 @@ async function seedFixtureForAction(db: Db, signal: AbortSignal) {
   });
 }
 
+async function deleteOutboxForFixture(
+  db: Db,
+  fixture: EmailFixture,
+): Promise<void> {
+  await db.delete(emailOutbox).where(
+    or(
+      eq(emailOutbox.fromAddress, `Zero <${fixture.orgSlug}@mail.example.com>`),
+      and(
+        eq(emailOutbox.fromAddress, VM0_OUTBOX_FROM),
+        sql`(
+            ${emailOutbox.toAddresses} = ${JSON.stringify(fixture.userEmail)}::jsonb
+            OR ${emailOutbox.toAddresses} @> ${JSON.stringify([fixture.userEmail])}::jsonb
+          )`,
+      ),
+    ),
+  );
+}
+
 async function deleteFixtureForAction(
   db: Db,
   body: Record<string, unknown>,
@@ -392,17 +411,7 @@ async function deleteFixtureForAction(
     return actionBadRequest("fixture is required");
   }
 
-  await db
-    .delete(emailOutbox)
-    .where(
-      or(
-        eq(
-          emailOutbox.fromAddress,
-          `Zero <${fixture.orgSlug}@mail.example.com>`,
-        ),
-        eq(emailOutbox.fromAddress, "Zero <vm0@mail.example.com>"),
-      ),
-    );
+  await deleteOutboxForFixture(db, fixture);
   signal.throwIfAborted();
   await db
     .delete(emailSuppressions)
