@@ -24,6 +24,7 @@ const internalReloadConnectors$ = state(0);
  */
 export const connectors$ = computed(async (get) => {
   get(internalReloadConnectors$);
+  get(featureSwitch$);
 
   const createClient = get(zeroClient$);
   const client = createClient(zeroConnectorsMainContract);
