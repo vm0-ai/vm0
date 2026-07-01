@@ -65,24 +65,6 @@ const KNOWN_MISSING_PERMISSION_DESCRIPTION_GAPS: Partial<
 > = {
   // Keep this list shrinking. Each entry tracks a follow-up issue for
   // removing the connector from this legacy allowlist.
-  clerk: {
-    issue: 19609,
-    missingCount: 67,
-    missingNamesSha256:
-      "a78b992b48b034a9e826933355d7082cec11e449f90f2cc4ba3de6cb36dfb39f",
-  },
-  deel: {
-    issue: 19610,
-    missingCount: 55,
-    missingNamesSha256:
-      "f1aa9bde204742913cc515ce6c60870dcdee8df7ba8da4dd2d6c76264853f345",
-  },
-  dropbox: {
-    issue: 19611,
-    missingCount: 29,
-    missingNamesSha256:
-      "08c5f153d436ed1ec9be40b44f35fcb7c087a89cd26603b508eee2a8b176eb19",
-  },
   "google-cloud": {
     issue: 19566,
     missingCount: 1189,
