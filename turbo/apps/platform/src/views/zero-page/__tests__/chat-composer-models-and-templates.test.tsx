@@ -506,10 +506,14 @@ function mockImmediateIdleCallback(): () => void {
   };
 }
 
-async function expectComposerModel(label: string): Promise<void> {
-  await waitFor(() => {
-    expect(screen.getByRole("combobox", { name: label })).toBeInTheDocument();
-  });
+async function expectComposerModel(label: string): Promise<HTMLElement> {
+  const combobox = await screen.findByRole(
+    "combobox",
+    { name: label },
+    { timeout: 5000 },
+  );
+  expect(combobox).toBeInTheDocument();
+  return combobox;
 }
 
 async function openTemplatePicker(
