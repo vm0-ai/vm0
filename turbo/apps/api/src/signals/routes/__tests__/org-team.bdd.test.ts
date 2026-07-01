@@ -1,6 +1,7 @@
 import { randomUUID } from "node:crypto";
 
 import { describe, expect, it } from "vitest";
+import { DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL } from "@vm0/api-contracts/contracts/model-providers";
 
 import { testContext } from "../../../__tests__/test-context";
 import {
@@ -1095,6 +1096,13 @@ describe("ORG-03: onboarding setup edges", () => {
       connectorAgentId,
     );
     expect([...enabled].sort()).toStrictEqual(["github", "slack"]);
+    const onboardingProviders =
+      await runs.listOrgModelProviders(connectorAdmin);
+    expect(
+      onboardingProviders.find((provider) => {
+        return provider.type === "vm0";
+      })?.selectedModel,
+    ).toBe(DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL);
 
     // Unavailable connectors are rejected before any agent is created.
     const gatedAdmin = api.user();

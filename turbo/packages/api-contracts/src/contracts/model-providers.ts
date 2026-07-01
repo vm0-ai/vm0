@@ -77,15 +77,12 @@ export const VM0_ORG_SLUG = "vm0";
 export const DEFAULT_ORG_MODEL_POLICY_MODELS = [
   "claude-opus-4-8",
   "claude-sonnet-5",
-  "claude-sonnet-4-6",
-  "deepseek-v4-pro",
-  "kimi-k2.7-code",
-  "glm-5.2",
+  "MiniMax-M3",
   "gpt-5.5",
 ] as const satisfies readonly SupportedRunModel[];
 
 export const DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL =
-  "claude-sonnet-4-6" as const satisfies SupportedRunModel;
+  "MiniMax-M3" as const satisfies SupportedRunModel;
 
 export const supportedRunModelSchema = z.enum(SUPPORTED_RUN_MODELS);
 
@@ -798,7 +795,7 @@ export const MODEL_PROVIDER_TYPES = {
     framework: "claude-code" as const,
     label: "VM0 Managed",
     models: Object.keys(VM0_MODEL_TO_PROVIDER) as string[],
-    defaultModel: "claude-sonnet-4-6",
+    defaultModel: DEFAULT_ORG_MODEL_POLICY_DEFAULT_MODEL,
   },
 } as const satisfies Record<ModelProviderType, unknown>;
 
